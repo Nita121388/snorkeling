@@ -4,7 +4,13 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
-import { createDefaultAgentBlockDef, DefaultAgentWidgetId } from "@/app/workspace/agent-launch";
+import {
+    AgentLaunchTarget,
+    createAgentBlockDefForTarget,
+    createDefaultAgentBlockDef,
+    DefaultAgentWidgetId,
+    getCurrentTabAgentLaunchTargets,
+} from "@/app/workspace/agent-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
@@ -58,27 +64,11 @@ function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetEn
 type WidgetPropsType = {
     widgetId: string;
     widget: WidgetConfigType;
-    settings?: SettingsType;
     mode: "normal" | "compact" | "supercompact";
-    env: WidgetsEnv;
+    onWidgetSelect: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
-async function handleWidgetSelect(
-    widgetId: string,
-    widget: WidgetConfigType,
-    settings: SettingsType | undefined,
-    env: WidgetsEnv
-) {
-    if (widgetId === DefaultAgentWidgetId) {
-        const blockDef = createDefaultAgentBlockDef(settings);
-        env.createBlock(blockDef, widget.magnified);
-        return;
-    }
-    const blockDef = widget.blockdef;
-    env.createBlock(blockDef, widget.magnified);
-}
-
-const Widget = memo(({ widgetId, widget, settings, mode, env }: WidgetPropsType) => {
+const Widget = memo(({ widgetId, widget, mode, onWidgetSelect }: WidgetPropsType) => {
     const [isTruncated, setIsTruncated] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +91,7 @@ const Widget = memo(({ widgetId, widget, settings, mode, env }: WidgetPropsType)
                 mode === "supercompact" ? "text-sm" : "text-lg",
                 widget["display:hidden"] && "hidden"
             )}
-            divOnClick={() => handleWidgetSelect(widgetId, widget, settings, env)}
+            divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
         >
             <div style={{ color: widget.color }}>
                 <i className={makeIconClass(widget.icon, true, { defaultIcon: "browser" })}></i>
@@ -271,6 +261,67 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
     );
 });
 
+type AgentTargetFloatingWindowProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    referenceElement: HTMLElement;
+    targets: AgentLaunchTarget[];
+    settings?: SettingsType;
+    magnified?: boolean;
+    env: WidgetsEnv;
+};
+
+const AgentTargetFloatingWindow = memo(
+    ({ isOpen, onClose, referenceElement, targets, settings, magnified, env }: AgentTargetFloatingWindowProps) => {
+        const { refs, floatingStyles, context } = useFloating({
+            open: isOpen,
+            onOpenChange: onClose,
+            placement: "left-start",
+            middleware: [offset(-2), shift({ padding: 12 })],
+            whileElementsMounted: autoUpdate,
+            elements: {
+                reference: referenceElement,
+            },
+        });
+        const dismiss = useDismiss(context);
+        const { getFloatingProps } = useInteractions([dismiss]);
+
+        if (!isOpen) {
+            return null;
+        }
+
+        return (
+            <FloatingPortal>
+                <div
+                    ref={refs.setFloating}
+                    style={floatingStyles}
+                    {...getFloatingProps()}
+                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                >
+                    <div className="px-2 py-1 text-xs text-secondary">Select terminal for Agent</div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                        {targets.map((target) => (
+                            <button
+                                key={target.blockId}
+                                type="button"
+                                className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
+                                onClick={() => {
+                                    const blockDef = createAgentBlockDefForTarget(settings, target);
+                                    env.createBlock(blockDef, magnified);
+                                    onClose();
+                                }}
+                            >
+                                <div className="text-sm text-foreground">{target.label}</div>
+                                <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </FloatingPortal>
+        );
+    }
+);
+
 const SettingsFloatingWindow = memo(
     ({ isOpen, onClose, referenceElement, hasConfigErrors }: FloatingWindowPropsType) => {
         const env = useWaveEnv<WidgetsEnv>();
@@ -406,6 +457,44 @@ const Widgets = memo(() => {
     const appsButtonRef = useRef<HTMLDivElement>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const settingsButtonRef = useRef<HTMLDivElement>(null);
+    const [isAgentTargetOpen, setIsAgentTargetOpen] = useState(false);
+    const [agentTargets, setAgentTargets] = useState<AgentLaunchTarget[]>([]);
+    const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
+    const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
+
+    const closeAgentTargetSelector = useCallback(() => {
+        setIsAgentTargetOpen(false);
+        setAgentReferenceElement(null);
+        setAgentTargets([]);
+    }, []);
+
+    const handleWidgetSelect = useCallback(
+        (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
+            if (widgetId !== DefaultAgentWidgetId) {
+                closeAgentTargetSelector();
+                const blockDef = widget.blockdef;
+                env.createBlock(blockDef, widget.magnified);
+                return;
+            }
+
+            const launchTargets = getCurrentTabAgentLaunchTargets();
+            if (launchTargets.length > 1) {
+                setAgentTargets(launchTargets);
+                setAgentWidgetMagnified(Boolean(widget.magnified));
+                setAgentReferenceElement(e.currentTarget);
+                setIsAgentTargetOpen(true);
+                return;
+            }
+
+            closeAgentTargetSelector();
+            const blockDef =
+                launchTargets.length === 1
+                    ? createAgentBlockDefForTarget(fullConfig?.settings, launchTargets[0])
+                    : createDefaultAgentBlockDef(fullConfig?.settings);
+            env.createBlock(blockDef, widget.magnified);
+        },
+        [closeAgentTargetSelector, env, fullConfig?.settings]
+    );
 
     const checkModeNeeded = useCallback(() => {
         if (!containerRef.current || !measurementRef.current) return;
@@ -488,9 +577,8 @@ const Widgets = memo(() => {
                                     key={`widget-${data.id}`}
                                     widgetId={data.id}
                                     widget={data.config}
-                                    settings={fullConfig?.settings}
                                     mode={mode}
-                                    env={env}
+                                    onWidgetSelect={handleWidgetSelect}
                                 />
                             ))}
                         </div>
@@ -536,9 +624,8 @@ const Widgets = memo(() => {
                                 key={`widget-${data.id}`}
                                 widgetId={data.id}
                                 widget={data.config}
-                                settings={fullConfig?.settings}
                                 mode={mode}
-                                env={env}
+                                onWidgetSelect={handleWidgetSelect}
                             />
                         ))}
                         <div className="flex-grow" />
@@ -615,6 +702,17 @@ const Widgets = memo(() => {
                     hasConfigErrors={hasConfigErrors}
                 />
             )}
+            {agentReferenceElement != null && (
+                <AgentTargetFloatingWindow
+                    isOpen={isAgentTargetOpen}
+                    onClose={closeAgentTargetSelector}
+                    referenceElement={agentReferenceElement}
+                    targets={agentTargets}
+                    settings={fullConfig?.settings}
+                    magnified={agentWidgetMagnified}
+                    env={env}
+                />
+            )}
 
             <div
                 ref={measurementRef}
@@ -625,9 +723,8 @@ const Widgets = memo(() => {
                         key={`measurement-widget-${data.id}`}
                         widgetId={data.id}
                         widget={data.config}
-                        settings={fullConfig?.settings}
                         mode="normal"
-                        env={env}
+                        onWidgetSelect={handleWidgetSelect}
                     />
                 ))}
                 <div className="flex-grow" />

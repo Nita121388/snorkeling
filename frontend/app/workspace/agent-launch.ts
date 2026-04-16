@@ -14,6 +14,15 @@ export type AgentLaunchContext = {
 
 type AgentContextMeta = Pick<MetaType, "connection" | "cmd:cwd">;
 
+export type AgentLaunchTarget = {
+    blockId: string;
+    connection: string | null;
+    cwd: string | null;
+    isLocal: boolean;
+    label: string;
+    detail: string;
+};
+
 export type ResolveWorkspaceAgentContextParams = {
     focusedBlock?: Block | null;
     tab?: Tab | null;
@@ -86,6 +95,58 @@ export function resolveWorkspaceAgentContextMeta(params: ResolveWorkspaceAgentCo
     return {};
 }
 
+export function collectAgentLaunchTargetsInTab(
+    tab: Tab | null | undefined,
+    getBlockById?: (blockId: string) => Block | null | undefined
+): AgentLaunchTarget[] {
+    if (tab == null || getBlockById == null) {
+        return [];
+    }
+    const targets: AgentLaunchTarget[] = [];
+    const blockIds = tab.blockids ?? [];
+
+    for (const blockId of blockIds) {
+        if (isBlank(blockId)) {
+            continue;
+        }
+        const block = getBlockById(blockId);
+        if (block?.meta?.view !== "term") {
+            continue;
+        }
+
+        const rawConnection = block.meta?.connection;
+        const connection = typeof rawConnection === "string" && !isBlank(rawConnection) ? rawConnection : null;
+        const rawCwd = block.meta?.["cmd:cwd"];
+        const cwd = typeof rawCwd === "string" && !isBlank(rawCwd) ? rawCwd : null;
+        const shortBlockId = (block.oid ?? blockId).slice(0, 8);
+        const isLocal = connection == null;
+        const label = isLocal ? "local" : connection;
+        const detail = cwd == null ? `block ${shortBlockId}` : `${cwd} • block ${shortBlockId}`;
+
+        targets.push({
+            blockId,
+            connection,
+            cwd,
+            isLocal,
+            label,
+            detail,
+        });
+    }
+
+    return targets;
+}
+
+export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
+    const staticTabId = globalStore.get(atoms.staticTabId);
+    if (isBlank(staticTabId)) {
+        return [];
+    }
+    const tabData = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", staticTabId)));
+    return collectAgentLaunchTargetsInTab(tabData, (blockId: string) =>
+        globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)))
+    );
+}
+
 function getCurrentWorkspaceContextMeta(): AgentContextMeta {
     const focusedBlockId = getFocusedBlockId();
     const focusedBlock = isBlank(focusedBlockId)
@@ -137,4 +198,12 @@ export function createDefaultAgentBlockDef(_settings?: SettingsType, context?: A
             ...contextMeta,
         },
     };
+}
+
+export function createAgentBlockDefForTarget(settings: SettingsType | undefined, target: AgentLaunchTarget): BlockDef {
+    return createDefaultAgentBlockDef(settings, {
+        connection: target.connection,
+        cwd: target.cwd,
+        inheritWorkspaceContext: false,
+    });
 }

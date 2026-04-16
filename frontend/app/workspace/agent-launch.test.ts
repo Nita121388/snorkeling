@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { extractTerminalContextMeta, resolveWorkspaceAgentContextMeta } from "./agent-launch";
+import { collectAgentLaunchTargetsInTab, extractTerminalContextMeta, resolveWorkspaceAgentContextMeta } from "./agent-launch";
 
 function makeBlock(blockId: string, meta?: Record<string, unknown>): Block {
     return {
@@ -88,5 +88,37 @@ describe("agent launch context", () => {
         });
 
         expect(context).toEqual({ connection: "ssh://session-default" });
+    });
+
+    it("collects only terminal launch targets in tab order", () => {
+        const tab = makeTab(["block:preview", "block:term-local", "block:web", "block:term-remote"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", { view: "preview", connection: "ssh://preview" }),
+            "block:term-local": makeBlock("block:term-local", { view: "term", "cmd:cwd": "/Users/nita" }),
+            "block:web": makeBlock("block:web", { view: "web", url: "https://example.com" }),
+            "block:term-remote": makeBlock("block:term-remote", {
+                view: "term",
+                connection: "ssh://server-a",
+                "cmd:cwd": "/srv/app",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId]);
+
+        expect(targets).toHaveLength(2);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:term-local",
+            connection: null,
+            cwd: "/Users/nita",
+            isLocal: true,
+            label: "local",
+        });
+        expect(targets[1]).toMatchObject({
+            blockId: "block:term-remote",
+            connection: "ssh://server-a",
+            cwd: "/srv/app",
+            isLocal: false,
+            label: "ssh://server-a",
+        });
     });
 });
