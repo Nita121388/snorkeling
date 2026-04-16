@@ -73,6 +73,11 @@ export function resolveWorkspaceAgentContextMeta(params: ResolveWorkspaceAgentCo
         return latestTerminalMeta;
     }
 
+    const focusedConnection = params.focusedBlock?.meta?.connection;
+    if (typeof focusedConnection === "string" && !isBlank(focusedConnection)) {
+        return { connection: focusedConnection };
+    }
+
     const tabConnection = params.tab?.meta?.connection;
     if (typeof tabConnection === "string" && !isBlank(tabConnection)) {
         return { connection: tabConnection };

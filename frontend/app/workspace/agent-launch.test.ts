@@ -76,6 +76,17 @@ describe("agent launch context", () => {
             getBlockById: () => null,
         });
 
+        expect(context).toEqual({ connection: "ssh://preview" });
+    });
+
+    it("falls back to tab connection when focused block has no usable connection", () => {
+        const tab = makeTab(["block:preview"], { connection: "ssh://session-default" });
+        const context = resolveWorkspaceAgentContextMeta({
+            focusedBlock: makeBlock("block:preview", { view: "preview", connection: "" }),
+            tab,
+            getBlockById: () => null,
+        });
+
         expect(context).toEqual({ connection: "ssh://session-default" });
     });
 });
