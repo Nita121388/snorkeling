@@ -1,4 +1,5 @@
 import { createBlock, getApi } from "@/app/store/global";
+import { createDefaultAgentBlockDef } from "@/app/workspace/agent-launch";
 import { makeNativeLabel } from "./platformutil";
 import { fireAndForget } from "./util";
 import { formatRemoteUri } from "./waveutil";
@@ -68,6 +69,17 @@ export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: F
                 },
             };
             fireAndForget(() => createBlock(termBlockDef));
+        },
+    });
+    menu.push({
+        label: "Run Agent Here",
+        click: () => {
+            const agentBlockDef = createDefaultAgentBlockDef(undefined, {
+                connection: conn,
+                cwd: finfo.isdir ? finfo.path : finfo.dir,
+                inheritWorkspaceContext: false,
+            });
+            fireAndForget(() => createBlock(agentBlockDef));
         },
     });
     return menu;

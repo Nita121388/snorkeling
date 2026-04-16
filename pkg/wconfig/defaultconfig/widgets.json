@@ -10,8 +10,21 @@
             }
         }
     },
-    "defwidget@files": {
+    "defwidget@agent": {
         "display:order": -4,
+        "icon": "robot",
+        "label": "agent",
+        "description": "Start default agent in current workspace",
+        "blockdef": {
+            "meta": {
+                "view": "term",
+                "controller": "cmd",
+                "cmd": "codex"
+            }
+        }
+    },
+    "defwidget@files": {
+        "display:order": -3,
         "icon": "folder",
         "label": "files",
         "blockdef": {
@@ -22,7 +35,7 @@
         }
     },
     "defwidget@web": {
-        "display:order": -3,
+        "display:order": -2,
         "icon": "globe",
         "label": "web",
         "blockdef": {
@@ -32,7 +45,7 @@
         }
     },
     "defwidget@sysinfo": {
-        "display:order": -2,
+        "display:order": -1,
         "icon": "chart-line",
         "label": "sysinfo",
         "blockdef": {
@@ -42,7 +55,7 @@
         }
     },
     "defwidget@processviewer": {
-        "display:order": -1,
+        "display:order": 0,
         "icon": "list-tree",
         "label": "processes",
         "blockdef": {

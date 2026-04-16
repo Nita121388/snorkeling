@@ -4,6 +4,7 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
+import { createDefaultAgentBlockDef, DefaultAgentWidgetId } from "@/app/workspace/agent-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
@@ -38,29 +39,46 @@ export type WidgetsEnv = WaveEnvSubset<{
     showContextMenu: WaveEnv["showContextMenu"];
 }>;
 
-function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetConfigType[] {
+type WidgetEntry = {
+    id: string;
+    config: WidgetConfigType;
+};
+
+function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetEntry[] {
     if (wmap == null) {
         return [];
     }
-    const wlist = Object.values(wmap);
+    const wlist = Object.entries(wmap).map(([id, config]) => ({ id, config }));
     wlist.sort((a, b) => {
-        return (a["display:order"] ?? 0) - (b["display:order"] ?? 0);
+        return (a.config["display:order"] ?? 0) - (b.config["display:order"] ?? 0);
     });
     return wlist;
 }
 
 type WidgetPropsType = {
+    widgetId: string;
     widget: WidgetConfigType;
+    settings?: SettingsType;
     mode: "normal" | "compact" | "supercompact";
     env: WidgetsEnv;
 };
 
-async function handleWidgetSelect(widget: WidgetConfigType, env: WidgetsEnv) {
+async function handleWidgetSelect(
+    widgetId: string,
+    widget: WidgetConfigType,
+    settings: SettingsType | undefined,
+    env: WidgetsEnv
+) {
+    if (widgetId === DefaultAgentWidgetId) {
+        const blockDef = createDefaultAgentBlockDef(settings);
+        env.createBlock(blockDef, widget.magnified);
+        return;
+    }
     const blockDef = widget.blockdef;
     env.createBlock(blockDef, widget.magnified);
 }
 
-const Widget = memo(({ widget, mode, env }: WidgetPropsType) => {
+const Widget = memo(({ widgetId, widget, settings, mode, env }: WidgetPropsType) => {
     const [isTruncated, setIsTruncated] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +101,7 @@ const Widget = memo(({ widget, mode, env }: WidgetPropsType) => {
                 mode === "supercompact" ? "text-sm" : "text-lg",
                 widget["display:hidden"] && "hidden"
             )}
-            divOnClick={() => handleWidgetSelect(widget, env)}
+            divOnClick={() => handleWidgetSelect(widgetId, widget, settings, env)}
         >
             <div style={{ color: widget.color }}>
                 <i className={makeIconClass(widget.icon, true, { defaultIcon: "browser" })}></i>
@@ -465,8 +483,15 @@ const Widgets = memo(() => {
                 {mode === "supercompact" ? (
                     <>
                         <div className="grid grid-cols-2 gap-0 w-full">
-                            {widgets?.map((data, idx) => (
-                                <Widget key={`widget-${idx}`} widget={data} mode={mode} env={env} />
+                            {widgets?.map((data) => (
+                                <Widget
+                                    key={`widget-${data.id}`}
+                                    widgetId={data.id}
+                                    widget={data.config}
+                                    settings={fullConfig?.settings}
+                                    mode={mode}
+                                    env={env}
+                                />
                             ))}
                         </div>
                         <div className="flex-grow" />
@@ -506,8 +531,15 @@ const Widgets = memo(() => {
                     </>
                 ) : (
                     <>
-                        {widgets?.map((data, idx) => (
-                            <Widget key={`widget-${idx}`} widget={data} mode={mode} env={env} />
+                        {widgets?.map((data) => (
+                            <Widget
+                                key={`widget-${data.id}`}
+                                widgetId={data.id}
+                                widget={data.config}
+                                settings={fullConfig?.settings}
+                                mode={mode}
+                                env={env}
+                            />
                         ))}
                         <div className="flex-grow" />
                         {env.isDev() || featureWaveAppBuilder ? (
@@ -588,8 +620,15 @@ const Widgets = memo(() => {
                 ref={measurementRef}
                 className="flex flex-col w-12 py-1 -ml-1 select-none absolute -z-10 opacity-0 pointer-events-none"
             >
-                {widgets?.map((data, idx) => (
-                    <Widget key={`measurement-widget-${idx}`} widget={data} mode="normal" env={env} />
+                {widgets?.map((data) => (
+                    <Widget
+                        key={`measurement-widget-${data.id}`}
+                        widgetId={data.id}
+                        widget={data.config}
+                        settings={fullConfig?.settings}
+                        mode="normal"
+                        env={env}
+                    />
                 ))}
                 <div className="flex-grow" />
                 <div className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-lg">
