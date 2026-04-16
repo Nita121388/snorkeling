@@ -83,6 +83,11 @@ Wave is constantly improving! Our roadmap will be continuously updated with our 
 
 Want to provide input to our future releases? Connect with us on [Discord](https://discord.gg/XfvZ334gwU) or open a [Feature Request](https://github.com/wavetermdev/waveterm/issues/new/choose)!
 
+## Snorkeling Project Docs
+
+- Project Charter (CN): [docs/project/fuqian-project-charter.md](./docs/project/fuqian-project-charter.md)
+- Execution Plan (CN): [docs/project/fuqian-execution-plan.md](./docs/project/fuqian-execution-plan.md)
+
 ## Links
 
 - Homepage &mdash; https://www.waveterm.dev
