@@ -56,6 +56,14 @@ type AiSettingsType struct {
 	DisplayOrder    float64 `json:"display:order,omitempty"`
 }
 
+type AgentProfileConfigType struct {
+	Cmd       string            `json:"cmd,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Model     string            `json:"model,omitempty"`
+	ModelFlag string            `json:"modelflag,omitempty"`
+	CmdEnv    map[string]string `json:"env,omitempty"`
+}
+
 type SettingsType struct {
 	AppClear                      bool   `json:"app:*,omitempty"`
 	AppGlobalHotkey               string `json:"app:globalhotkey,omitempty"`
@@ -71,6 +79,10 @@ type SettingsType struct {
 	AppTabBar                     string `json:"app:tabbar,omitempty" jsonschema:"enum=top,enum=left"`
 
 	FeatureWaveAppBuilder bool `json:"feature:waveappbuilder,omitempty"`
+
+	AgentClear          bool                              `json:"agent:*,omitempty"`
+	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
+	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
 
 	AiClear         bool    `json:"ai:*,omitempty"`
 	AiPreset        string  `json:"ai:preset,omitempty"`

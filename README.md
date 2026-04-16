@@ -85,8 +85,11 @@ Want to provide input to our future releases? Connect with us on [Discord](https
 
 ## Snorkeling Project Docs
 
-- Project Charter (CN): [docs/project/fuqian-project-charter.md](./docs/project/fuqian-project-charter.md)
-- Execution Plan (CN): [docs/project/fuqian-execution-plan.md](./docs/project/fuqian-execution-plan.md)
+- Project Charter (CN): [docs/project/snorkeling-project-charter.md](./docs/project/snorkeling-project-charter.md)
+- Execution Plan (CN): [docs/project/snorkeling-execution-plan.md](./docs/project/snorkeling-execution-plan.md)
+- Agent Config (CN): [docs/project/agent-config.md](./docs/project/agent-config.md)
+- CI/CD & Release (CN): [docs/project/ci-cd-release.md](./docs/project/ci-cd-release.md)
+- Upstream Sync Playbook (CN): [docs/project/upstream-sync-playbook.md](./docs/project/upstream-sync-playbook.md)
 
 ## Links
 

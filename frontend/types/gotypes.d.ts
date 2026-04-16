@@ -80,6 +80,15 @@ declare global {
         conn?: {[key: string]: number};
     };
 
+    // wconfig.AgentProfileConfigType
+    type AgentProfileConfigType = {
+        cmd?: string;
+        args?: string[];
+        model?: string;
+        modelflag?: string;
+        env?: {[key: string]: string};
+    };
+
     // wshrpc.AiMessageData
     type AiMessageData = {
         message?: string;
@@ -1388,6 +1397,9 @@ declare global {
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
         "feature:waveappbuilder"?: boolean;
+        "agent:*"?: boolean;
+        "agent:defaultprofile"?: string;
+        "agent:profiles"?: {[key: string]: AgentProfileConfigType};
         "ai:*"?: boolean;
         "ai:preset"?: string;
         "ai:apitype"?: string;

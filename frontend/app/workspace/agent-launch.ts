@@ -3,6 +3,8 @@ import * as WOS from "@/app/store/wos";
 import { isBlank } from "@/util/util";
 
 const DefaultAgentCommand = "codex";
+const DefaultAgentProfile = "codex";
+const DefaultModelFlag = "--model";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
 
@@ -14,6 +16,33 @@ export type AgentLaunchContext = {
 
 type AgentContextMeta = Pick<MetaType, "connection" | "cmd:cwd">;
 
+type AgentProfileConfig = {
+    cmd?: string;
+    args?: string[];
+    model?: string;
+    modelflag?: string;
+    env?: Record<string, string>;
+};
+
+const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
+    codex: {
+        cmd: "codex",
+        modelflag: "--model",
+    },
+    claude: {
+        cmd: "claude",
+        modelflag: "--model",
+    },
+    gemini: {
+        cmd: "gemini",
+        modelflag: "--model",
+    },
+    opencode: {
+        cmd: "opencode",
+        modelflag: "--model",
+    },
+};
+
 export type AgentLaunchTarget = {
     blockId: string;
     connection: string | null;
@@ -22,6 +51,70 @@ export type AgentLaunchTarget = {
     label: string;
     detail: string;
 };
+
+function sanitizeArgs(args: unknown): string[] {
+    if (!Array.isArray(args)) {
+        return [];
+    }
+    return args.filter((arg): arg is string => typeof arg === "string" && !isBlank(arg));
+}
+
+function sanitizeEnv(env: unknown): Record<string, string> {
+    if (env == null || typeof env !== "object") {
+        return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(env)) {
+        if (!isBlank(key) && typeof value === "string") {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
+function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
+    if (rawProfile == null || typeof rawProfile !== "object") {
+        return null;
+    }
+    const profile = rawProfile as Record<string, unknown>;
+    const normalized: AgentProfileConfig = {};
+
+    if (typeof profile.cmd === "string" && !isBlank(profile.cmd)) {
+        normalized.cmd = profile.cmd.trim();
+    }
+    const args = sanitizeArgs(profile.args);
+    if (args.length > 0) {
+        normalized.args = args;
+    }
+    if (typeof profile.model === "string" && !isBlank(profile.model)) {
+        normalized.model = profile.model.trim();
+    }
+    if (typeof profile.modelflag === "string" && !isBlank(profile.modelflag)) {
+        normalized.modelflag = profile.modelflag.trim();
+    }
+    const env = sanitizeEnv(profile.env);
+    if (Object.keys(env).length > 0) {
+        normalized.env = env;
+    }
+    return normalized;
+}
+
+function getProfileConfig(settings?: SettingsType): AgentProfileConfig {
+    const defaultProfileName = isBlank(settings?.["agent:defaultprofile"])
+        ? DefaultAgentProfile
+        : settings["agent:defaultprofile"]?.trim();
+    const builtInProfile = BuiltinAgentProfiles[defaultProfileName] ?? BuiltinAgentProfiles[DefaultAgentProfile];
+    const rawProfiles = settings?.["agent:profiles"];
+    const rawSelected = rawProfiles?.[defaultProfileName];
+    const selectedProfile = normalizeProfile(rawSelected);
+
+    return {
+        ...builtInProfile,
+        ...selectedProfile,
+        args: selectedProfile?.args ?? builtInProfile.args,
+        env: selectedProfile?.env ?? builtInProfile.env,
+    };
+}
 
 export type ResolveWorkspaceAgentContextParams = {
     focusedBlock?: Block | null;
@@ -186,17 +279,39 @@ function resolveContextMeta(context?: AgentLaunchContext): AgentContextMeta {
     return meta;
 }
 
-export function createDefaultAgentBlockDef(_settings?: SettingsType, context?: AgentLaunchContext): BlockDef {
+export function createDefaultAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext): BlockDef {
     const contextMeta = resolveContextMeta(context);
+    const profile = getProfileConfig(settings);
+    const cmd = !isBlank(profile.cmd) ? profile.cmd : DefaultAgentCommand;
+    const cmdArgs = sanitizeArgs(profile.args);
+    const model = !isBlank(profile.model) ? profile.model : null;
+    const modelFlag = !isBlank(profile.modelflag) ? profile.modelflag : DefaultModelFlag;
+    if (model != null) {
+        if (!isBlank(modelFlag)) {
+            cmdArgs.push(modelFlag, model);
+        } else {
+            cmdArgs.push(model);
+        }
+    }
+    const cmdEnv = sanitizeEnv(profile.env);
+
+    const blockMeta: MetaType = {
+        view: "term",
+        controller: "cmd",
+        cmd,
+        "cmd:shell": false,
+        "cmd:runonstart": true,
+        ...contextMeta,
+    };
+    if (cmdArgs.length > 0) {
+        blockMeta["cmd:args"] = cmdArgs;
+    }
+    if (Object.keys(cmdEnv).length > 0) {
+        blockMeta["cmd:env"] = cmdEnv;
+    }
+
     return {
-        meta: {
-            view: "term",
-            controller: "cmd",
-            cmd: DefaultAgentCommand,
-            "cmd:shell": false,
-            "cmd:runonstart": true,
-            ...contextMeta,
-        },
+        meta: blockMeta,
     };
 }
 

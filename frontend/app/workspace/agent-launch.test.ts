@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { collectAgentLaunchTargetsInTab, extractTerminalContextMeta, resolveWorkspaceAgentContextMeta } from "./agent-launch";
+import {
+    collectAgentLaunchTargetsInTab,
+    createDefaultAgentBlockDef,
+    extractTerminalContextMeta,
+    resolveWorkspaceAgentContextMeta,
+} from "./agent-launch";
 
 function makeBlock(blockId: string, meta?: Record<string, unknown>): Block {
     return {
@@ -120,5 +125,34 @@ describe("agent launch context", () => {
             isLocal: false,
             label: "ssh://server-a",
         });
+    });
+
+    it("builds default codex command block when no profile configured", () => {
+        const blockDef = createDefaultAgentBlockDef(undefined, { inheritWorkspaceContext: false });
+        expect(blockDef.meta?.cmd).toBe("codex");
+        expect(blockDef.meta?.["cmd:args"]).toBeUndefined();
+        expect(blockDef.meta?.["cmd:env"]).toBeUndefined();
+    });
+
+    it("applies configured agent profile cmd/model/env", () => {
+        const settings = {
+            "agent:defaultprofile": "claude",
+            "agent:profiles": {
+                claude: {
+                    cmd: "claude",
+                    model: "sonnet-4",
+                    modelflag: "--model",
+                    args: ["--dangerously-skip-permissions"],
+                    env: {
+                        ANTHROPIC_API_KEY: "$ENV:ANTHROPIC_API_KEY",
+                    },
+                },
+            },
+        } as SettingsType;
+
+        const blockDef = createDefaultAgentBlockDef(settings, { inheritWorkspaceContext: false });
+        expect(blockDef.meta?.cmd).toBe("claude");
+        expect(blockDef.meta?.["cmd:args"]).toEqual(["--dangerously-skip-permissions", "--model", "sonnet-4"]);
+        expect(blockDef.meta?.["cmd:env"]).toEqual({ ANTHROPIC_API_KEY: "$ENV:ANTHROPIC_API_KEY" });
     });
 });

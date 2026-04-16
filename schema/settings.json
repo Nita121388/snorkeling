@@ -3,6 +3,33 @@
   "$id": "https://github.com/wavetermdev/waveterm/pkg/wconfig/settings-type",
   "$ref": "#/$defs/SettingsType",
   "$defs": {
+    "AgentProfileConfigType": {
+      "properties": {
+        "cmd": {
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model": {
+          "type": "string"
+        },
+        "modelflag": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "SettingsType": {
       "properties": {
         "app:*": {
@@ -52,6 +79,18 @@
         },
         "feature:waveappbuilder": {
           "type": "boolean"
+        },
+        "agent:*": {
+          "type": "boolean"
+        },
+        "agent:defaultprofile": {
+          "type": "string"
+        },
+        "agent:profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/AgentProfileConfigType"
+          },
+          "type": "object"
         },
         "ai:*": {
           "type": "boolean"

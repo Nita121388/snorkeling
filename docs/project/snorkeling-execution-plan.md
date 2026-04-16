@@ -1,7 +1,7 @@
 # 浮潜（Snorkeling）执行任务单（7步）
 
 更新时间：2026-04-17  
-当前进度：`6/7`
+当前进度：`7/7`
 
 ## 任务清单（严格顺序）
 
@@ -28,8 +28,9 @@
 状态：`done`  
 关键提交：见当前分支最新提交
 
-7. `T7` OpenCove 风格配置机制 + CI/CD + 官方同步发布策略完善  
-状态：`pending`
+7. `T7` OpenCove 风格配置机制 + CI/CD + 官方同步发布策略完善
+状态：`done`
+关键提交：见当前分支最新提交
 
 ## 当前已落地的行为说明
 
@@ -43,7 +44,10 @@
   - 次选当前 Tab 最近终端上下文
   - 再次选当前聚焦块 `connection`
   - 最后选 Tab 级 `connection`
+- Agent profile 配置机制已接入（`agent:defaultprofile` + `agent:profiles`）
+- Snorkeling CI 与三平台 Release workflow 已落地
+- upstream 同步与发布 Playbook 已文档化
 
 ## 剩余风险
 
-- `T7` 未完成前，Agent 配置机制与 CI/CD 仍未达到最终验收标准
+- 后续可选优化：把 Agent profile 配置增加到 UI 可视化编辑入口（当前为 `settings.json` 配置）

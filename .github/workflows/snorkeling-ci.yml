@@ -1,0 +1,54 @@
+name: Snorkeling CI
+
+on:
+    pull_request:
+        branches:
+            - main
+            - refactor/snorkeling
+    push:
+        branches:
+            - main
+            - refactor/snorkeling
+    workflow_dispatch:
+
+env:
+    GO_VERSION: "1.25.6"
+    NODE_VERSION: 22
+    NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+    quality:
+        name: Lint + Tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: actions/setup-go@v6
+              with:
+                  go-version: ${{ env.GO_VERSION }}
+                  cache-dependency-path: |
+                      go.sum
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
+
+            - name: Install Task
+              uses: arduino/setup-task@v2
+              with:
+                  version: 3.x
+                  repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Frontend lint
+              run: npm exec -- eslint frontend
+
+            - name: Focused frontend tests
+              run: npm exec vitest run frontend/app/workspace/agent-launch.test.ts
+
+            - name: Go unit tests
+              run: go test ./...

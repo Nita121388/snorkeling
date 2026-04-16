@@ -69,5 +69,5 @@
 ## 6. 文档维护约定
 
 - 本文件是“需求基线”，变更必须通过显式文档更新
-- 执行进度请同步更新 `docs/project/fuqian-execution-plan.md`
+- 执行进度请同步更新 `docs/project/snorkeling-execution-plan.md`
 - 技术实现与发布细节需同步沉淀到对应专题文档
