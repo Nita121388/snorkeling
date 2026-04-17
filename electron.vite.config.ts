@@ -3,6 +3,7 @@
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
+import { createRequire } from "node:module";
 import { defineConfig } from "electron-vite";
 import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 import svgr from "vite-plugin-svgr";
@@ -11,6 +12,16 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // from our electron build
 const CHROME = "chrome140";
 const NODE = "node22";
+const require = createRequire(import.meta.url);
+
+function hasSharpDependency(): boolean {
+    try {
+        require.resolve("sharp");
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 // for debugging
 // target is like -- path.resolve(__dirname, "frontend/app/workspace/workspace-layout-model.ts");
@@ -176,7 +187,7 @@ export default defineConfig({
         },
         plugins: [
             tsconfigPaths(),
-            { ...ViteImageOptimizer(), apply: "build" },
+            ...(hasSharpDependency() ? [{ ...ViteImageOptimizer(), apply: "build" }] : []),
             svgr({
                 svgrOptions: { exportType: "default", ref: true, svgo: false, titleProp: true },
                 include: "**/*.svg",

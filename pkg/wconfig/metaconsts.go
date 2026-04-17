@@ -21,6 +21,10 @@ const (
 
 	ConfigKey_FeatureWaveAppBuilder          = "feature:waveappbuilder"
 
+	ConfigKey_AgentClear                     = "agent:*"
+	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"
+	ConfigKey_AgentProfiles                  = "agent:profiles"
+
 	ConfigKey_AiClear                        = "ai:*"
 	ConfigKey_AiPreset                       = "ai:preset"
 	ConfigKey_AiApiType                      = "ai:apitype"

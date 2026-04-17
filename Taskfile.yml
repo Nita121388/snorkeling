@@ -124,7 +124,15 @@ tasks:
     package:
         desc: Package the application for the current platform.
         cmds:
-            - npm run build:prod && npm exec electron-builder -- -c electron-builder.config.cjs -p never {{.CLI_ARGS}}
+            - |
+              npm run build:prod
+              {{if eq OS "darwin"}}
+              # Build macOS arm64/x64 in separate runs to avoid intermittent blockmap lock contention.
+              npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --arm64 {{.CLI_ARGS}}
+              npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --x64 {{.CLI_ARGS}}
+              {{else}}
+              npm exec electron-builder -- -c electron-builder.config.cjs -p never {{.CLI_ARGS}}
+              {{end}}
         deps:
             - clean
             - npm:install
