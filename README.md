@@ -1,15 +1,15 @@
 <p align="center">
-  <a href="https://www.waveterm.dev">
+  <a href="https://github.com/Nita121388/snorkeling">
 	<picture>
-		<source media="(prefers-color-scheme: dark)" srcset="./assets/wave-dark.png">
-		<source media="(prefers-color-scheme: light)" srcset="./assets/wave-light.png">
-		<img alt="Wave Terminal Logo" src="./assets/wave-light.png" width="240">
+		<source media="(prefers-color-scheme: dark)" srcset="./assets/snorkeling-icon.svg">
+		<source media="(prefers-color-scheme: light)" srcset="./assets/snorkeling-icon.svg">
+		<img alt="Snorkeling Logo" src="./assets/snorkeling-icon.svg" width="220">
 	</picture>
   </a>
   <br/>
 </p>
 
-# Wave Terminal
+# Snorkeling (Wave-based)
 
 <div align="center">
 
@@ -24,6 +24,24 @@ Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It
 Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
 
 ![WaveTerm Screenshot](./assets/wave-screenshot.webp)
+
+## Snorkeling Development Notes
+
+- Code source: this repository starts from the official `wavetermdev/waveterm` codebase and is maintained as an independent customization project.
+- Reference project: Agent profile/configuration behavior references the OpenCove Agent management approach.
+- Branch scope: `refactor/snorkeling` carries the Snorkeling customization work and related documentation.
+- Implemented in this branch:
+  - Snorkeling app identity isolation (`name`, `productName`, `appId`, local data/config paths).
+  - Right-side `Agent` entry between `Terminal` and `Files`, with 3-scenario smart target selection.
+  - Agent profile configuration support (`agent:defaultprofile`, `agent:profiles`) with fallback defaults.
+  - CI/CD workflow for Snorkeling release (`.github/workflows/snorkeling-release.yml`) to build/publish macOS, Linux, and Windows artifacts.
+- Auto-update isolation from official Wave:
+  - Runtime updater reads packaged `app-update.yml`.
+  - Packaging publish target is pinned in [`electron-builder.config.cjs`](./electron-builder.config.cjs) to GitHub `Nita121388/snorkeling`.
+  - App identity is `io.github.nita121388.snorkeling` in [`package.json`](./package.json), so Snorkeling update channel is separated from official Wave.
+- App icon source:
+  - Snorkeling icon uses Twemoji snorkel emoji asset (`🤿`, `1f93f`) from `https://github.com/twitter/twemoji/tree/master/assets`.
+  - Source file in this repo: [`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg).
 
 ## Key Features
 

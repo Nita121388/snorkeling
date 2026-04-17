@@ -21,6 +21,10 @@ import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import { useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 
+const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
+const WAVE_UPSTREAM_REPO_URL = "https://github.com/wavetermdev/waveterm";
+const WAVE_DISCORD_URL = "https://discord.gg/XfvZ334gwU";
+
 // Page flow:
 //   init -> (telemetry enabled) -> features
 //   init -> (telemetry disabled) -> notelemetrystar -> features
@@ -85,7 +89,7 @@ const InitPage = ({
                 <div className={`${isCompact ? "" : "mb-2.5"} flex justify-center`}>
                     <Logo />
                 </div>
-                <div className="text-center text-[25px] font-normal text-foreground">Welcome to Wave Terminal</div>
+                <div className="text-center text-[25px] font-normal text-foreground">Welcome to Snorkeling</div>
             </header>
             <OverlayScrollbarsComponent
                 className="flex-1 overflow-y-auto min-h-0"
@@ -96,7 +100,7 @@ const InitPage = ({
                         <div>
                             <a
                                 target="_blank"
-                                href="https://github.com/wavetermdev/waveterm?ref=install"
+                                href={`${SNORKELING_REPO_URL}?ref=install`}
                                 rel="noopener"
                                 className="text-accent"
                                 onClick={handleStarClick}
@@ -105,30 +109,31 @@ const InitPage = ({
                             </a>
                         </div>
                         <div className="flex flex-col items-start gap-1 flex-1">
-                            <div className="text-foreground text-base leading-[18px]">Support us on GitHub</div>
+                            <div className="text-foreground text-base leading-[18px]">Project source and repositories</div>
                             <div className="text-secondary leading-5">
-                                We're <i>open source</i>, <i>open-model</i>, and committed to providing a free terminal
-                                for individual users. Please show your support by giving us a star on{" "}
+                                Snorkeling is a personalized customization project based on Wave Terminal upstream.
+                                <br />
+                                Main project repository:{" "}
                                 <a
                                     target="_blank"
-                                    href="https://github.com/wavetermdev/waveterm?ref=install"
+                                    href={`${SNORKELING_REPO_URL}?ref=install`}
                                     rel="noopener"
                                     className="text-accent"
                                     onClick={handleStarClick}
                                 >
-                                    Github&nbsp;(wavetermdev/waveterm)
+                                    GitHub&nbsp;(Nita121388/snorkeling)
+                                </a>
+                                <br />
+                                Upstream repository:{" "}
+                                <a target="_blank" href={`${WAVE_UPSTREAM_REPO_URL}?ref=install`} rel="noopener" className="text-accent">
+                                    GitHub&nbsp;(wavetermdev/waveterm)
                                 </a>
                             </div>
                         </div>
                     </div>
                     <div className="flex w-full items-center gap-[18px]">
                         <div>
-                            <a
-                                target="_blank"
-                                href="https://discord.gg/XfvZ334gwU"
-                                rel="noopener"
-                                className="text-accent"
-                            >
+                            <a target="_blank" href={WAVE_DISCORD_URL} rel="noopener" className="text-accent">
                                 <i className="text-[25px] text-white/50 fa-solid fa-people-group"></i>
                             </a>
                         </div>
@@ -138,12 +143,7 @@ const InitPage = ({
                                 Get help, submit feature requests, report bugs, or just chat with fellow terminal
                                 enthusiasts.
                                 <br />
-                                <a
-                                    target="_blank"
-                                    href="https://discord.gg/XfvZ334gwU"
-                                    rel="noopener"
-                                    className="text-accent"
-                                >
+                                <a target="_blank" href={WAVE_DISCORD_URL} rel="noopener" className="text-accent">
                                     Join the Wave&nbsp;Discord&nbsp;Channel
                                 </a>
                             </div>
@@ -207,7 +207,7 @@ const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
             oref: WOS.makeORef("client", clientId),
             meta: { "onboarding:githubstar": true },
         });
-        window.open("https://github.com/wavetermdev/waveterm?ref=not", "_blank");
+        window.open(`${SNORKELING_REPO_URL}?ref=not`, "_blank");
         setPageName("features");
     };
 
@@ -244,8 +244,8 @@ const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
                     <div className="text-center text-secondary leading-relaxed max-w-md">
                         <p className="mb-4">No problem, we respect your privacy.</p>
                         <p className="mb-4">
-                            But, without usage data, we're flying blind. A GitHub star helps us know Wave is useful and
-                            worth maintaining.
+                            Snorkeling is a customized project based on Wave Terminal. If this customization is useful,
+                            starring the Snorkeling repository helps us keep maintaining it.
                         </p>
                     </div>
                 </div>
@@ -253,7 +253,7 @@ const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
             <footer className={`unselectable flex-shrink-0 mt-2`}>
                 <div className="flex flex-row items-center justify-center gap-2.5 [&>button]:!px-5 [&>button]:!py-2 [&>button]:text-sm [&>button]:!h-[37px]">
                     <Button className="outlined green font-[600]" onClick={handleStarClick}>
-                        ⭐ Star on GitHub
+                        ⭐ Star Snorkeling
                     </Button>
                     <Button className="outlined grey font-[600]" onClick={handleMaybeLater}>
                         Maybe Later

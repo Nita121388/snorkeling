@@ -8,6 +8,9 @@ import * as WOS from "@/app/store/wos";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 
+const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
+const WAVE_UPSTREAM_REPO_URL = "https://github.com/wavetermdev/waveterm";
+
 type StarAskPageProps = {
     onClose: () => void;
     page?: string;
@@ -28,7 +31,7 @@ export function StarAskPage({ onClose, page = "upgrade" }: StarAskPageProps) {
             oref: WOS.makeORef("client", clientId),
             meta: { "onboarding:githubstar": true },
         });
-        window.open(`https://github.com/wavetermdev/waveterm?ref=${page}`, "_blank");
+        window.open(`${SNORKELING_REPO_URL}?ref=${page}`, "_blank");
         onClose();
     };
 
@@ -49,16 +52,28 @@ export function StarAskPage({ onClose, page = "upgrade" }: StarAskPageProps) {
         onClose();
     };
 
-    const handleRepoLinkClick = () => {
+    const handleSnorkelingRepoLinkClick = () => {
         RpcApi.RecordTEventCommand(
             TabRpcClient,
             {
                 event: "action:link",
-                props: { "action:type": "githubrepo", "onboarding:page": page },
+                props: { "action:type": "githubrepo", "onboarding:page": page, "onboarding:repo": "snorkeling" },
             },
             { noresponse: true }
         );
-        window.open("https://github.com/wavetermdev/waveterm", "_blank");
+        window.open(SNORKELING_REPO_URL, "_blank");
+    };
+
+    const handleWaveUpstreamLinkClick = () => {
+        RpcApi.RecordTEventCommand(
+            TabRpcClient,
+            {
+                event: "action:link",
+                props: { "action:type": "githubrepo", "onboarding:page": page, "onboarding:repo": "wave-upstream" },
+            },
+            { noresponse: true }
+        );
+        window.open(WAVE_UPSTREAM_REPO_URL, "_blank");
     };
 
     const handleMaybeLater = async () => {
@@ -84,21 +99,31 @@ export function StarAskPage({ onClose, page = "upgrade" }: StarAskPageProps) {
                 <div className="flex justify-center">
                     <Logo />
                 </div>
-                <div className="text-center text-[25px] font-normal text-foreground">Support open-source. Star Wave. ⭐</div>
+                <div className="text-center text-[25px] font-normal text-foreground">Support open-source. Star Snorkeling. ⭐</div>
             </header>
             <div className="flex-1 flex flex-col items-center justify-center gap-5 unselectable">
                 <div className="flex flex-col items-center gap-4 max-w-[460px] text-center">
                     <div className="text-secondary text-sm leading-relaxed">
-                        Wave is free, open-source, and open-model. Stars help us stay visible against closed
-                        alternatives. One click makes a difference.
+                        Snorkeling is a custom project built on top of Wave Terminal upstream.
+                        <br />
+                        If this customization is useful for your workflow, please star the Snorkeling repository.
                     </div>
                     <div
                         className="group flex items-center justify-center gap-2 text-secondary text-sm mt-1 cursor-pointer transition-colors"
-                        onClick={handleRepoLinkClick}
+                        onClick={handleSnorkelingRepoLinkClick}
                     >
                         <i className="fa-brands fa-github text-foreground text-lg group-hover:text-accent transition-colors" />
                         <span className="text-foreground font-mono text-sm group-hover:text-accent group-hover:underline transition-colors">
-                            wavetermdev/waveterm
+                            Nita121388/snorkeling
+                        </span>
+                    </div>
+                    <div
+                        className="group flex items-center justify-center gap-2 text-secondary text-sm cursor-pointer transition-colors"
+                        onClick={handleWaveUpstreamLinkClick}
+                    >
+                        <i className="fa-brands fa-github text-foreground text-lg group-hover:text-accent transition-colors" />
+                        <span className="text-foreground font-mono text-sm group-hover:text-accent group-hover:underline transition-colors">
+                            wavetermdev/waveterm (upstream)
                         </span>
                     </div>
                 </div>
@@ -109,7 +134,7 @@ export function StarAskPage({ onClose, page = "upgrade" }: StarAskPageProps) {
                         🙏 Already Starred
                     </Button>
                     <Button className="outlined green font-[600]" onClick={handleStarClick}>
-                        ⭐ Star Now
+                        ⭐ Star Snorkeling
                     </Button>
                     <Button className="outlined grey font-[600]" onClick={handleMaybeLater}>
                         Maybe Later
@@ -119,4 +144,3 @@ export function StarAskPage({ onClose, page = "upgrade" }: StarAskPageProps) {
         </div>
     );
 }
-

@@ -13,6 +13,10 @@ import { useAtomValue } from "jotai";
 import { useEffect } from "react";
 import { Modal } from "./modal";
 
+const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
+const WAVE_UPSTREAM_REPO_URL = "https://github.com/wavetermdev/waveterm";
+const WAVE_WEBSITE_URL = "https://www.waveterm.dev/";
+
 interface AboutModalVProps {
     versionString: string;
     updaterChannel: string;
@@ -28,11 +32,11 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
             <div className="flex flex-col gap-[26px] w-full relative z-10">
                 <div className="flex flex-col items-center justify-center gap-4 self-stretch w-full text-center">
                     <Logo />
-                    <div className="text-[25px]">Wave Terminal</div>
+                    <div className="text-[25px]">Snorkeling</div>
                     <div className="leading-5">
-                        Open-Source AI-Integrated Terminal
+                        Customized from Wave Terminal upstream
                         <br />
-                        Built for Seamless Workflows
+                        Open-Source AI-Integrated Terminal
                     </div>
                 </div>
                 <div className="items-center gap-4 self-stretch w-full text-center">
@@ -40,25 +44,30 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                     <br />
                     Update Channel: {updaterChannel}
                 </div>
+                <div className="items-center self-stretch w-full text-center text-secondary text-sm leading-5">
+                    Snorkeling is a personal customization project based on Wave Terminal.
+                    <br />
+                    Use the links below to access both the Snorkeling repository and the Wave upstream repository.
+                </div>
                 <div className="grid grid-cols-2 gap-[10px] self-stretch w-full">
                     <a
-                        href="https://github.com/wavetermdev/waveterm?ref=about"
+                        href={SNORKELING_REPO_URL}
                         target="_blank"
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-brands fa-github mr-2"></i>GitHub
+                        <i className="fa-brands fa-github mr-2"></i>Snorkeling Repo
                     </a>
                     <a
-                        href="https://www.waveterm.dev/?ref=about"
+                        href={WAVE_UPSTREAM_REPO_URL}
                         target="_blank"
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-globe mr-2"></i>Website
+                        <i className="fa-brands fa-github mr-2"></i>Wave Upstream
                     </a>
                     <a
-                        href="https://github.com/wavetermdev/waveterm/blob/main/ACKNOWLEDGEMENTS.md"
+                        href={`${SNORKELING_REPO_URL}/blob/main/ACKNOWLEDGEMENTS.md`}
                         target="_blank"
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
@@ -66,12 +75,12 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         <i className="fa-sharp fa-light fa-book mr-2"></i>Open Source
                     </a>
                     <a
-                        href="https://github.com/sponsors/wavetermdev"
+                        href={WAVE_WEBSITE_URL}
                         target="_blank"
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-heart mr-2"></i>Sponsor
+                        <i className="fa-sharp fa-light fa-globe mr-2"></i>Wave Website
                     </a>
                 </div>
                 <div className="items-center gap-4 self-stretch w-full text-center">
