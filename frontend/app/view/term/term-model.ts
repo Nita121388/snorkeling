@@ -156,6 +156,7 @@ export class TermViewModel implements ViewModel {
                 const blockMeta = get(this.blockAtom)?.meta;
                 let cmdText = blockMeta?.["cmd"];
                 const cmdArgs = blockMeta?.["cmd:args"];
+                const cmdCwd = blockMeta?.["cmd:cwd"];
                 if (cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0) {
                     cmdText += " " + cmdArgs.join(" ");
                 }
@@ -164,6 +165,13 @@ export class TermViewModel implements ViewModel {
                     text: cmdText,
                     noGrow: true,
                 });
+                if (typeof cmdCwd === "string" && cmdCwd.trim().length > 0) {
+                    rtn.push({
+                        elemtype: "text",
+                        text: cmdCwd,
+                        className: "text-muted",
+                    });
+                }
                 const isRestarting = get(this.isRestarting);
                 if (isRestarting) {
                     rtn.push({
