@@ -2,15 +2,15 @@
 
 if type update-alternatives 2>/dev/null >&1; then
     # Remove previous link if it doesn't use update-alternatives
-    if [ -L '/usr/bin/waveterm' -a -e '/usr/bin/waveterm' -a "`readlink '/usr/bin/waveterm'`" != '/etc/alternatives/waveterm' ]; then
-        rm -f '/usr/bin/waveterm'
+    if [ -L '/usr/bin/snorkeling' -a -e '/usr/bin/snorkeling' -a "`readlink '/usr/bin/snorkeling'`" != '/etc/alternatives/snorkeling' ]; then
+        rm -f '/usr/bin/snorkeling'
     fi
-    update-alternatives --install '/usr/bin/waveterm' 'waveterm' '/opt/Wave/waveterm' 100 || ln -sf '/opt/Wave/waveterm' '/usr/bin/waveterm'
+    update-alternatives --install '/usr/bin/snorkeling' 'snorkeling' '/opt/Snorkeling/snorkeling' 100 || ln -sf '/opt/Snorkeling/snorkeling' '/usr/bin/snorkeling'
 else
-    ln -sf '/opt/Wave/waveterm' '/usr/bin/waveterm'
+    ln -sf '/opt/Snorkeling/snorkeling' '/usr/bin/snorkeling'
 fi
 
-chmod 4755 '/opt/Wave/chrome-sandbox' || true
+chmod 4755 '/opt/Snorkeling/chrome-sandbox' || true
 
 if hash update-mime-database 2>/dev/null; then
     update-mime-database /usr/share/mime || true

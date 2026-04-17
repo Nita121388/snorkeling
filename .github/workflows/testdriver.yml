@@ -60,7 +60,7 @@ jobs:
                       }
 
                       $downloadFolder = "./download"
-                      $artifactFileName = "waveterm.exe"
+                      $artifactFileName = "snorkeling.exe"
                       $artifactFilePath = "$downloadFolder/$artifactFileName"
 
                       Write-Host "Starting the artifact download process..."
@@ -131,7 +131,7 @@ jobs:
                       }
 
                       # Optional: If the app executable is different from the installer, find and launch it
-                      $wavePath = Join-Path $env:USERPROFILE "AppData\Local\Programs\waveterm\Wave.exe"
+                      $wavePath = Join-Path $env:USERPROFILE "AppData\Local\Programs\snorkeling\Snorkeling.exe"
 
                       Write-Host "Launching the application: $($wavePath)"
                       Start-Process -FilePath $wavePath

@@ -30,6 +30,17 @@
   - 各平台构建产物汇总
   - 自动创建 GitHub Release 并上传产物
 
+## 与官方安装隔离（避免冲突）
+
+- App 标识：
+  - `name`: `snorkeling`
+  - `productName`: `Snorkeling`
+  - `appId`: `io.github.nita121388.snorkeling`
+- 本地数据目录前缀：`snorkeling`（不再使用 `waveterm`）
+- Linux 可执行与安装路径：
+  - `/usr/bin/snorkeling`
+  - `/opt/Snorkeling/snorkeling`
+
 ## 推荐发布流程
 
 1. 在 `refactor/snorkeling` 完成功能开发并合并到 `main`

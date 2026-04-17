@@ -1,16 +1,16 @@
 {
-    "name": "waveterm",
+    "name": "snorkeling",
     "author": {
         "name": "Command Line Inc",
         "email": "info@commandline.dev"
     },
-    "productName": "Wave",
+    "productName": "Snorkeling",
     "description": "Open-Source AI-Native Terminal Built for Seamless Workflows",
     "license": "Apache-2.0",
     "version": "0.14.5-beta.2",
-    "homepage": "https://waveterm.dev",
+    "homepage": "https://github.com/Nita121388/snorkeling",
     "build": {
-        "appId": "dev.commandline.waveterm"
+        "appId": "io.github.nita121388.snorkeling"
     },
     "private": true,
     "main": "./dist/main/index.js",
