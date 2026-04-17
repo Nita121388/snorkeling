@@ -58,12 +58,20 @@ jobs:
                   version: 3.x
                   repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build distributables
+            - name: Build distributables (Linux/macOS)
+              if: matrix.os != 'windows-latest'
               run: task package
               env:
                   USE_SYSTEM_FPM: true
                   CSC_IDENTITY_AUTO_DISCOVERY: false
-              shell: ${{ matrix.os == 'windows-latest' && 'powershell' || 'bash' }}
+
+            - name: Build distributables (Windows)
+              if: matrix.os == 'windows-latest'
+              run: task package
+              env:
+                  USE_SYSTEM_FPM: true
+                  CSC_IDENTITY_AUTO_DISCOVERY: false
+              shell: powershell
 
             - name: Upload build artifacts
               uses: actions/upload-artifact@v5
