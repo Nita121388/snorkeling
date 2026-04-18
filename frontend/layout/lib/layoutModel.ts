@@ -1208,6 +1208,88 @@ export class LayoutModel {
         }
     }
 
+    private findLeafNodeIdsInDirection(fromLeafNodeId: string, direction: NavigateDirection): string[] {
+        const offset = navigateDirectionToOffset(direction);
+        const nodePositions: Map<string, Dimensions> = new Map();
+        const leafs = this.getter(this.leafs);
+        const addlProps = this.getter(this.additionalProps);
+        for (const leaf of leafs) {
+            const pos = addlProps[leaf.id]?.rect;
+            if (pos) {
+                nodePositions.set(leaf.id, pos);
+            }
+        }
+
+        const fromNodePos = nodePositions.get(fromLeafNodeId);
+        if (!fromNodePos) {
+            return [];
+        }
+        nodePositions.delete(fromLeafNodeId);
+
+        const boundingRect = this.displayContainerRef?.current.getBoundingClientRect();
+        if (!boundingRect) {
+            return [];
+        }
+
+        const maxX = boundingRect.left + boundingRect.width;
+        const maxY = boundingRect.top + boundingRect.height;
+        const moveAmount = 10;
+        const curPoint = getCenter(fromNodePos);
+        const hitNodeIds: string[] = [];
+        const seenNodeIds = new Set<string>();
+
+        function findNodeAtPoint(m: Map<string, Dimensions>, p: Point): string {
+            for (const [nodeId, dimension] of m.entries()) {
+                if (
+                    p.x >= dimension.left &&
+                    p.x <= dimension.left + dimension.width &&
+                    p.y >= dimension.top &&
+                    p.y <= dimension.top + dimension.height
+                ) {
+                    return nodeId;
+                }
+            }
+            return null;
+        }
+
+        while (true) {
+            curPoint.x += offset.x * moveAmount;
+            curPoint.y += offset.y * moveAmount;
+            if (
+                curPoint.x < 0 ||
+                curPoint.x > maxX ||
+                curPoint.y < 0 ||
+                curPoint.y > maxY
+            ) {
+                return hitNodeIds;
+            }
+            const nodeId = findNodeAtPoint(nodePositions, curPoint);
+            if (nodeId != null && !seenNodeIds.has(nodeId)) {
+                seenNodeIds.add(nodeId);
+                hitNodeIds.push(nodeId);
+            }
+        }
+    }
+
+    findBlockIdsInDirection(fromBlockId: string, direction: NavigateDirection): string[] {
+        const fromNode = this.getNodeByBlockId(fromBlockId);
+        if (!fromNode) {
+            return [];
+        }
+        const targetLeafNodeIds = this.findLeafNodeIdsInDirection(fromNode.id, direction);
+        if (targetLeafNodeIds.length === 0) {
+            return [];
+        }
+        return targetLeafNodeIds
+            .map((leafNodeId) => findNode(this.treeState?.rootNode, leafNodeId)?.data?.blockId ?? null)
+            .filter((blockId): blockId is string => blockId != null);
+    }
+
+    findBlockIdInDirection(fromBlockId: string, direction: NavigateDirection): string {
+        const targetBlockIds = this.findBlockIdsInDirection(fromBlockId, direction);
+        return targetBlockIds[0] ?? null;
+    }
+
     /**
      * Switch focus to a node using the given BlockNum
      * @param newBlockNum The BlockNum of the node to which focus should switch.

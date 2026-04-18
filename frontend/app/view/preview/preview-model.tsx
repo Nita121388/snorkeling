@@ -6,7 +6,8 @@ import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { getOverrideConfigAtom, refocusNode } from "@/store/global";
+import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
+import { createBlock, createBlockSplitHorizontally, createBlockSplitVertically, getOverrideConfigAtom, refocusNode } from "@/store/global";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -33,6 +34,62 @@ const BOOKMARKS: { label: string; path: string }[] = [
 
 const MaxFileSize = 1024 * 1024 * 10; // 10MB
 const MaxCSVSize = 1024 * 1024 * 1; // 1MB
+
+const PreviewOpenTargetMetaKey = "preview:open-target";
+
+type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
+
+function normalizeOpenTargetDirection(val: any): PreviewOpenTargetDirection {
+    if (val === "left" || val === "right" || val === "up" || val === "down") {
+        return val;
+    }
+    return "off";
+}
+
+function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
+    switch (direction) {
+        case "left":
+            return NavigateDirection.Left;
+        case "right":
+            return NavigateDirection.Right;
+        case "up":
+            return NavigateDirection.Up;
+        case "down":
+            return NavigateDirection.Down;
+        default:
+            return null;
+    }
+}
+
+function openTargetSymbol(direction: PreviewOpenTargetDirection): string {
+    switch (direction) {
+        case "left":
+            return "←";
+        case "right":
+            return "→";
+        case "up":
+            return "↑";
+        case "down":
+            return "↓";
+        default:
+            return "🧭";
+    }
+}
+
+function openTargetLabel(direction: PreviewOpenTargetDirection): string {
+    switch (direction) {
+        case "left":
+            return "← Left Block";
+        case "right":
+            return "→ Right Block";
+        case "up":
+            return "↑ Upper Block";
+        case "down":
+            return "↓ Lower Block";
+        default:
+            return "🧭 Current Block";
+    }
+}
 
 const textApplicationMimetypes = [
     "application/sql",
@@ -176,7 +233,7 @@ export class PreviewModel implements ViewModel {
         this.nodeModel = nodeModel;
         this.tabModel = tabModel;
         this.env = waveEnv;
-        let showHiddenFiles = globalStore.get(this.env.getSettingsKeyAtom("preview:showhiddenfiles")) ?? true;
+        const showHiddenFiles = globalStore.get(this.env.getSettingsKeyAtom("preview:showhiddenfiles")) ?? true;
         this.showHiddenFiles = atom<boolean>(showHiddenFiles);
         this.refreshVersion = atom(0);
         this.directorySearchActive = atom(false);
@@ -238,6 +295,7 @@ export class PreviewModel implements ViewModel {
             }
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
+            const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
             const loadableFileInfo = get(this.loadableFileInfo);
             if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
@@ -257,6 +315,15 @@ export class PreviewModel implements ViewModel {
                     onClick: () => this.toggleOpenFileModal(),
                 },
             ];
+            if (isDirectoryView) {
+                const currentDirection = normalizeOpenTargetDirection(get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]);
+                viewTextChildren.push({
+                    elemtype: "menubutton",
+                    text: openTargetSymbol(currentDirection),
+                    title: "Open files/folders in directional block",
+                    items: this.makeOpenTargetMenuItems(currentDirection),
+                });
+            }
             let saveClassName = "grey";
             if (get(this.newFileContent) !== null) {
                 saveClassName = "green";
@@ -595,6 +662,128 @@ export class PreviewModel implements ViewModel {
         globalStore.set(this.newFileContent, null);
     }
 
+    private makeOpenTargetMenuItems(currentDirection: PreviewOpenTargetDirection): MenuItem[] {
+        const options: PreviewOpenTargetDirection[] = ["off", "left", "right", "up", "down"];
+        return options.map((direction) => {
+            const activeMark = direction === currentDirection ? "✓ " : "";
+            return {
+                label: `${activeMark}${openTargetLabel(direction)}`,
+                onClick: () => {
+                    fireAndForget(() => this.setOpenTargetDirection(direction));
+                },
+            };
+        });
+    }
+
+    private getOpenTargetDirection(): PreviewOpenTargetDirection {
+        const blockMeta = globalStore.get(this.blockAtom)?.meta;
+        return normalizeOpenTargetDirection(blockMeta?.[PreviewOpenTargetMetaKey]);
+    }
+
+    private async setOpenTargetDirection(direction: PreviewOpenTargetDirection) {
+        const blockMeta = globalStore.get(this.blockAtom)?.meta ?? {};
+        const blockOref = WOS.makeORef("block", this.blockId);
+        await this.env.services.object.UpdateObjectMeta(blockOref, {
+            ...blockMeta,
+            [PreviewOpenTargetMetaKey]: direction,
+        } as any);
+    }
+
+    private findDirectionalPreviewBlock(direction: PreviewOpenTargetDirection): string {
+        const navDirection = openTargetToNavigateDirection(direction);
+        if (navDirection == null) {
+            return null;
+        }
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetBlockIds = layoutModel.findBlockIdsInDirection(this.blockId, navDirection);
+        for (const targetBlockId of targetBlockIds) {
+            const targetBlock = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${targetBlockId}`));
+            if (targetBlock?.meta?.view !== "preview") {
+                continue;
+            }
+            if (targetBlock?.meta?.edit) {
+                continue;
+            }
+            return targetBlockId;
+        }
+        return null;
+    }
+
+    private focusBlockById(blockId: string) {
+        const layoutModel = getLayoutModelForStaticTab();
+        const layoutNode = layoutModel.getNodeByBlockId(blockId);
+        if (!layoutNode?.id) {
+            return;
+        }
+        layoutModel.focusNode(layoutNode.id);
+    }
+
+    private async openPathInPreviewBlock(blockId: string, newPath: string, connection: string): Promise<boolean> {
+        const targetBlockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
+        const targetBlockData = globalStore.get(targetBlockAtom);
+        if (!targetBlockData || targetBlockData.meta?.view !== "preview") {
+            return false;
+        }
+        const currentPath = targetBlockData.meta?.file ?? "";
+        const updateMeta = goHistory("file", currentPath, newPath, targetBlockData.meta);
+        if (updateMeta == null) {
+            return false;
+        }
+        updateMeta.edit = false;
+        updateMeta.connection = connection;
+        await this.env.services.object.UpdateObjectMeta(WOS.makeORef("block", blockId), updateMeta);
+        return true;
+    }
+
+    private async openPathInNewBlock(newPath: string, direction: PreviewOpenTargetDirection = "off") {
+        const connection = await globalStore.get(this.connection);
+        const blockDef: BlockDef = {
+            meta: {
+                view: "preview",
+                file: newPath,
+                connection,
+            },
+        };
+        if (direction === "left") {
+            await createBlockSplitHorizontally(blockDef, this.blockId, "before");
+            return;
+        }
+        if (direction === "right") {
+            await createBlockSplitHorizontally(blockDef, this.blockId, "after");
+            return;
+        }
+        if (direction === "up") {
+            await createBlockSplitVertically(blockDef, this.blockId, "before");
+            return;
+        }
+        if (direction === "down") {
+            await createBlockSplitVertically(blockDef, this.blockId, "after");
+            return;
+        }
+        await createBlock(blockDef);
+    }
+
+    async openPathWithTarget(newPath: string) {
+        const direction = this.getOpenTargetDirection();
+        if (direction === "off") {
+            await this.goHistory(newPath);
+            refocusNode(this.blockId);
+            return;
+        }
+        const targetBlockId = this.findDirectionalPreviewBlock(direction);
+        if (!targetBlockId) {
+            await this.openPathInNewBlock(newPath, direction);
+            return;
+        }
+        const sourceConnection = await globalStore.get(this.connection);
+        const opened = await this.openPathInPreviewBlock(targetBlockId, newPath, sourceConnection);
+        if (opened) {
+            this.focusBlockById(targetBlockId);
+            return;
+        }
+        await this.openPathInNewBlock(newPath, direction);
+    }
+
     async goParentDirectory({ fileInfo = null }: { fileInfo?: FileInfo | null }) {
         // optional parameter needed for recursive case
         const defaultFileInfo = await globalStore.get(this.statFile);
@@ -687,8 +876,7 @@ export class PreviewModel implements ViewModel {
             return true;
         }
         try {
-            this.goHistory(filePath);
-            refocusNode(this.blockId);
+            await this.openPathWithTarget(filePath);
         } catch (e) {
             globalStore.set(this.openFileError, e.message);
             console.error("Error opening file", filePath, e);

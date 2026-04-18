@@ -75,6 +75,7 @@ function DirectoryTableHeaderCell({ header }: DirectoryTableHeaderCellProps) {
 }
 
 declare module "@tanstack/react-table" {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     interface TableMeta<TData extends RowData> {
         updateName: (path: string, isDir: boolean) => void;
         newFile: () => void;
@@ -530,7 +531,7 @@ function TableRow({ model, row, focusIndex, setFocusIndex, setSearch, idx, handl
             data-rowindex={idx}
             onDoubleClick={() => {
                 const newFileName = row.getValue("path") as string;
-                model.goHistory(newFileName);
+                fireAndForget(() => model.openPathWithTarget(newFileName));
                 setSearch("");
                 globalStore.set(model.directorySearchActive, false);
             }}
@@ -662,7 +663,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 if (filteredData.length == 0) {
                     return;
                 }
-                model.goHistory(selectedPath);
+                fireAndForget(() => model.openPathWithTarget(selectedPath));
                 setSearchText("");
                 globalStore.set(model.directorySearchActive, false);
                 return true;
