@@ -36,6 +36,35 @@ export const shellFileMap: Record<string, string> = {
     ".gvimrc": "shell",
 };
 
+function joinAbsolutePath(dir: string, name: string): string {
+    if (!dir) {
+        return name;
+    }
+    if (!name) {
+        return dir;
+    }
+    return dir.endsWith("/") ? `${dir}${name}` : `${dir}/${name}`;
+}
+
+function getAbsoluteFilePath(fileInfo: FileInfo | null): string {
+    if (!fileInfo) {
+        return "";
+    }
+    if (fileInfo.dir && fileInfo.name) {
+        return joinAbsolutePath(fileInfo.dir, fileInfo.name);
+    }
+    if (fileInfo.path) {
+        return fileInfo.path;
+    }
+    return fileInfo.name ?? "";
+}
+
+function buildCopyContextText(absoluteFilePath: string, lineNumber: number, snippet: string, language?: string): string {
+    const filePath = absoluteFilePath || "(unknown-path)";
+    const codeFence = language ? `\`\`\`${language}` : "```";
+    return `${filePath}:${lineNumber}\n${codeFence}\n${snippet}\n\`\`\``;
+}
+
 function CodeEditPreview({ model }: SpecializedViewProps) {
     const fileContent = useAtomValue(model.fileContent);
     const setNewFileContent = useSetAtom(model.newFileContent);
@@ -73,7 +102,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         };
     }, []);
 
-    function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, monacoApi: typeof monaco): () => void {
+    function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, _monacoApi: typeof monaco): () => void {
         model.monacoRef.current = editor;
 
         const keyDownDisposer = editor.onKeyDown((e: MonacoTypes.IKeyboardEvent) => {
@@ -84,6 +113,28 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 e.preventDefault();
             }
         });
+        const copyContextDisposer = editor.addAction({
+            id: "snorkeling.copy-context",
+            label: "🪧 Copy Context",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 0.5,
+            run: async () => {
+                const editorModel = editor.getModel();
+                if (!editorModel) {
+                    return;
+                }
+                const selection = editor.getSelection();
+                const cursorPosition = editor.getPosition();
+                const lineNumber = selection?.startLineNumber ?? cursorPosition?.lineNumber ?? 1;
+                let snippet = selection ? editorModel.getValueInRange(selection) : "";
+                if (!snippet) {
+                    snippet = editorModel.getLineContent(lineNumber);
+                }
+                const absoluteFilePath = getAbsoluteFilePath(fileInfo);
+                const contextText = buildCopyContextText(absoluteFilePath, lineNumber, snippet, language);
+                await navigator.clipboard.writeText(contextText);
+            },
+        });
 
         const isFocused = globalStore.get(model.nodeModel.isFocused);
         if (isFocused) {
@@ -92,6 +143,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
 
         return () => {
             keyDownDisposer.dispose();
+            copyContextDisposer.dispose();
         };
     }
 
