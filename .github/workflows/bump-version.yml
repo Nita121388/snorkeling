@@ -1,8 +1,9 @@
-# Workflow to bump the package version, commit it, and create a Snorkeling release tag.
-# Tags emitted by this workflow are compatible with .github/workflows/snorkeling-release.yml
+# Workflow to bump the upstream package version, commit it, and create a Snorkeling release tag.
+# Tag format: snorkeling-v<upstream-version>-local.<local-version>
+# Example: snorkeling-v0.14.5-beta.4-local.0.0.1
 
 name: Bump Version
-run-name: "branch: ${{ github.ref_name }}; semver-bump: ${{ inputs.bump }}; prerelease: ${{ inputs.is-prerelease }}"
+run-name: "branch: ${{ github.ref_name }}; semver-bump: ${{ inputs.bump }}; prerelease: ${{ inputs.is-prerelease }}; local: ${{ inputs.local-version }}"
 on:
     workflow_dispatch:
         inputs:
@@ -21,8 +22,13 @@ on:
                 required: true
                 type: boolean
                 default: true
-            tag-suffix:
-                description: Optional tag suffix (for retries), e.g. -snorkeling.1
+            local-version:
+                description: Local version segment appended to upstream version, e.g. 0.0.1
+                required: true
+                type: string
+                default: "0.0.1"
+            tag-extra-suffix:
+                description: Optional extra tag suffix for retries, e.g. -r2
                 required: false
                 type: string
                 default: ""
@@ -84,7 +90,13 @@ jobs:
               run: |
                   set -euo pipefail
                   VERSION="${{ steps.bump-version.outputs.WAVETERM_VERSION }}"
-                  TAG="snorkeling-v${VERSION}${{ inputs.tag-suffix }}"
+                  LOCAL_VERSION="${{ inputs.local-version }}"
+                  if [[ ! "$LOCAL_VERSION" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+                      echo "Invalid local-version: $LOCAL_VERSION (expected format like 0.0.1)"
+                      exit 1
+                  fi
+
+                  TAG="snorkeling-v${VERSION}-local.${LOCAL_VERSION}${{ inputs.tag-extra-suffix }}"
                   TARGET_SHA="${{ steps.commit-version.outputs.COMMIT_SHA }}"
                   if [ -z "$TARGET_SHA" ]; then
                       TARGET_SHA="$(git rev-parse HEAD)"

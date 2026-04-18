@@ -44,6 +44,7 @@
 ## 推荐发布流程
 
 1. 在 `refactor/snorkeling` 完成功能开发并合并到 `main`
-2. 创建版本 tag：`snorkeling-vX.Y.Z`
+2. 创建版本 tag：`snorkeling-v<官方版本>-local.0.0.1`
+   - 示例：`snorkeling-v0.14.5-beta.4-local.0.0.1`
 3. 等待 `Snorkeling Release` 完成三平台构建与发布
 4. 在 Release 页面核对产物完整性（macOS / Linux / Windows）
