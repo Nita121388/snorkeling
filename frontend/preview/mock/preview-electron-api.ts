@@ -41,6 +41,7 @@ const previewElectronApi: ElectronApi = {
     setActiveTab: (_tabId: string) => {},
     createTab: () => {},
     closeTab: (_workspaceId: string, _tabId: string, _confirmClose: boolean) => Promise.resolve(false),
+    moveTabToNewWindow: (_tabId: string) => Promise.resolve(false),
     setWindowInitStatus: (_status: "ready" | "wave-ready") => {},
     onWaveInit: (_callback: (initOpts: WaveInitOpts) => void) => {},
     onBuilderInit: (_callback: (initOpts: BuilderInitOpts) => void) => {},
@@ -57,6 +58,7 @@ const previewElectronApi: ElectronApi = {
     openBuilder: (_appId?: string) => {},
     setBuilderWindowAppId: (_appId: string) => {},
     doRefresh: () => {},
+    getPathForFile: (_file: File) => "",
     saveTextFile: (_fileName: string, _content: string) => Promise.resolve(false),
     setIsActive: async () => {},
 };

@@ -8,6 +8,7 @@ export type TabBarEnv = WaveEnvSubset<{
         createTab: WaveEnv["electron"]["createTab"];
         closeTab: WaveEnv["electron"]["closeTab"];
         setActiveTab: WaveEnv["electron"]["setActiveTab"];
+        moveTabToNewWindow: WaveEnv["electron"]["moveTabToNewWindow"];
         showWorkspaceAppMenu: WaveEnv["electron"]["showWorkspaceAppMenu"];
         installAppUpdate: WaveEnv["electron"]["installAppUpdate"];
     };

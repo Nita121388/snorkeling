@@ -683,6 +683,93 @@ export function getAllWaveWindows(): WaveBrowserWindow[] {
     return Array.from(waveWindowMap.values());
 }
 
+function computeFallbackActiveTabId(tabIds: string[], removedTabId: string, currentActiveTabId: string): string {
+    if (tabIds.length === 0) {
+        return "";
+    }
+    if (currentActiveTabId && currentActiveTabId !== removedTabId && tabIds.includes(currentActiveTabId)) {
+        return currentActiveTabId;
+    }
+    const removedTabIdx = tabIds.indexOf(removedTabId);
+    if (removedTabIdx === -1) {
+        return tabIds[0];
+    }
+    const fallbackIdx = Math.max(0, Math.min(removedTabIdx, tabIds.length - 2));
+    return tabIds[fallbackIdx];
+}
+
+async function moveTabToNewWindow(sourceWaveWindow: WaveBrowserWindow, tabId: string): Promise<boolean> {
+    if (sourceWaveWindow == null || !tabId) {
+        return false;
+    }
+    const sourceWorkspaceId = sourceWaveWindow.workspaceId;
+    let sourceWorkspace = await WorkspaceService.GetWorkspace(sourceWorkspaceId);
+    if (sourceWorkspace == null) {
+        console.log("moveTabToNewWindow: source workspace not found", sourceWorkspaceId);
+        return false;
+    }
+    if (!sourceWorkspace.tabids?.includes(tabId)) {
+        console.log("moveTabToNewWindow: tab not found in source workspace", tabId, sourceWorkspaceId);
+        return false;
+    }
+
+    if ((sourceWorkspace.tabids?.length ?? 0) <= 1) {
+        // Keep the source window alive by creating a replacement tab before moving the last existing one.
+        await WorkspaceService.CreateTab(sourceWorkspaceId, null, true);
+        sourceWorkspace = await WorkspaceService.GetWorkspace(sourceWorkspaceId);
+        if (sourceWorkspace == null || !sourceWorkspace.tabids?.includes(tabId)) {
+            console.log("moveTabToNewWindow: source workspace invalid after replacement tab create", sourceWorkspaceId);
+            return false;
+        }
+    }
+
+    const sourceTabIds = [...(sourceWorkspace.tabids ?? [])];
+    const sourceNextTabIds = sourceTabIds.filter((id) => id !== tabId);
+    if (sourceNextTabIds.length === 0) {
+        console.log("moveTabToNewWindow: source would become empty, aborting", sourceWorkspaceId, tabId);
+        return false;
+    }
+    const sourceNextActiveTabId = computeFallbackActiveTabId(sourceTabIds, tabId, sourceWorkspace.activetabid);
+    if (sourceNextActiveTabId === "") {
+        console.log("moveTabToNewWindow: unable to determine source fallback active tab", sourceWorkspaceId, tabId);
+        return false;
+    }
+
+    const newWaveWindow = await WindowService.CreateWindow(null, "");
+    if (newWaveWindow == null) {
+        console.log("moveTabToNewWindow: failed to create target window");
+        return false;
+    }
+    const targetWorkspaceId = newWaveWindow.workspaceid;
+    const targetWorkspace = await WorkspaceService.GetWorkspace(targetWorkspaceId);
+    if (targetWorkspace == null) {
+        console.log("moveTabToNewWindow: target workspace not found", targetWorkspaceId);
+        return false;
+    }
+    const placeholderTabId = targetWorkspace.activetabid || targetWorkspace.tabids?.[0] || "";
+    const targetNextTabIds = [...(targetWorkspace.tabids ?? [])].filter((id) => id !== tabId);
+    targetNextTabIds.push(tabId);
+
+    await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, sourceWorkspaceId, sourceNextTabIds);
+    await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, targetWorkspaceId, targetNextTabIds);
+    await WorkspaceService.SetActiveTab(sourceWorkspaceId, sourceNextActiveTabId);
+    await WorkspaceService.SetActiveTab(targetWorkspaceId, tabId);
+    if (placeholderTabId && placeholderTabId !== tabId) {
+        await WorkspaceService.CloseTab(targetWorkspaceId, placeholderTabId, true);
+    }
+
+    await sourceWaveWindow.setActiveTab(sourceNextActiveTabId, false);
+    sourceWaveWindow.removeTabView(tabId, true);
+
+    const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+    const newBrowserWindow = await createBrowserWindow(newWaveWindow, fullConfig, {
+        unamePlatform,
+        isPrimaryStartupWindow: false,
+    });
+    newBrowserWindow.show();
+    return true;
+}
+
 export async function createWindowForWorkspace(workspaceId: string) {
     const newWin = await WindowService.CreateWindow(null, workspaceId);
     if (!newWin) {
@@ -766,6 +853,21 @@ ipcMain.handle("close-tab", async (event, workspaceId: string, tabId: string, co
     }
     await ww.queueCloseTab(tabId);
     return true;
+});
+
+ipcMain.handle("move-tab-to-new-window", async (event, tabId: string) => {
+    const senderWindow = getWaveWindowByWebContentsId(event.sender.id);
+    const sourceWindow = senderWindow ?? getWaveWindowByTabId(tabId);
+    if (sourceWindow == null) {
+        console.log("move-tab-to-new-window: source window not found", tabId);
+        return false;
+    }
+    try {
+        return await moveTabToNewWindow(sourceWindow, tabId);
+    } catch (e) {
+        console.log("move-tab-to-new-window failed", tabId, e);
+        return false;
+    }
 });
 
 ipcMain.on("switch-workspace", (event, workspaceId) => {

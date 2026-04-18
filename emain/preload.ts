@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld("api", {
     setActiveTab: (tabId) => ipcRenderer.send("set-active-tab", tabId),
     createTab: () => ipcRenderer.send("create-tab"),
     closeTab: (workspaceId, tabId, confirmClose) => ipcRenderer.invoke("close-tab", workspaceId, tabId, confirmClose),
+    moveTabToNewWindow: (tabId: string) => ipcRenderer.invoke("move-tab-to-new-window", tabId),
     setWindowInitStatus: (status) => ipcRenderer.send("set-window-init-status", status),
     onWaveInit: (callback) => ipcRenderer.on("wave-init", (_event, initOpts) => callback(initOpts)),
     onBuilderInit: (callback) => ipcRenderer.on("builder-init", (_event, initOpts) => callback(initOpts)),

@@ -151,6 +151,7 @@ export function makeTabBarMockEnv(
                 if (e == null) return;
                 globalStore.set(e.atoms.staticTabId as any, tabId);
             },
+            moveTabToNewWindow: (_tabId: string) => Promise.resolve(false),
             showWorkspaceAppMenu: () => {
                 console.log("[preview] showWorkspaceAppMenu");
             },

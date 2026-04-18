@@ -115,6 +115,14 @@ export function buildTabContextMenu(
         menu.push({ label: "Backgrounds", type: "submenu", submenu }, { type: "separator" });
     }
     menu.push(...buildTabBarContextMenu(env), { type: "separator" });
+    menu.push({
+        label: "Move Tab to New Window",
+        click: () =>
+            fireAndForget(async () => {
+                await env.electron.moveTabToNewWindow(id);
+            }),
+    });
+    menu.push({ type: "separator" });
     menu.push({ label: "Close Tab", click: () => onClose(null) });
     return menu;
 }
