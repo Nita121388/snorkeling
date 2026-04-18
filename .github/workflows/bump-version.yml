@@ -1,6 +1,6 @@
 # Workflow to bump the upstream package version, commit it, and create a Snorkeling release tag.
-# Tag format: snorkeling-v<upstream-version>-local.<local-version>
-# Example: snorkeling-v0.14.5-beta.4-local.0.0.1
+# Tag format: snorkeling-v<upstream-version>-<local-version>
+# Example: snorkeling-v0.14.5-beta.4-0.0.1
 
 name: Bump Version
 run-name: "branch: ${{ github.ref_name }}; semver-bump: ${{ inputs.bump }}; prerelease: ${{ inputs.is-prerelease }}; local: ${{ inputs.local-version }}"
@@ -96,7 +96,7 @@ jobs:
                       exit 1
                   fi
 
-                  TAG="snorkeling-v${VERSION}-local.${LOCAL_VERSION}${{ inputs.tag-extra-suffix }}"
+                  TAG="snorkeling-v${VERSION}-${LOCAL_VERSION}${{ inputs.tag-extra-suffix }}"
                   TARGET_SHA="${{ steps.commit-version.outputs.COMMIT_SHA }}"
                   if [ -z "$TARGET_SHA" ]; then
                       TARGET_SHA="$(git rev-parse HEAD)"
