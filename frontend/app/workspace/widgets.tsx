@@ -298,7 +298,7 @@ const AgentTargetFloatingWindow = memo(
                     {...getFloatingProps()}
                     className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select terminal for Agent</div>
+                    <div className="px-2 py-1 text-xs text-secondary">Select context for Agent</div>
                     <div className="max-h-[280px] overflow-y-auto">
                         {targets.map((target) => (
                             <button
@@ -311,6 +311,9 @@ const AgentTargetFloatingWindow = memo(
                                     onClose();
                                 }}
                             >
+                                <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
+                                    {target.source === "files" ? "Files" : "Terminal"}
+                                </div>
                                 <div className="text-sm text-foreground">{target.label}</div>
                                 <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
                             </button>

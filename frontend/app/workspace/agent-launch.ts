@@ -45,10 +45,14 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
     },
 };
 
+type AgentLaunchSource = "terminal" | "files";
+
 export type AgentLaunchTarget = {
     blockId: string;
     connection: string | null;
     cwd: string | null;
+    filePath?: string | null;
+    source: AgentLaunchSource;
     isLocal: boolean;
     label: string;
     detail: string;
@@ -148,6 +152,59 @@ export type ResolveWorkspaceAgentContextParams = {
     getBlockById?: (blockId: string) => Block | null | undefined;
 };
 
+function normalizeConnection(rawConnection: unknown): string | null {
+    if (typeof rawConnection !== "string" || isBlank(rawConnection)) {
+        return null;
+    }
+    return rawConnection.trim();
+}
+
+function normalizePath(rawPath: unknown): string | null {
+    if (typeof rawPath !== "string" || isBlank(rawPath)) {
+        return null;
+    }
+    const trimmed = rawPath.trim();
+    if (trimmed === "/") {
+        return trimmed;
+    }
+    return trimmed.replace(/\/+$/, "");
+}
+
+function getParentPath(path: string): string | null {
+    const normalizedPath = normalizePath(path);
+    if (normalizedPath == null || normalizedPath === "/") {
+        return normalizedPath;
+    }
+    const lastSlashIdx = normalizedPath.lastIndexOf("/");
+    if (lastSlashIdx <= 0) {
+        return "/";
+    }
+    return normalizedPath.slice(0, lastSlashIdx);
+}
+
+function isLikelyFilePath(path: string, editMode: boolean): boolean {
+    if (editMode) {
+        return true;
+    }
+    const normalizedPath = normalizePath(path);
+    if (normalizedPath == null || normalizedPath === "/") {
+        return false;
+    }
+    const baseName = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
+    return baseName.includes(".");
+}
+
+function resolvePreviewLaunchPath(filePath: string, editMode: boolean): string | null {
+    const normalizedPath = normalizePath(filePath);
+    if (normalizedPath == null) {
+        return null;
+    }
+    if (isLikelyFilePath(normalizedPath, editMode)) {
+        return getParentPath(normalizedPath);
+    }
+    return normalizedPath;
+}
+
 export function extractTerminalContextMeta(block: Block | null | undefined): AgentContextMeta | null {
     if (block?.meta?.view !== "term") {
         return null;
@@ -166,6 +223,88 @@ export function extractTerminalContextMeta(block: Block | null | undefined): Age
         return null;
     }
     return meta;
+}
+
+function makeTerminalLaunchTarget(blockId: string, block: Block): AgentLaunchTarget | null {
+    if (block.meta?.view !== "term") {
+        return null;
+    }
+    const connection = normalizeConnection(block.meta?.connection);
+    const cwd = normalizePath(block.meta?.["cmd:cwd"]);
+    const shortBlockId = (block.oid ?? blockId).slice(0, 8);
+    const isLocal = connection == null;
+    const label = isLocal ? "local" : connection;
+    const detail = cwd == null ? `block ${shortBlockId}` : `${cwd} • block ${shortBlockId}`;
+    return {
+        blockId,
+        connection,
+        cwd,
+        filePath: null,
+        source: "terminal",
+        isLocal,
+        label,
+        detail,
+    };
+}
+
+function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarget | null {
+    if (block.meta?.view !== "preview") {
+        return null;
+    }
+    const connection = normalizeConnection(block.meta?.connection);
+    const filePath = normalizePath(block.meta?.file);
+    const cwd = filePath == null ? null : resolvePreviewLaunchPath(filePath, block.meta?.edit === true);
+    if (connection == null && cwd == null && filePath == null) {
+        return null;
+    }
+    const shortBlockId = (block.oid ?? blockId).slice(0, 8);
+    const isLocal = connection == null;
+    const label = isLocal ? "local" : connection;
+    const locationDetail = filePath != null && cwd != null && filePath !== cwd ? `${filePath} -> ${cwd}` : cwd ?? filePath;
+    const detail = locationDetail == null ? `block ${shortBlockId}` : `${locationDetail} • block ${shortBlockId}`;
+    return {
+        blockId,
+        connection,
+        cwd,
+        filePath,
+        source: "files",
+        isLocal,
+        label,
+        detail,
+    };
+}
+
+function getLaunchTargetPathCandidates(target: AgentLaunchTarget): string[] {
+    const uniquePaths = new Set<string>();
+    const addPath = (path: string | null | undefined) => {
+        const normalizedPath = normalizePath(path);
+        if (normalizedPath != null) {
+            uniquePaths.add(normalizedPath);
+        }
+    };
+
+    addPath(target.cwd);
+    if (target.source === "files") {
+        addPath(target.filePath);
+        const parentPath = getParentPath(target.filePath ?? "");
+        addPath(parentPath);
+    }
+
+    return Array.from(uniquePaths);
+}
+
+function targetsShareLaunchContext(targetA: AgentLaunchTarget, targetB: AgentLaunchTarget): boolean {
+    const connectionA = normalizeConnection(targetA.connection);
+    const connectionB = normalizeConnection(targetB.connection);
+    if (connectionA !== connectionB) {
+        return false;
+    }
+    const pathsA = getLaunchTargetPathCandidates(targetA);
+    const pathsB = getLaunchTargetPathCandidates(targetB);
+    if (pathsA.length === 0 || pathsB.length === 0) {
+        return false;
+    }
+    return pathsA.some((path) => pathsB.includes(path));
 }
 
 function resolveLatestTerminalContextInTab(
@@ -216,12 +355,13 @@ export function resolveWorkspaceAgentContextMeta(params: ResolveWorkspaceAgentCo
 
 export function collectAgentLaunchTargetsInTab(
     tab: Tab | null | undefined,
-    getBlockById?: (blockId: string) => Block | null | undefined
+    getBlockById?: (blockId: string) => Block | null | undefined,
+    focusedBlockId?: string | null
 ): AgentLaunchTarget[] {
     if (tab == null || getBlockById == null) {
         return [];
     }
-    const targets: AgentLaunchTarget[] = [];
+    const terminalTargets: AgentLaunchTarget[] = [];
     const blockIds = tab.blockids ?? [];
 
     for (const blockId of blockIds) {
@@ -229,30 +369,40 @@ export function collectAgentLaunchTargetsInTab(
             continue;
         }
         const block = getBlockById(blockId);
-        if (block?.meta?.view !== "term") {
+        if (block == null) {
             continue;
         }
-
-        const rawConnection = block.meta?.connection;
-        const connection = typeof rawConnection === "string" && !isBlank(rawConnection) ? rawConnection : null;
-        const rawCwd = block.meta?.["cmd:cwd"];
-        const cwd = typeof rawCwd === "string" && !isBlank(rawCwd) ? rawCwd : null;
-        const shortBlockId = (block.oid ?? blockId).slice(0, 8);
-        const isLocal = connection == null;
-        const label = isLocal ? "local" : connection;
-        const detail = cwd == null ? `block ${shortBlockId}` : `${cwd} • block ${shortBlockId}`;
-
-        targets.push({
-            blockId,
-            connection,
-            cwd,
-            isLocal,
-            label,
-            detail,
-        });
+        const terminalTarget = makeTerminalLaunchTarget(blockId, block);
+        if (terminalTarget != null) {
+            terminalTargets.push(terminalTarget);
+        }
     }
 
-    return targets;
+    const normalizedFocusedBlockId = isBlank(focusedBlockId) ? null : focusedBlockId;
+    const focusedIsInTab = normalizedFocusedBlockId != null && blockIds.includes(normalizedFocusedBlockId);
+    if (!focusedIsInTab) {
+        return terminalTargets;
+    }
+    const focusedBlock = getBlockById(normalizedFocusedBlockId!);
+    if (focusedBlock == null) {
+        return terminalTargets;
+    }
+    const filesTarget = makePreviewLaunchTarget(normalizedFocusedBlockId!, focusedBlock);
+    if (filesTarget == null) {
+        return terminalTargets;
+    }
+    if (terminalTargets.length === 0) {
+        return [filesTarget];
+    }
+
+    const matchedTerminalTarget = terminalTargets.find((terminalTarget) =>
+        targetsShareLaunchContext(terminalTarget, filesTarget)
+    );
+    if (matchedTerminalTarget != null) {
+        return [matchedTerminalTarget];
+    }
+
+    return [filesTarget, ...terminalTargets];
 }
 
 export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
@@ -261,8 +411,11 @@ export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
         return [];
     }
     const tabData = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", staticTabId)));
-    return collectAgentLaunchTargetsInTab(tabData, (blockId: string) =>
-        globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)))
+    const focusedBlockId = getFocusedBlockId();
+    return collectAgentLaunchTargetsInTab(
+        tabData,
+        (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
+        focusedBlockId
     );
 }
 

@@ -95,7 +95,7 @@ describe("agent launch context", () => {
         expect(context).toEqual({ connection: "ssh://session-default" });
     });
 
-    it("collects only terminal launch targets in tab order", () => {
+    it("collects terminal launch targets in tab order when focused block is not Files", () => {
         const tab = makeTab(["block:preview", "block:term-local", "block:web", "block:term-remote"]);
         const blockMap: Record<string, Block> = {
             "block:preview": makeBlock("block:preview", { view: "preview", connection: "ssh://preview" }),
@@ -115,6 +115,7 @@ describe("agent launch context", () => {
             blockId: "block:term-local",
             connection: null,
             cwd: "/Users/nita",
+            source: "terminal",
             isLocal: true,
             label: "local",
         });
@@ -122,8 +123,85 @@ describe("agent launch context", () => {
             blockId: "block:term-remote",
             connection: "ssh://server-a",
             cwd: "/srv/app",
+            source: "terminal",
             isLocal: false,
             label: "ssh://server-a",
+        });
+    });
+
+    it("adds focused Files target when no terminal target exists", () => {
+        const tab = makeTab(["block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", { view: "preview", connection: "ssh://host-a", file: "/srv/repo" }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets).toHaveLength(1);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            connection: "ssh://host-a",
+            cwd: "/srv/repo",
+            source: "files",
+            isLocal: false,
+            label: "ssh://host-a",
+        });
+    });
+
+    it("auto-matches Files and terminal context when connection/path are consistent", () => {
+        const tab = makeTab(["block:term", "block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:term": makeBlock("block:term", {
+                view: "term",
+                connection: "ssh://host-a",
+                "cmd:cwd": "/srv/repo",
+            }),
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                connection: "ssh://host-a",
+                file: "/srv/repo/README.md",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets).toHaveLength(1);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:term",
+            source: "terminal",
+            connection: "ssh://host-a",
+            cwd: "/srv/repo",
+        });
+    });
+
+    it("requires selection when Files and terminal contexts do not match", () => {
+        const tab = makeTab(["block:term", "block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:term": makeBlock("block:term", {
+                view: "term",
+                connection: "ssh://host-a",
+                "cmd:cwd": "/srv/repo-a",
+            }),
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                connection: "ssh://host-a",
+                file: "/srv/repo-b/file.txt",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets).toHaveLength(2);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            connection: "ssh://host-a",
+        });
+        expect(targets[1]).toMatchObject({
+            blockId: "block:term",
+            source: "terminal",
+            connection: "ssh://host-a",
+            cwd: "/srv/repo-a",
         });
     });
 
