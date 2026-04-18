@@ -13,17 +13,11 @@
 
 <div align="center">
 
-[English](README.md) | [한국어](README.ko.md) | [繁體中文](README.zh-TW.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [한국어](README.ko.md)
 
 </div>
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
-
-Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
-
-Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
-
-![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 
 ## Snorkeling Development Notes
 
@@ -42,6 +36,12 @@ Wave also supports durable SSH sessions that survive network interruptions and r
 - App icon source:
   - Snorkeling icon uses Twemoji snorkel emoji asset (`🤿`, `1f93f`) from `https://github.com/twitter/twemoji/tree/master/assets`.
   - Source file in this repo: [`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg).
+
+Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
+
+Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
+
+![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 
 ## Key Features
 

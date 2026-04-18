@@ -13,7 +13,7 @@
 
 <div align="center">
 
-[English](README.md) | [한국어](README.ko.md) | [繁體中文](README.zh-TW.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [한국어](README.ko.md)
 
 </div>
 
