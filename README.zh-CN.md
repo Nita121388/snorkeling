@@ -21,23 +21,27 @@
 
 > 本文件为社区简体中文版本，最新英文内容请参阅 [README.md](README.md)。
 
-## Snorkeling 定制开发说明
+## Snorkeling 定制开发重点
 
-- 代码来源：本仓库基于官方 `wavetermdev/waveterm` 代码库，作为独立定制项目持续维护。
-- 参考项目：Agent 配置与管理逻辑参考了 OpenCove Agent 管理方案。
-- 分支范围：`refactor/snorkeling` 承载 Snorkeling 定制开发及配套文档。
-- 本分支已实现：
-  - Snorkeling 应用身份隔离（`name`、`productName`、`appId`、本地数据/配置路径）。
-  - 在右侧导航 `Terminal` 与 `Files` 之间新增 `Agent` 入口，并支持 3 种场景的智能目标选择。
-  - Agent 配置支持（`agent:defaultprofile`、`agent:profiles`）及默认兜底。
-  - Snorkeling 专用 CI/CD（`.github/workflows/snorkeling-release.yml`），构建并发布 macOS、Linux、Windows 安装包。
-- 自动更新与官方 Wave 隔离：
-  - 运行时更新器读取打包后的 `app-update.yml`。
-  - 打包发布目标固定在 [`electron-builder.config.cjs`](./electron-builder.config.cjs) 中的 GitHub `Nita121388/snorkeling`。
-  - 应用标识为 [`package.json`](./package.json) 中的 `io.github.nita121388.snorkeling`，更新通道与官方 Wave 完全分离。
-- 应用图标来源：
-  - Snorkeling 图标使用 Twemoji 的潜水面镜资产（`🤿`，`1f93f`），来源 `https://github.com/twitter/twemoji/tree/master/assets`。
-  - 仓库内源文件：[`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg)。
+- 本仓库基于官方 `wavetermdev/waveterm` 持续定制维护，主开发分支为 `refactor/snorkeling`。
+- Agent 工作流增强：
+  - 在右侧导航新增独立 `Agent` 入口。
+  - Agent 启动同时考虑终端上下文与当前聚焦的 Files 路径：
+    - SSH/路径一致时自动命中并直接启动。
+    - 上下文不一致时弹出选择器供用户选择。
+  - 支持 Agent Profile 配置（`agent:defaultprofile`、`agent:profiles`）与会话自动续接。
+- Files 工作流增强：
+  - 支持定向打开目标（`🧭`、`←`、`→`、`↑`、`↓`），文件/目录可在目标区块打开。
+  - 编辑器与 Diff 视图支持 `🪧 Copy Context`（绝对路径 + 行号 + 代码片段）。
+  - Files 右键菜单支持 `Open VS Code Here`（本地连接）。
+- 版本管理工作流增强：
+  - 新增独立 `VCS`、`File History`、`File Diff` 区块。
+  - 支持可视化 Diff（并排/内联）和从历史记录直接打开 Diff。
+  - 支持仓库路径/链接复制与跳转远程仓库。
+- 窗口与布局增强：
+  - 支持 `Move Tab to New Window`（将当前 Tab 弹出到新窗口）。
+- 品牌资源更新：
+  - Snorkeling 图标采用 Twemoji 潜水面镜（`🤿`，`1f93f`），仓库源文件为 [`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg)。
 
 Wave 是一款开源、集成 AI 的终端应用，支持 macOS、Linux 和 Windows。它可与任意 AI 模型协作。你可以自行提供 OpenAI、Claude、Gemini 的 API Key，也可以通过 Ollama 与 LM Studio 运行本地模型，无需账号。
 

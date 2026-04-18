@@ -19,23 +19,27 @@
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
 
-## Snorkeling Development Notes
+## Snorkeling Custom Highlights
 
-- Code source: this repository starts from the official `wavetermdev/waveterm` codebase and is maintained as an independent customization project.
-- Reference project: Agent profile/configuration behavior references the OpenCove Agent management approach.
-- Branch scope: `refactor/snorkeling` carries the Snorkeling customization work and related documentation.
-- Implemented in this branch:
-  - Snorkeling app identity isolation (`name`, `productName`, `appId`, local data/config paths).
-  - Right-side `Agent` entry between `Terminal` and `Files`, with 3-scenario smart target selection.
-  - Agent profile configuration support (`agent:defaultprofile`, `agent:profiles`) with fallback defaults.
-  - CI/CD workflow for Snorkeling release (`.github/workflows/snorkeling-release.yml`) to build/publish macOS, Linux, and Windows artifacts.
-- Auto-update isolation from official Wave:
-  - Runtime updater reads packaged `app-update.yml`.
-  - Packaging publish target is pinned in [`electron-builder.config.cjs`](./electron-builder.config.cjs) to GitHub `Nita121388/snorkeling`.
-  - App identity is `io.github.nita121388.snorkeling` in [`package.json`](./package.json), so Snorkeling update channel is separated from official Wave.
-- App icon source:
-  - Snorkeling icon uses Twemoji snorkel emoji asset (`🤿`, `1f93f`) from `https://github.com/twitter/twemoji/tree/master/assets`.
-  - Source file in this repo: [`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg).
+- This repo is based on upstream `wavetermdev/waveterm` and maintained on branch `refactor/snorkeling`.
+- Agent workflow enhancements:
+  - Dedicated `Agent` entry in the right sidebar.
+  - Agent launch now considers both terminal context and focused Files path:
+    - If SSH/path context matches, it auto-launches directly.
+    - If context differs, it opens a selector so users can choose.
+  - Agent profile support (`agent:defaultprofile`, `agent:profiles`) plus session auto-resume behavior.
+- Files workflow enhancements:
+  - Directional open target support (`🧭`, `←`, `→`, `↑`, `↓`) for opening files/folders into target blocks.
+  - `🪧 Copy Context` in editor and file diff views (absolute path + line + snippet).
+  - `Open VS Code Here` in Files context menu (local connection).
+- Version control workflow enhancements:
+  - Dedicated `VCS`, `File History`, and `File Diff` blocks.
+  - Visual diff viewer (side-by-side / inline), with direct diff open from history.
+  - Repository utilities: copy repository path/link and open remote repository.
+- Window/layout enhancements:
+  - `Move Tab to New Window` support.
+- Branding updates:
+  - Snorkeling icon pipeline uses Twemoji snorkel (`🤿`, `1f93f`) with SVG source at [`assets/snorkeling-icon.svg`](./assets/snorkeling-icon.svg).
 
 Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
 
