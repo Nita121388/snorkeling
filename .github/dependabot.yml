@@ -2,6 +2,7 @@ version: 2
 updates:
     - package-ecosystem: "npm"
       directory: "/"
+      target-branch: "refactor/snorkeling"
       schedule:
           interval: "weekly"
           day: "friday"
@@ -145,6 +146,7 @@ updates:
                   - "major"
     - package-ecosystem: "gomod"
       directory: "/"
+      target-branch: "refactor/snorkeling"
       schedule:
           interval: "weekly"
           day: "friday"
@@ -152,6 +154,7 @@ updates:
           timezone: "America/Los_Angeles"
     - package-ecosystem: "github-actions"
       directory: "/.github/workflows"
+      target-branch: "refactor/snorkeling"
       schedule:
           interval: "weekly"
           day: "friday"
