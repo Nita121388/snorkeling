@@ -792,6 +792,36 @@ export class RpcApiType {
         return client.wshRpcCall("remoteterminatejobmanager", data, opts);
     }
 
+    // command "remotevcscommit" [call]
+    RemoteVcsCommitCommand(client: WshClient, data: CommandRemoteVcsCommitData, opts?: RpcOpts): Promise<RemoteVcsCommitRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommit", data, opts);
+        return client.wshRpcCall("remotevcscommit", data, opts);
+    }
+
+    // command "remotevcscommits" [call]
+    RemoteVcsCommitsCommand(client: WshClient, data: CommandRemoteVcsCommitsData, opts?: RpcOpts): Promise<RemoteVcsCommitsRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommits", data, opts);
+        return client.wshRpcCall("remotevcscommits", data, opts);
+    }
+
+    // command "remotevcsfilediff" [call]
+    RemoteVcsFileDiffCommand(client: WshClient, data: CommandRemoteVcsFileDiffData, opts?: RpcOpts): Promise<RemoteVcsFileDiffRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsfilediff", data, opts);
+        return client.wshRpcCall("remotevcsfilediff", data, opts);
+    }
+
+    // command "remotevcsfilehistory" [call]
+    RemoteVcsFileHistoryCommand(client: WshClient, data: CommandRemoteVcsFileHistoryData, opts?: RpcOpts): Promise<RemoteVcsFileHistoryRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsfilehistory", data, opts);
+        return client.wshRpcCall("remotevcsfilehistory", data, opts);
+    }
+
+    // command "remotevcsrepositories" [call]
+    RemoteVcsRepositoriesCommand(client: WshClient, data: CommandRemoteVcsRepositoriesData, opts?: RpcOpts): Promise<RemoteVcsRepositoriesRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsrepositories", data, opts);
+        return client.wshRpcCall("remotevcsrepositories", data, opts);
+    }
+
     // command "remotewritefile" [call]
     RemoteWriteFileCommand(client: WshClient, data: FileData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotewritefile", data, opts);

@@ -45,6 +45,12 @@ export function blockViewToIcon(view: string): string {
     if (view == "processviewer") {
         return "microchip";
     }
+    if (view == "vcs") {
+        return "code-branch";
+    }
+    if (view == "vcsdiff") {
+        return "file-code";
+    }
     return "square";
 }
 
@@ -72,6 +78,12 @@ export function blockViewToName(view: string): string {
     }
     if (view == "processviewer") {
         return "Processes";
+    }
+    if (view == "vcs") {
+        return "Version Control";
+    }
+    if (view == "vcsdiff") {
+        return "File Diff";
     }
     return view;
 }

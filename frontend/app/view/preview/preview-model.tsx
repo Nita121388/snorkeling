@@ -321,6 +321,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "menubutton",
                     text: openTargetSymbol(currentDirection),
                     title: "Open files/folders in directional block",
+                    className: "compact-open-target-menubutton",
                     items: this.makeOpenTargetMenuItems(currentDirection),
                 });
             }
@@ -399,9 +400,16 @@ export class PreviewModel implements ViewModel {
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
+            const vcsButton: IconButtonDecl = {
+                elemtype: "iconbutton",
+                icon: "code-branch",
+                title: "Version Control",
+                click: () => fireAndForget(() => this.openVersionControlBlock()),
+            };
             if (mimeType == "directory") {
                 const showHiddenFiles = get(this.showHiddenFiles);
                 return [
+                    vcsButton,
                     {
                         elemtype: "iconbutton",
                         icon: showHiddenFiles ? "eye" : "eye-slash",
@@ -418,6 +426,7 @@ export class PreviewModel implements ViewModel {
                 ] as IconButtonDecl[];
             } else if (!isCeView && isMarkdownLike(mimeType)) {
                 return [
+                    vcsButton,
                     {
                         elemtype: "iconbutton",
                         icon: "book",
@@ -434,6 +443,7 @@ export class PreviewModel implements ViewModel {
             } else if (!isCeView && mimeType) {
                 // For all other file types (text, code, etc.), add refresh button
                 return [
+                    vcsButton,
                     {
                         elemtype: "iconbutton",
                         icon: "arrows-rotate",
@@ -441,6 +451,8 @@ export class PreviewModel implements ViewModel {
                         click: () => this.refreshCallback?.(),
                     },
                 ] as IconButtonDecl[];
+            } else if (isCeView && mimeType) {
+                return [vcsButton] as IconButtonDecl[];
             }
             return null;
         });
@@ -760,6 +772,25 @@ export class PreviewModel implements ViewModel {
             await createBlockSplitVertically(blockDef, this.blockId, "after");
             return;
         }
+        await createBlock(blockDef);
+    }
+
+    async openVersionControlBlock() {
+        const fileInfo = await globalStore.get(this.statFile);
+        if (!fileInfo) {
+            return;
+        }
+        const connection = await globalStore.get(this.connection);
+        const selectedFile = fileInfo?.mimetype === "directory" ? "" : fileInfo.path;
+        const vcsPath = fileInfo?.mimetype === "directory" ? fileInfo.path : fileInfo.dir;
+        const blockDef: BlockDef = {
+            meta: {
+                view: "vcs",
+                connection,
+                "vcs:path": vcsPath,
+                "vcs:selectedfile": selectedFile,
+            } as any,
+        };
         await createBlock(blockDef);
     }
 

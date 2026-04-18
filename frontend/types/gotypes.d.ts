@@ -621,6 +621,45 @@ declare global {
         jobmanagerstartts: number;
     };
 
+    // wshrpc.CommandRemoteVcsCommitData
+    type CommandRemoteVcsCommitData = {
+        repotype: string;
+        repopath: string;
+        message: string;
+        files: string[];
+    };
+
+    // wshrpc.CommandRemoteVcsCommitsData
+    type CommandRemoteVcsCommitsData = {
+        repotype: string;
+        repopath: string;
+        limit?: number;
+    };
+
+    // wshrpc.CommandRemoteVcsFileDiffData
+    type CommandRemoteVcsFileDiffData = {
+        repotype: string;
+        repopath: string;
+        filepath: string;
+        revision?: string;
+    };
+
+    // wshrpc.CommandRemoteVcsFileHistoryData
+    type CommandRemoteVcsFileHistoryData = {
+        repotype: string;
+        repopath: string;
+        filepath: string;
+        limit?: number;
+    };
+
+    // wshrpc.CommandRemoteVcsRepositoriesData
+    type CommandRemoteVcsRepositoriesData = {
+        path: string;
+        statuslimit?: number;
+        scandepth?: number;
+        includeparent?: boolean;
+    };
+
     // wshrpc.CommandRenameAppFileData
     type CommandRenameAppFileData = {
         appid: string;
@@ -1331,6 +1370,46 @@ declare global {
         homedir: string;
     };
 
+    // wshrpc.RemoteVcsCommitRtnData
+    type RemoteVcsCommitRtnData = {
+        success: boolean;
+        output?: string;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsCommitsRtnData
+    type RemoteVcsCommitsRtnData = {
+        repopath: string;
+        repotype: string;
+        commits: VcsCommitInfo[];
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsFileDiffRtnData
+    type RemoteVcsFileDiffRtnData = {
+        repopath: string;
+        repotype: string;
+        filepath: string;
+        diff: string;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsFileHistoryRtnData
+    type RemoteVcsFileHistoryRtnData = {
+        repopath: string;
+        repotype: string;
+        filepath: string;
+        commits: VcsCommitInfo[];
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsRepositoriesRtnData
+    type RemoteVcsRepositoriesRtnData = {
+        basepath: string;
+        repositories: VcsRepositoryInfo[];
+        error?: string;
+    };
+
     // wshrpc.RestartBuilderAndWaitResult
     type RestartBuilderAndWaitResult = {
         success: boolean;
@@ -1993,6 +2072,33 @@ declare global {
         statuscode?: number;
         headers?: {[key: string]: string};
         body?: string;
+    };
+
+    // wshrpc.VcsCommitInfo
+    type VcsCommitInfo = {
+        hash?: string;
+        author?: string;
+        date?: string;
+        subject?: string;
+    };
+
+    // wshrpc.VcsFileStatus
+    type VcsFileStatus = {
+        path: string;
+        code: string;
+        staged?: boolean;
+        untracked?: boolean;
+    };
+
+    // wshrpc.VcsRepositoryInfo
+    type VcsRepositoryInfo = {
+        repoid: string;
+        repotype: string;
+        rootpath: string;
+        name: string;
+        branch?: string;
+        status?: VcsFileStatus[];
+        statuserr?: string;
     };
 
     type WSCommandType = {

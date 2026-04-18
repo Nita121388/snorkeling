@@ -225,6 +225,19 @@
                         .wave-button {
                             font-size: 11px;
                         }
+
+                        &.compact-open-target-menubutton {
+                            .wave-button {
+                                font-size: 10px;
+                                min-width: 18px;
+                                height: 18px;
+                                padding: 0 4px;
+                            }
+
+                            .wave-button > i {
+                                display: none;
+                            }
+                        }
                     }
                 }
 

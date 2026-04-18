@@ -129,6 +129,11 @@ type WshRpcInterface interface {
 	BadgeWatchPidCommand(ctx context.Context, data CommandBadgeWatchPidData) error
 	RemoteProcessListCommand(ctx context.Context, data CommandRemoteProcessListData) (*ProcessListResponse, error)
 	RemoteProcessSignalCommand(ctx context.Context, data CommandRemoteProcessSignalData) error
+	RemoteVcsRepositoriesCommand(ctx context.Context, data CommandRemoteVcsRepositoriesData) (*RemoteVcsRepositoriesRtnData, error)
+	RemoteVcsCommitsCommand(ctx context.Context, data CommandRemoteVcsCommitsData) (*RemoteVcsCommitsRtnData, error)
+	RemoteVcsCommitCommand(ctx context.Context, data CommandRemoteVcsCommitData) (*RemoteVcsCommitRtnData, error)
+	RemoteVcsFileHistoryCommand(ctx context.Context, data CommandRemoteVcsFileHistoryData) (*RemoteVcsFileHistoryRtnData, error)
+	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
 
 	// emain
 	WebSelectorCommand(ctx context.Context, data CommandWebSelectorData) ([]string, error)
@@ -340,7 +345,6 @@ type CommandEventReadHistoryData struct {
 	Scope    string `json:"scope"`
 	MaxItems int    `json:"maxitems"`
 }
-
 
 type CpuDataRequest struct {
 	Id    string `json:"id"`
@@ -924,4 +928,97 @@ type CommandRemoteProcessListData struct {
 type CommandRemoteProcessSignalData struct {
 	Pid    int32  `json:"pid"`
 	Signal string `json:"signal"`
+}
+
+type CommandRemoteVcsRepositoriesData struct {
+	Path          string `json:"path"`
+	StatusLimit   int    `json:"statuslimit,omitempty"`
+	ScanDepth     int    `json:"scandepth,omitempty"`
+	IncludeParent bool   `json:"includeparent,omitempty"`
+}
+
+type VcsFileStatus struct {
+	Path      string `json:"path"`
+	Code      string `json:"code"`
+	Staged    bool   `json:"staged,omitempty"`
+	Untracked bool   `json:"untracked,omitempty"`
+}
+
+type VcsRepositoryInfo struct {
+	RepoId    string          `json:"repoid"`
+	RepoType  string          `json:"repotype"`
+	RootPath  string          `json:"rootpath"`
+	Name      string          `json:"name"`
+	Branch    string          `json:"branch,omitempty"`
+	Status    []VcsFileStatus `json:"status,omitempty"`
+	StatusErr string          `json:"statuserr,omitempty"`
+}
+
+type RemoteVcsRepositoriesRtnData struct {
+	BasePath     string              `json:"basepath"`
+	Repositories []VcsRepositoryInfo `json:"repositories"`
+	Error        string              `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsCommitsData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+type VcsCommitInfo struct {
+	Hash    string `json:"hash,omitempty"`
+	Author  string `json:"author,omitempty"`
+	Date    string `json:"date,omitempty"`
+	Subject string `json:"subject,omitempty"`
+}
+
+type RemoteVcsCommitsRtnData struct {
+	RepoPath string          `json:"repopath"`
+	RepoType string          `json:"repotype"`
+	Commits  []VcsCommitInfo `json:"commits"`
+	Error    string          `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsCommitData struct {
+	RepoType string   `json:"repotype"`
+	RepoPath string   `json:"repopath"`
+	Message  string   `json:"message"`
+	Files    []string `json:"files"`
+}
+
+type RemoteVcsCommitRtnData struct {
+	Success bool   `json:"success"`
+	Output  string `json:"output,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsFileHistoryData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	FilePath string `json:"filepath"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+type RemoteVcsFileHistoryRtnData struct {
+	RepoPath string          `json:"repopath"`
+	RepoType string          `json:"repotype"`
+	FilePath string          `json:"filepath"`
+	Commits  []VcsCommitInfo `json:"commits"`
+	Error    string          `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsFileDiffData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	FilePath string `json:"filepath"`
+	Revision string `json:"revision,omitempty"`
+}
+
+type RemoteVcsFileDiffRtnData struct {
+	RepoPath string `json:"repopath"`
+	RepoType string `json:"repotype"`
+	FilePath string `json:"filepath"`
+	Diff     string `json:"diff"`
+	Error    string `json:"error,omitempty"`
 }

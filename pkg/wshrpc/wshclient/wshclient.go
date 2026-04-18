@@ -788,6 +788,36 @@ func RemoteTerminateJobManagerCommand(w *wshutil.WshRpc, data wshrpc.CommandRemo
 	return err
 }
 
+// command "remotevcscommit", wshserver.RemoteVcsCommitCommand
+func RemoteVcsCommitCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitRtnData](w, "remotevcscommit", data, opts)
+	return resp, err
+}
+
+// command "remotevcscommits", wshserver.RemoteVcsCommitsCommand
+func RemoteVcsCommitsCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitsData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitsRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitsRtnData](w, "remotevcscommits", data, opts)
+	return resp, err
+}
+
+// command "remotevcsfilediff", wshserver.RemoteVcsFileDiffCommand
+func RemoteVcsFileDiffCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsFileDiffData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsFileDiffRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsFileDiffRtnData](w, "remotevcsfilediff", data, opts)
+	return resp, err
+}
+
+// command "remotevcsfilehistory", wshserver.RemoteVcsFileHistoryCommand
+func RemoteVcsFileHistoryCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsFileHistoryData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsFileHistoryRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsFileHistoryRtnData](w, "remotevcsfilehistory", data, opts)
+	return resp, err
+}
+
+// command "remotevcsrepositories", wshserver.RemoteVcsRepositoriesCommand
+func RemoteVcsRepositoriesCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsRepositoriesData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsRepositoriesRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsRepositoriesRtnData](w, "remotevcsrepositories", data, opts)
+	return resp, err
+}
+
 // command "remotewritefile", wshserver.RemoteWriteFileCommand
 func RemoteWriteFileCommand(w *wshutil.WshRpc, data wshrpc.FileData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "remotewritefile", data, opts)
