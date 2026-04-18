@@ -5,6 +5,8 @@ import { isBlank } from "@/util/util";
 const DefaultAgentCommand = "codex";
 const DefaultAgentProfile = "codex";
 const DefaultModelFlag = "--model";
+const AgentAutoResumeMetaKey = "agent:autoresume";
+const AgentProviderMetaKey = "agent:provider";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
 
@@ -72,6 +74,17 @@ function sanitizeEnv(env: unknown): Record<string, string> {
     return result;
 }
 
+function extractCommandBaseName(cmd: string): string {
+    const trimmed = cmd.trim();
+    if (trimmed.length === 0) {
+        return "";
+    }
+    const slashNormalized = trimmed.replace(/\\/g, "/");
+    const parts = slashNormalized.split("/");
+    const lastPart = parts[parts.length - 1] ?? "";
+    return lastPart.toLowerCase();
+}
+
 function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
     if (rawProfile == null || typeof rawProfile !== "object") {
         return null;
@@ -114,6 +127,19 @@ function getProfileConfig(settings?: SettingsType): AgentProfileConfig {
         args: selectedProfile?.args ?? builtInProfile.args,
         env: selectedProfile?.env ?? builtInProfile.env,
     };
+}
+
+function resolveAgentProvider(settings?: SettingsType, cmd?: string): string {
+    if (!isBlank(cmd)) {
+        return extractCommandBaseName(cmd!);
+    }
+    const defaultProfileName = isBlank(settings?.["agent:defaultprofile"])
+        ? DefaultAgentProfile
+        : settings?.["agent:defaultprofile"]?.trim().toLowerCase();
+    if (!isBlank(defaultProfileName)) {
+        return defaultProfileName!;
+    }
+    return DefaultAgentProfile;
 }
 
 export type ResolveWorkspaceAgentContextParams = {
@@ -283,6 +309,7 @@ export function createDefaultAgentBlockDef(settings?: SettingsType, context?: Ag
     const contextMeta = resolveContextMeta(context);
     const profile = getProfileConfig(settings);
     const cmd = !isBlank(profile.cmd) ? profile.cmd : DefaultAgentCommand;
+    const provider = resolveAgentProvider(settings, cmd);
     const cmdArgs = sanitizeArgs(profile.args);
     const model = !isBlank(profile.model) ? profile.model : null;
     const modelFlag = !isBlank(profile.modelflag) ? profile.modelflag : DefaultModelFlag;
@@ -309,6 +336,9 @@ export function createDefaultAgentBlockDef(settings?: SettingsType, context?: Ag
     if (Object.keys(cmdEnv).length > 0) {
         blockMeta["cmd:env"] = cmdEnv;
     }
+    const blockMetaRecord = blockMeta as Record<string, unknown>;
+    blockMetaRecord[AgentAutoResumeMetaKey] = true;
+    blockMetaRecord[AgentProviderMetaKey] = provider;
 
     return {
         meta: blockMeta,

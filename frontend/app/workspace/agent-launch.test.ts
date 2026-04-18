@@ -132,6 +132,9 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.cmd).toBe("codex");
         expect(blockDef.meta?.["cmd:args"]).toBeUndefined();
         expect(blockDef.meta?.["cmd:env"]).toBeUndefined();
+        const metaRecord = blockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:autoresume"]).toBe(true);
+        expect(metaRecord["agent:provider"]).toBe("codex");
     });
 
     it("applies configured agent profile cmd/model/env", () => {
@@ -154,5 +157,8 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.cmd).toBe("claude");
         expect(blockDef.meta?.["cmd:args"]).toEqual(["--dangerously-skip-permissions", "--model", "sonnet-4"]);
         expect(blockDef.meta?.["cmd:env"]).toEqual({ ANTHROPIC_API_KEY: "$ENV:ANTHROPIC_API_KEY" });
+        const metaRecord = blockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:provider"]).toBe("claude");
+        expect(metaRecord["agent:autoresume"]).toBe(true);
     });
 });

@@ -4,18 +4,22 @@
 package blockcontroller
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
@@ -47,6 +51,35 @@ const (
 const (
 	LocalConnVariant_GitBash = "gitbash"
 )
+
+const (
+	MetaKey_AgentAutoResume = "agent:autoresume"
+	MetaKey_AgentProvider   = "agent:provider"
+	MetaKey_AgentSessionId  = "agent:sessionid"
+)
+
+const (
+	AgentProviderCodex  = "codex"
+	AgentProviderClaude = "claude"
+)
+
+type AgentRunInfo struct {
+	Provider               string
+	SessionId              string
+	CaptureCodexSessionId  bool
+	CodexSessionLookupHome string
+	CodexSessionLookupCwd  string
+	CodexSessionStartedAt  time.Time
+}
+
+type codexSessionMetaLine struct {
+	Type    string `json:"type"`
+	Payload struct {
+		Id        string `json:"id"`
+		Cwd       string `json:"cwd"`
+		Timestamp string `json:"timestamp"`
+	} `json:"payload"`
+}
 
 type ShellController struct {
 	Lock *sync.Mutex
@@ -234,11 +267,14 @@ func (sc *ShellController) writeMutedMessageToTerminal(msg string) {
 
 func (sc *ShellController) DoRunShellCommand(logCtx context.Context, rc *RunShellOpts, blockMeta waveobj.MetaMapType) error {
 	blocklogger.Debugf(logCtx, "[conndebug] DoRunShellCommand\n")
-	shellProc, err := sc.setupAndStartShellProcess(logCtx, rc, blockMeta)
+	shellProc, agentRunInfo, err := sc.setupAndStartShellProcess(logCtx, rc, blockMeta)
 	if err != nil {
 		return err
 	}
-	return sc.manageRunningShellProcess(shellProc, rc, blockMeta)
+	if shellProc == nil {
+		return nil
+	}
+	return sc.manageRunningShellProcess(shellProc, rc, blockMeta, agentRunInfo)
 }
 
 // [Continue with all other methods, replacing bc with sc throughout...]
@@ -374,13 +410,13 @@ func (bc *ShellController) getConnUnion(logCtx context.Context, remoteName strin
 	return rtn, nil
 }
 
-func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc *RunShellOpts, blockMeta waveobj.MetaMapType) (*shellexec.ShellProc, error) {
+func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc *RunShellOpts, blockMeta waveobj.MetaMapType) (*shellexec.ShellProc, *AgentRunInfo, error) {
 	// create a circular blockfile for the output
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
 	fsErr := filestore.WFS.MakeFile(ctx, bc.BlockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: DefaultTermMaxFileSize, Circular: true})
 	if fsErr != nil && fsErr != fs.ErrExist {
-		return nil, fmt.Errorf("error creating blockfile: %w", fsErr)
+		return nil, nil, fmt.Errorf("error creating blockfile: %w", fsErr)
 	}
 	if fsErr == fs.ErrExist {
 		// reset the terminal state
@@ -388,17 +424,18 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 	}
 	bcInitStatus := bc.GetRuntimeStatus()
 	if bcInitStatus.ShellProcStatus == Status_Running {
-		return nil, nil
+		return nil, nil, nil
 	}
 	// TODO better sync here (don't let two starts happen at the same times)
 	remoteName := blockMeta.GetString(waveobj.MetaKey_Connection, "")
 	connUnion, err := bc.getConnUnion(logCtx, remoteName, blockMeta)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	blocklogger.Infof(logCtx, "[conndebug] remoteName: %q, connType: %s, wshEnabled: %v, shell: %q, shellType: %s\n", remoteName, connUnion.ConnType, connUnion.WshEnabled, connUnion.ShellPath, connUnion.ShellType)
 	var cmdStr string
 	var cmdOpts shellexec.CommandOptsType
+	var agentRunInfo *AgentRunInfo
 	if bc.ControllerType == BlockController_Shell {
 		cmdOpts.Interactive = true
 		cmdOpts.Login = true
@@ -406,19 +443,25 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		if cmdOpts.Cwd != "" {
 			cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			cmdOpts.Cwd = cwdPath
 		}
 	} else if bc.ControllerType == BlockController_Cmd {
 		var cmdOptsPtr *shellexec.CommandOptsType
-		cmdStr, cmdOptsPtr, err = createCmdStrAndOpts(bc.BlockId, blockMeta, remoteName)
+		cmdStr, cmdOptsPtr, agentRunInfo, err = createCmdStrAndOpts(
+			bc.BlockId,
+			blockMeta,
+			remoteName,
+			connUnion.ConnType == ConnType_Local,
+			connUnion.HomeDir,
+		)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cmdOpts = *cmdOptsPtr
 	} else {
-		return nil, fmt.Errorf("unknown controller type %q", bc.ControllerType)
+		return nil, nil, fmt.Errorf("unknown controller type %q", bc.ControllerType)
 	}
 	var shellProc *shellexec.ShellProc
 	swapToken := makeSwapToken(ctx, logCtx, bc.BlockId, blockMeta, remoteName, connUnion.ShellType)
@@ -429,7 +472,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		if !connUnion.WshEnabled {
 			shellProc, err = shellexec.StartWslShellProcNoWsh(ctx, rc.TermSize, cmdStr, cmdOpts, wslConn)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		} else {
 			sockName := wslConn.GetDomainSocketName()
@@ -441,7 +484,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 			}
 			jwtStr, err := wshutil.MakeClientJWTToken(rpcContext)
 			if err != nil {
-				return nil, fmt.Errorf("error making jwt token: %w", err)
+				return nil, nil, fmt.Errorf("error making jwt token: %w", err)
 			}
 			swapToken.RpcContext = &rpcContext
 			swapToken.Env[wshutil.WaveJwtTokenVarName] = jwtStr
@@ -453,7 +496,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 				blocklogger.Infof(logCtx, "[conndebug] attempting install without wsh\n")
 				shellProc, err = shellexec.StartWslShellProcNoWsh(ctx, rc.TermSize, cmdStr, cmdOpts, wslConn)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 		}
@@ -462,7 +505,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		if !connUnion.WshEnabled {
 			shellProc, err = shellexec.StartRemoteShellProcNoWsh(ctx, rc.TermSize, cmdStr, cmdOpts, conn)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		} else {
 			sockName := conn.GetDomainSocketName()
@@ -474,7 +517,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 			}
 			jwtStr, err := wshutil.MakeClientJWTToken(rpcContext)
 			if err != nil {
-				return nil, fmt.Errorf("error making jwt token: %w", err)
+				return nil, nil, fmt.Errorf("error making jwt token: %w", err)
 			}
 			swapToken.RpcContext = &rpcContext
 			swapToken.Env[wshutil.WaveJwtTokenVarName] = jwtStr
@@ -486,7 +529,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 				blocklogger.Infof(logCtx, "[conndebug] attempting install without wsh\n")
 				shellProc, err = shellexec.StartRemoteShellProcNoWsh(ctx, rc.TermSize, cmdStr, cmdOpts, conn)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 		}
@@ -500,7 +543,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 			}
 			jwtStr, err := wshutil.MakeClientJWTToken(rpcContext)
 			if err != nil {
-				return nil, fmt.Errorf("error making jwt token: %w", err)
+				return nil, nil, fmt.Errorf("error making jwt token: %w", err)
 			}
 			swapToken.RpcContext = &rpcContext
 			swapToken.Env[wshutil.WaveJwtTokenVarName] = jwtStr
@@ -509,20 +552,28 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		cmdOpts.ShellOpts = getLocalShellOpts(blockMeta)
 		shellProc, err = shellexec.StartLocalShellProc(logCtx, rc.TermSize, cmdStr, cmdOpts, remoteName)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("unknown connection type for conn %q: %s", remoteName, connUnion.ConnType)
+		return nil, nil, fmt.Errorf("unknown connection type for conn %q: %s", remoteName, connUnion.ConnType)
 	}
 	bc.UpdateControllerAndSendUpdate(func() bool {
 		bc.ShellProc = shellProc
 		bc.ProcStatus = Status_Running
 		return true
 	})
-	return shellProc, nil
+	if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
+		go bc.captureCodexSessionIdForBlock(agentRunInfo)
+	}
+	return shellProc, agentRunInfo, nil
 }
 
-func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellProc, rc *RunShellOpts, blockMeta waveobj.MetaMapType) error {
+func (bc *ShellController) manageRunningShellProcess(
+	shellProc *shellexec.ShellProc,
+	rc *RunShellOpts,
+	blockMeta waveobj.MetaMapType,
+	agentRunInfo *AgentRunInfo,
+) error {
 	shellInputCh := make(chan *BlockInputUnion, 32)
 	bc.ShellInputCh = shellInputCh
 
@@ -601,6 +652,9 @@ func (bc *ShellController) manageRunningShellProcess(shellProc *shellexec.ShellP
 		waitErr := shellProc.Cmd.Wait()
 		exitCode = shellProc.Cmd.ExitCode()
 		shellProc.SetWaitErrorAndSignalDone(waitErr)
+		if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
+			bc.captureCodexSessionIdForBlock(agentRunInfo)
+		}
 		bc.resetTerminalState(context.Background())
 		exitSignal := shellProc.Cmd.ExitSignal()
 		var baseMsg string
@@ -715,34 +769,303 @@ func getLocalShellOpts(blockMeta waveobj.MetaMapType) []string {
 }
 
 // for "cmd" type blocks
-func createCmdStrAndOpts(blockId string, blockMeta waveobj.MetaMapType, connName string) (string, *shellexec.CommandOptsType, error) {
-	var cmdStr string
+func createCmdStrAndOpts(
+	blockId string,
+	blockMeta waveobj.MetaMapType,
+	connName string,
+	isLocalConn bool,
+	localHomeDir string,
+) (string, *shellexec.CommandOptsType, *AgentRunInfo, error) {
 	var cmdOpts shellexec.CommandOptsType
-	cmdStr = blockMeta.GetString(waveobj.MetaKey_Cmd, "")
-	if cmdStr == "" {
-		return "", nil, fmt.Errorf("missing cmd in block meta")
+	cmdStr, cmdArgs, agentRunInfo, err := resolveAgentCmdAndArgs(blockId, blockMeta, isLocalConn, localHomeDir)
+	if err != nil {
+		return "", nil, nil, err
 	}
 	cmdOpts.Cwd = blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
 	if cmdOpts.Cwd != "" {
 		cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 		cmdOpts.Cwd = cwdPath
+	}
+	if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
+		if cmdOpts.Cwd != "" {
+			agentRunInfo.CodexSessionLookupCwd = cmdOpts.Cwd
+		} else {
+			agentRunInfo.CodexSessionLookupCwd = localHomeDir
+		}
 	}
 	useShell := blockMeta.GetBool(waveobj.MetaKey_CmdShell, true)
 	if !useShell {
 		if strings.Contains(cmdStr, " ") {
-			return "", nil, fmt.Errorf("cmd should not have spaces if cmd:shell is false (use cmd:args)")
+			return "", nil, nil, fmt.Errorf("cmd should not have spaces if cmd:shell is false (use cmd:args)")
 		}
-		cmdArgs := blockMeta.GetStringList(waveobj.MetaKey_CmdArgs)
 		// shell escape the args
 		for _, arg := range cmdArgs {
 			cmdStr = cmdStr + " " + utilfn.ShellQuote(arg, false, -1)
 		}
 	}
 	cmdOpts.ForceJwt = blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false)
-	return cmdStr, &cmdOpts, nil
+	return cmdStr, &cmdOpts, agentRunInfo, nil
+}
+
+func resolveAgentCmdAndArgs(
+	blockId string,
+	blockMeta waveobj.MetaMapType,
+	isLocalConn bool,
+	localHomeDir string,
+) (string, []string, *AgentRunInfo, error) {
+	cmdStr := blockMeta.GetString(waveobj.MetaKey_Cmd, "")
+	if cmdStr == "" {
+		return "", nil, nil, fmt.Errorf("missing cmd in block meta")
+	}
+	cmdArgs := append([]string{}, blockMeta.GetStringList(waveobj.MetaKey_CmdArgs)...)
+	if !blockMeta.GetBool(MetaKey_AgentAutoResume, false) {
+		return cmdStr, cmdArgs, nil, nil
+	}
+	provider := getAgentProvider(blockMeta, cmdStr)
+	if provider == "" {
+		return cmdStr, cmdArgs, nil, nil
+	}
+	sessionId := strings.TrimSpace(blockMeta.GetString(MetaKey_AgentSessionId, ""))
+	hadSessionId := sessionId != ""
+	agentRunInfo := &AgentRunInfo{
+		Provider:  provider,
+		SessionId: sessionId,
+	}
+	if provider == AgentProviderClaude && sessionId == "" {
+		sessionId = uuid.NewString()
+		agentRunInfo.SessionId = sessionId
+		if err := persistAgentSessionId(blockId, sessionId); err != nil {
+			log.Printf("error persisting claude agent session id (block=%s): %v", blockId, err)
+		}
+		cmdArgs = ensureClaudeSessionIdArg(cmdArgs, sessionId)
+	}
+	if hadSessionId {
+		switch provider {
+		case AgentProviderCodex:
+			cmdArgs = append([]string{"resume", sessionId}, stripCodexResumeArgs(cmdArgs)...)
+		case AgentProviderClaude:
+			cmdArgs = append([]string{"--resume", sessionId}, stripClaudeSessionArgs(cmdArgs)...)
+		}
+		return cmdStr, cmdArgs, agentRunInfo, nil
+	}
+	if provider == AgentProviderCodex && isLocalConn {
+		agentRunInfo.CaptureCodexSessionId = true
+		agentRunInfo.CodexSessionLookupHome = localHomeDir
+		agentRunInfo.CodexSessionStartedAt = time.Now()
+	}
+	return cmdStr, cmdArgs, agentRunInfo, nil
+}
+
+func getAgentProvider(blockMeta waveobj.MetaMapType, cmd string) string {
+	provider := strings.TrimSpace(strings.ToLower(blockMeta.GetString(MetaKey_AgentProvider, "")))
+	if provider != "" {
+		return provider
+	}
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return ""
+	}
+	cmd = strings.ReplaceAll(cmd, "\\", "/")
+	parts := strings.Split(cmd, "/")
+	base := strings.ToLower(parts[len(parts)-1])
+	base = strings.TrimSuffix(base, ".exe")
+	return base
+}
+
+func ensureClaudeSessionIdArg(args []string, sessionId string) []string {
+	if sessionId == "" {
+		return args
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--session-id", "--resume", "-r", "--continue", "-c":
+			return args
+		}
+		if strings.HasPrefix(arg, "--session-id=") || strings.HasPrefix(arg, "--resume=") {
+			return args
+		}
+	}
+	return append(args, "--session-id", sessionId)
+}
+
+func stripClaudeSessionArgs(args []string) []string {
+	out := make([]string, 0, len(args))
+	skipNext := false
+	for _, arg := range args {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		switch arg {
+		case "--resume", "-r", "--session-id":
+			skipNext = true
+			continue
+		case "--continue", "-c", "--fork-session":
+			continue
+		}
+		if strings.HasPrefix(arg, "--resume=") || strings.HasPrefix(arg, "--session-id=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func stripCodexResumeArgs(args []string) []string {
+	out := make([]string, 0, len(args))
+	for idx, arg := range args {
+		if idx == 0 && arg == "resume" {
+			continue
+		}
+		if arg == "--last" || arg == "--all" || arg == "--include-non-interactive" {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func persistAgentSessionId(blockId string, sessionId string) error {
+	if blockId == "" || sessionId == "" {
+		return nil
+	}
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	metaUpdate := map[string]any{
+		MetaKey_AgentSessionId: sessionId,
+	}
+	return wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
+}
+
+func normalizeCwdForComparison(cwd string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(cwd))
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(cleaned)
+	}
+	return cleaned
+}
+
+func codexSessionDayDirCandidates(startTs time.Time) []string {
+	now := time.Now()
+	candidateTimes := []time.Time{
+		startTs.AddDate(0, 0, -1),
+		startTs,
+		startTs.AddDate(0, 0, 1),
+		now.AddDate(0, 0, -1),
+		now,
+		now.AddDate(0, 0, 1),
+	}
+	seen := make(map[string]bool)
+	var dirs []string
+	for _, ts := range candidateTimes {
+		if ts.IsZero() {
+			continue
+		}
+		dir := filepath.Join(ts.Format("2006"), ts.Format("01"), ts.Format("02"))
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
+func readCodexSessionMeta(filePath string) (string, string, time.Time, error) {
+	fd, err := os.Open(filePath)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	defer fd.Close()
+	reader := bufio.NewReader(fd)
+	lineBytes, err := reader.ReadBytes('\n')
+	if err != nil && err != io.EOF {
+		return "", "", time.Time{}, err
+	}
+	line := strings.TrimSpace(string(lineBytes))
+	if line == "" {
+		return "", "", time.Time{}, nil
+	}
+	var metaLine codexSessionMetaLine
+	if err := json.Unmarshal([]byte(line), &metaLine); err != nil {
+		return "", "", time.Time{}, nil
+	}
+	if metaLine.Type != "session_meta" {
+		return "", "", time.Time{}, nil
+	}
+	if metaLine.Payload.Id == "" || metaLine.Payload.Cwd == "" {
+		return "", "", time.Time{}, nil
+	}
+	timestamp, err := time.Parse(time.RFC3339Nano, metaLine.Payload.Timestamp)
+	if err != nil {
+		return metaLine.Payload.Id, metaLine.Payload.Cwd, time.Time{}, nil
+	}
+	return metaLine.Payload.Id, metaLine.Payload.Cwd, timestamp, nil
+}
+
+func findLatestCodexSessionId(homeDir string, cwd string, startedAt time.Time) (string, error) {
+	if homeDir == "" || cwd == "" {
+		return "", nil
+	}
+	sessionsRoot := filepath.Join(homeDir, ".codex", "sessions")
+	normalizedCwd := normalizeCwdForComparison(cwd)
+	if normalizedCwd == "." || normalizedCwd == "" {
+		return "", nil
+	}
+	searchSince := startedAt.Add(-2 * time.Minute)
+	var latestId string
+	var latestTs time.Time
+	for _, dayDir := range codexSessionDayDirCandidates(startedAt) {
+		matches, _ := filepath.Glob(filepath.Join(sessionsRoot, dayDir, "rollout-*.jsonl"))
+		for _, match := range matches {
+			sessionId, sessionCwd, sessionTs, err := readCodexSessionMeta(match)
+			if err != nil || sessionId == "" || sessionCwd == "" {
+				continue
+			}
+			if normalizeCwdForComparison(sessionCwd) != normalizedCwd {
+				continue
+			}
+			if !sessionTs.IsZero() && sessionTs.Before(searchSince) {
+				continue
+			}
+			if latestId == "" || (!sessionTs.IsZero() && sessionTs.After(latestTs)) {
+				latestId = sessionId
+				latestTs = sessionTs
+			}
+		}
+	}
+	return latestId, nil
+}
+
+func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunInfo) {
+	if agentRunInfo == nil || !agentRunInfo.CaptureCodexSessionId {
+		return
+	}
+	if agentRunInfo.CodexSessionLookupHome == "" || agentRunInfo.CodexSessionLookupCwd == "" {
+		return
+	}
+	for attempt := 0; attempt < 10; attempt++ {
+		sessionId, err := findLatestCodexSessionId(
+			agentRunInfo.CodexSessionLookupHome,
+			agentRunInfo.CodexSessionLookupCwd,
+			agentRunInfo.CodexSessionStartedAt,
+		)
+		if err != nil {
+			log.Printf("error finding codex session id (block=%s): %v", bc.BlockId, err)
+			return
+		}
+		if sessionId != "" {
+			if err := persistAgentSessionId(bc.BlockId, sessionId); err != nil {
+				log.Printf("error persisting codex session id (block=%s): %v", bc.BlockId, err)
+			}
+			return
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
 }
 
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {
