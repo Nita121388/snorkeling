@@ -22,6 +22,7 @@
 ## Snorkeling Custom Highlights
 
 - This repo is based on upstream `wavetermdev/waveterm` and maintained on branch `refactor/snorkeling`.
+- Product goal: stay in Terminal for core workflows (open, edit, compare, commit, and launch Agent) whenever possible.
 - Agent workflow enhancements:
   - Dedicated `Agent` entry in the right sidebar.
   - Agent launch now considers both terminal context and focused Files path:
@@ -44,6 +45,14 @@
 Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
 
 Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
+
+### UI Preview
+
+Snorkeling custom screenshot:
+
+![Snorkeling Custom Screenshot](./assets/snorkeling-custom-screenshot.png)
+
+Original Wave screenshot:
 
 ![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 

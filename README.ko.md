@@ -20,10 +20,19 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
 
 > 이 문서는 커뮤니티 한국어 번역본입니다. 최신 원문은 [README.md](README.md)에서 확인하세요.
+> Snorkeling 커스텀 목표: 핵심 워크플로를 가능한 한 터미널 안에서 끝내기(Stay in Terminal).
 
 Wave는 macOS, Linux, Windows에서 동작하는 오픈소스 AI 통합 터미널입니다. 어떤 AI 모델과도 함께 사용할 수 있습니다. OpenAI, Claude, Gemini는 API 키를 직접 연결해 사용할 수 있고, Ollama 및 LM Studio를 통해 로컬 모델도 실행할 수 있습니다. 계정 생성은 필요하지 않습니다.
 
 또한 Wave는 네트워크 중단이나 재시작 이후에도 유지되는 내구성 있는 SSH 세션을 지원하며, 자동 재연결 기능을 제공합니다. 내장 그래픽 에디터로 원격 파일을 편집하고, 터미널을 벗어나지 않고도 파일을 인라인으로 미리볼 수 있습니다.
+
+### UI 미리보기
+
+Snorkeling 커스텀 스크린샷:
+
+![Snorkeling Custom Screenshot](./assets/snorkeling-custom-screenshot.png)
+
+원본 Wave 스크린샷:
 
 ![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 

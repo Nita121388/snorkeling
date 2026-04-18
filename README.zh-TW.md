@@ -20,10 +20,19 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
 
 > 本文件為社群繁體中文翻譯版本。最新原文請參閱 [README.md](README.md)。
+> Snorkeling 定製目標：盡可能讓核心流程「足不出終端機」。
 
 Wave 是一款開源、整合 AI 的終端機應用程式，支援 macOS、Linux 與 Windows。它可以搭配任何 AI 模型使用——自行提供 OpenAI、Claude 或 Gemini 的 API 金鑰，或透過 Ollama 與 LM Studio 執行本地模型，完全不需要註冊帳號。
 
 Wave 同時支援**持久化 SSH 連線**，即使網路中斷或應用程式重新啟動，連線也會自動恢復。你可以使用內建的圖形化編輯器直接編輯遠端檔案，也能在不離開終端機的情況下即時預覽檔案內容。
+
+### 介面預覽
+
+Snorkeling 定製效果圖：
+
+![Snorkeling 定製效果圖](./assets/snorkeling-custom-screenshot.png)
+
+原始 Wave 截圖：
 
 ![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 
