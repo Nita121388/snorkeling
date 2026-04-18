@@ -950,6 +950,8 @@ type VcsRepositoryInfo struct {
 	RootPath  string          `json:"rootpath"`
 	Name      string          `json:"name"`
 	Branch    string          `json:"branch,omitempty"`
+	RemoteUrl string          `json:"remoteurl,omitempty"`
+	BrowseUrl string          `json:"browseurl,omitempty"`
 	Status    []VcsFileStatus `json:"status,omitempty"`
 	StatusErr string          `json:"statuserr,omitempty"`
 }
@@ -1016,9 +1018,11 @@ type CommandRemoteVcsFileDiffData struct {
 }
 
 type RemoteVcsFileDiffRtnData struct {
-	RepoPath string `json:"repopath"`
-	RepoType string `json:"repotype"`
-	FilePath string `json:"filepath"`
-	Diff     string `json:"diff"`
-	Error    string `json:"error,omitempty"`
+	RepoPath string  `json:"repopath"`
+	RepoType string  `json:"repotype"`
+	FilePath string  `json:"filepath"`
+	Diff     string  `json:"diff"`
+	Original *string `json:"original,omitempty"`
+	Modified *string `json:"modified,omitempty"`
+	Error    string  `json:"error,omitempty"`
 }

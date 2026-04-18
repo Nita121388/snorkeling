@@ -3,13 +3,35 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { DiffViewer } from "@/app/view/codeeditor/diffviewer";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import * as WOS from "@/store/wos";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
 type VcsDiffEnv = WaveEnv;
+type VcsDiffMode = "side-by-side" | "inline";
+
+function normalizeVcsDiffMode(val: any): VcsDiffMode {
+    return val === "inline" ? "inline" : "side-by-side";
+}
+
+function makeAbsoluteDiffPath(repoPath: string, filePath: string): string {
+    const normalizedFilePath = (filePath ?? "").replace(/\\/g, "/");
+    if (isBlank(normalizedFilePath)) {
+        return "";
+    }
+    if (normalizedFilePath.startsWith("/")) {
+        return normalizedFilePath;
+    }
+    const normalizedRepoPath = (repoPath ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (isBlank(normalizedRepoPath)) {
+        return normalizedFilePath;
+    }
+    return `${normalizedRepoPath}/${normalizedFilePath.replace(/^\/+/, "")}`;
+}
 
 export class VcsDiffViewModel implements ViewModel {
     viewType = "vcsdiff";
@@ -18,6 +40,7 @@ export class VcsDiffViewModel implements ViewModel {
     blockAtom: Atom<Block>;
     viewIcon = atom("file-code");
     viewName = atom("File Diff");
+    hideViewName = atom(true);
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
     noPadding = atom(true);
@@ -27,6 +50,7 @@ export class VcsDiffViewModel implements ViewModel {
     repoPathAtom: Atom<string>;
     filePathAtom: Atom<string>;
     revisionAtom: Atom<string>;
+    modeAtom: Atom<VcsDiffMode>;
     titleAtom: Atom<string>;
     connection: Atom<string>;
     connStatus: Atom<ConnStatus>;
@@ -43,6 +67,7 @@ export class VcsDiffViewModel implements ViewModel {
         this.repoPathAtom = atom((get) => get(this.blockAtom)?.meta?.["vcsdiff:repopath"] ?? "");
         this.filePathAtom = atom((get) => get(this.blockAtom)?.meta?.["vcsdiff:filepath"] ?? "");
         this.revisionAtom = atom((get) => get(this.blockAtom)?.meta?.["vcsdiff:revision"] ?? "");
+        this.modeAtom = atom((get) => normalizeVcsDiffMode(get(this.blockAtom)?.meta?.["vcsdiff:mode"]));
         this.titleAtom = atom((get) => {
             const customTitle = get(this.blockAtom)?.meta?.["vcsdiff:title"];
             if (!isBlank(customTitle)) {
@@ -109,11 +134,16 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     const repoPath = useAtomValue(model.repoPathAtom);
     const filePath = useAtomValue(model.filePathAtom);
     const revision = useAtomValue(model.revisionAtom);
+    const mode = useAtomValue(model.modeAtom);
+    const blockData = useAtomValue(model.blockAtom);
     const refreshNonce = useAtomValue(model.refreshNonce);
 
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>(null);
-    const [diffText, setDiffText] = React.useState<string>("");
+    const [originalText, setOriginalText] = React.useState<string>(null);
+    const [modifiedText, setModifiedText] = React.useState<string>(null);
+    const [renderHint, setRenderHint] = React.useState<string>("");
+    const [modeSaving, setModeSaving] = React.useState(false);
 
     const route = React.useMemo(() => {
         if (isBlank(connection)) {
@@ -121,6 +151,30 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
         }
         return makeConnRoute(connection);
     }, [connection]);
+    const absoluteDiffPath = React.useMemo(() => makeAbsoluteDiffPath(repoPath, filePath), [repoPath, filePath]);
+
+    const setMode = React.useCallback(
+        async (nextMode: VcsDiffMode) => {
+            if (nextMode === mode) {
+                return;
+            }
+            setModeSaving(true);
+            try {
+                await model.env.services.object.UpdateObjectMeta(
+                    WOS.makeORef("block", model.blockId),
+                    {
+                        ...(blockData?.meta ?? {}),
+                        "vcsdiff:mode": nextMode,
+                    } as any
+                );
+            } catch (e) {
+                setError(String(e));
+            } finally {
+                setModeSaving(false);
+            }
+        },
+        [mode, model, blockData?.meta]
+    );
 
     React.useEffect(() => {
         let isCanceled = false;
@@ -151,13 +205,27 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                 if (isCanceled) {
                     return;
                 }
-                setDiffText(response.diff ?? "");
+                if (response.original != null && response.modified != null) {
+                    setOriginalText(response.original);
+                    setModifiedText(response.modified);
+                    setRenderHint("");
+                } else {
+                    setOriginalText(null);
+                    setModifiedText(null);
+                    if (!isBlank(response.diff)) {
+                        setRenderHint("This file diff is not renderable as visual text diff (binary or unsupported encoding).");
+                    } else {
+                        setRenderHint("No diff output.");
+                    }
+                }
             } catch (e) {
                 if (isCanceled) {
                     return;
                 }
                 setError(String(e));
-                setDiffText("");
+                setOriginalText(null);
+                setModifiedText(null);
+                setRenderHint("");
             } finally {
                 if (!isCanceled) {
                     setLoading(false);
@@ -181,9 +249,45 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
             <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/25 p-2">
                 {loading && <div className="text-sm text-muted">Loading diff...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
-                {!loading && !error && isBlank(diffText) && <div className="text-sm text-muted">No diff output.</div>}
-                {!loading && !error && !isBlank(diffText) && (
-                    <pre className="text-[12px] leading-[1.35] whitespace-pre-wrap font-mono">{diffText}</pre>
+                {!loading && !error && (
+                    <div className="mb-2 flex items-center gap-1.5">
+                        <span className="text-[11px] text-secondary">View</span>
+                        <button
+                            className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
+                                mode === "side-by-side"
+                                    ? "border-accent text-accent bg-accent/10"
+                                    : "border-white/10 text-secondary hover:bg-white/5"
+                            }`}
+                            onClick={() => setMode("side-by-side")}
+                            disabled={modeSaving}
+                        >
+                            Side by side
+                        </button>
+                        <button
+                            className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
+                                mode === "inline"
+                                    ? "border-accent text-accent bg-accent/10"
+                                    : "border-white/10 text-secondary hover:bg-white/5"
+                            }`}
+                            onClick={() => setMode("inline")}
+                            disabled={modeSaving}
+                        >
+                            Inline
+                        </button>
+                    </div>
+                )}
+                {!loading && !error && originalText != null && modifiedText != null && (
+                    <DiffViewer
+                        blockId={model.blockId}
+                        original={originalText}
+                        modified={modifiedText}
+                        fileName={filePath}
+                        mode={mode}
+                        copyContextFilePath={absoluteDiffPath}
+                    />
+                )}
+                {!loading && !error && (originalText == null || modifiedText == null) && (
+                    <div className="text-sm text-muted">{renderHint || "No visual diff content available."}</div>
                 )}
             </div>
         </div>

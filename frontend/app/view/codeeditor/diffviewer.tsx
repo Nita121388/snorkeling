@@ -13,6 +13,8 @@ interface DiffViewerProps {
     modified: string;
     language?: string;
     fileName: string;
+    mode?: "side-by-side" | "inline";
+    copyContextFilePath?: string;
 }
 
 function defaultDiffEditorOptions(): MonacoTypes.editor.IDiffEditorOptions {
@@ -36,7 +38,50 @@ function defaultDiffEditorOptions(): MonacoTypes.editor.IDiffEditorOptions {
     return opts;
 }
 
-export function DiffViewer({ blockId, original, modified, language, fileName }: DiffViewerProps) {
+function buildCopyContextText(absoluteFilePath: string, lineNumber: number, snippet: string, language?: string): string {
+    const filePath = absoluteFilePath || "(unknown-path)";
+    const codeFence = language ? `\`\`\`${language}` : "```";
+    return `${filePath}:${lineNumber}\n${codeFence}\n${snippet}\n\`\`\``;
+}
+
+function makeCopyContextAction(
+    targetEditor: MonacoTypes.editor.IStandaloneCodeEditor,
+    actionId: string,
+    copyContextFilePath: string,
+    language?: string
+): MonacoTypes.IDisposable {
+    return targetEditor.addAction({
+        id: actionId,
+        label: "🪧 Copy Context",
+        contextMenuGroupId: "navigation",
+        contextMenuOrder: 0.5,
+        run: async () => {
+            const editorModel = targetEditor.getModel();
+            if (!editorModel) {
+                return;
+            }
+            const selection = targetEditor.getSelection();
+            const cursorPosition = targetEditor.getPosition();
+            const lineNumber = selection?.startLineNumber ?? cursorPosition?.lineNumber ?? 1;
+            let snippet = selection ? editorModel.getValueInRange(selection) : "";
+            if (!snippet) {
+                snippet = editorModel.getLineContent(lineNumber);
+            }
+            const contextText = buildCopyContextText(copyContextFilePath, lineNumber, snippet, language);
+            await navigator.clipboard.writeText(contextText);
+        },
+    });
+}
+
+export function DiffViewer({
+    blockId,
+    original,
+    modified,
+    language,
+    fileName,
+    mode,
+    copyContextFilePath,
+}: DiffViewerProps) {
     const minimapEnabled = useOverrideConfigAtom(blockId, "editor:minimapenabled") ?? false;
     const fontSize = boundNumber(useOverrideConfigAtom(blockId, "editor:fontsize"), 6, 64);
     const inlineDiff = useOverrideConfigAtom(blockId, "editor:inlinediff");
@@ -48,16 +93,19 @@ export function DiffViewer({ blockId, original, modified, language, fileName }: 
     } else {
         editorPath = uuidRef;
     }
+    const contextFilePath = copyContextFilePath || fileName || "(unknown-path)";
 
     const editorOpts = useMemo(() => {
         const opts = defaultDiffEditorOptions();
         opts.minimap.enabled = minimapEnabled;
         opts.fontSize = fontSize;
-        if (inlineDiff != null) {
+        if (mode != null) {
+            opts.renderSideBySide = mode !== "inline";
+        } else if (inlineDiff != null) {
             opts.renderSideBySide = !inlineDiff;
         }
         return opts;
-    }, [minimapEnabled, fontSize, inlineDiff]);
+    }, [minimapEnabled, fontSize, inlineDiff, mode]);
 
     return (
         <div className="flex flex-col w-full h-full overflow-hidden items-center justify-center">
@@ -68,6 +116,26 @@ export function DiffViewer({ blockId, original, modified, language, fileName }: 
                     modified={modified}
                     options={editorOpts}
                     language={language}
+                    onMount={(diffEditor) => {
+                        const originalEditor = diffEditor.getOriginalEditor();
+                        const modifiedEditor = diffEditor.getModifiedEditor();
+                        const originalDisposer = makeCopyContextAction(
+                            originalEditor,
+                            `snorkeling.copy-context.diff.original.${uuidRef}`,
+                            contextFilePath,
+                            language
+                        );
+                        const modifiedDisposer = makeCopyContextAction(
+                            modifiedEditor,
+                            `snorkeling.copy-context.diff.modified.${uuidRef}`,
+                            contextFilePath,
+                            language
+                        );
+                        return () => {
+                            originalDisposer.dispose();
+                            modifiedDisposer.dispose();
+                        };
+                    }}
                 />
             </div>
         </div>

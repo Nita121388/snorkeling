@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -38,6 +40,8 @@ var vcsScanSkipDirNames = map[string]struct{}{
 	"target":       {},
 	"vendor":       {},
 }
+
+var errVcsNonTextContent = errors.New("content is binary or not utf-8")
 
 type svnInfoXML struct {
 	Entries []struct {
@@ -73,6 +77,30 @@ func runVcsCommand(ctx context.Context, dir string, command string, args ...stri
 		errStr := strings.TrimSpace(stderr.String())
 		if errStr == "" {
 			errStr = outStr
+		}
+		if errStr == "" {
+			errStr = err.Error()
+		}
+		return outStr, fmt.Errorf("%s %s: %s", command, strings.Join(args, " "), errStr)
+	}
+	return outStr, nil
+}
+
+func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, command, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	outStr := stdout.String()
+	if err != nil {
+		errStr := strings.TrimSpace(stderr.String())
+		if errStr == "" {
+			errStr = strings.TrimSpace(outStr)
 		}
 		if errStr == "" {
 			errStr = err.Error()
@@ -338,6 +366,106 @@ func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 	return branch, parseSvnStatus(statusOut, statusLimit), nil
 }
 
+func normalizeRepositoryBrowseUrl(remoteURL string) string {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(remoteURL, "/"))
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+		return strings.TrimSuffix(trimmed, ".git")
+	}
+	if strings.HasPrefix(trimmed, "ssh://") {
+		withoutScheme := strings.TrimPrefix(trimmed, "ssh://")
+		if atIdx := strings.Index(withoutScheme, "@"); atIdx >= 0 {
+			withoutScheme = withoutScheme[atIdx+1:]
+		}
+		slashIdx := strings.Index(withoutScheme, "/")
+		if slashIdx <= 0 || slashIdx >= len(withoutScheme)-1 {
+			return ""
+		}
+		host := withoutScheme[:slashIdx]
+		path := strings.Trim(withoutScheme[slashIdx+1:], "/")
+		path = strings.TrimSuffix(path, ".git")
+		if host == "" || path == "" {
+			return ""
+		}
+		return "https://" + host + "/" + path
+	}
+	if strings.HasPrefix(trimmed, "git://") {
+		withoutScheme := strings.TrimPrefix(trimmed, "git://")
+		slashIdx := strings.Index(withoutScheme, "/")
+		if slashIdx <= 0 || slashIdx >= len(withoutScheme)-1 {
+			return ""
+		}
+		host := withoutScheme[:slashIdx]
+		path := strings.Trim(withoutScheme[slashIdx+1:], "/")
+		path = strings.TrimSuffix(path, ".git")
+		if host == "" || path == "" {
+			return ""
+		}
+		return "https://" + host + "/" + path
+	}
+	if strings.Contains(trimmed, "@") && strings.Contains(trimmed, ":") && !strings.Contains(trimmed, "://") {
+		afterUser := trimmed
+		if atIdx := strings.LastIndex(trimmed, "@"); atIdx >= 0 {
+			afterUser = trimmed[atIdx+1:]
+		}
+		parts := strings.SplitN(afterUser, ":", 2)
+		if len(parts) != 2 {
+			return ""
+		}
+		host := strings.TrimSpace(parts[0])
+		path := strings.Trim(strings.TrimSpace(parts[1]), "/")
+		path = strings.TrimSuffix(path, ".git")
+		if host == "" || path == "" {
+			return ""
+		}
+		return "https://" + host + "/" + path
+	}
+	return ""
+}
+
+func loadGitRemoteUrls(ctx context.Context, repoPath string) (string, string) {
+	remoteUrl, remoteErr := runVcsCommand(ctx, repoPath, "git", "remote", "get-url", "origin")
+	if remoteErr != nil || strings.TrimSpace(remoteUrl) == "" {
+		remotesOut, remotesErr := runVcsCommand(ctx, repoPath, "git", "remote")
+		if remotesErr == nil && strings.TrimSpace(remotesOut) != "" {
+			for _, remoteName := range strings.Split(remotesOut, "\n") {
+				remoteName = strings.TrimSpace(remoteName)
+				if remoteName == "" {
+					continue
+				}
+				candidate, candidateErr := runVcsCommand(ctx, repoPath, "git", "remote", "get-url", remoteName)
+				if candidateErr == nil && strings.TrimSpace(candidate) != "" {
+					remoteUrl = candidate
+					break
+				}
+			}
+		}
+	}
+	remoteUrl = strings.TrimSpace(remoteUrl)
+	if remoteUrl == "" {
+		return "", ""
+	}
+	return remoteUrl, normalizeRepositoryBrowseUrl(remoteUrl)
+}
+
+func loadSvnRemoteUrls(ctx context.Context, repoPath string) (string, string) {
+	remoteUrl, remoteErr := runVcsCommand(ctx, repoPath, "svn", "info", "--show-item", "url")
+	if remoteErr != nil {
+		return "", ""
+	}
+	remoteUrl = strings.TrimSpace(remoteUrl)
+	if remoteUrl == "" {
+		return "", ""
+	}
+	browseUrl := normalizeRepositoryBrowseUrl(remoteUrl)
+	if browseUrl == "" {
+		browseUrl = remoteUrl
+	}
+	return remoteUrl, browseUrl
+}
+
 func parseGitCommits(logOut string) []wshrpc.VcsCommitInfo {
 	records := strings.Split(logOut, "\x1e")
 	commits := make([]wshrpc.VcsCommitInfo, 0, len(records))
@@ -522,14 +650,20 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 		switch repoType {
 		case "git":
 			branch, status, statusErr := loadGitRepoState(ctx, repoRoot, statusLimit)
+			remoteUrl, browseUrl := loadGitRemoteUrls(ctx, repoRoot)
 			repoInfo.Branch = branch
+			repoInfo.RemoteUrl = remoteUrl
+			repoInfo.BrowseUrl = browseUrl
 			repoInfo.Status = status
 			if statusErr != nil {
 				repoInfo.StatusErr = statusErr.Error()
 			}
 		case "svn":
 			branch, status, statusErr := loadSvnRepoState(ctx, repoRoot, statusLimit)
+			remoteUrl, browseUrl := loadSvnRemoteUrls(ctx, repoRoot)
 			repoInfo.Branch = branch
+			repoInfo.RemoteUrl = remoteUrl
+			repoInfo.BrowseUrl = browseUrl
 			repoInfo.Status = status
 			if statusErr != nil {
 				repoInfo.StatusErr = statusErr.Error()
@@ -671,9 +805,9 @@ func loadGitDiff(ctx context.Context, repoPath string, filePath string, revision
 	var out string
 	var err error
 	if strings.TrimSpace(revision) == "" {
-		out, err = runVcsCommand(ctx, repoPath, "git", "diff", "HEAD", "--", relPath)
+		out, err = runVcsCommandRaw(ctx, repoPath, "git", "diff", "HEAD", "--", relPath)
 	} else {
-		out, err = runVcsCommand(ctx, repoPath, "git", "show", "--pretty=format:", revision, "--", relPath)
+		out, err = runVcsCommandRaw(ctx, repoPath, "git", "show", "--pretty=format:", revision, "--", relPath)
 	}
 	if err != nil {
 		return "", err
@@ -693,14 +827,202 @@ func loadSvnDiff(ctx context.Context, repoPath string, filePath string, revision
 	var out string
 	var err error
 	if trimmedRev == "" {
-		out, err = runVcsCommand(ctx, repoPath, "svn", "diff", relPath)
+		out, err = runVcsCommandRaw(ctx, repoPath, "svn", "diff", relPath)
 	} else {
-		out, err = runVcsCommand(ctx, repoPath, "svn", "diff", "-c", trimmedRev, relPath)
+		out, err = runVcsCommandRaw(ctx, repoPath, "svn", "diff", "-c", trimmedRev, relPath)
 	}
 	if err != nil {
 		return "", err
 	}
 	return out, nil
+}
+
+func makeStringPtr(val string) *string {
+	return &val
+}
+
+func toRepoAbsolutePath(repoPath string, relPath string) (string, error) {
+	nativeRel := filepath.Clean(filepath.FromSlash(relPath))
+	if nativeRel == "." || nativeRel == ".." || strings.HasPrefix(nativeRel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("filepath %q escapes repository", relPath)
+	}
+	return filepath.Join(repoPath, nativeRel), nil
+}
+
+func normalizeTextContent(content string) (string, error) {
+	if strings.ContainsRune(content, '\x00') {
+		return "", errVcsNonTextContent
+	}
+	if !utf8.ValidString(content) {
+		return "", errVcsNonTextContent
+	}
+	return content, nil
+}
+
+func readWorkingTreeTextFile(repoPath string, relPath string) (string, error) {
+	absPath, err := toRepoAbsolutePath(repoPath, relPath)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
+	}
+	if bytes.IndexByte(data, 0) >= 0 {
+		return "", errVcsNonTextContent
+	}
+	if !utf8.Valid(data) {
+		return "", errVcsNonTextContent
+	}
+	return string(data), nil
+}
+
+func isGitPathMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lowerErr := strings.ToLower(err.Error())
+	return strings.Contains(lowerErr, "does not exist in") ||
+		strings.Contains(lowerErr, "exists on disk, but not in") ||
+		strings.Contains(lowerErr, "unknown revision or path not in the working tree")
+}
+
+func isSvnPathMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lowerErr := strings.ToLower(err.Error())
+	return strings.Contains(lowerErr, "non-existent") ||
+		strings.Contains(lowerErr, "path not found") ||
+		strings.Contains(lowerErr, "not under version control") ||
+		strings.Contains(lowerErr, "e200009")
+}
+
+func loadGitFileAtRevision(ctx context.Context, repoPath string, relPath string, revision string) (string, error) {
+	showSpec := fmt.Sprintf("%s:%s", revision, relPath)
+	out, err := runVcsCommandRaw(ctx, repoPath, "git", "show", showSpec)
+	if err != nil {
+		return "", err
+	}
+	return normalizeTextContent(out)
+}
+
+func loadSvnFileAtRevision(ctx context.Context, repoPath string, relPath string, revision string) (string, error) {
+	out, err := runVcsCommandRaw(ctx, repoPath, "svn", "cat", "-r", revision, relPath)
+	if err != nil {
+		return "", err
+	}
+	return normalizeTextContent(out)
+}
+
+func loadGitDiffContentPair(ctx context.Context, repoPath string, filePath string, revision string) (*string, *string) {
+	relPath := toRepoRelativePath(repoPath, filePath)
+	if relPath == "" {
+		return nil, nil
+	}
+	trimmedRevision := strings.TrimSpace(revision)
+	if trimmedRevision == "" {
+		original, originalErr := loadGitFileAtRevision(ctx, repoPath, relPath, "HEAD")
+		modified, modifiedErr := readWorkingTreeTextFile(repoPath, relPath)
+		if isGitPathMissingError(originalErr) {
+			original = ""
+			originalErr = nil
+		}
+		if errors.Is(modifiedErr, os.ErrNotExist) {
+			modified = ""
+			modifiedErr = nil
+		}
+		if errors.Is(originalErr, errVcsNonTextContent) || errors.Is(modifiedErr, errVcsNonTextContent) {
+			return nil, nil
+		}
+		if originalErr != nil || modifiedErr != nil {
+			return nil, nil
+		}
+		return makeStringPtr(original), makeStringPtr(modified)
+	}
+	parentRevision := trimmedRevision + "^"
+	original, originalErr := loadGitFileAtRevision(ctx, repoPath, relPath, parentRevision)
+	modified, modifiedErr := loadGitFileAtRevision(ctx, repoPath, relPath, trimmedRevision)
+	if isGitPathMissingError(originalErr) {
+		original = ""
+		originalErr = nil
+	}
+	if isGitPathMissingError(modifiedErr) {
+		modified = ""
+		modifiedErr = nil
+	}
+	if errors.Is(originalErr, errVcsNonTextContent) || errors.Is(modifiedErr, errVcsNonTextContent) {
+		return nil, nil
+	}
+	if originalErr != nil || modifiedErr != nil {
+		return nil, nil
+	}
+	return makeStringPtr(original), makeStringPtr(modified)
+}
+
+func parseSvnRevision(revision string) int {
+	trimmed := strings.TrimSpace(revision)
+	trimmed = strings.TrimPrefix(strings.ToLower(trimmed), "r")
+	if trimmed == "" {
+		return 0
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil || parsed < 0 {
+		return 0
+	}
+	return parsed
+}
+
+func loadSvnDiffContentPair(ctx context.Context, repoPath string, filePath string, revision string) (*string, *string) {
+	relPath := toRepoRelativePath(repoPath, filePath)
+	if relPath == "" {
+		return nil, nil
+	}
+	trimmedRevision := strings.TrimSpace(revision)
+	if trimmedRevision == "" {
+		original, originalErr := loadSvnFileAtRevision(ctx, repoPath, relPath, "BASE")
+		modified, modifiedErr := readWorkingTreeTextFile(repoPath, relPath)
+		if isSvnPathMissingError(originalErr) {
+			original = ""
+			originalErr = nil
+		}
+		if errors.Is(modifiedErr, os.ErrNotExist) {
+			modified = ""
+			modifiedErr = nil
+		}
+		if errors.Is(originalErr, errVcsNonTextContent) || errors.Is(modifiedErr, errVcsNonTextContent) {
+			return nil, nil
+		}
+		if originalErr != nil || modifiedErr != nil {
+			return nil, nil
+		}
+		return makeStringPtr(original), makeStringPtr(modified)
+	}
+	revisionNum := parseSvnRevision(trimmedRevision)
+	if revisionNum == 0 {
+		return nil, nil
+	}
+	modified, modifiedErr := loadSvnFileAtRevision(ctx, repoPath, relPath, strconv.Itoa(revisionNum))
+	if isSvnPathMissingError(modifiedErr) {
+		modified = ""
+		modifiedErr = nil
+	}
+	original := ""
+	var originalErr error
+	if revisionNum > 1 {
+		original, originalErr = loadSvnFileAtRevision(ctx, repoPath, relPath, strconv.Itoa(revisionNum-1))
+		if isSvnPathMissingError(originalErr) {
+			original = ""
+			originalErr = nil
+		}
+	}
+	if errors.Is(originalErr, errVcsNonTextContent) || errors.Is(modifiedErr, errVcsNonTextContent) {
+		return nil, nil
+	}
+	if originalErr != nil || modifiedErr != nil {
+		return nil, nil
+	}
+	return makeStringPtr(original), makeStringPtr(modified)
 }
 
 func (impl *ServerImpl) RemoteVcsFileDiffCommand(ctx context.Context, data wshrpc.CommandRemoteVcsFileDiffData) (*wshrpc.RemoteVcsFileDiffRtnData, error) {
@@ -721,11 +1043,15 @@ func (impl *ServerImpl) RemoteVcsFileDiffCommand(ctx context.Context, data wshrp
 	}
 	revision := strings.TrimSpace(data.Revision)
 	var diffText string
+	var originalText *string
+	var modifiedText *string
 	switch repoType {
 	case "git":
 		diffText, err = loadGitDiff(ctx, repoPath, filePath, revision)
+		originalText, modifiedText = loadGitDiffContentPair(ctx, repoPath, filePath, revision)
 	case "svn":
 		diffText, err = loadSvnDiff(ctx, repoPath, filePath, revision)
+		originalText, modifiedText = loadSvnDiffContentPair(ctx, repoPath, filePath, revision)
 	}
 	if err != nil {
 		return nil, err
@@ -735,5 +1061,7 @@ func (impl *ServerImpl) RemoteVcsFileDiffCommand(ctx context.Context, data wshrp
 		RepoType: repoType,
 		FilePath: toRepoRelativePath(repoPath, filePath),
 		Diff:     diffText,
+		Original: originalText,
+		Modified: modifiedText,
 	}, nil
 }

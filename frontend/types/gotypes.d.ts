@@ -1391,6 +1391,8 @@ declare global {
         repotype: string;
         filepath: string;
         diff: string;
+        original?: string;
+        modified?: string;
         error?: string;
     };
 
@@ -2097,6 +2099,8 @@ declare global {
         rootpath: string;
         name: string;
         branch?: string;
+        remoteurl?: string;
+        browseurl?: string;
         status?: VcsFileStatus[];
         statuserr?: string;
     };

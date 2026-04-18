@@ -51,6 +51,9 @@ export function blockViewToIcon(view: string): string {
     if (view == "vcsdiff") {
         return "file-code";
     }
+    if (view == "vcshistory") {
+        return "clock-rotate-left";
+    }
     return "square";
 }
 
@@ -84,6 +87,9 @@ export function blockViewToName(view: string): string {
     }
     if (view == "vcsdiff") {
         return "File Diff";
+    }
+    if (view == "vcshistory") {
+        return "File History";
     }
     return view;
 }
