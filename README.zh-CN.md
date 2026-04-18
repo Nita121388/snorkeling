@@ -47,6 +47,14 @@ Wave 是一款开源、集成 AI 的终端应用，支持 macOS、Linux 和 Wind
 
 Wave 还支持持久化 SSH 会话：即使网络中断或应用重启，也能自动重连并恢复工作状态。你可以用内置图形编辑器直接编辑远程文件，并在终端内联预览文件内容。
 
+### 界面预览
+
+定制效果图（Snorkeling）：
+
+![Snorkeling 定制效果图](./assets/snorkeling-custom-screenshot.png)
+
+原始截图（Wave）：
+
 ![WaveTerm Screenshot](./assets/wave-screenshot.webp)
 
 ## 关键特性
