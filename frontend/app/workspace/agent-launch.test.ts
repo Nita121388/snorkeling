@@ -148,7 +148,7 @@ describe("agent launch context", () => {
         });
     });
 
-    it("falls back to the latest Files target when focused block is unavailable", () => {
+    it("falls back to Files targets in latest-first order when focused block is unavailable", () => {
         const tab = makeTab(["block:preview-old", "block:preview-new"]);
         const blockMap: Record<string, Block> = {
             "block:preview-old": makeBlock("block:preview-old", {
@@ -163,11 +163,44 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null);
 
-        expect(targets).toHaveLength(1);
+        expect(targets).toHaveLength(2);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview-new",
             source: "files",
             cwd: "/Users/nita/Primary/projects/snorkeling",
+        });
+        expect(targets[1]).toMatchObject({
+            blockId: "block:preview-old",
+            source: "files",
+            cwd: "/Users/nita/Primary",
+        });
+    });
+
+    it("includes multiple Files targets when multiple previews are present", () => {
+        const tab = makeTab(["block:preview-a", "block:preview-b"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview-a": makeBlock("block:preview-a", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects/snorkeling",
+            }),
+            "block:preview-b": makeBlock("block:preview-b", {
+                view: "preview",
+                file: "/Users/nita/Primary/obsidians/Obsidian",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview-a");
+
+        expect(targets).toHaveLength(2);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview-a",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects/snorkeling",
+        });
+        expect(targets[1]).toMatchObject({
+            blockId: "block:preview-b",
+            source: "files",
+            cwd: "/Users/nita/Primary/obsidians/Obsidian",
         });
     });
 

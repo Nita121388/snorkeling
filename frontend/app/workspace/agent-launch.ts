@@ -314,20 +314,36 @@ function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
     return getLaunchTargetPathCandidates(target).length > 0;
 }
 
-function resolvePreferredFilesLaunchTarget(
+function makeLaunchTargetDedupKey(target: AgentLaunchTarget): string {
+    const connection = normalizeConnection(target.connection) ?? "local";
+    const pathCandidates = getLaunchTargetPathCandidates(target);
+    const primaryPath = pathCandidates[0] ?? "";
+    return `${target.source}|${connection}|${primaryPath}`;
+}
+
+function resolvePreferredFilesLaunchTargets(
     tab: Tab,
     getBlockById: (blockId: string) => Block | null | undefined,
     focusedBlockId?: string | null
-): AgentLaunchTarget | null {
+): AgentLaunchTarget[] {
     const blockIds = tab.blockids ?? [];
+    const dedupedTargets = new Map<string, AgentLaunchTarget>();
+    const addTarget = (target: AgentLaunchTarget | null) => {
+        if (!hasFilesLaunchPath(target)) {
+            return;
+        }
+        const dedupeKey = makeLaunchTargetDedupKey(target);
+        if (dedupedTargets.has(dedupeKey)) {
+            return;
+        }
+        dedupedTargets.set(dedupeKey, target);
+    };
+
     const normalizedFocusedBlockId = isBlank(focusedBlockId) ? null : focusedBlockId;
     const focusedIsInTab = normalizedFocusedBlockId != null && blockIds.includes(normalizedFocusedBlockId);
     if (focusedIsInTab) {
         const focusedBlock = getBlockById(normalizedFocusedBlockId!);
-        const focusedFilesTarget = makePreviewLaunchTarget(normalizedFocusedBlockId!, focusedBlock);
-        if (hasFilesLaunchPath(focusedFilesTarget)) {
-            return focusedFilesTarget;
-        }
+        addTarget(makePreviewLaunchTarget(normalizedFocusedBlockId!, focusedBlock));
     }
 
     for (let idx = blockIds.length - 1; idx >= 0; idx--) {
@@ -336,13 +352,10 @@ function resolvePreferredFilesLaunchTarget(
             continue;
         }
         const block = getBlockById(blockId);
-        const previewTarget = makePreviewLaunchTarget(blockId, block);
-        if (!hasFilesLaunchPath(previewTarget)) {
-            continue;
-        }
-        return previewTarget;
+        addTarget(makePreviewLaunchTarget(blockId, block));
     }
-    return null;
+
+    return Array.from(dedupedTargets.values());
 }
 
 function resolveLatestTerminalContextInTab(
@@ -416,22 +429,22 @@ export function collectAgentLaunchTargetsInTab(
         }
     }
 
-    const filesTarget = resolvePreferredFilesLaunchTarget(tab, getBlockById, focusedBlockId);
-    if (filesTarget == null) {
+    const filesTargets = resolvePreferredFilesLaunchTargets(tab, getBlockById, focusedBlockId);
+    if (filesTargets.length === 0) {
         return terminalTargets;
     }
     if (terminalTargets.length === 0) {
-        return [filesTarget];
+        return filesTargets;
     }
 
     const matchedTerminalTarget = terminalTargets.find((terminalTarget) =>
-        targetsShareLaunchContext(terminalTarget, filesTarget)
+        filesTargets.some((filesTarget) => targetsShareLaunchContext(terminalTarget, filesTarget))
     );
     if (matchedTerminalTarget != null) {
         return [matchedTerminalTarget];
     }
 
-    return [filesTarget, ...terminalTargets];
+    return [...filesTargets, ...terminalTargets];
 }
 
 export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
