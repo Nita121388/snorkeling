@@ -131,6 +131,7 @@ type WshRpcInterface interface {
 	RemoteProcessSignalCommand(ctx context.Context, data CommandRemoteProcessSignalData) error
 	RemoteVcsRepositoriesCommand(ctx context.Context, data CommandRemoteVcsRepositoriesData) (*RemoteVcsRepositoriesRtnData, error)
 	RemoteVcsCommitsCommand(ctx context.Context, data CommandRemoteVcsCommitsData) (*RemoteVcsCommitsRtnData, error)
+	RemoteVcsCommitFilesCommand(ctx context.Context, data CommandRemoteVcsCommitFilesData) (*RemoteVcsCommitFilesRtnData, error)
 	RemoteVcsCommitCommand(ctx context.Context, data CommandRemoteVcsCommitData) (*RemoteVcsCommitRtnData, error)
 	RemoteVcsFileHistoryCommand(ctx context.Context, data CommandRemoteVcsFileHistoryData) (*RemoteVcsFileHistoryRtnData, error)
 	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
@@ -966,6 +967,10 @@ type CommandRemoteVcsCommitsData struct {
 	RepoType string `json:"repotype"`
 	RepoPath string `json:"repopath"`
 	Limit    int    `json:"limit,omitempty"`
+	Offset   int    `json:"offset,omitempty"`
+	Since    string `json:"since,omitempty"`
+	Until    string `json:"until,omitempty"`
+	Keyword  string `json:"keyword,omitempty"`
 }
 
 type VcsCommitInfo struct {
@@ -979,7 +984,29 @@ type RemoteVcsCommitsRtnData struct {
 	RepoPath string          `json:"repopath"`
 	RepoType string          `json:"repotype"`
 	Commits  []VcsCommitInfo `json:"commits"`
+	Offset   int             `json:"offset,omitempty"`
+	Limit    int             `json:"limit,omitempty"`
+	HasMore  bool            `json:"hasmore,omitempty"`
 	Error    string          `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsCommitFilesData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	Revision string `json:"revision"`
+}
+
+type VcsCommitFileInfo struct {
+	Path string `json:"path"`
+	Code string `json:"code,omitempty"`
+}
+
+type RemoteVcsCommitFilesRtnData struct {
+	RepoPath string              `json:"repopath"`
+	RepoType string              `json:"repotype"`
+	Revision string              `json:"revision"`
+	Files    []VcsCommitFileInfo `json:"files"`
+	Error    string              `json:"error,omitempty"`
 }
 
 type CommandRemoteVcsCommitData struct {

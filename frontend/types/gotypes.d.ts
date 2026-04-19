@@ -629,11 +629,22 @@ declare global {
         files: string[];
     };
 
+    // wshrpc.CommandRemoteVcsCommitFilesData
+    type CommandRemoteVcsCommitFilesData = {
+        repotype: string;
+        repopath: string;
+        revision: string;
+    };
+
     // wshrpc.CommandRemoteVcsCommitsData
     type CommandRemoteVcsCommitsData = {
         repotype: string;
         repopath: string;
         limit?: number;
+        offset?: number;
+        since?: string;
+        until?: string;
+        keyword?: string;
     };
 
     // wshrpc.CommandRemoteVcsFileDiffData
@@ -1370,6 +1381,15 @@ declare global {
         homedir: string;
     };
 
+    // wshrpc.RemoteVcsCommitFilesRtnData
+    type RemoteVcsCommitFilesRtnData = {
+        repopath: string;
+        repotype: string;
+        revision: string;
+        files: VcsCommitFileInfo[];
+        error?: string;
+    };
+
     // wshrpc.RemoteVcsCommitRtnData
     type RemoteVcsCommitRtnData = {
         success: boolean;
@@ -1382,6 +1402,9 @@ declare global {
         repopath: string;
         repotype: string;
         commits: VcsCommitInfo[];
+        offset?: number;
+        limit?: number;
+        hasmore?: boolean;
         error?: string;
     };
 
@@ -2074,6 +2097,12 @@ declare global {
         statuscode?: number;
         headers?: {[key: string]: string};
         body?: string;
+    };
+
+    // wshrpc.VcsCommitFileInfo
+    type VcsCommitFileInfo = {
+        path: string;
+        code?: string;
     };
 
     // wshrpc.VcsCommitInfo

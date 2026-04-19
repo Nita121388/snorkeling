@@ -794,6 +794,12 @@ func RemoteVcsCommitCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommi
 	return resp, err
 }
 
+// command "remotevcscommitfiles", wshserver.RemoteVcsCommitFilesCommand
+func RemoteVcsCommitFilesCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitFilesData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitFilesRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitFilesRtnData](w, "remotevcscommitfiles", data, opts)
+	return resp, err
+}
+
 // command "remotevcscommits", wshserver.RemoteVcsCommitsCommand
 func RemoteVcsCommitsCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitsData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitsRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitsRtnData](w, "remotevcscommits", data, opts)

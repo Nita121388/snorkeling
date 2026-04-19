@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -25,6 +26,7 @@ const (
 	DefaultVcsScanDepth   = 3
 	DefaultVcsStatusLimit = 200
 	DefaultVcsCommitLimit = 50
+	MaxVcsCommitScanLimit = 2000
 	MaxVcsRepos           = 64
 )
 
@@ -503,12 +505,15 @@ func toRepoRelativePath(repoPath string, filePath string) string {
 	return filepath.ToSlash(cleanPath)
 }
 
-func loadGitCommits(ctx context.Context, repoPath string, filePath string, limit int) ([]wshrpc.VcsCommitInfo, error) {
+func loadGitCommitsWithOffset(ctx context.Context, repoPath string, filePath string, limit int, offset int) ([]wshrpc.VcsCommitInfo, error) {
 	if limit <= 0 {
 		limit = DefaultVcsCommitLimit
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > MaxVcsCommitScanLimit {
+		limit = MaxVcsCommitScanLimit
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	args := []string{
 		"log",
@@ -516,6 +521,9 @@ func loadGitCommits(ctx context.Context, repoPath string, filePath string, limit
 		"--pretty=format:%H%x1f%an%x1f%ad%x1f%s%x1e",
 		"-n",
 		strconv.Itoa(limit),
+	}
+	if offset > 0 {
+		args = append(args, "--skip", strconv.Itoa(offset))
 	}
 	relPath := toRepoRelativePath(repoPath, filePath)
 	if relPath != "" {
@@ -526,6 +534,10 @@ func loadGitCommits(ctx context.Context, repoPath string, filePath string, limit
 		return nil, err
 	}
 	return parseGitCommits(out), nil
+}
+
+func loadGitCommits(ctx context.Context, repoPath string, filePath string, limit int) ([]wshrpc.VcsCommitInfo, error) {
+	return loadGitCommitsWithOffset(ctx, repoPath, filePath, limit, 0)
 }
 
 func parseSvnCommits(logOut string) ([]wshrpc.VcsCommitInfo, error) {
@@ -553,8 +565,8 @@ func loadSvnCommits(ctx context.Context, repoPath string, filePath string, limit
 	if limit <= 0 {
 		limit = DefaultVcsCommitLimit
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > MaxVcsCommitScanLimit {
+		limit = MaxVcsCommitScanLimit
 	}
 	args := []string{"log", "--xml", "-l", strconv.Itoa(limit)}
 	relPath := toRepoRelativePath(repoPath, filePath)
@@ -566,6 +578,288 @@ func loadSvnCommits(ctx context.Context, repoPath string, filePath string, limit
 		return nil, err
 	}
 	return parseSvnCommits(out)
+}
+
+func parseCommitFilterTime(val string, endOfDay bool) (*time.Time, error) {
+	trimmed := strings.TrimSpace(val)
+	if trimmed == "" {
+		return nil, nil
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, trimmed)
+		if err != nil {
+			continue
+		}
+		if layout == "2006-01-02" {
+			if endOfDay {
+				parsed = parsed.Add(24*time.Hour - time.Nanosecond)
+			}
+		}
+		return &parsed, nil
+	}
+	return nil, fmt.Errorf("invalid time format %q", val)
+}
+
+func parseCommitDate(dateStr string) *time.Time {
+	trimmed := strings.TrimSpace(dateStr)
+	if trimmed == "" {
+		return nil
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, trimmed)
+		if err == nil {
+			return &parsed
+		}
+	}
+	return nil
+}
+
+func commitMatchesTimeRange(commit wshrpc.VcsCommitInfo, sinceTime *time.Time, untilTime *time.Time) bool {
+	if sinceTime == nil && untilTime == nil {
+		return true
+	}
+	commitTime := parseCommitDate(commit.Date)
+	if commitTime == nil {
+		return false
+	}
+	if sinceTime != nil && commitTime.Before(*sinceTime) {
+		return false
+	}
+	if untilTime != nil && commitTime.After(*untilTime) {
+		return false
+	}
+	return true
+}
+
+func commitMatchesKeyword(commit wshrpc.VcsCommitInfo, keyword string) bool {
+	trimmedKeyword := strings.TrimSpace(strings.ToLower(keyword))
+	if trimmedKeyword == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(commit.Hash), trimmedKeyword) ||
+		strings.Contains(strings.ToLower(commit.Author), trimmedKeyword) ||
+		strings.Contains(strings.ToLower(commit.Subject), trimmedKeyword) ||
+		strings.Contains(strings.ToLower(commit.Date), trimmedKeyword)
+}
+
+func filterAndPaginateCommits(
+	commits []wshrpc.VcsCommitInfo,
+	offset int,
+	limit int,
+	sinceTime *time.Time,
+	untilTime *time.Time,
+	keyword string,
+) ([]wshrpc.VcsCommitInfo, bool) {
+	filtered := make([]wshrpc.VcsCommitInfo, 0, len(commits))
+	for _, commit := range commits {
+		if !commitMatchesTimeRange(commit, sinceTime, untilTime) {
+			continue
+		}
+		if !commitMatchesKeyword(commit, keyword) {
+			continue
+		}
+		filtered = append(filtered, commit)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = DefaultVcsCommitLimit
+	}
+	if offset >= len(filtered) {
+		return []wshrpc.VcsCommitInfo{}, false
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	hasMore := end < len(filtered)
+	return filtered[offset:end], hasMore
+}
+
+func loadGitCommitsForQuery(
+	ctx context.Context,
+	repoPath string,
+	limit int,
+	offset int,
+	since string,
+	until string,
+	keyword string,
+) ([]wshrpc.VcsCommitInfo, bool, error) {
+	if limit <= 0 {
+		limit = DefaultVcsCommitLimit
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	sinceTime, err := parseCommitFilterTime(since, false)
+	if err != nil {
+		return nil, false, err
+	}
+	untilTime, err := parseCommitFilterTime(until, true)
+	if err != nil {
+		return nil, false, err
+	}
+	trimmedKeyword := strings.TrimSpace(keyword)
+	if sinceTime == nil && untilTime == nil && trimmedKeyword == "" {
+		rawCommits, err := loadGitCommitsWithOffset(ctx, repoPath, "", limit+1, offset)
+		if err != nil {
+			return nil, false, err
+		}
+		hasMore := len(rawCommits) > limit
+		if hasMore {
+			rawCommits = rawCommits[:limit]
+		}
+		return rawCommits, hasMore, nil
+	}
+	scanLimit := offset + limit + 1
+	if scanLimit < 500 {
+		scanLimit = 500
+	}
+	if scanLimit > MaxVcsCommitScanLimit {
+		scanLimit = MaxVcsCommitScanLimit
+	}
+	rawCommits, err := loadGitCommits(ctx, repoPath, "", scanLimit)
+	if err != nil {
+		return nil, false, err
+	}
+	filteredCommits, hasMore := filterAndPaginateCommits(rawCommits, offset, limit, sinceTime, untilTime, trimmedKeyword)
+	return filteredCommits, hasMore, nil
+}
+
+func loadSvnCommitsForQuery(
+	ctx context.Context,
+	repoPath string,
+	limit int,
+	offset int,
+	since string,
+	until string,
+	keyword string,
+) ([]wshrpc.VcsCommitInfo, bool, error) {
+	if limit <= 0 {
+		limit = DefaultVcsCommitLimit
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	sinceTime, err := parseCommitFilterTime(since, false)
+	if err != nil {
+		return nil, false, err
+	}
+	untilTime, err := parseCommitFilterTime(until, true)
+	if err != nil {
+		return nil, false, err
+	}
+	scanLimit := offset + limit + 1
+	if scanLimit < 500 {
+		scanLimit = 500
+	}
+	if scanLimit > MaxVcsCommitScanLimit {
+		scanLimit = MaxVcsCommitScanLimit
+	}
+	rawCommits, err := loadSvnCommits(ctx, repoPath, "", scanLimit)
+	if err != nil {
+		return nil, false, err
+	}
+	filteredCommits, hasMore := filterAndPaginateCommits(rawCommits, offset, limit, sinceTime, untilTime, keyword)
+	return filteredCommits, hasMore, nil
+}
+
+func parseGitCommitFiles(nameStatusOut string) []wshrpc.VcsCommitFileInfo {
+	files := make([]wshrpc.VcsCommitFileInfo, 0)
+	for _, rawLine := range strings.Split(nameStatusOut, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		code := strings.TrimSpace(fields[0])
+		filePath := strings.TrimSpace(fields[len(fields)-1])
+		filePath = filepath.ToSlash(filePath)
+		if filePath == "" {
+			continue
+		}
+		files = append(files, wshrpc.VcsCommitFileInfo{
+			Path: filePath,
+			Code: code,
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Path < files[j].Path
+	})
+	return files
+}
+
+func loadGitCommitFiles(ctx context.Context, repoPath string, revision string) ([]wshrpc.VcsCommitFileInfo, error) {
+	trimmedRevision := strings.TrimSpace(revision)
+	if trimmedRevision == "" {
+		return nil, fmt.Errorf("revision is required")
+	}
+	out, err := runVcsCommandRaw(ctx, repoPath, "git", "show", "--name-status", "--pretty=format:", trimmedRevision)
+	if err != nil {
+		return nil, err
+	}
+	return parseGitCommitFiles(out), nil
+}
+
+func parseSvnCommitFiles(repoPath string, summarizeOut string) []wshrpc.VcsCommitFileInfo {
+	files := make([]wshrpc.VcsCommitFileInfo, 0)
+	for _, rawLine := range strings.Split(summarizeOut, "\n") {
+		line := strings.TrimRight(rawLine, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		code := strings.TrimSpace(string(line[0]))
+		filePath := strings.TrimSpace(line[1:])
+		filePath = toRepoRelativePath(repoPath, filePath)
+		if filePath == "" {
+			continue
+		}
+		files = append(files, wshrpc.VcsCommitFileInfo{
+			Path: filePath,
+			Code: code,
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Path < files[j].Path
+	})
+	return files
+}
+
+func loadSvnCommitFiles(ctx context.Context, repoPath string, revision string) ([]wshrpc.VcsCommitFileInfo, error) {
+	trimmedRevision := strings.TrimSpace(revision)
+	if strings.HasPrefix(trimmedRevision, "r") {
+		trimmedRevision = strings.TrimPrefix(trimmedRevision, "r")
+	}
+	if trimmedRevision == "" {
+		return nil, fmt.Errorf("revision is required")
+	}
+	out, err := runVcsCommandRaw(ctx, repoPath, "svn", "diff", "--summarize", "-c", trimmedRevision)
+	if err != nil {
+		return nil, err
+	}
+	return parseSvnCommitFiles(repoPath, out), nil
 }
 
 func normalizeCommitPaths(repoPath string, files []string) []string {
@@ -696,12 +990,20 @@ func (impl *ServerImpl) RemoteVcsCommitsCommand(ctx context.Context, data wshrpc
 	if limit <= 0 {
 		limit = DefaultVcsCommitLimit
 	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := data.Offset
+	if offset < 0 {
+		offset = 0
+	}
 	var commits []wshrpc.VcsCommitInfo
+	var hasMore bool
 	switch repoType {
 	case "git":
-		commits, err = loadGitCommits(ctx, repoPath, "", limit)
+		commits, hasMore, err = loadGitCommitsForQuery(ctx, repoPath, limit, offset, data.Since, data.Until, data.Keyword)
 	case "svn":
-		commits, err = loadSvnCommits(ctx, repoPath, "", limit)
+		commits, hasMore, err = loadSvnCommitsForQuery(ctx, repoPath, limit, offset, data.Since, data.Until, data.Keyword)
 	}
 	if err != nil {
 		return nil, err
@@ -710,6 +1012,46 @@ func (impl *ServerImpl) RemoteVcsCommitsCommand(ctx context.Context, data wshrpc
 		RepoPath: repoPath,
 		RepoType: repoType,
 		Commits:  commits,
+		Offset:   offset,
+		Limit:    limit,
+		HasMore:  hasMore,
+	}, nil
+}
+
+func (impl *ServerImpl) RemoteVcsCommitFilesCommand(
+	ctx context.Context,
+	data wshrpc.CommandRemoteVcsCommitFilesData,
+) (*wshrpc.RemoteVcsCommitFilesRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+	if repoType != "git" && repoType != "svn" {
+		return nil, fmt.Errorf("unsupported repo type %q", repoType)
+	}
+	revision := strings.TrimSpace(data.Revision)
+	if revision == "" {
+		return nil, fmt.Errorf("revision is required")
+	}
+	var files []wshrpc.VcsCommitFileInfo
+	switch repoType {
+	case "git":
+		files, err = loadGitCommitFiles(ctx, repoPath, revision)
+	case "svn":
+		files, err = loadSvnCommitFiles(ctx, repoPath, revision)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &wshrpc.RemoteVcsCommitFilesRtnData{
+		RepoPath: repoPath,
+		RepoType: repoType,
+		Revision: revision,
+		Files:    files,
 	}, nil
 }
 

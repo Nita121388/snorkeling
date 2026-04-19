@@ -6,6 +6,7 @@ import { FastAverageColor } from "fast-average-color";
 import fs from "fs";
 import * as child_process from "node:child_process";
 import * as path from "path";
+import { pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
 import { Readable } from "stream";
 import { RpcApi } from "../frontend/app/store/wshclientapi";
@@ -76,6 +77,52 @@ function getFileNameFromUrl(url: string): string {
     } catch (e) {
         return null;
     }
+}
+
+function execFilePromise(cmd: string, args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        child_process.execFile(cmd, args, (err) => {
+            if (err != null) {
+                reject(err);
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
+function normalizeUserPath(rawPath: string): string {
+    const expandedPath = rawPath.replace(/^~(?=$|[\\/])/, electronApp.getPath("home"));
+    return path.resolve(expandedPath);
+}
+
+function makeVSCodeFileUri(localPath: string): string {
+    const fileUri = pathToFileURL(localPath).toString();
+    return `vscode://file${fileUri.slice("file://".length)}`;
+}
+
+async function openPathInVSCode(filePath: string): Promise<void> {
+    const normalizedPath = normalizeUserPath(filePath);
+    const codeCmd = process.platform === "win32" ? "code.cmd" : "code";
+
+    try {
+        await execFilePromise(codeCmd, ["--reuse-window", normalizedPath]);
+        return;
+    } catch (err) {
+        console.log("open-in-vscode: code CLI unavailable, fallback", err);
+    }
+
+    if (unamePlatform === "darwin") {
+        try {
+            await execFilePromise("open", ["-a", "Visual Studio Code", normalizedPath]);
+            return;
+        } catch (err) {
+            console.log("open-in-vscode: macOS open fallback failed", err);
+        }
+    }
+
+    const vscodeUri = makeVSCodeFileUri(normalizedPath);
+    await callWithOriginalXdgCurrentDesktopAsync(() => electron.shell.openExternal(vscodeUri));
 }
 
 function getUrlInSession(session: Electron.Session, url: string): Promise<UrlInSessionResult> {
@@ -403,6 +450,20 @@ export function initIpcHandlers() {
                 })
             )
         );
+    });
+
+    electron.ipcMain.handle("open-in-vscode", async (event, filePath: string) => {
+        if (typeof filePath !== "string" || filePath === "") {
+            console.error("open-in-vscode: invalid file path", filePath);
+            return false;
+        }
+        try {
+            await openPathInVSCode(filePath);
+            return true;
+        } catch (err) {
+            console.error("open-in-vscode: failed to open path", filePath, err);
+            return false;
+        }
     });
 
     electron.ipcMain.on("set-window-init-status", (event, status: "ready" | "wave-ready") => {

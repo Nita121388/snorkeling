@@ -15,12 +15,10 @@ const DefaultCommitMessage = "chore: update selected files";
 
 type VcsUiEnv = WaveEnv;
 
-type RepoLogsMap = Record<string, VcsCommitInfo[]>;
-type RepoErrorMap = Record<string, string>;
 type RepoStringMap = Record<string, string>;
 type RepoBoolMap = Record<string, boolean>;
 type RepoFilesMap = Record<string, string[]>;
-type RepoSectionKey = "changes" | "untracked" | "commits";
+type RepoSectionKey = "changes" | "untracked";
 type RepoSectionState = Record<RepoSectionKey, boolean>;
 type RepoSectionsMap = Record<string, RepoSectionState>;
 
@@ -58,7 +56,6 @@ function makeDefaultSectionState(): RepoSectionState {
     return {
         changes: true,
         untracked: true,
-        commits: false,
     };
 }
 
@@ -140,6 +137,7 @@ function RepoHeader({
     isExpanded,
     isActive,
     onToggle,
+    onOpenCommits,
     onRefresh,
     onContextMenu,
 }: {
@@ -147,6 +145,7 @@ function RepoHeader({
     isExpanded: boolean;
     isActive: boolean;
     onToggle: () => void;
+    onOpenCommits: () => void;
     onRefresh: () => void;
     onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
 }) {
@@ -175,6 +174,13 @@ function RepoHeader({
             </button>
             <button className="iconbutton !h-[20px] !w-[20px] cursor-pointer" title="Refresh" onClick={onRefresh}>
                 <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
+            </button>
+            <button
+                className="iconbutton !h-[20px] !w-[20px] cursor-pointer"
+                title="Open Commits"
+                onClick={onOpenCommits}
+            >
+                <i className="fa-sharp fa-solid fa-clock-rotate-left text-[11px]" />
             </button>
         </div>
     );
@@ -252,62 +258,10 @@ function FileStatusRow({
     );
 }
 
-function CommitList({
-    commits,
-    onOpenDiff,
-}: {
-    commits: VcsCommitInfo[];
-    onOpenDiff?: (commit: VcsCommitInfo) => void;
-}) {
-    if (!commits || commits.length === 0) {
-        return <div className="text-xs text-muted">No commits yet.</div>;
-    }
-    return (
-        <div className="flex flex-col gap-1">
-            {commits.map((commit, idx) => (
-                <div
-                    key={`${commit.hash}-${idx}`}
-                    className={`rounded border border-white/10 px-2 py-1.5 bg-black/20 ${
-                        onOpenDiff && !isBlank(commit.hash) ? "cursor-pointer hover:bg-black/35" : ""
-                    }`}
-                    onClick={() => {
-                        if (onOpenDiff && !isBlank(commit.hash)) {
-                            onOpenDiff(commit);
-                        }
-                    }}
-                >
-                    <div className="flex items-center gap-2 text-xs">
-                        <span className="font-mono text-secondary">{shortHash(commit.hash)}</span>
-                        <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
-                        {onOpenDiff && !isBlank(commit.hash) && (
-                            <button
-                                className="text-[11px] text-accent hover:underline cursor-pointer shrink-0"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenDiff(commit);
-                                }}
-                            >
-                                Open Diff
-                            </button>
-                        )}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                        <span className="truncate">{commit.author || "unknown"}</span>
-                        <span className="truncate">{commit.date || ""}</span>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
 function RepoPanel({
     repo,
     selectedFiles,
     setSelectedFiles,
-    logs,
-    logsLoading,
-    logsError,
     commitMessage,
     setCommitMessage,
     onCommit,
@@ -321,9 +275,6 @@ function RepoPanel({
     repo: VcsRepositoryInfo;
     selectedFiles: string[];
     setSelectedFiles: (next: string[]) => void;
-    logs: VcsCommitInfo[];
-    logsLoading: boolean;
-    logsError: string;
     commitMessage: string;
     setCommitMessage: (next: string) => void;
     onCommit: () => void;
@@ -481,19 +432,6 @@ function RepoPanel({
                     {commitResult && <div className="mt-1.5 text-xs text-secondary whitespace-pre-wrap">{commitResult}</div>}
                 </>
             )}
-            <CollapsibleHeader
-                title="Recent Commits"
-                count={logs?.length ?? 0}
-                isOpen={sectionState.commits}
-                onToggle={() => setSectionOpen("commits", !sectionState.commits)}
-            />
-            {sectionState.commits && (
-                <div className="mt-1">
-                    {logsLoading && <div className="text-xs text-muted mb-2">Loading commits...</div>}
-                    {logsError && <div className="text-xs text-error mb-2">{logsError}</div>}
-                    {!logsLoading && !logsError && <CommitList commits={logs ?? []} />}
-                </div>
-            )}
         </div>
     );
 }
@@ -515,9 +453,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const [commitMessageByRepo, setCommitMessageByRepo] = React.useState<RepoStringMap>({});
     const [commitRunningByRepo, setCommitRunningByRepo] = React.useState<RepoBoolMap>({});
     const [commitResultByRepo, setCommitResultByRepo] = React.useState<RepoStringMap>({});
-    const [logsByRepo, setLogsByRepo] = React.useState<RepoLogsMap>({});
-    const [logsLoadingByRepo, setLogsLoadingByRepo] = React.useState<RepoBoolMap>({});
-    const [logsErrorByRepo, setLogsErrorByRepo] = React.useState<RepoErrorMap>({});
     const [sectionStateByRepo, setSectionStateByRepo] = React.useState<RepoSectionsMap>({});
 
     const route = React.useMemo(() => {
@@ -526,33 +461,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         }
         return makeConnRoute(connection);
     }, [connection]);
-
-    const loadRepoLogs = React.useCallback(
-        async (repo: VcsRepositoryInfo, forceRefresh = false) => {
-            if (!forceRefresh && logsByRepo[repo.repoid]) {
-                return;
-            }
-            setLogsLoadingByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
-            setLogsErrorByRepo((prev) => ({ ...prev, [repo.repoid]: "" }));
-            try {
-                const response = await env.rpc.RemoteVcsCommitsCommand(
-                    TabRpcClient,
-                    {
-                        repotype: repo.repotype,
-                        repopath: repo.rootpath,
-                        limit: 50,
-                    },
-                    { route }
-                );
-                setLogsByRepo((prev) => ({ ...prev, [repo.repoid]: response.commits ?? [] }));
-            } catch (e) {
-                setLogsErrorByRepo((prev) => ({ ...prev, [repo.repoid]: String(e) }));
-            } finally {
-                setLogsLoadingByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
-            }
-        },
-        [env.rpc, logsByRepo, route]
-    );
 
     const loadRepositories = React.useCallback(async () => {
         if (connStatus?.status !== "connected") {
@@ -645,12 +553,10 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const toggleRepo = async (repo: VcsRepositoryInfo) => {
         setActiveRepoId(repo.repoid);
         setExpandedRepos((prev) => ({ ...prev, [repo.repoid]: !prev[repo.repoid] }));
-        await loadRepoLogs(repo);
     };
 
-    const refreshRepo = async (repo: VcsRepositoryInfo) => {
+    const refreshRepo = async () => {
         await loadRepositories();
-        await loadRepoLogs(repo, true);
     };
 
     const setRepoSelectedFiles = (repoId: string, files: string[]) => {
@@ -725,6 +631,22 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 "vcshistory:repopath": repo.rootpath,
                 "vcshistory:filepath": filePath,
                 "vcshistory:title": `History: ${filePath}`,
+            } as any,
+        };
+        await createBlock(blockDef);
+    };
+
+    const openCommitsBlock = async (repo: VcsRepositoryInfo) => {
+        if (!repo) {
+            return;
+        }
+        const blockDef: BlockDef = {
+            meta: {
+                view: "vcscommits",
+                connection,
+                "vcscommits:repotype": repo.repotype,
+                "vcscommits:repopath": repo.rootpath,
+                "vcscommits:title": `${repo.name} Commits`,
             } as any,
         };
         await createBlock(blockDef);
@@ -814,8 +736,13 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                     onToggle={() => {
                                         toggleRepo(repo);
                                     }}
+                                    onOpenCommits={() => {
+                                        openCommitsBlock(repo).catch((e) => {
+                                            setError(String(e));
+                                        });
+                                    }}
                                     onRefresh={() => {
-                                        refreshRepo(repo);
+                                        refreshRepo();
                                     }}
                                     onContextMenu={(e) => handleRepoContextMenu(repo, e)}
                                 />
@@ -824,9 +751,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                         repo={repo}
                                         selectedFiles={selectedFilesByRepo[repo.repoid] ?? []}
                                         setSelectedFiles={(next) => setRepoSelectedFiles(repo.repoid, next)}
-                                        logs={logsByRepo[repo.repoid] ?? []}
-                                        logsLoading={!!logsLoadingByRepo[repo.repoid]}
-                                        logsError={logsErrorByRepo[repo.repoid]}
                                         commitMessage={commitMessageByRepo[repo.repoid] ?? DefaultCommitMessage}
                                         setCommitMessage={(next) =>
                                             setCommitMessageByRepo((prev) => ({ ...prev, [repo.repoid]: next }))

@@ -798,6 +798,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotevcscommit", data, opts);
     }
 
+    // command "remotevcscommitfiles" [call]
+    RemoteVcsCommitFilesCommand(client: WshClient, data: CommandRemoteVcsCommitFilesData, opts?: RpcOpts): Promise<RemoteVcsCommitFilesRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommitfiles", data, opts);
+        return client.wshRpcCall("remotevcscommitfiles", data, opts);
+    }
+
     // command "remotevcscommits" [call]
     RemoteVcsCommitsCommand(client: WshClient, data: CommandRemoteVcsCommitsData, opts?: RpcOpts): Promise<RemoteVcsCommitsRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommits", data, opts);

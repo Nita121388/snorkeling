@@ -547,6 +547,63 @@ async function openLink(uri: string, forceOpenInternally = false) {
     }
 }
 
+type SshTerminalTarget = {
+    connection: string;
+    cwd?: string;
+};
+
+function safeDecodeUriComponent(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
+function parseSshTerminalTarget(uri: string): SshTerminalTarget | null {
+    let parsed: URL;
+    try {
+        parsed = new URL(uri);
+    } catch {
+        return null;
+    }
+    if (parsed.protocol.toLowerCase() !== "ssh:") {
+        return null;
+    }
+    if (isBlank(parsed.hostname)) {
+        return null;
+    }
+
+    const decodedUser = parsed.username ? safeDecodeUriComponent(parsed.username) : "";
+    const host = parsed.hostname.includes(":") ? `[${parsed.hostname}]` : parsed.hostname;
+    const port = parsed.port ? `:${parsed.port}` : "";
+    const connection = `ssh://${decodedUser ? `${decodedUser}@` : ""}${host}${port}`;
+
+    let cwd: string | undefined;
+    if (parsed.pathname && parsed.pathname !== "/") {
+        cwd = safeDecodeUriComponent(parsed.pathname);
+    }
+    return { connection, cwd };
+}
+
+async function openTerminalLink(uri: string) {
+    const sshTarget = parseSshTerminalTarget(uri);
+    if (sshTarget == null) {
+        await openLink(uri);
+        return;
+    }
+
+    const blockMeta: Record<string, any> = {
+        view: "term",
+        controller: "shell",
+        connection: sshTarget.connection,
+    };
+    if (!isBlank(sshTarget.cwd)) {
+        blockMeta["cmd:cwd"] = sshTarget.cwd;
+    }
+    await createBlock({ meta: blockMeta });
+}
+
 function registerBlockComponentModel(blockId: string, bcm: BlockComponentModel) {
     blockComponentModelMap.set(blockId, bcm);
 }
@@ -706,6 +763,7 @@ export {
     loadConnStatus,
     makeDefaultConnStatus,
     openLink,
+    openTerminalLink,
     readAtom,
     recordTEvent,
     refocusNode,

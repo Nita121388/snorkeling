@@ -48,6 +48,9 @@ export function blockViewToIcon(view: string): string {
     if (view == "vcs") {
         return "code-branch";
     }
+    if (view == "vcscommits") {
+        return "clock-rotate-left";
+    }
     if (view == "vcsdiff") {
         return "file-code";
     }
@@ -84,6 +87,9 @@ export function blockViewToName(view: string): string {
     }
     if (view == "vcs") {
         return "Version Control";
+    }
+    if (view == "vcscommits") {
+        return "Repo Commits";
     }
     if (view == "vcsdiff") {
         return "File Diff";

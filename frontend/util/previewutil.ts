@@ -1,17 +1,18 @@
 import { createBlock, getApi } from "@/app/store/global";
 import { createDefaultAgentBlockDef } from "@/app/workspace/agent-launch";
 import { makeNativeLabel } from "./platformutil";
-import { fireAndForget } from "./util";
+import { fireAndForget, isLocalConnName } from "./util";
 import { formatRemoteUri } from "./waveutil";
 
 export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: FileInfo): ContextMenuItem[] {
     if (!finfo) {
         return menu;
     }
+    const isLocalConn = isLocalConnName(conn);
     menu.push({
         type: "separator",
     });
-    if (!conn) {
+    if (isLocalConn) {
         // TODO:  resolve correct host path if connection is WSL
         // if the entry is a directory, reveal it in the file manager, if the entry is a file, reveal its parent directory
         menu.push({
@@ -29,6 +30,21 @@ export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: F
                 },
             });
         }
+        menu.push({
+            label: "Open VS Code Here",
+            click: () => {
+                const targetPath = finfo.isdir ? finfo.path : finfo.dir;
+                fireAndForget(async () => {
+                    if (!targetPath) {
+                        return;
+                    }
+                    const ok = await getApi().openInVSCode(targetPath);
+                    if (!ok) {
+                        console.error("Failed to open in VS Code", targetPath);
+                    }
+                });
+            },
+        });
     } else {
         menu.push({
             label: "Download File",

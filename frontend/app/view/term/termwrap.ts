@@ -13,7 +13,7 @@ import {
     getSettingsKeyAtom,
     globalStore,
     isDev,
-    openLink,
+    openTerminalLink,
     WOS,
 } from "@/store/global";
 import * as services from "@/store/services";
@@ -157,12 +157,12 @@ export class TermWrap {
                     switch (PLATFORM) {
                         case PlatformMacOS:
                             if (e.metaKey) {
-                                fireAndForget(() => openLink(uri));
+                                fireAndForget(() => openTerminalLink(uri));
                             }
                             break;
                         default:
                             if (e.ctrlKey) {
-                                fireAndForget(() => openLink(uri));
+                                fireAndForget(() => openTerminalLink(uri));
                             }
                             break;
                     }
