@@ -65,6 +65,28 @@ jobs:
                   GIT_ASKPASS: "echo"
                   GIT_TERMINAL_PROMPT: "0"
 
+            - name: Align app version with snorkeling tag
+              if: startsWith(github.ref, 'refs/tags/snorkeling-v')
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  RAW_TAG="${GITHUB_REF_NAME#snorkeling-v}"
+                  if [[ ! "$RAW_TAG" =~ ^(.+)-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+                      echo "invalid snorkeling tag format: $GITHUB_REF_NAME"
+                      exit 1
+                  fi
+
+                  UPSTREAM_VERSION="${BASH_REMATCH[1]}"
+                  LOCAL_VERSION="${BASH_REMATCH[2]}"
+                  if [[ "$UPSTREAM_VERSION" == *-* ]]; then
+                      APP_VERSION="${UPSTREAM_VERSION}.snorkeling.${LOCAL_VERSION}"
+                  else
+                      APP_VERSION="${UPSTREAM_VERSION}-snorkeling.${LOCAL_VERSION}"
+                  fi
+
+                  echo "Using app version: $APP_VERSION"
+                  APP_VERSION="$APP_VERSION" node -e 'const fs=require("fs"); const p="package.json"; const pkg=JSON.parse(fs.readFileSync(p,"utf8")); pkg.version=process.env.APP_VERSION; fs.writeFileSync(p, JSON.stringify(pkg,null,4)+"\n"); console.log("package.json version ->", pkg.version);'
+
             - name: Install Task
               uses: arduino/setup-task@v2
               with:
@@ -123,3 +145,5 @@ jobs:
                       make/*.snap
                       make/*.flatpak
                       make/*.AppImage
+                      make/*.yml
+                      make/*.blockmap
