@@ -307,6 +307,44 @@ function targetsShareLaunchContext(targetA: AgentLaunchTarget, targetB: AgentLau
     return pathsA.some((path) => pathsB.includes(path));
 }
 
+function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
+    if (target == null || target.source !== "files") {
+        return false;
+    }
+    return getLaunchTargetPathCandidates(target).length > 0;
+}
+
+function resolvePreferredFilesLaunchTarget(
+    tab: Tab,
+    getBlockById: (blockId: string) => Block | null | undefined,
+    focusedBlockId?: string | null
+): AgentLaunchTarget | null {
+    const blockIds = tab.blockids ?? [];
+    const normalizedFocusedBlockId = isBlank(focusedBlockId) ? null : focusedBlockId;
+    const focusedIsInTab = normalizedFocusedBlockId != null && blockIds.includes(normalizedFocusedBlockId);
+    if (focusedIsInTab) {
+        const focusedBlock = getBlockById(normalizedFocusedBlockId!);
+        const focusedFilesTarget = makePreviewLaunchTarget(normalizedFocusedBlockId!, focusedBlock);
+        if (hasFilesLaunchPath(focusedFilesTarget)) {
+            return focusedFilesTarget;
+        }
+    }
+
+    for (let idx = blockIds.length - 1; idx >= 0; idx--) {
+        const blockId = blockIds[idx];
+        if (isBlank(blockId)) {
+            continue;
+        }
+        const block = getBlockById(blockId);
+        const previewTarget = makePreviewLaunchTarget(blockId, block);
+        if (!hasFilesLaunchPath(previewTarget)) {
+            continue;
+        }
+        return previewTarget;
+    }
+    return null;
+}
+
 function resolveLatestTerminalContextInTab(
     tab: Tab | null | undefined,
     getBlockById?: (blockId: string) => Block | null | undefined
@@ -378,16 +416,7 @@ export function collectAgentLaunchTargetsInTab(
         }
     }
 
-    const normalizedFocusedBlockId = isBlank(focusedBlockId) ? null : focusedBlockId;
-    const focusedIsInTab = normalizedFocusedBlockId != null && blockIds.includes(normalizedFocusedBlockId);
-    if (!focusedIsInTab) {
-        return terminalTargets;
-    }
-    const focusedBlock = getBlockById(normalizedFocusedBlockId!);
-    if (focusedBlock == null) {
-        return terminalTargets;
-    }
-    const filesTarget = makePreviewLaunchTarget(normalizedFocusedBlockId!, focusedBlock);
+    const filesTarget = resolvePreferredFilesLaunchTarget(tab, getBlockById, focusedBlockId);
     if (filesTarget == null) {
         return terminalTargets;
     }

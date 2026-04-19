@@ -148,6 +148,29 @@ describe("agent launch context", () => {
         });
     });
 
+    it("falls back to the latest Files target when focused block is unavailable", () => {
+        const tab = makeTab(["block:preview-old", "block:preview-new"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview-old": makeBlock("block:preview-old", {
+                view: "preview",
+                file: "/Users/nita/Primary",
+            }),
+            "block:preview-new": makeBlock("block:preview-new", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects/snorkeling",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null);
+
+        expect(targets).toHaveLength(1);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview-new",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects/snorkeling",
+        });
+    });
+
     it("auto-matches Files and terminal context when connection/path are consistent", () => {
         const tab = makeTab(["block:term", "block:preview"]);
         const blockMap: Record<string, Block> = {
