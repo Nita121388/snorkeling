@@ -157,21 +157,44 @@ export class Updater {
             (this.autoCheckInterval &&
                 (!this.lastUpdateCheck || Math.abs(now.getTime() - this.lastUpdateCheck.getTime()) > this.intervalms))
         ) {
-            const result = await autoUpdater.checkForUpdates();
+            try {
+                const result = await autoUpdater.checkForUpdates();
 
-            // If the user requested this check and we do not have an available update, let them know with a popup dialog. No need to tell them if there is an update, because we show a banner once the update is ready to install.
-            if (userInput && !result.downloadPromise) {
-                const dialogOpts: Electron.MessageBoxOptions = {
-                    type: "info",
-                    message: "There are currently no updates available.",
-                };
-                if (focusedWaveWindow) {
-                    dialog.showMessageBox(focusedWaveWindow, dialogOpts);
+                // If the user requested this check and we do not have an available update, let them know with a popup dialog. No need to tell them if there is an update, because we show a banner once the update is ready to install.
+                if (userInput && !result.downloadPromise) {
+                    const dialogOpts: Electron.MessageBoxOptions = {
+                        type: "info",
+                        message: "There are currently no updates available.",
+                    };
+                    if (focusedWaveWindow) {
+                        await dialog.showMessageBox(focusedWaveWindow, dialogOpts);
+                    } else {
+                        await dialog.showMessageBox(dialogOpts);
+                    }
                 }
-            }
 
-            // Only update the last check time if this is an automatic check. This ensures the interval remains consistent.
-            if (!userInput) this.lastUpdateCheck = now;
+                // Only update the last check time if this is an automatic check. This ensures the interval remains consistent.
+                if (!userInput) this.lastUpdateCheck = now;
+            } catch (err) {
+                if (userInput) {
+                    const code = (err as any)?.code ?? "";
+                    const detail =
+                        code === "ERR_UPDATER_NO_PUBLISHED_VERSIONS"
+                            ? "No published update versions were found. Please ensure releases are tagged with a valid semantic version (for example: v0.14.5-beta.4.snorkeling.0.0.6)."
+                            : (err instanceof Error ? err.message : String(err));
+                    const dialogOpts: Electron.MessageBoxOptions = {
+                        type: "error",
+                        message: "Failed to check for updates.",
+                        detail,
+                    };
+                    if (focusedWaveWindow) {
+                        await dialog.showMessageBox(focusedWaveWindow, dialogOpts);
+                    } else {
+                        await dialog.showMessageBox(dialogOpts);
+                    }
+                }
+                throw err;
+            }
         }
     }
 
