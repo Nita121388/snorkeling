@@ -156,7 +156,15 @@ func StartWslShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, cmdS
 	client := conn.GetClient()
 	conn.Infof(ctx, "WSL-NEWSESSION (StartWslShellProcNoWsh)")
 
-	ecmd := exec.Command("wsl.exe", "~", "-d", client.Name())
+	args := []string{"~", "-d", client.Name()}
+	if cmdStr != "" {
+		cmdToRun := cmdStr
+		if cmdOpts.Cwd != "" {
+			cmdToRun = fmt.Sprintf("cd %s && %s", shellutil.HardQuote(cmdOpts.Cwd), cmdToRun)
+		}
+		args = append(args, "--", "sh", "-c", cmdToRun)
+	}
+	ecmd := exec.Command("wsl.exe", args...)
 
 	if termSize.Rows == 0 || termSize.Cols == 0 {
 		termSize.Rows = shellutil.DefaultTermRows
@@ -325,8 +333,16 @@ func StartRemoteShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, c
 	session.Stderr = remoteStdoutWrite
 
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
-	sessionWrap := MakeSessionWrap(session, "", pipePty)
-	err = session.Shell()
+	startCmd := cmdStr
+	if startCmd != "" && cmdOpts.Cwd != "" {
+		startCmd = fmt.Sprintf("cd %s && %s", shellutil.HardQuote(cmdOpts.Cwd), startCmd)
+	}
+	sessionWrap := MakeSessionWrap(session, startCmd, pipePty)
+	if startCmd == "" {
+		err = session.Shell()
+	} else {
+		err = sessionWrap.Start()
+	}
 	if err != nil {
 		pipePty.Close()
 		return nil, err

@@ -53,6 +53,11 @@ const MinDataProcessedForCache = 100 * 1024;
 export const SupportsImageInput = true;
 const MaxRepaintTransactionMs = 2000;
 
+function isNoControllerFoundError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return /no controller found for block/i.test(message);
+}
+
 // detect webgl support
 function detectWebGLSupport(): boolean {
     try {
@@ -578,7 +583,15 @@ export class TermWrap {
                 "->",
                 `${this.terminal.rows}x${this.terminal.cols}`
             );
-            RpcApi.ControllerInputCommand(TabRpcClient, { blockid: this.blockId, termsize: termSize });
+            void RpcApi.ControllerInputCommand(TabRpcClient, { blockid: this.blockId, termsize: termSize }).catch(
+                (error) => {
+                    if (isNoControllerFoundError(error)) {
+                        dlog("resize ignored before controller is ready", this.blockId);
+                        return;
+                    }
+                    console.error("Failed to send terminal resize to controller:", error);
+                }
+            );
         }
         dlog("resize", `${this.terminal.rows}x${this.terminal.cols}`, `${oldRows}x${oldCols}`, this.hasResized);
         if (!this.hasResized) {

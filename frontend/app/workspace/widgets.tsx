@@ -271,6 +271,13 @@ type AgentTargetFloatingWindowProps = {
     env: WidgetsEnv;
 };
 
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error && !isBlank(error.message)) {
+        return error.message;
+    }
+    return String(error ?? "unknown error");
+}
+
 const AgentTargetFloatingWindow = memo(
     ({ isOpen, onClose, referenceElement, targets, settings, magnified, env }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
@@ -306,9 +313,18 @@ const AgentTargetFloatingWindow = memo(
                                 type="button"
                                 className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
                                 onClick={() => {
-                                    const blockDef = createAgentBlockDefForTarget(settings, target);
-                                    env.createBlock(blockDef, magnified);
-                                    onClose();
+                                    fireAndForget(async () => {
+                                        const blockDef = createAgentBlockDefForTarget(settings, target);
+                                        try {
+                                            await env.createBlock(blockDef, magnified);
+                                            onClose();
+                                        } catch (error) {
+                                            console.error("Failed to launch agent for selected target:", error);
+                                            modalsModel.pushModal("MessageModal", {
+                                                children: `Failed to launch Agent: ${getErrorMessage(error)}`,
+                                            });
+                                        }
+                                    });
                                 }}
                             >
                                 <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
@@ -494,7 +510,16 @@ const Widgets = memo(() => {
                 launchTargets.length === 1
                     ? createAgentBlockDefForTarget(fullConfig?.settings, launchTargets[0])
                     : createDefaultAgentBlockDef(fullConfig?.settings);
-            env.createBlock(blockDef, widget.magnified);
+            fireAndForget(async () => {
+                try {
+                    await env.createBlock(blockDef, widget.magnified);
+                } catch (error) {
+                    console.error("Failed to launch agent:", error);
+                    modalsModel.pushModal("MessageModal", {
+                        children: `Failed to launch Agent: ${getErrorMessage(error)}`,
+                    });
+                }
+            });
         },
         [closeAgentTargetSelector, env, fullConfig?.settings]
     );
