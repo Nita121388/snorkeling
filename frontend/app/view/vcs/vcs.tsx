@@ -138,18 +138,24 @@ function RepoHeader({
     isActive,
     onToggle,
     onOpenCommits,
+    onSync,
     onRefresh,
     onContextMenu,
+    syncRunning,
 }: {
     repo: VcsRepositoryInfo;
     isExpanded: boolean;
     isActive: boolean;
     onToggle: () => void;
     onOpenCommits: () => void;
+    onSync: () => void;
     onRefresh: () => void;
     onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
+    syncRunning: boolean;
 }) {
     const summary = countByCode(repo?.status ?? []);
+    const syncLabel = repo.repotype === "svn" ? "Update" : "Pull";
+    const syncRunningLabel = repo.repotype === "svn" ? "Updating..." : "Pulling...";
     return (
         <div
             className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${
@@ -166,11 +172,23 @@ function RepoHeader({
                 <span className="text-[11px] rounded border border-white/10 px-1.5 py-[1px] text-secondary uppercase">
                     {repo.repotype}
                 </span>
-                <span className="truncate font-medium text-sm">{repo.name}</span>
-                <span className="truncate text-xs text-secondary">{repo.branch || "(no branch)"}</span>
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                    <div className="flex w-max min-w-full items-center gap-2 pr-2">
+                        <span className="font-medium text-sm whitespace-nowrap">{repo.name}</span>
+                        <span className="text-xs text-secondary whitespace-nowrap">{repo.branch || "(no branch)"}</span>
+                    </div>
+                </div>
                 <span className="text-[11px] text-muted shrink-0">
                     C:{summary.changed} U:{summary.untracked}
                 </span>
+            </button>
+            <button
+                className="rounded border border-white/15 px-2 py-[3px] text-[11px] text-secondary hover:bg-white/5 cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
+                title={syncLabel}
+                disabled={syncRunning}
+                onClick={onSync}
+            >
+                {syncRunning ? syncRunningLabel : syncLabel}
             </button>
             <button className="iconbutton !h-[20px] !w-[20px] cursor-pointer" title="Refresh" onClick={onRefresh}>
                 <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
@@ -238,10 +256,10 @@ function FileStatusRow({
     onShowHistory: () => void;
 }) {
     return (
-        <div className="flex items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
             <input type="checkbox" checked={selected} onChange={onToggleSelected} className="cursor-pointer" />
             <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
-            <span className="truncate flex-1">{status.path}</span>
+            <span className="flex-1 min-w-[180px] whitespace-nowrap pr-3">{status.path}</span>
             <button
                 className="text-[11px] text-accent hover:underline cursor-pointer shrink-0"
                 onClick={onOpenDiff}
@@ -271,6 +289,8 @@ function RepoPanel({
     onShowFileDiff,
     sectionState,
     setSectionOpen,
+    syncResult,
+    syncResultIsError,
 }: {
     repo: VcsRepositoryInfo;
     selectedFiles: string[];
@@ -284,6 +304,8 @@ function RepoPanel({
     onShowFileDiff: (filePath: string) => void;
     sectionState: RepoSectionState;
     setSectionOpen: (section: RepoSectionKey, open: boolean) => void;
+    syncResult?: string;
+    syncResultIsError?: boolean;
 }) {
     const statusList = repo.status ?? [];
     const changedList = statusList.filter((status) => !status.untracked);
@@ -319,6 +341,11 @@ function RepoPanel({
 
     return (
         <div className="mt-2 rounded-md border border-white/10 p-2 bg-black/25">
+            {syncResult && (
+                <div className={`mb-2 text-xs whitespace-pre-wrap ${syncResultIsError ? "text-warning" : "text-secondary"}`}>
+                    {syncResult}
+                </div>
+            )}
             {repo.statuserr && <div className="text-xs text-warning mb-2">Status warning: {repo.statuserr}</div>}
             <CollapsibleHeader
                 title="Changes"
@@ -333,14 +360,14 @@ function RepoPanel({
                             onClick={() => selectAllFor(changedList)}
                             disabled={changedList.length === 0}
                         >
-                            全选
+                            Select All
                         </button>
                         <button
                             className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
                             onClick={() => clearAllFor(changedList)}
                             disabled={changedList.length === 0}
                         >
-                            全不选
+                            Select None
                         </button>
                     </>
                 }
@@ -350,17 +377,19 @@ function RepoPanel({
                     {changedList.length === 0 ? (
                         <div className="text-xs text-muted mt-1">No changed files.</div>
                     ) : (
-                        <div className="mt-1 max-h-[180px] overflow-auto rounded">
-                            {changedList.map((status, idx) => (
-                                <FileStatusRow
-                                    key={`changed-${status.path}-${idx}`}
-                                    status={status}
-                                    selected={selectedSet.has(status.path)}
-                                    onToggleSelected={() => toggleFile(status.path)}
-                                    onOpenDiff={() => onShowFileDiff(status.path)}
-                                    onShowHistory={() => onFileHistory(status.path)}
-                                />
-                            ))}
+                        <div className="mt-1 max-h-[180px] overflow-x-auto overflow-y-auto rounded">
+                            <div className="min-w-full">
+                                {changedList.map((status, idx) => (
+                                    <FileStatusRow
+                                        key={`changed-${status.path}-${idx}`}
+                                        status={status}
+                                        selected={selectedSet.has(status.path)}
+                                        onToggleSelected={() => toggleFile(status.path)}
+                                        onOpenDiff={() => onShowFileDiff(status.path)}
+                                        onShowHistory={() => onFileHistory(status.path)}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     )}
                 </>
@@ -378,14 +407,14 @@ function RepoPanel({
                             onClick={() => selectAllFor(untrackedList)}
                             disabled={untrackedList.length === 0}
                         >
-                            全选
+                            Select All
                         </button>
                         <button
                             className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
                             onClick={() => clearAllFor(untrackedList)}
                             disabled={untrackedList.length === 0}
                         >
-                            全不选
+                            Select None
                         </button>
                     </>
                 }
@@ -395,17 +424,19 @@ function RepoPanel({
                     {untrackedList.length === 0 ? (
                         <div className="text-xs text-muted mt-1">No untracked files.</div>
                     ) : (
-                        <div className="mt-1 max-h-[180px] overflow-auto rounded">
-                            {untrackedList.map((status, idx) => (
-                                <FileStatusRow
-                                    key={`untracked-${status.path}-${idx}`}
-                                    status={status}
-                                    selected={selectedSet.has(status.path)}
-                                    onToggleSelected={() => toggleFile(status.path)}
-                                    onOpenDiff={() => onShowFileDiff(status.path)}
-                                    onShowHistory={() => onFileHistory(status.path)}
-                                />
-                            ))}
+                        <div className="mt-1 max-h-[180px] overflow-x-auto overflow-y-auto rounded">
+                            <div className="min-w-full">
+                                {untrackedList.map((status, idx) => (
+                                    <FileStatusRow
+                                        key={`untracked-${status.path}-${idx}`}
+                                        status={status}
+                                        selected={selectedSet.has(status.path)}
+                                        onToggleSelected={() => toggleFile(status.path)}
+                                        onOpenDiff={() => onShowFileDiff(status.path)}
+                                        onShowHistory={() => onFileHistory(status.path)}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     )}
                 </>
@@ -453,6 +484,9 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const [commitMessageByRepo, setCommitMessageByRepo] = React.useState<RepoStringMap>({});
     const [commitRunningByRepo, setCommitRunningByRepo] = React.useState<RepoBoolMap>({});
     const [commitResultByRepo, setCommitResultByRepo] = React.useState<RepoStringMap>({});
+    const [syncRunningByRepo, setSyncRunningByRepo] = React.useState<RepoBoolMap>({});
+    const [syncResultByRepo, setSyncResultByRepo] = React.useState<RepoStringMap>({});
+    const [syncResultErrorByRepo, setSyncResultErrorByRepo] = React.useState<RepoBoolMap>({});
     const [sectionStateByRepo, setSectionStateByRepo] = React.useState<RepoSectionsMap>({});
 
     const route = React.useMemo(() => {
@@ -607,7 +641,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 }));
                 setSelectedFilesByRepo((prev) => ({ ...prev, [repo.repoid]: [] }));
                 await loadRepositories();
-                await loadRepoLogs(repo, true);
             } else {
                 const resultMsg = response.error || response.output || "Commit failed.";
                 setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: resultMsg }));
@@ -616,6 +649,43 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: String(e) }));
         } finally {
             setCommitRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+        }
+    };
+
+    const handleSync = async (repo: VcsRepositoryInfo) => {
+        setActiveRepoId(repo.repoid);
+        setExpandedRepos((prev) => ({ ...prev, [repo.repoid]: true }));
+        setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
+        setSyncResultByRepo((prev) => ({ ...prev, [repo.repoid]: "" }));
+        setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+        try {
+            const response = await env.rpc.RemoteVcsSyncCommand(
+                TabRpcClient,
+                {
+                    repotype: repo.repotype,
+                    repopath: repo.rootpath,
+                },
+                { route }
+            );
+            if (response.success) {
+                setSyncResultByRepo((prev) => ({
+                    ...prev,
+                    [repo.repoid]: response.output || (repo.repotype === "svn" ? "Update completed." : "Pull completed."),
+                }));
+                setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+                await loadRepositories();
+            } else {
+                setSyncResultByRepo((prev) => ({
+                    ...prev,
+                    [repo.repoid]: response.error || response.output || (repo.repotype === "svn" ? "Update failed." : "Pull failed."),
+                }));
+                setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
+            }
+        } catch (e) {
+            setSyncResultByRepo((prev) => ({ ...prev, [repo.repoid]: String(e) }));
+            setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
+        } finally {
+            setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
         }
     };
 
@@ -683,7 +753,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         const copyUrl = !isBlank(repoRemoteUrl) ? repoRemoteUrl : repoBrowseUrl;
         const menu: ContextMenuItem[] = [
             {
-                label: "复制仓库路径",
+                label: "Copy Repository Path",
                 enabled: !isBlank(repoPath),
                 click: () => {
                     fireAndForget(async () => {
@@ -692,7 +762,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 },
             },
             {
-                label: "复制仓库链接",
+                label: "Copy Repository URL",
                 enabled: !isBlank(copyUrl),
                 click: () => {
                     fireAndForget(async () => {
@@ -701,7 +771,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 },
             },
             {
-                label: "跳转到远程仓库",
+                label: "Open Remote Repository",
                 enabled: !isBlank(openUrl),
                 click: () => {
                     fireAndForget(async () => {
@@ -741,10 +811,16 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                             setError(String(e));
                                         });
                                     }}
+                                    onSync={() => {
+                                        handleSync(repo).catch((e) => {
+                                            setError(String(e));
+                                        });
+                                    }}
                                     onRefresh={() => {
                                         refreshRepo();
                                     }}
                                     onContextMenu={(e) => handleRepoContextMenu(repo, e)}
+                                    syncRunning={!!syncRunningByRepo[repo.repoid]}
                                 />
                                 {expandedRepos[repo.repoid] && (
                                     <RepoPanel
@@ -768,6 +844,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                                 setError(String(e));
                                             });
                                         }}
+                                        syncResult={syncResultByRepo[repo.repoid]}
+                                        syncResultIsError={!!syncResultErrorByRepo[repo.repoid]}
                                         sectionState={sectionStateByRepo[repo.repoid] ?? makeDefaultSectionState()}
                                         setSectionOpen={(section, open) => setRepoSectionOpen(repo.repoid, section, open)}
                                     />

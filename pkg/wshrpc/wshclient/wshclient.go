@@ -718,6 +718,11 @@ func RemoteFileMultiInfoCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteFile
 	return resp, err
 }
 
+// command "remotefilesearchstream", wshserver.RemoteFileSearchStreamCommand
+func RemoteFileSearchStreamCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteFileSearchData, opts *wshrpc.RpcOpts) chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileSearchRtnData] {
+	return sendRpcRequestResponseStreamHelper[wshrpc.CommandRemoteFileSearchRtnData](w, "remotefilesearchstream", data, opts)
+}
+
 // command "remotefilestream", wshserver.RemoteFileStreamCommand
 func RemoteFileStreamCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteFileStreamData, opts *wshrpc.RpcOpts) (*wshrpc.FileInfo, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.FileInfo](w, "remotefilestream", data, opts)
@@ -794,6 +799,12 @@ func RemoteVcsCommitCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommi
 	return resp, err
 }
 
+// command "remotevcsresolvepath", wshserver.RemoteVcsResolvePathCommand
+func RemoteVcsResolvePathCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsResolvePathData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsResolvePathRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsResolvePathRtnData](w, "remotevcsresolvepath", data, opts)
+	return resp, err
+}
+
 // command "remotevcscommitfiles", wshserver.RemoteVcsCommitFilesCommand
 func RemoteVcsCommitFilesCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitFilesData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitFilesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitFilesRtnData](w, "remotevcscommitfiles", data, opts)
@@ -821,6 +832,12 @@ func RemoteVcsFileHistoryCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcs
 // command "remotevcsrepositories", wshserver.RemoteVcsRepositoriesCommand
 func RemoteVcsRepositoriesCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsRepositoriesData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsRepositoriesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsRepositoriesRtnData](w, "remotevcsrepositories", data, opts)
+	return resp, err
+}
+
+// command "remotevcssync", wshserver.RemoteVcsSyncCommand
+func RemoteVcsSyncCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsSyncData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsSyncRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsSyncRtnData](w, "remotevcssync", data, opts)
 	return resp, err
 }
 
@@ -1107,5 +1124,3 @@ func WslStatusCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wshrpc.ConnSta
 	resp, err := sendRpcRequestCallHelper[[]wshrpc.ConnStatus](w, "wslstatus", nil, opts)
 	return resp, err
 }
-
-

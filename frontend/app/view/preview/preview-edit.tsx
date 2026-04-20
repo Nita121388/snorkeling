@@ -65,10 +65,24 @@ function buildCopyContextText(absoluteFilePath: string, lineNumber: number, snip
     return `${filePath}:${lineNumber}\n${codeFence}\n${snippet}\n\`\`\``;
 }
 
+function revealSearchTargetLine(editor: MonacoTypes.editor.IStandaloneCodeEditor, targetLine: number | null) {
+    if (targetLine == null) {
+        return;
+    }
+    const editorModel = editor.getModel();
+    if (!editorModel) {
+        return;
+    }
+    const lineNumber = Math.min(targetLine, editorModel.getLineCount());
+    editor.revealLineInCenter(lineNumber);
+    editor.setPosition({ lineNumber, column: 1 });
+}
+
 function CodeEditPreview({ model }: SpecializedViewProps) {
     const fileContent = useAtomValue(model.fileContent);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
+    const searchTargetLine = useAtomValue(model.searchTargetLine);
     const fileName = fileInfo?.path || fileInfo?.name;
 
     const baseName = fileName ? fileName.split("/").pop() : null;
@@ -101,6 +115,17 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             model.refreshCallback = null;
         };
     }, []);
+
+    useEffect(() => {
+        if (searchTargetLine == null) {
+            return;
+        }
+        const editor = model.monacoRef.current;
+        if (!editor) {
+            return;
+        }
+        revealSearchTargetLine(editor, searchTargetLine);
+    }, [fileInfo?.path, model, searchTargetLine]);
 
     function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, _monacoApi: typeof monaco): () => void {
         model.monacoRef.current = editor;
@@ -140,6 +165,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         if (isFocused) {
             editor.focus();
         }
+        revealSearchTargetLine(editor, globalStore.get(model.searchTargetLine));
 
         return () => {
             keyDownDisposer.dispose();

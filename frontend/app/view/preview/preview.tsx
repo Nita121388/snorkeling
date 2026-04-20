@@ -155,10 +155,8 @@ function PreviewView({
             <div key="fullpreview" className="flex flex-col w-full overflow-hidden scrollbar-hide-until-hover">
                 {errorMsg && <ErrorOverlay errorMsg={errorMsg} resetOverlay={() => setErrorMsg(null)} />}
                 <div ref={contentRef} className="flex-grow overflow-hidden">
-                    {directoryDisplayMode === "tree" ? (
-                        <PreviewExplorer model={model} rootPath={explorerRootPath}>
-                            {specializedContent}
-                        </PreviewExplorer>
+                    {directoryDisplayMode === "tree" && fileInfo?.mimetype === "directory" ? (
+                        <PreviewExplorer model={model} rootPath={explorerRootPath} />
                     ) : (
                         specializedContent
                     )}

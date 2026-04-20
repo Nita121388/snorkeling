@@ -106,7 +106,7 @@ async function openPathInVSCode(filePath: string): Promise<void> {
     const codeCmd = process.platform === "win32" ? "code.cmd" : "code";
 
     try {
-        await execFilePromise(codeCmd, ["--reuse-window", normalizedPath]);
+        await execFilePromise(codeCmd, ["--new-window", normalizedPath]);
         return;
     } catch (err) {
         console.log("open-in-vscode: code CLI unavailable, fallback", err);

@@ -57,7 +57,22 @@ export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: F
     menu.push({
         type: "separator",
     });
-    if (!finfo.isdir) {
+    if (finfo.isdir) {
+        menu.push({
+            label: "Open in New Block",
+            click: () =>
+                fireAndForget(async () => {
+                    const blockDef: BlockDef = {
+                        meta: {
+                            view: "preview",
+                            file: finfo.path,
+                            connection: conn,
+                        },
+                    };
+                    await createBlock(blockDef);
+                }),
+        });
+    } else {
         menu.push({
             label: "Open Preview in New Block",
             click: () =>

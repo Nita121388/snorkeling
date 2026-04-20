@@ -302,7 +302,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                 <div className="mb-2 grid grid-cols-1 gap-1.5 md:grid-cols-[1.2fr_auto_auto_auto_auto_auto] md:items-center">
                     <input
                         className="rounded border border-white/15 bg-black/30 px-2 py-1 text-xs outline-none focus:border-accent"
-                        placeholder="关键词（hash/author/subject）"
+                        placeholder="Keyword (hash/author/subject)"
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -342,13 +342,13 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                         className="rounded border border-accent px-2 py-1 text-xs text-accent hover:bg-accent/10 cursor-pointer"
                         onClick={applyFilters}
                     >
-                        查询
+                        Apply
                     </button>
                     <button
                         className="rounded border border-white/15 px-2 py-1 text-xs text-secondary hover:bg-white/5 cursor-pointer"
                         onClick={resetFilters}
                     >
-                        重置
+                        Reset
                     </button>
                 </div>
 

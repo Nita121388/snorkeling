@@ -26,6 +26,7 @@ export interface TreeNodeData {
     isDirectory: boolean;
     mimeType?: string;
     icon?: string;
+    iconColor?: string;
     isReadonly?: boolean;
     notfound?: boolean;
     staterror?: string;
@@ -50,6 +51,7 @@ export interface TreeViewVisibleRow {
     isExpanded?: boolean;
     hasChildren?: boolean;
     icon?: string;
+    iconColor?: string;
     node?: TreeNodeData;
 }
 
@@ -68,8 +70,11 @@ export interface TreeViewProps {
     height?: number | string;
     className?: string;
     selectedId?: string;
+    expandDirectoriesOnSingleClick?: boolean;
     onOpenFile?: (id: string, node: TreeNodeData) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
+    onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
+    onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
 export interface TreeViewRef {
@@ -77,9 +82,9 @@ export interface TreeViewRef {
 }
 
 const DefaultRowHeight = 24;
-const DefaultIndentWidth = 16;
+const DefaultIndentWidth = 12;
 const DefaultOverscan = 10;
-const ChevronWidth = 16;
+const ChevronWidth = 12;
 
 function normalizeLabel(node: TreeNodeData): string {
     if (node.label?.trim()) {
@@ -133,6 +138,7 @@ export function buildVisibleRows(
             isExpanded,
             hasChildren,
             icon: node.icon,
+            iconColor: node.iconColor,
             node,
         });
         if (!isExpanded || !node.isDirectory) {
@@ -221,8 +227,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         height = 360,
         className,
         selectedId: propSelectedId,
+        expandDirectoriesOnSingleClick = false,
         onOpenFile,
         onSelectionChange,
+        onNodeContextMenu,
+        onBackgroundContextMenu,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(
         () =>
@@ -295,7 +304,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         [idToIndex, virtualizer]
     );
 
-    const loadChildren = async (id: string) => {
+    const loadChildren = React.useCallback(async (id: string) => {
         const currentNode = nodesById.get(id);
         if (currentNode == null || !currentNode.isDirectory || currentNode.notfound || currentNode.staterror || fetchDir == null) {
             return;
@@ -346,7 +355,16 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 return next;
             });
         }
-    };
+    }, [fetchDir, maxDirEntries, nodesById]);
+
+    useEffect(() => {
+        expandedIds.forEach((id) => {
+            const node = nodesById.get(id);
+            if (node?.isDirectory && (node.childrenStatus ?? "unloaded") === "unloaded") {
+                void loadChildren(id);
+            }
+        });
+    }, [expandedIds, nodesById, loadChildren]);
 
     const toggleExpand = (id: string) => {
         const node = nodesById.get(id);
@@ -448,7 +466,13 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             tabIndex={0}
             onKeyDown={onKeyDown}
         >
-            <div ref={scrollRef} className="h-full overflow-auto">
+            <div
+                ref={scrollRef}
+                className="h-full overflow-auto"
+                onContextMenu={(event) => {
+                    onBackgroundContextMenu?.(event);
+                }}
+            >
                 <div className="relative w-max min-w-full" style={{ height: virtualizer.getTotalSize() }}>
                     {virtualizer.getVirtualItems().map((virtualRow) => {
                         const row = visibleRows[virtualRow.index];
@@ -469,18 +493,38 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                     height: rowHeight,
                                     transform: `translateY(${virtualRow.start}px)`,
                                 }}
-                                onClick={() => row.kind === "node" && commitSelection(row.id)}
+                                onClick={() => {
+                                    if (row.kind !== "node") {
+                                        return;
+                                    }
+                                    commitSelection(row.id);
+                                    if (expandDirectoriesOnSingleClick && row.isDirectory) {
+                                        toggleExpand(row.id);
+                                    }
+                                }}
                                 onDoubleClick={() => {
                                     if (row.kind !== "node") {
                                         return;
                                     }
                                     if (row.isDirectory) {
+                                        if (expandDirectoriesOnSingleClick) {
+                                            return;
+                                        }
                                         toggleExpand(row.id);
                                         return;
                                     }
                                     if (row.node != null) {
                                         onOpenFile?.(row.id, row.node);
                                     }
+                                }}
+                                onContextMenu={(event) => {
+                                    if (row.kind !== "node" || row.node == null) {
+                                        return;
+                                    }
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    commitSelection(row.id);
+                                    onNodeContextMenu?.(event, row.id, row.node);
                                 }}
                             >
                                 <div
@@ -489,7 +533,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                 >
                                     {row.kind === "node" && row.isDirectory && row.hasChildren ? (
                                         <button
-                                            className="h-4 w-4 rounded text-muted hover:text-foreground cursor-pointer"
+                                            className="rounded text-muted hover:text-foreground cursor-pointer flex items-center justify-center shrink-0"
+                                            style={{ width: ChevronWidth, height: ChevronWidth }}
                                             onClick={(event: MouseEvent<HTMLButtonElement>) => {
                                                 event.stopPropagation();
                                                 toggleExpand(row.id);
@@ -497,13 +542,13 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                         >
                                             <i
                                                 className={clsx(
-                                                    "fa-sharp fa-solid text-[11px]",
+                                                    "fa-sharp fa-solid text-[10px]",
                                                     row.isExpanded ? "fa-chevron-down" : "fa-chevron-right"
                                                 )}
                                             />
                                         </button>
                                     ) : (
-                                        <span className="inline-block h-4 w-4" />
+                                        <span className="inline-block shrink-0" style={{ width: ChevronWidth, height: ChevronWidth }} />
                                     )}
                                 </div>
                                 {row.kind === "node" ? (
@@ -511,7 +556,10 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                         <i
                                             className={makeIconClass(getNodeIcon(row.node, row.isExpanded), true)}
                                             style={{
-                                                color: row.node.notfound || row.node.staterror ? "var(--color-error)" : "inherit",
+                                                color:
+                                                    row.node.notfound || row.node.staterror
+                                                        ? "var(--color-error)"
+                                                        : row.node.iconColor ?? "inherit",
                                             }}
                                         />
                                         <span

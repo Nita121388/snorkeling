@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -324,6 +325,21 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 		repos = repos[:MaxVcsRepos]
 	}
 	return repos
+}
+
+func chooseResolvedRepoRoot(gitRoot string, svnRoot string) (string, string) {
+	switch {
+	case gitRoot == "" && svnRoot == "":
+		return "", ""
+	case gitRoot == "":
+		return "svn", svnRoot
+	case svnRoot == "":
+		return "git", gitRoot
+	case len(svnRoot) > len(gitRoot):
+		return "svn", svnRoot
+	default:
+		return "git", gitRoot
+	}
 }
 
 func parseGitStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
@@ -1110,6 +1126,37 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 	}, nil
 }
 
+func (impl *ServerImpl) RemoteVcsResolvePathCommand(ctx context.Context, data wshrpc.CommandRemoteVcsResolvePathData) (*wshrpc.RemoteVcsResolvePathRtnData, error) {
+	result := &wshrpc.RemoteVcsResolvePathRtnData{
+		Path: strings.TrimSpace(data.Path),
+	}
+	basePath, err := normalizeVcsBasePath(data.Path)
+	if err != nil {
+		result.Error = err.Error()
+		log.Printf("[vcsresolve] normalize failed path=%q err=%v", data.Path, err)
+		return result, nil
+	}
+	result.BasePath = basePath
+	gitRoot := detectGitRoot(ctx, basePath)
+	svnRoot := detectSvnRoot(ctx, basePath)
+	repoType, repoPath := chooseResolvedRepoRoot(gitRoot, svnRoot)
+	if repoType == "" || repoPath == "" {
+		log.Printf("[vcsresolve] no repo path=%q base=%q git=%q svn=%q", data.Path, basePath, gitRoot, svnRoot)
+		return result, nil
+	}
+	repoName := filepath.Base(repoPath)
+	if repoName == "" || repoName == "." {
+		repoName = repoPath
+	}
+	result.Matched = true
+	result.RepoType = repoType
+	result.RepoPath = repoPath
+	result.RepoId = repoRootId(repoType, repoPath)
+	result.RepoName = repoName
+	log.Printf("[vcsresolve] matched path=%q base=%q repoType=%s repoPath=%q git=%q svn=%q", data.Path, basePath, repoType, repoPath, gitRoot, svnRoot)
+	return result, nil
+}
+
 func (impl *ServerImpl) RemoteVcsCommitsCommand(ctx context.Context, data wshrpc.CommandRemoteVcsCommitsData) (*wshrpc.RemoteVcsCommitsRtnData, error) {
 	repoPath, err := normalizeVcsBasePath(data.RepoPath)
 	if err != nil {
@@ -1234,6 +1281,45 @@ func (impl *ServerImpl) RemoteVcsCommitCommand(ctx context.Context, data wshrpc.
 	return &wshrpc.RemoteVcsCommitRtnData{
 		Success: true,
 		Output:  output,
+	}, nil
+}
+
+func (impl *ServerImpl) RemoteVcsSyncCommand(ctx context.Context, data wshrpc.CommandRemoteVcsSyncData) (*wshrpc.RemoteVcsSyncRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+	if repoType != "git" && repoType != "svn" {
+		return nil, fmt.Errorf("unsupported repo type %q", repoType)
+	}
+
+	var output string
+	switch repoType {
+	case "git":
+		output, err = runVcsCommandRaw(ctx, repoPath, "git", "pull", "--ff-only")
+		if err == nil && strings.TrimSpace(output) == "" {
+			output = "Pull completed."
+		}
+	case "svn":
+		output, err = runVcsCommandRaw(ctx, repoPath, "svn", "update", "--accept", "postpone", "--non-interactive")
+		if err == nil && strings.TrimSpace(output) == "" {
+			output = "Update completed."
+		}
+	}
+	if err != nil {
+		return &wshrpc.RemoteVcsSyncRtnData{
+			Success: false,
+			Output:  strings.TrimSpace(output),
+			Error:   err.Error(),
+		}, nil
+	}
+	return &wshrpc.RemoteVcsSyncRtnData{
+		Success: true,
+		Output:  strings.TrimSpace(output),
 	}, nil
 }
 

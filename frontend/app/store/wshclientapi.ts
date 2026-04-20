@@ -720,6 +720,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotefilemultiinfo", data, opts);
     }
 
+    // command "remotefilesearchstream" [responsestream]
+	RemoteFileSearchStreamCommand(client: WshClient, data: CommandRemoteFileSearchData, opts?: RpcOpts): AsyncGenerator<CommandRemoteFileSearchRtnData, void, boolean> {
+        if (this.mockClient) return this.mockClient.mockWshRpcStream(client, "remotefilesearchstream", data, opts);
+        return client.wshRpcStream("remotefilesearchstream", data, opts);
+    }
+
     // command "remotefilestream" [call]
     RemoteFileStreamCommand(client: WshClient, data: CommandRemoteFileStreamData, opts?: RpcOpts): Promise<FileInfo> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotefilestream", data, opts);
@@ -798,6 +804,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotevcscommit", data, opts);
     }
 
+    // command "remotevcsresolvepath" [call]
+    RemoteVcsResolvePathCommand(client: WshClient, data: CommandRemoteVcsResolvePathData, opts?: RpcOpts): Promise<RemoteVcsResolvePathRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsresolvepath", data, opts);
+        return client.wshRpcCall("remotevcsresolvepath", data, opts);
+    }
+
     // command "remotevcscommitfiles" [call]
     RemoteVcsCommitFilesCommand(client: WshClient, data: CommandRemoteVcsCommitFilesData, opts?: RpcOpts): Promise<RemoteVcsCommitFilesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommitfiles", data, opts);
@@ -826,6 +838,12 @@ export class RpcApiType {
     RemoteVcsRepositoriesCommand(client: WshClient, data: CommandRemoteVcsRepositoriesData, opts?: RpcOpts): Promise<RemoteVcsRepositoriesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsrepositories", data, opts);
         return client.wshRpcCall("remotevcsrepositories", data, opts);
+    }
+
+    // command "remotevcssync" [call]
+    RemoteVcsSyncCommand(client: WshClient, data: CommandRemoteVcsSyncData, opts?: RpcOpts): Promise<RemoteVcsSyncRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcssync", data, opts);
+        return client.wshRpcCall("remotevcssync", data, opts);
     }
 
     // command "remotewritefile" [call]

@@ -38,9 +38,13 @@ const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 const PreviewOpenTargetMetaKey = "preview:open-target";
 const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
 const PreviewExplorerRootMetaKey = "preview:explorer-root";
+const PreviewSearchLineMetaKey = "preview:searchline";
 
 type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
 type PreviewDirectoryDisplayMode = "list" | "tree";
+type PreviewOpenPathOptions = {
+    lineNumber?: number;
+};
 
 function normalizeOpenTargetDirection(val: any): PreviewOpenTargetDirection {
     if (val === "left" || val === "right" || val === "up" || val === "down") {
@@ -193,6 +197,13 @@ function deriveExplorerRootPath(fileInfo: FileInfo | null, fallbackPath: string)
     return "~";
 }
 
+function normalizeSearchTargetLine(val: any): number | null {
+    if (typeof val !== "number" || !Number.isFinite(val)) {
+        return null;
+    }
+    return Math.max(1, Math.floor(val));
+}
+
 export class PreviewModel implements ViewModel {
     viewType: string;
     blockId: string;
@@ -238,6 +249,7 @@ export class PreviewModel implements ViewModel {
     markdownShowToc: PrimitiveAtom<boolean>;
 
     monacoRef: React.RefObject<MonacoTypes.editor.IStandaloneCodeEditor>;
+    searchTargetLine: Atom<number | null>;
 
     directoryDisplayMode: Atom<PreviewDirectoryDisplayMode>;
     explorerRootPath: Atom<string>;
@@ -281,6 +293,9 @@ export class PreviewModel implements ViewModel {
         this.markdownShowToc = atom(false);
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
+        this.searchTargetLine = atom((get) =>
+            normalizeSearchTargetLine(get(this.blockAtom)?.meta?.[PreviewSearchLineMetaKey])
+        );
         this.connectionError = atom("");
         this.errorMsgAtom = atom(null) as PrimitiveAtom<ErrorMsg | null>;
         this.viewIcon = atom((get) => {
@@ -331,7 +346,7 @@ export class PreviewModel implements ViewModel {
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
             const directoryDisplayMode = get(this.directoryDisplayMode);
-            const explorerActive = directoryDisplayMode === "tree";
+            const explorerActive = directoryDisplayMode === "tree" && isDirectoryView;
             const loadableFileInfo = get(this.loadableFileInfo);
             if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
@@ -351,6 +366,19 @@ export class PreviewModel implements ViewModel {
                     onClick: () => this.toggleOpenFileModal(),
                 },
             ];
+            if (isDirectoryView) {
+                viewTextChildren.push({
+                    elemtype: "iconbutton",
+                    icon: (
+                        <span className="text-[12px] leading-none">{explorerActive ? "☰" : "🌳"}</span>
+                    ),
+                    iconColor: explorerActive ? "var(--accent-color)" : undefined,
+                    title: explorerActive ? "Switch To List View" : "Switch To Tree View",
+                    click: () => {
+                        fireAndForget(() => this.toggleDirectoryDisplayMode());
+                    },
+                });
+            }
             if (isDirectoryView || explorerActive) {
                 const currentDirection = normalizeOpenTargetDirection(get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]);
                 viewTextChildren.push({
@@ -361,15 +389,6 @@ export class PreviewModel implements ViewModel {
                     items: this.makeOpenTargetMenuItems(currentDirection),
                 });
             }
-            viewTextChildren.push({
-                elemtype: "iconbutton",
-                icon: <span className="text-[12px] leading-none">🌳</span>,
-                iconColor: explorerActive ? "var(--accent-color)" : undefined,
-                title: explorerActive ? "Disable Explorer Tree" : "Enable Explorer Tree",
-                click: () => {
-                    fireAndForget(() => this.toggleDirectoryDisplayMode());
-                },
-            });
             let saveClassName = "grey";
             if (get(this.newFileContent) !== null) {
                 saveClassName = "green";
@@ -445,7 +464,8 @@ export class PreviewModel implements ViewModel {
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
-            const explorerActive = get(this.directoryDisplayMode) === "tree";
+            const explorerActive = get(this.directoryDisplayMode) === "tree" && mimeType == "directory";
+            const directorySearchActive = get(this.directorySearchActive);
             const vcsButton: IconButtonDecl = {
                 elemtype: "iconbutton",
                 icon: "code-branch",
@@ -456,7 +476,16 @@ export class PreviewModel implements ViewModel {
                 return null;
             }
             const buttons: IconButtonDecl[] = [vcsButton];
-            if (mimeType == "directory" || explorerActive) {
+            if (mimeType == "directory") {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "magnifying-glass",
+                    iconColor: directorySearchActive ? "var(--accent-color)" : undefined,
+                    title: directorySearchActive ? "Show Explorer Tree" : "Search File Contents",
+                    click: () => fireAndForget(() => this.toggleDirectorySearch()),
+                });
+            }
+            if (mimeType == "directory") {
                 const showHiddenFiles = get(this.showHiddenFiles);
                 buttons.push({
                     elemtype: "iconbutton",
@@ -688,13 +717,19 @@ export class PreviewModel implements ViewModel {
         this.updateOpenFileModalAndError(!modalOpen);
     }
 
-    async goHistory(newPath: string) {
+    private applyOpenPathOptions(meta: MetaType, options?: PreviewOpenPathOptions): MetaType {
+        const nextMeta: Record<string, any> = { ...meta };
+        nextMeta[PreviewSearchLineMetaKey] = normalizeSearchTargetLine(options?.lineNumber);
+        return nextMeta as MetaType;
+    }
+
+    async goHistory(newPath: string, options?: PreviewOpenPathOptions) {
         let fileName = globalStore.get(this.metaFilePath);
         if (fileName == null) {
             fileName = "";
         }
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
-        const updateMeta = goHistory("file", fileName, newPath, blockMeta);
+        const updateMeta = this.applyOpenPathOptions(goHistory("file", fileName, newPath, blockMeta), options);
         if (updateMeta == null) {
             return;
         }
@@ -739,9 +774,21 @@ export class PreviewModel implements ViewModel {
             const fileInfo = await globalStore.get(this.statFile);
             const fallbackPath = fileInfo?.path ?? globalStore.get(this.metaFilePath);
             nextMeta[PreviewExplorerRootMetaKey] = deriveExplorerRootPath(fileInfo, fallbackPath);
+        } else {
+            globalStore.set(this.directorySearchActive, false);
         }
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, nextMeta as any);
+    }
+
+    async toggleDirectorySearch() {
+        const explorerActive = this.getDirectoryDisplayMode() === "tree";
+        if (!explorerActive) {
+            await this.setDirectoryDisplayMode("tree");
+            globalStore.set(this.directorySearchActive, true);
+            return;
+        }
+        globalStore.set(this.directorySearchActive, (prev) => !prev);
     }
 
     private getOpenTargetDirection(): PreviewOpenTargetDirection {
@@ -787,14 +834,19 @@ export class PreviewModel implements ViewModel {
         layoutModel.focusNode(layoutNode.id);
     }
 
-    private async openPathInPreviewBlock(blockId: string, newPath: string, connection: string): Promise<boolean> {
+    private async openPathInPreviewBlock(
+        blockId: string,
+        newPath: string,
+        connection: string,
+        options?: PreviewOpenPathOptions
+    ): Promise<boolean> {
         const targetBlockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
         const targetBlockData = globalStore.get(targetBlockAtom);
         if (!targetBlockData || targetBlockData.meta?.view !== "preview") {
             return false;
         }
         const currentPath = targetBlockData.meta?.file ?? "";
-        const updateMeta = goHistory("file", currentPath, newPath, targetBlockData.meta);
+        const updateMeta = this.applyOpenPathOptions(goHistory("file", currentPath, newPath, targetBlockData.meta), options);
         if (updateMeta == null) {
             return false;
         }
@@ -804,14 +856,23 @@ export class PreviewModel implements ViewModel {
         return true;
     }
 
-    private async openPathInNewBlock(newPath: string, direction: PreviewOpenTargetDirection = "off") {
+    private async openPathInNewBlock(
+        newPath: string,
+        direction: PreviewOpenTargetDirection = "off",
+        options?: PreviewOpenPathOptions
+    ) {
         const connection = await globalStore.get(this.connection);
+        const blockMeta: Record<string, any> = {
+            view: "preview",
+            file: newPath,
+            connection,
+        };
+        const lineNumber = normalizeSearchTargetLine(options?.lineNumber);
+        if (lineNumber != null) {
+            blockMeta[PreviewSearchLineMetaKey] = lineNumber;
+        }
         const blockDef: BlockDef = {
-            meta: {
-                view: "preview",
-                file: newPath,
-                connection,
-            },
+            meta: blockMeta,
         };
         if (direction === "left") {
             await createBlockSplitHorizontally(blockDef, this.blockId, "before");
@@ -851,25 +912,25 @@ export class PreviewModel implements ViewModel {
         await createBlock(blockDef);
     }
 
-    async openPathWithTarget(newPath: string) {
+    async openPathWithTarget(newPath: string, options?: PreviewOpenPathOptions) {
         const direction = this.getOpenTargetDirection();
         if (direction === "off") {
-            await this.goHistory(newPath);
+            await this.goHistory(newPath, options);
             refocusNode(this.blockId);
             return;
         }
         const targetBlockId = this.findDirectionalPreviewBlock(direction);
         if (!targetBlockId) {
-            await this.openPathInNewBlock(newPath, direction);
+            await this.openPathInNewBlock(newPath, direction, options);
             return;
         }
         const sourceConnection = await globalStore.get(this.connection);
-        const opened = await this.openPathInPreviewBlock(targetBlockId, newPath, sourceConnection);
+        const opened = await this.openPathInPreviewBlock(targetBlockId, newPath, sourceConnection, options);
         if (opened) {
             this.focusBlockById(targetBlockId);
             return;
         }
-        await this.openPathInNewBlock(newPath, direction);
+        await this.openPathInNewBlock(newPath, direction, options);
     }
 
     async goParentDirectory({ fileInfo = null }: { fileInfo?: FileInfo | null }) {
@@ -900,6 +961,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         updateMeta.edit = false;
+        (updateMeta as Record<string, any>)[PreviewSearchLineMetaKey] = null;
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
     }
@@ -912,6 +974,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         updateMeta.edit = false;
+        (updateMeta as Record<string, any>)[PreviewSearchLineMetaKey] = null;
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
     }

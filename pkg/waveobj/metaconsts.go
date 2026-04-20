@@ -91,7 +91,6 @@ const (
 
 	MetaKey_TabFlagColor                     = "tab:flagcolor"
 	MetaKey_TabBackground                    = "tab:background"
-	MetaKey_TabReturnWorkspaceId             = "tab:returnworkspaceid"
 
 	MetaKey_BgClear                          = "bg:*"
 	MetaKey_Bg                               = "bg"
@@ -157,3 +156,4 @@ const (
 
 	MetaKey_Count                            = "count"
 )
+

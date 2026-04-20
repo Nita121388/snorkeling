@@ -548,6 +548,21 @@ declare global {
         paths: string[];
     };
 
+    // wshrpc.CommandRemoteFileSearchData
+    type CommandRemoteFileSearchData = {
+        path: string;
+        query: string;
+        limit?: number;
+        maxfilesize?: number;
+        includehidden?: boolean;
+    };
+
+    // wshrpc.CommandRemoteFileSearchRtnData
+    type CommandRemoteFileSearchRtnData = {
+        matches?: FileSearchMatch[];
+        truncated?: boolean;
+    };
+
     // wshrpc.CommandRemoteFileStreamData
     type CommandRemoteFileStreamData = {
         path: string;
@@ -669,6 +684,17 @@ declare global {
         statuslimit?: number;
         scandepth?: number;
         includeparent?: boolean;
+    };
+
+    // wshrpc.CommandRemoteVcsResolvePathData
+    type CommandRemoteVcsResolvePathData = {
+        path: string;
+    };
+
+    // wshrpc.CommandRemoteVcsSyncData
+    type CommandRemoteVcsSyncData = {
+        repotype: string;
+        repopath: string;
     };
 
     // wshrpc.CommandRenameAppFileData
@@ -1053,6 +1079,14 @@ declare global {
         append?: boolean;
     };
 
+    // wshrpc.FileSearchMatch
+    type FileSearchMatch = {
+        path: string;
+        relpath?: string;
+        linenumber: number;
+        linetext: string;
+    };
+
     // wshrpc.FocusedBlockData
     type FocusedBlockData = {
         blockid: string;
@@ -1215,7 +1249,6 @@ declare global {
         "sysinfo:type"?: string;
         "tab:flagcolor"?: string;
         "tab:background"?: string;
-        "tab:returnworkspaceid"?: string;
         "bg:*"?: boolean;
         bg?: string;
         "bg:opacity"?: number;
@@ -1433,6 +1466,25 @@ declare global {
     type RemoteVcsRepositoriesRtnData = {
         basepath: string;
         repositories: VcsRepositoryInfo[];
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsResolvePathRtnData
+    type RemoteVcsResolvePathRtnData = {
+        path: string;
+        basepath?: string;
+        matched?: boolean;
+        repoid?: string;
+        repotype?: string;
+        repopath?: string;
+        reponame?: string;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsSyncRtnData
+    type RemoteVcsSyncRtnData = {
+        success: boolean;
+        output?: string;
         error?: string;
     };
 

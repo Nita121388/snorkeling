@@ -129,10 +129,13 @@ type WshRpcInterface interface {
 	BadgeWatchPidCommand(ctx context.Context, data CommandBadgeWatchPidData) error
 	RemoteProcessListCommand(ctx context.Context, data CommandRemoteProcessListData) (*ProcessListResponse, error)
 	RemoteProcessSignalCommand(ctx context.Context, data CommandRemoteProcessSignalData) error
+	RemoteFileSearchStreamCommand(ctx context.Context, data CommandRemoteFileSearchData) chan RespOrErrorUnion[CommandRemoteFileSearchRtnData]
+	RemoteVcsResolvePathCommand(ctx context.Context, data CommandRemoteVcsResolvePathData) (*RemoteVcsResolvePathRtnData, error)
 	RemoteVcsRepositoriesCommand(ctx context.Context, data CommandRemoteVcsRepositoriesData) (*RemoteVcsRepositoriesRtnData, error)
 	RemoteVcsCommitsCommand(ctx context.Context, data CommandRemoteVcsCommitsData) (*RemoteVcsCommitsRtnData, error)
 	RemoteVcsCommitFilesCommand(ctx context.Context, data CommandRemoteVcsCommitFilesData) (*RemoteVcsCommitFilesRtnData, error)
 	RemoteVcsCommitCommand(ctx context.Context, data CommandRemoteVcsCommitData) (*RemoteVcsCommitRtnData, error)
+	RemoteVcsSyncCommand(ctx context.Context, data CommandRemoteVcsSyncData) (*RemoteVcsSyncRtnData, error)
 	RemoteVcsFileHistoryCommand(ctx context.Context, data CommandRemoteVcsFileHistoryData) (*RemoteVcsFileHistoryRtnData, error)
 	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
 
@@ -931,6 +934,26 @@ type CommandRemoteProcessSignalData struct {
 	Signal string `json:"signal"`
 }
 
+type CommandRemoteFileSearchData struct {
+	Path          string `json:"path"`
+	Query         string `json:"query"`
+	Limit         int    `json:"limit,omitempty"`
+	MaxFileSize   int64  `json:"maxfilesize,omitempty"`
+	IncludeHidden bool   `json:"includehidden,omitempty"`
+}
+
+type FileSearchMatch struct {
+	Path       string `json:"path"`
+	RelPath    string `json:"relpath,omitempty"`
+	LineNumber int    `json:"linenumber"`
+	LineText   string `json:"linetext"`
+}
+
+type CommandRemoteFileSearchRtnData struct {
+	Matches   []FileSearchMatch `json:"matches,omitempty"`
+	Truncated bool              `json:"truncated,omitempty"`
+}
+
 type CommandRemoteVcsRepositoriesData struct {
 	Path          string `json:"path"`
 	StatusLimit   int    `json:"statuslimit,omitempty"`
@@ -961,6 +984,21 @@ type RemoteVcsRepositoriesRtnData struct {
 	BasePath     string              `json:"basepath"`
 	Repositories []VcsRepositoryInfo `json:"repositories"`
 	Error        string              `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsResolvePathData struct {
+	Path string `json:"path"`
+}
+
+type RemoteVcsResolvePathRtnData struct {
+	Path     string `json:"path"`
+	BasePath string `json:"basepath,omitempty"`
+	Matched  bool   `json:"matched,omitempty"`
+	RepoId   string `json:"repoid,omitempty"`
+	RepoType string `json:"repotype,omitempty"`
+	RepoPath string `json:"repopath,omitempty"`
+	RepoName string `json:"reponame,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 type CommandRemoteVcsCommitsData struct {
@@ -1017,6 +1055,17 @@ type CommandRemoteVcsCommitData struct {
 }
 
 type RemoteVcsCommitRtnData struct {
+	Success bool   `json:"success"`
+	Output  string `json:"output,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type CommandRemoteVcsSyncData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+}
+
+type RemoteVcsSyncRtnData struct {
 	Success bool   `json:"success"`
 	Output  string `json:"output,omitempty"`
 	Error   string `json:"error,omitempty"`

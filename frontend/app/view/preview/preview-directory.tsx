@@ -7,7 +7,6 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
-import { addOpenMenuItems } from "@/util/previewutil";
 import { fireAndForget } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import { offset, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
@@ -27,7 +26,6 @@ import { PrimitiveAtom, atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
-import { quote as shellQuote } from "shell-quote";
 import { debounce } from "throttle-debounce";
 import "./directorypreview.scss";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
@@ -36,10 +34,10 @@ import {
     getBestUnit,
     getLastModifiedTime,
     getSortIcon,
-    handleFileDelete,
     handleRename,
     isIconValid,
-    makeDirectoryDefaultMenuItems,
+    makeDirectoryBackgroundMenuItems,
+    makeDirectoryEntryMenuItems,
     mergeError,
     overwriteError,
 } from "./preview-directory-utils";
@@ -91,7 +89,6 @@ interface DirectoryTableProps {
     setFocusIndex: (_: number) => void;
     setSearch: (_: string) => void;
     setSelectedPath: (_: string) => void;
-    setRefreshVersion: React.Dispatch<React.SetStateAction<number>>;
     entryManagerOverlayPropsAtom: PrimitiveAtom<EntryManagerOverlayProps>;
     newFile: () => void;
     newDirectory: () => void;
@@ -107,7 +104,6 @@ function DirectoryTable({
     setFocusIndex,
     setSearch,
     setSelectedPath,
-    setRefreshVersion,
     entryManagerOverlayPropsAtom,
     newFile,
     newDirectory,
@@ -291,7 +287,6 @@ function DirectoryTable({
                 setFocusIndex={setFocusIndex}
                 setSearch={setSearch}
                 setSelectedPath={setSelectedPath}
-                setRefreshVersion={setRefreshVersion}
                 osRef={osRef.current}
             />
         </OverlayScrollbarsComponent>
@@ -308,7 +303,6 @@ interface TableBodyProps {
     setFocusIndex: (_: number) => void;
     setSearch: (_: string) => void;
     setSelectedPath: (_: string) => void;
-    setRefreshVersion: React.Dispatch<React.SetStateAction<number>>;
     osRef: OverlayScrollbarsComponentRef;
 }
 
@@ -320,7 +314,6 @@ function TableBody({
     focusIndex,
     setFocusIndex,
     setSearch,
-    setRefreshVersion,
     osRef,
 }: TableBodyProps) {
     const searchActive = useAtomValue(model.directorySearchActive);
@@ -368,66 +361,14 @@ function TableBody({
             if (finfo == null) {
                 return;
             }
-            const fileName = finfo.path.split("/").pop();
-            const menu: ContextMenuItem[] = [
-                {
-                    label: "New File",
-                    click: () => {
-                        table.options.meta.newFile();
-                    },
-                },
-                {
-                    label: "New Folder",
-                    click: () => {
-                        table.options.meta.newDirectory();
-                    },
-                },
-                {
-                    label: "Rename",
-                    click: () => {
-                        table.options.meta.updateName(finfo.path, finfo.isdir);
-                    },
-                },
-                {
-                    type: "separator",
-                },
-                {
-                    label: "Copy File Name",
-                    click: () => fireAndForget(() => navigator.clipboard.writeText(fileName)),
-                },
-                {
-                    label: "Copy Full File Name",
-                    click: () => fireAndForget(() => navigator.clipboard.writeText(finfo.path)),
-                },
-                {
-                    label: "Copy File Name (Shell Quoted)",
-                    click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([fileName]))),
-                },
-                {
-                    label: "Copy Full File Name (Shell Quoted)",
-                    click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([finfo.path]))),
-                },
-            ];
-            addOpenMenuItems(menu, conn, finfo);
-            menu.push(
-                {
-                    type: "separator",
-                },
-                {
-                    label: "Default Settings",
-                    submenu: makeDirectoryDefaultMenuItems(model),
-                },
-                {
-                    type: "separator",
-                },
-                {
-                    label: "Delete",
-                    click: () => handleFileDelete(model, finfo.path, false, setErrorMsg),
-                }
-            );
+            const menu = await makeDirectoryEntryMenuItems(model, finfo, conn, setErrorMsg, {
+                newFile: table.options.meta.newFile,
+                newDirectory: table.options.meta.newDirectory,
+                rename: () => table.options.meta.updateName(finfo.path, finfo.isdir),
+            });
             ContextMenuModel.getInstance().showContextMenu(menu, e);
         },
-        [setRefreshVersion, conn]
+        [conn, model, setErrorMsg, table]
     );
 
     const allRows = table.getRowModel().flatRows;
@@ -836,31 +777,16 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     }, [dirPath]);
 
     const handleFileContextMenu = useCallback(
-        (e: any) => {
+        async (e: any) => {
             e.preventDefault();
             e.stopPropagation();
-            const menu: ContextMenuItem[] = [
-                {
-                    label: "New File",
-                    click: () => {
-                        newFile();
-                    },
-                },
-                {
-                    label: "New Folder",
-                    click: () => {
-                        newDirectory();
-                    },
-                },
-                {
-                    type: "separator",
-                },
-            ];
-            addOpenMenuItems(menu, conn, finfo);
-
+            const menu = await makeDirectoryBackgroundMenuItems(model, conn, finfo, setErrorMsg, {
+                newFile,
+                newDirectory,
+            });
             ContextMenuModel.getInstance().showContextMenu(menu, e);
         },
-        [setRefreshVersion, conn, newFile, newDirectory, dirPath]
+        [conn, finfo, model, newFile, newDirectory, setErrorMsg]
     );
 
     return (
@@ -886,7 +812,6 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                     setFocusIndex={setFocusIndex}
                     setSearch={setSearchText}
                     setSelectedPath={setSelectedPath}
-                    setRefreshVersion={setRefreshVersion}
                     entryManagerOverlayPropsAtom={entryManagerPropsAtom}
                     newFile={newFile}
                     newDirectory={newDirectory}
