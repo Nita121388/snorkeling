@@ -7,6 +7,8 @@ import { fireAndForget } from "@/util/util";
 import { makeORef } from "../store/wos";
 import type { TabEnv } from "./tab";
 
+const TabReturnWorkspaceIdMetaKey = "tab:returnworkspaceid";
+
 const FlagColors: { label: string; value: string }[] = [
     { label: "Green", value: "#58C142" },
     { label: "Teal", value: "#00FFDB" },
@@ -52,6 +54,7 @@ export function buildTabContextMenu(
         { type: "separator" }
     );
     const tabORef = makeORef("tab", id);
+    const returnWorkspaceId = globalStore.get(getOrefMetaKeyAtom(tabORef, TabReturnWorkspaceIdMetaKey)) ?? null;
     const currentFlagColor = globalStore.get(getOrefMetaKeyAtom(tabORef, "tab:flagcolor")) ?? null;
     const flagSubmenu: ContextMenuItem[] = [
         {
@@ -122,6 +125,15 @@ export function buildTabContextMenu(
                 await env.electron.moveTabToNewWindow(id);
             }),
     });
+    if (returnWorkspaceId != null && returnWorkspaceId !== "") {
+        menu.push({
+            label: "Move Tab Back",
+            click: () =>
+                fireAndForget(async () => {
+                    await env.electron.moveTabBack(id);
+                }),
+        });
+    }
     menu.push({ type: "separator" });
     menu.push({ label: "Close Tab", click: () => onClose(null) });
     return menu;

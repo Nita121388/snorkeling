@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,19 @@ type svnLogEntry struct {
 	Message  string `xml:"msg"`
 }
 
+type svnStatusXML struct {
+	Targets []struct {
+		Entries []svnStatusEntry `xml:"entry"`
+	} `xml:"target"`
+}
+
+type svnStatusEntry struct {
+	Path     string `xml:"path,attr"`
+	WCStatus struct {
+		Item string `xml:"item,attr"`
+	} `xml:"wc-status"`
+}
+
 func runVcsCommand(ctx context.Context, dir string, command string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
 	if dir != "" {
@@ -86,6 +100,36 @@ func runVcsCommand(ctx context.Context, dir string, command string, args ...stri
 		return outStr, fmt.Errorf("%s %s: %s", command, strings.Join(args, " "), errStr)
 	}
 	return outStr, nil
+}
+
+func runSvnStatusXMLCommand(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "svn", "status", "--xml")
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	outStr := strings.TrimSpace(stdout.String())
+	if err == nil {
+		return outStr, nil
+	}
+	if outStr != "" {
+		var parsed svnStatusXML
+		if parseErr := xml.Unmarshal([]byte(outStr), &parsed); parseErr == nil {
+			return outStr, nil
+		}
+	}
+	errStr := strings.TrimSpace(stderr.String())
+	if errStr == "" {
+		errStr = outStr
+	}
+	if errStr == "" {
+		errStr = err.Error()
+	}
+	return outStr, fmt.Errorf("svn status --xml: %s", errStr)
 }
 
 func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...string) (string, error) {
@@ -140,18 +184,40 @@ func repoRootId(repoType string, rootPath string) string {
 	return fmt.Sprintf("%s:%s", repoType, rootPath)
 }
 
+func normalizeRepoRootPath(path string) string {
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanPath == "" || cleanPath == "." {
+		return ""
+	}
+	if absPath, err := filepath.Abs(cleanPath); err == nil && absPath != "" {
+		cleanPath = filepath.Clean(absPath)
+	}
+	if evalPath, err := filepath.EvalSymlinks(cleanPath); err == nil && evalPath != "" {
+		cleanPath = filepath.Clean(evalPath)
+	}
+	return cleanPath
+}
+
+func repoRootDedupKey(path string) string {
+	normalizedPath := normalizeRepoRootPath(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(normalizedPath)
+	}
+	return normalizedPath
+}
+
 func detectGitRoot(ctx context.Context, path string) string {
 	out, err := runVcsCommand(ctx, path, "git", "rev-parse", "--show-toplevel")
 	if err != nil || out == "" {
 		return ""
 	}
-	return filepath.Clean(out)
+	return normalizeRepoRootPath(out)
 }
 
 func detectSvnRoot(ctx context.Context, path string) string {
 	out, err := runVcsCommand(ctx, path, "svn", "info", "--show-item", "wc-root")
 	if err == nil && out != "" {
-		return filepath.Clean(out)
+		return normalizeRepoRootPath(out)
 	}
 	xmlOut, xmlErr := runVcsCommand(ctx, path, "svn", "info", "--xml")
 	if xmlErr != nil || xmlOut == "" {
@@ -167,7 +233,7 @@ func detectSvnRoot(ctx context.Context, path string) string {
 	if info.Entries[0].WcInfo.WcRootAbsPath == "" {
 		return ""
 	}
-	return filepath.Clean(info.Entries[0].WcInfo.WcRootAbsPath)
+	return normalizeRepoRootPath(info.Entries[0].WcInfo.WcRootAbsPath)
 }
 
 func detectRepoType(ctx context.Context, rootPath string) string {
@@ -195,13 +261,17 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 	if scanDepth <= 0 {
 		scanDepth = DefaultVcsScanDepth
 	}
-	repoSet := make(map[string]struct{})
+	repoSet := make(map[string]string)
 	addRepo := func(path string) {
-		cleanPath := filepath.Clean(path)
-		if cleanPath == "" || cleanPath == "." {
+		normalizedPath := normalizeRepoRootPath(path)
+		dedupKey := repoRootDedupKey(normalizedPath)
+		if normalizedPath == "" || dedupKey == "" {
 			return
 		}
-		repoSet[cleanPath] = struct{}{}
+		if _, exists := repoSet[dedupKey]; exists {
+			return
+		}
+		repoSet[dedupKey] = normalizedPath
 	}
 	if includeParent {
 		if gitRoot := detectGitRoot(ctx, basePath); gitRoot != "" {
@@ -246,7 +316,7 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 		return nil
 	})
 	repos := make([]string, 0, len(repoSet))
-	for repo := range repoSet {
+	for _, repo := range repoSet {
 		repos = append(repos, repo)
 	}
 	sort.Strings(repos)
@@ -353,6 +423,72 @@ func parseSvnStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
 	return statuses
 }
 
+func mapSvnStatusItemToCode(item string) string {
+	switch item {
+	case "added":
+		return "A"
+	case "modified":
+		return "M"
+	case "deleted":
+		return "D"
+	case "replaced":
+		return "R"
+	case "conflicted":
+		return "C"
+	case "missing", "incomplete":
+		return "!"
+	case "ignored":
+		return "I"
+	case "external":
+		return "X"
+	case "obstructed":
+		return "~"
+	case "unversioned":
+		return "?"
+	default:
+		return ""
+	}
+}
+
+func parseSvnStatusXML(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
+	if statusLimit <= 0 {
+		statusLimit = DefaultVcsStatusLimit
+	}
+	var parsed svnStatusXML
+	if err := xml.Unmarshal([]byte(statusOut), &parsed); err != nil {
+		return parseSvnStatus(statusOut, statusLimit)
+	}
+	statuses := make([]wshrpc.VcsFileStatus, 0)
+	for _, target := range parsed.Targets {
+		for _, entry := range target.Entries {
+			path := strings.TrimSpace(entry.Path)
+			if path == "" {
+				continue
+			}
+			code := mapSvnStatusItemToCode(strings.TrimSpace(entry.WCStatus.Item))
+			if code == "" {
+				continue
+			}
+			statuses = append(statuses, wshrpc.VcsFileStatus{
+				Path:      filepath.ToSlash(path),
+				Code:      code,
+				Staged:    code == "A" || code == "M" || code == "D" || code == "R",
+				Untracked: code == "?",
+			})
+			if len(statuses) >= statusLimit {
+				sort.Slice(statuses, func(i, j int) bool {
+					return statuses[i].Path < statuses[j].Path
+				})
+				return statuses
+			}
+		}
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].Path < statuses[j].Path
+	})
+	return statuses
+}
+
 func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (string, []wshrpc.VcsFileStatus, error) {
 	branch, branchErr := runVcsCommand(ctx, repoPath, "svn", "info", "--show-item", "relative-url")
 	if branchErr != nil || branch == "" {
@@ -361,11 +497,11 @@ func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 			return "", nil, branchErr
 		}
 	}
-	statusOut, statusErr := runVcsCommand(ctx, repoPath, "svn", "status")
+	statusOut, statusErr := runSvnStatusXMLCommand(ctx, repoPath)
 	if statusErr != nil {
 		return branch, nil, statusErr
 	}
-	return branch, parseSvnStatus(statusOut, statusLimit), nil
+	return branch, parseSvnStatusXML(statusOut, statusLimit), nil
 }
 
 func normalizeRepositoryBrowseUrl(remoteURL string) string {

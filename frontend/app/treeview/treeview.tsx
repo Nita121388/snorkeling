@@ -57,6 +57,7 @@ export interface TreeViewProps {
     rootIds: string[];
     initialNodes: Record<string, TreeNodeData>;
     fetchDir?: (id: string, limit: number) => Promise<FetchDirResult>;
+    defaultExpandedIds?: string[];
     maxDirEntries?: number;
     rowHeight?: number;
     indentWidth?: number;
@@ -66,6 +67,7 @@ export interface TreeViewProps {
     width?: number | string;
     height?: number | string;
     className?: string;
+    selectedId?: string;
     onOpenFile?: (id: string, node: TreeNodeData) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
 }
@@ -208,6 +210,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         rootIds,
         initialNodes,
         fetchDir,
+        defaultExpandedIds,
         maxDirEntries = 500,
         rowHeight = DefaultRowHeight,
         indentWidth = DefaultIndentWidth,
@@ -217,6 +220,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         width = "100%",
         height = 360,
         className,
+        selectedId: propSelectedId,
         onOpenFile,
         onSelectionChange,
     } = props;
@@ -226,9 +230,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 Object.entries(initialNodes).map(([id, node]) => [id, { ...node, childrenStatus: node.childrenStatus ?? "unloaded" }])
             )
     );
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-    const [selectedId, setSelectedId] = useState<string>(rootIds[0]);
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
+    const [selectedId, setSelectedId] = useState<string>(propSelectedId ?? rootIds[0]);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const rootIdsKey = rootIds.join("\u0000");
+    const defaultExpandedIdsKey = (defaultExpandedIds ?? []).join("\u0000");
 
     useEffect(() => {
         setNodesById(
@@ -243,6 +249,14 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             )
         );
     }, [initialNodes]);
+
+    useEffect(() => {
+        setExpandedIds(new Set(defaultExpandedIds ?? []));
+    }, [defaultExpandedIdsKey, rootIdsKey]);
+
+    useEffect(() => {
+        setSelectedId(propSelectedId ?? rootIds[0]);
+    }, [propSelectedId, rootIdsKey]);
 
     const visibleRows = useMemo(() => buildVisibleRows(nodesById, rootIds, expandedIds), [nodesById, rootIds, expandedIds]);
     const idToIndex = useMemo(

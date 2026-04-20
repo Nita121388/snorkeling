@@ -20,6 +20,7 @@ import { buildTabContextMenu } from "./tabcontextmenu";
 export type TabEnv = WaveEnvSubset<{
     electron: {
         moveTabToNewWindow: WaveEnv["electron"]["moveTabToNewWindow"];
+        moveTabBack: WaveEnv["electron"]["moveTabBack"];
     };
     rpc: {
         ActivityCommand: WaveEnv["rpc"]["ActivityCommand"];

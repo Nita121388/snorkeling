@@ -1215,6 +1215,7 @@ declare global {
         "sysinfo:type"?: string;
         "tab:flagcolor"?: string;
         "tab:background"?: string;
+        "tab:returnworkspaceid"?: string;
         "bg:*"?: boolean;
         bg?: string;
         "bg:opacity"?: number;

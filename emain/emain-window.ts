@@ -683,6 +683,8 @@ export function getAllWaveWindows(): WaveBrowserWindow[] {
     return Array.from(waveWindowMap.values());
 }
 
+const TabReturnWorkspaceIdMetaKey = "tab:returnworkspaceid";
+
 function computeFallbackActiveTabId(tabIds: string[], removedTabId: string, currentActiveTabId: string): string {
     if (tabIds.length === 0) {
         return "";
@@ -696,6 +698,27 @@ function computeFallbackActiveTabId(tabIds: string[], removedTabId: string, curr
     }
     const fallbackIdx = Math.max(0, Math.min(removedTabIdx, tabIds.length - 2));
     return tabIds[fallbackIdx];
+}
+
+function makeTabORef(tabId: string): string {
+    return `tab:${tabId}`;
+}
+
+async function setTabReturnWorkspaceId(tabId: string, workspaceId: string | null): Promise<void> {
+    await RpcApi.SetMetaCommand(ElectronWshClient, {
+        oref: makeTabORef(tabId),
+        meta: { [TabReturnWorkspaceIdMetaKey]: workspaceId },
+    });
+}
+
+async function ensureWaveWindowForWorkspace(workspaceId: string): Promise<WaveBrowserWindow | null> {
+    let waveWindow = getWaveWindowByWorkspaceId(workspaceId);
+    if (waveWindow != null) {
+        return waveWindow;
+    }
+    await createWindowForWorkspace(workspaceId);
+    waveWindow = getWaveWindowByWorkspaceId(workspaceId);
+    return waveWindow ?? null;
 }
 
 async function moveTabToNewWindow(sourceWaveWindow: WaveBrowserWindow, tabId: string): Promise<boolean> {
@@ -752,6 +775,7 @@ async function moveTabToNewWindow(sourceWaveWindow: WaveBrowserWindow, tabId: st
 
     await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, sourceWorkspaceId, sourceNextTabIds);
     await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, targetWorkspaceId, targetNextTabIds);
+    await setTabReturnWorkspaceId(tabId, sourceWorkspaceId);
     await WorkspaceService.SetActiveTab(sourceWorkspaceId, sourceNextActiveTabId);
     await WorkspaceService.SetActiveTab(targetWorkspaceId, tabId);
     if (placeholderTabId && placeholderTabId !== tabId) {
@@ -767,6 +791,78 @@ async function moveTabToNewWindow(sourceWaveWindow: WaveBrowserWindow, tabId: st
         isPrimaryStartupWindow: false,
     });
     newBrowserWindow.show();
+    return true;
+}
+
+async function moveTabBack(sourceWaveWindow: WaveBrowserWindow, tabId: string): Promise<boolean> {
+    if (sourceWaveWindow == null || !tabId) {
+        return false;
+    }
+    const sourceWorkspaceId = sourceWaveWindow.workspaceId;
+    const sourceWorkspace = await WorkspaceService.GetWorkspace(sourceWorkspaceId);
+    if (sourceWorkspace == null) {
+        console.log("moveTabBack: source workspace not found", sourceWorkspaceId);
+        return false;
+    }
+    if (!sourceWorkspace.tabids?.includes(tabId)) {
+        console.log("moveTabBack: tab not found in source workspace", tabId, sourceWorkspaceId);
+        return false;
+    }
+
+    const tab = await ClientService.GetTab(tabId);
+    const targetWorkspaceId = tab?.meta?.[TabReturnWorkspaceIdMetaKey];
+    if (targetWorkspaceId == null || targetWorkspaceId === "") {
+        console.log("moveTabBack: missing return workspace", tabId);
+        return false;
+    }
+    if (targetWorkspaceId === sourceWorkspaceId) {
+        console.log("moveTabBack: source and target workspace are identical", tabId, sourceWorkspaceId);
+        await setTabReturnWorkspaceId(tabId, null);
+        return false;
+    }
+
+    const targetWorkspace = await WorkspaceService.GetWorkspace(targetWorkspaceId).catch(() => null);
+    if (targetWorkspace == null) {
+        console.log("moveTabBack: target workspace not found", tabId, targetWorkspaceId);
+        await setTabReturnWorkspaceId(tabId, null);
+        return false;
+    }
+    const targetWaveWindow = await ensureWaveWindowForWorkspace(targetWorkspaceId);
+    if (targetWaveWindow == null) {
+        console.log("moveTabBack: target window not found", tabId, targetWorkspaceId);
+        return false;
+    }
+
+    const sourceTabIds = [...(sourceWorkspace.tabids ?? [])];
+    const sourceNextTabIds = sourceTabIds.filter((id) => id !== tabId);
+    const sourceNextActiveTabId =
+        sourceNextTabIds.length > 0 ? computeFallbackActiveTabId(sourceTabIds, tabId, sourceWorkspace.activetabid) : "";
+    if (sourceNextTabIds.length > 0 && sourceNextActiveTabId === "") {
+        console.log("moveTabBack: unable to determine source fallback active tab", sourceWorkspaceId, tabId);
+        return false;
+    }
+
+    const targetNextTabIds = [...(targetWorkspace.tabids ?? [])].filter((id) => id !== tabId);
+    targetNextTabIds.push(tabId);
+
+    await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, sourceWorkspaceId, sourceNextTabIds);
+    await RpcApi.UpdateWorkspaceTabIdsCommand(ElectronWshClient, targetWorkspaceId, targetNextTabIds);
+    if (sourceNextActiveTabId !== "") {
+        await WorkspaceService.SetActiveTab(sourceWorkspaceId, sourceNextActiveTabId);
+    }
+    await WorkspaceService.SetActiveTab(targetWorkspaceId, tabId);
+
+    await targetWaveWindow.setActiveTab(tabId, false);
+    targetWaveWindow.show();
+    targetWaveWindow.focus();
+
+    if (sourceNextActiveTabId === "") {
+        sourceWaveWindow.destroy();
+    } else {
+        await sourceWaveWindow.setActiveTab(sourceNextActiveTabId, false);
+        sourceWaveWindow.removeTabView(tabId, true);
+    }
+    await setTabReturnWorkspaceId(tabId, null);
     return true;
 }
 
@@ -866,6 +962,21 @@ ipcMain.handle("move-tab-to-new-window", async (event, tabId: string) => {
         return await moveTabToNewWindow(sourceWindow, tabId);
     } catch (e) {
         console.log("move-tab-to-new-window failed", tabId, e);
+        return false;
+    }
+});
+
+ipcMain.handle("move-tab-back", async (event, tabId: string) => {
+    const senderWindow = getWaveWindowByWebContentsId(event.sender.id);
+    const sourceWindow = senderWindow ?? getWaveWindowByTabId(tabId);
+    if (sourceWindow == null) {
+        console.log("move-tab-back: source window not found", tabId);
+        return false;
+    }
+    try {
+        return await moveTabBack(sourceWindow, tabId);
+    } catch (e) {
+        console.log("move-tab-back failed", tabId, e);
         return false;
     }
 });

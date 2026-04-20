@@ -36,14 +36,21 @@ const MaxFileSize = 1024 * 1024 * 10; // 10MB
 const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 
 const PreviewOpenTargetMetaKey = "preview:open-target";
+const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
+const PreviewExplorerRootMetaKey = "preview:explorer-root";
 
 type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
+type PreviewDirectoryDisplayMode = "list" | "tree";
 
 function normalizeOpenTargetDirection(val: any): PreviewOpenTargetDirection {
     if (val === "left" || val === "right" || val === "up" || val === "down") {
         return val;
     }
     return "off";
+}
+
+function normalizeDirectoryDisplayMode(val: any): PreviewDirectoryDisplayMode {
+    return val === "tree" ? "tree" : "list";
 }
 
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
@@ -173,6 +180,19 @@ function iconForFile(mimeType: string): string {
     }
 }
 
+function deriveExplorerRootPath(fileInfo: FileInfo | null, fallbackPath: string): string {
+    if (fileInfo?.isdir && !isBlank(fileInfo.path)) {
+        return fileInfo.path;
+    }
+    if (!isBlank(fileInfo?.dir)) {
+        return fileInfo.dir;
+    }
+    if (!isBlank(fallbackPath)) {
+        return fallbackPath;
+    }
+    return "~";
+}
+
 export class PreviewModel implements ViewModel {
     viewType: string;
     blockId: string;
@@ -219,6 +239,8 @@ export class PreviewModel implements ViewModel {
 
     monacoRef: React.RefObject<MonacoTypes.editor.IStandaloneCodeEditor>;
 
+    directoryDisplayMode: Atom<PreviewDirectoryDisplayMode>;
+    explorerRootPath: Atom<string>;
     showHiddenFiles: PrimitiveAtom<boolean>;
     refreshVersion: PrimitiveAtom<number>;
     directorySearchActive: PrimitiveAtom<boolean>;
@@ -244,6 +266,18 @@ export class PreviewModel implements ViewModel {
         this.openFileModalGiveFocusRef = createRef();
         this.manageConnection = atom(true);
         this.blockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
+        this.directoryDisplayMode = atom((get) =>
+            normalizeDirectoryDisplayMode(get(this.blockAtom)?.meta?.[PreviewDirectoryDisplayMetaKey])
+        );
+        this.explorerRootPath = atom((get) => {
+            const storedRoot = get(this.blockAtom)?.meta?.[PreviewExplorerRootMetaKey];
+            if (!isBlank(storedRoot)) {
+                return storedRoot;
+            }
+            const fallbackPath = get(this.metaFilePath);
+            const fileInfo = jotaiLoadableValue(get(this.loadableFileInfo), null);
+            return deriveExplorerRootPath(fileInfo, fallbackPath);
+        });
         this.markdownShowToc = atom(false);
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
@@ -296,6 +330,8 @@ export class PreviewModel implements ViewModel {
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
+            const directoryDisplayMode = get(this.directoryDisplayMode);
+            const explorerActive = directoryDisplayMode === "tree";
             const loadableFileInfo = get(this.loadableFileInfo);
             if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
@@ -315,7 +351,7 @@ export class PreviewModel implements ViewModel {
                     onClick: () => this.toggleOpenFileModal(),
                 },
             ];
-            if (isDirectoryView) {
+            if (isDirectoryView || explorerActive) {
                 const currentDirection = normalizeOpenTargetDirection(get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]);
                 viewTextChildren.push({
                     elemtype: "menubutton",
@@ -325,6 +361,15 @@ export class PreviewModel implements ViewModel {
                     items: this.makeOpenTargetMenuItems(currentDirection),
                 });
             }
+            viewTextChildren.push({
+                elemtype: "iconbutton",
+                icon: <span className="text-[12px] leading-none">🌳</span>,
+                iconColor: explorerActive ? "var(--accent-color)" : undefined,
+                title: explorerActive ? "Disable Explorer Tree" : "Enable Explorer Tree",
+                click: () => {
+                    fireAndForget(() => this.toggleDirectoryDisplayMode());
+                },
+            });
             let saveClassName = "grey";
             if (get(this.newFileContent) !== null) {
                 saveClassName = "green";
@@ -400,59 +445,46 @@ export class PreviewModel implements ViewModel {
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
+            const explorerActive = get(this.directoryDisplayMode) === "tree";
             const vcsButton: IconButtonDecl = {
                 elemtype: "iconbutton",
                 icon: "code-branch",
                 title: "Version Control",
                 click: () => fireAndForget(() => this.openVersionControlBlock()),
             };
-            if (mimeType == "directory") {
+            if (!explorerActive && !mimeType) {
+                return null;
+            }
+            const buttons: IconButtonDecl[] = [vcsButton];
+            if (mimeType == "directory" || explorerActive) {
                 const showHiddenFiles = get(this.showHiddenFiles);
-                return [
-                    vcsButton,
-                    {
-                        elemtype: "iconbutton",
-                        icon: showHiddenFiles ? "eye" : "eye-slash",
-                        title: showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
-                        click: () => {
-                            globalStore.set(this.showHiddenFiles, (prev) => !prev);
-                        },
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: showHiddenFiles ? "eye" : "eye-slash",
+                    title: showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
+                    click: () => {
+                        globalStore.set(this.showHiddenFiles, (prev) => !prev);
                     },
-                    {
-                        elemtype: "iconbutton",
-                        icon: "arrows-rotate",
-                        click: () => this.refreshCallback?.(),
-                    },
-                ] as IconButtonDecl[];
-            } else if (!isCeView && isMarkdownLike(mimeType)) {
-                return [
-                    vcsButton,
-                    {
-                        elemtype: "iconbutton",
-                        icon: "book",
-                        title: "Table of Contents",
-                        click: () => this.markdownShowTocToggle(),
-                    },
-                    {
-                        elemtype: "iconbutton",
-                        icon: "arrows-rotate",
-                        title: "Refresh",
-                        click: () => this.refreshCallback?.(),
-                    },
-                ] as IconButtonDecl[];
-            } else if (!isCeView && mimeType) {
-                // For all other file types (text, code, etc.), add refresh button
-                return [
-                    vcsButton,
-                    {
-                        elemtype: "iconbutton",
-                        icon: "arrows-rotate",
-                        title: "Refresh",
-                        click: () => this.refreshCallback?.(),
-                    },
-                ] as IconButtonDecl[];
-            } else if (isCeView && mimeType) {
-                return [vcsButton] as IconButtonDecl[];
+                });
+            }
+            if (!isCeView && isMarkdownLike(mimeType)) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "book",
+                    title: "Table of Contents",
+                    click: () => this.markdownShowTocToggle(),
+                });
+            }
+            if ((!isCeView && mimeType) || explorerActive) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "arrows-rotate",
+                    title: "Refresh",
+                    click: () => this.refreshCallback?.(),
+                });
+            }
+            if (buttons.length > 0) {
+                return buttons;
             }
             return null;
         });
@@ -685,6 +717,31 @@ export class PreviewModel implements ViewModel {
                 },
             };
         });
+    }
+
+    private async toggleDirectoryDisplayMode() {
+        const currentMode = this.getDirectoryDisplayMode();
+        await this.setDirectoryDisplayMode(currentMode === "tree" ? "list" : "tree");
+    }
+
+    private getDirectoryDisplayMode(): PreviewDirectoryDisplayMode {
+        const blockMeta = globalStore.get(this.blockAtom)?.meta;
+        return normalizeDirectoryDisplayMode(blockMeta?.[PreviewDirectoryDisplayMetaKey]);
+    }
+
+    private async setDirectoryDisplayMode(mode: PreviewDirectoryDisplayMode) {
+        const blockMeta = globalStore.get(this.blockAtom)?.meta ?? {};
+        const nextMeta: Record<string, any> = {
+            ...(blockMeta as Record<string, any>),
+            [PreviewDirectoryDisplayMetaKey]: mode,
+        };
+        if (mode === "tree") {
+            const fileInfo = await globalStore.get(this.statFile);
+            const fallbackPath = fileInfo?.path ?? globalStore.get(this.metaFilePath);
+            nextMeta[PreviewExplorerRootMetaKey] = deriveExplorerRootPath(fileInfo, fallbackPath);
+        }
+        const blockOref = WOS.makeORef("block", this.blockId);
+        await this.env.services.object.UpdateObjectMeta(blockOref, nextMeta as any);
     }
 
     private getOpenTargetDirection(): PreviewOpenTargetDirection {

@@ -12,6 +12,7 @@ import { memo, useEffect } from "react";
 import { CSVView } from "./csvview";
 import { DirectoryPreview } from "./preview-directory";
 import { CodeEditPreview } from "./preview-edit";
+import { PreviewExplorer } from "./preview-explorer";
 import { ErrorOverlay } from "./preview-error-overlay";
 import { MarkdownPreview } from "./preview-markdown";
 import type { PreviewModel } from "./preview-model";
@@ -111,6 +112,8 @@ function PreviewView({
     const [errorMsg, setErrorMsg] = useAtom(model.errorMsgAtom);
     const connection = useAtomValue(model.connectionImmediate);
     const fileInfo = useAtomValue(model.statFile);
+    const directoryDisplayMode = useAtomValue(model.directoryDisplayMode);
+    const explorerRootPath = useAtomValue(model.explorerRootPath);
 
     useEffect(() => {
         console.log("fileInfo or connection changed", fileInfo, connection);
@@ -135,7 +138,7 @@ function PreviewView({
         model.handleOpenFile(s["file:path"]);
         return true;
     };
-    const handleTab = (s: SuggestionType, query: string): string => {
+    const handleTab = (s: SuggestionType, _query: string): string => {
         if (s["file:mimetype"] == "directory") {
             return s["file:name"] + "/";
         } else {
@@ -145,13 +148,20 @@ function PreviewView({
     const fetchSuggestionsFn = async (query, ctx) => {
         return await fetchSuggestions(env, model, query, ctx);
     };
+    const specializedContent = <SpecializedView parentRef={contentRef} model={model} />;
 
     return (
         <>
             <div key="fullpreview" className="flex flex-col w-full overflow-hidden scrollbar-hide-until-hover">
                 {errorMsg && <ErrorOverlay errorMsg={errorMsg} resetOverlay={() => setErrorMsg(null)} />}
                 <div ref={contentRef} className="flex-grow overflow-hidden">
-                    <SpecializedView parentRef={contentRef} model={model} />
+                    {directoryDisplayMode === "tree" ? (
+                        <PreviewExplorer model={model} rootPath={explorerRootPath}>
+                            {specializedContent}
+                        </PreviewExplorer>
+                    ) : (
+                        specializedContent
+                    )}
                 </div>
             </div>
             <BlockHeaderSuggestionControl
