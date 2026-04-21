@@ -110,6 +110,7 @@ export class TermWrap {
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
+    onSelectionTextChange?: (selectionText: string | null) => void;
 
     // Paste deduplication
     // xterm.js paste() method triggers onData event, which can cause duplicate sends
@@ -391,20 +392,20 @@ export class TermWrap {
         this.toDispose.push(
             this.terminal.onSelectionChange(
                 debounce(50, () => {
-                    if (!globalStore.get(copyOnSelectAtom)) {
-                        return;
-                    }
-                    // Don't copy-on-select when the search bar has focus — navigating
-                    // search results changes the terminal selection programmatically.
                     const active = document.activeElement;
                     if (active != null && active.closest(".search-container") != null) {
+                        this.onSelectionTextChange?.(null);
                         return;
                     }
                     let selectedText = this.terminal.getSelection();
+                    if (selectedText.length > 0 && globalStore.get(trimTrailingWhitespaceAtom) !== false) {
+                        selectedText = trimTerminalSelection(selectedText);
+                    }
+                    this.onSelectionTextChange?.(selectedText.length > 0 ? selectedText : null);
+                    if (!globalStore.get(copyOnSelectAtom)) {
+                        return;
+                    }
                     if (selectedText.length > 0) {
-                        if (globalStore.get(trimTrailingWhitespaceAtom) !== false) {
-                            selectedText = trimTerminalSelection(selectedText);
-                        }
                         navigator.clipboard.writeText(selectedText);
                     }
                 })

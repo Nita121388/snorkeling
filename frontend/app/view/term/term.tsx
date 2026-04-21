@@ -6,6 +6,11 @@ import { SubBlock } from "@/app/block/block";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { NullErrorBoundary } from "@/app/element/errorboundary";
 import { Search, useSearch } from "@/app/element/search";
+import {
+    clampSelectionCopyOverlayPosition,
+    SelectionCopyOverlay,
+    type SelectionCopyOverlayState,
+} from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { useTabModel } from "@/app/store/tab-model";
@@ -45,7 +50,7 @@ const TermClaudeIcon = React.memo(() => {
 
 TermClaudeIcon.displayName = "TermClaudeIcon";
 
-const TermResyncHandler = React.memo(({ blockId, model }: TerminalViewProps) => {
+const TermResyncHandler = React.memo(({ blockId: _blockId, model }: TerminalViewProps) => {
     const connStatus = jotai.useAtomValue(model.connStatus);
     const [lastConnStatus, setLastConnStatus] = React.useState<ConnStatus>(connStatus);
 
@@ -182,6 +187,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const viewRef = React.useRef<HTMLDivElement>(null);
     const connectElemRef = React.useRef<HTMLDivElement>(null);
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);
+    const [selectionCopyOverlay, setSelectionCopyOverlay] = React.useState<SelectionCopyOverlayState | null>(null);
+    const lastSelectionPointerRef = React.useRef<{ x: number; y: number } | null>(null);
     const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
     const termSettingsAtom = getSettingsPrefixAtom("term");
     const termSettings = jotai.useAtomValue(termSettingsAtom);
@@ -322,9 +329,32 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         );
         (window as any).term = termWrap;
         model.termRef.current = termWrap;
+        termWrap.onSelectionTextChange = (selectionText) => {
+            const container = viewRef.current;
+            if (selectionText == null || container == null) {
+                setSelectionCopyOverlay(null);
+                return;
+            }
+            if (globalStore.get(getSettingsKeyAtom("term:copyonselect"))) {
+                setSelectionCopyOverlay(null);
+                return;
+            }
+            const pointer = lastSelectionPointerRef.current;
+            const position = clampSelectionCopyOverlayPosition(
+                container.clientWidth,
+                container.clientHeight,
+                (pointer?.x ?? 12) + 8,
+                (pointer?.y ?? 12) + 8
+            );
+            setSelectionCopyOverlay({
+                ...position,
+                text: selectionText,
+            });
+        };
         setTermWrapInst(termWrap);
         const rszObs = new ResizeObserver(() => {
             termWrap.handleResize_debounced();
+            setSelectionCopyOverlay(null);
         });
         rszObs.observe(connectElemRef.current);
         termWrap.onSearchResultsDidChange = (results) => {
@@ -338,9 +368,11 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             }, 10);
         }
         return () => {
+            termWrap.onSelectionTextChange = null;
             termWrap.dispose();
             rszObs.disconnect();
             setTermWrapInst(null);
+            setSelectionCopyOverlay(null);
         };
     }, [blockId, termSettings, termFontSize, connFontFamily]);
 
@@ -350,7 +382,14 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             model.giveFocus();
         }
         termModeRef.current = termMode;
+        setSelectionCopyOverlay(null);
     }, [termMode]);
+
+    React.useEffect(() => {
+        if (searchIsOpen) {
+            setSelectionCopyOverlay(null);
+        }
+    }, [searchIsOpen]);
 
     React.useEffect(() => {
         if (isMI && isBasicTerm && isFocused && model.termRef.current != null) {
@@ -384,6 +423,30 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         [model]
     );
 
+    const hideSelectionCopyOverlay = React.useCallback(() => {
+        setSelectionCopyOverlay(null);
+    }, []);
+
+    const handleTermMouseDown = React.useCallback(() => {
+        setSelectionCopyOverlay(null);
+    }, []);
+
+    const handleTermMouseUp = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        const view = viewRef.current;
+        if (view == null) {
+            return;
+        }
+        const rect = view.getBoundingClientRect();
+        lastSelectionPointerRef.current = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+        };
+    }, []);
+
+    const handleTermWheel = React.useCallback(() => {
+        setSelectionCopyOverlay(null);
+    }, []);
+
     return (
         <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
@@ -392,11 +455,19 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermVDomNode key="vdom" blockId={blockId} model={model} />
-            <div key="connect-elem" className="term-connectelem" ref={connectElemRef} />
+            <div
+                key="connect-elem"
+                className="term-connectelem"
+                ref={connectElemRef}
+                onMouseDown={handleTermMouseDown}
+                onMouseUp={handleTermMouseUp}
+                onWheel={handleTermWheel}
+            />
             <NullErrorBoundary debugName="TermLinkTooltip">
                 <TermLinkTooltip termWrap={termWrapInst} />
             </NullErrorBoundary>
             <Search {...searchProps} />
+            <SelectionCopyOverlay overlay={selectionCopyOverlay} onHide={hideSelectionCopyOverlay} />
         </div>
     );
 };

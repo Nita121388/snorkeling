@@ -1,6 +1,11 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    clampSelectionCopyOverlayPosition,
+    SelectionCopyOverlay,
+    type SelectionCopyOverlayState,
+} from "@/app/element/selection-copy-overlay";
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
@@ -9,7 +14,7 @@ import { fireAndForget } from "@/util/util";
 import { useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import * as monaco from "monaco-editor";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
 
 export const shellFileMap: Record<string, string> = {
@@ -59,7 +64,12 @@ function getAbsoluteFilePath(fileInfo: FileInfo | null): string {
     return fileInfo.name ?? "";
 }
 
-function buildCopyContextText(absoluteFilePath: string, lineNumber: number, snippet: string, language?: string): string {
+function buildCopyContextText(
+    absoluteFilePath: string,
+    lineNumber: number,
+    snippet: string,
+    language?: string
+): string {
     const filePath = absoluteFilePath || "(unknown-path)";
     const codeFence = language ? `\`\`\`${language}` : "```";
     return `${filePath}:${lineNumber}\n${codeFence}\n${snippet}\n\`\`\``;
@@ -83,6 +93,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const setNewFileContent = useSetAtom(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
+    const [selectionCopyOverlay, setSelectionCopyOverlay] = useState<SelectionCopyOverlayState | null>(null);
+    const editorContainerRef = useRef<HTMLDivElement>(null);
     const fileName = fileInfo?.path || fileInfo?.name;
 
     const baseName = fileName ? fileName.split("/").pop() : null;
@@ -127,8 +139,42 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         revealSearchTargetLine(editor, searchTargetLine);
     }, [fileInfo?.path, model, searchTargetLine]);
 
+    useEffect(() => {
+        setSelectionCopyOverlay(null);
+    }, [fileInfo?.path]);
+
     function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, _monacoApi: typeof monaco): () => void {
         model.monacoRef.current = editor;
+
+        const updateSelectionCopyOverlay = () => {
+            const editorModel = editor.getModel();
+            const selection = editor.getSelection();
+            const container = editorContainerRef.current;
+            if (!editorModel || !selection || selection.isEmpty() || !container) {
+                setSelectionCopyOverlay(null);
+                return;
+            }
+            const text = editorModel.getValueInRange(selection);
+            if (text.length === 0) {
+                setSelectionCopyOverlay(null);
+                return;
+            }
+            const visiblePosition = editor.getScrolledVisiblePosition(selection.getEndPosition());
+            if (!visiblePosition) {
+                setSelectionCopyOverlay(null);
+                return;
+            }
+            const position = clampSelectionCopyOverlayPosition(
+                container.clientWidth,
+                container.clientHeight,
+                visiblePosition.left + 8,
+                visiblePosition.top + visiblePosition.height + 8
+            );
+            setSelectionCopyOverlay({
+                ...position,
+                text,
+            });
+        };
 
         const keyDownDisposer = editor.onKeyDown((e: MonacoTypes.IKeyboardEvent) => {
             const waveEvent = adaptFromReactOrNativeKeyEvent(e.browserEvent);
@@ -160,6 +206,10 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 await navigator.clipboard.writeText(contextText);
             },
         });
+        const selectionDisposer = editor.onDidChangeCursorSelection(updateSelectionCopyOverlay);
+        const scrollDisposer = editor.onDidScrollChange(() => setSelectionCopyOverlay(null));
+        const blurDisposer = editor.onDidBlurEditorText(() => setSelectionCopyOverlay(null));
+        const mouseDownDisposer = editor.onMouseDown(() => setSelectionCopyOverlay(null));
 
         const isFocused = globalStore.get(model.nodeModel.isFocused);
         if (isFocused) {
@@ -170,19 +220,30 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         return () => {
             keyDownDisposer.dispose();
             copyContextDisposer.dispose();
+            selectionDisposer.dispose();
+            scrollDisposer.dispose();
+            blurDisposer.dispose();
+            mouseDownDisposer.dispose();
         };
     }
 
+    const hideSelectionCopyOverlay = useCallback(() => {
+        setSelectionCopyOverlay(null);
+    }, []);
+
     return (
-        <CodeEditor
-            blockId={model.blockId}
-            text={fileContent}
-            fileName={fileName}
-            language={language}
-            readonly={fileInfo.readonly}
-            onChange={(text) => setNewFileContent(text)}
-            onMount={onMount}
-        />
+        <div className="relative flex h-full w-full" ref={editorContainerRef}>
+            <CodeEditor
+                blockId={model.blockId}
+                text={fileContent}
+                fileName={fileName}
+                language={language}
+                readonly={fileInfo.readonly}
+                onChange={(text) => setNewFileContent(text)}
+                onMount={onMount}
+            />
+            <SelectionCopyOverlay overlay={selectionCopyOverlay} onHide={hideSelectionCopyOverlay} />
+        </div>
     );
 }
 
