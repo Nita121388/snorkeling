@@ -56,6 +56,30 @@ type fileSearchCollector struct {
 	truncated bool
 }
 
+type fileNameSearchCollector struct {
+	ch        chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileNameSearchRtnData]
+	chunk     []wshrpc.FileNameSearchMatch
+	total     int
+	limit     int
+	truncated bool
+}
+
+func normalizeRemoteSearchBasePath(path string) (string, error) {
+	expandedPath, err := wavebase.ExpandHomeDir(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot expand path %q: %w", path, err)
+	}
+	cleanPath := filepath.Clean(expandedPath)
+	stat, err := os.Stat(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot access %q: %w", cleanPath, err)
+	}
+	if stat.IsDir() {
+		return cleanPath, nil
+	}
+	return filepath.Dir(cleanPath), nil
+}
+
 func normalizeRemoteFileSearchData(data wshrpc.CommandRemoteFileSearchData) (string, wshrpc.CommandRemoteFileSearchData, error) {
 	if strings.TrimSpace(data.Query) == "" {
 		return "", data, fmt.Errorf("query is required")
@@ -69,19 +93,28 @@ func normalizeRemoteFileSearchData(data wshrpc.CommandRemoteFileSearchData) (str
 	if data.MaxFileSize <= 0 {
 		data.MaxFileSize = defaultFileSearchMaxSize
 	}
-	expandedPath, err := wavebase.ExpandHomeDir(data.Path)
+	basePath, err := normalizeRemoteSearchBasePath(data.Path)
 	if err != nil {
-		return "", data, fmt.Errorf("cannot expand path %q: %w", data.Path, err)
+		return "", data, err
 	}
-	cleanPath := filepath.Clean(expandedPath)
-	stat, err := os.Stat(cleanPath)
+	return basePath, data, nil
+}
+
+func normalizeRemoteFileNameSearchData(data wshrpc.CommandRemoteFileNameSearchData) (string, wshrpc.CommandRemoteFileNameSearchData, error) {
+	if strings.TrimSpace(data.Query) == "" {
+		return "", data, fmt.Errorf("query is required")
+	}
+	if data.Limit <= 0 {
+		data.Limit = defaultFileSearchLimit
+	}
+	if data.Limit > maxFileSearchLimit {
+		data.Limit = maxFileSearchLimit
+	}
+	basePath, err := normalizeRemoteSearchBasePath(data.Path)
 	if err != nil {
-		return "", data, fmt.Errorf("cannot access %q: %w", cleanPath, err)
+		return "", data, err
 	}
-	if stat.IsDir() {
-		return cleanPath, data, nil
-	}
-	return filepath.Dir(cleanPath), data, nil
+	return basePath, data, nil
 }
 
 func newFileSearchCollector(ch chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileSearchRtnData], limit int) *fileSearchCollector {
@@ -109,6 +142,31 @@ func (c *fileSearchCollector) add(match wshrpc.FileSearchMatch) error {
 	return nil
 }
 
+func newFileNameSearchCollector(ch chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileNameSearchRtnData], limit int) *fileNameSearchCollector {
+	return &fileNameSearchCollector{
+		ch:    ch,
+		chunk: make([]wshrpc.FileNameSearchMatch, 0, fileSearchChunkSize),
+		limit: limit,
+	}
+}
+
+func (c *fileNameSearchCollector) add(match wshrpc.FileNameSearchMatch) error {
+	if c.total >= c.limit {
+		c.truncated = true
+		return errFileSearchLimitReached
+	}
+	c.chunk = append(c.chunk, match)
+	c.total++
+	if len(c.chunk) >= fileSearchChunkSize {
+		c.flush(false)
+	}
+	if c.total >= c.limit {
+		c.truncated = true
+		return errFileSearchLimitReached
+	}
+	return nil
+}
+
 func (c *fileSearchCollector) flush(truncated bool) {
 	if len(c.chunk) == 0 && !truncated {
 		return
@@ -119,6 +177,18 @@ func (c *fileSearchCollector) flush(truncated bool) {
 	}
 	c.ch <- wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileSearchRtnData]{Response: resp}
 	c.chunk = make([]wshrpc.FileSearchMatch, 0, fileSearchChunkSize)
+}
+
+func (c *fileNameSearchCollector) flush(truncated bool) {
+	if len(c.chunk) == 0 && !truncated {
+		return
+	}
+	resp := wshrpc.CommandRemoteFileNameSearchRtnData{
+		Matches:   c.chunk,
+		Truncated: truncated,
+	}
+	c.ch <- wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileNameSearchRtnData]{Response: resp}
+	c.chunk = make([]wshrpc.FileNameSearchMatch, 0, fileSearchChunkSize)
 }
 
 func shouldSkipFileSearchPath(name string, includeHidden bool, isDir bool) bool {
@@ -155,6 +225,26 @@ func makeFileSearchMatch(basePath string, path string, lineNumber int, lineText 
 		LineNumber: lineNumber,
 		LineText:   strings.TrimRight(lineText, "\r\n"),
 	}
+}
+
+func makeFileNameSearchMatch(basePath string, path string, isDir bool) wshrpc.FileNameSearchMatch {
+	cleanPath := filepath.Clean(path)
+	relPath, err := filepath.Rel(basePath, cleanPath)
+	if err != nil || relPath == "." {
+		relPath = filepath.Base(cleanPath)
+	}
+	return wshrpc.FileNameSearchMatch{
+		Path:    cleanPath,
+		RelPath: relPath,
+		IsDir:   isDir,
+	}
+}
+
+func matchesFileSearchQuery(value string, query string, lowerQuery string, caseSensitive bool) bool {
+	if caseSensitive {
+		return strings.Contains(value, query)
+	}
+	return strings.Contains(strings.ToLower(value), lowerQuery)
 }
 
 func parseRipgrepJSONLine(basePath string, line []byte) (*wshrpc.FileSearchMatch, error) {
@@ -335,6 +425,41 @@ func runFallbackFileSearch(ctx context.Context, basePath string, data wshrpc.Com
 	})
 }
 
+func runFileNameSearch(ctx context.Context, basePath string, data wshrpc.CommandRemoteFileNameSearchData, collector *fileNameSearchCollector) error {
+	query := data.Query
+	caseSensitive := hasUppercaseLetters(query)
+	lowerQuery := strings.ToLower(query)
+	return filepath.WalkDir(basePath, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if path == basePath {
+			return nil
+		}
+		name := entry.Name()
+		if entry.IsDir() {
+			if shouldSkipFileSearchPath(name, data.IncludeHidden, true) {
+				return filepath.SkipDir
+			}
+		} else if shouldSkipFileSearchPath(name, data.IncludeHidden, false) {
+			return nil
+		}
+		if !matchesFileSearchQuery(name, query, lowerQuery, caseSensitive) {
+			return nil
+		}
+		if err := collector.add(makeFileNameSearchMatch(basePath, path, entry.IsDir())); err != nil {
+			if errors.Is(err, errFileSearchLimitReached) {
+				return err
+			}
+			return nil
+		}
+		return nil
+	})
+}
+
 func (impl *ServerImpl) RemoteFileSearchStreamCommand(ctx context.Context, data wshrpc.CommandRemoteFileSearchData) chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileSearchRtnData] {
 	ch := make(chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileSearchRtnData], 16)
 	go func() {
@@ -376,6 +501,36 @@ func (impl *ServerImpl) RemoteFileSearchStreamCommand(ctx context.Context, data 
 			return
 		}
 		collector.flush(false)
+	}()
+	return ch
+}
+
+func (impl *ServerImpl) RemoteFileNameSearchStreamCommand(ctx context.Context, data wshrpc.CommandRemoteFileNameSearchData) chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileNameSearchRtnData] {
+	ch := make(chan wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteFileNameSearchRtnData], 16)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("RemoteFileNameSearchStreamCommand", recover())
+		}()
+		defer close(ch)
+
+		basePath, normalizedData, err := normalizeRemoteFileNameSearchData(data)
+		if err != nil {
+			ch <- wshutil.RespErr[wshrpc.CommandRemoteFileNameSearchRtnData](err)
+			return
+		}
+		collector := newFileNameSearchCollector(ch, normalizedData.Limit)
+		err = runFileNameSearch(ctx, basePath, normalizedData, collector)
+		if err != nil && !errors.Is(err, errFileSearchLimitReached) && !errors.Is(err, context.Canceled) {
+			ch <- wshutil.RespErr[wshrpc.CommandRemoteFileNameSearchRtnData](err)
+			return
+		}
+		if errors.Is(err, errFileSearchLimitReached) {
+			collector.truncated = true
+		}
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		collector.flush(collector.truncated)
 	}()
 	return ch
 }

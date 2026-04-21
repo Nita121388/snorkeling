@@ -7,7 +7,13 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
-import { createBlock, createBlockSplitHorizontally, createBlockSplitVertically, getOverrideConfigAtom, refocusNode } from "@/store/global";
+import {
+    createBlock,
+    createBlockSplitHorizontally,
+    createBlockSplitVertically,
+    getOverrideConfigAtom,
+    refocusNode,
+} from "@/store/global";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -21,6 +27,11 @@ import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
+import {
+    applyExplorerRootForDirectoryNavigation,
+    PreviewDirectoryDisplayMode,
+    PreviewExplorerRootMetaKey,
+} from "./preview-navigation";
 import type { PreviewEnv } from "./previewenv";
 
 // TODO drive this using config
@@ -37,11 +48,9 @@ const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 
 const PreviewOpenTargetMetaKey = "preview:open-target";
 const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
-const PreviewExplorerRootMetaKey = "preview:explorer-root";
 const PreviewSearchLineMetaKey = "preview:searchline";
 
 type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
-type PreviewDirectoryDisplayMode = "list" | "tree";
 type PreviewOpenPathOptions = {
     lineNumber?: number;
 };
@@ -54,7 +63,7 @@ function normalizeOpenTargetDirection(val: any): PreviewOpenTargetDirection {
 }
 
 function normalizeDirectoryDisplayMode(val: any): PreviewDirectoryDisplayMode {
-    return val === "tree" ? "tree" : "list";
+    return val === "list" ? "list" : "tree";
 }
 
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
@@ -316,7 +325,7 @@ export class PreviewModel implements ViewModel {
                     longClick: (e: React.MouseEvent<any>) => {
                         const menuItems: ContextMenuItem[] = BOOKMARKS.map((bookmark) => ({
                             label: `Go to ${bookmark.label} (${bookmark.path})`,
-                            click: () => this.goHistory(bookmark.path),
+                            click: () => this.goHistory(bookmark.path, undefined, bookmark.path),
                         }));
                         ContextMenuModel.getInstance().showContextMenu(menuItems, e);
                     },
@@ -359,19 +368,32 @@ export class PreviewModel implements ViewModel {
             }
             const viewTextChildren: HeaderElem[] = [
                 {
-                    elemtype: "text",
-                    text: headerPath,
-                    ref: this.previewTextRef,
-                    className: "preview-filename",
-                    onClick: () => this.toggleOpenFileModal(),
+                    elemtype: "div",
+                    className: "preview-filename-shell",
+                    children: [
+                        {
+                            elemtype: "text",
+                            text: headerPath,
+                            ref: this.previewTextRef,
+                            className: "preview-filename",
+                            onClick: () => this.toggleOpenFileModal(),
+                        },
+                        {
+                            elemtype: "iconbutton",
+                            icon: "copy",
+                            title: "Copy Full Path",
+                            className: "preview-filename-copy-button",
+                            click: () => {
+                                fireAndForget(() => this.copyCurrentPathToClipboard());
+                            },
+                        },
+                    ],
                 },
             ];
             if (isDirectoryView) {
                 viewTextChildren.push({
                     elemtype: "iconbutton",
-                    icon: (
-                        <span className="text-[12px] leading-none">{explorerActive ? "☰" : "🌳"}</span>
-                    ),
+                    icon: <span className="text-[12px] leading-none">{explorerActive ? "☰" : "🌳"}</span>,
                     iconColor: explorerActive ? "var(--accent-color)" : undefined,
                     title: explorerActive ? "Switch To List View" : "Switch To Tree View",
                     click: () => {
@@ -380,7 +402,9 @@ export class PreviewModel implements ViewModel {
                 });
             }
             if (isDirectoryView || explorerActive) {
-                const currentDirection = normalizeOpenTargetDirection(get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]);
+                const currentDirection = normalizeOpenTargetDirection(
+                    get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]
+                );
                 viewTextChildren.push({
                     elemtype: "menubutton",
                     text: openTargetSymbol(currentDirection),
@@ -723,18 +747,22 @@ export class PreviewModel implements ViewModel {
         return nextMeta as MetaType;
     }
 
-    async goHistory(newPath: string, options?: PreviewOpenPathOptions) {
+    async goHistory(newPath: string, options?: PreviewOpenPathOptions, directoryPath?: string | null) {
         let fileName = globalStore.get(this.metaFilePath);
         if (fileName == null) {
             fileName = "";
         }
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
-        const updateMeta = this.applyOpenPathOptions(goHistory("file", fileName, newPath, blockMeta), options);
+        const updateMeta = applyExplorerRootForDirectoryNavigation(
+            this.applyOpenPathOptions(goHistory("file", fileName, newPath, blockMeta), options) as Record<string, any>,
+            this.getDirectoryDisplayMode(),
+            directoryPath
+        );
         if (updateMeta == null) {
             return;
         }
         const blockOref = WOS.makeORef("block", this.blockId);
-        await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
+        await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta as MetaType);
 
         // Clear the saved file buffers
         globalStore.set(this.fileContentSaved, null);
@@ -846,7 +874,10 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         const currentPath = targetBlockData.meta?.file ?? "";
-        const updateMeta = this.applyOpenPathOptions(goHistory("file", currentPath, newPath, targetBlockData.meta), options);
+        const updateMeta = this.applyOpenPathOptions(
+            goHistory("file", currentPath, newPath, targetBlockData.meta),
+            options
+        );
         if (updateMeta == null) {
             return false;
         }
@@ -945,7 +976,7 @@ export class PreviewModel implements ViewModel {
         }
         try {
             this.updateOpenFileModalAndError(false);
-            await this.goHistory(fileInfo.dir);
+            await this.goHistory(fileInfo.dir, undefined, fileInfo.dir);
             refocusNode(this.blockId);
         } catch (e) {
             globalStore.set(this.openFileError, e.message);
@@ -1034,6 +1065,19 @@ export class PreviewModel implements ViewModel {
         }
     }
 
+    async copyCurrentPathToClipboard() {
+        const filePath = await globalStore.get(this.statFilePath);
+        if (filePath == null) {
+            return;
+        }
+        const conn = await globalStore.get(this.connection);
+        if (conn) {
+            await navigator.clipboard.writeText(formatRemoteUri(filePath, conn));
+            return;
+        }
+        await navigator.clipboard.writeText(filePath);
+    }
+
     isSpecializedView(sv: string): boolean {
         const loadableSV = globalStore.get(this.loadableSpecializedView);
         return loadableSV.state == "hasData" && loadableSV.data.specializedView == sv;
@@ -1046,21 +1090,7 @@ export class PreviewModel implements ViewModel {
         const menuItems: ContextMenuItem[] = [];
         menuItems.push({
             label: "Copy Full Path",
-            click: () =>
-                fireAndForget(async () => {
-                    const filePath = await globalStore.get(this.statFilePath);
-                    if (filePath == null) {
-                        return;
-                    }
-                    const conn = await globalStore.get(this.connection);
-                    if (conn) {
-                        // remote path
-                        await navigator.clipboard.writeText(formatRemoteUri(filePath, conn));
-                    } else {
-                        // local path
-                        await navigator.clipboard.writeText(filePath);
-                    }
-                }),
+            click: () => fireAndForget(() => this.copyCurrentPathToClipboard()),
         });
         menuItems.push({
             label: "Copy File Name",

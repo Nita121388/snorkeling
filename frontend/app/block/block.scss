@@ -138,6 +138,46 @@
                     }
                 }
 
+                .block-frame-div.preview-filename-shell {
+                    flex: 1 1 auto;
+                    width: auto;
+                    min-width: 0;
+                    justify-content: flex-start;
+                    overflow: hidden;
+                    gap: 4px;
+
+                    .block-frame-text.preview-filename {
+                        min-width: 0;
+                        flex: 0 1 auto;
+                        max-width: calc(100% - 24px);
+                    }
+
+                    .wave-iconbutton.preview-filename-copy-button {
+                        position: relative;
+                        flex: 0 0 auto;
+                        width: 20px;
+                        min-width: 20px;
+                        opacity: 0;
+                        pointer-events: none;
+                        transform: scale(0.96);
+                        transition:
+                            opacity 120ms ease,
+                            transform 120ms ease;
+                    }
+
+                    &:hover .wave-iconbutton.preview-filename-copy-button,
+                    &:focus-within .wave-iconbutton.preview-filename-copy-button {
+                        opacity: 0.7;
+                        pointer-events: auto;
+                        transform: scale(1);
+                    }
+
+                    .wave-iconbutton.preview-filename-copy-button:hover,
+                    .wave-iconbutton.preview-filename-copy-button:focus-visible {
+                        opacity: 1;
+                    }
+                }
+
                 .connection-button {
                     display: flex;
                     align-items: center;
@@ -219,6 +259,10 @@
                             align-items: center;
                             justify-content: center;
                         }
+                    }
+
+                    .block-frame-div.preview-filename-shell {
+                        justify-content: flex-start;
                     }
 
                     .menubutton {

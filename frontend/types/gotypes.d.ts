@@ -548,6 +548,20 @@ declare global {
         paths: string[];
     };
 
+    // wshrpc.CommandRemoteFileNameSearchData
+    type CommandRemoteFileNameSearchData = {
+        path: string;
+        query: string;
+        limit?: number;
+        includehidden?: boolean;
+    };
+
+    // wshrpc.CommandRemoteFileNameSearchRtnData
+    type CommandRemoteFileNameSearchRtnData = {
+        matches?: FileNameSearchMatch[];
+        truncated?: boolean;
+    };
+
     // wshrpc.CommandRemoteFileSearchData
     type CommandRemoteFileSearchData = {
         path: string;
@@ -1069,6 +1083,13 @@ declare global {
         limit?: number;
     };
 
+    // wshrpc.FileNameSearchMatch
+    type FileNameSearchMatch = {
+        path: string;
+        relpath?: string;
+        isdir?: boolean;
+    };
+
     // wshrpc.FileOpts
     type FileOpts = {
         maxsize?: number;
@@ -1474,6 +1495,7 @@ declare global {
         path: string;
         basepath?: string;
         matched?: boolean;
+        repositories?: VcsRepositoryInfo[];
         repoid?: string;
         repotype?: string;
         repopath?: string;

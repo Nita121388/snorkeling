@@ -79,6 +79,11 @@ type svnStatusEntry struct {
 	} `xml:"wc-status"`
 }
 
+type detectedRepoRoot struct {
+	RepoType string
+	RootPath string
+}
+
 func runVcsCommand(ctx context.Context, dir string, command string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
 	if dir != "" {
@@ -199,12 +204,66 @@ func normalizeRepoRootPath(path string) string {
 	return cleanPath
 }
 
-func repoRootDedupKey(path string) string {
+func repoRootPathKey(path string) string {
 	normalizedPath := normalizeRepoRootPath(path)
 	if runtime.GOOS == "windows" {
 		return strings.ToLower(normalizedPath)
 	}
 	return normalizedPath
+}
+
+func repoRootDedupKey(repoType string, path string) string {
+	typeKey := strings.ToLower(strings.TrimSpace(repoType))
+	pathKey := repoRootPathKey(path)
+	if typeKey == "" || pathKey == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s:%s", typeKey, pathKey)
+}
+
+func makeDetectedRepoRoot(repoType string, path string) (detectedRepoRoot, bool) {
+	typeKey := strings.ToLower(strings.TrimSpace(repoType))
+	normalizedPath := normalizeRepoRootPath(path)
+	if typeKey == "" || normalizedPath == "" {
+		return detectedRepoRoot{}, false
+	}
+	return detectedRepoRoot{
+		RepoType: typeKey,
+		RootPath: normalizedPath,
+	}, true
+}
+
+func sortDetectedRepoRootsByPath(entries []detectedRepoRoot) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].RootPath != entries[j].RootPath {
+			return entries[i].RootPath < entries[j].RootPath
+		}
+		return entries[i].RepoType < entries[j].RepoType
+	})
+}
+
+func sortDetectedRepoRootsBySpecificity(entries []detectedRepoRoot) {
+	sort.Slice(entries, func(i, j int) bool {
+		if len(entries[i].RootPath) != len(entries[j].RootPath) {
+			return len(entries[i].RootPath) > len(entries[j].RootPath)
+		}
+		if entries[i].RootPath != entries[j].RootPath {
+			return entries[i].RootPath < entries[j].RootPath
+		}
+		return entries[i].RepoType < entries[j].RepoType
+	})
+}
+
+func buildResolvedRepoRoots(gitRoot string, svnRoot string) []detectedRepoRoot {
+	entries := make([]detectedRepoRoot, 0, 2)
+	if entry, ok := makeDetectedRepoRoot("git", gitRoot); ok {
+		entries = append(entries, entry)
+	}
+	if entry, ok := makeDetectedRepoRoot("svn", svnRoot); ok {
+		entries = append(entries, entry)
+	}
+	sortDetectedRepoRootsBySpecificity(entries)
+	return entries
 }
 
 func detectGitRoot(ctx context.Context, path string) string {
@@ -258,28 +317,31 @@ func shouldSkipVcsScanDir(name string) bool {
 	return found
 }
 
-func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includeParent bool) []string {
+func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includeParent bool) []detectedRepoRoot {
 	if scanDepth <= 0 {
 		scanDepth = DefaultVcsScanDepth
 	}
-	repoSet := make(map[string]string)
-	addRepo := func(path string) {
-		normalizedPath := normalizeRepoRootPath(path)
-		dedupKey := repoRootDedupKey(normalizedPath)
-		if normalizedPath == "" || dedupKey == "" {
+	repoSet := make(map[string]detectedRepoRoot)
+	addRepo := func(repoType string, path string) {
+		entry, ok := makeDetectedRepoRoot(repoType, path)
+		if !ok {
+			return
+		}
+		dedupKey := repoRootDedupKey(entry.RepoType, entry.RootPath)
+		if dedupKey == "" {
 			return
 		}
 		if _, exists := repoSet[dedupKey]; exists {
 			return
 		}
-		repoSet[dedupKey] = normalizedPath
+		repoSet[dedupKey] = entry
 	}
 	if includeParent {
 		if gitRoot := detectGitRoot(ctx, basePath); gitRoot != "" {
-			addRepo(gitRoot)
+			addRepo("git", gitRoot)
 		}
 		if svnRoot := detectSvnRoot(ctx, basePath); svnRoot != "" {
-			addRepo(svnRoot)
+			addRepo("svn", svnRoot)
 		}
 	}
 	_ = filepath.WalkDir(basePath, func(path string, entry os.DirEntry, walkErr error) error {
@@ -300,7 +362,7 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 		name := entry.Name()
 		if entry.IsDir() {
 			if name == ".git" || name == ".svn" {
-				addRepo(filepath.Dir(path))
+				addRepo(strings.TrimPrefix(name, "."), filepath.Dir(path))
 				return filepath.SkipDir
 			}
 			if shouldSkipVcsScanDir(name) {
@@ -312,15 +374,15 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 			return nil
 		}
 		if name == ".git" {
-			addRepo(filepath.Dir(path))
+			addRepo("git", filepath.Dir(path))
 		}
 		return nil
 	})
-	repos := make([]string, 0, len(repoSet))
+	repos := make([]detectedRepoRoot, 0, len(repoSet))
 	for _, repo := range repoSet {
 		repos = append(repos, repo)
 	}
-	sort.Strings(repos)
+	sortDetectedRepoRootsByPath(repos)
 	if len(repos) > MaxVcsRepos {
 		repos = repos[:MaxVcsRepos]
 	}
@@ -328,18 +390,24 @@ func detectRepoRoots(ctx context.Context, basePath string, scanDepth int, includ
 }
 
 func chooseResolvedRepoRoot(gitRoot string, svnRoot string) (string, string) {
-	switch {
-	case gitRoot == "" && svnRoot == "":
+	resolved := buildResolvedRepoRoots(gitRoot, svnRoot)
+	if len(resolved) == 0 {
 		return "", ""
-	case gitRoot == "":
-		return "svn", svnRoot
-	case svnRoot == "":
-		return "git", gitRoot
-	case len(svnRoot) > len(gitRoot):
-		return "svn", svnRoot
-	default:
-		return "git", gitRoot
 	}
+	return resolved[0].RepoType, resolved[0].RootPath
+}
+
+func makeRepoInfo(repoType string, repoRoot string) wshrpc.VcsRepositoryInfo {
+	repoInfo := wshrpc.VcsRepositoryInfo{
+		RepoId:   repoRootId(repoType, repoRoot),
+		RepoType: repoType,
+		RootPath: repoRoot,
+		Name:     filepath.Base(repoRoot),
+	}
+	if repoInfo.Name == "" || repoInfo.Name == "." {
+		repoInfo.Name = repoRoot
+	}
+	return repoInfo
 }
 
 func parseGitStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
@@ -1080,23 +1148,11 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 	repoRoots := detectRepoRoots(ctx, basePath, scanDepth, data.IncludeParent)
 	repositories := make([]wshrpc.VcsRepositoryInfo, 0, len(repoRoots))
 	for _, repoRoot := range repoRoots {
-		repoType := detectRepoType(ctx, repoRoot)
-		if repoType == "" {
-			continue
-		}
-		repoInfo := wshrpc.VcsRepositoryInfo{
-			RepoId:   repoRootId(repoType, repoRoot),
-			RepoType: repoType,
-			RootPath: repoRoot,
-			Name:     filepath.Base(repoRoot),
-		}
-		if repoInfo.Name == "" || repoInfo.Name == "." {
-			repoInfo.Name = repoRoot
-		}
-		switch repoType {
+		repoInfo := makeRepoInfo(repoRoot.RepoType, repoRoot.RootPath)
+		switch repoRoot.RepoType {
 		case "git":
-			branch, status, statusErr := loadGitRepoState(ctx, repoRoot, statusLimit)
-			remoteUrl, browseUrl := loadGitRemoteUrls(ctx, repoRoot)
+			branch, status, statusErr := loadGitRepoState(ctx, repoRoot.RootPath, statusLimit)
+			remoteUrl, browseUrl := loadGitRemoteUrls(ctx, repoRoot.RootPath)
 			repoInfo.Branch = branch
 			repoInfo.RemoteUrl = remoteUrl
 			repoInfo.BrowseUrl = browseUrl
@@ -1105,8 +1161,8 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 				repoInfo.StatusErr = statusErr.Error()
 			}
 		case "svn":
-			branch, status, statusErr := loadSvnRepoState(ctx, repoRoot, statusLimit)
-			remoteUrl, browseUrl := loadSvnRemoteUrls(ctx, repoRoot)
+			branch, status, statusErr := loadSvnRepoState(ctx, repoRoot.RootPath, statusLimit)
+			remoteUrl, browseUrl := loadSvnRemoteUrls(ctx, repoRoot.RootPath)
 			repoInfo.Branch = branch
 			repoInfo.RemoteUrl = remoteUrl
 			repoInfo.BrowseUrl = browseUrl
@@ -1118,7 +1174,10 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 		repositories = append(repositories, repoInfo)
 	}
 	sort.Slice(repositories, func(i, j int) bool {
-		return repositories[i].RootPath < repositories[j].RootPath
+		if repositories[i].RootPath != repositories[j].RootPath {
+			return repositories[i].RootPath < repositories[j].RootPath
+		}
+		return repositories[i].RepoType < repositories[j].RepoType
 	})
 	return &wshrpc.RemoteVcsRepositoriesRtnData{
 		BasePath:     basePath,
@@ -1139,21 +1198,22 @@ func (impl *ServerImpl) RemoteVcsResolvePathCommand(ctx context.Context, data ws
 	result.BasePath = basePath
 	gitRoot := detectGitRoot(ctx, basePath)
 	svnRoot := detectSvnRoot(ctx, basePath)
-	repoType, repoPath := chooseResolvedRepoRoot(gitRoot, svnRoot)
-	if repoType == "" || repoPath == "" {
+	resolvedRepos := buildResolvedRepoRoots(gitRoot, svnRoot)
+	if len(resolvedRepos) == 0 {
 		log.Printf("[vcsresolve] no repo path=%q base=%q git=%q svn=%q", data.Path, basePath, gitRoot, svnRoot)
 		return result, nil
 	}
-	repoName := filepath.Base(repoPath)
-	if repoName == "" || repoName == "." {
-		repoName = repoPath
-	}
 	result.Matched = true
-	result.RepoType = repoType
-	result.RepoPath = repoPath
-	result.RepoId = repoRootId(repoType, repoPath)
-	result.RepoName = repoName
-	log.Printf("[vcsresolve] matched path=%q base=%q repoType=%s repoPath=%q git=%q svn=%q", data.Path, basePath, repoType, repoPath, gitRoot, svnRoot)
+	result.Repositories = make([]wshrpc.VcsRepositoryInfo, 0, len(resolvedRepos))
+	for _, resolvedRepo := range resolvedRepos {
+		result.Repositories = append(result.Repositories, makeRepoInfo(resolvedRepo.RepoType, resolvedRepo.RootPath))
+	}
+	firstRepo := result.Repositories[0]
+	result.RepoType = firstRepo.RepoType
+	result.RepoPath = firstRepo.RootPath
+	result.RepoId = firstRepo.RepoId
+	result.RepoName = firstRepo.Name
+	log.Printf("[vcsresolve] matched path=%q base=%q repos=%v git=%q svn=%q", data.Path, basePath, result.Repositories, gitRoot, svnRoot)
 	return result, nil
 }
 

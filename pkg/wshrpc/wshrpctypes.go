@@ -130,6 +130,7 @@ type WshRpcInterface interface {
 	RemoteProcessListCommand(ctx context.Context, data CommandRemoteProcessListData) (*ProcessListResponse, error)
 	RemoteProcessSignalCommand(ctx context.Context, data CommandRemoteProcessSignalData) error
 	RemoteFileSearchStreamCommand(ctx context.Context, data CommandRemoteFileSearchData) chan RespOrErrorUnion[CommandRemoteFileSearchRtnData]
+	RemoteFileNameSearchStreamCommand(ctx context.Context, data CommandRemoteFileNameSearchData) chan RespOrErrorUnion[CommandRemoteFileNameSearchRtnData]
 	RemoteVcsResolvePathCommand(ctx context.Context, data CommandRemoteVcsResolvePathData) (*RemoteVcsResolvePathRtnData, error)
 	RemoteVcsRepositoriesCommand(ctx context.Context, data CommandRemoteVcsRepositoriesData) (*RemoteVcsRepositoriesRtnData, error)
 	RemoteVcsCommitsCommand(ctx context.Context, data CommandRemoteVcsCommitsData) (*RemoteVcsCommitsRtnData, error)
@@ -954,6 +955,24 @@ type CommandRemoteFileSearchRtnData struct {
 	Truncated bool              `json:"truncated,omitempty"`
 }
 
+type CommandRemoteFileNameSearchData struct {
+	Path          string `json:"path"`
+	Query         string `json:"query"`
+	Limit         int    `json:"limit,omitempty"`
+	IncludeHidden bool   `json:"includehidden,omitempty"`
+}
+
+type FileNameSearchMatch struct {
+	Path    string `json:"path"`
+	RelPath string `json:"relpath,omitempty"`
+	IsDir   bool   `json:"isdir,omitempty"`
+}
+
+type CommandRemoteFileNameSearchRtnData struct {
+	Matches   []FileNameSearchMatch `json:"matches,omitempty"`
+	Truncated bool                  `json:"truncated,omitempty"`
+}
+
 type CommandRemoteVcsRepositoriesData struct {
 	Path          string `json:"path"`
 	StatusLimit   int    `json:"statuslimit,omitempty"`
@@ -991,14 +1010,15 @@ type CommandRemoteVcsResolvePathData struct {
 }
 
 type RemoteVcsResolvePathRtnData struct {
-	Path     string `json:"path"`
-	BasePath string `json:"basepath,omitempty"`
-	Matched  bool   `json:"matched,omitempty"`
-	RepoId   string `json:"repoid,omitempty"`
-	RepoType string `json:"repotype,omitempty"`
-	RepoPath string `json:"repopath,omitempty"`
-	RepoName string `json:"reponame,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Path         string              `json:"path"`
+	BasePath     string              `json:"basepath,omitempty"`
+	Matched      bool                `json:"matched,omitempty"`
+	Repositories []VcsRepositoryInfo `json:"repositories,omitempty"`
+	RepoId       string              `json:"repoid,omitempty"`
+	RepoType     string              `json:"repotype,omitempty"`
+	RepoPath     string              `json:"repopath,omitempty"`
+	RepoName     string              `json:"reponame,omitempty"`
+	Error        string              `json:"error,omitempty"`
 }
 
 type CommandRemoteVcsCommitsData struct {

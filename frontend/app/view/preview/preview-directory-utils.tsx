@@ -10,6 +10,7 @@ import dayjs from "dayjs";
 import React from "react";
 import { quote as shellQuote } from "shell-quote";
 import { type PreviewModel } from "./preview-model";
+import { makeRelativePathForCopy } from "./preview-paths";
 
 export const recursiveError = "recursive flag must be set for directory operations";
 export const overwriteError = "set overwrite flag to delete the existing file";
@@ -218,6 +219,10 @@ type DirectoryEntryMenuActions = {
     rename: () => void;
 };
 
+type DirectoryEntryMenuOptions = {
+    relativePathRoot?: string | null;
+};
+
 type DirectoryBackgroundMenuActions = {
     newFile: () => void;
     newDirectory: () => void;
@@ -227,7 +232,7 @@ type DirectoryVcsMenuScope = "file" | "directory" | "background";
 
 type DirectoryVcsResolveResult =
     | { kind: "none" }
-    | { kind: "repo"; repo: VcsRepositoryInfo }
+    | { kind: "repos"; repos: VcsRepositoryInfo[] }
     | { kind: "error"; error: string };
 
 function makeRepoMenuLabel(repo: VcsRepositoryInfo): string {
@@ -255,17 +260,28 @@ async function resolveRepoForPath(
             console.warn(`[vcsresolve] failed for ${targetPath}: ${response.error}`);
             return { kind: "error", error: response.error };
         }
+        const repos = (response.repositories ?? []).filter(
+            (repo) => !isBlank(repo.repotype) && !isBlank(repo.rootpath)
+        );
+        if (repos.length > 0) {
+            return {
+                kind: "repos",
+                repos,
+            };
+        }
         if (!response.matched || isBlank(response.repotype) || isBlank(response.repopath)) {
             return { kind: "none" };
         }
         return {
-            kind: "repo",
-            repo: {
-                repoid: response.repoid ?? `${response.repotype}:${response.repopath}`,
-                repotype: response.repotype,
-                rootpath: response.repopath,
-                name: response.reponame ?? response.repopath,
-            },
+            kind: "repos",
+            repos: [
+                {
+                    repoid: response.repoid ?? `${response.repotype}:${response.repopath}`,
+                    repotype: response.repotype,
+                    rootpath: response.repopath,
+                    name: response.reponame ?? response.repopath,
+                },
+            ],
         };
     } catch (e) {
         const errorText = `${e}`;
@@ -370,55 +386,54 @@ function makeResolveFailureMenuItem(targetPath: string, errorText: string): Cont
             {
                 label: "Copy Debug Info",
                 click: () =>
-                    fireAndForget(() =>
-                        navigator.clipboard.writeText(`path: ${targetPath}\nerror: ${errorText}`)
-                    ),
+                    fireAndForget(() => navigator.clipboard.writeText(`path: ${targetPath}\nerror: ${errorText}`)),
             },
         ],
     };
 }
 
-async function makeDirectoryVcsMenuItem(
+async function makeDirectoryVcsMenuItems(
     model: PreviewModel,
     conn: string,
     targetPath: string,
     scope: DirectoryVcsMenuScope,
     setErrorMsg: (msg: ErrorMsg) => void
-): Promise<ContextMenuItem | null> {
+): Promise<ContextMenuItem[]> {
     const resolveResult = await resolveRepoForPath(model, conn, targetPath);
     if (resolveResult.kind === "none") {
-        return null;
+        return [];
     }
     if (resolveResult.kind === "error") {
-        return makeResolveFailureMenuItem(targetPath, resolveResult.error);
+        return [makeResolveFailureMenuItem(targetPath, resolveResult.error)];
     }
-    const { repo } = resolveResult;
-    const submenu: ContextMenuItem[] = [];
-    if (scope === "background") {
-        submenu.push({
-            label: makeRepoCommitsLabel(repo),
-            click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
-        });
-    } else {
-        submenu.push({
-            label: "View History",
-            click: () => fireAndForget(() => openHistoryBlock(conn, repo, targetPath)),
-        });
-        if (scope === "file") {
+    return resolveResult.repos.map((repo) => {
+        const submenu: ContextMenuItem[] = [];
+        if (scope === "background") {
             submenu.push({
-                label: "View Diff",
-                click: () => fireAndForget(() => openDiffBlock(conn, repo, targetPath)),
+                label: makeRepoCommitsLabel(repo),
+                click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
             });
+        } else {
+            submenu.push({
+                label: "View History",
+                click: () => fireAndForget(() => openHistoryBlock(conn, repo, targetPath)),
+            });
+            if (scope === "file") {
+                submenu.push({
+                    label: "View Diff",
+                    click: () => fireAndForget(() => openDiffBlock(conn, repo, targetPath)),
+                });
+            }
         }
-    }
-    submenu.push({
-        label: makeRepoSyncLabel(repo),
-        click: () => fireAndForget(() => syncRepo(model, conn, repo, setErrorMsg)),
+        submenu.push({
+            label: makeRepoSyncLabel(repo),
+            click: () => fireAndForget(() => syncRepo(model, conn, repo, setErrorMsg)),
+        });
+        return {
+            label: makeRepoMenuLabel(repo),
+            submenu,
+        };
     });
-    return {
-        label: makeRepoMenuLabel(repo),
-        submenu,
-    };
 }
 
 export async function makeDirectoryEntryMenuItems(
@@ -426,9 +441,11 @@ export async function makeDirectoryEntryMenuItems(
     finfo: FileInfo,
     conn: string,
     setErrorMsg: (msg: ErrorMsg) => void,
-    actions: DirectoryEntryMenuActions
+    actions: DirectoryEntryMenuActions,
+    options: DirectoryEntryMenuOptions = {}
 ): Promise<ContextMenuItem[]> {
     const fileName = finfo.path.split(/[\\/]/).pop() ?? finfo.name ?? finfo.path;
+    const relativePath = makeRelativePathForCopy(finfo.path, options.relativePathRoot);
     const menu: ContextMenuItem[] = [
         {
             label: "New File",
@@ -453,6 +470,14 @@ export async function makeDirectoryEntryMenuItems(
             label: "Copy Full File Name",
             click: () => fireAndForget(() => navigator.clipboard.writeText(finfo.path)),
         },
+        ...(relativePath == null
+            ? []
+            : [
+                  {
+                      label: "Copy Relative Path",
+                      click: () => fireAndForget(() => navigator.clipboard.writeText(relativePath)),
+                  } satisfies ContextMenuItem,
+              ]),
         {
             label: "Copy File Name (Shell Quoted)",
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([fileName]))),
@@ -463,15 +488,15 @@ export async function makeDirectoryEntryMenuItems(
         },
     ];
     addOpenMenuItems(menu, conn, finfo);
-    const vcsMenuItem = await makeDirectoryVcsMenuItem(
+    const vcsMenuItems = await makeDirectoryVcsMenuItems(
         model,
         conn,
         finfo.path,
         finfo.isdir ? "directory" : "file",
         setErrorMsg
     );
-    if (vcsMenuItem) {
-        menu.push({ type: "separator" }, vcsMenuItem);
+    if (vcsMenuItems.length > 0) {
+        menu.push({ type: "separator" }, ...vcsMenuItems);
     }
     menu.push(
         {
@@ -513,9 +538,9 @@ export async function makeDirectoryBackgroundMenuItems(
         },
     ];
     addOpenMenuItems(menu, conn, finfo);
-    const vcsMenuItem = await makeDirectoryVcsMenuItem(model, conn, finfo.path, "background", setErrorMsg);
-    if (vcsMenuItem) {
-        menu.push({ type: "separator" }, vcsMenuItem);
+    const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
+    if (vcsMenuItems.length > 0) {
+        menu.push({ type: "separator" }, ...vcsMenuItems);
     }
     return menu;
 }

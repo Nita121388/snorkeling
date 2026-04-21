@@ -1,9 +1,9 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { dialog, ipcMain, Notification } from "electron";
+import { app, dialog, ipcMain, Notification, shell } from "electron";
 import { autoUpdater } from "electron-updater";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import YAML from "yaml";
 import { RpcApi } from "../frontend/app/store/wshclientapi";
@@ -15,6 +15,33 @@ import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 
 export let updater: Updater;
+const SnorkelingLatestReleaseUrl = "https://github.com/Nita121388/snorkeling/releases/latest";
+
+type UpdateSupportState = {
+    supported: boolean;
+    reason?: string;
+};
+
+function getWindowsUninstallerCandidates(): string[] {
+    const exeDir = path.dirname(process.execPath);
+    const exeName = path.basename(process.execPath, path.extname(process.execPath));
+    const nameCandidates = new Set([app.getName(), exeName].map((name) => name?.trim()).filter(Boolean));
+    return Array.from(nameCandidates).map((name) => path.join(exeDir, `Uninstall ${name}.exe`));
+}
+
+function detectUpdateSupportState(): UpdateSupportState {
+    if (process.platform !== "win32") {
+        return { supported: true };
+    }
+    const uninstallerCandidates = getWindowsUninstallerCandidates();
+    if (uninstallerCandidates.some((candidate) => existsSync(candidate))) {
+        return { supported: true };
+    }
+    return {
+        supported: false,
+        reason: "This copy appears to be running from a ZIP/extracted directory. Automatic in-place updates are only supported for the Windows setup (.exe) installation.",
+    };
+}
 
 function getUpdateChannel(settings: SettingsType): string {
     const updaterConfigPath = path.join(process.resourcesPath!, "app-update.yml");
@@ -41,6 +68,7 @@ export class Updater {
     autoCheckEnabled: boolean;
     availableUpdateReleaseName: string | null;
     availableUpdateReleaseNotes: string | null;
+    updateSupport: UpdateSupportState;
     private _status: UpdaterStatus;
     lastUpdateCheck: Date;
 
@@ -54,9 +82,13 @@ export class Updater {
         this.lastUpdateCheck = new Date(0);
         this.autoCheckInterval = null;
         this.availableUpdateReleaseName = null;
+        this.updateSupport = detectUpdateSupportState();
 
         autoUpdater.autoInstallOnAppQuit = settings["autoupdate:installonquit"];
         console.log("Install update on quit:", settings["autoupdate:installonquit"]);
+        if (!this.updateSupport.supported) {
+            console.log("Automatic in-place updates are disabled for this installation:", this.updateSupport.reason);
+        }
 
         // Only update the release channel if it's specified, otherwise use the one configured in the updater.
         autoUpdater.channel = getUpdateChannel(settings);
@@ -124,6 +156,10 @@ export class Updater {
      * Check for updates and start the background update check, if configured.
      */
     async start() {
+        if (!this.updateSupport.supported) {
+            console.log("skipping updater start because this installation does not support in-place updates");
+            return;
+        }
         if (this.autoCheckEnabled) {
             console.log("starting updater");
             this.autoCheckInterval = setInterval(() => {
@@ -150,6 +186,27 @@ export class Updater {
      */
     async checkForUpdates(userInput: boolean) {
         const now = new Date();
+        if (!this.updateSupport.supported) {
+            if (userInput) {
+                const dialogOpts: Electron.MessageBoxOptions = {
+                    type: "info",
+                    buttons: ["OK", "Open Latest Release"],
+                    defaultId: 0,
+                    cancelId: 0,
+                    message: "Automatic updates are unavailable for this copy.",
+                    detail:
+                        this.updateSupport.reason ??
+                        "This copy does not support automatic in-place updates. Please install the Windows setup package (.exe) to receive automatic updates.",
+                };
+                const dialogResult = focusedWaveWindow
+                    ? await dialog.showMessageBox(focusedWaveWindow, dialogOpts)
+                    : await dialog.showMessageBox(dialogOpts);
+                if (dialogResult.response === 1) {
+                    await shell.openExternal(SnorkelingLatestReleaseUrl);
+                }
+            }
+            return;
+        }
 
         // Run an update check always if the user requests it, otherwise only if there's an active update check interval and enough time has elapsed.
         if (
