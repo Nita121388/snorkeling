@@ -615,6 +615,9 @@ export class TermViewModel implements ViewModel {
         if (termMode == "term") {
             if (this.termRef?.current?.terminal) {
                 this.termRef.current.terminal.focus();
+                window.requestAnimationFrame(() => {
+                    this.termRef.current?.terminal?.focus();
+                });
                 return true;
             }
         }

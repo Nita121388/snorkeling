@@ -299,7 +299,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termMacOptionIsMeta = globalStore.get(termMacOptionIsMetaAtom) ?? false;
         const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
-        const wasFocused = model.termRef.current != null && globalStore.get(model.nodeModel.isFocused);
+        const wasFocused = globalStore.get(model.nodeModel.isFocused);
         const termWrap = new TermWrap(
             tabModel.tabId,
             blockId,
@@ -386,6 +386,22 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     }, [termMode]);
 
     React.useEffect(() => {
+        if (!isFocused || termMode != "term" || searchIsOpen || termWrapInst == null) {
+            return;
+        }
+        const timeoutId = window.setTimeout(() => {
+            model.giveFocus();
+        }, 0);
+        const rafId = window.requestAnimationFrame(() => {
+            model.giveFocus();
+        });
+        return () => {
+            window.clearTimeout(timeoutId);
+            window.cancelAnimationFrame(rafId);
+        };
+    }, [isFocused, model, searchIsOpen, termMode, termWrapInst]);
+
+    React.useEffect(() => {
         if (searchIsOpen) {
             setSelectionCopyOverlay(null);
         }
@@ -429,7 +445,10 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
 
     const handleTermMouseDown = React.useCallback(() => {
         setSelectionCopyOverlay(null);
-    }, []);
+        window.requestAnimationFrame(() => {
+            model.giveFocus();
+        });
+    }, [model]);
 
     const handleTermMouseUp = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const view = viewRef.current;
