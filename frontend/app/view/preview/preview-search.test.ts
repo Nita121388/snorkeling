@@ -34,6 +34,16 @@ describe("preview search helpers", () => {
         expect(sorted.map((match) => match.relpath)).toEqual(["docs", "src", "alpha.ts", "src/zeta.ts"]);
     });
 
+    it("sorts filename matches naturally", () => {
+        const sorted = sortFileNameMatches([
+            { path: "/tmp/S26", relpath: "S26", isdir: true },
+            { path: "/tmp/S3", relpath: "S3", isdir: true },
+            { path: "/tmp/S1", relpath: "S1", isdir: true },
+        ]);
+
+        expect(sorted.map((match) => match.relpath)).toEqual(["S1", "S3", "S26"]);
+    });
+
     it("uses smart-case matching for filename queries", () => {
         expect(matchesFileNameSearchQuery("ConfigMap.yaml", "Config")).toBe(true);
         expect(matchesFileNameSearchQuery("config-map.yaml", "Config")).toBe(false);

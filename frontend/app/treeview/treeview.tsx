@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { makeIconClass } from "@/util/util";
+import { makeIconClass, naturalStringCompare } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import React, {
@@ -107,9 +107,9 @@ function sortIdsByNode(nodesById: Map<string, TreeNodeData>, ids: string[]): str
         const leftLabel = normalizeLabel(left ?? { id: leftId, isDirectory: false }).toLocaleLowerCase();
         const rightLabel = normalizeLabel(right ?? { id: rightId, isDirectory: false }).toLocaleLowerCase();
         if (leftLabel !== rightLabel) {
-            return leftLabel.localeCompare(rightLabel);
+            return naturalStringCompare(leftLabel, rightLabel);
         }
-        return leftId.localeCompare(rightId);
+        return naturalStringCompare(leftId, rightId);
     });
 }
 

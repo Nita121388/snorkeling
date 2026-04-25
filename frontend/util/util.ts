@@ -494,6 +494,21 @@ function formatRelativeTime(timestamp: number): string {
     }
 }
 
+const NaturalStringCollator = new Intl.Collator(undefined, {
+    numeric: true,
+    sensitivity: "base",
+});
+
+function naturalStringCompare(left: string | null | undefined, right: string | null | undefined): number {
+    const leftValue = left ?? "";
+    const rightValue = right ?? "";
+    const result = NaturalStringCollator.compare(leftValue, rightValue);
+    if (result !== 0) {
+        return result;
+    }
+    return leftValue.localeCompare(rightValue);
+}
+
 /**
  * Sort objects by display:order (ascending) and display:name (alphabetically)
  * @param a First object to compare
@@ -534,6 +549,7 @@ export {
     makeExternLink,
     makeIconClass,
     mergeMeta,
+    naturalStringCompare,
     NullAtom,
     parseDataUrl,
     sleep,

@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { naturalStringCompare } from "@/util/util";
+
 export type GroupedContentSearchMatch = {
     path: string;
     relPath: string;
@@ -49,9 +51,9 @@ export function sortFileNameMatches(matches: FileNameSearchMatch[]): FileNameSea
         const leftLabel = (left.relpath ?? left.path).toLocaleLowerCase();
         const rightLabel = (right.relpath ?? right.path).toLocaleLowerCase();
         if (leftLabel !== rightLabel) {
-            return leftLabel.localeCompare(rightLabel);
+            return naturalStringCompare(leftLabel, rightLabel);
         }
-        return left.path.localeCompare(right.path);
+        return naturalStringCompare(left.path, right.path);
     });
 }
 

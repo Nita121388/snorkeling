@@ -25,6 +25,22 @@ describe("treeview visible rows", () => {
         expect(rows.map((row) => row.id)).toEqual(["root", "b", "c", "a"]);
     });
 
+    it("sorts directory labels naturally", () => {
+        const nodes = makeNodes([
+            {
+                id: "root",
+                isDirectory: true,
+                childrenStatus: "loaded",
+                childrenIds: ["s26", "s3", "s1"],
+            },
+            { id: "s26", parentId: "root", isDirectory: true, label: "S26", childrenStatus: "loaded" },
+            { id: "s3", parentId: "root", isDirectory: true, label: "S3", childrenStatus: "loaded" },
+            { id: "s1", parentId: "root", isDirectory: true, label: "S1", childrenStatus: "loaded" },
+        ]);
+        const rows = buildVisibleRows(nodes, ["root"], new Set(["root"]));
+        expect(rows.map((row) => row.label)).toEqual(["root", "S1", "S3", "S26"]);
+    });
+
     it("renders loading and capped synthetic rows", () => {
         const nodes = makeNodes([
             { id: "root", isDirectory: true, childrenStatus: "loading" },
