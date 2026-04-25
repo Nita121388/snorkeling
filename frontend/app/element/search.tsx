@@ -16,6 +16,9 @@ type SearchProps = SearchAtoms & {
     onSearch?: (search: string) => void;
     onNext?: () => void;
     onPrev?: () => void;
+    onReplace?: () => void;
+    onReplaceAll?: () => void;
+    replaceDisabled?: boolean;
 };
 
 const SearchComponent = ({
@@ -25,6 +28,7 @@ const SearchComponent = ({
     regex: regexAtom,
     caseSensitive: caseSensitiveAtom,
     wholeWord: wholeWordAtom,
+    replaceValue: replaceAtom,
     isOpen: isOpenAtom,
     focusInput: focusInputAtom,
     anchorRef,
@@ -33,13 +37,21 @@ const SearchComponent = ({
     onSearch,
     onNext,
     onPrev,
+    onReplace,
+    onReplaceAll,
+    replaceDisabled = false,
 }: SearchProps) => {
+    const fallbackReplaceAtom = useMemo(() => atom(""), []);
     const [isOpen, setIsOpen] = useAtom<boolean>(isOpenAtom);
     const [search, setSearch] = useAtom<string>(searchAtom);
+    const [replaceValue, setReplaceValue] = useAtom<string>(replaceAtom ?? fallbackReplaceAtom);
     const [index, setIndex] = useAtom<number>(indexAtom);
     const [numResults, setNumResults] = useAtom<number>(numResultsAtom);
     const [focusInputCounter, setFocusInputCounter] = useAtom<number>(focusInputAtom);
     const inputRef = useRef<HTMLInputElement>(null);
+    const replaceInputRef = useRef<HTMLInputElement>(null);
+    const replaceEnabled = replaceAtom != null;
+    const replaceActionsDisabled = replaceDisabled || search === "" || numResults === 0;
 
     const handleOpenChange = useCallback((open: boolean) => {
         setIsOpen(open);
@@ -48,6 +60,7 @@ const SearchComponent = ({
     useEffect(() => {
         if (!isOpen) {
             setSearch("");
+            setReplaceValue("");
             setIndex(0);
             setNumResults(0);
             setFocusInputCounter(0);
@@ -126,6 +139,20 @@ const SearchComponent = ({
         [onPrevWrapper, onNextWrapper, setIsOpen]
     );
 
+    const onReplaceKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === "Enter") {
+                if (e.shiftKey) {
+                    onReplaceAll?.();
+                } else {
+                    onReplace?.();
+                }
+                e.preventDefault();
+            }
+        },
+        [onReplace, onReplaceAll]
+    );
+
     const prevDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "chevron-up",
@@ -149,6 +176,22 @@ const SearchComponent = ({
         click: () => setIsOpen(false),
     };
 
+    const replaceDecl: IconButtonDecl = {
+        elemtype: "iconbutton",
+        icon: "arrow-right",
+        title: "Replace (Enter)",
+        disabled: replaceActionsDisabled,
+        click: onReplace,
+    };
+
+    const replaceAllDecl: IconButtonDecl = {
+        elemtype: "iconbutton",
+        icon: "arrows-rotate",
+        title: "Replace All (Shift+Enter)",
+        disabled: replaceActionsDisabled,
+        click: onReplaceAll,
+    };
+
     const regexDecl = createToggleButtonDecl(regexAtom, "custom@regex", "Regular Expression");
     const wholeWordDecl = createToggleButtonDecl(wholeWordAtom, "custom@whole-word", "Whole Word");
     const caseSensitiveDecl = createToggleButtonDecl(caseSensitiveAtom, "custom@case-sensitive", "Case Sensitive");
@@ -157,36 +200,58 @@ const SearchComponent = ({
         <>
             {isOpen && (
                 <FloatingPortal>
-                    <div className="search-container" style={{ ...floatingStyles }} ref={refs.setFloating}>
-                        <Input
-                            ref={inputRef}
-                            placeholder="Search"
-                            value={search}
-                            onChange={setSearch}
-                            onKeyDown={onKeyDown}
-                            autoFocus
-                        />
-                        <div
-                            className={clsx("search-results", { hidden: numResults === 0 })}
-                            aria-live="polite"
-                            aria-label="Search Results"
-                        >
-                            {index + 1}/{numResults}
-                        </div>
+                    <div
+                        className={clsx("search-container", { "has-replace": replaceEnabled })}
+                        style={{ ...floatingStyles }}
+                        ref={refs.setFloating}
+                    >
+                        <div className="search-row">
+                            <Input
+                                ref={inputRef}
+                                placeholder="Search"
+                                value={search}
+                                onChange={setSearch}
+                                onKeyDown={onKeyDown}
+                                autoFocus
+                            />
+                            <div
+                                className={clsx("search-results", { hidden: numResults === 0 })}
+                                aria-live="polite"
+                                aria-label="Search Results"
+                            >
+                                {index + 1}/{numResults}
+                            </div>
 
-                        {(caseSensitiveDecl || wholeWordDecl || regexDecl) && (
-                            <div className="additional-buttons">
-                                {caseSensitiveDecl && <ToggleIconButton decl={caseSensitiveDecl} />}
-                                {wholeWordDecl && <ToggleIconButton decl={wholeWordDecl} />}
-                                {regexDecl && <ToggleIconButton decl={regexDecl} />}
+                            {(caseSensitiveDecl || wholeWordDecl || regexDecl) && (
+                                <div className="additional-buttons">
+                                    {caseSensitiveDecl && <ToggleIconButton decl={caseSensitiveDecl} />}
+                                    {wholeWordDecl && <ToggleIconButton decl={wholeWordDecl} />}
+                                    {regexDecl && <ToggleIconButton decl={regexDecl} />}
+                                </div>
+                            )}
+
+                            <div className="right-buttons">
+                                <IconButton decl={prevDecl} />
+                                <IconButton decl={nextDecl} />
+                                <IconButton decl={closeDecl} />
+                            </div>
+                        </div>
+                        {replaceEnabled && (
+                            <div className="search-row replace-row">
+                                <Input
+                                    ref={replaceInputRef}
+                                    placeholder="Replace"
+                                    value={replaceValue}
+                                    onChange={setReplaceValue}
+                                    onKeyDown={onReplaceKeyDown}
+                                    disabled={replaceDisabled}
+                                />
+                                <div className="right-buttons">
+                                    <IconButton decl={replaceDecl} />
+                                    <IconButton decl={replaceAllDecl} />
+                                </div>
                             </div>
                         )}
-
-                        <div className="right-buttons">
-                            <IconButton decl={prevDecl} />
-                            <IconButton decl={nextDecl} />
-                            <IconButton decl={closeDecl} />
-                        </div>
                     </div>
                 </FloatingPortal>
             )}
@@ -202,6 +267,7 @@ type SearchOptions = {
     regex?: boolean;
     caseSensitive?: boolean;
     wholeWord?: boolean;
+    replace?: boolean;
 };
 
 export function useSearch(options?: SearchOptions): SearchProps {
@@ -215,6 +281,7 @@ export function useSearch(options?: SearchOptions): SearchProps {
             regex: options?.regex !== undefined ? atom(options.regex) : undefined,
             caseSensitive: options?.caseSensitive !== undefined ? atom(options.caseSensitive) : undefined,
             wholeWord: options?.wholeWord !== undefined ? atom(options.wholeWord) : undefined,
+            replaceValue: options?.replace ? atom("") : undefined,
         }),
         []
     );

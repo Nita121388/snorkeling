@@ -461,7 +461,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
 
     return (
         <div
-            className={clsx("rounded-md border border-border bg-panel", className)}
+            className={clsx("rounded-md bg-panel", className)}
             style={containerStyle}
             tabIndex={0}
             onKeyDown={onKeyDown}
@@ -484,7 +484,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                             <div
                                 key={row.id}
                                 className={clsx(
-                                    "absolute left-0 right-0 flex items-center whitespace-nowrap text-sm",
+                                    "absolute left-0 right-0 flex items-center whitespace-nowrap rounded-[5px] text-sm",
                                     row.kind === "node" ? "cursor-pointer" : "text-muted",
                                     selected ? "bg-accent/25 text-foreground" : "text-foreground hover:bg-muted/50"
                                 )}

@@ -987,6 +987,16 @@ type VcsFileStatus struct {
 	Untracked bool   `json:"untracked,omitempty"`
 }
 
+type VcsRemoteState struct {
+	Upstream string          `json:"upstream,omitempty"`
+	Ahead    int             `json:"ahead,omitempty"`
+	Behind   int             `json:"behind,omitempty"`
+	Incoming []VcsCommitInfo `json:"incoming,omitempty"`
+	Outgoing []VcsCommitInfo `json:"outgoing,omitempty"`
+	Files    []VcsFileStatus `json:"files,omitempty"`
+	Error    string          `json:"error,omitempty"`
+}
+
 type VcsRepositoryInfo struct {
 	RepoId    string          `json:"repoid"`
 	RepoType  string          `json:"repotype"`
@@ -995,6 +1005,7 @@ type VcsRepositoryInfo struct {
 	Branch    string          `json:"branch,omitempty"`
 	RemoteUrl string          `json:"remoteurl,omitempty"`
 	BrowseUrl string          `json:"browseurl,omitempty"`
+	Remote    *VcsRemoteState `json:"remote,omitempty"`
 	Status    []VcsFileStatus `json:"status,omitempty"`
 	StatusErr string          `json:"statuserr,omitempty"`
 }
@@ -1083,6 +1094,7 @@ type RemoteVcsCommitRtnData struct {
 type CommandRemoteVcsSyncData struct {
 	RepoType string `json:"repotype"`
 	RepoPath string `json:"repopath"`
+	Action   string `json:"action,omitempty"`
 }
 
 type RemoteVcsSyncRtnData struct {

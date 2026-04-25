@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +78,9 @@ type svnStatusEntry struct {
 	WCStatus struct {
 		Item string `xml:"item,attr"`
 	} `xml:"wc-status"`
+	ReposStatus struct {
+		Item string `xml:"item,attr"`
+	} `xml:"repos-status"`
 }
 
 type detectedRepoRoot struct {
@@ -138,6 +142,36 @@ func runSvnStatusXMLCommand(ctx context.Context, dir string) (string, error) {
 	return outStr, fmt.Errorf("svn status --xml: %s", errStr)
 }
 
+func runSvnRemoteStatusXMLCommand(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "svn", "status", "-u", "--xml", "--non-interactive")
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	outStr := strings.TrimSpace(stdout.String())
+	if err == nil {
+		return outStr, nil
+	}
+	if outStr != "" {
+		var parsed svnStatusXML
+		if parseErr := xml.Unmarshal([]byte(outStr), &parsed); parseErr == nil {
+			return outStr, nil
+		}
+	}
+	errStr := strings.TrimSpace(stderr.String())
+	if errStr == "" {
+		errStr = outStr
+	}
+	if errStr == "" {
+		errStr = err.Error()
+	}
+	return outStr, fmt.Errorf("svn status -u --xml: %s", errStr)
+}
+
 func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
 	if dir != "" {
@@ -162,7 +196,30 @@ func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...s
 	return outStr, nil
 }
 
+func normalizeVcsInputPath(path string) string {
+	trimmedPath := strings.TrimSpace(path)
+	if !strings.HasPrefix(trimmedPath, "wsh://") {
+		return trimmedPath
+	}
+	parsedUrl, err := url.Parse(trimmedPath)
+	if err != nil || parsedUrl.Path == "" {
+		return trimmedPath
+	}
+	parsedPath := parsedUrl.Path
+	if strings.HasPrefix(parsedPath, "//") {
+		return parsedPath[1:]
+	}
+	if strings.HasPrefix(parsedPath, "/~/") || parsedPath == "/~" {
+		return parsedPath[1:]
+	}
+	if runtime.GOOS == "windows" && len(parsedPath) >= 3 && parsedPath[0] == '/' && parsedPath[2] == ':' {
+		return parsedPath[1:]
+	}
+	return parsedPath
+}
+
 func normalizeVcsBasePath(path string) (string, error) {
+	path = normalizeVcsInputPath(path)
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("path is required")
 	}
@@ -468,6 +525,96 @@ func loadGitRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 	return branch, parseGitStatus(statusOut, statusLimit), nil
 }
 
+func appendRemoteStateError(state *wshrpc.VcsRemoteState, err error) {
+	if state == nil || err == nil {
+		return
+	}
+	errMsg := strings.TrimSpace(err.Error())
+	if errMsg == "" {
+		return
+	}
+	if state.Error == "" {
+		state.Error = errMsg
+		return
+	}
+	state.Error += "\n" + errMsg
+}
+
+func parseGitAheadBehind(out string) (int, int, error) {
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) < 2 {
+		return 0, 0, fmt.Errorf("invalid ahead/behind output %q", out)
+	}
+	ahead, aheadErr := strconv.Atoi(fields[0])
+	if aheadErr != nil {
+		return 0, 0, fmt.Errorf("invalid ahead count %q: %w", fields[0], aheadErr)
+	}
+	behind, behindErr := strconv.Atoi(fields[1])
+	if behindErr != nil {
+		return 0, 0, fmt.Errorf("invalid behind count %q: %w", fields[1], behindErr)
+	}
+	return ahead, behind, nil
+}
+
+func loadGitRemoteCommits(ctx context.Context, repoPath string, rangeSpec string, limit int) ([]wshrpc.VcsCommitInfo, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > DefaultVcsCommitLimit {
+		limit = DefaultVcsCommitLimit
+	}
+	args := []string{
+		"log",
+		"--max-count=" + strconv.Itoa(limit),
+		"--pretty=format:%H%x1f%an%x1f%aI%x1f%s%x1e",
+		rangeSpec,
+	}
+	out, err := runVcsCommand(ctx, repoPath, "git", args...)
+	if err != nil {
+		return nil, err
+	}
+	return parseGitCommits(out), nil
+}
+
+func loadGitRemoteState(ctx context.Context, repoPath string, commitLimit int) *wshrpc.VcsRemoteState {
+	state := &wshrpc.VcsRemoteState{}
+	upstream, upstreamErr := runVcsCommand(ctx, repoPath, "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	if upstreamErr != nil {
+		state.Error = "No upstream configured."
+		return state
+	}
+	state.Upstream = strings.TrimSpace(upstream)
+	countOut, countErr := runVcsCommand(ctx, repoPath, "git", "rev-list", "--left-right", "--count", "HEAD...@{u}")
+	if countErr != nil {
+		appendRemoteStateError(state, countErr)
+		return state
+	}
+	ahead, behind, parseErr := parseGitAheadBehind(countOut)
+	if parseErr != nil {
+		appendRemoteStateError(state, parseErr)
+		return state
+	}
+	state.Ahead = ahead
+	state.Behind = behind
+	if behind > 0 {
+		incoming, incomingErr := loadGitRemoteCommits(ctx, repoPath, "HEAD..@{u}", commitLimit)
+		if incomingErr != nil {
+			appendRemoteStateError(state, incomingErr)
+		} else {
+			state.Incoming = incoming
+		}
+	}
+	if ahead > 0 {
+		outgoing, outgoingErr := loadGitRemoteCommits(ctx, repoPath, "@{u}..HEAD", commitLimit)
+		if outgoingErr != nil {
+			appendRemoteStateError(state, outgoingErr)
+		} else {
+			state.Outgoing = outgoing
+		}
+	}
+	return state
+}
+
 func parseSvnStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
 	if statusLimit <= 0 {
 		statusLimit = DefaultVcsStatusLimit
@@ -573,6 +720,44 @@ func parseSvnStatusXML(statusOut string, statusLimit int) []wshrpc.VcsFileStatus
 	return statuses
 }
 
+func parseSvnRemoteStatusXML(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
+	if statusLimit <= 0 {
+		statusLimit = DefaultVcsStatusLimit
+	}
+	var parsed svnStatusXML
+	if err := xml.Unmarshal([]byte(statusOut), &parsed); err != nil {
+		return nil
+	}
+	statuses := make([]wshrpc.VcsFileStatus, 0)
+	for _, target := range parsed.Targets {
+		for _, entry := range target.Entries {
+			path := strings.TrimSpace(entry.Path)
+			if path == "" {
+				continue
+			}
+			item := strings.TrimSpace(entry.ReposStatus.Item)
+			code := mapSvnStatusItemToCode(item)
+			if code == "" {
+				continue
+			}
+			statuses = append(statuses, wshrpc.VcsFileStatus{
+				Path: filepath.ToSlash(path),
+				Code: code,
+			})
+			if len(statuses) >= statusLimit {
+				sort.Slice(statuses, func(i, j int) bool {
+					return statuses[i].Path < statuses[j].Path
+				})
+				return statuses
+			}
+		}
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].Path < statuses[j].Path
+	})
+	return statuses
+}
+
 func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (string, []wshrpc.VcsFileStatus, error) {
 	branch, branchErr := runVcsCommand(ctx, repoPath, "svn", "info", "--show-item", "relative-url")
 	if branchErr != nil || branch == "" {
@@ -586,6 +771,23 @@ func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 		return branch, nil, statusErr
 	}
 	return branch, parseSvnStatusXML(statusOut, statusLimit), nil
+}
+
+func loadSvnRemoteState(ctx context.Context, repoPath string, statusLimit int) *wshrpc.VcsRemoteState {
+	state := &wshrpc.VcsRemoteState{}
+	upstream, upstreamErr := runVcsCommand(ctx, repoPath, "svn", "info", "--show-item", "url")
+	if upstreamErr != nil {
+		appendRemoteStateError(state, upstreamErr)
+	} else {
+		state.Upstream = strings.TrimSpace(upstream)
+	}
+	statusOut, statusErr := runSvnRemoteStatusXMLCommand(ctx, repoPath)
+	if statusErr != nil {
+		appendRemoteStateError(state, statusErr)
+		return state
+	}
+	state.Files = parseSvnRemoteStatusXML(statusOut, statusLimit)
+	return state
 }
 
 func normalizeRepositoryBrowseUrl(remoteURL string) string {
@@ -1156,6 +1358,7 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 			repoInfo.Branch = branch
 			repoInfo.RemoteUrl = remoteUrl
 			repoInfo.BrowseUrl = browseUrl
+			repoInfo.Remote = loadGitRemoteState(ctx, repoRoot.RootPath, 20)
 			repoInfo.Status = status
 			if statusErr != nil {
 				repoInfo.StatusErr = statusErr.Error()
@@ -1166,6 +1369,7 @@ func (impl *ServerImpl) RemoteVcsRepositoriesCommand(ctx context.Context, data w
 			repoInfo.Branch = branch
 			repoInfo.RemoteUrl = remoteUrl
 			repoInfo.BrowseUrl = browseUrl
+			repoInfo.Remote = loadSvnRemoteState(ctx, repoRoot.RootPath, statusLimit)
 			repoInfo.Status = status
 			if statusErr != nil {
 				repoInfo.StatusErr = statusErr.Error()
@@ -1358,16 +1562,47 @@ func (impl *ServerImpl) RemoteVcsSyncCommand(ctx context.Context, data wshrpc.Co
 	}
 
 	var output string
+	action := strings.ToLower(strings.TrimSpace(data.Action))
+	if action == "" {
+		if repoType == "svn" {
+			action = "update"
+		} else {
+			action = "pull"
+		}
+	}
+	defaultOutput := ""
 	switch repoType {
 	case "git":
-		output, err = runVcsCommandRaw(ctx, repoPath, "git", "pull", "--ff-only")
-		if err == nil && strings.TrimSpace(output) == "" {
-			output = "Pull completed."
+		switch action {
+		case "fetch":
+			output, err = runVcsCommandRaw(ctx, repoPath, "git", "fetch", "--prune")
+			defaultOutput = "Fetch completed."
+		case "pull":
+			output, err = runVcsCommandRaw(ctx, repoPath, "git", "pull", "--ff-only")
+			defaultOutput = "Pull completed."
+		case "push":
+			output, err = runVcsCommandRaw(ctx, repoPath, "git", "push")
+			defaultOutput = "Push completed."
+		default:
+			return &wshrpc.RemoteVcsSyncRtnData{
+				Success: false,
+				Error:   fmt.Sprintf("unsupported git sync action %q", action),
+			}, nil
 		}
 	case "svn":
-		output, err = runVcsCommandRaw(ctx, repoPath, "svn", "update", "--accept", "postpone", "--non-interactive")
-		if err == nil && strings.TrimSpace(output) == "" {
-			output = "Update completed."
+		switch action {
+		case "update":
+			output, err = runVcsCommandRaw(ctx, repoPath, "svn", "update", "--accept", "postpone", "--non-interactive")
+			defaultOutput = "Update completed."
+		case "fetch":
+			_, err = runSvnRemoteStatusXMLCommand(ctx, repoPath)
+			output = ""
+			defaultOutput = "Remote status checked."
+		default:
+			return &wshrpc.RemoteVcsSyncRtnData{
+				Success: false,
+				Error:   fmt.Sprintf("unsupported svn sync action %q", action),
+			}, nil
 		}
 	}
 	if err != nil {
@@ -1377,9 +1612,13 @@ func (impl *ServerImpl) RemoteVcsSyncCommand(ctx context.Context, data wshrpc.Co
 			Error:   err.Error(),
 		}, nil
 	}
+	trimmedOutput := strings.TrimSpace(output)
+	if trimmedOutput == "" {
+		trimmedOutput = defaultOutput
+	}
 	return &wshrpc.RemoteVcsSyncRtnData{
 		Success: true,
-		Output:  strings.TrimSpace(output),
+		Output:  trimmedOutput,
 	}, nil
 }
 

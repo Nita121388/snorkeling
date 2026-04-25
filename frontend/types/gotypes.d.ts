@@ -709,6 +709,7 @@ declare global {
     type CommandRemoteVcsSyncData = {
         repotype: string;
         repopath: string;
+        action?: string;
     };
 
     // wshrpc.CommandRenameAppFileData
@@ -2196,6 +2197,17 @@ declare global {
         untracked?: boolean;
     };
 
+    // wshrpc.VcsRemoteState
+    type VcsRemoteState = {
+        upstream?: string;
+        ahead?: number;
+        behind?: number;
+        incoming?: VcsCommitInfo[];
+        outgoing?: VcsCommitInfo[];
+        files?: VcsFileStatus[];
+        error?: string;
+    };
+
     // wshrpc.VcsRepositoryInfo
     type VcsRepositoryInfo = {
         repoid: string;
@@ -2205,6 +2217,7 @@ declare global {
         branch?: string;
         remoteurl?: string;
         browseurl?: string;
+        remote?: VcsRemoteState;
         status?: VcsFileStatus[];
         statuserr?: string;
     };

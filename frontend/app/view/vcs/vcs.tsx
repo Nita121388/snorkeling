@@ -18,9 +18,16 @@ type VcsUiEnv = WaveEnv;
 type RepoStringMap = Record<string, string>;
 type RepoBoolMap = Record<string, boolean>;
 type RepoFilesMap = Record<string, string[]>;
-type RepoSectionKey = "changes" | "untracked";
+type RepoSectionKey = "changes" | "untracked" | "remote";
 type RepoSectionState = Record<RepoSectionKey, boolean>;
 type RepoSectionsMap = Record<string, RepoSectionState>;
+type VcsSyncAction = "fetch" | "pull" | "push" | "update";
+type VcsOperationNotice = {
+    id: number;
+    message: string;
+    isError: boolean;
+};
+type RepoNoticeMap = Record<string, VcsOperationNotice>;
 
 function countByCode(statuses: VcsFileStatus[]): { changed: number; untracked: number } {
     let changed = 0;
@@ -52,10 +59,70 @@ function shortHash(hash: string): string {
     return hash.slice(0, 10);
 }
 
+function getRemotePendingCount(repo: VcsRepositoryInfo): number {
+    const remote = repo?.remote;
+    if (remote == null) {
+        return 0;
+    }
+    const ahead = remote.ahead ?? 0;
+    const behind = remote.behind ?? 0;
+    const remoteFiles = repo.repotype === "svn" ? (remote.files?.length ?? 0) : 0;
+    return ahead + behind + remoteFiles;
+}
+
+function formatCommitDate(dateStr: string): string {
+    if (isBlank(dateStr)) {
+        return "";
+    }
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) {
+        return dateStr;
+    }
+    return date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function getDefaultSyncAction(repo: VcsRepositoryInfo): VcsSyncAction {
+    return repo.repotype === "svn" ? "update" : "pull";
+}
+
+function getSyncCompletionLabel(action: VcsSyncAction): string {
+    switch (action) {
+        case "fetch":
+            return "Fetch completed.";
+        case "push":
+            return "Push completed.";
+        case "update":
+            return "Update completed.";
+        case "pull":
+        default:
+            return "Pull completed.";
+    }
+}
+
+function getSyncFailureLabel(action: VcsSyncAction): string {
+    switch (action) {
+        case "fetch":
+            return "Fetch failed.";
+        case "push":
+            return "Push failed.";
+        case "update":
+            return "Update failed.";
+        case "pull":
+        default:
+            return "Pull failed.";
+    }
+}
+
 function makeDefaultSectionState(): RepoSectionState {
     return {
         changes: true,
         untracked: true,
+        remote: true,
     };
 }
 
@@ -154,6 +221,7 @@ function RepoHeader({
     syncRunning: boolean;
 }) {
     const summary = countByCode(repo?.status ?? []);
+    const remoteCount = getRemotePendingCount(repo);
     const syncLabel = repo.repotype === "svn" ? "Update" : "Pull";
     const syncRunningLabel = repo.repotype === "svn" ? "Updating..." : "Pulling...";
     return (
@@ -179,7 +247,7 @@ function RepoHeader({
                     </div>
                 </div>
                 <span className="text-[11px] text-muted shrink-0">
-                    C:{summary.changed} U:{summary.untracked}
+                    C:{summary.changed} U:{summary.untracked} R:{remoteCount}
                 </span>
             </button>
             <button
@@ -260,19 +328,199 @@ function FileStatusRow({
             <input type="checkbox" checked={selected} onChange={onToggleSelected} className="cursor-pointer" />
             <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
             <span className="flex-1 min-w-[180px] whitespace-nowrap pr-3">{status.path}</span>
-            <button
-                className="text-[11px] text-accent hover:underline cursor-pointer shrink-0"
-                onClick={onOpenDiff}
-            >
+            <button className="text-[11px] text-accent hover:underline cursor-pointer shrink-0" onClick={onOpenDiff}>
                 Diff
             </button>
-            <button
-                className="text-[11px] text-accent hover:underline cursor-pointer shrink-0"
-                onClick={onShowHistory}
-            >
+            <button className="text-[11px] text-accent hover:underline cursor-pointer shrink-0" onClick={onShowHistory}>
                 History
             </button>
         </div>
+    );
+}
+
+function RemoteActionButton({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
+    return (
+        <button
+            className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
+            disabled={disabled}
+            onClick={onClick}
+        >
+            {label}
+        </button>
+    );
+}
+
+function RemoteCommitRow({ commit }: { commit: VcsCommitInfo }) {
+    return (
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+            <span className="font-mono text-secondary min-w-[78px]">{shortHash(commit.hash ?? "")}</span>
+            <span className="min-w-[220px] max-w-[520px] flex-1 truncate pr-3">{commit.subject || "(no subject)"}</span>
+            <span className="text-muted min-w-[120px] truncate">{commit.author}</span>
+            <span className="text-muted min-w-[110px] whitespace-nowrap">{formatCommitDate(commit.date ?? "")}</span>
+        </div>
+    );
+}
+
+function RemoteCommitList({ title, commits }: { title: string; commits: VcsCommitInfo[] }) {
+    if ((commits?.length ?? 0) === 0) {
+        return null;
+    }
+    return (
+        <div className="mt-2">
+            <div className="mb-1 text-[11px] font-medium text-secondary">{title}</div>
+            <div className="overflow-x-auto rounded">
+                <div className="min-w-full">
+                    {commits.map((commit, idx) => (
+                        <RemoteCommitRow key={`${title}-${commit.hash}-${idx}`} commit={commit} />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function RemoteFileRow({ status }: { status: VcsFileStatus }) {
+    return (
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+            <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
+            <span className="flex-1 min-w-[220px] whitespace-nowrap pr-3">{status.path}</span>
+        </div>
+    );
+}
+
+function OperationNotice({ notice, onDismiss }: { notice?: VcsOperationNotice; onDismiss: () => void }) {
+    const message = notice?.message?.trim() ?? "";
+    if (isBlank(message)) {
+        return null;
+    }
+    const firstLine = message.split(/\r?\n/).find((line) => !isBlank(line)) ?? message;
+    const summary = firstLine.length > 180 ? `${firstLine.slice(0, 177)}...` : firstLine;
+    const hasDetails = message !== summary;
+    return (
+        <div
+            className={`mb-2 rounded border border-white/10 bg-black/25 px-2 py-1.5 text-xs ${
+                notice?.isError ? "text-warning" : "text-secondary"
+            }`}
+        >
+            <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 whitespace-pre-wrap">{summary}</div>
+                <button
+                    className="iconbutton !h-[18px] !w-[18px] shrink-0 cursor-pointer"
+                    title="Dismiss"
+                    onClick={onDismiss}
+                >
+                    <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
+                </button>
+            </div>
+            {hasDetails && (
+                <details className="mt-1">
+                    <summary className="cursor-pointer text-[11px] text-muted">Details</summary>
+                    <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-black/20 p-2 text-[11px]">
+                        {message}
+                    </pre>
+                </details>
+            )}
+        </div>
+    );
+}
+
+function RemoteSection({
+    repo,
+    isOpen,
+    onToggle,
+    onSyncAction,
+    syncRunning,
+}: {
+    repo: VcsRepositoryInfo;
+    isOpen: boolean;
+    onToggle: () => void;
+    onSyncAction: (action: VcsSyncAction) => void;
+    syncRunning: boolean;
+}) {
+    const remote = repo.remote;
+    const ahead = remote?.ahead ?? 0;
+    const behind = remote?.behind ?? 0;
+    const incoming = remote?.incoming ?? [];
+    const outgoing = remote?.outgoing ?? [];
+    const remoteFiles = remote?.files ?? [];
+    const upstream = remote?.upstream || repo.remoteurl || "";
+    const remoteCount = getRemotePendingCount(repo);
+    const actions =
+        repo.repotype === "svn" ? (
+            <RemoteActionButton label="Update" disabled={syncRunning} onClick={() => onSyncAction("update")} />
+        ) : (
+            <>
+                <RemoteActionButton label="Fetch" disabled={syncRunning} onClick={() => onSyncAction("fetch")} />
+                <RemoteActionButton
+                    label="Pull"
+                    disabled={syncRunning || behind <= 0}
+                    onClick={() => onSyncAction("pull")}
+                />
+                <RemoteActionButton
+                    label="Push"
+                    disabled={syncRunning || ahead <= 0}
+                    onClick={() => onSyncAction("push")}
+                />
+            </>
+        );
+
+    return (
+        <>
+            <CollapsibleHeader
+                title="Remote"
+                count={remoteCount}
+                isOpen={isOpen}
+                onToggle={onToggle}
+                noBorder={true}
+                actions={actions}
+            />
+            {isOpen && (
+                <div className="mt-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-secondary">
+                        <span className="text-muted">Upstream</span>
+                        <span className="font-mono">{isBlank(upstream) ? "Not configured" : upstream}</span>
+                        {repo.repotype === "git" && (
+                            <>
+                                <span className="rounded border border-white/10 px-1.5 py-[1px] text-[11px] text-secondary">
+                                    Behind {behind}
+                                </span>
+                                <span className="rounded border border-white/10 px-1.5 py-[1px] text-[11px] text-secondary">
+                                    Ahead {ahead}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                    {remote?.error && (
+                        <div className="mt-1 text-xs text-warning whitespace-pre-wrap">
+                            Remote warning: {remote.error}
+                        </div>
+                    )}
+                    {repo.repotype === "git" ? (
+                        <>
+                            <RemoteCommitList title="Incoming" commits={incoming} />
+                            <RemoteCommitList title="Outgoing" commits={outgoing} />
+                            {incoming.length === 0 && outgoing.length === 0 && !remote?.error && (
+                                <div className="text-xs text-muted mt-1">No remote changes.</div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            {remoteFiles.length === 0 ? (
+                                !remote?.error && <div className="text-xs text-muted mt-1">No remote changes.</div>
+                            ) : (
+                                <div className="mt-1 overflow-x-auto rounded">
+                                    <div className="min-w-full">
+                                        {remoteFiles.map((status, idx) => (
+                                            <RemoteFileRow key={`remote-${status.path}-${idx}`} status={status} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
+        </>
     );
 }
 
@@ -284,13 +532,14 @@ function RepoPanel({
     setCommitMessage,
     onCommit,
     commitRunning,
-    commitResult,
+    operationNotice,
+    onDismissNotice,
     onFileHistory,
     onShowFileDiff,
     sectionState,
     setSectionOpen,
-    syncResult,
-    syncResultIsError,
+    onSyncAction,
+    syncRunning,
 }: {
     repo: VcsRepositoryInfo;
     selectedFiles: string[];
@@ -299,13 +548,14 @@ function RepoPanel({
     setCommitMessage: (next: string) => void;
     onCommit: () => void;
     commitRunning: boolean;
-    commitResult: string;
+    operationNotice?: VcsOperationNotice;
+    onDismissNotice: () => void;
     onFileHistory: (filePath: string) => void;
     onShowFileDiff: (filePath: string) => void;
     sectionState: RepoSectionState;
     setSectionOpen: (section: RepoSectionKey, open: boolean) => void;
-    syncResult?: string;
-    syncResultIsError?: boolean;
+    onSyncAction: (action: VcsSyncAction) => void;
+    syncRunning: boolean;
 }) {
     const statusList = repo.status ?? [];
     const changedList = statusList.filter((status) => !status.untracked);
@@ -338,14 +588,11 @@ function RepoPanel({
         setSelectedFiles((selectedFiles ?? []).filter((filePath) => !removeSet.has(filePath)));
     };
     const hasSelectedFiles = (selectedFiles?.length ?? 0) > 0;
+    const remoteSectionOpen = sectionState.remote ?? true;
 
     return (
-        <div className="mt-2 rounded-md border border-white/10 p-2 bg-black/25">
-            {syncResult && (
-                <div className={`mb-2 text-xs whitespace-pre-wrap ${syncResultIsError ? "text-warning" : "text-secondary"}`}>
-                    {syncResult}
-                </div>
-            )}
+        <div className="mt-2 rounded-md p-2 bg-black/25">
+            <OperationNotice notice={operationNotice} onDismiss={onDismissNotice} />
             {repo.statuserr && <div className="text-xs text-warning mb-2">Status warning: {repo.statuserr}</div>}
             <CollapsibleHeader
                 title="Changes"
@@ -377,7 +624,7 @@ function RepoPanel({
                     {changedList.length === 0 ? (
                         <div className="text-xs text-muted mt-1">No changed files.</div>
                     ) : (
-                        <div className="mt-1 max-h-[180px] overflow-x-auto overflow-y-auto rounded">
+                        <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
                                 {changedList.map((status, idx) => (
                                     <FileStatusRow
@@ -424,7 +671,7 @@ function RepoPanel({
                     {untrackedList.length === 0 ? (
                         <div className="text-xs text-muted mt-1">No untracked files.</div>
                     ) : (
-                        <div className="mt-1 max-h-[180px] overflow-x-auto overflow-y-auto rounded">
+                        <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
                                 {untrackedList.map((status, idx) => (
                                     <FileStatusRow
@@ -441,6 +688,13 @@ function RepoPanel({
                     )}
                 </>
             )}
+            <RemoteSection
+                repo={repo}
+                isOpen={remoteSectionOpen}
+                onToggle={() => setSectionOpen("remote", !remoteSectionOpen)}
+                onSyncAction={onSyncAction}
+                syncRunning={syncRunning}
+            />
             {hasSelectedFiles && (
                 <>
                     <div className="mt-3 text-xs font-medium text-secondary mb-1">Commit Selected Files</div>
@@ -460,7 +714,6 @@ function RepoPanel({
                         </button>
                         <span className="text-[11px] text-muted">supports multi-select</span>
                     </div>
-                    {commitResult && <div className="mt-1.5 text-xs text-secondary whitespace-pre-wrap">{commitResult}</div>}
                 </>
             )}
         </div>
@@ -483,11 +736,68 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const [selectedFilesByRepo, setSelectedFilesByRepo] = React.useState<RepoFilesMap>({});
     const [commitMessageByRepo, setCommitMessageByRepo] = React.useState<RepoStringMap>({});
     const [commitRunningByRepo, setCommitRunningByRepo] = React.useState<RepoBoolMap>({});
-    const [commitResultByRepo, setCommitResultByRepo] = React.useState<RepoStringMap>({});
     const [syncRunningByRepo, setSyncRunningByRepo] = React.useState<RepoBoolMap>({});
-    const [syncResultByRepo, setSyncResultByRepo] = React.useState<RepoStringMap>({});
-    const [syncResultErrorByRepo, setSyncResultErrorByRepo] = React.useState<RepoBoolMap>({});
+    const [operationNoticeByRepo, setOperationNoticeByRepo] = React.useState<RepoNoticeMap>({});
     const [sectionStateByRepo, setSectionStateByRepo] = React.useState<RepoSectionsMap>({});
+    const noticeTimersRef = React.useRef<Record<string, number>>({});
+
+    const clearNoticeTimer = React.useCallback((repoId: string) => {
+        const timer = noticeTimersRef.current[repoId];
+        if (timer == null) {
+            return;
+        }
+        window.clearTimeout(timer);
+        delete noticeTimersRef.current[repoId];
+    }, []);
+
+    const clearOperationNotice = React.useCallback(
+        (repoId: string) => {
+            clearNoticeTimer(repoId);
+            setOperationNoticeByRepo((prev) => {
+                if (prev[repoId] == null) {
+                    return prev;
+                }
+                const next = { ...prev };
+                delete next[repoId];
+                return next;
+            });
+        },
+        [clearNoticeTimer]
+    );
+
+    const setOperationNotice = React.useCallback(
+        (repoId: string, message: string, isError: boolean) => {
+            clearNoticeTimer(repoId);
+            const notice: VcsOperationNotice = {
+                id: Date.now() + Math.random(),
+                message,
+                isError,
+            };
+            setOperationNoticeByRepo((prev) => ({ ...prev, [repoId]: notice }));
+            if (!isError) {
+                noticeTimersRef.current[repoId] = window.setTimeout(() => {
+                    setOperationNoticeByRepo((prev) => {
+                        if (prev[repoId]?.id !== notice.id) {
+                            return prev;
+                        }
+                        const next = { ...prev };
+                        delete next[repoId];
+                        return next;
+                    });
+                    delete noticeTimersRef.current[repoId];
+                }, 5000);
+            }
+        },
+        [clearNoticeTimer]
+    );
+
+    React.useEffect(() => {
+        return () => {
+            for (const timer of Object.values(noticeTimersRef.current)) {
+                window.clearTimeout(timer);
+            }
+        };
+    }, []);
 
     const route = React.useMemo(() => {
         if (isBlank(connection)) {
@@ -589,7 +899,10 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         setExpandedRepos((prev) => ({ ...prev, [repo.repoid]: !prev[repo.repoid] }));
     };
 
-    const refreshRepo = async () => {
+    const refreshRepo = async (repoId?: string) => {
+        if (!isBlank(repoId)) {
+            clearOperationNotice(repoId);
+        }
         await loadRepositories();
     };
 
@@ -614,15 +927,15 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         const selectedFiles = selectedFilesByRepo[repo.repoid] ?? [];
         const commitMessage = (commitMessageByRepo[repo.repoid] ?? "").trim();
         if (selectedFiles.length === 0) {
-            setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: "Please select at least one file." }));
+            setOperationNotice(repo.repoid, "Please select at least one file.", true);
             return;
         }
         if (isBlank(commitMessage)) {
-            setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: "Please enter a commit message." }));
+            setOperationNotice(repo.repoid, "Please enter a commit message.", true);
             return;
         }
         setCommitRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
-        setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: "" }));
+        clearOperationNotice(repo.repoid);
         try {
             const response = await env.rpc.RemoteVcsCommitCommand(
                 TabRpcClient,
@@ -635,55 +948,48 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 { route }
             );
             if (response.success) {
-                setCommitResultByRepo((prev) => ({
-                    ...prev,
-                    [repo.repoid]: response.output || "Commit completed.",
-                }));
+                setOperationNotice(repo.repoid, response.output || "Commit completed.", false);
                 setSelectedFilesByRepo((prev) => ({ ...prev, [repo.repoid]: [] }));
                 await loadRepositories();
             } else {
                 const resultMsg = response.error || response.output || "Commit failed.";
-                setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: resultMsg }));
+                setOperationNotice(repo.repoid, resultMsg, true);
             }
         } catch (e) {
-            setCommitResultByRepo((prev) => ({ ...prev, [repo.repoid]: String(e) }));
+            setOperationNotice(repo.repoid, String(e), true);
         } finally {
             setCommitRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
         }
     };
 
-    const handleSync = async (repo: VcsRepositoryInfo) => {
+    const handleSync = async (repo: VcsRepositoryInfo, action?: VcsSyncAction) => {
+        const syncAction = action ?? getDefaultSyncAction(repo);
         setActiveRepoId(repo.repoid);
         setExpandedRepos((prev) => ({ ...prev, [repo.repoid]: true }));
         setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
-        setSyncResultByRepo((prev) => ({ ...prev, [repo.repoid]: "" }));
-        setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+        clearOperationNotice(repo.repoid);
         try {
             const response = await env.rpc.RemoteVcsSyncCommand(
                 TabRpcClient,
                 {
                     repotype: repo.repotype,
                     repopath: repo.rootpath,
+                    action: syncAction,
                 },
                 { route }
             );
             if (response.success) {
-                setSyncResultByRepo((prev) => ({
-                    ...prev,
-                    [repo.repoid]: response.output || (repo.repotype === "svn" ? "Update completed." : "Pull completed."),
-                }));
-                setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+                setOperationNotice(repo.repoid, response.output || getSyncCompletionLabel(syncAction), false);
                 await loadRepositories();
             } else {
-                setSyncResultByRepo((prev) => ({
-                    ...prev,
-                    [repo.repoid]: response.error || response.output || (repo.repotype === "svn" ? "Update failed." : "Pull failed."),
-                }));
-                setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
+                setOperationNotice(
+                    repo.repoid,
+                    response.error || response.output || getSyncFailureLabel(syncAction),
+                    true
+                );
             }
         } catch (e) {
-            setSyncResultByRepo((prev) => ({ ...prev, [repo.repoid]: String(e) }));
-            setSyncResultErrorByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
+            setOperationNotice(repo.repoid, String(e), true);
         } finally {
             setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
         }
@@ -784,7 +1090,11 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     };
 
     if (connStatus?.status !== "connected") {
-        return <div className="h-full w-full flex items-center justify-center text-sm text-muted">Connection unavailable.</div>;
+        return (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">
+                Connection unavailable.
+            </div>
+        );
     }
 
     return (
@@ -817,7 +1127,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                         });
                                     }}
                                     onRefresh={() => {
-                                        refreshRepo();
+                                        refreshRepo(repo.repoid);
                                     }}
                                     onContextMenu={(e) => handleRepoContextMenu(repo, e)}
                                     syncRunning={!!syncRunningByRepo[repo.repoid]}
@@ -833,7 +1143,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                         }
                                         onCommit={() => handleCommit(repo)}
                                         commitRunning={!!commitRunningByRepo[repo.repoid]}
-                                        commitResult={commitResultByRepo[repo.repoid]}
+                                        operationNotice={operationNoticeByRepo[repo.repoid]}
+                                        onDismissNotice={() => clearOperationNotice(repo.repoid)}
                                         onFileHistory={(filePath) => {
                                             openHistoryBlock(repo, filePath).catch((e) => {
                                                 setError(String(e));
@@ -844,10 +1155,16 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                                 setError(String(e));
                                             });
                                         }}
-                                        syncResult={syncResultByRepo[repo.repoid]}
-                                        syncResultIsError={!!syncResultErrorByRepo[repo.repoid]}
                                         sectionState={sectionStateByRepo[repo.repoid] ?? makeDefaultSectionState()}
-                                        setSectionOpen={(section, open) => setRepoSectionOpen(repo.repoid, section, open)}
+                                        setSectionOpen={(section, open) =>
+                                            setRepoSectionOpen(repo.repoid, section, open)
+                                        }
+                                        onSyncAction={(action) => {
+                                            handleSync(repo, action).catch((e) => {
+                                                setError(String(e));
+                                            });
+                                        }}
+                                        syncRunning={!!syncRunningByRepo[repo.repoid]}
                                     />
                                 )}
                             </div>

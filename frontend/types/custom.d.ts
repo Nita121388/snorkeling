@@ -286,6 +286,7 @@ declare global {
         regex?: PrimitiveAtom<boolean>;
         caseSensitive?: PrimitiveAtom<boolean>;
         wholeWord?: PrimitiveAtom<boolean>;
+        replaceValue?: PrimitiveAtom<string>;
     };
 
     declare type ViewComponentProps<T extends ViewModel> = {
