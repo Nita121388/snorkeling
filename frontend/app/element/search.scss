@@ -43,17 +43,33 @@
     .search-results {
         font-size: 12px;
         margin: auto 0;
+        min-width: 34px;
+        text-align: right;
+        white-space: nowrap;
         color: var(--secondary-text-color);
 
-        &.hidden {
-            display: none;
+        &.empty {
+            color: var(--color-error);
         }
     }
 
     .right-buttons,
-    .additional-buttons {
+    .additional-buttons,
+    .replace-toggle {
         display: flex;
+        align-items: center;
+    }
+
+    .right-buttons,
+    .additional-buttons {
         border-left: 1px solid var(--modal-border-color);
+    }
+
+    .replace-toggle {
+        padding-right: 2px;
+        button {
+            font-size: 12px;
+        }
     }
 
     .right-buttons {

@@ -10,14 +10,32 @@ import {
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
+import { getElemAsStr } from "@/util/focusutil";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
+import debug from "debug";
 import { useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import * as monaco from "monaco-editor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
 import "./preview-edit.scss";
+
+const dlog = debug("wave:preview:edit-search");
+dlog.enabled = true;
+
+function getActiveElementLog(): string {
+    if (typeof document === "undefined") {
+        return "no-document";
+    }
+    return getElemAsStr(document.activeElement);
+}
+
+function editorSearchLog(message: string, details: Record<string, unknown> = {}) {
+    const payload = { ...details, activeElement: getActiveElementLog() };
+    dlog(message, payload);
+    console.info("[preview-edit-search]", message, payload);
+}
 
 export const shellFileMap: Record<string, string> = {
     ".bashrc": "shell",
@@ -157,6 +175,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const setNumSearchResults = useSetAtom(searchProps.resultsCount);
 
     const clearEditorSearch = useCallback(() => {
+        editorSearchLog("clear");
         searchMatchesRef.current = [];
         currentSearchIndexRef.current = 0;
         setSearchIndex(0);
@@ -175,6 +194,11 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             const editor = model.monacoRef.current;
             const editorModel = editor?.getModel();
             if (!editor || !editorModel || searchText === "") {
+                editorSearchLog("run skipped", {
+                    hasEditor: !!editor,
+                    hasModel: !!editorModel,
+                    queryLength: searchText.length,
+                });
                 clearEditorSearch();
                 return;
             }
@@ -186,6 +210,14 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 currentSearchIndexRef.current = activeIndex;
                 setSearchIndex(activeIndex);
                 setNumSearchResults(matches.length);
+                editorSearchLog("run", {
+                    activeIndex,
+                    caseSensitive,
+                    matches: matches.length,
+                    queryLength: searchText.length,
+                    regex,
+                    wholeWord,
+                });
                 searchDecorationIdsRef.current = editor.deltaDecorations(
                     searchDecorationIdsRef.current,
                     makeSearchDecorations(matches, activeIndex)
@@ -195,7 +227,6 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 }
                 const activeRange = matches[activeIndex].range;
                 suppressSelectionCopyOverlayRef.current = true;
-                editor.setSelection(activeRange);
                 editor.revealRangeInCenter(activeRange);
                 requestAnimationFrame(() => {
                     suppressSelectionCopyOverlayRef.current = false;
@@ -214,37 +245,50 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             const matches = searchMatchesRef.current;
             const editor = model.monacoRef.current;
             if (!editor || matches.length === 0) {
+                editorSearchLog("navigate skipped", { delta, hasEditor: !!editor, matches: matches.length });
                 return;
             }
             const nextIndex = wrapSearchIndex(currentSearchIndexRef.current + delta, matches.length);
             currentSearchIndexRef.current = nextIndex;
             setSearchIndex(nextIndex);
+            setNumSearchResults(matches.length);
+            editorSearchLog("navigate", { delta, nextIndex, matches: matches.length });
             searchDecorationIdsRef.current = editor.deltaDecorations(
                 searchDecorationIdsRef.current,
                 makeSearchDecorations(matches, nextIndex)
             );
             const activeRange = matches[nextIndex].range;
             suppressSelectionCopyOverlayRef.current = true;
-            editor.setSelection(activeRange);
             editor.revealRangeInCenter(activeRange);
             requestAnimationFrame(() => {
                 suppressSelectionCopyOverlayRef.current = false;
                 setSelectionCopyOverlay(null);
             });
         },
-        [model, setSearchIndex]
+        [model, setNumSearchResults, setSearchIndex]
     );
 
     const replaceCurrentMatch = useCallback(() => {
         if (fileInfo?.readonly) {
+            editorSearchLog("replace current skipped: readonly");
             return;
         }
         const editor = model.monacoRef.current;
         const matches = searchMatchesRef.current;
         const match = matches[currentSearchIndexRef.current];
         if (!editor || !match) {
+            editorSearchLog("replace current skipped", {
+                hasEditor: !!editor,
+                hasMatch: !!match,
+                matches: matches.length,
+            });
             return;
         }
+        editorSearchLog("replace current", {
+            index: currentSearchIndexRef.current,
+            matches: matches.length,
+            replacementLength: replaceValueRef.current.length,
+        });
         editor.pushUndoStop();
         editor.executeEdits("preview-editor-replace", [
             {
@@ -259,13 +303,16 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
 
     const replaceAllMatches = useCallback(() => {
         if (fileInfo?.readonly) {
+            editorSearchLog("replace all skipped: readonly");
             return;
         }
         const editor = model.monacoRef.current;
         const matches = [...searchMatchesRef.current];
         if (!editor || matches.length === 0) {
+            editorSearchLog("replace all skipped", { hasEditor: !!editor, matches: matches.length });
             return;
         }
+        editorSearchLog("replace all", { matches: matches.length, replacementLength: replaceValueRef.current.length });
         editor.pushUndoStop();
         editor.executeEdits(
             "preview-editor-replace-all",
