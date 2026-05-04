@@ -221,6 +221,7 @@ type DirectoryEntryMenuActions = {
 
 type DirectoryEntryMenuOptions = {
     relativePathRoot?: string | null;
+    openInCurrentBlock?: (() => void | Promise<void>) | null;
 };
 
 type DirectoryBackgroundMenuActions = {
@@ -235,8 +236,18 @@ type DirectoryVcsResolveResult =
     | { kind: "repos"; repos: VcsRepositoryInfo[] }
     | { kind: "error"; error: string };
 
+type SupportedVcsRepoType = "git" | "svn";
+
+function getSupportedRepoType(repo: VcsRepositoryInfo): SupportedVcsRepoType | null {
+    const repoType = repo.repotype?.trim().toLowerCase();
+    if (repoType === "git" || repoType === "svn") {
+        return repoType;
+    }
+    return null;
+}
+
 function makeRepoMenuLabel(repo: VcsRepositoryInfo): string {
-    return repo.repotype === "svn" ? "SVN" : "Git";
+    return getSupportedRepoType(repo) === "svn" ? "SVN" : "Git";
 }
 
 async function resolveRepoForPath(
@@ -247,55 +258,41 @@ async function resolveRepoForPath(
     if (isBlank(targetPath)) {
         return { kind: "none" };
     }
-    const route = isBlank(conn) ? null : makeConnRoute(conn);
+    const route = makeConnRoute(conn);
     try {
-        const response = await model.env.rpc.RemoteVcsResolvePathCommand(
+        const repositoriesResponse = await model.env.rpc.RemoteVcsRepositoriesCommand(
             TabRpcClient,
             {
                 path: targetPath,
+                statuslimit: 1,
+                scandepth: 1,
+                includeparent: true,
             },
             { route }
         );
-        if (!isBlank(response.error)) {
-            console.warn(`[vcsresolve] failed for ${targetPath}: ${response.error}`);
-            return { kind: "error", error: response.error };
-        }
-        const repos = (response.repositories ?? []).filter(
-            (repo) => !isBlank(repo.repotype) && !isBlank(repo.rootpath)
+        const repositories = (repositoriesResponse.repositories ?? []).filter(
+            (repo) => getSupportedRepoType(repo) != null && !isBlank(repo.rootpath)
         );
-        if (repos.length > 0) {
+        if (repositories.length > 0) {
             return {
                 kind: "repos",
-                repos,
+                repos: repositories,
             };
         }
-        if (!response.matched || isBlank(response.repotype) || isBlank(response.repopath)) {
-            return { kind: "none" };
-        }
-        return {
-            kind: "repos",
-            repos: [
-                {
-                    repoid: response.repoid ?? `${response.repotype}:${response.repopath}`,
-                    repotype: response.repotype,
-                    rootpath: response.repopath,
-                    name: response.reponame ?? response.repopath,
-                },
-            ],
-        };
+        return { kind: "none" };
     } catch (e) {
         const errorText = `${e}`;
-        console.warn(`[vcsresolve] exception for ${targetPath}: ${errorText}`);
+        console.warn(`[vcsrepositories] exception for ${targetPath}: ${errorText}`);
         return { kind: "error", error: errorText };
     }
 }
 
 function makeRepoSyncLabel(repo: VcsRepositoryInfo): string {
-    return repo.repotype === "svn" ? "Update" : "Pull";
+    return getSupportedRepoType(repo) === "svn" ? "Update" : "Pull";
 }
 
-function makeRepoCommitsLabel(repo: VcsRepositoryInfo): string {
-    return repo.repotype === "svn" ? "View Repository Log" : "View Repository Commits";
+function makeRepoCommitsLabel(): string {
+    return "View Repository Log";
 }
 
 async function openHistoryBlock(conn: string, repo: VcsRepositoryInfo, targetPath: string): Promise<void> {
@@ -329,16 +326,29 @@ async function openDiffBlock(conn: string, repo: VcsRepositoryInfo, targetPath: 
 }
 
 async function openCommitsBlock(conn: string, repo: VcsRepositoryInfo): Promise<void> {
+    const repoType = getSupportedRepoType(repo);
     const blockDef: BlockDef = {
         meta: {
             view: "vcscommits",
             connection: conn,
             "vcscommits:repotype": repo.repotype,
             "vcscommits:repopath": repo.rootpath,
-            "vcscommits:title": `${repo.name} ${repo.repotype === "svn" ? "Log" : "Commits"}`,
+            "vcscommits:title": `${repo.name} ${repoType === "svn" ? "Log" : "Commits"}`,
         } as any,
     };
     await createBlock(blockDef);
+}
+
+async function openVcsBlock(conn: string, repo: VcsRepositoryInfo, selectedPath: string): Promise<void> {
+    const meta: Record<string, any> = {
+        view: "vcs",
+        connection: conn,
+        "vcs:path": repo.rootpath,
+    };
+    if (!isBlank(selectedPath)) {
+        meta["vcs:selectedfile"] = selectedPath;
+    }
+    await createBlock({ meta } as BlockDef);
 }
 
 async function syncRepo(
@@ -347,7 +357,7 @@ async function syncRepo(
     repo: VcsRepositoryInfo,
     setErrorMsg: (msg: ErrorMsg) => void
 ): Promise<void> {
-    const route = isBlank(conn) ? null : makeConnRoute(conn);
+    const route = makeConnRoute(conn);
     const syncLabel = makeRepoSyncLabel(repo);
     try {
         const response = await model.env.rpc.RemoteVcsSyncCommand(
@@ -375,18 +385,18 @@ async function syncRepo(
 }
 
 function makeResolveFailureMenuItem(targetPath: string, errorText: string): ContextMenuItem {
+    const debugText = `path: ${targetPath}\nerror: ${errorText}`;
     return {
         label: "Version Control",
         submenu: [
             {
                 label: "Resolve Failed",
                 enabled: false,
-                sublabel: "See waveapp.log for details",
+                sublabel: errorText,
             },
             {
                 label: "Copy Debug Info",
-                click: () =>
-                    fireAndForget(() => navigator.clipboard.writeText(`path: ${targetPath}\nerror: ${errorText}`)),
+                click: () => fireAndForget(() => navigator.clipboard.writeText(debugText)),
             },
         ],
     };
@@ -410,7 +420,11 @@ async function makeDirectoryVcsMenuItems(
         const submenu: ContextMenuItem[] = [];
         if (scope === "background") {
             submenu.push({
-                label: makeRepoCommitsLabel(repo),
+                label: makeRepoSyncLabel(repo),
+                click: () => fireAndForget(() => syncRepo(model, conn, repo, setErrorMsg)),
+            });
+            submenu.push({
+                label: "View History",
                 click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
             });
         } else {
@@ -424,11 +438,19 @@ async function makeDirectoryVcsMenuItems(
                     click: () => fireAndForget(() => openDiffBlock(conn, repo, targetPath)),
                 });
             }
+            submenu.push({
+                label: makeRepoCommitsLabel(),
+                click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
+            });
+            submenu.push({
+                label: "Open VCS Block",
+                click: () => fireAndForget(() => openVcsBlock(conn, repo, targetPath)),
+            });
+            submenu.push({
+                label: makeRepoSyncLabel(repo),
+                click: () => fireAndForget(() => syncRepo(model, conn, repo, setErrorMsg)),
+            });
         }
-        submenu.push({
-            label: makeRepoSyncLabel(repo),
-            click: () => fireAndForget(() => syncRepo(model, conn, repo, setErrorMsg)),
-        });
         return {
             label: makeRepoMenuLabel(repo),
             submenu,
@@ -462,6 +484,18 @@ export async function makeDirectoryEntryMenuItems(
         {
             type: "separator",
         },
+    ];
+    const vcsMenuItems = await makeDirectoryVcsMenuItems(
+        model,
+        conn,
+        finfo.path,
+        finfo.isdir ? "directory" : "file",
+        setErrorMsg
+    );
+    if (vcsMenuItems.length > 0) {
+        menu.push(...vcsMenuItems, { type: "separator" });
+    }
+    menu.push(
         {
             label: "Copy File Name",
             click: () => fireAndForget(() => navigator.clipboard.writeText(fileName)),
@@ -485,19 +519,9 @@ export async function makeDirectoryEntryMenuItems(
         {
             label: "Copy Full File Name (Shell Quoted)",
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([finfo.path]))),
-        },
-    ];
-    addOpenMenuItems(menu, conn, finfo);
-    const vcsMenuItems = await makeDirectoryVcsMenuItems(
-        model,
-        conn,
-        finfo.path,
-        finfo.isdir ? "directory" : "file",
-        setErrorMsg
+        }
     );
-    if (vcsMenuItems.length > 0) {
-        menu.push({ type: "separator" }, ...vcsMenuItems);
-    }
+    addOpenMenuItems(menu, conn, finfo, { openInCurrentBlock: options.openInCurrentBlock });
     menu.push(
         {
             type: "separator",
@@ -533,14 +557,11 @@ export async function makeDirectoryBackgroundMenuItems(
             label: "New Folder",
             click: actions.newDirectory,
         },
-        {
-            type: "separator",
-        },
     ];
-    addOpenMenuItems(menu, conn, finfo);
     const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
     if (vcsMenuItems.length > 0) {
         menu.push({ type: "separator" }, ...vcsMenuItems);
     }
+    addOpenMenuItems(menu, conn, finfo);
     return menu;
 }

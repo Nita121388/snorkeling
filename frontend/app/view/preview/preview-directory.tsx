@@ -42,9 +42,12 @@ import {
     overwriteError,
 } from "./preview-directory-utils";
 import { type PreviewModel } from "./preview-model";
+import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigation";
+import { openPreviewEntry } from "./preview-open";
 import type { PreviewEnv } from "./previewenv";
 
 const PageJumpSize = 20;
+const DirectoryAutoRefreshMs = 4000;
 
 interface DirectoryTableHeaderCellProps {
     header: Header<FileInfo, unknown>;
@@ -306,16 +309,7 @@ interface TableBodyProps {
     osRef: OverlayScrollbarsComponentRef;
 }
 
-function TableBody({
-    bodyRef,
-    model,
-    table,
-    search,
-    focusIndex,
-    setFocusIndex,
-    setSearch,
-    osRef,
-}: TableBodyProps) {
+function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, setSearch, osRef }: TableBodyProps) {
     const searchActive = useAtomValue(model.directorySearchActive);
     const dummyLineRef = useRef<HTMLDivElement>(null);
     const warningBoxRef = useRef<HTMLDivElement>(null);
@@ -361,11 +355,21 @@ function TableBody({
             if (finfo == null) {
                 return;
             }
-            const menu = await makeDirectoryEntryMenuItems(model, finfo, conn, setErrorMsg, {
-                newFile: table.options.meta.newFile,
-                newDirectory: table.options.meta.newDirectory,
-                rename: () => table.options.meta.updateName(finfo.path, finfo.isdir),
-            });
+            const menu = await makeDirectoryEntryMenuItems(
+                model,
+                finfo,
+                conn,
+                setErrorMsg,
+                {
+                    newFile: table.options.meta.newFile,
+                    newDirectory: table.options.meta.newDirectory,
+                    rename: () => table.options.meta.updateName(finfo.path, finfo.isdir),
+                },
+                {
+                    openInCurrentBlock: () =>
+                        model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                }
+            );
             ContextMenuModel.getInstance().showContextMenu(menu, e);
         },
         [conn, model, setErrorMsg, table]
@@ -471,8 +475,7 @@ function TableRow({ model, row, focusIndex, setFocusIndex, setSearch, idx, handl
             className={clsx("dir-table-body-row", { focused: focusIndex === idx })}
             data-rowindex={idx}
             onDoubleClick={() => {
-                const newFileName = row.getValue("path") as string;
-                fireAndForget(() => model.openPathWithTarget(newFileName));
+                fireAndForget(() => openPreviewEntry(model, row.original, connection));
                 setSearch("");
                 globalStore.set(model.directorySearchActive, false);
             }}
@@ -523,7 +526,22 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
         return () => {
             model.refreshCallback = null;
         };
-    }, [setRefreshVersion]);
+    }, [model, setRefreshVersion]);
+
+    useEffect(() => {
+        if (!dirPath) {
+            return;
+        }
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === "hidden") {
+                return;
+            }
+            setRefreshVersion((refreshVersion) => refreshVersion + 1);
+        }, DirectoryAutoRefreshMs);
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [dirPath, setRefreshVersion]);
 
     useEffect(
         () =>
@@ -604,7 +622,12 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 if (filteredData.length == 0) {
                     return;
                 }
-                fireAndForget(() => model.openPathWithTarget(selectedPath));
+                const selectedFileInfo = filteredData.find((fileInfo) => fileInfo.path === selectedPath);
+                fireAndForget(() =>
+                    selectedFileInfo == null
+                        ? model.openPathWithTarget(selectedPath)
+                        : openPreviewEntry(model, selectedFileInfo, conn)
+                );
                 setSearchText("");
                 globalStore.set(model.directorySearchActive, false);
                 return true;

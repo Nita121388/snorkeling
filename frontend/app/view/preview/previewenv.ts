@@ -14,7 +14,6 @@ export type PreviewEnv = WaveEnvSubset<{
         FileListStreamCommand: WaveEnv["rpc"]["FileListStreamCommand"];
         RemoteFileSearchStreamCommand: WaveEnv["rpc"]["RemoteFileSearchStreamCommand"];
         RemoteFileNameSearchStreamCommand: WaveEnv["rpc"]["RemoteFileNameSearchStreamCommand"];
-        RemoteVcsResolvePathCommand: WaveEnv["rpc"]["RemoteVcsResolvePathCommand"];
         RemoteVcsRepositoriesCommand: WaveEnv["rpc"]["RemoteVcsRepositoriesCommand"];
         RemoteVcsFileHistoryCommand: WaveEnv["rpc"]["RemoteVcsFileHistoryCommand"];
         RemoteVcsFileDiffCommand: WaveEnv["rpc"]["RemoteVcsFileDiffCommand"];

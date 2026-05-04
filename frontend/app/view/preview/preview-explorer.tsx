@@ -14,6 +14,8 @@ import { startTransition, useCallback, useEffect, useMemo, useState, type MouseE
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import { handleRename, makeDirectoryBackgroundMenuItems, makeDirectoryEntryMenuItems } from "./preview-directory-utils";
 import type { PreviewModel } from "./preview-model";
+import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigation";
+import { openPreviewEntry } from "./preview-open";
 import {
     FileNameSearchSkipDirNames,
     groupContentSearchMatches,
@@ -29,6 +31,7 @@ const SearchMinLength = 2;
 const SearchDebounceMs = 350;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
+const DirectoryAutoRefreshMs = 4000;
 
 function normalizeRootLabel(path: string): string {
     if (path === "/" || path === "~") {
@@ -108,10 +111,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [collapsedSearchPaths, setCollapsedSearchPaths] = useState<Set<string>>(() => new Set());
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
-    const canGoParent =
-        !!currentDirectoryInfo?.dir &&
-        !!currentDirectoryInfo?.path &&
-        currentDirectoryInfo.dir !== currentDirectoryInfo.path;
 
     const initialNodes = useMemo(
         () => ({
@@ -171,6 +170,21 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             model.refreshCallback = null;
         };
     }, [model]);
+
+    useEffect(() => {
+        if (!rootPath) {
+            return;
+        }
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === "hidden") {
+                return;
+            }
+            globalStore.set(model.refreshVersion, (v) => v + 1);
+        }, DirectoryAutoRefreshMs);
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [model, rootPath]);
 
     const fetchDir = useCallback(
         async (id: string, limit: number) => {
@@ -278,7 +292,11 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     newDirectory: () => openCreateDirectory(targetDir),
                     rename: () => openRename(finfo.path, finfo.isdir),
                 },
-                { relativePathRoot: rootPath }
+                {
+                    relativePathRoot: rootPath,
+                    openInCurrentBlock: () =>
+                        model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                }
             );
             ContextMenuModel.getInstance().showContextMenu(menu, event);
         },
@@ -510,7 +528,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         };
     }, [env.rpc, rootPath, route, runNameSearchFallback, searchActive, searchQuery, showHiddenFiles]);
 
-    const treeKey = `${rootPath}:${showHiddenFiles ? "show" : "hide"}:${refreshVersion}:${connection ?? ""}`;
+    const treeKey = `${rootPath}:${connection ?? ""}`;
+    const treeRefreshKey = `${refreshVersion}:${showHiddenFiles ? "show" : "hide"}`;
 
     return (
         <div
@@ -520,22 +539,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             onClick={() => setEntryManagerProps(null)}
         >
             <div className="flex items-center gap-1 border-b border-white/8 px-2 py-1.5">
-                <button
-                    className={clsx(
-                        "rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
-                        canGoParent ? "text-muted hover:bg-white/5" : "cursor-default text-muted/50"
-                    )}
-                    disabled={!canGoParent}
-                    onClick={() => {
-                        if (!currentDirectoryInfo) {
-                            return;
-                        }
-                        fireAndForget(() => model.goParentDirectory({ fileInfo: currentDirectoryInfo }));
-                    }}
-                    title={canGoParent ? "Go To Parent Directory" : "Already At Top Directory"}
-                >
-                    ..
-                </button>
                 <button
                     className={clsx(
                         "rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
@@ -562,6 +565,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         rootIds={rootIds}
                         initialNodes={initialNodes}
                         fetchDir={fetchDir}
+                        refreshKey={treeRefreshKey}
                         defaultExpandedIds={defaultExpandedIds}
                         selectedId={currentPath}
                         height="100%"
@@ -571,8 +575,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         maxDirEntries={TreeMaxEntries}
                         className="h-full"
                         expandDirectoriesOnSingleClick={true}
-                        onOpenFile={(id) => {
-                            fireAndForget(() => model.openPathWithTarget(id));
+                        onOpenFile={(_id, node) => {
+                            fireAndForget(() => openPreviewEntry(model, treeNodeToFileInfo(node), connection));
                         }}
                         onNodeContextMenu={handleTreeNodeContextMenu}
                         onBackgroundContextMenu={handleTreeBackgroundContextMenu}

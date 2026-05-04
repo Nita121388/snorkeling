@@ -1,0 +1,127 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package aisessions
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	SourceCodex  = "codex"
+	SourceClaude = "claude"
+)
+
+const (
+	RoleUser      = "user"
+	RoleAssistant = "assistant"
+	RoleTool      = "tool"
+	RoleSystem    = "system"
+	RoleUnknown   = "unknown"
+)
+
+type SessionSummary struct {
+	Key          string `json:"key"`
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	Title        string `json:"title,omitempty"`
+	TitleSource  string `json:"titleSource,omitempty"`
+	ProjectPath  string `json:"projectPath,omitempty"`
+	CreatedAt    int64  `json:"createdAt,omitempty"`
+	UpdatedAt    int64  `json:"updatedAt,omitempty"`
+	MessageCount int    `json:"messageCount,omitempty"`
+	FilePath     string `json:"filePath,omitempty"`
+	Snippet      string `json:"snippet,omitempty"`
+	Marked       bool   `json:"marked,omitempty"`
+	Note         string `json:"note,omitempty"`
+	Missing      bool   `json:"missing,omitempty"`
+	MTime        int64  `json:"-"`
+	Size         int64  `json:"-"`
+}
+
+type Message struct {
+	Seq       int    `json:"seq"`
+	Role      string `json:"role"`
+	Text      string `json:"text"`
+	Timestamp int64  `json:"timestamp,omitempty"`
+	ToolName  string `json:"toolName,omitempty"`
+	CharCount int    `json:"charCount"`
+}
+
+type ToolCall struct {
+	Seq      int    `json:"seq"`
+	Name     string `json:"name"`
+	Summary  string `json:"summary,omitempty"`
+	Output   string `json:"output,omitempty"`
+	ExitCode int    `json:"exitCode,omitempty"`
+}
+
+type SessionDetail struct {
+	Summary   SessionSummary `json:"summary"`
+	Messages  []Message      `json:"messages"`
+	ToolCalls []ToolCall     `json:"toolCalls,omitempty"`
+}
+
+type SessionFile struct {
+	Source string
+	Path   string
+	MTime  int64
+	Size   int64
+}
+
+type Provider interface {
+	Source() string
+	List(ctx context.Context) ([]SessionSummary, error)
+	LoadMessages(ctx context.Context, filePath string) ([]Message, error)
+}
+
+type ListOptions struct {
+	Source     string
+	Project    string
+	Since      int64
+	Before     int64
+	Limit      int
+	MarkedOnly bool
+	Refresh    bool
+}
+
+type SearchOptions struct {
+	Query   string
+	Source  string
+	Project string
+	Limit   int
+	Refresh bool
+}
+
+func StableKey(source string, id string, filePath string) string {
+	return source + ":" + id + ":" + filePath
+}
+
+func (s SessionSummary) DisplayTitle() string {
+	if strings.TrimSpace(s.Title) != "" {
+		return s.Title
+	}
+	if strings.TrimSpace(s.ProjectPath) != "" {
+		return filepath.Base(strings.TrimRight(s.ProjectPath, `/\`))
+	}
+	if len(s.ID) > 8 {
+		return s.ID[:8]
+	}
+	return s.ID
+}
+
+func (s SessionSummary) Validate() error {
+	if s.Source == "" {
+		return fmt.Errorf("session source is required")
+	}
+	if s.ID == "" {
+		return fmt.Errorf("session id is required")
+	}
+	if s.FilePath == "" {
+		return fmt.Errorf("session file path is required")
+	}
+	return nil
+}

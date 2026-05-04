@@ -1,7 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { applyExplorerRootForDirectoryNavigation } from "@/app/view/preview/preview-navigation";
+import {
+    applyExplorerRootForDirectoryNavigation,
+    resolveExplorerRootPathForOpenInCurrentBlock,
+} from "@/app/view/preview/preview-navigation";
 import { describe, expect, it } from "vitest";
 
 describe("preview explorer root sync", () => {
@@ -31,5 +34,25 @@ describe("preview explorer root sync", () => {
         );
 
         expect(meta["preview:explorer-root"]).toBe("/tmp/current");
+    });
+
+    it("uses the directory path as the explorer root when opening a directory in the current block", () => {
+        expect(
+            resolveExplorerRootPathForOpenInCurrentBlock({
+                path: "/tmp/project/src",
+                dir: "/tmp/project",
+                isdir: true,
+            })
+        ).toBe("/tmp/project/src");
+    });
+
+    it("uses the parent directory as the explorer root when opening a file in the current block", () => {
+        expect(
+            resolveExplorerRootPathForOpenInCurrentBlock({
+                path: "/tmp/project/src/index.ts",
+                dir: "/tmp/project/src",
+                isdir: false,
+            })
+        ).toBe("/tmp/project/src");
     });
 });

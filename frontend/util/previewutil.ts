@@ -4,7 +4,16 @@ import { makeNativeLabel } from "./platformutil";
 import { fireAndForget, isLocalConnName } from "./util";
 import { formatRemoteUri } from "./waveutil";
 
-export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: FileInfo): ContextMenuItem[] {
+type AddOpenMenuItemsOptions = {
+    openInCurrentBlock?: (() => void | Promise<void>) | null;
+};
+
+export function addOpenMenuItems(
+    menu: ContextMenuItem[],
+    conn: string,
+    finfo: FileInfo,
+    options: AddOpenMenuItemsOptions = {}
+): ContextMenuItem[] {
     if (!finfo) {
         return menu;
     }
@@ -57,6 +66,16 @@ export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: F
     menu.push({
         type: "separator",
     });
+    if (options.openInCurrentBlock) {
+        menu.push({
+            label: "Open in This Block",
+            click: () => {
+                fireAndForget(async () => {
+                    await options.openInCurrentBlock?.();
+                });
+            },
+        });
+    }
     if (finfo.isdir) {
         menu.push({
             label: "Open in New Block",

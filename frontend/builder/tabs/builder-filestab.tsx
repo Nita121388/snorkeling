@@ -7,8 +7,8 @@ import { ContextMenuModel } from "@/app/store/contextmenu";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { arrayToBase64 } from "@/util/util";
-import { atoms } from "@/store/global";
+import { atoms, createBlock } from "@/store/global";
+import { arrayToBase64, fireAndForget, isBlank, makeConnRoute, naturalStringCompare } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
@@ -21,6 +21,220 @@ type FileEntry = {
     modified: string;
     isReadOnly: boolean;
 };
+
+type SupportedVcsRepoType = "git" | "svn";
+type BuilderVcsMenuScope = "file" | "background";
+
+type BuilderVcsResolveResult =
+    | { kind: "none" }
+    | { kind: "repos"; repos: VcsRepositoryInfo[] }
+    | { kind: "error"; error: string };
+
+function getSupportedRepoType(repo: VcsRepositoryInfo): SupportedVcsRepoType | null {
+    const repoType = repo.repotype?.trim().toLowerCase();
+    if (repoType === "git" || repoType === "svn") {
+        return repoType;
+    }
+    return null;
+}
+
+function makeRepoMenuLabel(repo: VcsRepositoryInfo): string {
+    return getSupportedRepoType(repo) === "svn" ? "SVN" : "Git";
+}
+
+function makeRepoSyncLabel(repo: VcsRepositoryInfo): string {
+    return getSupportedRepoType(repo) === "svn" ? "Update" : "Pull";
+}
+
+function joinAppFilePath(appPath: string, fileName: string): string {
+    if (isBlank(appPath) || isBlank(fileName)) {
+        return "";
+    }
+    const separator = appPath.includes("\\") ? "\\" : "/";
+    const basePath = appPath.replace(/[\\/]+$/, "");
+    const relativePath = fileName.replace(/^[\\/]+/, "").replace(/[\\/]+/g, separator);
+    return `${basePath}${separator}${relativePath}`;
+}
+
+async function resolveRepoForPath(targetPath: string): Promise<BuilderVcsResolveResult> {
+    if (isBlank(targetPath)) {
+        return { kind: "none" };
+    }
+    const route = makeConnRoute("local");
+    try {
+        const repositoriesResponse = await RpcApi.RemoteVcsRepositoriesCommand(
+            TabRpcClient,
+            {
+                path: targetPath,
+                statuslimit: 1,
+                scandepth: 1,
+                includeparent: true,
+            },
+            { route }
+        );
+        const repositories = (repositoriesResponse.repositories ?? []).filter(
+            (repo) => getSupportedRepoType(repo) != null && !isBlank(repo.rootpath)
+        );
+        if (repositories.length > 0) {
+            return { kind: "repos", repos: repositories };
+        }
+        return { kind: "none" };
+    } catch (e) {
+        const errorText = `${e}`;
+        console.warn(`[vcsrepositories] exception for ${targetPath}: ${errorText}`);
+        return { kind: "error", error: errorText };
+    }
+}
+
+async function openHistoryBlock(repo: VcsRepositoryInfo, targetPath: string): Promise<void> {
+    await createBlock({
+        meta: {
+            view: "vcshistory",
+            connection: "local",
+            "vcshistory:repotype": repo.repotype,
+            "vcshistory:repopath": repo.rootpath,
+            "vcshistory:filepath": targetPath,
+            "vcshistory:title": `History: ${targetPath}`,
+        } as any,
+    });
+}
+
+async function openDiffBlock(repo: VcsRepositoryInfo, targetPath: string): Promise<void> {
+    await createBlock({
+        meta: {
+            view: "vcsdiff",
+            connection: "local",
+            "vcsdiff:repotype": repo.repotype,
+            "vcsdiff:repopath": repo.rootpath,
+            "vcsdiff:filepath": targetPath,
+            "vcsdiff:revision": "",
+            "vcsdiff:mode": "side-by-side",
+            "vcsdiff:title": `${targetPath} (working tree)`,
+        } as any,
+    });
+}
+
+async function openRepoLogBlock(repo: VcsRepositoryInfo): Promise<void> {
+    const repoType = getSupportedRepoType(repo);
+    await createBlock({
+        meta: {
+            view: "vcscommits",
+            connection: "local",
+            "vcscommits:repotype": repo.repotype,
+            "vcscommits:repopath": repo.rootpath,
+            "vcscommits:title": `${repo.name} ${repoType === "svn" ? "Log" : "Commits"}`,
+        } as any,
+    });
+}
+
+async function openVcsBlock(repo: VcsRepositoryInfo, selectedPath: string): Promise<void> {
+    const meta: Record<string, any> = {
+        view: "vcs",
+        connection: "local",
+        "vcs:path": repo.rootpath,
+    };
+    if (!isBlank(selectedPath)) {
+        meta["vcs:selectedfile"] = selectedPath;
+    }
+    await createBlock({ meta } as BlockDef);
+}
+
+async function syncRepo(
+    repo: VcsRepositoryInfo,
+    setError: (error: string) => void,
+    refreshFiles: () => Promise<void>
+): Promise<void> {
+    const syncLabel = makeRepoSyncLabel(repo);
+    const route = makeConnRoute("local");
+    try {
+        const response = await RpcApi.RemoteVcsSyncCommand(
+            TabRpcClient,
+            {
+                repotype: repo.repotype,
+                repopath: repo.rootpath,
+            },
+            { route }
+        );
+        if (!response.success) {
+            setError(response.error || response.output || `${syncLabel} failed.`);
+            return;
+        }
+        await refreshFiles();
+    } catch (e) {
+        setError(`${syncLabel} failed: ${e}`);
+    }
+}
+
+function makeResolveFailureMenuItem(targetPath: string, errorText: string): ContextMenuItem {
+    const debugText = `path: ${targetPath}\nerror: ${errorText}`;
+    return {
+        label: "Version Control",
+        submenu: [
+            {
+                label: "Resolve Failed",
+                enabled: false,
+                sublabel: errorText,
+            },
+            {
+                label: "Copy Debug Info",
+                click: () => fireAndForget(() => navigator.clipboard.writeText(debugText)),
+            },
+        ],
+    };
+}
+
+async function makeBuilderVcsMenuItems(
+    targetPath: string,
+    scope: BuilderVcsMenuScope,
+    setError: (error: string) => void,
+    refreshFiles: () => Promise<void>
+): Promise<ContextMenuItem[]> {
+    const resolveResult = await resolveRepoForPath(targetPath);
+    if (resolveResult.kind === "none") {
+        return [];
+    }
+    if (resolveResult.kind === "error") {
+        return [makeResolveFailureMenuItem(targetPath, resolveResult.error)];
+    }
+    return resolveResult.repos.map((repo) => {
+        const submenu: ContextMenuItem[] = [];
+        if (scope === "background") {
+            submenu.push({
+                label: makeRepoSyncLabel(repo),
+                click: () => fireAndForget(() => syncRepo(repo, setError, refreshFiles)),
+            });
+            submenu.push({
+                label: "View History",
+                click: () => fireAndForget(() => openRepoLogBlock(repo)),
+            });
+        } else {
+            submenu.push({
+                label: "View History",
+                click: () => fireAndForget(() => openHistoryBlock(repo, targetPath)),
+            });
+            submenu.push({
+                label: "View Diff",
+                click: () => fireAndForget(() => openDiffBlock(repo, targetPath)),
+            });
+            submenu.push({
+                label: "View Repository Log",
+                click: () => fireAndForget(() => openRepoLogBlock(repo)),
+            });
+            submenu.push({
+                label: "Open VCS Block",
+                click: () => fireAndForget(() => openVcsBlock(repo, targetPath)),
+            });
+            submenu.push({
+                label: makeRepoSyncLabel(repo),
+                click: () => fireAndForget(() => syncRepo(repo, setError, refreshFiles)),
+            });
+        }
+        return {
+            label: makeRepoMenuLabel(repo),
+            submenu,
+        };
+    });
+}
 
 const RenameFileModal = memo(
     ({ appId, fileName, onSuccess }: { appId: string; fileName: string; onSuccess: () => void }) => {
@@ -178,6 +392,7 @@ DeleteFileModal.displayName = "DeleteFileModal";
 const BuilderFilesTab = memo(() => {
     const builderAppId = useAtomValue(atoms.builderAppId);
     const [files, setFiles] = useState<FileEntry[]>([]);
+    const [appAbsolutePath, setAppAbsolutePath] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [isDragging, setIsDragging] = useState(false);
@@ -191,6 +406,7 @@ const BuilderFilesTab = memo(() => {
         setError("");
         try {
             const result = await RpcApi.ListAllAppFilesCommand(TabRpcClient, { appid: builderAppId });
+            setAppAbsolutePath(result.absolutepath ?? "");
             const fileEntries: FileEntry[] = result.entries
                 .filter((entry) => !entry.dir && entry.name.startsWith("static/"))
                 .map((entry) => ({
@@ -199,7 +415,7 @@ const BuilderFilesTab = memo(() => {
                     modified: entry.modified,
                     isReadOnly: ReadOnlyFileNames.includes(entry.name),
                 }))
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => naturalStringCompare(a.name, b.name));
             setFiles(fileEntries);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -281,25 +497,65 @@ const BuilderFilesTab = memo(() => {
         }
     };
 
-    const handleContextMenu = (e: React.MouseEvent, fileName: string) => {
-        const menu: ContextMenuItem[] = [
-            {
-                label: "Rename File",
-                click: () => {
-                    modalsModel.pushModal("RenameFileModal", { appId: builderAppId, fileName, onSuccess: loadFiles });
-                },
-            },
-            {
-                type: "separator",
-            },
-            {
-                label: "Delete File",
-                click: () => {
-                    modalsModel.pushModal("DeleteFileModal", { appId: builderAppId, fileName, onSuccess: loadFiles });
-                },
-            },
-        ];
+    const handleContextMenu = async (e: React.MouseEvent, file: FileEntry) => {
+        e.preventDefault();
+        e.stopPropagation();
 
+        const menu: ContextMenuItem[] = [];
+        if (!file.isReadOnly) {
+            menu.push(
+                {
+                    label: "Rename File",
+                    click: () => {
+                        modalsModel.pushModal("RenameFileModal", {
+                            appId: builderAppId,
+                            fileName: file.name,
+                            onSuccess: loadFiles,
+                        });
+                    },
+                },
+                {
+                    type: "separator",
+                },
+                {
+                    label: "Delete File",
+                    click: () => {
+                        modalsModel.pushModal("DeleteFileModal", {
+                            appId: builderAppId,
+                            fileName: file.name,
+                            onSuccess: loadFiles,
+                        });
+                    },
+                }
+            );
+        }
+
+        const vcsMenuItems = await makeBuilderVcsMenuItems(
+            joinAppFilePath(appAbsolutePath, file.name),
+            "file",
+            setError,
+            loadFiles
+        );
+        if (vcsMenuItems.length > 0) {
+            if (menu.length > 0) {
+                menu.push({ type: "separator" });
+            }
+            menu.push(...vcsMenuItems);
+        }
+        if (menu.length === 0) {
+            return;
+        }
+
+        ContextMenuModel.getInstance().showContextMenu(menu, e);
+    };
+
+    const handleBackgroundContextMenu = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const menu = await makeBuilderVcsMenuItems(appAbsolutePath, "background", setError, loadFiles);
+        if (menu.length === 0) {
+            return;
+        }
         ContextMenuModel.getInstance().showContextMenu(menu, e);
     };
 
@@ -311,6 +567,7 @@ const BuilderFilesTab = memo(() => {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
+            onContextMenu={handleBackgroundContextMenu}
         >
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Static Files</h2>
@@ -360,7 +617,7 @@ const BuilderFilesTab = memo(() => {
                             <div
                                 key={file.name}
                                 className="flex items-center gap-3 p-2 bg-panel hover:bg-hover border border-border rounded transition-colors"
-                                onContextMenu={(e) => !file.isReadOnly && handleContextMenu(e, file.name)}
+                                onContextMenu={(e) => handleContextMenu(e, file)}
                             >
                                 <i className="fa fa-file text-secondary" />
                                 <div className="flex-1 min-w-0">
@@ -379,7 +636,7 @@ const BuilderFilesTab = memo(() => {
                                 {!file.isReadOnly && (
                                     <button
                                         className="px-2 py-1 hover:bg-hover rounded transition-colors cursor-pointer"
-                                        onClick={(e) => handleContextMenu(e, file.name)}
+                                        onClick={(e) => handleContextMenu(e, file)}
                                         title="File options"
                                     >
                                         <i className="fa fa-ellipsis-vertical" />

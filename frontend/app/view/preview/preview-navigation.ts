@@ -20,3 +20,14 @@ export function applyExplorerRootForDirectoryNavigation(
         [PreviewExplorerRootMetaKey]: directoryPath,
     };
 }
+
+export function resolveExplorerRootPathForOpenInCurrentBlock(entry: {
+    path?: string | null;
+    dir?: string | null;
+    isdir?: boolean | null;
+}): string | null {
+    if (entry.isdir) {
+        return isBlank(entry.path) ? null : entry.path;
+    }
+    return isBlank(entry.dir) ? null : entry.dir;
+}

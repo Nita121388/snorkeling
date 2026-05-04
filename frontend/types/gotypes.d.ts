@@ -42,6 +42,28 @@ declare global {
         configs: {[key: string]: AIModeConfigType};
     };
 
+    // aisessionsservice.AISessionsDetailRequest
+    type AISessionsDetailRequest = {
+        id: string;
+        refresh?: boolean;
+        tail?: number;
+    };
+
+    // aisessionsservice.AISessionsListRequest
+    type AISessionsListRequest = {
+        source?: string;
+        project?: string;
+        query?: string;
+        limit?: number;
+        refresh?: boolean;
+        markedOnly?: boolean;
+    };
+
+    // aisessionsservice.AISessionsListResponse
+    type AISessionsListResponse = {
+        sessions: SessionSummary[];
+    };
+
     // wshrpc.ActivityDisplayType
     type ActivityDisplayType = {
         width: number;
@@ -1201,6 +1223,16 @@ declare global {
         blockid: string;
     };
 
+    // aisessions.Message
+    type Message = {
+        seq: number;
+        role: string;
+        text: string;
+        timestamp?: number;
+        toolName?: string;
+        charCount: number;
+    };
+
     // waveobj.MetaTSType
     type MetaType = {
         view?: string;
@@ -1562,6 +1594,31 @@ declare global {
         optional: boolean;
     };
 
+    // aisessions.SessionDetail
+    type SessionDetail = {
+        summary: SessionSummary;
+        messages: Message[];
+        toolCalls?: ToolCall[];
+    };
+
+    // aisessions.SessionSummary
+    type SessionSummary = {
+        key: string;
+        id: string;
+        source: string;
+        title?: string;
+        titleSource?: string;
+        projectPath?: string;
+        createdAt?: number;
+        updatedAt?: number;
+        messageCount?: number;
+        filePath?: string;
+        snippet?: string;
+        marked?: boolean;
+        note?: string;
+        missing?: boolean;
+    };
+
     // wconfig.SettingsType
     type SettingsType = {
         "app:*"?: boolean;
@@ -1913,6 +1970,15 @@ declare global {
     type TimeSeriesData = {
         ts: number;
         values: {[key: string]: number};
+    };
+
+    // aisessions.ToolCall
+    type ToolCall = {
+        seq: number;
+        name: string;
+        summary?: string;
+        output?: string;
+        exitCode?: number;
     };
 
     // uctypes.UIChat

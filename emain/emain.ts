@@ -56,7 +56,7 @@ import {
 } from "./emain-window";
 import { ElectronWshClient, initElectronWshClient } from "./emain-wsh";
 import { getLaunchSettings } from "./launchsettings";
-import { configureAutoUpdater, updater } from "./updater";
+import { configureAutoUpdater, isQuittingForUpdate, updater } from "./updater";
 
 const electronApp = electron.app;
 
@@ -264,6 +264,12 @@ electronApp.on("window-all-closed", () => {
     }
 });
 electronApp.on("before-quit", (e) => {
+    if (isQuittingForUpdate() || updater?.status == "installing") {
+        setGlobalIsQuitting(true);
+        updater?.stop();
+        return;
+    }
+
     const allWindows = getAllWaveWindows();
     const allBuilders = getAllBuilderWindows();
     if (

@@ -13,6 +13,47 @@ function callBackendService(waveEnv: WaveEnv, service: string, method: string, a
     return WOS.callBackendService(service, method, args, noUIContext);
 }
 
+// aisessionsservice.AISessionsService (aisessions)
+export class AISessionsServiceType {
+    waveEnv: WaveEnv;
+
+    constructor(waveEnv?: WaveEnv) {
+        this.waveEnv = waveEnv;
+    }
+
+    // delete a local AI session by moving its source file to deleted storage
+    // @returns deleted AI session summary
+    Delete(id: string): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "Delete", Array.from(arguments))
+    }
+
+    // load a local AI session detail
+    // @returns AI session detail
+    Detail(request: AISessionsDetailRequest): Promise<SessionDetail> {
+        return callBackendService(this?.waveEnv, "aisessions", "Detail", Array.from(arguments))
+    }
+
+    // list local AI sessions
+    // @returns AI session summaries
+    List(request: AISessionsListRequest): Promise<AISessionsListResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "List", Array.from(arguments))
+    }
+
+    // mark or unmark a local AI session
+    // @returns updated AI session summary
+    Mark(id: string, marked: boolean): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "Mark", Array.from(arguments))
+    }
+
+    // set a local AI session note
+    // @returns updated AI session summary
+    Note(id: string, note: string): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "Note", Array.from(arguments))
+    }
+}
+
+export const AISessionsService = new AISessionsServiceType();
+
 // blockservice.BlockService (block)
 export class BlockServiceType {
     waveEnv: WaveEnv;
@@ -215,6 +256,7 @@ export class WorkspaceServiceType {
 export const WorkspaceService = new WorkspaceServiceType();
 
 export const AllServiceTypes = {
+    "aisessions": AISessionsServiceType,
     "block": BlockServiceType,
     "client": ClientServiceType,
     "object": ObjectServiceType,
@@ -224,6 +266,7 @@ export const AllServiceTypes = {
 };
 
 export const AllServiceImpls = {
+    "aisessions": AISessionsService,
     "block": BlockService,
     "client": ClientService,
     "object": ObjectService,

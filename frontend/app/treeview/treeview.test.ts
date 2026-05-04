@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { buildVisibleRows, TreeNodeData } from "@/app/treeview/treeview";
+import { buildVisibleRows, mergeFetchedTreeChildren, TreeNodeData } from "@/app/treeview/treeview";
 import { describe, expect, it } from "vitest";
 
 function makeNodes(entries: TreeNodeData[]): Map<string, TreeNodeData> {
@@ -58,5 +58,44 @@ describe("treeview visible rows", () => {
 
         const cappedRows = buildVisibleRows(nodes, ["dir"], new Set(["dir"]));
         expect(cappedRows.map((row) => row.kind)).toEqual(["node", "node", "capped"]);
+    });
+
+    it("refreshes directory children while preserving loaded descendant state", () => {
+        const nodes = makeNodes([
+            {
+                id: "root",
+                isDirectory: true,
+                childrenStatus: "loaded",
+                childrenIds: ["dir", "gone"],
+            },
+            {
+                id: "dir",
+                parentId: "root",
+                isDirectory: true,
+                label: "dir",
+                childrenStatus: "loaded",
+                childrenIds: ["nested"],
+            },
+            { id: "nested", parentId: "dir", isDirectory: false, label: "nested.txt" },
+            { id: "gone", parentId: "root", isDirectory: false, label: "gone.txt" },
+        ]);
+
+        const next = mergeFetchedTreeChildren(
+            nodes,
+            "root",
+            {
+                nodes: [
+                    { id: "dir", parentId: "root", isDirectory: true, label: "dir" },
+                    { id: "added", parentId: "root", isDirectory: false, label: "added.txt" },
+                ],
+            },
+            500
+        );
+
+        expect(next.get("root")?.childrenIds).toEqual(["dir", "added"]);
+        expect(next.get("dir")?.childrenStatus).toBe("loaded");
+        expect(next.get("dir")?.childrenIds).toEqual(["nested"]);
+        expect(next.has("nested")).toBe(true);
+        expect(next.has("gone")).toBe(false);
     });
 });

@@ -34,8 +34,19 @@
             }
         }
     },
-    "defwidget@web": {
+    "defwidget@sessions": {
         "display:order": -2,
+        "icon": "messages-square",
+        "label": "sessions",
+        "description": "Browse local AI sessions",
+        "blockdef": {
+            "meta": {
+                "view": "aisessions"
+            }
+        }
+    },
+    "defwidget@web": {
+        "display:order": -1,
         "icon": "globe",
         "label": "web",
         "blockdef": {
@@ -45,7 +56,7 @@
         }
     },
     "defwidget@sysinfo": {
-        "display:order": -1,
+        "display:order": 0,
         "icon": "chart-line",
         "label": "sysinfo",
         "blockdef": {
@@ -55,7 +66,7 @@
         }
     },
     "defwidget@processviewer": {
-        "display:order": 0,
+        "display:order": 1,
         "icon": "list-tree",
         "label": "processes",
         "blockdef": {

@@ -138,6 +138,18 @@ function isCharacterKeyEvent(event: WaveKeyboardEvent): boolean {
     return util.countGraphemes(event.key) == 1;
 }
 
+function isComposingEvent(event: WaveKeyboardEvent): boolean {
+    const nativeEvent = (event as any).nativeEvent;
+    return Boolean(
+        (event as any).isComposing ||
+        nativeEvent?.isComposing ||
+        nativeEvent?.keyCode === 229 ||
+        nativeEvent?.which === 229 ||
+        event.key === "Process" ||
+        event.key === "Unidentified"
+    );
+}
+
 const inputKeyMap = new Map<string, boolean>([
     ["Backspace", true],
     ["Delete", true],
@@ -175,6 +187,9 @@ const inputKeyMap = new Map<string, boolean>([
 ]);
 
 function isInputEvent(event: WaveKeyboardEvent): boolean {
+    if (isComposingEvent(event)) {
+        return true;
+    }
     if (isCharacterKeyEvent(event)) {
         return true;
     }
@@ -240,6 +255,7 @@ function adaptFromReactOrNativeKeyEvent(event: React.KeyboardEvent | KeyboardEve
     rtn.key = event.key;
     rtn.location = event.location;
     (rtn as any).nativeEvent = event;
+    (rtn as any).isComposing = isComposingEvent(rtn);
     if (event.type == "keydown" || event.type == "keyup" || event.type == "keypress") {
         rtn.type = event.type;
     } else {
@@ -327,6 +343,7 @@ export {
     checkKeyPressed,
     getKeyUtilPlatform,
     isCharacterKeyEvent,
+    isComposingEvent,
     isInputEvent,
     keyboardEventToASCII,
     keydownWrapper,

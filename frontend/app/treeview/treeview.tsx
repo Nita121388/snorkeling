@@ -35,7 +35,7 @@ export interface TreeNodeData {
     capInfo?: { max: number; totalKnown?: number };
 }
 
-interface FetchDirResult {
+export interface FetchDirResult {
     nodes: TreeNodeData[];
     capped?: boolean;
     totalKnown?: number;
@@ -59,6 +59,7 @@ export interface TreeViewProps {
     rootIds: string[];
     initialNodes: Record<string, TreeNodeData>;
     fetchDir?: (id: string, limit: number) => Promise<FetchDirResult>;
+    refreshKey?: string | number;
     defaultExpandedIds?: string[];
     maxDirEntries?: number;
     rowHeight?: number;
@@ -79,6 +80,7 @@ export interface TreeViewProps {
 
 export interface TreeViewRef {
     scrollToId: (id: string) => void;
+    refresh: (id?: string) => void;
 }
 
 const DefaultRowHeight = 24;
@@ -202,7 +204,11 @@ function getNodeIcon(node: TreeNodeData, isExpanded: boolean): string {
         return "file-pdf";
     }
     const extension = normalizeLabel(node).split(".").pop()?.toLocaleLowerCase();
-    if (["js", "jsx", "ts", "tsx", "go", "py", "java", "c", "cpp", "h", "hpp", "json", "yaml", "yml"].includes(extension)) {
+    if (
+        ["js", "jsx", "ts", "tsx", "go", "py", "java", "c", "cpp", "h", "hpp", "json", "yaml", "yml"].includes(
+            extension
+        )
+    ) {
         return "file-code";
     }
     if (["md", "txt", "log"].includes(extension)) {
@@ -211,11 +217,85 @@ function getNodeIcon(node: TreeNodeData, isExpanded: boolean): string {
     return "file";
 }
 
+function normalizeInitialNodes(initialNodes: Record<string, TreeNodeData>): Map<string, TreeNodeData> {
+    return new Map(
+        Object.entries(initialNodes).map(([id, node]) => [
+            id,
+            { ...node, childrenStatus: node.childrenStatus ?? "unloaded" },
+        ])
+    );
+}
+
+function deleteNodeSubtree(nodesById: Map<string, TreeNodeData>, id: string) {
+    const node = nodesById.get(id);
+    node?.childrenIds?.forEach((childId) => deleteNodeSubtree(nodesById, childId));
+    nodesById.delete(id);
+}
+
+export function mergeFetchedTreeChildren(
+    nodesById: Map<string, TreeNodeData>,
+    parentId: string,
+    result: FetchDirResult,
+    maxDirEntries: number
+): Map<string, TreeNodeData> {
+    const next = new Map(nodesById);
+    const parentNode = next.get(parentId);
+    if (parentNode == null) {
+        return nodesById;
+    }
+    const nextChildIds = new Set(result.nodes.map((node) => node.id));
+    parentNode.childrenIds?.forEach((childId) => {
+        if (!nextChildIds.has(childId)) {
+            deleteNodeSubtree(next, childId);
+        }
+    });
+    result.nodes.forEach((node) => {
+        const existing = next.get(node.id);
+        const preserveDirectoryState = node.isDirectory && existing?.isDirectory;
+        const merged: TreeNodeData = {
+            ...existing,
+            ...node,
+            parentId: node.parentId ?? parentId,
+            childrenStatus:
+                node.childrenStatus ??
+                (node.isDirectory
+                    ? preserveDirectoryState
+                        ? (existing.childrenStatus ?? "unloaded")
+                        : "unloaded"
+                    : "loaded"),
+            childrenIds: node.isDirectory
+                ? (node.childrenIds ?? (preserveDirectoryState ? existing.childrenIds : undefined))
+                : undefined,
+            capInfo: node.isDirectory
+                ? (node.capInfo ?? (preserveDirectoryState ? existing.capInfo : undefined))
+                : undefined,
+        };
+        if (!node.isDirectory) {
+            delete merged.childrenIds;
+            delete merged.capInfo;
+        }
+        next.set(merged.id, merged);
+    });
+    const childrenIds = sortIdsByNode(
+        next,
+        result.nodes.map((entry) => entry.id)
+    );
+    next.set(parentId, {
+        ...parentNode,
+        childrenIds,
+        childrenStatus: result.capped ? "capped" : "loaded",
+        capInfo: result.capped ? { max: maxDirEntries, totalKnown: result.totalKnown } : undefined,
+        staterror: undefined,
+    });
+    return next;
+}
+
 export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const {
         rootIds,
         initialNodes,
         fetchDir,
+        refreshKey,
         defaultExpandedIds,
         maxDirEntries = 500,
         rowHeight = DefaultRowHeight,
@@ -233,30 +313,27 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onNodeContextMenu,
         onBackgroundContextMenu,
     } = props;
-    const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(
-        () =>
-            new Map(
-                Object.entries(initialNodes).map(([id, node]) => [id, { ...node, childrenStatus: node.childrenStatus ?? "unloaded" }])
-            )
-    );
+    const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
     const [selectedId, setSelectedId] = useState<string>(propSelectedId ?? rootIds[0]);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const nodesByIdRef = useRef(nodesById);
+    const expandedIdsRef = useRef(expandedIds);
+    const loadingIdsRef = useRef<Set<string>>(new Set());
+    const lastRefreshKeyRef = useRef(refreshKey);
     const rootIdsKey = rootIds.join("\u0000");
     const defaultExpandedIdsKey = (defaultExpandedIds ?? []).join("\u0000");
 
     useEffect(() => {
-        setNodesById(
-            new Map(
-                Object.entries(initialNodes).map(([id, node]) => [
-                    id,
-                    {
-                        ...node,
-                        childrenStatus: node.childrenStatus ?? "unloaded",
-                    },
-                ])
-            )
-        );
+        nodesByIdRef.current = nodesById;
+    }, [nodesById]);
+
+    useEffect(() => {
+        expandedIdsRef.current = expandedIds;
+    }, [expandedIds]);
+
+    useEffect(() => {
+        setNodesById(normalizeInitialNodes(initialNodes));
     }, [initialNodes]);
 
     useEffect(() => {
@@ -267,11 +344,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         setSelectedId(propSelectedId ?? rootIds[0]);
     }, [propSelectedId, rootIdsKey]);
 
-    const visibleRows = useMemo(() => buildVisibleRows(nodesById, rootIds, expandedIds), [nodesById, rootIds, expandedIds]);
-    const idToIndex = useMemo(
-        () => new Map(visibleRows.map((row, index) => [row.id, index])),
-        [visibleRows]
+    const visibleRows = useMemo(
+        () => buildVisibleRows(nodesById, rootIds, expandedIds),
+        [nodesById, rootIds, expandedIds]
     );
+    const idToIndex = useMemo(() => new Map(visibleRows.map((row, index) => [row.id, index])), [visibleRows]);
     const virtualizer = useVirtualizer({
         count: visibleRows.length,
         getScrollElement: () => scrollRef.current,
@@ -296,66 +373,80 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         virtualizer.scrollToIndex(index, { align: "auto" });
     };
 
+    const loadChildren = React.useCallback(
+        async (id: string, force = false) => {
+            const currentNode = nodesByIdRef.current.get(id);
+            if (
+                currentNode == null ||
+                !currentNode.isDirectory ||
+                currentNode.notfound ||
+                (!force && currentNode.staterror) ||
+                fetchDir == null
+            ) {
+                return;
+            }
+            const status = currentNode.childrenStatus ?? "unloaded";
+            if (loadingIdsRef.current.has(id) || (!force && status !== "unloaded")) {
+                return;
+            }
+            loadingIdsRef.current.add(id);
+            const keepCurrentChildrenOnError = force && status !== "unloaded" && status !== "error";
+            if (status === "unloaded" || status === "error") {
+                setNodesById((prev) => {
+                    const source = prev.get(id);
+                    if (source == null) {
+                        return prev;
+                    }
+                    const next = new Map(prev);
+                    next.set(id, { ...source, childrenStatus: "loading" });
+                    return next;
+                });
+            }
+            try {
+                const result = await fetchDir(id, maxDirEntries);
+                setNodesById((prev) => mergeFetchedTreeChildren(prev, id, result, maxDirEntries));
+            } catch (error) {
+                setNodesById((prev) => {
+                    const next = new Map(prev);
+                    const source = next.get(id);
+                    if (source == null || keepCurrentChildrenOnError) {
+                        return prev;
+                    }
+                    next.set(id, {
+                        ...source,
+                        childrenStatus: "error",
+                        staterror: error instanceof Error ? error.message : "Unknown error",
+                    });
+                    return next;
+                });
+            } finally {
+                loadingIdsRef.current.delete(id);
+            }
+        },
+        [fetchDir, maxDirEntries]
+    );
+
+    const refreshDirectory = React.useCallback(
+        (id?: string) => {
+            const ids = id == null ? Array.from(expandedIdsRef.current) : [id];
+            ids.forEach((expandedId) => {
+                const node = nodesByIdRef.current.get(expandedId);
+                if (node?.isDirectory) {
+                    void loadChildren(expandedId, true);
+                }
+            });
+        },
+        [loadChildren]
+    );
+
     useImperativeHandle(
         ref,
         () => ({
             scrollToId,
+            refresh: refreshDirectory,
         }),
-        [idToIndex, virtualizer]
+        [idToIndex, refreshDirectory, virtualizer]
     );
-
-    const loadChildren = React.useCallback(async (id: string) => {
-        const currentNode = nodesById.get(id);
-        if (currentNode == null || !currentNode.isDirectory || currentNode.notfound || currentNode.staterror || fetchDir == null) {
-            return;
-        }
-        const status = currentNode.childrenStatus ?? "unloaded";
-        if (status !== "unloaded") {
-            return;
-        }
-        setNodesById((prev) => {
-            const next = new Map(prev);
-            next.set(id, { ...currentNode, childrenStatus: "loading" });
-            return next;
-        });
-        try {
-            const result = await fetchDir(id, maxDirEntries);
-            setNodesById((prev) => {
-                const next = new Map(prev);
-                result.nodes.forEach((node) => {
-                    const merged: TreeNodeData = {
-                        ...node,
-                        parentId: node.parentId ?? id,
-                        childrenStatus: node.childrenStatus ?? (node.isDirectory ? "unloaded" : "loaded"),
-                    };
-                    next.set(merged.id, merged);
-                });
-                const childrenIds = sortIdsByNode(
-                    next,
-                    result.nodes.map((entry) => entry.id)
-                );
-                const source = next.get(id) ?? currentNode;
-                next.set(id, {
-                    ...source,
-                    childrenIds,
-                    childrenStatus: result.capped ? "capped" : "loaded",
-                    capInfo: result.capped ? { max: maxDirEntries, totalKnown: result.totalKnown } : undefined,
-                });
-                return next;
-            });
-        } catch (error) {
-            setNodesById((prev) => {
-                const next = new Map(prev);
-                const source = next.get(id) ?? currentNode;
-                next.set(id, {
-                    ...source,
-                    childrenStatus: "error",
-                    staterror: error instanceof Error ? error.message : "Unknown error",
-                });
-                return next;
-            });
-        }
-    }, [fetchDir, maxDirEntries, nodesById]);
 
     useEffect(() => {
         expandedIds.forEach((id) => {
@@ -365,6 +456,29 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             }
         });
     }, [expandedIds, nodesById, loadChildren]);
+
+    useEffect(() => {
+        setExpandedIds((prev) => {
+            let changed = false;
+            const next = new Set<string>();
+            prev.forEach((id) => {
+                if (nodesById.has(id)) {
+                    next.add(id);
+                } else {
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+    }, [nodesById]);
+
+    useEffect(() => {
+        if (refreshKey == null || Object.is(lastRefreshKeyRef.current, refreshKey)) {
+            return;
+        }
+        lastRefreshKeyRef.current = refreshKey;
+        refreshDirectory();
+    }, [refreshDirectory, refreshKey]);
 
     const toggleExpand = (id: string) => {
         const node = nodesById.get(id);
@@ -529,7 +643,10 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                             >
                                 <div
                                     className="flex items-center"
-                                    style={{ paddingLeft: row.depth * indentWidth, width: ChevronWidth + row.depth * indentWidth }}
+                                    style={{
+                                        paddingLeft: row.depth * indentWidth,
+                                        width: ChevronWidth + row.depth * indentWidth,
+                                    }}
                                 >
                                     {row.kind === "node" && row.isDirectory && row.hasChildren ? (
                                         <button
@@ -548,7 +665,10 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                             />
                                         </button>
                                     ) : (
-                                        <span className="inline-block shrink-0" style={{ width: ChevronWidth, height: ChevronWidth }} />
+                                        <span
+                                            className="inline-block shrink-0"
+                                            style={{ width: ChevronWidth, height: ChevronWidth }}
+                                        />
                                     )}
                                 </div>
                                 {row.kind === "node" ? (
@@ -559,7 +679,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                 color:
                                                     row.node.notfound || row.node.staterror
                                                         ? "var(--color-error)"
-                                                        : row.node.iconColor ?? "inherit",
+                                                        : (row.node.iconColor ?? "inherit"),
                                             }}
                                         />
                                         <span

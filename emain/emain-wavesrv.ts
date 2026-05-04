@@ -24,7 +24,7 @@ import {
     WaveAppPathVarName,
     WaveAppResourcesPathVarName,
 } from "./emain-util";
-import { updater } from "./updater";
+import { isQuittingForUpdate, updater } from "./updater";
 
 let isWaveSrvDead = false;
 let waveSrvProc: child_process.ChildProcessWithoutNullStreams | null = null;
@@ -77,7 +77,7 @@ export function runWaveSrv(handleWSEvent: (evtMsg: WSEventType) => void): Promis
         env: envCopy,
     });
     proc.on("exit", (e) => {
-        if (updater?.status == "installing") {
+        if (updater?.status == "installing" || isQuittingForUpdate()) {
             return;
         }
         console.log("wavesrv exited, shutting down");

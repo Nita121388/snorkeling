@@ -422,6 +422,14 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
         return false;
     }
     lastHandledEvent = nativeEvent;
+    const activeElem = document.activeElement;
+    if (
+        keyutil.isComposingEvent(waveEvent) &&
+        activeElem instanceof HTMLElement &&
+        (activeElem.tagName == "INPUT" || activeElem.tagName == "TEXTAREA" || activeElem.contentEditable == "true")
+    ) {
+        return false;
+    }
     if (activeChord) {
         console.log("handle activeChord", activeChord);
         // If we're in chord mode, look for the second key.

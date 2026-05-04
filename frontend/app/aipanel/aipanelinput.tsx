@@ -27,6 +27,8 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
     const isChatEmpty = useAtomValue(model.isChatEmptyAtom);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isComposingRef = useRef(false);
+    const compositionEndTimerRef = useRef<number | null>(null);
     const isPanelOpen = useAtomValue(model.getPanelVisibleAtom());
 
     let placeholder: string;
@@ -67,12 +69,39 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
     }, [model, resizeTextarea]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        const isComposing = e.nativeEvent?.isComposing || e.keyCode == 229;
+        const isComposing =
+            isComposingRef.current || e.nativeEvent?.isComposing || e.keyCode == 229 || e.key === "Process";
         if (e.key === "Enter" && !e.shiftKey && !isComposing) {
             e.preventDefault();
             onSubmit(e as any);
         }
     };
+
+    useEffect(() => {
+        return () => {
+            if (compositionEndTimerRef.current != null) {
+                window.clearTimeout(compositionEndTimerRef.current);
+            }
+        };
+    }, []);
+
+    const handleCompositionStart = useCallback(() => {
+        if (compositionEndTimerRef.current != null) {
+            window.clearTimeout(compositionEndTimerRef.current);
+            compositionEndTimerRef.current = null;
+        }
+        isComposingRef.current = true;
+    }, []);
+
+    const handleCompositionEnd = useCallback(() => {
+        if (compositionEndTimerRef.current != null) {
+            window.clearTimeout(compositionEndTimerRef.current);
+        }
+        compositionEndTimerRef.current = window.setTimeout(() => {
+            isComposingRef.current = false;
+            compositionEndTimerRef.current = null;
+        }, 0);
+    }, []);
 
     const handleFocus = useCallback(() => {
         model.requestWaveAIFocus();
@@ -149,6 +178,8 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
                         onFocus={handleFocus}
                         onBlur={handleBlur}
                         placeholder={placeholder}
@@ -183,7 +214,11 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                             </button>
                         </Tooltip>
                     ) : (
-                        <Tooltip content="Send message (Enter)" placement="top" divClassName="absolute bottom-1.5 right-1">
+                        <Tooltip
+                            content="Send message (Enter)"
+                            placement="top"
+                            divClassName="absolute bottom-1.5 right-1"
+                        >
                             <button
                                 type="submit"
                                 disabled={status !== "ready" || !input.trim()}

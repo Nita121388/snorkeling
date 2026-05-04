@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { app, dialog, ipcMain, Notification, shell } from "electron";
+import { app, autoUpdater as electronAutoUpdater, dialog, ipcMain, Notification, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
@@ -9,18 +9,23 @@ import YAML from "yaml";
 import { RpcApi } from "../frontend/app/store/wshclientapi";
 import { isDev } from "../frontend/util/isdev";
 import { fireAndForget } from "../frontend/util/util";
-import { setUserConfirmedQuit } from "./emain-activity";
+import { setGlobalIsQuitting, setUserConfirmedQuit } from "./emain-activity";
 import { delay } from "./emain-util";
 import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 
 export let updater: Updater;
 const SnorkelingLatestReleaseUrl = "https://github.com/Nita121388/snorkeling/releases/latest";
+let quittingForUpdate = false;
 
 type UpdateSupportState = {
     supported: boolean;
     reason?: string;
 };
+
+export function isQuittingForUpdate(): boolean {
+    return quittingForUpdate;
+}
 
 function getWindowsUninstallerCandidates(): string[] {
     const exeDir = path.dirname(process.execPath);
@@ -73,6 +78,7 @@ export class Updater {
     lastUpdateCheck: Date;
 
     constructor(settings: SettingsType) {
+        quittingForUpdate = false;
         this.intervalms = settings["autoupdate:intervalms"];
         console.log("Update check interval in milliseconds:", this.intervalms);
         this.autoCheckEnabled = settings["autoupdate:enabled"];
@@ -95,6 +101,7 @@ export class Updater {
         autoUpdater.allowDowngrade = false;
 
         autoUpdater.removeAllListeners();
+        electronAutoUpdater.removeAllListeners("before-quit-for-update");
 
         autoUpdater.on("error", (err) => {
             console.log("updater error");
@@ -132,6 +139,14 @@ export class Updater {
                 fireAndForget(this.promptToInstallUpdate.bind(this));
             });
             updateNotification.show();
+        });
+
+        electronAutoUpdater.on("before-quit-for-update", () => {
+            console.log("before-quit-for-update");
+            quittingForUpdate = true;
+            setGlobalIsQuitting(true);
+            setUserConfirmedQuit(true);
+            this.status = "installing";
         });
     }
 
