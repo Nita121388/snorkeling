@@ -297,10 +297,19 @@ export class Updater {
      */
     async installUpdate() {
         if (this.status == "ready") {
+            quittingForUpdate = true;
+            setGlobalIsQuitting(true);
+            setUserConfirmedQuit(true);
             this.status = "installing";
             await delay(1000);
-            setUserConfirmedQuit(true);
-            autoUpdater.quitAndInstall();
+            try {
+                autoUpdater.quitAndInstall();
+            } catch (e) {
+                console.warn("failed to quit and install update", e);
+                quittingForUpdate = false;
+                setGlobalIsQuitting(false);
+                this.status = "error";
+            }
         }
     }
 }

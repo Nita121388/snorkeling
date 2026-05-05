@@ -56,6 +56,23 @@ function updateZoomFactor(zoomFactor: number) {
     document.documentElement.style.setProperty("--zoomfactor-inv", String(1 / zoomFactor));
 }
 
+function syncUpdaterStatus() {
+    try {
+        const status = getApi().getUpdaterStatus();
+        if (status != null) {
+            globalStore.set(atoms.updaterStatusAtom, status);
+        }
+    } catch (e) {
+        console.log("failed to sync updater status", e);
+    }
+}
+
+function scheduleUpdaterStatusSync() {
+    syncUpdaterStatus();
+    setTimeout(syncUpdaterStatus, 1000);
+    setTimeout(syncUpdaterStatus, 5000);
+}
+
 async function initBare() {
     getApi().sendLog("Init Bare");
     document.body.style.visibility = "hidden";
@@ -116,7 +133,7 @@ async function reinitWave() {
     document.title = `Wave Terminal - ${initialTab.name}`; // TODO update with tab name change
     getApi().setWindowInitStatus("wave-ready");
     globalStore.set(atoms.reinitVersion, globalStore.get(atoms.reinitVersion) + 1);
-    globalStore.set(atoms.updaterStatusAtom, getApi().getUpdaterStatus());
+    scheduleUpdaterStatusSync();
     setTimeout(() => {
         globalRefocus();
     }, 50);
@@ -208,6 +225,7 @@ async function initWave(initOpts: WaveInitOpts) {
     await firstRenderPromise;
     console.log("Wave First Render Done");
     getApi().setWindowInitStatus("wave-ready");
+    scheduleUpdaterStatusSync();
 }
 
 async function initBuilderWrap(initOpts: BuilderInitOpts) {
