@@ -36,7 +36,7 @@
     },
     "defwidget@sessions": {
         "display:order": -2,
-        "icon": "messages-square",
+        "icon": "comments",
         "label": "sessions",
         "description": "Browse local AI sessions",
         "blockdef": {

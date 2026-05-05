@@ -71,6 +71,7 @@ type WidgetPropsType = {
 const Widget = memo(({ widgetId, widget, mode, onWidgetSelect }: WidgetPropsType) => {
     const [isTruncated, setIsTruncated] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
+    const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
 
     useEffect(() => {
         if (mode === "normal" && labelRef.current) {
@@ -94,7 +95,7 @@ const Widget = memo(({ widgetId, widget, mode, onWidgetSelect }: WidgetPropsType
             divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
         >
             <div style={{ color: widget.color }}>
-                <i className={makeIconClass(widget.icon, true, { defaultIcon: "browser" })}></i>
+                <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
             </div>
             {mode === "normal" && !isBlank(widget.label) ? (
                 <div

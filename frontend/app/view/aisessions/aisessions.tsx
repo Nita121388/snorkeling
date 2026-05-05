@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
@@ -26,10 +27,11 @@ export class AiSessionsViewModel implements ViewModel {
     env: WaveEnv;
     service: AISessionsServiceType;
     viewType = "aisessions";
-    viewIcon = jotai.atom("messages-square");
+    viewIcon = jotai.atom("comments");
     viewName = jotai.atom("AI Sessions");
     noPadding = jotai.atom(true);
 
+    sortDescendingAtom = jotai.atom<boolean>(readSortPreference());
     sessionsAtom = jotai.atom<SessionSummary[]>([]);
     detailAtom = jotai.atom<SessionDetail | null>(null);
     selectedKeyAtom = jotai.atom<string>("");
@@ -40,6 +42,7 @@ export class AiSessionsViewModel implements ViewModel {
     errorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
+    endIconButtons: jotai.Atom<IconButtonDecl[]>;
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
         this.blockId = blockId;
@@ -47,6 +50,21 @@ export class AiSessionsViewModel implements ViewModel {
         this.tabModel = tabModel;
         this.env = waveEnv;
         this.service = new AISessionsServiceType(waveEnv);
+        this.endIconButtons = jotai.atom((get) => {
+            const loading = get(this.loadingAtom);
+            return [
+                {
+                    elemtype: "iconbutton",
+                    icon: loading ? "spinner" : "arrows-rotate",
+                    iconSpin: loading,
+                    title: "Refresh sessions",
+                    disabled: loading,
+                    click: () => {
+                        void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+                    },
+                },
+            ];
+        });
     }
 
     get viewComponent(): ViewComponent {
@@ -79,7 +97,7 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
-    async loadDetail(session: SessionSummary): Promise<void> {
+    async loadDetail(session: SessionSummary, refresh = false): Promise<void> {
         if (!session?.key) {
             globalStore.set(this.detailAtom, null);
             return;
@@ -88,7 +106,7 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const detail = await this.service.Detail({ id: session.key });
+            const detail = await this.service.Detail({ id: session.key, refresh });
             globalStore.set(this.detailAtom, detail);
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -163,8 +181,8 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
-    async openSessionFolder(filePath: string): Promise<void> {
-        const folderPath = dirname(filePath);
+    async openSessionFolder(summary: SessionSummary): Promise<void> {
+        const folderPath = summary.projectPath || dirname(summary.filePath);
         if (!folderPath) return;
         const blockDef: BlockDef = {
             meta: {
@@ -203,12 +221,17 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const error = jotai.useAtomValue(model.errorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
-    const [sortDescending, setSortDescending] = useState(() => readSortPreference());
+    const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(false);
-    const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
+    const [markedOnly, setMarkedOnly] = useState(false);
+    const visibleSessions = useMemo(() => {
+        const filteredSessions = markedOnly ? sessions.filter((session) => session.marked) : sessions;
+        return sortSessionsByTime(filteredSessions, sortDescending);
+    }, [markedOnly, sessions, sortDescending]);
     const queryActive = query.trim().length > 0;
-    const filterActive = queryActive || source !== "";
-    const filterBusy = loading && filterActive;
+    const remoteFilterActive = queryActive || source !== "";
+    const filterActive = remoteFilterActive || markedOnly;
+    const filterBusy = loading && remoteFilterActive;
 
     useEffect(() => {
         model.loadSessions(false, sortDescending);
@@ -231,6 +254,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         }
     }, [detail?.summary?.key, detailLoading, model, selectedSession]);
 
+    useEffect(() => {
+        if (!loading && visibleSessions.length === 0 && detail != null) {
+            globalStore.set(model.selectedKeyAtom, "");
+            globalStore.set(model.detailAtom, null);
+        }
+    }, [detail, loading, model, visibleSessions.length]);
+
     const setSource = useCallback(
         (next: SourceFilter) => {
             globalStore.set(model.loadingAtom, true);
@@ -249,22 +279,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
-            <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-3">
-                <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-accent/15 text-accent">
-                        <i className="fa-sharp fa-solid fa-messages" />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="text-sm font-medium leading-4">AI Sessions</div>
-                        <div className="truncate text-xxs text-secondary">Codex and Claude Code local history</div>
-                    </div>
-                </div>
-                <IconButton
-                    icon={loading ? "fa-spinner animate-spin" : "fa-rotate"}
-                    label="Refresh sessions"
-                    onClick={() => model.loadSessions(true, sortDescending)}
-                />
-            </div>
             {error ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                     {error}
@@ -333,15 +347,23 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         />
                                         <SourceButton
                                             label="Codex"
+                                            icon={<OpenAILogo />}
                                             active={source === "codex"}
                                             busy={filterBusy && source === "codex"}
                                             onClick={() => setSource("codex")}
                                         />
                                         <SourceButton
                                             label="Claude Code"
+                                            icon={<ClaudeLogo />}
                                             active={source === "claude"}
                                             busy={filterBusy && source === "claude"}
                                             onClick={() => setSource("claude")}
+                                        />
+                                        <SourceButton
+                                            label="Marked"
+                                            icon={<i className="fa-sharp fa-solid fa-star" />}
+                                            active={markedOnly}
+                                            onClick={() => setMarkedOnly((current) => !current)}
                                         />
                                     </div>
                                     <SortButton
@@ -358,7 +380,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     ) : filterActive ? (
                                         <>
                                             <i className="fa-sharp fa-solid fa-filter text-accent" />
-                                            <span>{visibleSessions.length} matching sessions</span>
+                                            <span>
+                                                {visibleSessions.length} {markedOnly ? "marked " : ""}matching sessions
+                                            </span>
                                         </>
                                     ) : (
                                         <span>Search includes notes.</span>
@@ -378,7 +402,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 {loading && visibleSessions.length === 0 ? (
                                     <EmptyState text="Loading sessions..." />
                                 ) : visibleSessions.length === 0 ? (
-                                    <EmptyState text="No sessions found." />
+                                    <EmptyState text={emptySessionsText(markedOnly, remoteFilterActive)} />
                                 ) : (
                                     visibleSessions.map((session) => (
                                         <SessionRow
@@ -411,28 +435,57 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
 
 function SourceButton({
     label,
+    icon,
     active,
     busy,
     onClick,
 }: {
     label: string;
+    icon?: React.ReactNode;
     active: boolean;
     busy?: boolean;
     onClick: () => void;
 }) {
+    const iconOnly = icon != null;
     return (
         <button
             className={cn(
-                "flex h-7 items-center gap-1 rounded border px-2 text-xs transition-colors",
+                "flex h-7 items-center justify-center gap-1 rounded border text-xs transition-colors",
+                iconOnly ? "w-8 px-1" : "px-2",
                 active
                     ? "border-accent bg-accent/10 text-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
                     : "border-border text-secondary hover:bg-hover hover:text-primary"
             )}
             onClick={onClick}
+            title={label}
+            aria-label={label}
         >
             {busy ? <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px] text-accent" /> : null}
-            {label}
+            {!busy && icon ? icon : null}
+            {!iconOnly ? label : null}
         </button>
+    );
+}
+
+function OpenAILogo() {
+    return (
+        <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+        >
+            <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729Zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944Zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464ZM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872Zm16.5963 3.8558-5.8333-3.3874L15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667Zm2.0107-3.0231-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66ZM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813Zm1.0976-2.3654 2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
+        </svg>
+    );
+}
+
+function ClaudeLogo() {
+    return (
+        <span className="[&_svg]:h-4 [&_svg]:w-4" aria-hidden="true">
+            <ClaudeColorSvg />
+        </span>
     );
 }
 
@@ -454,7 +507,12 @@ function SortButton({
             onClick={onToggle}
             title={descending ? "Newest first" : "Oldest first"}
         >
-            <i className={cn("fa-sharp fa-solid mr-1", descending ? "fa-arrow-down" : "fa-arrow-up")} />
+            <i
+                className={cn(
+                    "fa-sharp fa-solid mr-1",
+                    descending ? "fa-arrow-down-wide-short" : "fa-arrow-up-short-wide"
+                )}
+            />
             {descending ? "Newest" : "Oldest"}
         </button>
     );
@@ -694,35 +752,38 @@ function SessionDetailPane({
             <div className="shrink-0 border-b border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{summary.title || summary.id}</div>
+                        <div className="flex min-w-0 items-center gap-2">
+                            <div className="min-w-0 truncate text-sm font-medium" title={summary.title || summary.id}>
+                                {summary.title || summary.id}
+                            </div>
+                            <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-secondary">
+                                {summary.source}
+                            </span>
+                        </div>
                         <div className="mt-1 flex min-w-0 items-center gap-3 text-xxs text-secondary">
                             <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <i
-                                    className={cn(
-                                        "fa-sharp fa-solid shrink-0",
-                                        summary.projectPath ? "fa-folder" : "fa-file-lines"
-                                    )}
-                                />
                                 <span className="min-w-0 truncate">{summary.projectPath || summary.filePath}</span>
                                 <CopyIconButton
                                     text={summary.filePath}
                                     label="Copy session file path"
                                     size="xs"
+                                    className="!border-transparent"
                                 />
                                 <IconButton
                                     icon="fa-folder-open"
                                     label="Open session folder in files"
                                     size="xs"
-                                    onClick={() => void model.openSessionFolder(summary.filePath)}
+                                    className="!border-transparent"
+                                    onClick={() => void model.openSessionFolder(summary)}
                                 />
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
-                                <i className="fa-sharp fa-solid fa-fingerprint shrink-0" />
                                 <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
                                 <CopyIconButton
                                     text={summary.id}
                                     label="Copy session ID"
                                     size="xs"
+                                    className="!border-transparent"
                                 />
                             </div>
                         </div>
@@ -732,16 +793,12 @@ function SessionDetailPane({
                                 disabled={restoring}
                                 onClick={() => void model.restoreSession(summary)}
                             >
-                                <i className="fa-sharp fa-solid fa-rotate-left" />
-                                <span>{restoring ? "Resuming..." : "Resume session"}</span>
+                                <i className="fa-sharp fa-solid fa-square-terminal" />
+                                <span>{restoring ? "Resuming..." : "Resume"}</span>
                             </button>
                             <CopyIconButton
                                 text={restoreCommandForSession(summary)}
                                 label="Copy resume command"
-                            />
-                            <CopyIconButton
-                                text={renderConversationText(detail, detailMessages)}
-                                label="Copy shown messages"
                             />
                             <IconButton
                                 icon="fa-trash"
@@ -788,7 +845,12 @@ function SessionDetailPane({
                         >
                             <i className={cn("fa-sharp", summary.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
                         </button>
-                        <div className="text-xxs uppercase text-secondary">{summary.source}</div>
+                        <IconButton
+                            icon={loading ? "fa-spinner animate-spin" : "fa-rotate"}
+                            label="Refresh session detail"
+                            disabled={loading}
+                            onClick={() => void model.loadDetail(summary, true)}
+                        />
                     </div>
                 </div>
                 <div className="mt-2">
@@ -959,7 +1021,7 @@ function MessageCard({
             onDoubleClick={collapsible ? onToggleCollapsed : undefined}
         >
             <div className={cn("mb-2 flex items-center gap-2 text-xxs text-secondary", isUser && "justify-end")}>
-                <span className={cn("font-medium uppercase", isUser && "text-accent")}>{message.role}</span>
+                <span className={cn("font-medium uppercase", isUser && "text-accent")}>{displayRole(message.role)}</span>
                 <span>#{message.seq}</span>
                 {message.timestamp ? <span>{formatDateTimeToSecond(message.timestamp)}</span> : null}
                 {collapsible ? (
@@ -988,6 +1050,12 @@ function EmptyState({ text }: { text: string }) {
             {text}
         </div>
     );
+}
+
+function emptySessionsText(markedOnly: boolean, remoteFilterActive: boolean): string {
+    if (markedOnly && remoteFilterActive) return "No marked sessions match.";
+    if (markedOnly) return "No marked sessions.";
+    return "No sessions found.";
 }
 
 function trimMessageText(text: string): string {
@@ -1034,6 +1102,10 @@ function outlineRoleClass(message: Message): string {
         default:
             return "border-l-2 border-border bg-bg pl-3";
     }
+}
+
+function displayRole(role: string): string {
+    return role === "assistant" ? "AI" : role;
 }
 
 function sortSessionsByTime(sessions: SessionSummary[], descending: boolean): SessionSummary[] {
@@ -1084,23 +1156,6 @@ function dirname(path: string): string {
     const idx = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
     if (idx <= 0) return normalized;
     return normalized.slice(0, idx);
-}
-
-function renderConversationText(detail: SessionDetail, messages: Message[]): string {
-    const header = [
-        `Title: ${detail.summary.title || detail.summary.id}`,
-        `Session ID: ${detail.summary.id}`,
-        `Source: ${detail.summary.source}`,
-        detail.summary.projectPath ? `Project: ${detail.summary.projectPath}` : "",
-        detail.summary.filePath ? `Path: ${detail.summary.filePath}` : "",
-    ].filter(Boolean);
-    const body = messages
-        .map((message) => {
-            const timestamp = message.timestamp ? ` ${formatDateTimeToSecond(message.timestamp)}` : "";
-            return `[${message.role} #${message.seq}${timestamp}]\n${message.text}`;
-        })
-        .join("\n\n");
-    return `${header.join("\n")}\n\n${body}`.trim();
 }
 
 function restoreCommandForSession(summary: SessionSummary): string {
