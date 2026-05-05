@@ -913,14 +913,20 @@ func parseGitCommits(logOut string) []wshrpc.VcsCommitInfo {
 }
 
 func toRepoRelativePath(repoPath string, filePath string) string {
-	trimmed := strings.TrimSpace(strings.Trim(filePath, "\""))
+	trimmed := strings.TrimSpace(strings.Trim(normalizeVcsInputPath(filePath), "\""))
 	if trimmed == "" {
 		return ""
+	}
+	if expanded, err := wavebase.ExpandHomeDir(trimmed); err == nil {
+		trimmed = expanded
 	}
 	cleanPath := filepath.Clean(trimmed)
 	if filepath.IsAbs(cleanPath) {
 		relPath, err := filepath.Rel(repoPath, cleanPath)
-		if err == nil && relPath != "." && !strings.HasPrefix(relPath, "..") {
+		if err == nil && relPath == "." {
+			return ""
+		}
+		if err == nil && !strings.HasPrefix(relPath, "..") {
 			return filepath.ToSlash(relPath)
 		}
 	}

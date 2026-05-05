@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +81,71 @@ func TestNormalizeVcsInputPathStripsWshUri(t *testing.T) {
 			got := normalizeVcsInputPath(test.path)
 			if got != test.want {
 				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
+}
+
+func TestToRepoRelativePathExpandsHomePaths(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	repoPath := filepath.Join(homeDir, "project")
+
+	tests := []struct {
+		name     string
+		filePath string
+		want     string
+	}{
+		{
+			name:     "home file path",
+			filePath: "~/project/README.md",
+			want:     "README.md",
+		},
+		{
+			name:     "home repo root",
+			filePath: "~/project",
+			want:     "",
+		},
+		{
+			name:     "wsh home file path",
+			filePath: "wsh://local/~/project/docs/plan.md",
+			want:     "docs/plan.md",
+		},
+		{
+			name:     "wsh home repo root",
+			filePath: "wsh://local/~/project",
+			want:     "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := toRepoRelativePath(repoPath, test.filePath)
+			if got != test.want {
+				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
+}
+
+func TestToRepoRelativePathRepoRootVariants(t *testing.T) {
+	repoPath := filepath.Join(t.TempDir(), "repo")
+	if err := os.Mkdir(repoPath, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	repoPath = filepath.Clean(repoPath)
+
+	tests := []string{
+		repoPath,
+		repoPath + string(os.PathSeparator),
+	}
+	for _, path := range tests {
+		t.Run(strings.ReplaceAll(path, string(os.PathSeparator), "_"), func(t *testing.T) {
+			got := toRepoRelativePath(repoPath, path)
+			if got != "" {
+				t.Fatalf("expected repo root to map to empty pathspec, got %q", got)
 			}
 		})
 	}

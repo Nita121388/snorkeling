@@ -203,10 +203,10 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
     return (
         <div className="h-full w-full overflow-hidden p-2">
             <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/25 p-2">
-                {loading && <div className="text-sm text-muted">Loading file history...</div>}
+                {loading && <div className="text-sm text-muted">Loading path history...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && commits.length === 0 && (
-                    <div className="text-sm text-muted">No history entries found for this file.</div>
+                    <div className="text-sm text-muted">No history entries found for this path.</div>
                 )}
                 {!loading && !error && commits.length > 0 && (
                     <div className="flex flex-col gap-1">
