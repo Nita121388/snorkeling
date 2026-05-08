@@ -121,6 +121,17 @@ const QuickTips = () => {
                     </div>
                     <div className="flex items-center gap-3 p-2 rounded-md hover:bg-white/5 transition-colors">
                         <IconBox variant="secondary">
+                            <i className="fa-solid fa-sharp fa-comments fa-fw" />
+                        </IconBox>
+                        <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[15px]">Browse local AI sessions</span>
+                            <span className="text-xs text-secondary">
+                                Use Sessions for Codex and Claude Code history
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-2 rounded-md hover:bg-white/5 transition-colors">
+                        <IconBox variant="secondary">
                             <i className="fa-solid fa-sharp fa-cog fa-fw" />
                         </IconBox>
                         <span className="text-[15px]">Block Settings</span>

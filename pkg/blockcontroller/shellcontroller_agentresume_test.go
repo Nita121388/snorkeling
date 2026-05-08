@@ -117,3 +117,29 @@ func TestFindLatestCodexSessionId(t *testing.T) {
 		t.Fatalf("expected latest session-b, got %q", sessionId)
 	}
 }
+
+func TestFindLatestCodexSessionIdIgnoresOldSessionBeforeStart(t *testing.T) {
+	tmpHome := t.TempDir()
+	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	sessionDir := filepath.Join(tmpHome, ".codex", "sessions", "2026", "04", "18")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	oldSession := filepath.Join(sessionDir, "rollout-2026-04-18T11-59-30-111.jsonl")
+	newSession := filepath.Join(sessionDir, "rollout-2026-04-18T12-00-02-222.jsonl")
+	oldData := `{"type":"session_meta","payload":{"id":"old-session","cwd":"/tmp/project-a","timestamp":"2026-04-18T11:59:30.000Z"}}` + "\n"
+	newData := `{"type":"session_meta","payload":{"id":"new-session","cwd":"/tmp/project-a","timestamp":"2026-04-18T12:00:02.000Z"}}` + "\n"
+	if err := os.WriteFile(oldSession, []byte(oldData), 0o644); err != nil {
+		t.Fatalf("write old session failed: %v", err)
+	}
+	if err := os.WriteFile(newSession, []byte(newData), 0o644); err != nil {
+		t.Fatalf("write new session failed: %v", err)
+	}
+	sessionId, err := findLatestCodexSessionId(tmpHome, "/tmp/project-a", startTs)
+	if err != nil {
+		t.Fatalf("findLatestCodexSessionId returned error: %v", err)
+	}
+	if sessionId != "new-session" {
+		t.Fatalf("expected new-session, got %q", sessionId)
+	}
+}

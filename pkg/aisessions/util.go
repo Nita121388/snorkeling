@@ -412,6 +412,32 @@ func runeCount(text string) int {
 	return len([]rune(text))
 }
 
+func isReadableMessage(message Message) bool {
+	text := strings.TrimSpace(message.Text)
+	if text == "" {
+		return false
+	}
+	if message.Role == RoleTool {
+		return false
+	}
+	if strings.HasPrefix(text, "[Tool:") &&
+		strings.HasSuffix(text, "]") &&
+		strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(text, "[Tool:"), "]")) != "" {
+		return false
+	}
+	return true
+}
+
+func readableMessageCount(messages []Message) int {
+	count := 0
+	for _, message := range messages {
+		if isReadableMessage(message) {
+			count++
+		}
+	}
+	return count
+}
+
 func fileStatFields(path string) (mtime int64, size int64) {
 	stat, err := os.Stat(path)
 	if err != nil {

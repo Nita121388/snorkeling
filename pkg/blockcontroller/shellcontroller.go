@@ -1016,7 +1016,7 @@ func findLatestCodexSessionId(homeDir string, cwd string, startedAt time.Time) (
 	if normalizedCwd == "." || normalizedCwd == "" {
 		return "", nil
 	}
-	searchSince := startedAt.Add(-2 * time.Minute)
+	searchSince := startedAt.Add(-2 * time.Second)
 	var latestId string
 	var latestTs time.Time
 	for _, dayDir := range codexSessionDayDirCandidates(startedAt) {

@@ -837,6 +837,7 @@ export class TermViewModel implements ViewModel {
         const menu: ContextMenuItem[] = [];
         const hasSelection = this.termRef.current?.terminal?.hasSelection();
         const selection = hasSelection ? this.termRef.current?.terminal.getSelection() : null;
+        const sessionCopyItem = this.getSessionIdCopyMenuItem();
 
         if (hasSelection) {
             menu.push({
@@ -867,6 +868,11 @@ export class TermViewModel implements ViewModel {
                 },
             });
 
+            menu.push({ type: "separator" });
+        }
+
+        if (sessionCopyItem != null) {
+            menu.push(sessionCopyItem);
             menu.push({ type: "separator" });
         }
 
@@ -923,6 +929,49 @@ export class TermViewModel implements ViewModel {
         menu.push(...settingsItems);
 
         return menu;
+    }
+
+    getSessionIdCopyMenuItem(): ContextMenuItem | null {
+        const blockData = globalStore.get(this.blockAtom);
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const agentSessionId = typeof meta["agent:sessionid"] === "string" ? meta["agent:sessionid"].trim() : "";
+        const jobStatus = globalStore.get(this.blockJobStatusAtom);
+        const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : "";
+        console.log("[term-session-copy] resolving session copy menu item", {
+            blockId: this.blockId,
+            view: meta.view,
+            controller: meta.controller,
+            cmd: meta.cmd,
+            agentAutoResume: meta["agent:autoresume"],
+            agentProvider: meta["agent:provider"],
+            hasAgentSessionId: agentSessionId !== "",
+            agentSessionIdLength: agentSessionId.length,
+            hasJobId: jobId !== "",
+            jobIdLength: jobId.length,
+            jobStatus: jobStatus?.status,
+            shellProcStatus: globalStore.get(this.shellProcStatus),
+        });
+        if (agentSessionId !== "") {
+            return {
+                label: "Copy Agent Session ID",
+                click: () => {
+                    fireAndForget(() => navigator.clipboard.writeText(agentSessionId));
+                },
+            };
+        }
+        if (jobId === "") {
+            console.log("[term-session-copy] no session id available for terminal block", {
+                blockId: this.blockId,
+                reason: "missing agent:sessionid and jobid",
+            });
+            return null;
+        }
+        return {
+            label: "Copy Terminal Session ID",
+            click: () => {
+                fireAndForget(() => navigator.clipboard.writeText(jobId));
+            },
+        };
     }
 
     getSettingsMenuItems(): ContextMenuItem[] {

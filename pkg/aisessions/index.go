@@ -336,7 +336,7 @@ func (idx *Index) needsFullTextIndex(summary SessionSummary) bool {
 
 func (idx *Index) saveMessages(summary SessionSummary, messages []Message) {
 	idx.data.Messages[summary.Key] = messages
-	summary.MessageCount = len(messages)
+	summary.MessageCount = readableMessageCount(messages)
 	idx.applyMark(&summary)
 	idx.data.Sessions[summary.Key] = summary
 	idx.data.Files[summary.FilePath] = indexFile{

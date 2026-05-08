@@ -31,6 +31,10 @@
     - SSH/路径一致时自动命中并直接启动。
     - 上下文不一致时弹出选择器供用户选择。
   - 支持 Agent Profile 配置（`agent:defaultprofile`、`agent:profiles`）与会话自动续接。
+- AI Sessions 工作流：
+  - 在右侧导航新增独立 `Sessions` 入口，用于浏览本机 Codex 与 Claude Code 会话历史。
+  - 支持搜索、来源筛选、新旧排序、对话大纲、备注、标记、删除二次确认与恢复会话。
+  - 当前范围是本机会话文件，远程主机会话浏览是后续扩展方向。
 - Files 工作流增强：
   - 支持定向打开目标（`🧭`、`←`、`→`、`↑`、`↓`），文件/目录可在目标区块打开。
   - 编辑器与 Diff 视图支持 `🪧 Copy Context`（绝对路径 + 行号 + 代码片段）。
@@ -73,6 +77,7 @@ Wave 还支持持久化 SSH 会话：即使网络中断或应用重启，也能�
 - 高度自定义：标签页主题、终端样式、背景图片
 - 强大的 `wsh` 命令系统：CLI 管理工作区并在会话间共享数据
 - `wsh file` 文件互通：本地与远程 SSH 主机间复制和同步文件
+- 本机 AI 会话浏览：支持 Codex 与 Claude Code 对话历史
 
 ## Wave AI
 
@@ -121,6 +126,7 @@ Wave 持续演进中。每个版本的目标会更新在 [ROADMAP](./ROADMAP.md)
 - 项目章程（中文）：[docs/project/snorkeling-project-charter.md](./docs/project/snorkeling-project-charter.md)
 - 执行计划（中文）：[docs/project/snorkeling-execution-plan.md](./docs/project/snorkeling-execution-plan.md)
 - Agent 配置（中文）：[docs/project/agent-config.md](./docs/project/agent-config.md)
+- AI Sessions（中文）：[docs/project/ai-sessions.md](./docs/project/ai-sessions.md)
 - CI/CD 与发布（中文）：[docs/project/ci-cd-release.md](./docs/project/ci-cd-release.md)
 - 上游同步手册（中文）：[docs/project/upstream-sync-playbook.md](./docs/project/upstream-sync-playbook.md)
 

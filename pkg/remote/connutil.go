@@ -91,7 +91,14 @@ func GetClientPlatformFromOsArchStr(ctx context.Context, osArchStr string) (stri
 
 var installTemplateRawDefault = strings.TrimSpace(`
 mkdir -p {{.installDir}} || exit 1;
-cat > {{.tempPath}} || exit 1;
+rm -f {{.tempPath}} || exit 1;
+cat > {{.tempPath}} || { status=$?; rm -f {{.tempPath}}; exit $status; };
+actual_size=$(wc -c < {{.tempPath}} | tr -d '[:space:]') || { rm -f {{.tempPath}}; exit 1; };
+if [ "$actual_size" != "{{.expectedSize}}" ]; then
+    echo "wsh install size mismatch: expected {{.expectedSize}}, got ${actual_size}" >&2;
+    rm -f {{.tempPath}};
+    exit 1;
+fi;
 mv {{.tempPath}} {{.installPath}} || exit 1;
 chmod a+x {{.installPath}} || exit 1;
 `)
@@ -111,10 +118,18 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 		return fmt.Errorf("cannot open local file %s: %w", wshLocalPath, err)
 	}
 	defer input.Close()
+	inputInfo, err := input.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat local file %s: %w", wshLocalPath, err)
+	}
+	if inputInfo.Size() <= 0 {
+		return fmt.Errorf("local wsh binary %s is empty", wshLocalPath)
+	}
 	installWords := map[string]string{
-		"installDir":  filepath.ToSlash(filepath.Dir(wavebase.RemoteFullWshBinPath)),
-		"tempPath":    wavebase.RemoteFullWshBinPath + ".temp",
-		"installPath": wavebase.RemoteFullWshBinPath,
+		"installDir":   filepath.ToSlash(filepath.Dir(wavebase.RemoteFullWshBinPath)),
+		"tempPath":     wavebase.RemoteFullWshBinPath + ".temp",
+		"installPath":  wavebase.RemoteFullWshBinPath,
+		"expectedSize": fmt.Sprintf("%d", inputInfo.Size()),
 	}
 	var installCmd bytes.Buffer
 	if err := installTemplate.Execute(&installCmd, installWords); err != nil {
@@ -150,12 +165,22 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 		}
 	}()
 	procErr := genconn.ProcessContextWait(ctx, genCmd)
+	copyErr := <-copyDone
 	if procErr != nil {
 		return fmt.Errorf("remote command failed: %w (stderr: %s)", procErr, stderrBuf.String())
 	}
-	copyErr := <-copyDone
 	if copyErr != nil {
 		return fmt.Errorf("failed to copy data: %w (stderr: %s)", copyErr, stderrBuf.String())
+	}
+	verifyStdout, verifyStderr, err := genconn.RunSimpleCommand(ctx, genconn.MakeSSHShellClient(client), genconn.CommandSpec{
+		Cmd: wavebase.RemoteFullWshBinPath + " version",
+	})
+	if err != nil {
+		return fmt.Errorf("installed wsh version check failed: %w (stderr: %s)", err, strings.TrimSpace(verifyStderr))
+	}
+	expectedVersionLine := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
+	if strings.TrimSpace(verifyStdout) != expectedVersionLine {
+		return fmt.Errorf("installed wsh version mismatch: expected %q, got stdout %q stderr %q", expectedVersionLine, strings.TrimSpace(verifyStdout), strings.TrimSpace(verifyStderr))
 	}
 	return nil
 }

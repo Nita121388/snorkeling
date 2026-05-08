@@ -29,6 +29,10 @@
     - If SSH/path context matches, it auto-launches directly.
     - If context differs, it opens a selector so users can choose.
   - Agent profile support (`agent:defaultprofile`, `agent:profiles`) plus session auto-resume behavior.
+- AI Sessions workflow:
+  - Dedicated `Sessions` entry in the right sidebar for browsing local Codex and Claude Code conversation history.
+  - Supports search, source filters, newest/oldest sorting, outline navigation, notes, marks, delete confirmation, and resume actions.
+  - Current scope is local session files only; remote host session browsing is a planned extension.
 - Files workflow enhancements:
   - Directional open target support (`🧭`, `←`, `→`, `↑`, `↓`) for opening files/folders into target blocks.
   - `🪧 Copy Context` in editor and file diff views (absolute path + line + snippet).
@@ -71,6 +75,7 @@ Original Wave screenshot:
 - Rich customization including tab themes, terminal styles, and background images
 - Powerful `wsh` command system for managing your workspace from the CLI and sharing data between terminal sessions
 - Connected file management with `wsh file` - seamlessly copy and sync files between local and remote SSH hosts
+- Local AI session browser for Codex and Claude Code conversations
 
 ## Wave AI
 
@@ -119,6 +124,7 @@ Want to provide input to our future releases? Connect with us on [Discord](https
 - Project Charter (CN): [docs/project/snorkeling-project-charter.md](./docs/project/snorkeling-project-charter.md)
 - Execution Plan (CN): [docs/project/snorkeling-execution-plan.md](./docs/project/snorkeling-execution-plan.md)
 - Agent Config (CN): [docs/project/agent-config.md](./docs/project/agent-config.md)
+- AI Sessions (CN): [docs/project/ai-sessions.md](./docs/project/ai-sessions.md)
 - CI/CD & Release (CN): [docs/project/ci-cd-release.md](./docs/project/ci-cd-release.md)
 - Upstream Sync Playbook (CN): [docs/project/upstream-sync-playbook.md](./docs/project/upstream-sync-playbook.md)
 

@@ -19,6 +19,8 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	err := os.WriteFile(sessionPath, []byte(
 		`{"timestamp":"2026-03-06T21:50:12Z","type":"session_meta","payload":{"id":"test-id","cwd":"/tmp/project"}}`+"\n"+
 			`{"timestamp":"2026-03-06T21:50:13Z","type":"response_item","payload":{"type":"message","role":"user","content":"How do I deploy Snorkling?"}}`+"\n"+
+			`{"timestamp":"2026-03-06T21:50:13Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"cmd\":[\"ls\"]}","call_id":"call_1"}}`+"\n"+
+			`{"timestamp":"2026-03-06T21:50:13Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"release.yml"}}`+"\n"+
 			`{"timestamp":"2026-03-06T21:50:14Z","type":"response_item","payload":{"type":"message","role":"assistant","content":"Use the release pipeline."}}`+"\n",
 	), 0600)
 	if err != nil {
@@ -33,6 +35,9 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].ID != "test-id" {
 		t.Fatalf("unexpected list results: %#v", results)
+	}
+	if results[0].MessageCount != 2 {
+		t.Fatalf("expected 2 readable messages in list, got %d (%#v)", results[0].MessageCount, results[0])
 	}
 
 	marked, err := manager.Mark(context.Background(), "test-id", true)
@@ -57,6 +62,12 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	}
 	if detail.Summary.Note != "important" || !detail.Summary.Marked {
 		t.Fatalf("unexpected detail summary: %#v", detail.Summary)
+	}
+	if detail.Summary.MessageCount != 2 {
+		t.Fatalf("expected 2 readable messages in detail summary, got %d", detail.Summary.MessageCount)
+	}
+	if len(detail.Messages) != 4 {
+		t.Fatalf("expected full detail to retain 4 parsed messages, got %d", len(detail.Messages))
 	}
 
 	path, err := manager.Path(context.Background(), "test-id", false)
@@ -91,5 +102,45 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	}
 	if len(afterDelete) != 0 {
 		t.Fatalf("expected no sessions after delete, got %#v", afterDelete)
+	}
+}
+
+func TestManagerReadableMessageCountForClaude(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+
+	sessionPath := filepath.Join(dir, "session-claude.jsonl")
+	err := os.WriteFile(sessionPath, []byte(
+		`{"type":"user","sessionId":"claude-id","timestamp":"2026-03-06T10:00:00Z","cwd":"/tmp/project","message":{"role":"user","content":"Write the file"}}`+"\n"+
+			`{"timestamp":"2026-03-06T10:00:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Write","input":{"file_path":"a.txt"}}]}}`+"\n"+
+			`{"timestamp":"2026-03-06T10:00:02Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"File written"}]}}`+"\n"+
+			`{"timestamp":"2026-03-06T10:00:03Z","message":{"role":"assistant","content":"Done."}}`+"\n",
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{NewClaudeProvider([]string{dir})})
+
+	results, err := manager.List(context.Background(), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ID != "claude-id" {
+		t.Fatalf("unexpected list results: %#v", results)
+	}
+	if results[0].MessageCount != 2 {
+		t.Fatalf("expected 2 readable messages in list, got %d (%#v)", results[0].MessageCount, results[0])
+	}
+
+	detail, err := manager.Load(context.Background(), "claude-id", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Summary.MessageCount != 2 {
+		t.Fatalf("expected 2 readable messages in detail summary, got %d", detail.Summary.MessageCount)
+	}
+	if len(detail.Messages) != 4 {
+		t.Fatalf("expected full detail to retain 4 parsed messages, got %d", len(detail.Messages))
 	}
 }

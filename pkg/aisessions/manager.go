@@ -20,14 +20,33 @@ type Manager struct {
 	MetaPath  string
 }
 
+type ManagerOptions struct {
+	Providers []Provider
+	IndexPath string
+	MetaPath  string
+}
+
 func NewManager(indexPath string, providers []Provider) *Manager {
-	if len(providers) == 0 {
+	return NewManagerWithOptions(ManagerOptions{
+		Providers: providers,
+		IndexPath: indexPath,
+	})
+}
+
+func NewManagerWithOptions(opts ManagerOptions) *Manager {
+	providers := opts.Providers
+	if len(opts.Providers) == 0 {
 		providers = DefaultProviders()
 	}
-	if indexPath == "" {
+	indexPath := opts.IndexPath
+	if opts.IndexPath == "" {
 		indexPath = DefaultIndexPath()
 	}
-	return &Manager{Providers: providers, IndexPath: indexPath, MetaPath: DefaultMetaPath()}
+	metaPath := opts.MetaPath
+	if opts.MetaPath == "" {
+		metaPath = DefaultMetaPath()
+	}
+	return &Manager{Providers: providers, IndexPath: indexPath, MetaPath: metaPath}
 }
 
 func (m *Manager) openIndex() (*Index, error) {
@@ -83,7 +102,26 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 		filtered = append(filtered, summary)
 	}
 	sortSummaries(filtered)
-	return limitSummaries(filtered, opts.Limit), nil
+	limited := limitSummaries(filtered, opts.Limit)
+	m.populateMessageCounts(ctx, limited)
+	return limited, nil
+}
+
+func (m *Manager) populateMessageCounts(ctx context.Context, summaries []SessionSummary) {
+	for idx := range summaries {
+		if ctx.Err() != nil {
+			return
+		}
+		provider := providerBySource(m.Providers, summaries[idx].Source)
+		if provider == nil {
+			continue
+		}
+		messages, err := provider.LoadMessages(ctx, summaries[idx].FilePath)
+		if err != nil {
+			continue
+		}
+		summaries[idx].MessageCount = readableMessageCount(messages)
+	}
 }
 
 func (m *Manager) Index(ctx context.Context) (IndexStats, []error) {
@@ -117,7 +155,7 @@ func (m *Manager) Load(ctx context.Context, identifier string, refresh bool) (Se
 	if err != nil {
 		return SessionDetail{}, err
 	}
-	summary.MessageCount = len(messages)
+	summary.MessageCount = readableMessageCount(messages)
 	return SessionDetail{Summary: summary, Messages: messages}, nil
 }
 
