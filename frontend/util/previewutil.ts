@@ -1,6 +1,6 @@
 import { createBlock, getApi } from "@/app/store/global";
 import { createDefaultAgentBlockDef } from "@/app/workspace/agent-launch";
-import { makeNativeLabel } from "./platformutil";
+import { isWindows, makeNativeLabel } from "./platformutil";
 import { fireAndForget, isLocalConnName } from "./util";
 import { formatRemoteUri } from "./waveutil";
 
@@ -27,6 +27,10 @@ export function addOpenMenuItems(
         menu.push({
             label: makeNativeLabel(true),
             click: () => {
+                if (isWindows()) {
+                    getApi().revealNativePath(finfo.path);
+                    return;
+                }
                 getApi().openNativePath(finfo.isdir ? finfo.path : finfo.dir);
             },
         });

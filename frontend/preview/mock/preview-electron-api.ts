@@ -49,6 +49,7 @@ const previewElectronApi: ElectronApi = {
     sendLog: (_log: string) => {},
     onQuicklook: (_filePath: string) => {},
     openNativePath: (_filePath: string) => {},
+    revealNativePath: (_filePath: string) => {},
     openInVSCode: (_filePath: string) => Promise.resolve(false),
     captureScreenshot: (_rect: Electron.Rectangle) => Promise.resolve(""),
     setKeyboardChordMode: () => {},

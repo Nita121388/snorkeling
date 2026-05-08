@@ -144,6 +144,10 @@ export class LayoutModel {
      * A map of node models for currently-active leafs.
      */
     private nodeModels: Map<string, NodeModel>;
+    /**
+     * Debug-only cache for detecting whether a still-present block gets a different layout node id.
+     */
+    private lastLeafNodeIdsByBlockId: Map<string, string>;
 
     /**
      * Split atom containing the properties of all of the resize handles that should be placed in the layout.
@@ -285,6 +289,7 @@ export class LayoutModel {
         this.numLeafs = atom((get) => get(this.leafOrder).length);
 
         this.nodeModels = new Map();
+        this.lastLeafNodeIdsByBlockId = new Map();
         this.additionalProps = atom({});
 
         const resizeHandleListAtom = atom((get) => {
@@ -763,6 +768,7 @@ export class LayoutModel {
             }
 
             this.treeState.leafOrder = getLeafOrder(newLeafs, newAdditionalProps);
+            this.logLeafNodeIdChanges(this.treeState.leafOrder);
             this.validateFocusedNode(this.treeState.leafOrder);
             this.validateMagnifiedNode(this.treeState.leafOrder, newAdditionalProps);
             this.cleanupNodeModels(this.treeState.leafOrder);
@@ -1108,6 +1114,33 @@ export class LayoutModel {
         for (const id of orphanedNodeModels) {
             this.nodeModels.delete(id);
         }
+    }
+
+    private logLeafNodeIdChanges(leafOrder: LeafOrderEntry[]) {
+        const nextLeafNodeIdsByBlockId = new Map<string, string>();
+        const changedBlocks: { blockId: string; prevNodeId: string; nextNodeId: string }[] = [];
+        for (const leaf of leafOrder) {
+            if (!leaf?.blockid || !leaf?.nodeid) {
+                continue;
+            }
+            nextLeafNodeIdsByBlockId.set(leaf.blockid, leaf.nodeid);
+            const prevNodeId = this.lastLeafNodeIdsByBlockId.get(leaf.blockid);
+            if (prevNodeId != null && prevNodeId !== leaf.nodeid) {
+                changedBlocks.push({
+                    blockId: leaf.blockid,
+                    prevNodeId,
+                    nextNodeId: leaf.nodeid,
+                });
+            }
+        }
+        if (changedBlocks.length > 0) {
+            console.log("[layout-remount-debug] block node id changed", {
+                tabId: this.getter(this.tabAtom)?.oid,
+                changedBlocks,
+                leafOrder,
+            });
+        }
+        this.lastLeafNodeIdsByBlockId = nextLeafNodeIdsByBlockId;
     }
 
     /**

@@ -96,6 +96,17 @@ function normalizeUserPath(rawPath: string): string {
     return path.resolve(expandedPath);
 }
 
+function normalizeNativePath(rawPath: string): string {
+    if (typeof rawPath !== "string" || rawPath === "") {
+        return "";
+    }
+    let expandedPath = rawPath.replace(/^~(?=$|[\\/])/, electronApp.getPath("home"));
+    if (process.platform === "win32" && /^[A-Za-z]:(?![\\/])/.test(expandedPath)) {
+        expandedPath = `${expandedPath.slice(0, 2)}\\${expandedPath.slice(2)}`;
+    }
+    return path.normalize(expandedPath);
+}
+
 function makeVSCodeFileUri(localPath: string): string {
     const fileUri = pathToFileURL(localPath).toString();
     return `vscode://file${fileUri.slice("file://".length)}`;
@@ -442,7 +453,11 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("open-native-path", (event, filePath: string) => {
         console.log("open-native-path", filePath);
-        filePath = filePath.replace("~", electronApp.getPath("home"));
+        filePath = normalizeNativePath(filePath);
+        if (filePath === "") {
+            console.error("open-native-path: invalid file path", filePath);
+            return;
+        }
         fireAndForget(() =>
             callWithOriginalXdgCurrentDesktopAsync(() =>
                 electron.shell.openPath(filePath).then((excuse) => {
@@ -450,6 +465,16 @@ export function initIpcHandlers() {
                 })
             )
         );
+    });
+
+    electron.ipcMain.on("reveal-native-path", (event, filePath: string) => {
+        console.log("reveal-native-path", filePath);
+        filePath = normalizeNativePath(filePath);
+        if (filePath === "") {
+            console.error("reveal-native-path: invalid file path", filePath);
+            return;
+        }
+        electron.shell.showItemInFolder(filePath);
     });
 
     electron.ipcMain.handle("open-in-vscode", async (event, filePath: string) => {

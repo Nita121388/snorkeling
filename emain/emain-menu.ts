@@ -171,8 +171,32 @@ function makeFileMenu(
     return fileMenu;
 }
 
+function getLoginItemSettings(): Electron.LoginItemSettings {
+    if (unamePlatform === "win32") {
+        return electron.app.getLoginItemSettings({
+            path: electron.app.getPath("exe"),
+        });
+    }
+    return electron.app.getLoginItemSettings();
+}
+
+function setLaunchAtLogin(openAtLogin: boolean) {
+    if (unamePlatform === "win32") {
+        electron.app.setLoginItemSettings({
+            openAtLogin,
+            enabled: openAtLogin,
+            path: electron.app.getPath("exe"),
+            name: electron.app.name,
+        });
+        return;
+    }
+    electron.app.setLoginItemSettings({
+        openAtLogin,
+    });
+}
+
 function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemConstructorOptions[] {
-    const launchAtLogin = electron.app.getLoginItemSettings().openAtLogin;
+    const launchAtLogin = getLoginItemSettings().openAtLogin;
     const appMenuItems: Electron.MenuItemConstructorOptions[] = [
         {
             label: "About Snorkeling",
@@ -191,9 +215,7 @@ function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemC
             type: "checkbox",
             checked: launchAtLogin,
             click: (menuItem) => {
-                electron.app.setLoginItemSettings({
-                    openAtLogin: menuItem.checked,
-                });
+                setLaunchAtLogin(menuItem.checked);
                 makeAndSetAppMenu();
             },
         },

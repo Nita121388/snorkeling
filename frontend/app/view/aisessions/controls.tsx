@@ -3,7 +3,7 @@
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { cn } from "@/util/util";
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { copyText } from "./utils";
 
@@ -96,7 +96,7 @@ export function IconButton({
 }: {
     icon: string;
     label: string;
-    onClick: () => void;
+    onClick: MouseEventHandler<HTMLButtonElement>;
     className?: string;
     size?: "xs" | "sm";
     disabled?: boolean;
@@ -149,7 +149,8 @@ export function CopyIconButton({
                 status === "failed" && "border-error bg-error/10 text-error",
                 className
             )}
-            onClick={() => {
+            onClick={(e) => {
+                e.stopPropagation();
                 void copyText(text)
                     .then(() => setStatus("copied"))
                     .catch(() => setStatus("failed"));

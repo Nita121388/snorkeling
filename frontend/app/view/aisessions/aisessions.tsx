@@ -467,6 +467,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 e.stopPropagation();
                                                 model.toggleMark(session);
                                             }}
+                                            onNoteSave={(note) => model.updateNote(session, note)}
                                         />
                                     ))
                                 )}

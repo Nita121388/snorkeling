@@ -199,6 +199,23 @@ export function SessionDetailPane({
                                 disabled={deleting}
                                 onClick={() => setDeleteConfirmOpen(true)}
                             />
+                            <IconButton
+                                icon="fa-tag"
+                                label={noteCollapsed ? "Expand note" : "Collapse note"}
+                                className={cn(
+                                    summary.note && "border-accent/40 bg-accent/10 text-accent",
+                                    !noteCollapsed && "border-accent text-accent"
+                                )}
+                                onClick={() => setNoteCollapsed((current) => !current)}
+                            />
+                            {summary.note ? (
+                                <div
+                                    className="min-w-0 flex-1 truncate border-l border-accent/40 pl-2 text-xs text-secondary"
+                                    title={summary.note}
+                                >
+                                    {summary.note}
+                                </div>
+                            ) : null}
                         </div>
                         {deleteConfirmOpen ? (
                             <div className="mt-2 flex items-center justify-between gap-3 rounded border border-error/40 bg-error/10 px-2 py-2 text-xs">
@@ -229,6 +246,55 @@ export function SessionDetailPane({
                                 </div>
                             </div>
                         ) : null}
+                        {!noteCollapsed ? (
+                            <div className="mt-2 space-y-2 rounded border border-border bg-bg/40 px-2 py-2">
+                                <textarea
+                                    className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
+                                    placeholder="Add a note"
+                                    value={noteDraft}
+                                    onChange={(e) => setNoteDraft(e.target.value)}
+                                />
+                                <div className="flex items-center gap-2">
+                                    <IconButton
+                                        icon={
+                                            noteSaveStatus === "saving"
+                                                ? "fa-spinner animate-spin"
+                                                : noteSaveStatus === "saved"
+                                                  ? "fa-check"
+                                                  : noteSaveStatus === "error"
+                                                    ? "fa-triangle-exclamation"
+                                                    : "fa-floppy-disk"
+                                        }
+                                        label={noteStatusText || "Save note"}
+                                        disabled={noteSaving || noteUnchanged}
+                                        className={cn(
+                                            noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
+                                            noteSaveStatus === "error" && "border-error bg-error/10 text-error"
+                                        )}
+                                        onClick={() => void saveNote(trimmedNoteDraft)}
+                                    />
+                                    <IconButton
+                                        icon="fa-eraser"
+                                        label="Clear note"
+                                        disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
+                                        onClick={() => {
+                                            setNoteDraft("");
+                                            void saveNote("");
+                                        }}
+                                    />
+                                    <span
+                                        className={cn(
+                                            "min-w-[64px] text-[11px] text-secondary",
+                                            noteSaveStatus === "saved" && "text-accent",
+                                            noteSaveStatus === "error" && "text-error"
+                                        )}
+                                        aria-live="polite"
+                                    >
+                                        {noteStatusText}
+                                    </span>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-1">
                         <button
@@ -249,71 +315,6 @@ export function SessionDetailPane({
                             onClick={() => void model.loadDetail(summary, true)}
                         />
                     </div>
-                </div>
-                <div className="mt-2">
-                    <div className="flex h-8 items-center justify-between gap-2 px-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                            <div className="text-xxs uppercase text-secondary">Note:</div>
-                            {summary.note ? (
-                                <div className="min-w-0 truncate text-xs text-secondary">{summary.note}</div>
-                            ) : null}
-                        </div>
-                        <IconButton
-                            icon={noteCollapsed ? "fa-chevron-down" : "fa-chevron-up"}
-                            label={noteCollapsed ? "Expand note" : "Collapse note"}
-                            size="xs"
-                            onClick={() => setNoteCollapsed((current) => !current)}
-                        />
-                    </div>
-                    {!noteCollapsed ? (
-                        <div className="space-y-2 px-2 pb-2">
-                            <textarea
-                                className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                placeholder="Add a note"
-                                value={noteDraft}
-                                onChange={(e) => setNoteDraft(e.target.value)}
-                            />
-                            <div className="flex items-center gap-2">
-                                <IconButton
-                                    icon={
-                                        noteSaveStatus === "saving"
-                                            ? "fa-spinner animate-spin"
-                                            : noteSaveStatus === "saved"
-                                              ? "fa-check"
-                                              : noteSaveStatus === "error"
-                                                ? "fa-triangle-exclamation"
-                                                : "fa-floppy-disk"
-                                    }
-                                    label={noteStatusText || "Save note"}
-                                    disabled={noteSaving || noteUnchanged}
-                                    className={cn(
-                                        noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
-                                        noteSaveStatus === "error" && "border-error bg-error/10 text-error"
-                                    )}
-                                    onClick={() => void saveNote(trimmedNoteDraft)}
-                                />
-                                <IconButton
-                                    icon="fa-eraser"
-                                    label="Clear note"
-                                    disabled={noteSaving || (summary.note === "" && noteDraft.trim() === "")}
-                                    onClick={() => {
-                                        setNoteDraft("");
-                                        void saveNote("");
-                                    }}
-                                />
-                                <span
-                                    className={cn(
-                                        "min-w-[64px] text-[11px] text-secondary",
-                                        noteSaveStatus === "saved" && "text-accent",
-                                        noteSaveStatus === "error" && "text-error"
-                                    )}
-                                    aria-live="polite"
-                                >
-                                    {noteStatusText}
-                                </span>
-                            </div>
-                        </div>
-                    ) : null}
                 </div>
             </div>
             <div className="relative min-h-0 flex-1">

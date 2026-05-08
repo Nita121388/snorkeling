@@ -83,6 +83,19 @@ var SupportedWshBinaries = map[string]bool{
 	"windows-arm64": true,
 }
 
+func normalizeWindowsDrivePath(pathStr string) string {
+	if runtime.GOOS != "windows" || len(pathStr) < 2 || pathStr[1] != ':' {
+		return pathStr
+	}
+	if len(pathStr) == 2 {
+		return pathStr + `\`
+	}
+	if pathStr[2] != '\\' && pathStr[2] != '/' {
+		return pathStr[:2] + `\` + pathStr[2:]
+	}
+	return pathStr
+}
+
 type FDLock interface {
 	Close() error
 }
@@ -148,6 +161,7 @@ func GetHomeDir() string {
 }
 
 func ExpandHomeDir(pathStr string) (string, error) {
+	pathStr = normalizeWindowsDrivePath(pathStr)
 	if pathStr != "~" && !strings.HasPrefix(pathStr, "~/") && (!strings.HasPrefix(pathStr, `~\`) || runtime.GOOS != "windows") {
 		return filepath.Clean(pathStr), nil
 	}

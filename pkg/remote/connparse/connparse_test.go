@@ -392,6 +392,23 @@ func TestParseUri_LocalWindowsAbsPath(t *testing.T) {
 	testAbsPath()
 }
 
+func TestParseUri_LocalWindowsAbsPathWithForwardSlashes(t *testing.T) {
+	t.Parallel()
+	cstr := "wsh://local/E:/Code/AD/docs"
+	c, err := connparse.ParseURI(cstr)
+	if err != nil {
+		t.Fatalf("failed to parse URI: %v", err)
+	}
+	expected := "E:/Code/AD/docs"
+	if c.Path != expected {
+		t.Fatalf("expected path to be %q, got %q", expected, c.Path)
+	}
+	expected = "wsh://local/E:/Code/AD/docs"
+	if c.GetFullURI() != expected {
+		t.Fatalf("expected full URI to be %q, got %q", expected, c.GetFullURI())
+	}
+}
+
 func TestParseURI_LocalWindowsRelativeShorthand(t *testing.T) {
 	cstr := "/~\\path\\to\\file"
 	c, err := connparse.ParseURI(cstr)

@@ -279,7 +279,17 @@ const BlockInner = memo((props: BlockProps & { viewType: string }) => {
         registerBlockComponentModel(props.nodeModel.blockId, { viewModel });
     }
     useEffect(() => {
+        console.log("[block-remount-debug] mount", {
+            blockId: props.nodeModel.blockId,
+            nodeId: props.nodeModel.nodeId,
+            viewType: props.viewType,
+        });
         return () => {
+            console.log("[block-remount-debug] unmount", {
+                blockId: props.nodeModel.blockId,
+                nodeId: props.nodeModel.nodeId,
+                viewType: props.viewType,
+            });
             unregisterBlockComponentModel(props.nodeModel.blockId);
             viewModel?.dispose?.();
         };

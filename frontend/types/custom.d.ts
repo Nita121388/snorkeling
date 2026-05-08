@@ -125,6 +125,7 @@ declare global {
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path
+        revealNativePath(filePath: string): void; // reveal-native-path
         openInVSCode(filePath: string): Promise<boolean>; // open-in-vscode
         captureScreenshot(rect: Electron.Rectangle): Promise<string>; // capture-screenshot
         setKeyboardChordMode: () => void; // set-keyboard-chord-mode

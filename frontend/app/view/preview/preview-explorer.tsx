@@ -28,7 +28,6 @@ import type { PreviewEnv } from "./previewenv";
 const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
 const SearchMinLength = 2;
-const SearchDebounceMs = 350;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
 const DirectoryAutoRefreshMs = 4000;
@@ -99,6 +98,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const currentDirectoryInfo = useAtomValue(model.statFile);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const [searchActive, setSearchActive] = useAtom(model.directorySearchActive);
+    const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [searchingContent, setSearchingContent] = useState(false);
     const [searchingNames, setSearchingNames] = useState(false);
@@ -134,6 +134,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const sortedNameResults = useMemo(() => sortFileNameMatches(nameSearchResults), [nameSearchResults]);
     const searching = searchingContent || searchingNames;
     const totalSearchMatches = sortedNameResults.length + contentSearchResults.length;
+    const draftSearchQuery = searchInput.trim();
+    const submittedSearchQuery = searchQuery.trim();
+    const searchInputPending = draftSearchQuery !== submittedSearchQuery;
+    const canSubmitSearch = draftSearchQuery.length >= SearchMinLength && !searching;
     const route = useMemo(() => makeConnRoute(connection), [connection]);
     const { refs, floatingStyles, context } = useFloating({
         open: !!entryManagerProps,
@@ -142,6 +146,29 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     });
     const dismiss = useDismiss(context);
     const { getReferenceProps, getFloatingProps } = useInteractions([dismiss]);
+
+    const clearSearchResults = useCallback(() => {
+        startTransition(() => {
+            setSearchingContent(false);
+            setSearchingNames(false);
+            setContentSearchResults([]);
+            setNameSearchResults([]);
+            setContentSearchError(null);
+            setNameSearchError(null);
+            setContentSearchTruncated(false);
+            setNameSearchTruncated(false);
+        });
+    }, []);
+
+    const submitSearch = useCallback(() => {
+        setSearchQuery(draftSearchQuery);
+    }, [draftSearchQuery]);
+
+    const clearSearch = useCallback(() => {
+        setSearchInput("");
+        setSearchQuery("");
+        clearSearchResults();
+    }, [clearSearchResults]);
 
     useEffect(() => {
         const activePaths = new Set(groupedContentResults.map((group) => group.path));
@@ -386,11 +413,19 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         if (!searchActive) {
             return;
         }
-        const query = searchQuery.trim();
-        if (query.length < SearchMinLength) {
+        const query = submittedSearchQuery;
+        if (query.length < SearchMinLength || searchInputPending) {
+            clearSearchResults();
+            return;
+        }
+
+        let cancelled = false;
+        let contentStream: AsyncGenerator<CommandRemoteFileSearchRtnData, void, boolean> = null;
+        let nameStream: AsyncGenerator<CommandRemoteFileNameSearchRtnData, void, boolean> = null;
+        void (async () => {
             startTransition(() => {
-                setSearchingContent(false);
-                setSearchingNames(false);
+                setSearchingContent(true);
+                setSearchingNames(true);
                 setContentSearchResults([]);
                 setNameSearchResults([]);
                 setContentSearchError(null);
@@ -398,135 +433,125 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 setContentSearchTruncated(false);
                 setNameSearchTruncated(false);
             });
-            return;
-        }
 
-        let cancelled = false;
-        let contentStream: AsyncGenerator<CommandRemoteFileSearchRtnData, void, boolean> = null;
-        let nameStream: AsyncGenerator<CommandRemoteFileNameSearchRtnData, void, boolean> = null;
-        const timeoutId = window.setTimeout(() => {
-            void (async () => {
-                startTransition(() => {
-                    setSearchingContent(true);
-                    setSearchingNames(true);
-                    setContentSearchResults([]);
-                    setNameSearchResults([]);
-                    setContentSearchError(null);
-                    setNameSearchError(null);
-                    setContentSearchTruncated(false);
-                    setNameSearchTruncated(false);
-                });
-
-                const runContentSearch = async () => {
-                    try {
-                        contentStream = env.rpc.RemoteFileSearchStreamCommand(
-                            TabRpcClient,
-                            {
-                                path: rootPath,
-                                query,
-                                limit: SearchLimit,
-                                maxfilesize: SearchMaxFileSize,
-                                includehidden: showHiddenFiles,
-                            },
-                            { route }
-                        );
-                        for await (const chunk of contentStream) {
-                            if (cancelled) {
-                                break;
+            const runContentSearch = async () => {
+                try {
+                    contentStream = env.rpc.RemoteFileSearchStreamCommand(
+                        TabRpcClient,
+                        {
+                            path: rootPath,
+                            query,
+                            limit: SearchLimit,
+                            maxfilesize: SearchMaxFileSize,
+                            includehidden: showHiddenFiles,
+                        },
+                        { route }
+                    );
+                    for await (const chunk of contentStream) {
+                        if (cancelled) {
+                            break;
+                        }
+                        startTransition(() => {
+                            if (chunk?.matches?.length) {
+                                setContentSearchResults((prev) => [...prev, ...chunk.matches]);
                             }
-                            startTransition(() => {
-                                if (chunk?.matches?.length) {
-                                    setContentSearchResults((prev) => [...prev, ...chunk.matches]);
-                                }
-                                if (chunk?.truncated) {
-                                    setContentSearchTruncated(true);
-                                }
-                            });
-                        }
-                    } catch (err) {
-                        if (!cancelled) {
-                            startTransition(() => {
-                                setContentSearchError(`${err}`);
-                            });
-                        }
-                    } finally {
-                        if (!cancelled) {
-                            startTransition(() => {
-                                setSearchingContent(false);
-                            });
-                        }
+                            if (chunk?.truncated) {
+                                setContentSearchTruncated(true);
+                            }
+                        });
                     }
-                };
-
-                const runNameSearch = async () => {
-                    try {
-                        nameStream = env.rpc.RemoteFileNameSearchStreamCommand(
-                            TabRpcClient,
-                            {
-                                path: rootPath,
-                                query,
-                                limit: SearchLimit,
-                                includehidden: showHiddenFiles,
-                            },
-                            { route }
-                        );
-                        for await (const chunk of nameStream) {
-                            if (cancelled) {
-                                break;
-                            }
-                            startTransition(() => {
-                                if (chunk?.matches?.length) {
-                                    setNameSearchResults((prev) => [...prev, ...chunk.matches]);
-                                }
-                                if (chunk?.truncated) {
-                                    setNameSearchTruncated(true);
-                                }
-                            });
-                        }
-                    } catch (err) {
-                        if (!cancelled && shouldFallbackFileNameSearch(err)) {
-                            try {
-                                const fallbackResult = await runNameSearchFallback(query, SearchLimit, () => cancelled);
-                                if (!cancelled) {
-                                    startTransition(() => {
-                                        setNameSearchResults(fallbackResult.matches);
-                                        setNameSearchTruncated(fallbackResult.truncated);
-                                        setNameSearchError(null);
-                                    });
-                                }
-                            } catch (fallbackErr) {
-                                if (!cancelled) {
-                                    startTransition(() => {
-                                        setNameSearchError(`${fallbackErr}`);
-                                    });
-                                }
-                            }
-                        } else if (!cancelled) {
-                            startTransition(() => {
-                                setNameSearchError(`${err}`);
-                            });
-                        }
-                    } finally {
-                        if (!cancelled) {
-                            startTransition(() => {
-                                setSearchingNames(false);
-                            });
-                        }
+                } catch (err) {
+                    if (!cancelled) {
+                        startTransition(() => {
+                            setContentSearchError(`${err}`);
+                        });
                     }
-                };
+                } finally {
+                    if (!cancelled) {
+                        startTransition(() => {
+                            setSearchingContent(false);
+                        });
+                    }
+                }
+            };
 
-                await Promise.allSettled([runNameSearch(), runContentSearch()]);
-            })();
-        }, SearchDebounceMs);
+            const runNameSearch = async () => {
+                try {
+                    nameStream = env.rpc.RemoteFileNameSearchStreamCommand(
+                        TabRpcClient,
+                        {
+                            path: rootPath,
+                            query,
+                            limit: SearchLimit,
+                            includehidden: showHiddenFiles,
+                        },
+                        { route }
+                    );
+                    for await (const chunk of nameStream) {
+                        if (cancelled) {
+                            break;
+                        }
+                        startTransition(() => {
+                            if (chunk?.matches?.length) {
+                                setNameSearchResults((prev) => [...prev, ...chunk.matches]);
+                            }
+                            if (chunk?.truncated) {
+                                setNameSearchTruncated(true);
+                            }
+                        });
+                    }
+                } catch (err) {
+                    if (!cancelled && shouldFallbackFileNameSearch(err)) {
+                        try {
+                            const fallbackResult = await runNameSearchFallback(query, SearchLimit, () => cancelled);
+                            if (!cancelled) {
+                                startTransition(() => {
+                                    setNameSearchResults(fallbackResult.matches);
+                                    setNameSearchTruncated(fallbackResult.truncated);
+                                    setNameSearchError(null);
+                                });
+                            }
+                        } catch (fallbackErr) {
+                            if (!cancelled) {
+                                startTransition(() => {
+                                    setNameSearchError(`${fallbackErr}`);
+                                });
+                            }
+                        }
+                    } else if (!cancelled) {
+                        startTransition(() => {
+                            setNameSearchError(`${err}`);
+                        });
+                    }
+                } finally {
+                    if (!cancelled) {
+                        startTransition(() => {
+                            setSearchingNames(false);
+                        });
+                    }
+                }
+            };
+
+            await Promise.allSettled([runNameSearch(), runContentSearch()]);
+        })();
 
         return () => {
             cancelled = true;
-            window.clearTimeout(timeoutId);
             fireAndForget(async () => {
                 await Promise.allSettled([contentStream?.return?.(undefined), nameStream?.return?.(undefined)]);
             });
         };
-    }, [env.rpc, rootPath, route, runNameSearchFallback, searchActive, searchQuery, showHiddenFiles]);
+    }, [
+        clearSearchResults,
+        env.rpc,
+        rootPath,
+        route,
+        runNameSearchFallback,
+        searchActive,
+        searchInputPending,
+        showHiddenFiles,
+        submittedSearchQuery,
+    ]);
 
     const treeKey = `${rootPath}:${connection ?? ""}`;
     const treeRefreshKey = `${refreshVersion}:${showHiddenFiles ? "show" : "hide"}`;
@@ -589,24 +614,66 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     )}
                 >
                     <div className="border-b border-white/8 px-2 py-2">
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
-                            className="w-full rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
-                        />
+                        <div className="flex items-center gap-1">
+                            <input
+                                type="text"
+                                value={searchInput}
+                                onChange={(e) => {
+                                    setSearchInput(e.target.value);
+                                    if (searchQuery !== "") {
+                                        setSearchQuery("");
+                                    }
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        submitSearch();
+                                    } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        clearSearch();
+                                    }
+                                }}
+                                placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
+                                className="min-w-0 flex-1 rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
+                            />
+                            <button
+                                type="button"
+                                title="Search"
+                                disabled={!canSubmitSearch}
+                                onClick={submitSearch}
+                                className={clsx(
+                                    "flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md border border-white/10 text-[11px] transition-colors",
+                                    canSubmitSearch
+                                        ? "text-white hover:border-[var(--accent-color)] hover:bg-white/5"
+                                        : "cursor-default text-muted opacity-50"
+                                )}
+                            >
+                                <i className="fa-sharp fa-solid fa-magnifying-glass" />
+                            </button>
+                        </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
-                            <span>{searching ? "Searching..." : `${totalSearchMatches} matches`}</span>
+                            <span>
+                                {searching
+                                    ? "Searching..."
+                                    : draftSearchQuery.length >= SearchMinLength && searchInputPending
+                                      ? "Press Enter to search"
+                                      : submittedSearchQuery.length >= SearchMinLength
+                                        ? `${totalSearchMatches} matches`
+                                        : "Search on Enter"}
+                            </span>
                             <span>
                                 {sortedNameResults.length} names, {contentSearchResults.length} content matches
                             </span>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto px-2 py-2">
-                        {searchQuery.trim().length < SearchMinLength ? (
+                        {draftSearchQuery.length < SearchMinLength ? (
                             <div className="px-1 py-3 text-[12px] text-muted">
                                 Type at least {SearchMinLength} characters to search file names and contents.
+                            </div>
+                        ) : searchInputPending ? (
+                            <div className="px-1 py-3 text-[12px] text-muted">
+                                Press Enter or the search button to search file names and contents.
                             </div>
                         ) : !searching &&
                           sortedNameResults.length === 0 &&
