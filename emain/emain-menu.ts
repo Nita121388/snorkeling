@@ -172,6 +172,7 @@ function makeFileMenu(
 }
 
 function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemConstructorOptions[] {
+    const launchAtLogin = electron.app.getLoginItemSettings().openAtLogin;
     const appMenuItems: Electron.MenuItemConstructorOptions[] = [
         {
             label: "About Snorkeling",
@@ -183,6 +184,17 @@ function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemC
             label: "Check for Updates",
             click: () => {
                 fireAndForget(() => updater?.checkForUpdates(true));
+            },
+        },
+        {
+            label: "Launch at Login",
+            type: "checkbox",
+            checked: launchAtLogin,
+            click: (menuItem) => {
+                electron.app.setLoginItemSettings({
+                    openAtLogin: menuItem.checked,
+                });
+                makeAndSetAppMenu();
             },
         },
         { type: "separator" },
