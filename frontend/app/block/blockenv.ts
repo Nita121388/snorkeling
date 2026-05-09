@@ -21,9 +21,14 @@ export type BlockEnv = WaveEnvSubset<{
     atoms: {
         modalOpen: WaveEnv["atoms"]["modalOpen"];
         controlShiftDelayAtom: WaveEnv["atoms"]["controlShiftDelayAtom"];
+        workspace: WaveEnv["atoms"]["workspace"];
+    };
+    services: {
+        object: WaveEnv["services"]["object"];
     };
     electron: {
         openExternal: WaveEnv["electron"]["openExternal"];
+        setActiveTab: WaveEnv["electron"]["setActiveTab"];
     };
     rpc: {
         ActivityCommand: WaveEnv["rpc"]["ActivityCommand"];

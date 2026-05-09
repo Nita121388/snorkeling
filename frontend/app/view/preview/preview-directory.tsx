@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -92,6 +93,8 @@ interface DirectoryTableProps {
     setFocusIndex: (_: number) => void;
     setSearch: (_: string) => void;
     setSelectedPath: (_: string) => void;
+    selectedPaths: Set<string>;
+    setSelectedPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
     entryManagerOverlayPropsAtom: PrimitiveAtom<EntryManagerOverlayProps>;
     newFile: () => void;
     newDirectory: () => void;
@@ -107,6 +110,8 @@ function DirectoryTable({
     setFocusIndex,
     setSearch,
     setSelectedPath,
+    selectedPaths,
+    setSelectedPaths,
     entryManagerOverlayPropsAtom,
     newFile,
     newDirectory,
@@ -290,6 +295,8 @@ function DirectoryTable({
                 setFocusIndex={setFocusIndex}
                 setSearch={setSearch}
                 setSelectedPath={setSelectedPath}
+                selectedPaths={selectedPaths}
+                setSelectedPaths={setSelectedPaths}
                 osRef={osRef.current}
             />
         </OverlayScrollbarsComponent>
@@ -306,15 +313,30 @@ interface TableBodyProps {
     setFocusIndex: (_: number) => void;
     setSearch: (_: string) => void;
     setSelectedPath: (_: string) => void;
+    selectedPaths: Set<string>;
+    setSelectedPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
     osRef: OverlayScrollbarsComponentRef;
 }
 
-function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, setSearch, osRef }: TableBodyProps) {
+function TableBody({
+    bodyRef,
+    model,
+    table,
+    search,
+    focusIndex,
+    setFocusIndex,
+    setSearch,
+    selectedPaths,
+    setSelectedPaths,
+    osRef,
+}: TableBodyProps) {
     const searchActive = useAtomValue(model.directorySearchActive);
     const dummyLineRef = useRef<HTMLDivElement>(null);
     const warningBoxRef = useRef<HTMLDivElement>(null);
     const conn = useAtomValue(model.connection);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
+    const [selectionAnchorPath, setSelectionAnchorPath] = useState<string | null>(null);
+    const blockMoveMenuItems = useBlockMoveMenuItems();
 
     useEffect(() => {
         if (focusIndex === null || !bodyRef.current || !osRef) {
@@ -348,12 +370,63 @@ function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, s
         }
     }, [focusIndex]);
 
+    const allRows = table.getRowModel().flatRows;
+    const selectedFileInfos = useMemo(
+        () => allRows.map((row) => row.original).filter((fileInfo) => selectedPaths.has(fileInfo.path)),
+        [allRows, selectedPaths]
+    );
+
+    const handleRowClick = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>, row: Row<FileInfo>, idx: number) => {
+            const rowPath = row.getValue("path") as string;
+            setFocusIndex(idx);
+            if (e.shiftKey && selectionAnchorPath != null) {
+                const anchorIndex = allRows.findIndex(
+                    (candidateRow) => candidateRow.getValue("path") === selectionAnchorPath
+                );
+                const startIndex = anchorIndex >= 0 ? anchorIndex : focusIndex;
+                const [start, end] = [Math.min(startIndex, idx), Math.max(startIndex, idx)];
+                const nextSelectedPaths = new Set<string>();
+                allRows.slice(start, end + 1).forEach((candidateRow) => {
+                    const candidatePath = candidateRow.getValue("path") as string;
+                    if (candidatePath) {
+                        nextSelectedPaths.add(candidatePath);
+                    }
+                });
+                setSelectedPaths(nextSelectedPaths);
+                return;
+            }
+            if (e.ctrlKey || e.metaKey) {
+                setSelectedPaths((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(rowPath)) {
+                        next.delete(rowPath);
+                    } else {
+                        next.add(rowPath);
+                    }
+                    return next;
+                });
+                setSelectionAnchorPath(rowPath);
+                return;
+            }
+            setSelectedPaths(new Set(rowPath ? [rowPath] : []));
+            setSelectionAnchorPath(rowPath);
+        },
+        [allRows, focusIndex, selectionAnchorPath, setFocusIndex, setSelectedPaths]
+    );
+
     const handleFileContextMenu = useCallback(
-        async (e: any, finfo: FileInfo) => {
+        async (e: any, finfo: FileInfo, idx: number) => {
             e.preventDefault();
             e.stopPropagation();
             if (finfo == null) {
                 return;
+            }
+            setFocusIndex(idx);
+            const contextSelectedFileInfos = selectedPaths.has(finfo.path) ? selectedFileInfos : [finfo];
+            if (!selectedPaths.has(finfo.path)) {
+                setSelectedPaths(new Set([finfo.path]));
+                setSelectionAnchorPath(finfo.path);
             }
             const menu = await makeDirectoryEntryMenuItems(
                 model,
@@ -368,14 +441,24 @@ function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, s
                 {
                     openInCurrentBlock: () =>
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                    selectedFileInfos: contextSelectedFileInfos,
                 }
             );
-            ContextMenuModel.getInstance().showContextMenu(menu, e);
+            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
         },
-        [conn, model, setErrorMsg, table]
+        [
+            blockMoveMenuItems,
+            conn,
+            model,
+            selectedFileInfos,
+            selectedPaths,
+            setErrorMsg,
+            setFocusIndex,
+            setSelectedPaths,
+            table,
+        ]
     );
 
-    const allRows = table.getRowModel().flatRows;
     const dotdotRow = allRows.find((row) => row.getValue("name") === "..");
     const otherRows = allRows.filter((row) => row.getValue("name") !== "..");
 
@@ -410,9 +493,10 @@ function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, s
                         model={model}
                         row={dotdotRow}
                         focusIndex={focusIndex}
-                        setFocusIndex={setFocusIndex}
                         setSearch={setSearch}
                         idx={0}
+                        selected={selectedPaths.has(dotdotRow.getValue("path") as string)}
+                        handleRowClick={handleRowClick}
                         handleFileContextMenu={handleFileContextMenu}
                         key="dotdot"
                     />
@@ -422,9 +506,10 @@ function TableBody({ bodyRef, model, table, search, focusIndex, setFocusIndex, s
                         model={model}
                         row={row}
                         focusIndex={focusIndex}
-                        setFocusIndex={setFocusIndex}
                         setSearch={setSearch}
                         idx={dotdotRow ? idx + 1 : idx}
+                        selected={selectedPaths.has(row.getValue("path") as string)}
+                        handleRowClick={handleRowClick}
                         handleFileContextMenu={handleFileContextMenu}
                         key={idx}
                     />
@@ -438,13 +523,23 @@ type TableRowProps = {
     model: PreviewModel;
     row: Row<FileInfo>;
     focusIndex: number;
-    setFocusIndex: (_: number) => void;
     setSearch: (_: string) => void;
     idx: number;
-    handleFileContextMenu: (e: any, finfo: FileInfo) => Promise<void>;
+    selected: boolean;
+    handleRowClick: (e: React.MouseEvent<HTMLDivElement>, row: Row<FileInfo>, idx: number) => void;
+    handleFileContextMenu: (e: any, finfo: FileInfo, idx: number) => Promise<void>;
 };
 
-function TableRow({ model, row, focusIndex, setFocusIndex, setSearch, idx, handleFileContextMenu }: TableRowProps) {
+function TableRow({
+    model,
+    row,
+    focusIndex,
+    setSearch,
+    idx,
+    selected,
+    handleRowClick,
+    handleFileContextMenu,
+}: TableRowProps) {
     const dirPath = useAtomValue(model.statFilePath);
     const connection = useAtomValue(model.connection);
 
@@ -472,15 +567,15 @@ function TableRow({ model, row, focusIndex, setFocusIndex, setSearch, idx, handl
 
     return (
         <div
-            className={clsx("dir-table-body-row", { focused: focusIndex === idx })}
+            className={clsx("dir-table-body-row", { focused: focusIndex === idx, selected })}
             data-rowindex={idx}
             onDoubleClick={() => {
                 fireAndForget(() => openPreviewEntry(model, row.original, connection));
                 setSearch("");
                 globalStore.set(model.directorySearchActive, false);
             }}
-            onClick={() => setFocusIndex(idx)}
-            onContextMenu={(e) => handleFileContextMenu(e, row.original)}
+            onClick={(e) => handleRowClick(e, row, idx)}
+            onContextMenu={(e) => handleFileContextMenu(e, row.original, idx)}
             ref={dragRef}
         >
             {row.getVisibleCells().map((cell) => (
@@ -512,12 +607,14 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     const [unfilteredData, setUnfilteredData] = useState<FileInfo[]>([]);
     const showHiddenFiles = useAtomValue(model.showHiddenFiles);
     const [selectedPath, setSelectedPath] = useState("");
+    const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
     const [refreshVersion, setRefreshVersion] = useAtom(model.refreshVersion);
     const conn = useAtomValue(model.connection);
     const blockData = useAtomValue(model.blockAtom);
     const finfo = useAtomValue(model.statFile);
     const dirPath = finfo?.path;
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
+    const blockMoveMenuItems = useBlockMoveMenuItems();
 
     useEffect(() => {
         model.refreshCallback = () => {
@@ -592,6 +689,22 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     );
 
     useEffect(() => {
+        const visiblePaths = new Set(filteredData.map((fileInfo) => fileInfo.path));
+        setSelectedPaths((prev) => {
+            let changed = false;
+            const next = new Set<string>();
+            prev.forEach((path) => {
+                if (visiblePaths.has(path)) {
+                    next.add(path);
+                } else {
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+    }, [filteredData]);
+
+    useEffect(() => {
         model.directoryKeyDownHandler = (waveEvent: WaveKeyboardEvent): boolean => {
             if (checkKeyPressed(waveEvent, "Cmd:f")) {
                 globalStore.set(model.directorySearchActive, true);
@@ -603,19 +716,39 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 return;
             }
             if (checkKeyPressed(waveEvent, "ArrowUp")) {
-                setFocusIndex((idx) => Math.max(idx - 1, 0));
+                setFocusIndex((idx) => {
+                    const nextIndex = Math.max(idx - 1, 0);
+                    const nextPath = filteredData[nextIndex]?.path;
+                    setSelectedPaths(new Set(nextPath ? [nextPath] : []));
+                    return nextIndex;
+                });
                 return true;
             }
             if (checkKeyPressed(waveEvent, "ArrowDown")) {
-                setFocusIndex((idx) => Math.min(idx + 1, filteredData.length - 1));
+                setFocusIndex((idx) => {
+                    const nextIndex = Math.max(0, Math.min(idx + 1, filteredData.length - 1));
+                    const nextPath = filteredData[nextIndex]?.path;
+                    setSelectedPaths(new Set(nextPath ? [nextPath] : []));
+                    return nextIndex;
+                });
                 return true;
             }
             if (checkKeyPressed(waveEvent, "PageUp")) {
-                setFocusIndex((idx) => Math.max(idx - PageJumpSize, 0));
+                setFocusIndex((idx) => {
+                    const nextIndex = Math.max(idx - PageJumpSize, 0);
+                    const nextPath = filteredData[nextIndex]?.path;
+                    setSelectedPaths(new Set(nextPath ? [nextPath] : []));
+                    return nextIndex;
+                });
                 return true;
             }
             if (checkKeyPressed(waveEvent, "PageDown")) {
-                setFocusIndex((idx) => Math.min(idx + PageJumpSize, filteredData.length - 1));
+                setFocusIndex((idx) => {
+                    const nextIndex = Math.max(0, Math.min(idx + PageJumpSize, filteredData.length - 1));
+                    const nextPath = filteredData[nextIndex]?.path;
+                    setSelectedPaths(new Set(nextPath ? [nextPath] : []));
+                    return nextIndex;
+                });
                 return true;
             }
             if (checkKeyPressed(waveEvent, "Enter")) {
@@ -807,9 +940,9 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 newFile,
                 newDirectory,
             });
-            ContextMenuModel.getInstance().showContextMenu(menu, e);
+            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
         },
-        [conn, finfo, model, newFile, newDirectory, setErrorMsg]
+        [blockMoveMenuItems, conn, finfo, model, newFile, newDirectory, setErrorMsg]
     );
 
     return (
@@ -835,6 +968,8 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                     setFocusIndex={setFocusIndex}
                     setSearch={setSearchText}
                     setSelectedPath={setSelectedPath}
+                    selectedPaths={selectedPaths}
+                    setSelectedPaths={setSelectedPaths}
                     entryManagerOverlayPropsAtom={entryManagerPropsAtom}
                     newFile={newFile}
                     newDirectory={newDirectory}

@@ -222,6 +222,7 @@ type DirectoryEntryMenuActions = {
 type DirectoryEntryMenuOptions = {
     relativePathRoot?: string | null;
     openInCurrentBlock?: (() => void | Promise<void>) | null;
+    selectedFileInfos?: FileInfo[];
 };
 
 type DirectoryBackgroundMenuActions = {
@@ -402,6 +403,44 @@ function makeResolveFailureMenuItem(targetPath: string, errorText: string): Cont
     };
 }
 
+function getFileNameForCopy(finfo: FileInfo): string {
+    return finfo.path.split(/[\\/]/).pop() ?? finfo.name ?? finfo.path;
+}
+
+function getCopyFileInfos(finfo: FileInfo, selectedFileInfos?: FileInfo[]): FileInfo[] {
+    if (selectedFileInfos == null || selectedFileInfos.length <= 1) {
+        return [finfo];
+    }
+    if (!selectedFileInfos.some((selectedInfo) => selectedInfo.path === finfo.path)) {
+        return [finfo];
+    }
+    const seenPaths = new Set<string>();
+    const copyFileInfos: FileInfo[] = [];
+    selectedFileInfos.forEach((selectedInfo) => {
+        if (isBlank(selectedInfo.path) || seenPaths.has(selectedInfo.path)) {
+            return;
+        }
+        seenPaths.add(selectedInfo.path);
+        copyFileInfos.push(selectedInfo);
+    });
+    return copyFileInfos.length === 0 ? [finfo] : copyFileInfos;
+}
+
+function getRelativePathsForCopy(fileInfos: FileInfo[], relativePathRoot?: string | null): string[] | null {
+    if (isBlank(relativePathRoot)) {
+        return null;
+    }
+    const relativePaths = fileInfos.map((fileInfo) => makeRelativePathForCopy(fileInfo.path, relativePathRoot));
+    if (relativePaths.some((relativePath) => relativePath == null)) {
+        return null;
+    }
+    return relativePaths as string[];
+}
+
+function writeClipboardLines(lines: string[]): Promise<void> {
+    return navigator.clipboard.writeText(lines.join("\n"));
+}
+
 async function makeDirectoryVcsMenuItems(
     model: PreviewModel,
     conn: string,
@@ -466,8 +505,11 @@ export async function makeDirectoryEntryMenuItems(
     actions: DirectoryEntryMenuActions,
     options: DirectoryEntryMenuOptions = {}
 ): Promise<ContextMenuItem[]> {
-    const fileName = finfo.path.split(/[\\/]/).pop() ?? finfo.name ?? finfo.path;
-    const relativePath = makeRelativePathForCopy(finfo.path, options.relativePathRoot);
+    const copyFileInfos = getCopyFileInfos(finfo, options.selectedFileInfos);
+    const isMultiCopy = copyFileInfos.length > 1;
+    const fileNames = copyFileInfos.map(getFileNameForCopy);
+    const fullFileNames = copyFileInfos.map((fileInfo) => fileInfo.path);
+    const relativePaths = getRelativePathsForCopy(copyFileInfos, options.relativePathRoot);
     const menu: ContextMenuItem[] = [
         {
             label: "New File",
@@ -497,28 +539,28 @@ export async function makeDirectoryEntryMenuItems(
     }
     menu.push(
         {
-            label: "Copy File Name",
-            click: () => fireAndForget(() => navigator.clipboard.writeText(fileName)),
+            label: isMultiCopy ? "Copy File Names" : "Copy File Name",
+            click: () => fireAndForget(() => writeClipboardLines(fileNames)),
         },
         {
-            label: "Copy Full File Name",
-            click: () => fireAndForget(() => navigator.clipboard.writeText(finfo.path)),
+            label: isMultiCopy ? "Copy Full File Names" : "Copy Full File Name",
+            click: () => fireAndForget(() => writeClipboardLines(fullFileNames)),
         },
-        ...(relativePath == null
+        ...(relativePaths == null
             ? []
             : [
                   {
-                      label: "Copy Relative Path",
-                      click: () => fireAndForget(() => navigator.clipboard.writeText(relativePath)),
+                      label: isMultiCopy ? "Copy Relative Paths" : "Copy Relative Path",
+                      click: () => fireAndForget(() => writeClipboardLines(relativePaths)),
                   } satisfies ContextMenuItem,
               ]),
         {
-            label: "Copy File Name (Shell Quoted)",
-            click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([fileName]))),
+            label: isMultiCopy ? "Copy File Names (Shell Quoted)" : "Copy File Name (Shell Quoted)",
+            click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fileNames))),
         },
         {
-            label: "Copy Full File Name (Shell Quoted)",
-            click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote([finfo.path]))),
+            label: isMultiCopy ? "Copy Full File Names (Shell Quoted)" : "Copy Full File Name (Shell Quoted)",
+            click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fullFileNames))),
         }
     );
     addOpenMenuItems(menu, conn, finfo, { openInCurrentBlock: options.openInCurrentBlock });

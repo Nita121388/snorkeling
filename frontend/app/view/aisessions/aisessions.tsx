@@ -13,6 +13,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClaudeLogo, IconButton, OpenAILogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { SessionDetailPane } from "./session-detail";
+import {
+    AiSessionNoteUpdatedEvent,
+    dispatchAISessionNoteUpdated,
+    isAISessionNoteUpdatedEvent,
+} from "./session-note-events";
 import { SessionRow } from "./session-row";
 import type { SourceFilter } from "./types";
 import {
@@ -38,7 +43,9 @@ export class AiSessionsViewModel implements ViewModel {
 
     sortDescendingAtom = jotai.atom<boolean>(readSortPreference());
     sessionsAtom = jotai.atom<SessionSummary[]>([]);
-    detailAtom: jotai.PrimitiveAtom<SessionDetail | null> = jotai.atom(null) as jotai.PrimitiveAtom<SessionDetail | null>;
+    detailAtom: jotai.PrimitiveAtom<SessionDetail | null> = jotai.atom(
+        null
+    ) as jotai.PrimitiveAtom<SessionDetail | null>;
     selectedKeyAtom = jotai.atom<string>("");
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
@@ -173,6 +180,7 @@ export class AiSessionsViewModel implements ViewModel {
         try {
             const updated = await this.service.Note(session.key, note);
             this.replaceSession(updated);
+            dispatchAISessionNoteUpdated(updated);
             return true;
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -296,6 +304,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         writeSortPreference(sortDescending);
     }, [sortDescending]);
+
+    useEffect(() => {
+        const handleNoteUpdated = (event: Event) => {
+            if (isAISessionNoteUpdatedEvent(event)) {
+                model.replaceSession(event.detail.summary);
+            }
+        };
+        window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+        return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+    }, [model]);
 
     const selectedSession = visibleSessions.find((session) => session.key === selectedKey);
     const fallbackSession = selectedKey === "" ? visibleSessions[0] : null;

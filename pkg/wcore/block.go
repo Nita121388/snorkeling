@@ -146,6 +146,111 @@ func createBlockObj(ctx context.Context, tabId string, blockDef *waveobj.BlockDe
 	})
 }
 
+func MoveBlockToTab(ctx context.Context, blockId string, targetTabId string, focusMovedBlock bool) (string, error) {
+	if blockId == "" {
+		return "", fmt.Errorf("blockId cannot be empty")
+	}
+	if targetTabId == "" {
+		return "", fmt.Errorf("targetTabId cannot be empty")
+	}
+
+	sourceTabId, err := wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (string, error) {
+		block, err := wstore.DBGet[*waveobj.Block](tx.Context(), blockId)
+		if err != nil {
+			return "", fmt.Errorf("error getting block: %w", err)
+		}
+		if block == nil {
+			return "", fmt.Errorf("block not found: %q", blockId)
+		}
+		parentORef, err := waveobj.ParseORef(block.ParentORef)
+		if err != nil {
+			return "", fmt.Errorf("bad block parent oref: %w", err)
+		}
+		if parentORef.OType != waveobj.OType_Tab {
+			return "", fmt.Errorf("cannot move subblock %q with parent %q", blockId, block.ParentORef)
+		}
+		sourceTabId := parentORef.OID
+		if sourceTabId == targetTabId {
+			return sourceTabId, nil
+		}
+
+		sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(tx.Context(), sourceTabId)
+		if err != nil {
+			return "", fmt.Errorf("error finding source workspace: %w", err)
+		}
+		targetWorkspaceId, err := wstore.DBFindWorkspaceForTabId(tx.Context(), targetTabId)
+		if err != nil {
+			return "", fmt.Errorf("error finding target workspace: %w", err)
+		}
+		if sourceWorkspaceId == "" {
+			return "", fmt.Errorf("source tab %q has no workspace", sourceTabId)
+		}
+		if targetWorkspaceId == "" {
+			return "", fmt.Errorf("target tab %q has no workspace", targetTabId)
+		}
+		if sourceWorkspaceId != targetWorkspaceId {
+			return "", fmt.Errorf("cannot move block across workspaces")
+		}
+
+		sourceTab, err := wstore.DBGet[*waveobj.Tab](tx.Context(), sourceTabId)
+		if err != nil {
+			return "", fmt.Errorf("error getting source tab: %w", err)
+		}
+		targetTab, err := wstore.DBGet[*waveobj.Tab](tx.Context(), targetTabId)
+		if err != nil {
+			return "", fmt.Errorf("error getting target tab: %w", err)
+		}
+		if sourceTab == nil {
+			return "", fmt.Errorf("source tab not found: %q", sourceTabId)
+		}
+		if targetTab == nil {
+			return "", fmt.Errorf("target tab not found: %q", targetTabId)
+		}
+		if utilfn.FindStringInSlice(sourceTab.BlockIds, blockId) == -1 {
+			return "", fmt.Errorf("source tab %q does not contain block %q", sourceTabId, blockId)
+		}
+
+		sourceTab.BlockIds = utilfn.RemoveElemFromSlice(sourceTab.BlockIds, blockId)
+		if utilfn.FindStringInSlice(targetTab.BlockIds, blockId) == -1 {
+			targetTab.BlockIds = append(targetTab.BlockIds, blockId)
+		}
+		block.ParentORef = waveobj.MakeORef(waveobj.OType_Tab, targetTabId).String()
+
+		if err := wstore.DBUpdate(tx.Context(), sourceTab); err != nil {
+			return "", fmt.Errorf("error updating source tab: %w", err)
+		}
+		if err := wstore.DBUpdate(tx.Context(), targetTab); err != nil {
+			return "", fmt.Errorf("error updating target tab: %w", err)
+		}
+		if err := wstore.DBUpdate(tx.Context(), block); err != nil {
+			return "", fmt.Errorf("error updating block parent: %w", err)
+		}
+		err = QueueLayoutActionForTab(tx.Context(), sourceTabId, waveobj.LayoutActionData{
+			ActionType: LayoutActionDataType_RemoveFromLayout,
+			BlockId:    blockId,
+		})
+		if err != nil {
+			return "", fmt.Errorf("error queuing source layout action: %w", err)
+		}
+		err = QueueLayoutActionForTab(tx.Context(), targetTabId, waveobj.LayoutActionData{
+			ActionType: LayoutActionDataType_Insert,
+			BlockId:    blockId,
+			Focused:    focusMovedBlock,
+		})
+		if err != nil {
+			return "", fmt.Errorf("error queuing target layout action: %w", err)
+		}
+		return sourceTabId, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if sourceTabId == targetTabId {
+		return sourceTabId, nil
+	}
+	return sourceTabId, nil
+}
+
 // Deletes a block and its subblocks. Deleting the last block in a tab leaves an
 // empty tab behind. Tabs are only removed by explicit tab/window/workspace close
 // paths.

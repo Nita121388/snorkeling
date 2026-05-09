@@ -40,5 +40,7 @@
     "term:durable": false,
     "waveai:showcloudmodes": true,
     "waveai:defaultmode": "waveai@balanced",
-    "preview:defaultsort": "name"
+    "preview:defaultsort": "name",
+    "preview:defaultdirectorydisplay": "tree",
+    "preview:defaultopentarget": "right"
 }

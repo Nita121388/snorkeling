@@ -39,9 +39,38 @@ import { isMacOS, isWindows } from "@/util/platformutil";
 import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { resolveAgentSessionId, type AgentCommandResolution } from "./agent-session";
 import { getBlockingCommand } from "./shellblocking";
 import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
+
+function sessionCopyDebugPreview(value: unknown): string {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const redacted = value
+        .trim()
+        .replace(
+            /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|PWD)[A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/gi,
+            "$1=<redacted>"
+        )
+        .replace(/\b(codex\s+resume\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1<session>")
+        .replace(/(--resume|--session-id)(=)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1$2<session>")
+        .replace(/(--resume|--session-id|-r)(\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1$2<session>");
+    return redacted.length > 180 ? `${redacted.slice(0, 177)}...` : redacted;
+}
+
+function sessionCopyCommandDebug(resolution: AgentCommandResolution): Record<string, unknown> {
+    return {
+        provider: resolution.provider,
+        executable: resolution.executable,
+        reason: resolution.reason,
+        hasSessionId: resolution.sessionId !== "",
+        sessionIdLength: resolution.sessionId.length,
+        tokenCount: resolution.tokenCount,
+        segmentCount: resolution.segmentCount,
+    };
+}
 
 export class TermViewModel implements ViewModel {
     viewType: string;
@@ -837,7 +866,7 @@ export class TermViewModel implements ViewModel {
         const menu: ContextMenuItem[] = [];
         const hasSelection = this.termRef.current?.terminal?.hasSelection();
         const selection = hasSelection ? this.termRef.current?.terminal.getSelection() : null;
-        const sessionCopyItem = this.getSessionIdCopyMenuItem();
+        const sessionMenuItems = this.getSessionMenuItems();
 
         if (hasSelection) {
             menu.push({
@@ -871,8 +900,8 @@ export class TermViewModel implements ViewModel {
             menu.push({ type: "separator" });
         }
 
-        if (sessionCopyItem != null) {
-            menu.push(sessionCopyItem);
+        if (sessionMenuItems.length > 0) {
+            menu.push(...sessionMenuItems);
             menu.push({ type: "separator" });
         }
 
@@ -931,10 +960,19 @@ export class TermViewModel implements ViewModel {
         return menu;
     }
 
-    getSessionIdCopyMenuItem(): ContextMenuItem | null {
+    getAgentSessionId(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const agentSessionId = typeof meta["agent:sessionid"] === "string" ? meta["agent:sessionid"].trim() : "";
+        const shellLastCommand = this.termRef.current ? globalStore.get(this.termRef.current.lastCommandAtom) : null;
+        return resolveAgentSessionId(meta, shellLastCommand).sessionId;
+    }
+
+    getSessionMenuItems(): ContextMenuItem[] {
+        const blockData = globalStore.get(this.blockAtom);
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const shellLastCommand = this.termRef.current ? globalStore.get(this.termRef.current.lastCommandAtom) : null;
+        const agentSessionResolution = resolveAgentSessionId(meta, shellLastCommand);
+        const agentSessionId = agentSessionResolution.sessionId;
         const jobStatus = globalStore.get(this.blockJobStatusAtom);
         const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : "";
         console.log("[term-session-copy] resolving session copy menu item", {
@@ -942,36 +980,61 @@ export class TermViewModel implements ViewModel {
             view: meta.view,
             controller: meta.controller,
             cmd: meta.cmd,
+            cmdPreview: sessionCopyDebugPreview(meta.cmd),
+            cmdArgsCount: Array.isArray(meta["cmd:args"]) ? meta["cmd:args"].length : 0,
             agentAutoResume: meta["agent:autoresume"],
             agentProvider: meta["agent:provider"],
+            agentSessionSource: agentSessionResolution.source,
+            agentSessionProvider: agentSessionResolution.provider,
+            agentSessionReason: agentSessionResolution.reason,
             hasAgentSessionId: agentSessionId !== "",
             agentSessionIdLength: agentSessionId.length,
+            startupCommand: sessionCopyCommandDebug(agentSessionResolution.startupCommand),
+            hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",
+            shellLastCommandPreview: sessionCopyDebugPreview(shellLastCommand),
+            shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),
+            hasTermWrap: this.termRef.current != null,
             hasJobId: jobId !== "",
             jobIdLength: jobId.length,
             jobStatus: jobStatus?.status,
             shellProcStatus: globalStore.get(this.shellProcStatus),
         });
         if (agentSessionId !== "") {
-            return {
-                label: "Copy Agent Session ID",
-                click: () => {
-                    fireAndForget(() => navigator.clipboard.writeText(agentSessionId));
+            return [
+                {
+                    label: "Copy Agent Session ID",
+                    click: () => {
+                        fireAndForget(() => navigator.clipboard.writeText(agentSessionId));
+                    },
                 },
-            };
+                {
+                    label: "Edit Agent Session Note...",
+                    click: () => {
+                        modalsModel.pushModal("AISessionNoteModal", { sessionId: agentSessionId });
+                    },
+                },
+            ];
         }
         if (jobId === "") {
             console.log("[term-session-copy] no session id available for terminal block", {
                 blockId: this.blockId,
-                reason: "missing agent:sessionid and jobid",
+                reason: "missing agent session id and jobid",
+                agentSessionSource: agentSessionResolution.source,
+                agentSessionReason: agentSessionResolution.reason,
+                startupCommand: sessionCopyCommandDebug(agentSessionResolution.startupCommand),
+                shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),
+                hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",
             });
-            return null;
+            return [];
         }
-        return {
-            label: "Copy Terminal Session ID",
-            click: () => {
-                fireAndForget(() => navigator.clipboard.writeText(jobId));
+        return [
+            {
+                label: "Copy Terminal Session ID",
+                click: () => {
+                    fireAndForget(() => navigator.clipboard.writeText(jobId));
+                },
             },
-        };
+        ];
     }
 
     getSettingsMenuItems(): ContextMenuItem[] {

@@ -66,6 +66,12 @@ function labels(menu: ContextMenuItem[]): string[] {
     return menu.map((item) => item.label).filter((label): label is string => label != null);
 }
 
+function getMenuItem(menu: ContextMenuItem[], label: string): ContextMenuItem {
+    const item = menu.find((menuItem) => menuItem.label === label);
+    expect(item).toBeDefined();
+    return item!;
+}
+
 describe("directory VCS context menus", () => {
     it("shows file-scoped Git actions and opens the VCS block for the selected file", async () => {
         const { makeDirectoryEntryMenuItems, createBlock, model } = await loadDirectoryMenuUtils([makeRepo("git")]);
@@ -229,5 +235,92 @@ describe("directory VCS context menus", () => {
         const vcsMenu = getSubmenu(menu, "Version Control");
         expect(labels(vcsMenu)).toEqual(["Resolve Failed", "Copy Debug Info"]);
         expect(vcsMenu[0].sublabel).toContain("remotevcsrepositories");
+    });
+
+    it("copies all selected full paths when the context file is selected", async () => {
+        const writeText = vi.fn(async () => undefined);
+        vi.stubGlobal("navigator", { clipboard: { writeText } });
+        const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            {
+                path: "/repo/src/index.ts",
+                dir: "/repo/src",
+                name: "index.ts",
+                isdir: false,
+            } as FileInfo,
+            "local",
+            vi.fn(),
+            {
+                newFile: vi.fn(),
+                newDirectory: vi.fn(),
+                rename: vi.fn(),
+            },
+            {
+                relativePathRoot: "/repo",
+                selectedFileInfos: [
+                    {
+                        path: "/repo/src/index.ts",
+                        dir: "/repo/src",
+                        name: "index.ts",
+                        isdir: false,
+                    } as FileInfo,
+                    {
+                        path: "/repo/README.md",
+                        dir: "/repo",
+                        name: "README.md",
+                        isdir: false,
+                    } as FileInfo,
+                ],
+            }
+        );
+
+        getMenuItem(menu, "Copy Full File Names").click?.();
+        await Promise.resolve();
+
+        expect(writeText).toHaveBeenCalledWith("/repo/src/index.ts\n/repo/README.md");
+    });
+
+    it("copies only the context file when right-clicking outside the current selection", async () => {
+        const writeText = vi.fn(async () => undefined);
+        vi.stubGlobal("navigator", { clipboard: { writeText } });
+        const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            {
+                path: "/repo/package.json",
+                dir: "/repo",
+                name: "package.json",
+                isdir: false,
+            } as FileInfo,
+            "local",
+            vi.fn(),
+            {
+                newFile: vi.fn(),
+                newDirectory: vi.fn(),
+                rename: vi.fn(),
+            },
+            {
+                selectedFileInfos: [
+                    {
+                        path: "/repo/src/index.ts",
+                        dir: "/repo/src",
+                        name: "index.ts",
+                        isdir: false,
+                    } as FileInfo,
+                    {
+                        path: "/repo/README.md",
+                        dir: "/repo",
+                        name: "README.md",
+                        isdir: false,
+                    } as FileInfo,
+                ],
+            }
+        );
+
+        getMenuItem(menu, "Copy Full File Name").click?.();
+        await Promise.resolve();
+
+        expect(writeText).toHaveBeenCalledWith("/repo/package.json");
     });
 });

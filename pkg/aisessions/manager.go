@@ -159,6 +159,10 @@ func (m *Manager) Load(ctx context.Context, identifier string, refresh bool) (Se
 	return SessionDetail{Summary: summary, Messages: messages}, nil
 }
 
+func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
+	return m.resolveSession(ctx, identifier)
+}
+
 func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (SessionSummary, error) {
 	summary, err := m.resolveSession(ctx, identifier)
 	if err != nil {

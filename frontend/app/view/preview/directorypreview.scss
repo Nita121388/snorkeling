@@ -127,6 +127,20 @@
                         }
                     }
 
+                    &.selected:not(.focused):not(:focus) {
+                        background-color: rgb(from var(--accent-color) r g b / 0.28);
+                        color: var(--main-text-color);
+
+                        .dir-table-body-cell {
+                            .dir-table-lastmod,
+                            .dir-table-modestr,
+                            .dir-table-size,
+                            .dir-table-type {
+                                color: var(--main-text-color);
+                            }
+                        }
+                    }
+
                     &:focus {
                         background-color: rgb(from var(--accent-color) r g b / 0.5);
                         color: var(--main-text-color);
@@ -141,11 +155,11 @@
                         }
                     }
 
-                    &:nth-child(odd):not(.focused):not(:focus) {
+                    &:nth-child(odd):not(.focused):not(.selected):not(:focus) {
                         background-color: rgba(255, 255, 255, 0.06);
                     }
 
-                    &:hover:not(:focus):not(.focused) {
+                    &:hover:not(:focus):not(.focused):not(.selected) {
                         background-color: var(--highlight-bg-color);
                     }
 

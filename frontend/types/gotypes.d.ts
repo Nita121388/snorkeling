@@ -64,6 +64,12 @@ declare global {
         sessions: SessionSummary[];
     };
 
+    // aisessionsservice.AISessionsSummaryRequest
+    type AISessionsSummaryRequest = {
+        id: string;
+        refresh?: boolean;
+    };
+
     // wshrpc.ActivityDisplayType
     type ActivityDisplayType = {
         width: number;
@@ -1693,6 +1699,8 @@ declare global {
         "markdown:fixedfontsize"?: number;
         "preview:showhiddenfiles"?: boolean;
         "preview:defaultsort"?: string;
+        "preview:defaultdirectorydisplay"?: string;
+        "preview:defaultopentarget"?: string;
         "tab:preset"?: string;
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;

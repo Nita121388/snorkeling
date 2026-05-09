@@ -3,6 +3,7 @@
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { SubBlock } from "@/app/block/block";
+import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { NullErrorBoundary } from "@/app/element/errorboundary";
 import { Search, useSearch } from "@/app/element/search";
@@ -13,12 +14,16 @@ import {
 } from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
+import { AISessionsServiceType } from "@/app/store/services";
 import { useTabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
+import { shortSessionId } from "@/app/view/aisessions/utils";
 import type { TermViewModel } from "@/app/view/term/term-model";
-import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
+import { atoms, getOverrideConfigAtom, getSettingsKeyAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
@@ -26,6 +31,7 @@ import clsx from "clsx";
 import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
+import { resolveAgentSessionId } from "./agent-session";
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
@@ -182,6 +188,87 @@ const TermToolbarVDomNode = ({ blockId, model }: TerminalViewProps) => {
         />
     );
 };
+
+function sessionSummaryMatchesId(summary: SessionSummary, sessionId: string): boolean {
+    return summary.key === sessionId || summary.id === sessionId;
+}
+
+const TermSessionNoteButton = React.memo(
+    ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
+        const service = React.useMemo(() => new AISessionsServiceType(), []);
+        const shellLastCommand = useAtomValueSafe<string | null>(termWrap?.lastCommandAtom);
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const sessionId = React.useMemo(
+            () => resolveAgentSessionId(meta, shellLastCommand).sessionId,
+            [meta, shellLastCommand]
+        );
+        const [summary, setSummary] = React.useState<SessionSummary | null>(null);
+
+        React.useEffect(() => {
+            if (sessionId === "") {
+                setSummary(null);
+                return;
+            }
+            let cancelled = false;
+            service
+                .Summary({ id: sessionId })
+                .then((nextSummary) => {
+                    if (!cancelled) {
+                        setSummary(nextSummary);
+                    }
+                })
+                .catch((e) => {
+                    if (!cancelled) {
+                        console.debug("[term-session-note] failed to load session note", { sessionId, error: e });
+                        setSummary(null);
+                    }
+                });
+            return () => {
+                cancelled = true;
+            };
+        }, [service, sessionId]);
+
+        React.useEffect(() => {
+            if (sessionId === "") {
+                return;
+            }
+            const handleNoteUpdated = (event: Event) => {
+                if (!isAISessionNoteUpdatedEvent(event)) {
+                    return;
+                }
+                if (sessionSummaryMatchesId(event.detail.summary, sessionId)) {
+                    setSummary(event.detail.summary);
+                }
+            };
+            window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+            return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+        }, [sessionId]);
+
+        const note = summary?.note?.trim() ?? "";
+        if (sessionId === "" || note === "") {
+            return null;
+        }
+        const title = summary?.title || summary?.id || sessionId;
+        return (
+            <button
+                className="absolute right-2 top-2 z-20 flex max-w-[min(360px,calc(100%-16px))] items-center gap-2 rounded border border-accent/40 bg-bg/70 px-2 py-1 text-xs text-primary opacity-45 shadow-sm backdrop-blur transition-opacity hover:opacity-100 focus:opacity-100"
+                title={`${title}\n\n${note}`}
+                aria-label="Show agent session note"
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    modalsModel.pushModal("AISessionNoteModal", { sessionId });
+                }}
+            >
+                <i className="fa-sharp fa-solid fa-tag shrink-0 text-accent" />
+                <span className="min-w-0 truncate">{note}</span>
+                <span className="shrink-0 text-[10px] text-secondary">{shortSessionId(summary?.id ?? sessionId)}</span>
+            </button>
+        );
+    }
+);
+
+TermSessionNoteButton.displayName = "TermSessionNoteButton";
 
 const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => {
     const viewRef = React.useRef<HTMLDivElement>(null);
@@ -428,15 +515,16 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     };
 
     const termBg = computeBgStyleFromMeta(blockData?.meta);
+    const blockMoveMenuItems = useBlockMoveMenuItems();
 
     const handleContextMenu = React.useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
             e.stopPropagation();
-            const menuItems = model.getContextMenuItems();
+            const menuItems = appendBlockMoveMenuItems(model.getContextMenuItems(), blockMoveMenuItems);
             ContextMenuModel.getInstance().showContextMenu(menuItems, e);
         },
-        [model]
+        [model, blockMoveMenuItems]
     );
 
     const hideSelectionCopyOverlay = React.useCallback(() => {
@@ -474,6 +562,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermVDomNode key="vdom" blockId={blockId} model={model} />
+            <TermSessionNoteButton blockData={blockData ?? null} termWrap={termWrapInst} />
             <div
                 key="connect-elem"
                 className="term-connectelem"

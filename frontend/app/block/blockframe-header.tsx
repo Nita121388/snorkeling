@@ -10,6 +10,7 @@ import {
 } from "@/app/block/blockutil";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
+import { Modal } from "@/app/modals/modal";
 import { getBlockBadgeAtom } from "@/app/store/badge";
 import {
     createBlockSplitHorizontally,
@@ -20,8 +21,10 @@ import {
 } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
+import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { Button } from "@/element/button";
 import { IconButton } from "@/element/iconbutton";
 import { NodeModel } from "@/layout/index";
 import * as util from "@/util/util";
@@ -31,16 +34,32 @@ import * as React from "react";
 import { BlockEnv } from "./blockenv";
 import { BlockFrameProps } from "./blocktypes";
 
-function handleHeaderContextMenu(
+export type MoveBlockMenuContext = {
+    currentTabId: string;
+    titleBase: string;
+    workspace: Workspace;
+    canMoveToExistingTab: boolean;
+    onMoveToExistingTab: () => void;
+    onMoved: (targetTabId: string) => void;
+};
+
+export type BlockMoveMenuState = {
+    moveContext: MoveBlockMenuContext | null;
+    moveTabModal: React.ReactElement | null;
+};
+
+export function showBlockContextMenu(
     e: React.MouseEvent<HTMLDivElement>,
     blockId: string,
     viewModel: ViewModel,
     nodeModel: NodeModel,
-    blockEnv: BlockEnv
+    blockEnv: BlockEnv,
+    moveContext?: MoveBlockMenuContext
 ) {
     e.preventDefault();
     e.stopPropagation();
     const magnified = globalStore.get(nodeModel.isMagnified);
+    const ephemeral = globalStore.get(nodeModel.isEphemeral);
     const menu: ContextMenuItem[] = [
         {
             label: magnified ? "Un-Magnify Block" : "Magnify Block",
@@ -56,6 +75,9 @@ function handleHeaderContextMenu(
             },
         },
     ];
+    if (moveContext && !ephemeral) {
+        menu.push({ type: "separator" }, ...makeBlockMoveMenuItems(blockId, blockEnv, moveContext));
+    }
     const extraItems = viewModel?.getSettingsMenuItems?.();
     if (extraItems && extraItems.length > 0) menu.push({ type: "separator" }, ...extraItems);
     menu.push(
@@ -66,6 +88,35 @@ function handleHeaderContextMenu(
         }
     );
     blockEnv.showContextMenu(menu, e);
+}
+
+export function makeBlockMoveMenuItems(
+    blockId: string,
+    blockEnv: BlockEnv,
+    moveContext?: MoveBlockMenuContext
+): ContextMenuItem[] {
+    if (!moveContext) {
+        return [];
+    }
+    return [
+        {
+            label: "Move to New Tab",
+            click: () => {
+                util.fireAndForget(async () => {
+                    const targetTabId = await blockEnv.services.object.MoveBlockToNewTab(
+                        blockId,
+                        moveContext.titleBase
+                    );
+                    moveContext.onMoved(targetTabId);
+                });
+            },
+        },
+        {
+            label: "Move to Existing Tab...",
+            enabled: moveContext.canMoveToExistingTab,
+            click: () => moveContext.onMoveToExistingTab(),
+        },
+    ];
 }
 
 type HeaderTextElemsProps = {
@@ -116,9 +167,10 @@ type HeaderEndIconsProps = {
     viewModel: ViewModel;
     nodeModel: NodeModel;
     blockId: string;
+    moveContext?: MoveBlockMenuContext;
 };
 
-const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId }: HeaderEndIconsProps) => {
+const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext }: HeaderEndIconsProps) => {
     const blockEnv = useWaveEnv<BlockEnv>();
     const endIconButtons = util.useAtomValueSafe(viewModel?.endIconButtons);
     const magnified = jotai.useAtomValue(nodeModel.isMagnified);
@@ -168,7 +220,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId }: HeaderEndI
         elemtype: "iconbutton",
         icon: "cog",
         title: "Settings",
-        click: (e) => handleHeaderContextMenu(e, blockId, viewModel, nodeModel, blockEnv),
+        click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, moveContext),
     };
     endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
     if (ephemeral) {
@@ -207,6 +259,168 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId }: HeaderEndI
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
+type MoveBlockToTabModalProps = {
+    blockId: string;
+    currentTabId: string;
+    workspace: Workspace;
+    titleBase: string;
+    onClose: () => void;
+    onMoved: (targetTabId: string) => void;
+};
+
+type MoveBlockToTabRowProps = {
+    tabId: string;
+    moving: boolean;
+    disabled: boolean;
+    onMove: (tabId: string) => void;
+};
+
+const MoveBlockToTabRow = React.memo(({ tabId, moving, disabled, onMove }: MoveBlockToTabRowProps) => {
+    const waveEnv = useWaveEnv<BlockEnv>();
+    const tabAtom = waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
+    const tab = jotai.useAtomValue(tabAtom);
+    const tabName = tab?.name || "Untitled Tab";
+
+    return (
+        <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-hoverbg disabled:cursor-default disabled:opacity-60"
+            disabled={disabled}
+            onClick={() => onMove(tabId)}
+        >
+            <div className="min-w-0">
+                <div className="truncate text-sm text-primary">{tabName}</div>
+                <div className="truncate text-[11px] text-secondary">{tabId}</div>
+            </div>
+            <span className="shrink-0 text-xs text-secondary">{moving ? "Moving..." : "Move"}</span>
+        </button>
+    );
+});
+MoveBlockToTabRow.displayName = "MoveBlockToTabRow";
+
+const MoveBlockToTabModal = React.memo(
+    ({ blockId, currentTabId, workspace, titleBase, onClose, onMoved }: MoveBlockToTabModalProps) => {
+        const waveEnv = useWaveEnv<BlockEnv>();
+        const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
+        const [movingTabId, setMovingTabId] = React.useState<string>(null);
+        const [error, setError] = React.useState<string>(null);
+        const tabIds = React.useMemo(
+            () => (workspace?.tabids ?? []).filter((tabId) => tabId !== currentTabId),
+            [workspace?.tabids, currentTabId]
+        );
+
+        React.useEffect(() => {
+            setModalOpen(true);
+            return () => setModalOpen(false);
+        }, [setModalOpen]);
+
+        React.useEffect(() => {
+            const handleKeyDown = (event: KeyboardEvent) => {
+                if (event.key === "Escape") {
+                    onClose();
+                }
+            };
+            document.addEventListener("keydown", handleKeyDown);
+            return () => document.removeEventListener("keydown", handleKeyDown);
+        }, [onClose]);
+
+        const moveToTab = React.useCallback(
+            (targetTabId: string) => {
+                setMovingTabId(targetTabId);
+                setError(null);
+                util.fireAndForget(async () => {
+                    try {
+                        await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
+                        onMoved(targetTabId);
+                        onClose();
+                    } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                        setMovingTabId(null);
+                    }
+                });
+            },
+            [waveEnv, blockId, onMoved, onClose]
+        );
+
+        return (
+            <Modal className="w-[420px] max-w-[calc(100vw-32px)] pt-8 pb-4" onClose={onClose} onClickBackdrop={onClose}>
+                <div className="mb-3 pr-8">
+                    <div className="truncate text-base font-semibold text-primary">Move Block</div>
+                    <div className="mt-1 truncate text-xs text-secondary">{titleBase}</div>
+                </div>
+                <div className="max-h-[320px] w-full overflow-y-auto rounded-md border border-border/50 p-1">
+                    {tabIds.length === 0 ? (
+                        <div className="px-2 py-6 text-center text-sm text-secondary">No other tabs</div>
+                    ) : (
+                        tabIds.map((tabId) => (
+                            <MoveBlockToTabRow
+                                key={tabId}
+                                tabId={tabId}
+                                moving={movingTabId === tabId}
+                                disabled={movingTabId != null}
+                                onMove={moveToTab}
+                            />
+                        ))
+                    )}
+                </div>
+                {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
+                <div className="mt-4 flex w-full justify-end">
+                    <Button className="grey ghost" onClick={onClose} disabled={movingTabId != null}>
+                        Cancel
+                    </Button>
+                </div>
+            </Modal>
+        );
+    }
+);
+MoveBlockToTabModal.displayName = "MoveBlockToTabModal";
+
+export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, preview: boolean): BlockMoveMenuState {
+    const waveEnv = useWaveEnv<BlockEnv>();
+    const tabModel = useTabModel();
+    const workspace = jotai.useAtomValue(waveEnv.atoms.workspace);
+    const [moveTabModalOpen, setMoveTabModalOpen] = React.useState(false);
+    const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
+    const metaFrameTitle = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:title"));
+    const viewName = metaFrameTitle ?? util.useAtomValueSafe(viewModel?.viewName) ?? blockViewToName(metaView);
+    const canMoveToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== tabModel.tabId);
+    const handleMoved = React.useCallback(
+        (targetTabId: string) => {
+            waveEnv.electron.setActiveTab(targetTabId);
+            setTimeout(() => refocusNode(nodeModel.blockId), 150);
+        },
+        [waveEnv, nodeModel.blockId]
+    );
+    const moveContext = React.useMemo<MoveBlockMenuContext>(
+        () =>
+            !preview && workspace && tabModel.tabId
+                ? {
+                      currentTabId: tabModel.tabId,
+                      titleBase: viewName || "Block",
+                      workspace,
+                      canMoveToExistingTab,
+                      onMoveToExistingTab: () => setMoveTabModalOpen(true),
+                      onMoved: handleMoved,
+                  }
+                : null,
+        [preview, workspace, tabModel.tabId, viewName, canMoveToExistingTab, handleMoved]
+    );
+
+    const moveTabModal =
+        moveTabModalOpen && moveContext ? (
+            <MoveBlockToTabModal
+                blockId={nodeModel.blockId}
+                currentTabId={moveContext.currentTabId}
+                workspace={moveContext.workspace}
+                titleBase={moveContext.titleBase}
+                onClose={() => setMoveTabModalOpen(false)}
+                onMoved={handleMoved}
+            />
+        ) : null;
+
+    return { moveContext, moveTabModal };
+}
+
 const BlockFrame_Header = ({
     nodeModel,
     viewModel,
@@ -214,7 +428,12 @@ const BlockFrame_Header = ({
     connBtnRef,
     changeConnModalAtom,
     error,
-}: BlockFrameProps & { changeConnModalAtom: jotai.PrimitiveAtom<boolean>; error?: Error }) => {
+    moveContext,
+}: BlockFrameProps & {
+    changeConnModalAtom: jotai.PrimitiveAtom<boolean>;
+    error?: Error;
+    moveContext?: MoveBlockMenuContext;
+}) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
     const metaFrameTitle = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:title"));
@@ -251,7 +470,9 @@ const BlockFrame_Header = ({
             className={cn("block-frame-default-header", useTermHeader && "!pl-[2px]")}
             data-role="block-header"
             ref={dragHandleRef}
-            onContextMenu={(e) => handleHeaderContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv)}
+            onContextMenu={(e) =>
+                showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, moveContext)
+            }
         >
             {!useTermHeader && (
                 <>
@@ -286,7 +507,12 @@ const BlockFrame_Header = ({
                 </div>
             )}
             <HeaderTextElems viewModel={viewModel} blockId={nodeModel.blockId} preview={preview} error={error} />
-            <HeaderEndIcons viewModel={viewModel} nodeModel={nodeModel} blockId={nodeModel.blockId} />
+            <HeaderEndIcons
+                viewModel={viewModel}
+                nodeModel={nodeModel}
+                blockId={nodeModel.blockId}
+                moveContext={moveContext}
+            />
         </div>
     );
 };

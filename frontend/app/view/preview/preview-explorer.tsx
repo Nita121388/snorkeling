@@ -1,16 +1,18 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TreeNodeData, TreeView } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { fireAndForget, makeConnRoute } from "@/util/util";
 import { offset, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import clsx from "clsx";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { startTransition, useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import { handleRename, makeDirectoryBackgroundMenuItems, makeDirectoryEntryMenuItems } from "./preview-directory-utils";
 import type { PreviewModel } from "./preview-model";
@@ -30,6 +32,7 @@ const TreeMaxEntries = 500;
 const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
+const SearchAutoSubmitMs = 250;
 const DirectoryAutoRefreshMs = 4000;
 
 function normalizeRootLabel(path: string): string {
@@ -97,6 +100,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const connection = useAtomValue(model.connection);
     const currentDirectoryInfo = useAtomValue(model.statFile);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
+    const blockMoveMenuItems = useBlockMoveMenuItems();
     const [searchActive, setSearchActive] = useAtom(model.directorySearchActive);
     const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
@@ -110,6 +114,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [nameSearchTruncated, setNameSearchTruncated] = useState(false);
     const [collapsedSearchPaths, setCollapsedSearchPaths] = useState<Set<string>>(() => new Set());
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
 
     const initialNodes = useMemo(
@@ -169,6 +175,75 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         setSearchQuery("");
         clearSearchResults();
     }, [clearSearchResults]);
+
+    const closeSearch = useCallback(() => {
+        searchActiveRef.current = false;
+        clearSearch();
+        setSearchActive(false);
+    }, [clearSearch, setSearchActive]);
+
+    const startDirectNameSearch = useCallback(
+        (initialText: string) => {
+            if (initialText.trim() === "") {
+                return;
+            }
+            const shouldAppend = searchActiveRef.current;
+            searchActiveRef.current = true;
+            setSearchActive(true);
+            setSearchInput((current) => `${shouldAppend ? current : ""}${initialText}`);
+            setSearchQuery("");
+            clearSearchResults();
+        },
+        [clearSearchResults, setSearchActive]
+    );
+
+    useEffect(() => {
+        searchActiveRef.current = searchActive;
+    }, [searchActive]);
+
+    useEffect(() => {
+        if (!searchActive) {
+            return;
+        }
+        const timeoutId = window.setTimeout(() => {
+            searchInputRef.current?.focus();
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
+    }, [searchActive]);
+
+    useEffect(() => {
+        if (!searchActive || draftSearchQuery.length < SearchMinLength || draftSearchQuery === submittedSearchQuery) {
+            return;
+        }
+        const timeoutId = window.setTimeout(() => {
+            setSearchQuery(draftSearchQuery);
+        }, SearchAutoSubmitMs);
+        return () => window.clearTimeout(timeoutId);
+    }, [draftSearchQuery, searchActive, submittedSearchQuery]);
+
+    useEffect(() => {
+        model.directoryKeyDownHandler = (waveEvent: WaveKeyboardEvent): boolean => {
+            if (checkKeyPressed(waveEvent, "Cmd:f")) {
+                setSearchActive(true);
+                return true;
+            }
+            if (checkKeyPressed(waveEvent, "Escape")) {
+                if (!searchActive && searchInput === "" && searchQuery === "") {
+                    return false;
+                }
+                closeSearch();
+                return true;
+            }
+            if (isCharacterKeyEvent(waveEvent)) {
+                startDirectNameSearch(waveEvent.key);
+                return waveEvent.key.trim() !== "";
+            }
+            return false;
+        };
+        return () => {
+            model.directoryKeyDownHandler = null;
+        };
+    }, [closeSearch, model, searchActive, searchInput, searchQuery, setSearchActive, startDirectNameSearch]);
 
     useEffect(() => {
         const activePaths = new Set(groupedContentResults.map((group) => group.path));
@@ -325,9 +400,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
                 }
             );
-            ContextMenuModel.getInstance().showContextMenu(menu, event);
+            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
         },
-        [connection, model, openCreateDirectory, openCreateFile, openRename, rootPath, setErrorMsg]
+        [blockMoveMenuItems, connection, model, openCreateDirectory, openCreateFile, openRename, rootPath, setErrorMsg]
     );
 
     const handleTreeBackgroundContextMenu = useCallback(
@@ -341,9 +416,18 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 newFile: () => openCreateFile(rootPath),
                 newDirectory: () => openCreateDirectory(rootPath),
             });
-            ContextMenuModel.getInstance().showContextMenu(menu, event);
+            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
         },
-        [connection, currentDirectoryInfo, model, openCreateDirectory, openCreateFile, rootPath, setErrorMsg]
+        [
+            blockMoveMenuItems,
+            connection,
+            currentDirectoryInfo,
+            model,
+            openCreateDirectory,
+            openCreateFile,
+            rootPath,
+            setErrorMsg,
+        ]
     );
 
     const runNameSearchFallback = useCallback(
@@ -616,6 +700,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     <div className="border-b border-white/8 px-2 py-2">
                         <div className="flex items-center gap-1">
                             <input
+                                ref={searchInputRef}
                                 type="text"
                                 value={searchInput}
                                 onChange={(e) => {
@@ -630,7 +715,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                         submitSearch();
                                     } else if (e.key === "Escape") {
                                         e.preventDefault();
-                                        clearSearch();
+                                        closeSearch();
                                     }
                                 }}
                                 placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
@@ -656,7 +741,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 {searching
                                     ? "Searching..."
                                     : draftSearchQuery.length >= SearchMinLength && searchInputPending
-                                      ? "Press Enter to search"
+                                      ? "Searching shortly"
                                       : submittedSearchQuery.length >= SearchMinLength
                                         ? `${totalSearchMatches} matches`
                                         : "Search on Enter"}
@@ -673,7 +758,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             </div>
                         ) : searchInputPending ? (
                             <div className="px-1 py-3 text-[12px] text-muted">
-                                Press Enter or the search button to search file names and contents.
+                                Searching file names and contents shortly.
                             </div>
                         ) : !searching &&
                           sortedNameResults.length === 0 &&

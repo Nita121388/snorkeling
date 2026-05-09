@@ -23,6 +23,7 @@ import {
     LayoutTreeInsertNodeAtIndexAction,
     LayoutTreeMagnifyNodeToggleAction,
     LayoutTreeMoveNodeAction,
+    LayoutTreeRemoveNodeFromLayoutAction,
     LayoutTreeResizeNodeAction,
     LayoutTreeState,
     LayoutTreeSwapNodeAction,
@@ -351,7 +352,10 @@ export function swapNode(layoutState: LayoutTreeState, action: LayoutTreeSwapNod
     parentNode2.children[parentNode2Index] = node1;
 }
 
-export function deleteNode(layoutState: LayoutTreeState, action: LayoutTreeDeleteNodeAction) {
+export function deleteNode(
+    layoutState: LayoutTreeState,
+    action: LayoutTreeDeleteNodeAction | LayoutTreeRemoveNodeFromLayoutAction
+) {
     if (!action?.nodeId) {
         console.error("no delete node action provided");
         return;
@@ -362,13 +366,26 @@ export function deleteNode(layoutState: LayoutTreeState, action: LayoutTreeDelet
     }
     if (layoutState.rootNode.id === action.nodeId) {
         layoutState.rootNode = undefined;
+        if (layoutState.focusedNodeId === action.nodeId) {
+            layoutState.focusedNodeId = undefined;
+        }
+        if (layoutState.magnifiedNodeId === action.nodeId) {
+            layoutState.magnifiedNodeId = undefined;
+        }
     } else {
         const parent = findParent(layoutState.rootNode, action.nodeId);
         if (parent) {
             const node = parent.children.find((child) => child.id === action.nodeId);
+            if (!node) {
+                console.error("unable to delete node, not found in parent");
+                return;
+            }
             removeChild(parent, node);
             if (layoutState.focusedNodeId === node.id) {
                 layoutState.focusedNodeId = undefined;
+            }
+            if (layoutState.magnifiedNodeId === node.id) {
+                layoutState.magnifiedNodeId = undefined;
             }
         } else {
             console.error("unable to delete node, not found in tree");

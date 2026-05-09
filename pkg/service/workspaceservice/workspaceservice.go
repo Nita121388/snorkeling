@@ -126,6 +126,14 @@ func (svc *WorkspaceService) CreateTab_Meta() tsgenmeta.MethodMeta {
 	}
 }
 
+func (svc *WorkspaceService) CreateEmptyTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "create a new empty tab",
+		ArgNames:   []string{"workspaceId", "tabName", "activateTab"},
+		ReturnDesc: "tabId",
+	}
+}
+
 func (svc *WorkspaceService) GetColors_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		ReturnDesc: "colors",
@@ -158,6 +166,24 @@ func (svc *WorkspaceService) CreateTab(workspaceId string, tabName string, activ
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("WorkspaceService:CreateTab:SendUpdateEvents", recover())
+		}()
+		wps.Broker.SendUpdateEvents(updates)
+	}()
+	return tabId, updates, nil
+}
+
+func (svc *WorkspaceService) CreateEmptyTab(workspaceId string, tabName string, activateTab bool) (string, waveobj.UpdatesRtnType, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	ctx = waveobj.ContextWithUpdates(ctx)
+	tabId, err := wcore.CreateEmptyTab(ctx, workspaceId, tabName, activateTab)
+	if err != nil {
+		return "", nil, fmt.Errorf("error creating empty tab: %w", err)
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("WorkspaceService:CreateEmptyTab:SendUpdateEvents", recover())
 		}()
 		wps.Broker.SendUpdateEvents(updates)
 	}()

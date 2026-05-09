@@ -3,12 +3,13 @@
 
 import { assert, test } from "vitest";
 import { newLayoutNode } from "../lib/layoutNode";
-import { computeMoveNode, moveNode } from "../lib/layoutTree";
+import { computeMoveNode, deleteNode, moveNode } from "../lib/layoutTree";
 import {
     DropDirection,
     LayoutTreeActionType,
     LayoutTreeComputeMoveNodeAction,
     LayoutTreeMoveNodeAction,
+    LayoutTreeRemoveNodeFromLayoutAction,
 } from "../lib/types";
 import { newLayoutTreeState } from "./model";
 
@@ -82,4 +83,38 @@ test("computeMove - noop action", () => {
 
     pendingAction = computeMoveNode(treeState, moveAction);
     assert(pendingAction === undefined, "inserting a node to the right of itself should not produce a pendingAction");
+});
+
+test("deleteNode clears focused and magnified state for removed node", () => {
+    const nodeA = newLayoutNode(undefined, undefined, undefined, { blockId: "nodeA" });
+    const nodeB = newLayoutNode(undefined, undefined, undefined, { blockId: "nodeB" });
+    const treeState = newLayoutTreeState(newLayoutNode(undefined, undefined, [nodeA, nodeB]));
+    treeState.focusedNodeId = nodeA.id;
+    treeState.magnifiedNodeId = nodeA.id;
+
+    deleteNode(treeState, {
+        type: LayoutTreeActionType.RemoveNodeFromLayout,
+        nodeId: nodeA.id,
+    } as LayoutTreeRemoveNodeFromLayoutAction);
+
+    assert(treeState.rootNode.children!.length === 1, "root should have one remaining child");
+    assert(treeState.rootNode.children![0].data!.blockId === "nodeB", "nodeB should remain in the layout");
+    assert(treeState.focusedNodeId === undefined, "removed node should no longer be focused");
+    assert(treeState.magnifiedNodeId === undefined, "removed node should no longer be magnified");
+});
+
+test("deleteNode clears root focused and magnified state", () => {
+    const nodeA = newLayoutNode(undefined, undefined, undefined, { blockId: "nodeA" });
+    const treeState = newLayoutTreeState(nodeA);
+    treeState.focusedNodeId = nodeA.id;
+    treeState.magnifiedNodeId = nodeA.id;
+
+    deleteNode(treeState, {
+        type: LayoutTreeActionType.RemoveNodeFromLayout,
+        nodeId: nodeA.id,
+    } as LayoutTreeRemoveNodeFromLayoutAction);
+
+    assert(treeState.rootNode === undefined, "root should be cleared");
+    assert(treeState.focusedNodeId === undefined, "removed root should no longer be focused");
+    assert(treeState.magnifiedNodeId === undefined, "removed root should no longer be magnified");
 });

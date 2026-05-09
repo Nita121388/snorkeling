@@ -50,6 +50,12 @@ export class AISessionsServiceType {
     Note(id: string, note: string): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Note", Array.from(arguments))
     }
+
+    // load a local AI session summary without loading messages
+    // @returns AI session summary
+    Summary(request: AISessionsSummaryRequest): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "Summary", Array.from(arguments))
+    }
 }
 
 export const AISessionsService = new AISessionsServiceType();
@@ -138,6 +144,18 @@ export class ObjectServiceType {
         return callBackendService(this?.waveEnv, "object", "GetObjects", Array.from(arguments))
     }
 
+    // move an existing block to a newly created empty tab
+    // @returns tabId (and object updates)
+    MoveBlockToNewTab(blockId: string, tabNameBase: string): Promise<string> {
+        return callBackendService(this?.waveEnv, "object", "MoveBlockToNewTab", Array.from(arguments))
+    }
+
+    // move an existing block to another tab
+    // @returns object updates
+    MoveBlockToTab(blockId: string, targetTabId: string, activateTargetTab: boolean): Promise<void> {
+        return callBackendService(this?.waveEnv, "object", "MoveBlockToTab", Array.from(arguments))
+    }
+
     // @returns object updates
     UpdateObject(waveObj: WaveObj, returnUpdates: boolean): Promise<void> {
         return callBackendService(this?.waveEnv, "object", "UpdateObject", Array.from(arguments))
@@ -207,6 +225,12 @@ export class WorkspaceServiceType {
     // @returns CloseTabRtn (and object updates)
     CloseTab(workspaceId: string, tabId: string, fromElectron: boolean): Promise<CloseTabRtnType> {
         return callBackendService(this?.waveEnv, "workspace", "CloseTab", Array.from(arguments))
+    }
+
+    // create a new empty tab
+    // @returns tabId (and object updates)
+    CreateEmptyTab(workspaceId: string, tabName: string, activateTab: boolean): Promise<string> {
+        return callBackendService(this?.waveEnv, "workspace", "CreateEmptyTab", Array.from(arguments))
     }
 
     // @returns tabId (and object updates)

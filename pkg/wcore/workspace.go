@@ -9,6 +9,7 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -217,6 +218,78 @@ func getNextTabName(tabNames []string) string {
 		}
 	}
 	return "T" + strconv.Itoa(maxNum+1)
+}
+
+func makeUniqueTabNameFromBase(baseName string, tabNames []string) string {
+	baseName = strings.TrimSpace(baseName)
+	if baseName == "" {
+		baseName = "Tab"
+	}
+	existingNames := make(map[string]bool, len(tabNames))
+	for _, name := range tabNames {
+		existingNames[name] = true
+	}
+	for idx := 1; ; idx++ {
+		name := fmt.Sprintf("%s-%02d", baseName, idx)
+		if !existingNames[name] {
+			return name
+		}
+	}
+}
+
+func MakeUniqueTabName(ctx context.Context, workspaceId string, baseName string) (string, error) {
+	ws, err := GetWorkspace(ctx, workspaceId)
+	if err != nil {
+		return "", fmt.Errorf("workspace %s not found: %w", workspaceId, err)
+	}
+	tabNames := make([]string, 0, len(ws.TabIds))
+	for _, tabId := range ws.TabIds {
+		tab, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabId)
+		if err != nil || tab == nil {
+			continue
+		}
+		tabNames = append(tabNames, tab.Name)
+	}
+	return makeUniqueTabNameFromBase(baseName, tabNames), nil
+}
+
+func CreateEmptyTab(ctx context.Context, workspaceId string, tabName string, activateTab bool) (string, error) {
+	if tabName == "" {
+		ws, err := GetWorkspace(ctx, workspaceId)
+		if err != nil {
+			return "", fmt.Errorf("workspace %s not found: %w", workspaceId, err)
+		}
+		tabNames := make([]string, 0, len(ws.TabIds))
+		for _, tabId := range ws.TabIds {
+			tab, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabId)
+			if err != nil || tab == nil {
+				continue
+			}
+			tabNames = append(tabNames, tab.Name)
+		}
+		tabName = getNextTabName(tabNames)
+	}
+
+	tab, err := createTabObj(ctx, workspaceId, tabName, nil)
+	if err != nil {
+		return "", fmt.Errorf("error creating tab: %w", err)
+	}
+	if activateTab {
+		err = SetActiveTab(ctx, workspaceId, tab.OID)
+		if err != nil {
+			return "", fmt.Errorf("error setting active tab: %w", err)
+		}
+	}
+	tabBg := getTabBackground()
+	if tabBg != "" {
+		tabORef := waveobj.ORefFromWaveObj(tab)
+		wstore.UpdateObjectMeta(ctx, *tabORef, waveobj.MetaMapType{waveobj.MetaKey_TabBackground: tabBg}, false)
+	}
+	telemetry.GoUpdateActivityWrap(wshrpc.ActivityUpdate{NewTab: 1}, "createtab")
+	telemetry.GoRecordTEventWrap(&telemetrydata.TEvent{
+		Event: "action:createtab",
+	})
+	return tab.OID, nil
 }
 
 // returns tabid

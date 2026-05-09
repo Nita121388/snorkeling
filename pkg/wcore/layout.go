@@ -15,14 +15,15 @@ import (
 )
 
 const (
-	LayoutActionDataType_Insert          = "insert"
-	LayoutActionDataType_InsertAtIndex   = "insertatindex"
-	LayoutActionDataType_Remove          = "delete"
-	LayoutActionDataType_ClearTree       = "clear"
-	LayoutActionDataType_Replace         = "replace"
-	LayoutActionDataType_SplitHorizontal = "splithorizontal"
-	LayoutActionDataType_SplitVertical   = "splitvertical"
-	LayoutActionDataType_CleanupOrphaned = "cleanuporphaned"
+	LayoutActionDataType_Insert           = "insert"
+	LayoutActionDataType_InsertAtIndex    = "insertatindex"
+	LayoutActionDataType_Remove           = "delete"
+	LayoutActionDataType_RemoveFromLayout = "removefromlayout"
+	LayoutActionDataType_ClearTree        = "clear"
+	LayoutActionDataType_Replace          = "replace"
+	LayoutActionDataType_SplitHorizontal  = "splithorizontal"
+	LayoutActionDataType_SplitVertical    = "splitvertical"
+	LayoutActionDataType_CleanupOrphaned  = "cleanuporphaned"
 )
 
 type PortableLayout []struct {

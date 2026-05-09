@@ -3,7 +3,11 @@
 
 import {
     applyExplorerRootForDirectoryNavigation,
+    normalizePreviewDirectoryDisplayMode,
+    normalizePreviewOpenTargetDirection,
     resolveExplorerRootPathForOpenInCurrentBlock,
+    resolvePreviewDirectoryDisplayMode,
+    resolvePreviewOpenTargetDirection,
 } from "@/app/view/preview/preview-navigation";
 import { describe, expect, it } from "vitest";
 
@@ -54,5 +58,26 @@ describe("preview explorer root sync", () => {
                 isdir: false,
             })
         ).toBe("/tmp/project/src");
+    });
+});
+
+describe("preview default setting normalization", () => {
+    it("accepts valid directory display modes and falls back for invalid values", () => {
+        expect(normalizePreviewDirectoryDisplayMode("list", "tree")).toBe("list");
+        expect(normalizePreviewDirectoryDisplayMode("tree", "list")).toBe("tree");
+        expect(normalizePreviewDirectoryDisplayMode("invalid", "list")).toBe("list");
+    });
+
+    it("accepts valid open target directions and falls back for invalid values", () => {
+        expect(normalizePreviewOpenTargetDirection("right", "off")).toBe("right");
+        expect(normalizePreviewOpenTargetDirection("off", "right")).toBe("off");
+        expect(normalizePreviewOpenTargetDirection("invalid", "right")).toBe("right");
+    });
+
+    it("uses settings defaults unless block metadata overrides them", () => {
+        expect(resolvePreviewDirectoryDisplayMode(undefined, "tree")).toBe("tree");
+        expect(resolvePreviewOpenTargetDirection(undefined, "right")).toBe("right");
+        expect(resolvePreviewDirectoryDisplayMode("list", "tree")).toBe("list");
+        expect(resolvePreviewOpenTargetDirection("off", "right")).toBe("off");
     });
 });

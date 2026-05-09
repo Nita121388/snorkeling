@@ -184,6 +184,7 @@ export function balanceNode(
     beforeWalkCallback?: (node: LayoutNode) => void,
     afterWalkCallback?: (node: LayoutNode) => void
 ): LayoutNode {
+    if (!node) return undefined;
     walkNodes(
         node,
         (node) => {

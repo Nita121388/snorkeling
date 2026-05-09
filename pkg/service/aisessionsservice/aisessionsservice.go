@@ -33,6 +33,11 @@ type AISessionsDetailRequest struct {
 	Tail    int    `json:"tail,omitempty"`
 }
 
+type AISessionsSummaryRequest struct {
+	ID      string `json:"id"`
+	Refresh bool   `json:"refresh,omitempty"`
+}
+
 func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "list local AI sessions",
@@ -83,6 +88,25 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		detail.Messages = detail.Messages[len(detail.Messages)-tail:]
 	}
 	return &detail, nil
+}
+
+func (svc *AISessionsService) Summary_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "load a local AI session summary without loading messages",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session summary",
+	}
+}
+
+func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSummaryRequest) (*aisessions.SessionSummary, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	summary, err := aisessions.NewManager("", nil).Summary(ctx, request.ID, request.Refresh)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
 }
 
 func (svc *AISessionsService) Mark_Meta() tsgenmeta.MethodMeta {

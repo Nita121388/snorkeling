@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockModel } from "@/app/block/block-model";
-import { BlockFrame_Header } from "@/app/block/blockframe-header";
+import { BlockMoveMenuItemsProvider } from "@/app/block/block-move-menu";
+import {
+    BlockFrame_Header,
+    makeBlockMoveMenuItems,
+    showBlockContextMenu,
+    useBlockMoveMenu,
+} from "@/app/block/blockframe-header";
 import { blockViewToIcon, getViewIconElem, useTabBackground } from "@/app/block/blockutil";
 import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
@@ -118,6 +124,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const connName = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "connection"));
     const iconColor = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "icon:color"));
     const noHeader = util.useAtomValueSafe(viewModel?.noHeader);
+    const { moveContext, moveTabModal } = useBlockMoveMenu(nodeModel, viewModel, preview);
 
     React.useEffect(() => {
         if (!manageConnection) {
@@ -162,9 +169,37 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     }
     const previewElem = <div className="block-frame-preview">{viewIconElem}</div>;
     const headerElem = (
-        <BlockFrame_Header {...props} connBtnRef={connBtnRef} changeConnModalAtom={changeConnModalAtom} />
+        <BlockFrame_Header
+            {...props}
+            connBtnRef={connBtnRef}
+            changeConnModalAtom={changeConnModalAtom}
+            moveContext={moveContext}
+        />
     );
     const headerElemNoView = React.cloneElement(headerElem, { viewModel: null });
+    const handleFrameContextMenu = React.useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            const target = e.target as HTMLElement;
+            if (!e.currentTarget.contains(target)) {
+                return;
+            }
+            if (target.closest(".block-frame-default-header, .block-content")) {
+                return;
+            }
+            showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, moveContext);
+        },
+        [nodeModel, viewModel, waveEnv, moveContext]
+    );
+    const moveMenuItemsContextValue = React.useMemo(
+        () => ({
+            getMoveMenuItems: () =>
+                globalStore.get(nodeModel.isEphemeral)
+                    ? []
+                    : makeBlockMoveMenuItems(nodeModel.blockId, waveEnv, moveContext),
+        }),
+        [nodeModel, waveEnv, moveContext]
+    );
+
     return (
         <div
             className={clsx("block", "block-frame-default", "block-" + nodeModel.blockId, {
@@ -176,6 +211,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
             })}
             data-blockid={nodeModel.blockId}
             onClick={blockModel?.onClick}
+            onContextMenu={handleFrameContextMenu}
             onPointerEnter={blockModel?.onPointerEnter}
             onFocusCapture={blockModel?.onFocusCapture}
             ref={blockModel?.blockRef}
@@ -197,7 +233,13 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
             )}
             <div className="block-frame-default-inner" style={innerStyle}>
                 {noHeader || <ErrorBoundary fallback={headerElemNoView}>{headerElem}</ErrorBoundary>}
-                {preview ? previewElem : children}
+                {preview ? (
+                    previewElem
+                ) : (
+                    <BlockMoveMenuItemsProvider value={moveMenuItemsContextValue}>
+                        {children}
+                    </BlockMoveMenuItemsProvider>
+                )}
             </div>
             {preview || viewModel == null || !connModalOpen ? null : (
                 <ChangeConnectionBlockModal
@@ -209,6 +251,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                     connBtnRef={connBtnRef}
                 />
             )}
+            {moveTabModal}
         </div>
     );
 };

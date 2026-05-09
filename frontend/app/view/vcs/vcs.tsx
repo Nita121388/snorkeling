@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -727,6 +728,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const basePath = useAtomValue(model.pathAtom);
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const refreshNonce = useAtomValue(model.refreshNonce);
+    const blockMoveMenuItems = useBlockMoveMenuItems();
 
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>(null);
@@ -1052,6 +1054,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     };
 
     const handleRepoContextMenu = (repo: VcsRepositoryInfo, e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
         const repoPath = repo?.rootpath ?? "";
         const repoRemoteUrl = repo?.remoteurl ?? "";
         const repoBrowseUrl = repo?.browseurl ?? "";
@@ -1086,7 +1090,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 },
             },
         ];
-        ContextMenuModel.getInstance().showContextMenu(menu, e);
+        ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
     };
 
     if (connStatus?.status !== "connected") {

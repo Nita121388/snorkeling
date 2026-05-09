@@ -42,6 +42,7 @@ import {
     LayoutTreeInsertNodeAtIndexAction,
     LayoutTreeMagnifyNodeToggleAction,
     LayoutTreeMoveNodeAction,
+    LayoutTreeRemoveNodeFromLayoutAction,
     LayoutTreeReplaceNodeAction,
     LayoutTreeResizeNodeAction,
     LayoutTreeSetPendingAction,
@@ -467,6 +468,24 @@ export class LayoutModel {
                 }
                 break;
             }
+            case LayoutTreeActionType.RemoveNodeFromLayout: {
+                const leaf = this?.getNodeByBlockId(action.blockid);
+                if (leaf) {
+                    this.treeReducer(
+                        {
+                            type: LayoutTreeActionType.RemoveNodeFromLayout,
+                            nodeId: leaf.id,
+                        } as LayoutTreeRemoveNodeFromLayoutAction,
+                        false
+                    );
+                } else {
+                    console.error(
+                        "Cannot apply eventbus layout action RemoveNodeFromLayout, could not find leaf node with blockId",
+                        action.blockid
+                    );
+                }
+                break;
+            }
             case LayoutTreeActionType.InsertNodeAtIndex: {
                 if (!action.indexarr) {
                     console.error("Cannot apply eventbus layout action InsertNodeAtIndex, indexarr field is missing.");
@@ -642,6 +661,9 @@ export class LayoutModel {
                 break;
             case LayoutTreeActionType.DeleteNode:
                 deleteNode(this.treeState, action as LayoutTreeDeleteNodeAction);
+                break;
+            case LayoutTreeActionType.RemoveNodeFromLayout:
+                deleteNode(this.treeState, action as LayoutTreeRemoveNodeFromLayoutAction);
                 break;
             case LayoutTreeActionType.Swap:
                 swapNode(this.treeState, action as LayoutTreeSwapNodeAction);
@@ -829,9 +851,8 @@ export class LayoutModel {
             return resizeAction?.resizeOperations.find((op) => op.nodeId === node.id)?.size ?? node.size;
         }
 
-        const additionalProps: LayoutNodeAdditionalProps = node.id in additionalPropsMap
-            ? additionalPropsMap[node.id]
-            : { treeKey: "0" };
+        const additionalProps: LayoutNodeAdditionalProps =
+            node.id in additionalPropsMap ? additionalPropsMap[node.id] : { treeKey: "0" };
 
         const nodeRect: Dimensions = node.id === this.treeState.rootNode.id ? boundingRect : additionalProps.rect;
         const nodeIsRow = node.flexDirection === FlexDirection.Row;
@@ -930,7 +951,9 @@ export class LayoutModel {
                     this.treeState.focusedNodeId = leafOrder[0].nodeid;
                 }
             }
-            this.focusedNodeIdStack.unshift(this.treeState.focusedNodeId);
+            if (this.treeState.focusedNodeId) {
+                this.focusedNodeIdStack.unshift(this.treeState.focusedNodeId);
+            }
         }
     }
 
@@ -1288,12 +1311,7 @@ export class LayoutModel {
         while (true) {
             curPoint.x += offset.x * moveAmount;
             curPoint.y += offset.y * moveAmount;
-            if (
-                curPoint.x < 0 ||
-                curPoint.x > maxX ||
-                curPoint.y < 0 ||
-                curPoint.y > maxY
-            ) {
+            if (curPoint.x < 0 || curPoint.x > maxX || curPoint.y < 0 || curPoint.y > maxY) {
                 return hitNodeIds;
             }
             const nodeId = findNodeAtPoint(nodePositions, curPoint);

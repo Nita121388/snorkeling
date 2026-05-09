@@ -145,8 +145,10 @@ type SettingsType struct {
 	MarkdownFontSize      float64 `json:"markdown:fontsize,omitempty"`
 	MarkdownFixedFontSize float64 `json:"markdown:fixedfontsize,omitempty"`
 
-	PreviewShowHiddenFiles *bool  `json:"preview:showhiddenfiles,omitempty"`
-	PreviewDefaultSort     string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
+	PreviewShowHiddenFiles         *bool  `json:"preview:showhiddenfiles,omitempty"`
+	PreviewDefaultSort             string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
+	PreviewDefaultDirectoryDisplay string `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`
+	PreviewDefaultOpenTarget       string `json:"preview:defaultopentarget,omitempty" jsonschema:"enum=off,enum=left,enum=right,enum=up,enum=down"`
 
 	TabPreset       string `json:"tab:preset,omitempty"`
 	TabConfirmClose bool   `json:"tab:confirmclose,omitempty"`

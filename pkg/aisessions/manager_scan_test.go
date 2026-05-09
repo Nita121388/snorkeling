@@ -5,6 +5,7 @@ package aisessions
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -142,5 +143,56 @@ func TestManagerReadableMessageCountForClaude(t *testing.T) {
 	}
 	if len(detail.Messages) != 4 {
 		t.Fatalf("expected full detail to retain 4 parsed messages, got %d", len(detail.Messages))
+	}
+}
+
+type countingProvider struct {
+	source          string
+	summaries       []SessionSummary
+	loadMessagesHit int
+}
+
+func (p *countingProvider) Source() string {
+	return p.source
+}
+
+func (p *countingProvider) List(ctx context.Context) ([]SessionSummary, error) {
+	return p.summaries, ctx.Err()
+}
+
+func (p *countingProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
+	p.loadMessagesHit++
+	return nil, fmt.Errorf("LoadMessages should not be called")
+}
+
+func TestManagerSummaryDoesNotLoadMessages(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	provider := &countingProvider{
+		source: SourceCodex,
+		summaries: []SessionSummary{
+			{
+				Key:      "codex:test-id:/tmp/session.jsonl",
+				ID:       "test-id",
+				Source:   SourceCodex,
+				Title:    "Test session",
+				FilePath: "/tmp/session.jsonl",
+			},
+		},
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+	if _, err := manager.Note(context.Background(), "test-id", "important"); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, err := manager.Summary(context.Background(), "test-id", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Note != "important" {
+		t.Fatalf("expected note from meta, got %#v", summary)
+	}
+	if provider.loadMessagesHit != 0 {
+		t.Fatalf("Summary loaded messages %d times", provider.loadMessagesHit)
 	}
 }

@@ -8,6 +8,7 @@ import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
+import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
 import { base64ToString, stringToBase64 } from "@/util/util";
 import { atom, type Atom, type PrimitiveAtom } from "jotai";
@@ -305,12 +306,14 @@ export class WaveConfigViewModel implements ViewModel {
                 info: { path: fullPath },
             });
             const content = fileData?.data64 ? base64ToString(fileData.data64) : "";
+            const visibleContent = applyVisibleSettingsDefaults(file.path, content);
             globalStore.set(this.originalContentAtom, content);
-            if (content.trim() === "") {
+            if (visibleContent.content.trim() === "") {
                 globalStore.set(this.fileContentAtom, "{\n\n}");
             } else {
-                globalStore.set(this.fileContentAtom, content);
+                globalStore.set(this.fileContentAtom, visibleContent.content);
             }
+            globalStore.set(this.hasEditedAtom, visibleContent.changed);
             globalStore.set(this.selectedFileAtom, file);
             this.env.rpc.SetMetaCommand(TabRpcClient, {
                 oref: makeORef("block", this.blockId),

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -20,6 +21,15 @@ type ObjectService struct{}
 
 const DefaultTimeout = 2 * time.Second
 const ConnContextTimeout = 60 * time.Second
+
+func sendUpdateEvents(label string, updates waveobj.UpdatesRtnType) {
+	go func() {
+		defer func() {
+			panichandler.PanicHandler(label+":SendUpdateEvents", recover())
+		}()
+		wps.Broker.SendUpdateEvents(updates)
+	}()
+}
 
 func parseORef(oref string) (*waveobj.ORef, error) {
 	fields := strings.Split(oref, ":")
@@ -110,6 +120,78 @@ func (svc *ObjectService) DeleteBlock(uiContext waveobj.UIContext, blockId strin
 		return nil, fmt.Errorf("error deleting block: %w", err)
 	}
 	return waveobj.ContextGetUpdatesRtn(ctx), nil
+}
+
+func (svc *ObjectService) MoveBlockToTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:     "move an existing block to another tab",
+		ArgNames: []string{"ctx", "blockId", "targetTabId", "activateTargetTab"},
+	}
+}
+
+func (svc *ObjectService) MoveBlockToTab(ctx context.Context, blockId string, targetTabId string, activateTargetTab bool) (waveobj.UpdatesRtnType, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	sourceTabId, err := wcore.MoveBlockToTab(ctx, blockId, targetTabId, true)
+	if err != nil {
+		return nil, fmt.Errorf("error moving block: %w", err)
+	}
+	if activateTargetTab && sourceTabId != targetTabId {
+		workspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, targetTabId)
+		if err != nil {
+			return nil, fmt.Errorf("error finding target workspace: %w", err)
+		}
+		if err := wcore.SetActiveTab(ctx, workspaceId, targetTabId); err != nil {
+			return nil, fmt.Errorf("error setting active tab: %w", err)
+		}
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	sendUpdateEvents("ObjectService:MoveBlockToTab", updates)
+	return updates, nil
+}
+
+func (svc *ObjectService) MoveBlockToNewTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "move an existing block to a newly created empty tab",
+		ArgNames:   []string{"ctx", "blockId", "tabNameBase"},
+		ReturnDesc: "tabId",
+	}
+}
+
+func (svc *ObjectService) MoveBlockToNewTab(ctx context.Context, blockId string, tabNameBase string) (string, waveobj.UpdatesRtnType, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	sourceTabId, err := wstore.DBFindTabForBlockId(ctx, blockId)
+	if err != nil {
+		return "", nil, fmt.Errorf("error finding source tab: %w", err)
+	}
+	sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, sourceTabId)
+	if err != nil {
+		return "", nil, fmt.Errorf("error finding source workspace: %w", err)
+	}
+	if sourceWorkspaceId == "" {
+		return "", nil, fmt.Errorf("source tab %q has no workspace", sourceTabId)
+	}
+	tabName, err := wcore.MakeUniqueTabName(ctx, sourceWorkspaceId, tabNameBase)
+	if err != nil {
+		return "", nil, fmt.Errorf("error making unique tab name: %w", err)
+	}
+	targetTabId, err := wcore.CreateEmptyTab(ctx, sourceWorkspaceId, tabName, false)
+	if err != nil {
+		return "", nil, fmt.Errorf("error creating target tab: %w", err)
+	}
+	moveSucceeded := false
+	defer func() {
+		if !moveSucceeded {
+			_, _ = wcore.DeleteTab(ctx, sourceWorkspaceId, targetTabId, false)
+		}
+	}()
+	_, err = wcore.MoveBlockToTab(ctx, blockId, targetTabId, true)
+	if err != nil {
+		return "", nil, fmt.Errorf("error moving block to new tab: %w", err)
+	}
+	moveSucceeded = true
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	sendUpdateEvents("ObjectService:MoveBlockToNewTab", updates)
+	return targetTabId, updates, nil
 }
 
 func (svc *ObjectService) UpdateObjectMeta_Meta() tsgenmeta.MethodMeta {

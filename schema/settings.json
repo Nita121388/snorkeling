@@ -271,6 +271,23 @@
             "modtime"
           ]
         },
+        "preview:defaultdirectorydisplay": {
+          "type": "string",
+          "enum": [
+            "tree",
+            "list"
+          ]
+        },
+        "preview:defaultopentarget": {
+          "type": "string",
+          "enum": [
+            "off",
+            "left",
+            "right",
+            "up",
+            "down"
+          ]
+        },
         "tab:preset": {
           "type": "string"
         },

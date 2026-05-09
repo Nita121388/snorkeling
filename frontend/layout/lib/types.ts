@@ -82,6 +82,7 @@ export enum LayoutTreeActionType {
     InsertNode = "insert",
     InsertNodeAtIndex = "insertatindex",
     DeleteNode = "delete",
+    RemoveNodeFromLayout = "removefromlayout",
     FocusNode = "focus",
     MagnifyNodeToggle = "magnify",
     ClearTree = "clear",
@@ -176,6 +177,11 @@ export interface LayoutTreeInsertNodeAtIndexAction extends LayoutTreeAction, Ins
  */
 export interface LayoutTreeDeleteNodeAction extends LayoutTreeAction {
     type: LayoutTreeActionType.DeleteNode;
+    nodeId: string;
+}
+
+export interface LayoutTreeRemoveNodeFromLayoutAction extends LayoutTreeAction {
+    type: LayoutTreeActionType.RemoveNodeFromLayout;
     nodeId: string;
 }
 

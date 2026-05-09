@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { Tooltip } from "@/app/element/tooltip";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -889,6 +890,7 @@ export const ProcessViewerView: React.FC<ViewComponentProps<ProcessViewerViewMod
         const bodyScrollRef = React.useRef<HTMLDivElement>(null);
         const containerRef = React.useRef<HTMLDivElement>(null);
         const [wide, setWide] = React.useState(false);
+        const blockMoveMenuItems = useBlockMoveMenuItems();
 
         const isFirstRender = React.useRef(true);
         React.useEffect(() => {
@@ -946,9 +948,9 @@ export const ProcessViewerView: React.FC<ViewComponentProps<ProcessViewerViewMod
                 menu.push({ type: "separator" });
                 menu.push(...model.getSettingsMenuItems());
 
-                ContextMenuModel.getInstance().showContextMenu(menu, e);
+                ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
             },
-            [model, setSelectedPid]
+            [blockMoveMenuItems, model, setSelectedPid]
         );
 
         const platform = data?.platform ?? "";

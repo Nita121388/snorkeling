@@ -31,6 +31,9 @@ import {
     applyExplorerRootForDirectoryNavigation,
     PreviewDirectoryDisplayMode,
     PreviewExplorerRootMetaKey,
+    PreviewOpenTargetDirection,
+    resolvePreviewDirectoryDisplayMode,
+    resolvePreviewOpenTargetDirection,
 } from "./preview-navigation";
 import type { PreviewEnv } from "./previewenv";
 
@@ -48,23 +51,13 @@ const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 
 const PreviewOpenTargetMetaKey = "preview:open-target";
 const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
+const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
+const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
 const PreviewSearchLineMetaKey = "preview:searchline";
 
-type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
 type PreviewOpenPathOptions = {
     lineNumber?: number;
 };
-
-function normalizeOpenTargetDirection(val: any): PreviewOpenTargetDirection {
-    if (val === "left" || val === "right" || val === "up" || val === "down") {
-        return val;
-    }
-    return "off";
-}
-
-function normalizeDirectoryDisplayMode(val: any): PreviewDirectoryDisplayMode {
-    return val === "list" ? "list" : "tree";
-}
 
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
     switch (direction) {
@@ -287,9 +280,7 @@ export class PreviewModel implements ViewModel {
         this.openFileModalGiveFocusRef = createRef();
         this.manageConnection = atom(true);
         this.blockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
-        this.directoryDisplayMode = atom((get) =>
-            normalizeDirectoryDisplayMode(get(this.blockAtom)?.meta?.[PreviewDirectoryDisplayMetaKey])
-        );
+        this.directoryDisplayMode = atom((get) => this.getDirectoryDisplayMode(get));
         this.explorerRootPath = atom((get) => {
             const storedRoot = get(this.blockAtom)?.meta?.[PreviewExplorerRootMetaKey];
             if (!isBlank(storedRoot)) {
@@ -402,9 +393,7 @@ export class PreviewModel implements ViewModel {
                 });
             }
             if (isDirectoryView || explorerActive) {
-                const currentDirection = normalizeOpenTargetDirection(
-                    get(this.blockAtom)?.meta?.[PreviewOpenTargetMetaKey]
-                );
+                const currentDirection = this.getOpenTargetDirection(get);
                 viewTextChildren.push({
                     elemtype: "menubutton",
                     text: openTargetSymbol(currentDirection),
@@ -787,9 +776,13 @@ export class PreviewModel implements ViewModel {
         await this.setDirectoryDisplayMode(currentMode === "tree" ? "list" : "tree");
     }
 
-    private getDirectoryDisplayMode(): PreviewDirectoryDisplayMode {
-        const blockMeta = globalStore.get(this.blockAtom)?.meta;
-        return normalizeDirectoryDisplayMode(blockMeta?.[PreviewDirectoryDisplayMetaKey]);
+    private getDirectoryDisplayMode(getFn: Getter = globalStore.get): PreviewDirectoryDisplayMode {
+        const blockMeta = getFn(this.blockAtom)?.meta;
+        return resolvePreviewDirectoryDisplayMode(
+            blockMeta?.[PreviewDirectoryDisplayMetaKey],
+            getFn(this.env.getSettingsKeyAtom(PreviewDefaultDirectoryDisplaySettingKey)),
+            "tree"
+        );
     }
 
     private async setDirectoryDisplayMode(mode: PreviewDirectoryDisplayMode) {
@@ -819,9 +812,13 @@ export class PreviewModel implements ViewModel {
         globalStore.set(this.directorySearchActive, (prev) => !prev);
     }
 
-    private getOpenTargetDirection(): PreviewOpenTargetDirection {
-        const blockMeta = globalStore.get(this.blockAtom)?.meta;
-        return normalizeOpenTargetDirection(blockMeta?.[PreviewOpenTargetMetaKey]);
+    private getOpenTargetDirection(getFn: Getter = globalStore.get): PreviewOpenTargetDirection {
+        const blockMeta = getFn(this.blockAtom)?.meta;
+        return resolvePreviewOpenTargetDirection(
+            blockMeta?.[PreviewOpenTargetMetaKey],
+            getFn(this.env.getSettingsKeyAtom(PreviewDefaultOpenTargetSettingKey)),
+            "right"
+        );
     }
 
     private async setOpenTargetDirection(direction: PreviewOpenTargetDirection) {
