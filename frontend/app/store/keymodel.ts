@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { FocusManager } from "@/app/store/focusManager";
 import {
     atoms,
@@ -732,6 +733,10 @@ function registerGlobalKeys() {
     globalKeyMap.set("Cmd:Shift:a", () => {
         const currentVisible = WorkspaceLayoutModel.getInstance().getAIPanelVisible();
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(!currentVisible);
+        return true;
+    });
+    globalKeyMap.set("Cmd:Shift:o", () => {
+        SessionOverviewModel.getInstance().toggle();
         return true;
     });
     const allKeys = Array.from(globalKeyMap.keys());
