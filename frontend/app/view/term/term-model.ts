@@ -40,7 +40,7 @@ import { isMacOS, isWindows } from "@/util/platformutil";
 import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
-import { resolveAgentSessionId } from "./agent-session";
+import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
 import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
@@ -937,17 +937,30 @@ export class TermViewModel implements ViewModel {
     getAgentSessionId(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const shellLastCommand = this.termRef.current ? globalStore.get(this.termRef.current.lastCommandAtom) : null;
+        const termWrap = this.termRef.current;
+        const shellLastCommand = this.getAgentShellLastCommand(termWrap);
         return resolveAgentSessionId(meta, shellLastCommand).sessionId;
+    }
+
+    private getAgentShellLastCommand(termWrap: TermWrap | null): string | null {
+        if (!termWrap) {
+            return null;
+        }
+        const shellLastCommand = globalStore.get(termWrap.lastCommandAtom);
+        if (typeof shellLastCommand === "string" && shellLastCommand.trim() !== "") {
+            return shellLastCommand;
+        }
+        const fallbackCommand = extractAgentCommandFromTerminalText(termWrap.getScrollbackContent());
+        return fallbackCommand !== "" ? fallbackCommand : null;
     }
 
     getSessionMenuItems(): ContextMenuItem[] {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const shellLastCommand = this.termRef.current ? globalStore.get(this.termRef.current.lastCommandAtom) : null;
+        const termWrap = this.termRef.current;
+        const shellLastCommand = this.getAgentShellLastCommand(termWrap);
         const agentSessionResolution = resolveAgentSessionId(meta, shellLastCommand);
         const agentSessionId = agentSessionResolution.sessionId;
-        const termWrap = this.termRef.current;
         const jobStatus = globalStore.get(this.blockJobStatusAtom);
         const blockJobId = typeof blockData?.jobid === "string" ? blockData.jobid.trim() : "";
         const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : blockJobId;

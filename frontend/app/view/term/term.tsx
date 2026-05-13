@@ -31,7 +31,7 @@ import clsx from "clsx";
 import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
-import { resolveAgentSessionId } from "./agent-session";
+import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
@@ -197,10 +197,17 @@ const TermSessionNoteButton = React.memo(
     ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const shellLastCommand = useAtomValueSafe<string | null>(termWrap?.lastCommandAtom);
+        const fallbackShellLastCommand = React.useMemo(() => {
+            if (shellLastCommand || !termWrap) {
+                return shellLastCommand;
+            }
+            const command = extractAgentCommandFromTerminalText(termWrap.getScrollbackContent());
+            return command !== "" ? command : null;
+        }, [shellLastCommand, termWrap]);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
         const sessionId = React.useMemo(
-            () => resolveAgentSessionId(meta, shellLastCommand).sessionId,
-            [meta, shellLastCommand]
+            () => resolveAgentSessionId(meta, fallbackShellLastCommand).sessionId,
+            [meta, fallbackShellLastCommand]
         );
         const [summary, setSummary] = React.useState<SessionSummary | null>(null);
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    extractAgentCommandFromTerminalText,
     resolveAgentSessionId,
     resolveAgentSessionIdFromCommand,
     resolveAgentSessionIdFromMeta,
@@ -91,6 +92,33 @@ describe("resolveAgentSessionIdFromCommand", () => {
         expect(resolveAgentSessionIdFromCommand("printf 'claude --resume nope'")).toBe("");
         expect(resolveAgentSessionIdFromCommand("codex resume --last")).toBe("");
         expect(resolveAgentSessionIdFromCommand("claude --resume --model sonnet")).toBe("");
+    });
+});
+
+describe("extractAgentCommandFromTerminalText", () => {
+    it("finds agent resume commands in terminal scrollback prompts", () => {
+        expect(
+            extractAgentCommandFromTerminalText(
+                [
+                    "Microsoft Windows [Version 10.0.22631.0000]",
+                    "PS E:\\File\\NitaFile\\Obsidians\\Obsidian> codex resume session-from-pwsh",
+                    "Welcome to Codex",
+                ].join("\n")
+            )
+        ).toBe("codex resume session-from-pwsh");
+        expect(
+            extractAgentCommandFromTerminalText(
+                [
+                    "nita@host ~/repo",
+                    "$ env CODEX_HOME=/tmp/codex codex resume session-from-posix",
+                    "Welcome to Codex",
+                ].join("\n")
+            )
+        ).toBe("env CODEX_HOME=/tmp/codex codex resume session-from-posix");
+    });
+
+    it("ignores terminal lines that only mention resume syntax as output", () => {
+        expect(extractAgentCommandFromTerminalText("echo codex resume nope\ncodex resume --last")).toBe("");
     });
 });
 

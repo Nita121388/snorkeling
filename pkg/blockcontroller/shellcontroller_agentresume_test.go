@@ -56,6 +56,26 @@ func TestResolveAgentCmdAndArgs_CodexCaptureWhenNoSession(t *testing.T) {
 	}
 }
 
+func TestCreateCmdStrAndOptsSetsCodexSessionLookupRoot(t *testing.T) {
+	codexHome := t.TempDir()
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "codex",
+		waveobj.MetaKey_CmdEnv:  map[string]any{"CODEX_HOME": codexHome},
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderCodex,
+	}
+	_, _, runInfo, err := createCmdStrAndOpts("block:test", meta, "", true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("createCmdStrAndOpts returned error: %v", err)
+	}
+	if runInfo == nil || !runInfo.CaptureCodexSessionId {
+		t.Fatalf("expected codex capture run info, got %#v", runInfo)
+	}
+	if runInfo.CodexSessionLookupRoot != filepath.Join(codexHome, "sessions") {
+		t.Fatalf("unexpected lookup root: %q", runInfo.CodexSessionLookupRoot)
+	}
+}
+
 func TestResolveAgentCmdAndArgs_ClaudeFirstRunUsesSessionIdNotResume(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_Cmd:     "claude",

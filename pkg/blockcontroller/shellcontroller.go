@@ -91,6 +91,12 @@ type codexSessionCandidate struct {
 	Path      string
 }
 
+const (
+	codexSessionCaptureSettleDuration = 1200 * time.Millisecond
+	codexSessionCaptureQuickAttempts  = 30
+	codexSessionCaptureMaxAttempts    = 900
+)
+
 type ShellController struct {
 	Lock *sync.Mutex
 
@@ -663,7 +669,7 @@ func (bc *ShellController) manageRunningShellProcess(
 		exitCode = shellProc.Cmd.ExitCode()
 		shellProc.SetWaitErrorAndSignalDone(waitErr)
 		if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
-			bc.captureCodexSessionIdForBlock(agentRunInfo)
+			bc.captureCodexSessionIdForBlockWithAttempts(agentRunInfo, 3)
 		}
 		bc.resetTerminalState(context.Background())
 		exitSignal := shellProc.Cmd.ExitSignal()
@@ -1133,6 +1139,10 @@ func findUniqueCodexSessionId(homeDir string, cwd string, startedAt time.Time) (
 }
 
 func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunInfo) {
+	bc.captureCodexSessionIdForBlockWithAttempts(agentRunInfo, codexSessionCaptureMaxAttempts)
+}
+
+func (bc *ShellController) captureCodexSessionIdForBlockWithAttempts(agentRunInfo *AgentRunInfo, maxAttempts int) {
 	if agentRunInfo == nil || !agentRunInfo.CaptureCodexSessionId {
 		return
 	}
@@ -1145,8 +1155,7 @@ func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunI
 	}
 	var candidateId string
 	var candidateFirstSeen time.Time
-	const settleDuration = 1200 * time.Millisecond
-	for attempt := 0; attempt < 30; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		sessionId, matchCount, err := findUniqueCodexSessionIdInRoot(
 			sessionsRoot,
 			agentRunInfo.CodexSessionLookupCwd,
@@ -1170,15 +1179,26 @@ func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunI
 			if candidateId != sessionId {
 				candidateId = sessionId
 				candidateFirstSeen = now
-			} else if now.Sub(candidateFirstSeen) >= settleDuration {
+			} else if now.Sub(candidateFirstSeen) >= codexSessionCaptureSettleDuration {
 				if err := persistAgentSessionId(bc.BlockId, sessionId); err != nil {
 					log.Printf("error persisting codex session id (block=%s): %v", bc.BlockId, err)
 				}
 				return
 			}
 		}
-		time.Sleep(400 * time.Millisecond)
+		sleepDuration := 2 * time.Second
+		if attempt < codexSessionCaptureQuickAttempts {
+			sleepDuration = 400 * time.Millisecond
+		}
+		time.Sleep(sleepDuration)
 	}
+	log.Printf(
+		"timed out capturing codex session id (block=%s cwd=%q root=%q attempts=%d)",
+		bc.BlockId,
+		agentRunInfo.CodexSessionLookupCwd,
+		sessionsRoot,
+		maxAttempts,
+	)
 }
 
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {

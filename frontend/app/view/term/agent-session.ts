@@ -359,9 +359,57 @@ function resolveAgentSessionIdFromCommand(commandText: unknown): string {
     return resolveAgentCommand(commandText).sessionId;
 }
 
+function stripAnsiControlCodes(value: string): string {
+    return value.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+}
+
+function commandCandidatesFromTerminalLine(line: string): string[] {
+    const trimmed = stripAnsiControlCodes(line).trim();
+    if (trimmed === "") {
+        return [];
+    }
+    const candidates = [trimmed];
+    const psMatch = trimmed.match(/^PS\s+.+?>\s*(.+)$/i);
+    if (psMatch?.[1]) {
+        candidates.push(psMatch[1].trim());
+    }
+    const windowsCmdMatch = trimmed.match(/^[A-Za-z]:[\\/].*?>\s*(.+)$/);
+    if (windowsCmdMatch?.[1]) {
+        candidates.push(windowsCmdMatch[1].trim());
+    }
+    for (const marker of ["$ ", "# ", "> ", "% ", "❯ ", "➜ "]) {
+        const idx = trimmed.lastIndexOf(marker);
+        if (idx !== -1 && idx + marker.length < trimmed.length) {
+            candidates.push(trimmed.slice(idx + marker.length).trim());
+        }
+    }
+    return candidates;
+}
+
+function extractAgentCommandFromTerminalText(text: unknown): string {
+    if (typeof text !== "string" || text.trim() === "") {
+        return "";
+    }
+    const lines = text.split(/\r?\n/);
+    const startIdx = Math.max(0, lines.length - 200);
+    for (let idx = lines.length - 1; idx >= startIdx; idx--) {
+        for (const candidate of commandCandidatesFromTerminalLine(lines[idx])) {
+            if (resolveAgentCommand(candidate).sessionId !== "") {
+                return candidate;
+            }
+        }
+    }
+    return "";
+}
+
 function resolveAgentSessionIdFromMeta(meta: TermCommandMeta): string {
     return resolveAgentSessionId(meta).sessionId;
 }
 
-export { resolveAgentSessionId, resolveAgentSessionIdFromCommand, resolveAgentSessionIdFromMeta };
+export {
+    extractAgentCommandFromTerminalText,
+    resolveAgentSessionId,
+    resolveAgentSessionIdFromCommand,
+    resolveAgentSessionIdFromMeta,
+};
 export type { AgentCommandResolution, AgentSessionIdResolution };
