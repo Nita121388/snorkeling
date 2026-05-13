@@ -241,7 +241,7 @@
 
 .session-overview-block-row {
     display: grid;
-    grid-template-columns: minmax(150px, 0.82fr) minmax(230px, 1.18fr);
+    grid-template-columns: minmax(150px, 0.78fr) minmax(230px, 1.12fr) minmax(52px, auto);
     gap: 10px;
     padding: 8px;
     border: 1px solid var(--border-color);
@@ -252,6 +252,16 @@
         border-color: rgb(from var(--accent-color) r g b / 0.55);
         background: rgb(from var(--accent-color) r g b / 0.08);
     }
+
+    &.is-current {
+        border-color: rgb(from var(--accent-color) r g b / 0.48);
+        background: rgb(from var(--accent-color) r g b / 0.1);
+    }
+
+    &.has-unread.is-current {
+        border-color: rgb(from var(--accent-color) r g b / 0.68);
+        background: rgb(from var(--accent-color) r g b / 0.14);
+    }
 }
 
 .session-overview-block-main {
@@ -259,11 +269,31 @@
     min-width: 0;
     align-items: center;
     gap: 8px;
-    border: 0;
-    background: transparent;
     color: inherit;
-    cursor: pointer;
     text-align: left;
+}
+
+.session-overview-block-jump-wrap {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.session-overview-block-jump-button {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--main-text-color);
+        background: var(--hover-bg-color);
+    }
 }
 
 .session-overview-block-icon {
@@ -305,6 +335,40 @@
 
 .session-overview-block-badge {
     margin-left: 2px;
+}
+
+.session-overview-block-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.session-overview-block-action-button {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    padding: 0;
+    font-size: 11px;
+
+    &:hover {
+        color: var(--main-text-color);
+        background: var(--hover-bg-color);
+    }
+
+    &.danger:hover {
+        border-color: rgb(from var(--error-color) r g b / 0.65);
+        color: var(--error-color);
+        background: rgb(from var(--error-color) r g b / 0.1);
+    }
 }
 
 .session-overview-block-side {

@@ -4,7 +4,10 @@
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
+import { FocusManager } from "@/app/store/focusManager";
 import { atoms, setActiveTab, WOS } from "@/app/store/global";
+import { globalStore } from "@/app/store/jotaiStore";
+import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
@@ -35,6 +38,11 @@ type DetailState = {
 type SummaryState = {
     loading: boolean;
     summary: SessionSummary | null;
+    error: string;
+};
+
+type SessionActionState = {
+    deletingSessionId: string;
     error: string;
 };
 
@@ -133,16 +141,19 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     return jotai.useAtomValue(overviewAtom);
 }
 
-function useSessionDetails(blocks: OverviewBlock[]): Record<string, DetailState> {
+function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<string, DetailState> {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const sessionIds = useMemo(
         () => Array.from(new Set(blocks.map((block) => block.sessionId).filter(Boolean))).sort(),
         [blocks]
     );
     const requestedRef = useRef(new Set<string>());
+    const lastRefreshSeqRef = useRef(refreshSeq);
     const [details, setDetails] = useState<Record<string, DetailState>>({});
 
     useEffect(() => {
+        const forceRefresh = refreshSeq !== lastRefreshSeqRef.current;
+        lastRefreshSeqRef.current = refreshSeq;
         setDetails((current) => {
             const next = { ...current };
             for (const sessionId of sessionIds) {
@@ -152,7 +163,7 @@ function useSessionDetails(blocks: OverviewBlock[]): Record<string, DetailState>
         });
         let cancelled = false;
         for (const sessionId of sessionIds) {
-            if (requestedRef.current.has(sessionId)) {
+            if (!forceRefresh && requestedRef.current.has(sessionId)) {
                 continue;
             }
             requestedRef.current.add(sessionId);
@@ -178,7 +189,7 @@ function useSessionDetails(blocks: OverviewBlock[]): Record<string, DetailState>
         return () => {
             cancelled = true;
         };
-    }, [service, sessionIds.join("\n")]);
+    }, [service, sessionIds.join("\n"), refreshSeq]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
@@ -454,30 +465,54 @@ function BlockRow({
     detailState,
     displayLimit,
     viewedAt,
+    currentBlockId,
     now,
+    onSelectBlock,
+    onJumpBlock,
+    onDeleteSession,
+    onDeleteBlock,
     onOpenMessage,
 }: {
     block: OverviewBlock;
     detailState: DetailState | undefined;
     displayLimit: number;
     viewedAt: number;
+    currentBlockId: string | null;
     now: number;
+    onSelectBlock: (block: OverviewBlock) => void;
+    onJumpBlock: (block: OverviewBlock) => void;
+    onDeleteSession: (block: OverviewBlock) => void;
+    onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
-    const model = SessionOverviewModel.getInstance();
     const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
     const detail = detailState?.detail;
     const updatedAtMs = normalizeTimeMs(detail?.summary?.updatedAt);
     const unread = block.isAgentLike && updatedAtMs > 0 && updatedAtMs > viewedAt;
+    const isCurrent = block.blockId === currentBlockId;
     const iconClass = makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" });
 
     return (
-        <div className={cn("session-overview-block-row", unread && "has-unread")}>
-            <button
-                type="button"
-                className="session-overview-block-main"
-                onClick={() => model.jumpToBlock(block.tabId, block.blockId)}
-            >
+        <div
+            className={cn("session-overview-block-row", unread && "has-unread", isCurrent && "is-current")}
+            onClick={() => onSelectBlock(block)}
+        >
+            <div className="session-overview-block-main">
+                <Tooltip
+                    content="Jump to block"
+                    placement="top"
+                    hideOnClick
+                    divClassName="session-overview-block-jump-wrap"
+                >
+                    <button
+                        type="button"
+                        className="session-overview-block-jump-button"
+                        onClick={() => onJumpBlock(block)}
+                        aria-label={`Jump to ${block.title}`}
+                    >
+                        <i className={makeIconClass("location-crosshairs", false)} />
+                    </button>
+                </Tooltip>
                 <span className="session-overview-block-icon">
                     <i className={iconClass} />
                 </span>
@@ -489,7 +524,7 @@ function BlockRow({
                     </span>
                 </span>
                 <SessionOverviewBadgeIcon badge={badge} className="session-overview-block-badge" />
-            </button>
+            </div>
             <div className="session-overview-block-side">
                 {block.isAgentLike ? (
                     <>
@@ -517,6 +552,36 @@ function BlockRow({
                     <div className="session-overview-muted">Click block name to jump</div>
                 )}
             </div>
+            <div className="session-overview-block-actions">
+                {block.sessionId ? (
+                    <Tooltip content="Delete session file" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-action-button danger"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteSession(block);
+                            }}
+                            aria-label={`Delete session file for ${block.title}`}
+                        >
+                            <i className={makeIconClass("trash", false)} />
+                        </button>
+                    </Tooltip>
+                ) : null}
+                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                    <button
+                        type="button"
+                        className="session-overview-block-action-button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteBlock(block);
+                        }}
+                        aria-label={`Delete block ${block.title}`}
+                    >
+                        <i className={makeIconClass("xmark", false)} />
+                    </button>
+                </Tooltip>
+            </div>
         </div>
     );
 }
@@ -526,14 +591,24 @@ function TabGroupSection({
     details,
     displayLimit,
     viewedAt,
+    currentBlockId,
     now,
+    onSelectBlock,
+    onJumpBlock,
+    onDeleteSession,
+    onDeleteBlock,
     onOpenMessage,
 }: {
     group: TabGroup;
     details: Record<string, DetailState>;
     displayLimit: number;
     viewedAt: Record<string, number>;
+    currentBlockId: string | null;
     now: number;
+    onSelectBlock: (block: OverviewBlock) => void;
+    onJumpBlock: (block: OverviewBlock) => void;
+    onDeleteSession: (block: OverviewBlock) => void;
+    onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
     const tabBadges = jotai.useAtomValue(getTabBadgeAtom(group.tabId));
@@ -560,7 +635,12 @@ function TabGroupSection({
                             detailState={details[block.sessionId]}
                             displayLimit={displayLimit}
                             viewedAt={viewedAt[block.blockId] ?? 0}
+                            currentBlockId={currentBlockId}
                             now={now}
+                            onSelectBlock={onSelectBlock}
+                            onJumpBlock={onJumpBlock}
+                            onDeleteSession={onDeleteSession}
+                            onDeleteBlock={onDeleteBlock}
                             onOpenMessage={onOpenMessage}
                         />
                     ))
@@ -590,16 +670,29 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
     return jotai.useAtomValue(tabGroupsAtom);
 }
 
-function SessionOverviewPanel() {
-    const model = SessionOverviewModel.getInstance();
+function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewModel>) {
+    const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
-    const displayLimit = jotai.useAtomValue(model.displayLimitAtom);
-    const viewedAt = jotai.useAtomValue(model.blockViewedAtAtom);
+    const displayLimit = jotai.useAtomValue(overviewModel.displayLimitAtom);
+    const viewedAt = jotai.useAtomValue(overviewModel.blockViewedAtAtom);
     const blocks = useOverviewBlocks(workspace);
-    const details = useSessionDetails(blocks);
+    const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
+    const details = useSessionDetails(blocks, refreshSeq);
+    const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
+    const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(true);
     const tabGroups = useTabGroups(workspace, blocks);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
+    const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+    const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
+    const currentBlockInOverview = currentBlockId != null && blocks.some((block) => block.blockId === currentBlockId);
+    const selectedBlockInOverview =
+        selectedBlockId != null && blocks.some((block) => block.blockId === selectedBlockId);
+    const highlightedBlockId = selectedBlockInOverview
+        ? selectedBlockId
+        : currentBlockInOverview
+          ? currentBlockId
+          : null;
 
     const unreadCount = blocks.filter((block) => {
         const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
@@ -624,7 +717,7 @@ function SessionOverviewPanel() {
                                 min={5}
                                 max={100}
                                 value={displayLimit}
-                                onChange={(event) => model.setDisplayLimit(Number(event.target.value))}
+                                onChange={(event) => overviewModel.setDisplayLimit(Number(event.target.value))}
                             />
                         </label>
                     </div>
@@ -640,14 +733,60 @@ function SessionOverviewPanel() {
                                 details={details}
                                 displayLimit={displayLimit}
                                 viewedAt={viewedAt}
+                                currentBlockId={highlightedBlockId}
                                 now={now}
+                                onSelectBlock={(nextBlock) => setSelectedBlockId(nextBlock.blockId)}
+                                onJumpBlock={(nextBlock) => {
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    overviewModel.jumpToBlock(nextBlock.tabId, nextBlock.blockId);
+                                }}
+                                onDeleteSession={(nextBlock) => {
+                                    if (!nextBlock.sessionId || sessionAction.deletingSessionId) return;
+                                    const confirmed = window.confirm(
+                                        `Delete session file for "${nextBlock.title}"?\n\nThe source file will be moved to deleted storage.`
+                                    );
+                                    if (!confirmed) return;
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    setSessionAction({ deletingSessionId: nextBlock.sessionId, error: "" });
+                                    sessionService
+                                        .Delete(nextBlock.sessionId)
+                                        .then(() => {
+                                            setSelectedBlockId((current) =>
+                                                current === nextBlock.blockId ? null : current
+                                            );
+                                            setSelected((current) =>
+                                                current?.block.sessionId === nextBlock.sessionId ? null : current
+                                            );
+                                            uxCloseBlock(nextBlock.blockId);
+                                            model.refresh();
+                                        })
+                                        .catch((error) => {
+                                            setSessionAction({
+                                                deletingSessionId: "",
+                                                error: error instanceof Error ? error.message : String(error),
+                                            });
+                                        })
+                                        .finally(() => {
+                                            setSessionAction((current) =>
+                                                current.deletingSessionId === nextBlock.sessionId
+                                                    ? { deletingSessionId: "", error: current.error }
+                                                    : current
+                                            );
+                                        });
+                                }}
+                                onDeleteBlock={(nextBlock) => {
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    uxCloseBlock(nextBlock.blockId);
+                                }}
                                 onOpenMessage={(nextBlock, message) => {
-                                    model.markBlockViewed(nextBlock.blockId);
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    overviewModel.markBlockViewed(nextBlock.blockId);
                                     setSelected({ block: nextBlock, message });
                                 }}
                             />
                         ))
                     )}
+                    {sessionAction.error ? <div className="session-overview-error">{sessionAction.error}</div> : null}
                 </div>
             </div>
             <MessageDialog
@@ -656,7 +795,8 @@ function SessionOverviewPanel() {
                 onClose={() => setSelected(null)}
                 onJump={() => {
                     if (selected != null) {
-                        model.jumpToBlock(selected.block.tabId, selected.block.blockId);
+                        setSelectedBlockId(selected.block.blockId);
+                        overviewModel.jumpToBlock(selected.block.tabId, selected.block.blockId);
                         setSelected(null);
                     }
                 }}
@@ -674,9 +814,27 @@ export class SessionOverviewViewModel implements ViewModel {
     viewIcon = jotai.atom("list-tree");
     viewName = jotai.atom("Overview");
     noPadding = jotai.atom(true);
+    refreshSeqAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
+    endIconButtons: jotai.Atom<IconButtonDecl[]>;
     viewComponent = SessionOverviewPanel as ViewComponent;
 
-    constructor(_: ViewModelInitType) {}
+    constructor(_: ViewModelInitType) {
+        this.endIconButtons = jotai.atom(() => [
+            {
+                elemtype: "iconbutton",
+                icon: "rotate-right",
+                title: "Refresh overview",
+                click: (e) => {
+                    e.stopPropagation();
+                    this.refresh();
+                },
+            },
+        ]);
+    }
+
+    refresh(): void {
+        globalStore.set(this.refreshSeqAtom, globalStore.get(this.refreshSeqAtom) + 1);
+    }
 }
 
 export { SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };
