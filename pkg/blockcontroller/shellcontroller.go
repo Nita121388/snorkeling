@@ -81,6 +81,13 @@ type codexSessionMetaLine struct {
 	} `json:"payload"`
 }
 
+type codexSessionCandidate struct {
+	SessionId string
+	Cwd       string
+	Timestamp time.Time
+	Path      string
+}
+
 type ShellController struct {
 	Lock *sync.Mutex
 
@@ -935,10 +942,16 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	}
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
+	ctx = waveobj.ContextWithUpdates(ctx)
 	metaUpdate := map[string]any{
 		MetaKey_AgentSessionId: sessionId,
 	}
-	return wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
+	err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
+	if err != nil {
+		return err
+	}
+	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
+	return nil
 }
 
 func normalizeCwdForComparison(cwd string) string {
@@ -1007,18 +1020,17 @@ func readCodexSessionMeta(filePath string) (string, string, time.Time, error) {
 	return metaLine.Payload.Id, metaLine.Payload.Cwd, timestamp, nil
 }
 
-func findLatestCodexSessionId(homeDir string, cwd string, startedAt time.Time) (string, error) {
+func findUniqueCodexSessionId(homeDir string, cwd string, startedAt time.Time) (string, int, error) {
 	if homeDir == "" || cwd == "" {
-		return "", nil
+		return "", 0, nil
 	}
 	sessionsRoot := filepath.Join(homeDir, ".codex", "sessions")
 	normalizedCwd := normalizeCwdForComparison(cwd)
 	if normalizedCwd == "." || normalizedCwd == "" {
-		return "", nil
+		return "", 0, nil
 	}
-	searchSince := startedAt.Add(-2 * time.Second)
-	var latestId string
-	var latestTs time.Time
+	searchSince := startedAt
+	var candidates []codexSessionCandidate
 	for _, dayDir := range codexSessionDayDirCandidates(startedAt) {
 		matches, _ := filepath.Glob(filepath.Join(sessionsRoot, dayDir, "rollout-*.jsonl"))
 		for _, match := range matches {
@@ -1029,16 +1041,21 @@ func findLatestCodexSessionId(homeDir string, cwd string, startedAt time.Time) (
 			if normalizeCwdForComparison(sessionCwd) != normalizedCwd {
 				continue
 			}
-			if !sessionTs.IsZero() && sessionTs.Before(searchSince) {
+			if sessionTs.IsZero() || sessionTs.Before(searchSince) {
 				continue
 			}
-			if latestId == "" || (!sessionTs.IsZero() && sessionTs.After(latestTs)) {
-				latestId = sessionId
-				latestTs = sessionTs
-			}
+			candidates = append(candidates, codexSessionCandidate{
+				SessionId: sessionId,
+				Cwd:       sessionCwd,
+				Timestamp: sessionTs,
+				Path:      match,
+			})
 		}
 	}
-	return latestId, nil
+	if len(candidates) != 1 {
+		return "", len(candidates), nil
+	}
+	return candidates[0].SessionId, 1, nil
 }
 
 func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunInfo) {
@@ -1048,8 +1065,11 @@ func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunI
 	if agentRunInfo.CodexSessionLookupHome == "" || agentRunInfo.CodexSessionLookupCwd == "" {
 		return
 	}
-	for attempt := 0; attempt < 10; attempt++ {
-		sessionId, err := findLatestCodexSessionId(
+	var candidateId string
+	var candidateFirstSeen time.Time
+	const settleDuration = 1200 * time.Millisecond
+	for attempt := 0; attempt < 15; attempt++ {
+		sessionId, matchCount, err := findUniqueCodexSessionId(
 			agentRunInfo.CodexSessionLookupHome,
 			agentRunInfo.CodexSessionLookupCwd,
 			agentRunInfo.CodexSessionStartedAt,
@@ -1058,11 +1078,26 @@ func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunI
 			log.Printf("error finding codex session id (block=%s): %v", bc.BlockId, err)
 			return
 		}
-		if sessionId != "" {
-			if err := persistAgentSessionId(bc.BlockId, sessionId); err != nil {
-				log.Printf("error persisting codex session id (block=%s): %v", bc.BlockId, err)
-			}
+		if matchCount > 1 {
+			log.Printf(
+				"ambiguous codex session id capture (block=%s cwd=%q matches=%d); not persisting agent session id",
+				bc.BlockId,
+				agentRunInfo.CodexSessionLookupCwd,
+				matchCount,
+			)
 			return
+		}
+		if sessionId != "" {
+			now := time.Now()
+			if candidateId != sessionId {
+				candidateId = sessionId
+				candidateFirstSeen = now
+			} else if now.Sub(candidateFirstSeen) >= settleDuration {
+				if err := persistAgentSessionId(bc.BlockId, sessionId); err != nil {
+					log.Printf("error persisting codex session id (block=%s): %v", bc.BlockId, err)
+				}
+				return
+			}
 		}
 		time.Sleep(400 * time.Millisecond)
 	}

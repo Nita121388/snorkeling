@@ -90,15 +90,11 @@
 
 .session-overview-panel {
     display: flex;
-    width: min(560px, 42vw);
-    min-width: 360px;
-    height: calc(100% - 3px);
-    margin: 0 3px 3px 0;
-    flex: 0 0 min(560px, 42vw);
+    width: 100%;
+    min-width: 0;
+    height: 100%;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
     background: var(--panel-bg-color, var(--main-bg-color));
     box-shadow: none;
     color: var(--main-text-color);
@@ -517,12 +513,6 @@
 }
 
 @media (max-width: 620px) {
-    .session-overview-panel {
-        width: min(320px, 48vw);
-        min-width: 240px;
-        flex-basis: min(320px, 48vw);
-    }
-
     .session-overview-block-row {
         grid-template-columns: 1fr;
     }

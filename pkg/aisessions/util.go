@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	titleMaxChars   = 80
-	snippetMaxChars = 160
-	tailWindowBytes = 16 * 1024
+	titleMaxChars       = 80
+	snippetMaxChars     = 160
+	tailWindowBytes     = 16 * 1024
+	toolSummaryMaxChars = 800
 )
 
 var uuidRe = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
@@ -221,17 +222,40 @@ func extractTextFromItem(value any) string {
 	return extractText(item)
 }
 
+func summarizeToolInput(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return ""
+		}
+		return truncateRunes(trimmed, toolSummaryMaxChars)
+	default:
+		data, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return ""
+		}
+		return truncateRunes(strings.TrimSpace(string(data)), toolSummaryMaxChars)
+	}
+}
+
 func truncateSummary(text string, maxChars int) string {
 	cleaned := strings.TrimSpace(text)
 	if cleaned == "" {
 		return ""
 	}
-	if runeCount(cleaned) <= maxChars {
-		return cleaned
+	return truncateRunes(cleaned, maxChars)
+}
+
+func truncateRunes(text string, maxChars int) string {
+	if runeCount(text) <= maxChars {
+		return text
 	}
 	var b strings.Builder
 	count := 0
-	for _, r := range cleaned {
+	for _, r := range text {
 		if count >= maxChars {
 			break
 		}

@@ -116,6 +116,63 @@ func (p *CodexProvider) LoadMessages(ctx context.Context, filePath string) ([]Me
 	return messages, nil
 }
 
+func (p *CodexProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	var toolCalls []ToolCall
+	pendingByCallID := make(map[string]int)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return toolCalls, ctx.Err()
+		}
+		var value map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+			continue
+		}
+		if strValue(value, "type") != "response_item" {
+			continue
+		}
+		payload, _ := value["payload"].(map[string]any)
+		if payload == nil {
+			continue
+		}
+		switch strValue(payload, "type") {
+		case "function_call":
+			name := strValue(payload, "name")
+			if name == "" {
+				name = "unknown"
+			}
+			callID := strValue(payload, "call_id")
+			toolCall := ToolCall{
+				Seq:     len(toolCalls) + 1,
+				Name:    name,
+				Summary: summarizeToolInput(payload["arguments"]),
+			}
+			toolCalls = append(toolCalls, toolCall)
+			if callID != "" {
+				pendingByCallID[callID] = len(toolCalls) - 1
+			}
+		case "function_call_output":
+			callID := strValue(payload, "call_id")
+			idx, ok := pendingByCallID[callID]
+			if !ok || idx < 0 || idx >= len(toolCalls) {
+				continue
+			}
+			toolCalls[idx].Output = strValue(payload, "output")
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return toolCalls, err
+	}
+	return toolCalls, nil
+}
+
 func (p *CodexProvider) parseSummary(path string) (SessionSummary, bool) {
 	head, tail, err := readHeadTailLines(path, 10, 30)
 	if err != nil {

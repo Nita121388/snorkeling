@@ -142,6 +142,33 @@ func TestCodexLoadMessagesIncludesFunctionCalls(t *testing.T) {
 	}
 }
 
+func TestCodexLoadToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	err := os.WriteFile(path, []byte(
+		`{"timestamp":"2026-03-06T21:50:12Z","type":"session_meta","payload":{"id":"test-id","cwd":"/tmp"}}`+"\n"+
+			`{"timestamp":"2026-03-06T21:50:14Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"cmd\":[\"ls\"]}","call_id":"call_1"}}`+"\n"+
+			`{"timestamp":"2026-03-06T21:50:15Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"file1.txt\nfile2.txt"}}`+"\n",
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	toolCalls, err := NewCodexProvider(dir).LoadToolCalls(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(toolCalls))
+	}
+	if toolCalls[0].Name != "shell" || toolCalls[0].Output != "file1.txt\nfile2.txt" {
+		t.Fatalf("unexpected tool call: %#v", toolCalls[0])
+	}
+	if toolCalls[0].Summary == "" {
+		t.Fatalf("expected summary: %#v", toolCalls[0])
+	}
+}
+
 func TestCodexListKeepsFirstUserTitleOverSessionIndexTitle(t *testing.T) {
 	codexDir := t.TempDir()
 	sessionsDir := filepath.Join(codexDir, "sessions")
@@ -218,5 +245,31 @@ func TestClaudeToolResultUserMessageBecomesTool(t *testing.T) {
 	}
 	if messages[1].Role != RoleTool || messages[1].Text != "File written" {
 		t.Fatalf("unexpected tool result message: %#v", messages[1])
+	}
+}
+
+func TestClaudeLoadToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	err := os.WriteFile(path, []byte(
+		`{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Write","input":{"file_path":"a.txt"}}]},"timestamp":"2026-03-06T10:00:00Z"}`+"\n"+
+			`{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"File written"}]},"timestamp":"2026-03-06T10:00:01Z"}`+"\n",
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	toolCalls, err := NewClaudeProvider([]string{dir}).LoadToolCalls(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(toolCalls))
+	}
+	if toolCalls[0].Name != "Write" || toolCalls[0].Output != "File written" {
+		t.Fatalf("unexpected tool call: %#v", toolCalls[0])
+	}
+	if toolCalls[0].Summary == "" {
+		t.Fatalf("expected summary: %#v", toolCalls[0])
 	}
 }

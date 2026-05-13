@@ -36,7 +36,7 @@ import { BlockFrameProps } from "./blocktypes";
 
 export type MoveBlockMenuContext = {
     currentTabId: string;
-    titleBase: string;
+    sourceTabName: string;
     workspace: Workspace;
     canMoveToExistingTab: boolean;
     onMoveToExistingTab: () => void;
@@ -105,7 +105,7 @@ export function makeBlockMoveMenuItems(
                 util.fireAndForget(async () => {
                     const targetTabId = await blockEnv.services.object.MoveBlockToNewTab(
                         blockId,
-                        moveContext.titleBase
+                        moveContext.sourceTabName
                     );
                     moveContext.onMoved(targetTabId);
                 });
@@ -263,7 +263,7 @@ type MoveBlockToTabModalProps = {
     blockId: string;
     currentTabId: string;
     workspace: Workspace;
-    titleBase: string;
+    sourceTabName: string;
     onClose: () => void;
     onMoved: (targetTabId: string) => void;
 };
@@ -299,7 +299,7 @@ const MoveBlockToTabRow = React.memo(({ tabId, moving, disabled, onMove }: MoveB
 MoveBlockToTabRow.displayName = "MoveBlockToTabRow";
 
 const MoveBlockToTabModal = React.memo(
-    ({ blockId, currentTabId, workspace, titleBase, onClose, onMoved }: MoveBlockToTabModalProps) => {
+    ({ blockId, currentTabId, workspace, sourceTabName, onClose, onMoved }: MoveBlockToTabModalProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
         const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
         const [movingTabId, setMovingTabId] = React.useState<string>(null);
@@ -346,7 +346,7 @@ const MoveBlockToTabModal = React.memo(
             <Modal className="w-[420px] max-w-[calc(100vw-32px)] pt-8 pb-4" onClose={onClose} onClickBackdrop={onClose}>
                 <div className="mb-3 pr-8">
                     <div className="truncate text-base font-semibold text-primary">Move Block</div>
-                    <div className="mt-1 truncate text-xs text-secondary">{titleBase}</div>
+                    <div className="mt-1 truncate text-xs text-secondary">{sourceTabName}</div>
                 </div>
                 <div className="max-h-[320px] w-full overflow-y-auto rounded-md border border-border/50 p-1">
                     {tabIds.length === 0 ? (
@@ -380,9 +380,6 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
     const tabModel = useTabModel();
     const workspace = jotai.useAtomValue(waveEnv.atoms.workspace);
     const [moveTabModalOpen, setMoveTabModalOpen] = React.useState(false);
-    const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
-    const metaFrameTitle = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:title"));
-    const viewName = metaFrameTitle ?? util.useAtomValueSafe(viewModel?.viewName) ?? blockViewToName(metaView);
     const canMoveToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== tabModel.tabId);
     const handleMoved = React.useCallback(
         (targetTabId: string) => {
@@ -391,19 +388,22 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
         },
         [waveEnv, nodeModel.blockId]
     );
+    const sourceTabName = jotai.useAtomValue(
+        waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabModel.tabId))
+    )?.name;
     const moveContext = React.useMemo<MoveBlockMenuContext>(
         () =>
             !preview && workspace && tabModel.tabId
                 ? {
                       currentTabId: tabModel.tabId,
-                      titleBase: viewName || "Block",
+                      sourceTabName: sourceTabName || "Tab",
                       workspace,
                       canMoveToExistingTab,
                       onMoveToExistingTab: () => setMoveTabModalOpen(true),
                       onMoved: handleMoved,
                   }
                 : null,
-        [preview, workspace, tabModel.tabId, viewName, canMoveToExistingTab, handleMoved]
+        [preview, workspace, tabModel.tabId, sourceTabName, canMoveToExistingTab, handleMoved]
     );
 
     const moveTabModal =
@@ -412,7 +412,7 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
                 blockId={nodeModel.blockId}
                 currentTabId={moveContext.currentTabId}
                 workspace={moveContext.workspace}
-                titleBase={moveContext.titleBase}
+                sourceTabName={moveContext.sourceTabName}
                 onClose={() => setMoveTabModalOpen(false)}
                 onMoved={handleMoved}
             />

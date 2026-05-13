@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
+import { SessionOverviewViewModel } from "@/app/session-overview/session-overview";
 import type { TabModel } from "@/app/store/tab-model";
 import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
@@ -41,6 +42,7 @@ BlockRegistry.set("aifilediff", AiFileDiffViewModel);
 BlockRegistry.set("waveconfig", WaveConfigViewModel);
 BlockRegistry.set("processviewer", ProcessViewerViewModel);
 BlockRegistry.set("aisessions", AiSessionsViewModel);
+BlockRegistry.set("sessionoverview", SessionOverviewViewModel);
 BlockRegistry.set("vcs", VcsViewModel);
 BlockRegistry.set("vcscommits", VcsCommitsViewModel);
 BlockRegistry.set("vcsdiff", VcsDiffViewModel);

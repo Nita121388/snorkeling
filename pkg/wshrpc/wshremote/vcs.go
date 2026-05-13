@@ -172,6 +172,42 @@ func runSvnRemoteStatusXMLCommand(ctx context.Context, dir string) (string, erro
 	return outStr, fmt.Errorf("svn status -u --xml: %s", errStr)
 }
 
+func runSvnLogXMLCommand(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "svn", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	outStr := strings.TrimSpace(stdout.String())
+	if err == nil {
+		return outStr, nil
+	}
+	if outStr != "" {
+		var parsed svnLogXML
+		if parseErr := xml.Unmarshal([]byte(outStr), &parsed); parseErr == nil {
+			return outStr, nil
+		}
+	}
+	errStr := strings.TrimSpace(stderr.String())
+	if errStr == "" {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			errStr = ctxErr.Error()
+			if outStr != "" {
+				errStr += " before svn returned complete XML output"
+			}
+		} else if outStr != "" {
+			errStr = "svn returned incomplete XML output"
+		} else {
+			errStr = err.Error()
+		}
+	}
+	return outStr, fmt.Errorf("svn %s: %s", strings.Join(args, " "), errStr)
+}
+
 func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
 	if dir != "" {
@@ -1001,7 +1037,7 @@ func loadSvnCommits(ctx context.Context, repoPath string, filePath string, limit
 	if relPath != "" {
 		args = append(args, "--", relPath)
 	}
-	out, err := runVcsCommand(ctx, repoPath, "svn", args...)
+	out, err := runSvnLogXMLCommand(ctx, repoPath, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1197,8 +1233,10 @@ func loadSvnCommitsForQuery(
 		return nil, false, err
 	}
 	scanLimit := offset + limit + 1
-	if scanLimit < 500 {
-		scanLimit = 500
+	if sinceTime != nil || untilTime != nil || strings.TrimSpace(keyword) != "" {
+		if scanLimit < 500 {
+			scanLimit = 500
+		}
 	}
 	if scanLimit > MaxVcsCommitScanLimit {
 		scanLimit = MaxVcsCommitScanLimit

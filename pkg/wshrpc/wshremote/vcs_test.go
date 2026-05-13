@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
 func TestDetectRepoRootsRetainsGitAndSvnForSamePath(t *testing.T) {
@@ -196,5 +198,42 @@ func TestParseSvnRemoteStatusXML(t *testing.T) {
 	}
 	if statuses[1].Path != "z.txt" || statuses[1].Code != "M" {
 		t.Fatalf("expected second status z.txt M, got %#v", statuses[1])
+	}
+}
+
+func TestParseSvnCommits(t *testing.T) {
+	logOut := `<?xml version="1.0" encoding="UTF-8"?>
+<log>
+<logentry revision="5187">
+<author>nita</author>
+<date>2026-05-12T02:03:04.000000Z</date>
+<msg>Fix commits view
+
+Body text</msg>
+</logentry>
+</log>`
+
+	commits, err := parseSvnCommits(logOut)
+	if err != nil {
+		t.Fatalf("parse svn commits: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+	if commits[0].Hash != "5187" || commits[0].Author != "nita" || commits[0].Subject != "Fix commits view" {
+		t.Fatalf("unexpected commit: %#v", commits[0])
+	}
+}
+
+func TestFilterAndPaginateCommitsReportsHasMore(t *testing.T) {
+	commits := []wshrpc.VcsCommitInfo{
+		{Hash: "1", Subject: "one"},
+		{Hash: "2", Subject: "two"},
+		{Hash: "3", Subject: "three"},
+	}
+
+	page, hasMore := filterAndPaginateCommits(commits, 1, 1, nil, nil, "")
+	if len(page) != 1 || page[0].Hash != "2" || !hasMore {
+		t.Fatalf("unexpected page=%#v hasMore=%v", page, hasMore)
 	}
 }

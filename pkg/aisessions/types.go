@@ -78,6 +78,15 @@ type Provider interface {
 	LoadMessages(ctx context.Context, filePath string) ([]Message, error)
 }
 
+type ToolCallProvider interface {
+	LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error)
+}
+
+type LoadOptions struct {
+	Refresh      bool
+	IncludeTools bool
+}
+
 type ListOptions struct {
 	Source     string
 	Project    string

@@ -94,6 +94,75 @@ func (p *ClaudeProvider) LoadMessages(ctx context.Context, filePath string) ([]M
 	return messages, nil
 }
 
+func (p *ClaudeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	var toolCalls []ToolCall
+	pendingByID := make(map[string]int)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return toolCalls, ctx.Err()
+		}
+		var value map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+			continue
+		}
+		if boolValue(value, "isMeta") {
+			continue
+		}
+		message, _ := value["message"].(map[string]any)
+		if message == nil {
+			continue
+		}
+		contentItems, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range contentItems {
+			itemMap, _ := item.(map[string]any)
+			if itemMap == nil {
+				continue
+			}
+			switch strValue(itemMap, "type") {
+			case "tool_use":
+				name := strValue(itemMap, "name")
+				if name == "" {
+					name = "unknown"
+				}
+				toolCall := ToolCall{
+					Seq:     len(toolCalls) + 1,
+					Name:    name,
+					Summary: summarizeToolInput(itemMap["input"]),
+				}
+				toolCalls = append(toolCalls, toolCall)
+				if id := strValue(itemMap, "id"); id != "" {
+					pendingByID[id] = len(toolCalls) - 1
+				}
+			case "tool_result":
+				toolUseID := strValue(itemMap, "tool_use_id")
+				idx, ok := pendingByID[toolUseID]
+				if !ok || idx < 0 || idx >= len(toolCalls) {
+					continue
+				}
+				toolCalls[idx].Output = extractText(itemMap["content"])
+				if boolValue(itemMap, "is_error") {
+					toolCalls[idx].ExitCode = 1
+				}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return toolCalls, err
+	}
+	return toolCalls, nil
+}
+
 func (p *ClaudeProvider) parseSummary(path string) (SessionSummary, bool) {
 	head, tail, err := readHeadTailLines(path, 10, 30)
 	if err != nil {

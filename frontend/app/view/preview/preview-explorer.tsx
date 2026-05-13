@@ -684,8 +684,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         maxDirEntries={TreeMaxEntries}
                         className="h-full"
                         expandDirectoriesOnSingleClick={true}
-                        onOpenFile={(_id, node) => {
-                            fireAndForget(() => openPreviewEntry(model, treeNodeToFileInfo(node), connection));
+                        onOpenFile={(_id, node, event) => {
+                            fireAndForget(() =>
+                                openPreviewEntry(model, treeNodeToFileInfo(node), connection, {
+                                    forceNewBlock: event.ctrlKey || event.metaKey,
+                                })
+                            );
                         }}
                         onNodeContextMenu={handleTreeNodeContextMenu}
                         onBackgroundContextMenu={handleTreeBackgroundContextMenu}
@@ -792,8 +796,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                 ? "bg-white/10"
                                                                 : "hover:bg-white/5"
                                                         )}
-                                                        onClick={() => {
-                                                            fireAndForget(() => model.openPathWithTarget(match.path));
+                                                        onClick={(event) => {
+                                                            fireAndForget(() =>
+                                                                model.openPathWithTarget(match.path, {
+                                                                    forceNewBlock: event.ctrlKey || event.metaKey,
+                                                                })
+                                                            );
                                                         }}
                                                     >
                                                         <i
@@ -879,10 +887,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                         ? "bg-white/10"
                                                                         : "hover:bg-white/5"
                                                                 )}
-                                                                onClick={() => {
+                                                                onClick={(event) => {
                                                                     fireAndForget(() =>
                                                                         model.openPathWithTarget(match.path, {
                                                                             lineNumber: match.linenumber,
+                                                                            forceNewBlock:
+                                                                                event.ctrlKey || event.metaKey,
                                                                         })
                                                                     );
                                                                 }}

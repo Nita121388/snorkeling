@@ -92,7 +92,28 @@ func TestStripClaudeSessionArgs(t *testing.T) {
 	}
 }
 
-func TestFindLatestCodexSessionId(t *testing.T) {
+func TestFindUniqueCodexSessionId(t *testing.T) {
+	tmpHome := t.TempDir()
+	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	sessionDir := filepath.Join(tmpHome, ".codex", "sessions", "2026", "04", "18")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	sessionPath := filepath.Join(sessionDir, "rollout-2026-04-18T12-00-01-111.jsonl")
+	data := `{"type":"session_meta","payload":{"id":"session-a","cwd":"/tmp/project-a","timestamp":"2026-04-18T12:00:01.000Z"}}` + "\n"
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatalf("write session failed: %v", err)
+	}
+	sessionId, count, err := findUniqueCodexSessionId(tmpHome, "/tmp/project-a", startTs)
+	if err != nil {
+		t.Fatalf("findUniqueCodexSessionId returned error: %v", err)
+	}
+	if sessionId != "session-a" || count != 1 {
+		t.Fatalf("expected session-a with count 1, got session=%q count=%d", sessionId, count)
+	}
+}
+
+func TestFindUniqueCodexSessionIdRejectsAmbiguousSameCwdCandidates(t *testing.T) {
 	tmpHome := t.TempDir()
 	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
 	sessionDir := filepath.Join(tmpHome, ".codex", "sessions", "2026", "04", "18")
@@ -109,16 +130,16 @@ func TestFindLatestCodexSessionId(t *testing.T) {
 	if err := os.WriteFile(sessionB, []byte(dataB), 0o644); err != nil {
 		t.Fatalf("write session B failed: %v", err)
 	}
-	sessionId, err := findLatestCodexSessionId(tmpHome, "/tmp/project-a", startTs)
+	sessionId, count, err := findUniqueCodexSessionId(tmpHome, "/tmp/project-a", startTs)
 	if err != nil {
-		t.Fatalf("findLatestCodexSessionId returned error: %v", err)
+		t.Fatalf("findUniqueCodexSessionId returned error: %v", err)
 	}
-	if sessionId != "session-b" {
-		t.Fatalf("expected latest session-b, got %q", sessionId)
+	if sessionId != "" || count != 2 {
+		t.Fatalf("expected ambiguous empty session with count 2, got session=%q count=%d", sessionId, count)
 	}
 }
 
-func TestFindLatestCodexSessionIdIgnoresOldSessionBeforeStart(t *testing.T) {
+func TestFindUniqueCodexSessionIdIgnoresOldSessionBeforeStart(t *testing.T) {
 	tmpHome := t.TempDir()
 	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
 	sessionDir := filepath.Join(tmpHome, ".codex", "sessions", "2026", "04", "18")
@@ -135,11 +156,11 @@ func TestFindLatestCodexSessionIdIgnoresOldSessionBeforeStart(t *testing.T) {
 	if err := os.WriteFile(newSession, []byte(newData), 0o644); err != nil {
 		t.Fatalf("write new session failed: %v", err)
 	}
-	sessionId, err := findLatestCodexSessionId(tmpHome, "/tmp/project-a", startTs)
+	sessionId, count, err := findUniqueCodexSessionId(tmpHome, "/tmp/project-a", startTs)
 	if err != nil {
-		t.Fatalf("findLatestCodexSessionId returned error: %v", err)
+		t.Fatalf("findUniqueCodexSessionId returned error: %v", err)
 	}
-	if sessionId != "new-session" {
-		t.Fatalf("expected new-session, got %q", sessionId)
+	if sessionId != "new-session" || count != 1 {
+		t.Fatalf("expected new-session with count 1, got session=%q count=%d", sessionId, count)
 	}
 }

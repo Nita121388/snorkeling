@@ -99,10 +99,19 @@ export function shouldOpenWithDefaultApp(fileInfo: FileInfo, conn: string): bool
     return !canPreviewFileInfo(fileInfo);
 }
 
-export async function openPreviewEntry(model: PreviewModel, fileInfo: FileInfo, conn: string): Promise<void> {
+type OpenPreviewEntryOptions = {
+    forceNewBlock?: boolean;
+};
+
+export async function openPreviewEntry(
+    model: PreviewModel,
+    fileInfo: FileInfo,
+    conn: string,
+    options?: OpenPreviewEntryOptions
+): Promise<void> {
     if (shouldOpenWithDefaultApp(fileInfo, conn)) {
         getApi().openNativePath(fileInfo.path);
         return;
     }
-    await model.openPathWithTarget(fileInfo.path);
+    await model.openPathWithTarget(fileInfo.path, options);
 }

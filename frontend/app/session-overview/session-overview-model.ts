@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockModel } from "@/app/block/block-model";
-import { globalStore, refocusNode, setActiveTab } from "@/app/store/global";
+import { atoms, createBlock, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
 import * as jotai from "jotai";
+
+const SessionOverviewView = "sessionoverview";
 
 export class SessionOverviewModel {
     private static instance: SessionOverviewModel | null = null;
 
-    isOpenAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
+    isOpenAtom = jotai.atom((get) => {
+        const tabId = get(atoms.staticTabId);
+        if (!tabId) return false;
+        return findSessionOverviewBlockIdInTab(tabId, get) !== "";
+    });
     displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
     blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
 
@@ -21,16 +27,22 @@ export class SessionOverviewModel {
         return SessionOverviewModel.instance;
     }
 
-    open(): void {
-        globalStore.set(this.isOpenAtom, true);
-    }
-
-    close(): void {
-        globalStore.set(this.isOpenAtom, false);
-    }
-
-    toggle(): void {
-        globalStore.set(this.isOpenAtom, !globalStore.get(this.isOpenAtom));
+    async open(): Promise<void> {
+        const tabId = globalStore.get(atoms.staticTabId);
+        if (!tabId) return;
+        const existingBlockId = findSessionOverviewBlockIdInTab(tabId, globalStore.get);
+        if (existingBlockId) {
+            refocusNode(existingBlockId);
+            return;
+        }
+        const blockId = await createBlock({
+            meta: {
+                view: SessionOverviewView,
+                "frame:title": "Overview",
+                icon: "list-tree",
+            },
+        });
+        window.setTimeout(() => refocusNode(blockId), 80);
     }
 
     setDisplayLimit(limit: number): void {
@@ -61,6 +73,17 @@ export class SessionOverviewModel {
             window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
         }
     }
+}
+
+function findSessionOverviewBlockIdInTab(tabId: string, get: jotai.Getter): string {
+    const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    for (const blockId of tab?.blockids ?? []) {
+        const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        if (block?.meta?.view === SessionOverviewView) {
+            return blockId;
+        }
+    }
+    return "";
 }
 
 const DisplayLimitStorageKey = "snorkeling:session-overview:display-limit";

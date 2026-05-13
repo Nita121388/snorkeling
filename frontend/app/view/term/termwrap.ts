@@ -17,6 +17,7 @@ import {
     WOS,
 } from "@/store/global";
 import * as services from "@/store/services";
+import { copyText } from "@/util/clipboard";
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
 import { base64ToArray, fireAndForget } from "@/util/util";
 import { FitAddon } from "@xterm/addon-fit";
@@ -406,7 +407,7 @@ export class TermWrap {
                         return;
                     }
                     if (selectedText.length > 0) {
-                        navigator.clipboard.writeText(selectedText);
+                        fireAndForget(() => copyText(selectedText));
                     }
                 })
             )

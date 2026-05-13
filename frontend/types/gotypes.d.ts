@@ -47,6 +47,7 @@ declare global {
         id: string;
         refresh?: boolean;
         tail?: number;
+        includeTools?: boolean;
     };
 
     // aisessionsservice.AISessionsListRequest

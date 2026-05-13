@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import {
     collapsedMessagePreviewLength,
     collapsibleMessageCharCount,
@@ -47,6 +48,18 @@ export function outlinePreview(message: Message): string {
     return text.slice(0, 96) + "...";
 }
 
+export function formatToolCallPreview(toolCall: ToolCall): string {
+    const summary = toolCall.summary?.replace(/\s+/g, " ").trim();
+    const output = toolCall.output?.replace(/\s+/g, " ").trim();
+    if (summary) {
+        return summary.length <= 120 ? summary : `${summary.slice(0, 120)}...`;
+    }
+    if (output) {
+        return output.length <= 120 ? output : `${output.slice(0, 120)}...`;
+    }
+    return "No details";
+}
+
 export function outlineRoleClass(message: Message): string {
     switch (message.role) {
         case "user":
@@ -90,20 +103,7 @@ export function writeSortPreference(descending: boolean): void {
 }
 
 export async function copyText(text: string): Promise<void> {
-    if (!text) return;
-    if (navigator?.clipboard?.writeText != null) {
-        await navigator.clipboard.writeText(text);
-        return;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textarea);
+    await writeTextToClipboard(text);
 }
 
 export function dirname(path: string): string {

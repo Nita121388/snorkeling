@@ -142,7 +142,7 @@ func (m *Manager) Refresh(ctx context.Context) (IndexStats, []error) {
 	return idx.RefreshSummaries(ctx, m.Providers)
 }
 
-func (m *Manager) Load(ctx context.Context, identifier string, refresh bool) (SessionDetail, error) {
+func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions) (SessionDetail, error) {
 	summary, err := m.resolveSession(ctx, identifier)
 	if err != nil {
 		return SessionDetail{}, err
@@ -156,7 +156,18 @@ func (m *Manager) Load(ctx context.Context, identifier string, refresh bool) (Se
 		return SessionDetail{}, err
 	}
 	summary.MessageCount = readableMessageCount(messages)
-	return SessionDetail{Summary: summary, Messages: messages}, nil
+	detail := SessionDetail{Summary: summary, Messages: messages}
+	if opts.IncludeTools {
+		toolProvider, ok := provider.(ToolCallProvider)
+		if ok {
+			toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
+			if err != nil {
+				return SessionDetail{}, err
+			}
+			detail.ToolCalls = toolCalls
+		}
+	}
+	return detail, nil
 }
 
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {

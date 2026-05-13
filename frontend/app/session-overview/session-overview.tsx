@@ -311,7 +311,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
 
     if (vertical) {
         return (
-            <Tooltip content="Open Session Overview" placement="right" hideOnClick divClassName="flex">
+            <Tooltip content="Open Overview" placement="right" hideOnClick divClassName="flex">
                 <button
                     type="button"
                     className={cn(
@@ -319,8 +319,8 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
                         open && "is-open",
                         unreadBlocks.length > 0 && "has-unread"
                     )}
-                    onClick={() => model.toggle()}
-                    aria-label="Open Session Overview"
+                    onClick={() => void model.open()}
+                    aria-label="Open Overview"
                 >
                     {icon}
                     <span>Overview</span>
@@ -330,13 +330,13 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         );
     }
     return (
-        <Tooltip content="Open Session Overview" placement="bottom" hideOnClick divClassName="flex">
+        <Tooltip content="Open Overview" placement="bottom" hideOnClick divClassName="flex">
             <button
                 type="button"
                 className={cn("session-overview-tabbutton", open && "is-open", unreadBlocks.length > 0 && "has-unread")}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                onClick={() => model.toggle()}
-                aria-label="Open Session Overview"
+                onClick={() => void model.open()}
+                aria-label="Open Overview"
             >
                 {icon}
                 {badge}
@@ -592,23 +592,14 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
 
 function SessionOverviewPanel() {
     const model = SessionOverviewModel.getInstance();
-    const open = jotai.useAtomValue(model.isOpenAtom);
     const workspace = jotai.useAtomValue(atoms.workspace);
     const displayLimit = jotai.useAtomValue(model.displayLimitAtom);
     const viewedAt = jotai.useAtomValue(model.blockViewedAtAtom);
     const blocks = useOverviewBlocks(workspace);
     const details = useSessionDetails(blocks);
-    const now = useNow(open);
+    const now = useNow(true);
     const tabGroups = useTabGroups(workspace, blocks);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
-
-    useEffect(() => {
-        if (!open) {
-            setSelected(null);
-        }
-    }, [open]);
-
-    if (!open) return null;
 
     const unreadCount = blocks.filter((block) => {
         const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
@@ -617,10 +608,10 @@ function SessionOverviewPanel() {
 
     return (
         <>
-            <aside className="session-overview-panel" aria-label="Session Overview">
+            <div className="session-overview-panel" aria-label="Overview">
                 <div className="session-overview-header">
                     <div>
-                        <div className="session-overview-title">Session Overview</div>
+                        <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
                             {blocks.length} blocks · {unreadCount} unread
                         </div>
@@ -636,9 +627,6 @@ function SessionOverviewPanel() {
                                 onChange={(event) => model.setDisplayLimit(Number(event.target.value))}
                             />
                         </label>
-                        <button type="button" className="session-overview-icon-button" onClick={() => model.close()}>
-                            <i className={makeIconClass("xmark", false)} />
-                        </button>
                     </div>
                 </div>
                 <div className="session-overview-body">
@@ -661,7 +649,7 @@ function SessionOverviewPanel() {
                         ))
                     )}
                 </div>
-            </aside>
+            </div>
             <MessageDialog
                 message={selected?.message ?? null}
                 block={selected?.block ?? null}
@@ -679,6 +667,16 @@ function SessionOverviewPanel() {
 
 function setActiveTabAndCloseMenus(tabId: string): void {
     setActiveTab(tabId);
+}
+
+export class SessionOverviewViewModel implements ViewModel {
+    viewType = "sessionoverview";
+    viewIcon = jotai.atom("list-tree");
+    viewName = jotai.atom("Overview");
+    noPadding = jotai.atom(true);
+    viewComponent = SessionOverviewPanel as ViewComponent;
+
+    constructor(_: ViewModelInitType) {}
 }
 
 export { SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };

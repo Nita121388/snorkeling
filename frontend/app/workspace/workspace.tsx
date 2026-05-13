@@ -5,7 +5,6 @@ import { AIPanel } from "@/app/aipanel/aipanel";
 import { ErrorBoundary } from "@/app/element/errorboundary";
 import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
-import { SessionOverviewPanel } from "@/app/session-overview/session-overview";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
 import { VTabBar } from "@/app/tab/vtabbar";
@@ -160,7 +159,6 @@ const WorkspaceElem = memo(() => {
                             ) : (
                                 <div className="flex flex-row h-full min-w-0 w-full">
                                     <TabContent key={tabId} tabId={tabId} noTopPadding={showLeftTabBar && isMacOS()} />
-                                    <SessionOverviewPanel />
                                     {widgetsSidebarVisible && <Widgets />}
                                 </div>
                             )}

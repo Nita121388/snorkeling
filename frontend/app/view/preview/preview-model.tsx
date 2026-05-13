@@ -57,6 +57,7 @@ const PreviewSearchLineMetaKey = "preview:searchline";
 
 type PreviewOpenPathOptions = {
     lineNumber?: number;
+    forceNewBlock?: boolean;
 };
 
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
@@ -941,6 +942,11 @@ export class PreviewModel implements ViewModel {
     }
 
     async openPathWithTarget(newPath: string, options?: PreviewOpenPathOptions) {
+        if (options?.forceNewBlock) {
+            const direction = this.getOpenTargetDirection();
+            await this.openPathInNewBlock(newPath, direction, options);
+            return;
+        }
         const direction = this.getOpenTargetDirection();
         if (direction === "off") {
             await this.goHistory(newPath, options);

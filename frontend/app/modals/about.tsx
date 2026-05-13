@@ -3,14 +3,15 @@
 
 import Logo from "@/app/asset/logo.svg";
 import { OnboardingGradientBg } from "@/app/onboarding/onboarding-common";
-import { atoms } from "@/app/store/global";
+import { atoms, getApi } from "@/app/store/global";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { copyText } from "@/util/clipboard";
 import { isDev } from "@/util/isdev";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Modal } from "./modal";
 
 const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
@@ -25,11 +26,54 @@ interface AboutModalVProps {
 
 const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProps) => {
     const currentDate = new Date();
+    const [debugVisible, setDebugVisible] = useState(false);
+    const [debugText, setDebugText] = useState("");
+    const [debugLoading, setDebugLoading] = useState(false);
+    const [debugError, setDebugError] = useState("");
+    const [copyStatus, setCopyStatus] = useState("");
+
+    const loadDebugInfo = useCallback(async () => {
+        setDebugLoading(true);
+        setDebugError("");
+        try {
+            const debugInfo = await getApi().getAppDebugInfo();
+            setDebugText(JSON.stringify(debugInfo, null, 2));
+        } catch (e) {
+            setDebugError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setDebugLoading(false);
+        }
+    }, []);
+
+    const toggleDebugInfo = useCallback(() => {
+        if (debugVisible) {
+            setDebugVisible(false);
+            return;
+        }
+        setDebugVisible(true);
+        if (debugText === "" && !debugLoading) {
+            fireAndForget(() => loadDebugInfo());
+        }
+    }, [debugLoading, debugText, debugVisible, loadDebugInfo]);
+
+    const copyDebugInfo = useCallback(() => {
+        fireAndForget(async () => {
+            let textToCopy = debugText;
+            if (textToCopy === "") {
+                const debugInfo = await getApi().getAppDebugInfo();
+                textToCopy = JSON.stringify(debugInfo, null, 2);
+                setDebugText(textToCopy);
+            }
+            await copyText(textToCopy);
+            setCopyStatus("Copied");
+            window.setTimeout(() => setCopyStatus(""), 1500);
+        });
+    }, [debugText]);
 
     return (
-        <Modal className="pt-[34px] pb-[34px] overflow-hidden w-[450px]" onClose={onClose}>
+        <Modal className="pt-[34px] pb-[34px] overflow-hidden w-[min(720px,calc(100vw-32px))]" onClose={onClose}>
             <OnboardingGradientBg />
-            <div className="flex flex-col gap-[26px] w-full relative z-10">
+            <div className="flex flex-col gap-[22px] w-full relative z-10">
                 <div className="flex flex-col items-center justify-center gap-4 self-stretch w-full text-center">
                     <Logo />
                     <div className="text-[25px]">Snorkeling</div>
@@ -83,6 +127,50 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         <i className="fa-sharp fa-light fa-globe mr-2"></i>Wave Website
                     </a>
                 </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 self-stretch w-full">
+                    <button
+                        type="button"
+                        onClick={toggleDebugInfo}
+                        className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
+                    >
+                        <i className="fa-sharp fa-light fa-bug mr-2" />
+                        {debugVisible ? "Hide Debug Info" : "Show Debug Info"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={copyDebugInfo}
+                        className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
+                    >
+                        <i className="fa-sharp fa-light fa-copy mr-2" />
+                        {copyStatus || "Copy Debug Info"}
+                    </button>
+                    {debugVisible && (
+                        <button
+                            type="button"
+                            onClick={() => fireAndForget(() => loadDebugInfo())}
+                            disabled={debugLoading}
+                            className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg disabled:opacity-50 transition-colors duration-200"
+                        >
+                            <i className="fa-sharp fa-light fa-rotate mr-2" />
+                            Refresh
+                        </button>
+                    )}
+                </div>
+                {debugVisible && (
+                    <div className="self-stretch w-full">
+                        {debugError ? (
+                            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                                {debugError}
+                            </div>
+                        ) : (
+                            <textarea
+                                readOnly
+                                value={debugLoading && debugText === "" ? "Loading..." : debugText}
+                                className="h-[220px] w-full resize-none rounded border border-border bg-black/30 p-2 font-mono text-[11px] leading-4 outline-none"
+                            />
+                        )}
+                    </div>
+                )}
                 <div className="items-center gap-4 self-stretch w-full text-center">
                     &copy; {currentDate.getFullYear()} Command Line Inc.
                 </div>

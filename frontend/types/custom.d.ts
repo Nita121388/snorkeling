@@ -90,6 +90,7 @@ declare global {
         getHomeDir: () => string; // get-home-dir
         getWebviewPreload: () => string; // get-webview-preload
         getAboutModalDetails: () => AboutModalDetails; // get-about-modal-details
+        getAppDebugInfo: () => Promise<AppDebugInfo>; // get-app-debug-info
         getZoomFactor: () => number; // get-zoom-factor
         showWorkspaceAppMenu: (workspaceId: string) => void; // workspace-appmenu-show
         showBuilderAppMenu: (builderId: string) => void; // builder-appmenu-show
@@ -134,6 +135,7 @@ declare global {
         closeBuilderWindow: () => void; // close-builder-window
         incrementTermCommands: (opts?: { isRemote?: boolean; isWsl?: boolean; isDurable?: boolean }) => void; // increment-term-commands
         nativePaste: () => void; // native-paste
+        writeClipboardText: (text: string) => Promise<boolean>; // write-clipboard-text
         openBuilder: (appId?: string) => void; // open-builder
         setBuilderWindowAppId: (appId: string) => void; // set-builder-window-appid
         doRefresh: () => void; // do-refresh
@@ -387,6 +389,55 @@ declare global {
     interface AboutModalDetails {
         version: string;
         buildTime: number;
+    }
+
+    interface AppDebugInfoLog {
+        path: string;
+        exists: boolean;
+        size?: number;
+        modifiedAt?: string;
+        tail?: string;
+        error?: string;
+    }
+
+    interface AppDebugInfo {
+        generatedAt: string;
+        app: {
+            name: string;
+            version: string;
+            buildTime: number;
+            isPackaged: boolean;
+            isDev: boolean;
+        };
+        runtime: {
+            platform: NodeJS.Platform;
+            arch: string;
+            electron?: string;
+            chrome?: string;
+            node?: string;
+            v8?: string;
+        };
+        updater: {
+            status: UpdaterStatus | null;
+            channel: string;
+            autoCheckEnabled: boolean | null;
+            intervalms: number | null;
+            lastUpdateCheck: string | null;
+            updateSupport: {
+                supported: boolean;
+                reason?: string;
+            } | null;
+            availableUpdateReleaseName: string | null;
+        };
+        paths: {
+            home: string;
+            data: string;
+            config: string;
+            logFile: string;
+        };
+        logs: {
+            waveapp: AppDebugInfoLog;
+        };
     }
 
     type BlockComponentModel = {

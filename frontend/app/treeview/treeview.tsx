@@ -72,7 +72,7 @@ export interface TreeViewProps {
     className?: string;
     selectedId?: string;
     expandDirectoriesOnSingleClick?: boolean;
-    onOpenFile?: (id: string, node: TreeNodeData) => void;
+    onOpenFile?: (id: string, node: TreeNodeData, event: MouseEvent<HTMLDivElement>) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
@@ -616,7 +616,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                         toggleExpand(row.id);
                                     }
                                 }}
-                                onDoubleClick={() => {
+                                onDoubleClick={(event) => {
                                     if (row.kind !== "node") {
                                         return;
                                     }
@@ -628,7 +628,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                         return;
                                     }
                                     if (row.node != null) {
-                                        onOpenFile?.(row.id, row.node);
+                                        onOpenFile?.(row.id, row.node, event);
                                     }
                                 }}
                                 onContextMenu={(event) => {

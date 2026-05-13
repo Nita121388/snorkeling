@@ -30,6 +30,12 @@ func TestMakeUniqueTabNameFromBase(t *testing.T) {
 			existing: []string{"Tab-01"},
 			expected: "Tab-02",
 		},
+		{
+			name:     "source tab name increments numerically",
+			baseName: "Agent",
+			existing: []string{"Agent", "Agent-01", "Agent-02"},
+			expected: "Agent-03",
+		},
 	}
 
 	for _, tc := range tests {

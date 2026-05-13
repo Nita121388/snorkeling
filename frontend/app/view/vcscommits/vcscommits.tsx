@@ -10,6 +10,8 @@ import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
+const VcsCommitsRpcTimeoutMs = 30000;
+
 type VcsCommitsEnv = WaveEnv;
 
 type CommitFilesMap = Record<string, VcsCommitFileInfo[]>;
@@ -180,7 +182,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                         until: isBlank(until) ? "" : until,
                         keyword: isBlank(keyword) ? "" : keyword,
                     },
-                    { route }
+                    { route, timeout: VcsCommitsRpcTimeoutMs }
                 );
                 if (isCanceled) {
                     return;
@@ -293,7 +295,11 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
     };
 
     if (connStatus?.status !== "connected") {
-        return <div className="h-full w-full flex items-center justify-center text-sm text-muted">Connection unavailable.</div>;
+        return (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">
+                Connection unavailable.
+            </div>
+        );
     }
 
     return (
@@ -354,7 +360,9 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
 
                 {loading && <div className="text-sm text-muted">Loading commits...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
-                {!loading && !error && commits.length === 0 && <div className="text-sm text-muted">No commits found.</div>}
+                {!loading && !error && commits.length === 0 && (
+                    <div className="text-sm text-muted">No commits found.</div>
+                )}
 
                 {!loading && !error && commits.length > 0 && (
                     <div className="flex flex-col gap-1.5">
@@ -365,7 +373,10 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                             const filesError = filesErrorByRevision[revision] ?? "";
                             const files = filesByRevision[revision] ?? [];
                             return (
-                                <div key={`${revision}-${idx}`} className="rounded border border-white/10 bg-black/20 px-2 py-1.5">
+                                <div
+                                    key={`${revision}-${idx}`}
+                                    className="rounded border border-white/10 bg-black/20 px-2 py-1.5"
+                                >
                                     <div
                                         className={`flex items-center gap-2 text-xs ${!isBlank(revision) ? "cursor-pointer" : ""}`}
                                         onClick={() => toggleCommit(commit)}
@@ -381,12 +392,18 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
 
                                     {expanded && (
                                         <div className="mt-1.5 rounded border border-white/10 bg-black/25">
-                                            {filesLoading && <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>}
+                                            {filesLoading && (
+                                                <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
+                                            )}
                                             {!filesLoading && !isBlank(filesError) && (
-                                                <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">{filesError}</div>
+                                                <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">
+                                                    {filesError}
+                                                </div>
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length === 0 && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">No changed files in this commit.</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">
+                                                    No changed files in this commit.
+                                                </div>
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length > 0 && (
                                                 <div className="max-h-[240px] overflow-auto">

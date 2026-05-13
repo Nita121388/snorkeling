@@ -157,11 +157,27 @@ func (svc *ObjectService) MoveBlockToNewTab_Meta() tsgenmeta.MethodMeta {
 	}
 }
 
+func resolveMoveBlockToNewTabBaseName(sourceTabName string, fallbackBaseName string) string {
+	sourceTabName = strings.TrimSpace(sourceTabName)
+	if sourceTabName != "" {
+		return sourceTabName
+	}
+	fallbackBaseName = strings.TrimSpace(fallbackBaseName)
+	if fallbackBaseName != "" {
+		return fallbackBaseName
+	}
+	return "Tab"
+}
+
 func (svc *ObjectService) MoveBlockToNewTab(ctx context.Context, blockId string, tabNameBase string) (string, waveobj.UpdatesRtnType, error) {
 	ctx = waveobj.ContextWithUpdates(ctx)
 	sourceTabId, err := wstore.DBFindTabForBlockId(ctx, blockId)
 	if err != nil {
 		return "", nil, fmt.Errorf("error finding source tab: %w", err)
+	}
+	sourceTab, err := wstore.DBMustGet[*waveobj.Tab](ctx, sourceTabId)
+	if err != nil {
+		return "", nil, fmt.Errorf("error finding source tab object: %w", err)
 	}
 	sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, sourceTabId)
 	if err != nil {
@@ -170,6 +186,7 @@ func (svc *ObjectService) MoveBlockToNewTab(ctx context.Context, blockId string,
 	if sourceWorkspaceId == "" {
 		return "", nil, fmt.Errorf("source tab %q has no workspace", sourceTabId)
 	}
+	tabNameBase = resolveMoveBlockToNewTabBaseName(sourceTab.Name, tabNameBase)
 	tabName, err := wcore.MakeUniqueTabName(ctx, sourceWorkspaceId, tabNameBase)
 	if err != nil {
 		return "", nil, fmt.Errorf("error making unique tab name: %w", err)

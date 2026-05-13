@@ -569,8 +569,10 @@ function TableRow({
         <div
             className={clsx("dir-table-body-row", { focused: focusIndex === idx, selected })}
             data-rowindex={idx}
-            onDoubleClick={() => {
-                fireAndForget(() => openPreviewEntry(model, row.original, connection));
+            onDoubleClick={(e) => {
+                fireAndForget(() =>
+                    openPreviewEntry(model, row.original, connection, { forceNewBlock: e.ctrlKey || e.metaKey })
+                );
                 setSearch("");
                 globalStore.set(model.directorySearchActive, false);
             }}

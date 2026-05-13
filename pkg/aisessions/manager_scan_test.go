@@ -57,7 +57,7 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 		t.Fatalf("unexpected note session: %#v", note)
 	}
 
-	detail, err := manager.Load(context.Background(), "test-id", false)
+	detail, err := manager.Load(context.Background(), "test-id", LoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +69,9 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	}
 	if len(detail.Messages) != 4 {
 		t.Fatalf("expected full detail to retain 4 parsed messages, got %d", len(detail.Messages))
+	}
+	if detail.ToolCalls != nil {
+		t.Fatalf("expected default detail load to omit tool calls, got %#v", detail.ToolCalls)
 	}
 
 	path, err := manager.Path(context.Background(), "test-id", false)
@@ -134,7 +137,7 @@ func TestManagerReadableMessageCountForClaude(t *testing.T) {
 		t.Fatalf("expected 2 readable messages in list, got %d (%#v)", results[0].MessageCount, results[0])
 	}
 
-	detail, err := manager.Load(context.Background(), "claude-id", false)
+	detail, err := manager.Load(context.Background(), "claude-id", LoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +146,17 @@ func TestManagerReadableMessageCountForClaude(t *testing.T) {
 	}
 	if len(detail.Messages) != 4 {
 		t.Fatalf("expected full detail to retain 4 parsed messages, got %d", len(detail.Messages))
+	}
+	if detail.ToolCalls != nil {
+		t.Fatalf("expected default detail load to omit tool calls, got %#v", detail.ToolCalls)
+	}
+
+	detailWithTools, err := manager.Load(context.Background(), "claude-id", LoadOptions{IncludeTools: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detailWithTools.ToolCalls) != 1 || detailWithTools.ToolCalls[0].Name != "Write" {
+		t.Fatalf("expected one loaded tool call, got %#v", detailWithTools.ToolCalls)
 	}
 }
 

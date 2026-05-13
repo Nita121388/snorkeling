@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Tooltip } from "@/app/element/tooltip";
+import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiSessionsViewModel } from "./aisessions";
@@ -8,30 +10,127 @@ import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { MessageCard } from "./session-message";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
-import { isReadableMessage, outlinePreview, outlineRoleClass, restoreCommandForSession, shortSessionId } from "./utils";
+import {
+    formatDateTimeToSecond,
+    formatToolCallPreview,
+    isReadableMessage,
+    outlinePreview,
+    outlineRoleClass,
+    restoreCommandForSession,
+    shortSessionId,
+    trimMessageText,
+} from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+const OutlineTooltipPreviewLength = 1800;
+const ToolCallPreviewLength = 1200;
+
+function outlineTooltipText(message: Message): string {
+    const text = trimMessageText(message.text).trim();
+    if (text.length <= OutlineTooltipPreviewLength) {
+        return text || "(empty)";
+    }
+    return `${text.slice(0, OutlineTooltipPreviewLength).trimEnd()}\n...`;
+}
+
+function toolCallDetailText(toolCall: ToolCall): string {
+    return [
+        toolCall.summary ? `Input:\n${toolCall.summary}` : "",
+        toolCall.output ? `Output:\n${toolCall.output}` : "",
+        toolCall.exitCode ? `Exit code: ${toolCall.exitCode}` : "",
+    ]
+        .filter(Boolean)
+        .join("\n\n");
+}
+
+function trimToolCallText(text: string): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= ToolCallPreviewLength) return trimmed;
+    return `${trimmed.slice(0, ToolCallPreviewLength).trimEnd()}\n...`;
+}
+
+function ToolCallCard({
+    toolCall,
+    expanded,
+    onToggle,
+}: {
+    toolCall: ToolCall;
+    expanded: boolean;
+    onToggle: () => void;
+}) {
+    const detailText = toolCallDetailText(toolCall);
+    const hasError = Boolean(toolCall.exitCode);
+    return (
+        <div className="rounded border border-border bg-bg/50 text-xs">
+            <button
+                type="button"
+                className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-hover"
+                onClick={onToggle}
+            >
+                <i
+                    className={cn(
+                        "fa-sharp fa-solid mt-0.5 shrink-0",
+                        expanded ? "fa-chevron-down" : "fa-chevron-right"
+                    )}
+                />
+                <span className={cn("mt-0.5 h-2 w-2 shrink-0 rounded-full", hasError ? "bg-error" : "bg-accent")} />
+                <span className="min-w-0 flex-1">
+                    <span className="mb-1 flex flex-wrap items-center gap-2 text-[10px] uppercase text-secondary">
+                        <span>#{toolCall.seq}</span>
+                        <span>{toolCall.name || "tool"}</span>
+                        {hasError ? <span className="text-error">exit {toolCall.exitCode}</span> : null}
+                    </span>
+                    <span className="block truncate text-primary">{formatToolCallPreview(toolCall)}</span>
+                </span>
+            </button>
+            {expanded ? (
+                <div className="border-t border-border px-3 py-2">
+                    {detailText ? (
+                        <>
+                            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
+                                {trimToolCallText(detailText)}
+                            </pre>
+                            <div className="mt-2 flex items-center gap-2">
+                                <CopyIconButton text={detailText} label="Copy tool call detail" size="xs" />
+                                {toolCall.output ? (
+                                    <CopyIconButton text={toolCall.output} label="Copy tool output" size="xs" />
+                                ) : null}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-secondary">No tool detail.</div>
+                    )}
+                </div>
+            ) : null}
+        </div>
+    );
+}
 
 export function SessionDetailPane({
     model,
     detail,
     loading,
+    toolCallsLoading,
     restoring,
     deleting,
 }: {
     model: AiSessionsViewModel;
     detail: SessionDetail | null;
     loading: boolean;
+    toolCallsLoading: boolean;
     restoring: boolean;
     deleting: boolean;
 }) {
     const [noteDraft, setNoteDraft] = useState("");
     const [noteCollapsed, setNoteCollapsed] = useState(true);
     const [outlineOpen, setOutlineOpen] = useState(false);
+    const [userMessageListOpen, setUserMessageListOpen] = useState(false);
+    const [showToolCalls, setShowToolCalls] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
     const [collapsedMessages, setCollapsedMessages] = useState<Record<number, boolean>>({});
+    const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
@@ -47,7 +146,10 @@ export function SessionDetailPane({
         setNoteCollapsed(true);
         setNoteSaveStatus("idle");
         setCollapsedMessages({});
+        setExpandedToolCalls({});
+        setShowToolCalls(false);
         setVisibleMessageCount(defaultVisibleMessageCount);
+        setUserMessageListOpen(false);
     }, [detail?.summary?.key]);
 
     const readableMessages = useMemo(
@@ -62,6 +164,8 @@ export function SessionDetailPane({
         () => readableMessages.filter((message) => message.role === "user"),
         [readableMessages]
     );
+    const toolCalls = detail?.toolCalls ?? [];
+    const toolsLoaded = detail?.toolCalls != null;
     const hasPreviousMessages = visibleMessageCount < readableMessages.length;
     const firstVisibleMessage = detailMessages[0];
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
@@ -87,6 +191,20 @@ export function SessionDetailPane({
         setCollapsedMessages((current) => ({ ...current, [seq]: !current[seq] }));
     }, []);
 
+    const toggleToolCallExpanded = useCallback((seq: number) => {
+        setExpandedToolCalls((current) => ({ ...current, [seq]: !current[seq] }));
+    }, []);
+
+    const toggleToolCalls = useCallback(() => {
+        setShowToolCalls((current) => {
+            const next = !current;
+            if (next && !toolsLoaded) {
+                void model.loadDetailTools(false);
+            }
+            return next;
+        });
+    }, [model, toolsLoaded]);
+
     const jumpToMessage = useCallback(
         (seq: number) => {
             if (messageRefs.current[seq]) {
@@ -99,6 +217,14 @@ export function SessionDetailPane({
             setVisibleMessageCount((current) => Math.max(current, readableMessages.length - targetIndex));
         },
         [readableMessages, scrollToVisibleMessage]
+    );
+
+    const openUserMessage = useCallback(
+        (seq: number) => {
+            setUserMessageListOpen(false);
+            jumpToMessage(seq);
+        },
+        [jumpToMessage]
     );
 
     useEffect(() => {
@@ -207,6 +333,13 @@ export function SessionDetailPane({
                                     !noteCollapsed && "border-accent text-accent"
                                 )}
                                 onClick={() => setNoteCollapsed((current) => !current)}
+                            />
+                            <IconButton
+                                icon={showToolCalls && toolCallsLoading ? "fa-spinner animate-spin" : "fa-wrench"}
+                                label={showToolCalls ? "Hide tool calls" : "Show tool calls"}
+                                className={cn(showToolCalls && "border-accent bg-accent/10 text-accent")}
+                                disabled={toolCallsLoading && !toolsLoaded}
+                                onClick={toggleToolCalls}
                             />
                             {summary.note ? (
                                 <div
@@ -351,6 +484,38 @@ export function SessionDetailPane({
                                         }}
                                     />
                                 ))}
+                                {showToolCalls ? (
+                                    <div className="rounded border border-border bg-panel/70 p-3">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <div className="text-xxs uppercase text-secondary">Tool Calls</div>
+                                            <div className="text-[11px] text-secondary">
+                                                {toolsLoaded
+                                                    ? `${toolCalls.length} tool call${toolCalls.length === 1 ? "" : "s"}`
+                                                    : "Loading..."}
+                                            </div>
+                                        </div>
+                                        {!toolsLoaded ? (
+                                            <div className="rounded border border-border bg-bg/40 px-3 py-4 text-center text-xs text-secondary">
+                                                Loading tool calls...
+                                            </div>
+                                        ) : toolCalls.length === 0 ? (
+                                            <div className="rounded border border-border bg-bg/40 px-3 py-4 text-center text-xs text-secondary">
+                                                No tool calls.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {toolCalls.map((toolCall) => (
+                                                    <ToolCallCard
+                                                        key={toolCall.seq}
+                                                        toolCall={toolCall}
+                                                        expanded={Boolean(expandedToolCalls[toolCall.seq])}
+                                                        onToggle={() => toggleToolCallExpanded(toolCall.seq)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -358,11 +523,18 @@ export function SessionDetailPane({
                         <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
                             <div className="flex h-10 items-center justify-between gap-2 border-b border-border px-3">
                                 <div className="text-xxs uppercase text-secondary">Outline</div>
-                                <IconButton
-                                    icon="fa-chevron-right"
-                                    label="Collapse outline"
-                                    onClick={() => setOutlineOpen(false)}
-                                />
+                                <div className="flex items-center gap-1">
+                                    <IconButton
+                                        icon="fa-window-restore"
+                                        label="Open user message list"
+                                        onClick={() => setUserMessageListOpen(true)}
+                                    />
+                                    <IconButton
+                                        icon="fa-chevron-right"
+                                        label="Collapse outline"
+                                        onClick={() => setOutlineOpen(false)}
+                                    />
+                                </div>
                             </div>
                             <div className="min-h-0 flex-1 overflow-auto p-2">
                                 {outlineMessages.length === 0 ? (
@@ -370,21 +542,38 @@ export function SessionDetailPane({
                                 ) : (
                                     <div className="space-y-1">
                                         {outlineMessages.map((message, index) => (
-                                            <button
+                                            <Tooltip
                                                 key={message.seq}
-                                                className={cn(
-                                                    "flex w-full items-start gap-2 rounded border px-2 py-2 text-left text-xs hover:bg-hover",
-                                                    outlineRoleClass(message)
-                                                )}
-                                                onClick={() => jumpToMessage(message.seq)}
+                                                placement="left"
+                                                openDelay={250}
+                                                content={
+                                                    <div className="max-h-[240px] max-w-[360px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-4">
+                                                        <div className="mb-1 flex items-center gap-2 text-[10px] uppercase text-secondary">
+                                                            <span>User message</span>
+                                                            <span>#{message.seq}</span>
+                                                            {message.timestamp ? (
+                                                                <span>{formatDateTimeToSecond(message.timestamp)}</span>
+                                                            ) : null}
+                                                        </div>
+                                                        {outlineTooltipText(message)}
+                                                    </div>
+                                                }
                                             >
-                                                <span className="mt-0.5 shrink-0 text-[10px] uppercase text-secondary">
-                                                    {index + 1}
-                                                </span>
-                                                <span className="min-w-0 flex-1 break-words text-primary">
-                                                    {outlinePreview(message)}
-                                                </span>
-                                            </button>
+                                                <button
+                                                    className={cn(
+                                                        "flex w-full items-start gap-2 rounded border px-2 py-2 text-left text-xs hover:bg-hover",
+                                                        outlineRoleClass(message)
+                                                    )}
+                                                    onClick={() => jumpToMessage(message.seq)}
+                                                >
+                                                    <span className="mt-0.5 shrink-0 text-[10px] uppercase text-secondary">
+                                                        {index + 1}
+                                                    </span>
+                                                    <span className="min-w-0 flex-1 break-words text-primary">
+                                                        {outlinePreview(message)}
+                                                    </span>
+                                                </button>
+                                            </Tooltip>
                                         ))}
                                     </div>
                                 )}
@@ -411,6 +600,65 @@ export function SessionDetailPane({
                         Loading session detail...
                     </div>
                 </div>
+            ) : null}
+            {userMessageListOpen ? (
+                <Modal
+                    className="w-[min(780px,calc(100vw-32px))] max-h-[calc(100vh-72px)] overflow-hidden pt-10 pb-4"
+                    onClose={() => setUserMessageListOpen(false)}
+                    onClickBackdrop={() => setUserMessageListOpen(false)}
+                >
+                    <div className="flex max-h-[calc(100vh-120px)] min-h-0 w-full flex-col gap-3">
+                        <div className="flex items-start justify-between gap-3 pr-10">
+                            <div className="min-w-0">
+                                <div className="text-base font-medium">User Messages</div>
+                                <div className="mt-1 text-xs text-secondary">
+                                    {outlineMessages.length} message{outlineMessages.length === 1 ? "" : "s"} in this
+                                    session
+                                </div>
+                            </div>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-auto rounded border border-border bg-bg/40 p-2">
+                            {outlineMessages.length === 0 ? (
+                                <div className="px-2 py-3 text-xs text-secondary">No user messages.</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {outlineMessages.map((message, index) => (
+                                        <div
+                                            key={message.seq}
+                                            className="flex w-full items-start gap-3 rounded border border-border bg-panel px-3 py-2 text-xs hover:bg-hover"
+                                        >
+                                            <button
+                                                className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                                                onClick={() => openUserMessage(message.seq)}
+                                            >
+                                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-accent/30 bg-accent/10 text-[10px] text-accent">
+                                                    {index + 1}
+                                                </span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="mb-1 flex flex-wrap items-center gap-2 text-[10px] uppercase text-secondary">
+                                                        <span>#{message.seq}</span>
+                                                        {message.timestamp ? (
+                                                            <span>{formatDateTimeToSecond(message.timestamp)}</span>
+                                                        ) : null}
+                                                    </span>
+                                                    <span className="block whitespace-pre-wrap break-words text-primary">
+                                                        {outlineTooltipText(message)}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                            <CopyIconButton
+                                                text={message.text}
+                                                label="Copy user message"
+                                                size="xs"
+                                                className="mt-0.5"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </Modal>
             ) : null}
         </div>
     );

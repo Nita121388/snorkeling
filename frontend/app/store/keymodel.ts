@@ -736,7 +736,7 @@ function registerGlobalKeys() {
         return true;
     });
     globalKeyMap.set("Cmd:Shift:o", () => {
-        SessionOverviewModel.getInstance().toggle();
+        void SessionOverviewModel.getInstance().open();
         return true;
     });
     const allKeys = Array.from(globalKeyMap.keys());

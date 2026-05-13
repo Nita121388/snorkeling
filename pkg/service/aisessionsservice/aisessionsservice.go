@@ -28,9 +28,10 @@ type AISessionsListResponse struct {
 }
 
 type AISessionsDetailRequest struct {
-	ID      string `json:"id"`
-	Refresh bool   `json:"refresh,omitempty"`
-	Tail    int    `json:"tail,omitempty"`
+	ID           string `json:"id"`
+	Refresh      bool   `json:"refresh,omitempty"`
+	Tail         int    `json:"tail,omitempty"`
+	IncludeTools bool   `json:"includeTools,omitempty"`
 }
 
 type AISessionsSummaryRequest struct {
@@ -79,7 +80,10 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	detail, err := aisessions.NewManager("", nil).Load(ctx, request.ID, request.Refresh)
+	detail, err := aisessions.NewManager("", nil).Load(ctx, request.ID, aisessions.LoadOptions{
+		Refresh:      request.Refresh,
+		IncludeTools: request.IncludeTools,
+	})
 	if err != nil {
 		return nil, err
 	}

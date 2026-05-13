@@ -5,8 +5,8 @@ import * as electron from "electron";
 import { FastAverageColor } from "fast-average-color";
 import fs from "fs";
 import * as child_process from "node:child_process";
-import * as path from "path";
 import { pathToFileURL } from "node:url";
+import * as path from "path";
 import { PNG } from "pngjs";
 import { Readable } from "stream";
 import { RpcApi } from "../frontend/app/store/wshclientapi";
@@ -21,12 +21,20 @@ import {
     setWasActive,
 } from "./emain-activity";
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
-import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-platform";
+import {
+    callWithOriginalXdgCurrentDesktopAsync,
+    getWaveConfigDir,
+    getWaveDataDir,
+    isDev,
+    unameArch,
+    unamePlatform,
+} from "./emain-platform";
 import { getWaveTabViewByWebContentsId } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
 import { getWaveVersion } from "./emain-wavesrv";
 import { createNewWaveWindow, getWaveWindowByWebContentsId } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
+import { getResolvedUpdateChannel, updater } from "./updater";
 
 const electronApp = electron.app;
 
@@ -110,6 +118,108 @@ function normalizeNativePath(rawPath: string): string {
 function makeVSCodeFileUri(localPath: string): string {
     const fileUri = pathToFileURL(localPath).toString();
     return `vscode://file${fileUri.slice("file://".length)}`;
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function redactHomePath(value: string): string {
+    if (typeof value !== "string" || value === "") {
+        return value;
+    }
+    const homeDir = electronApp.getPath("home");
+    if (!homeDir) {
+        return value;
+    }
+    return value.replace(new RegExp(escapeRegExp(homeDir), "g"), "~");
+}
+
+function redactSensitiveText(value: string): string {
+    if (typeof value !== "string" || value === "") {
+        return value;
+    }
+    return redactHomePath(value)
+        .replace(
+            /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|PWD)[A-Za-z0-9_]*)(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;]+)/gi,
+            "$1$2<redacted>"
+        )
+        .replace(/\b(authkey|auth_key|apikey|api_key)(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1$2<redacted>");
+}
+
+function readTextFileTail(filePath: string, maxBytes = 128 * 1024, maxLines = 200): AppDebugInfoLog {
+    const redactedPath = redactHomePath(filePath);
+    try {
+        if (!fs.existsSync(filePath)) {
+            return { path: redactedPath, exists: false };
+        }
+        const stats = fs.statSync(filePath);
+        const length = Math.min(stats.size, maxBytes);
+        const buffer = Buffer.alloc(length);
+        const fd = fs.openSync(filePath, "r");
+        try {
+            fs.readSync(fd, buffer, 0, length, Math.max(0, stats.size - length));
+        } finally {
+            fs.closeSync(fd);
+        }
+        const tail = buffer.toString("utf8").split(/\r?\n/).slice(-maxLines).join("\n").trim();
+        return {
+            path: redactedPath,
+            exists: true,
+            size: stats.size,
+            modifiedAt: stats.mtime.toISOString(),
+            tail: redactSensitiveText(tail),
+        };
+    } catch (e) {
+        return {
+            path: redactedPath,
+            exists: fs.existsSync(filePath),
+            error: redactSensitiveText(e instanceof Error ? e.message : String(e)),
+        };
+    }
+}
+
+function makeAppDebugInfo(): AppDebugInfo {
+    const version = getWaveVersion();
+    const dataDir = getWaveDataDir();
+    const configDir = getWaveConfigDir();
+    const logFile = path.join(dataDir, "waveapp.log");
+    return {
+        generatedAt: new Date().toISOString(),
+        app: {
+            name: electronApp.getName(),
+            version: version.version,
+            buildTime: version.buildTime,
+            isPackaged: electronApp.isPackaged,
+            isDev,
+        },
+        runtime: {
+            platform: unamePlatform,
+            arch: unameArch,
+            electron: process.versions.electron,
+            chrome: process.versions.chrome,
+            node: process.versions.node,
+            v8: process.versions.v8,
+        },
+        updater: {
+            status: updater?.status ?? null,
+            channel: getResolvedUpdateChannel(),
+            autoCheckEnabled: updater?.autoCheckEnabled ?? null,
+            intervalms: updater?.intervalms ?? null,
+            lastUpdateCheck: updater?.lastUpdateCheck?.toISOString?.() ?? null,
+            updateSupport: updater?.updateSupport ?? null,
+            availableUpdateReleaseName: updater?.availableUpdateReleaseName ?? null,
+        },
+        paths: {
+            home: redactHomePath(electronApp.getPath("home")),
+            data: redactHomePath(dataDir),
+            config: redactHomePath(configDir),
+            logFile: redactHomePath(logFile),
+        },
+        logs: {
+            waveapp: readTextFileTail(logFile),
+        },
+    };
 }
 
 async function openPathInVSCode(filePath: string): Promise<void> {
@@ -342,6 +452,10 @@ export function initIpcHandlers() {
         event.returnValue = getWaveVersion() as AboutModalDetails;
     });
 
+    electron.ipcMain.handle("get-app-debug-info", async () => {
+        return makeAppDebugInfo();
+    });
+
     electron.ipcMain.on("get-zoom-factor", (event) => {
         event.returnValue = event.sender.getZoomFactor();
     });
@@ -542,6 +656,14 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("native-paste", (event) => {
         event.sender.paste();
+    });
+
+    electron.ipcMain.handle("write-clipboard-text", async (_event, text: string) => {
+        if (typeof text !== "string" || text === "") {
+            return false;
+        }
+        electron.clipboard.writeText(text);
+        return true;
     });
 
     electron.ipcMain.on("open-builder", (event, appId?: string) => {

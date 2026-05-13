@@ -51,6 +51,7 @@ export class AiSessionsViewModel implements ViewModel {
     queryAtom = jotai.atom<string>("");
     loadingAtom = jotai.atom<boolean>(true);
     detailLoadingAtom = jotai.atom<boolean>(false);
+    toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
@@ -142,6 +143,25 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.errorAtom, getErrorMessage(e));
         } finally {
             globalStore.set(this.detailLoadingAtom, false);
+        }
+    }
+
+    async loadDetailTools(refresh = false): Promise<void> {
+        const currentDetail = globalStore.get(this.detailAtom);
+        const currentSummary = currentDetail?.summary;
+        if (!currentSummary?.key) {
+            return;
+        }
+        globalStore.set(this.toolCallsLoadingAtom, true);
+        globalStore.set(this.errorAtom, "");
+        try {
+            const detail = await this.service.Detail({ id: currentSummary.key, refresh, includeTools: true });
+            globalStore.set(this.detailAtom, detail);
+            this.replaceSession(detail.summary);
+        } catch (e) {
+            globalStore.set(this.errorAtom, getErrorMessage(e));
+        } finally {
+            globalStore.set(this.toolCallsLoadingAtom, false);
         }
     }
 
@@ -277,6 +297,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const query = jotai.useAtomValue(model.queryAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
+    const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
@@ -497,6 +518,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     model={model}
                     detail={detail}
                     loading={detailLoading}
+                    toolCallsLoading={toolCallsLoading}
                     restoring={restoring}
                     deleting={deleting}
                 />

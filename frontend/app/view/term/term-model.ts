@@ -34,43 +34,17 @@ import {
     WOS,
 } from "@/store/global";
 import * as services from "@/store/services";
+import { copyText } from "@/util/clipboard";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
 import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
-import { resolveAgentSessionId, type AgentCommandResolution } from "./agent-session";
+import { resolveAgentSessionId } from "./agent-session";
+import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
 import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
-
-function sessionCopyDebugPreview(value: unknown): string {
-    if (typeof value !== "string") {
-        return "";
-    }
-    const redacted = value
-        .trim()
-        .replace(
-            /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|PWD)[A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/gi,
-            "$1=<redacted>"
-        )
-        .replace(/\b(codex\s+resume\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1<session>")
-        .replace(/(--resume|--session-id)(=)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1$2<session>")
-        .replace(/(--resume|--session-id|-r)(\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, "$1$2<session>");
-    return redacted.length > 180 ? `${redacted.slice(0, 177)}...` : redacted;
-}
-
-function sessionCopyCommandDebug(resolution: AgentCommandResolution): Record<string, unknown> {
-    return {
-        provider: resolution.provider,
-        executable: resolution.executable,
-        reason: resolution.reason,
-        hasSessionId: resolution.sessionId !== "",
-        sessionIdLength: resolution.sessionId.length,
-        tokenCount: resolution.tokenCount,
-        segmentCount: resolution.segmentCount,
-    };
-}
 
 export class TermViewModel implements ViewModel {
     viewType: string;
@@ -797,7 +771,7 @@ export class TermViewModel implements ViewModel {
             if (globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false) {
                 sel = trimTerminalSelection(sel);
             }
-            navigator.clipboard.writeText(sel);
+            fireAndForget(() => copyText(sel));
             return false;
         } else if (keyutil.checkKeyPressed(waveEvent, "Cmd:k")) {
             event.preventDefault();
@@ -877,7 +851,7 @@ export class TermViewModel implements ViewModel {
                             globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false
                                 ? trimTerminalSelection(selection)
                                 : selection;
-                        navigator.clipboard.writeText(text);
+                        fireAndForget(() => copyText(text));
                     }
                 },
             });
@@ -973,8 +947,11 @@ export class TermViewModel implements ViewModel {
         const shellLastCommand = this.termRef.current ? globalStore.get(this.termRef.current.lastCommandAtom) : null;
         const agentSessionResolution = resolveAgentSessionId(meta, shellLastCommand);
         const agentSessionId = agentSessionResolution.sessionId;
+        const termWrap = this.termRef.current;
         const jobStatus = globalStore.get(this.blockJobStatusAtom);
-        const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : "";
+        const blockJobId = typeof blockData?.jobid === "string" ? blockData.jobid.trim() : "";
+        const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : blockJobId;
+        const shellProcStatus = globalStore.get(this.shellProcStatus);
         console.log("[term-session-copy] resolving session copy menu item", {
             blockId: this.blockId,
             view: meta.view,
@@ -997,14 +974,42 @@ export class TermViewModel implements ViewModel {
             hasJobId: jobId !== "",
             jobIdLength: jobId.length,
             jobStatus: jobStatus?.status,
-            shellProcStatus: globalStore.get(this.shellProcStatus),
+            shellProcStatus,
         });
+        const debugText = () =>
+            formatTerminalSessionDebugInfo({
+                blockId: this.blockId,
+                tabId: this.tabModel?.tabId ?? globalStore.get(atoms.staticTabId) ?? "",
+                workspaceId: globalStore.get(atoms.workspaceId) ?? "",
+                routeId: makeFeBlockRouteId(this.blockId),
+                blockData: blockData ?? null,
+                meta,
+                agentSessionResolution,
+                shellLastCommand: typeof shellLastCommand === "string" ? shellLastCommand : null,
+                blockJobStatus: jobStatus ?? null,
+                shellProcStatus: shellProcStatus ?? null,
+                shellProcFullStatus: globalStore.get(this.shellProcFullStatus) ?? null,
+                shellIntegrationStatus: termWrap ? globalStore.get(termWrap.shellIntegrationStatusAtom) : null,
+                terminal: {
+                    hasTermWrap: termWrap != null,
+                    rows: termWrap?.terminal?.rows,
+                    cols: termWrap?.terminal?.cols,
+                    renderer: termWrap?.getTermRenderer?.(),
+                    hasSelection: termWrap?.terminal?.hasSelection?.() ?? false,
+                },
+            });
+        const debugMenuItem: ContextMenuItem = {
+            label: "Copy Session Debug Info",
+            click: () => {
+                fireAndForget(() => copyText(debugText()));
+            },
+        };
         if (agentSessionId !== "") {
             return [
                 {
                     label: "Copy Agent Session ID",
                     click: () => {
-                        fireAndForget(() => navigator.clipboard.writeText(agentSessionId));
+                        fireAndForget(() => copyText(agentSessionId));
                     },
                 },
                 {
@@ -1013,6 +1018,7 @@ export class TermViewModel implements ViewModel {
                         modalsModel.pushModal("AISessionNoteModal", { sessionId: agentSessionId });
                     },
                 },
+                debugMenuItem,
             ];
         }
         if (jobId === "") {
@@ -1025,15 +1031,16 @@ export class TermViewModel implements ViewModel {
                 shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),
                 hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",
             });
-            return [];
+            return [debugMenuItem];
         }
         return [
             {
                 label: "Copy Terminal Session ID",
                 click: () => {
-                    fireAndForget(() => navigator.clipboard.writeText(jobId));
+                    fireAndForget(() => copyText(jobId));
                 },
             },
+            debugMenuItem,
         ];
     }
 
