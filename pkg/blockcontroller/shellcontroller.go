@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -68,13 +69,15 @@ type AgentRunInfo struct {
 	SessionId              string
 	CaptureCodexSessionId  bool
 	CodexSessionLookupHome string
+	CodexSessionLookupRoot string
 	CodexSessionLookupCwd  string
 	CodexSessionStartedAt  time.Time
 }
 
 type codexSessionMetaLine struct {
-	Type    string `json:"type"`
-	Payload struct {
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Payload   struct {
 		Id        string `json:"id"`
 		Cwd       string `json:"cwd"`
 		Timestamp string `json:"timestamp"`
@@ -797,6 +800,7 @@ func createCmdStrAndOpts(
 		cmdOpts.Cwd = cwdPath
 	}
 	if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
+		agentRunInfo.CodexSessionLookupRoot = codexSessionLookupRoot(localHomeDir, blockMeta)
 		if cmdOpts.Cwd != "" {
 			agentRunInfo.CodexSessionLookupCwd = cmdOpts.Cwd
 		} else {
@@ -936,6 +940,32 @@ func stripCodexResumeArgs(args []string) []string {
 	return out
 }
 
+func resolveEnvReference(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "$ENV:") {
+		return strings.TrimSpace(os.Getenv(strings.TrimPrefix(value, "$ENV:")))
+	}
+	return value
+}
+
+func codexSessionLookupRoot(localHomeDir string, blockMeta waveobj.MetaMapType) string {
+	cmdEnv := blockMeta.GetStringMap(waveobj.MetaKey_CmdEnv, true)
+	codexHome := resolveEnvReference(cmdEnv["CODEX_HOME"])
+	if codexHome == "" {
+		codexHome = strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	}
+	if codexHome != "" {
+		if expanded, err := wavebase.ExpandHomeDir(codexHome); err == nil {
+			return filepath.Join(expanded, "sessions")
+		}
+		return filepath.Join(codexHome, "sessions")
+	}
+	if localHomeDir == "" {
+		return ""
+	}
+	return filepath.Join(localHomeDir, ".codex", "sessions")
+}
+
 func persistAgentSessionId(blockId string, sessionId string) error {
 	if blockId == "" || sessionId == "" {
 		return nil
@@ -954,8 +984,29 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	return nil
 }
 
+func isAsciiLetter(char byte) bool {
+	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+}
+
 func normalizeCwdForComparison(cwd string) string {
-	cleaned := filepath.Clean(strings.TrimSpace(cwd))
+	cleaned := strings.TrimSpace(cwd)
+	if cleaned == "" {
+		return ""
+	}
+	cleaned = strings.ReplaceAll(cleaned, "\\", "/")
+	cleaned = path.Clean(cleaned)
+	if len(cleaned) >= 7 && strings.EqualFold(cleaned[:5], "/mnt/") && isAsciiLetter(cleaned[5]) && cleaned[6] == '/' {
+		cleaned = strings.ToLower(cleaned[5:6]) + ":" + cleaned[6:]
+	}
+	if len(cleaned) >= 13 && strings.EqualFold(cleaned[:10], "/cygdrive/") && isAsciiLetter(cleaned[10]) && cleaned[11] == '/' {
+		cleaned = strings.ToLower(cleaned[10:11]) + ":" + cleaned[11:]
+	}
+	if len(cleaned) >= 3 && cleaned[0] == '/' && isAsciiLetter(cleaned[1]) && cleaned[2] == '/' {
+		cleaned = strings.ToLower(cleaned[1:2]) + ":" + cleaned[2:]
+	}
+	if len(cleaned) >= 2 && isAsciiLetter(cleaned[0]) && cleaned[1] == ':' {
+		return strings.ToLower(cleaned)
+	}
 	if runtime.GOOS == "windows" {
 		return strings.ToLower(cleaned)
 	}
@@ -988,6 +1039,18 @@ func codexSessionDayDirCandidates(startTs time.Time) []string {
 	return dirs
 }
 
+func parseCodexSessionTimestamp(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	timestamp, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return timestamp
+}
+
 func readCodexSessionMeta(filePath string) (string, string, time.Time, error) {
 	fd, err := os.Open(filePath)
 	if err != nil {
@@ -1013,18 +1076,22 @@ func readCodexSessionMeta(filePath string) (string, string, time.Time, error) {
 	if metaLine.Payload.Id == "" || metaLine.Payload.Cwd == "" {
 		return "", "", time.Time{}, nil
 	}
-	timestamp, err := time.Parse(time.RFC3339Nano, metaLine.Payload.Timestamp)
-	if err != nil {
-		return metaLine.Payload.Id, metaLine.Payload.Cwd, time.Time{}, nil
+	timestamp := parseCodexSessionTimestamp(metaLine.Payload.Timestamp)
+	if timestamp.IsZero() {
+		timestamp = parseCodexSessionTimestamp(metaLine.Timestamp)
+	}
+	if timestamp.IsZero() {
+		if stat, err := fd.Stat(); err == nil {
+			timestamp = stat.ModTime()
+		}
 	}
 	return metaLine.Payload.Id, metaLine.Payload.Cwd, timestamp, nil
 }
 
-func findUniqueCodexSessionId(homeDir string, cwd string, startedAt time.Time) (string, int, error) {
-	if homeDir == "" || cwd == "" {
+func findUniqueCodexSessionIdInRoot(sessionsRoot string, cwd string, startedAt time.Time) (string, int, error) {
+	if sessionsRoot == "" || cwd == "" {
 		return "", 0, nil
 	}
-	sessionsRoot := filepath.Join(homeDir, ".codex", "sessions")
 	normalizedCwd := normalizeCwdForComparison(cwd)
 	if normalizedCwd == "." || normalizedCwd == "" {
 		return "", 0, nil
@@ -1058,19 +1125,30 @@ func findUniqueCodexSessionId(homeDir string, cwd string, startedAt time.Time) (
 	return candidates[0].SessionId, 1, nil
 }
 
+func findUniqueCodexSessionId(homeDir string, cwd string, startedAt time.Time) (string, int, error) {
+	if homeDir == "" {
+		return "", 0, nil
+	}
+	return findUniqueCodexSessionIdInRoot(filepath.Join(homeDir, ".codex", "sessions"), cwd, startedAt)
+}
+
 func (bc *ShellController) captureCodexSessionIdForBlock(agentRunInfo *AgentRunInfo) {
 	if agentRunInfo == nil || !agentRunInfo.CaptureCodexSessionId {
 		return
 	}
-	if agentRunInfo.CodexSessionLookupHome == "" || agentRunInfo.CodexSessionLookupCwd == "" {
+	sessionsRoot := agentRunInfo.CodexSessionLookupRoot
+	if sessionsRoot == "" && agentRunInfo.CodexSessionLookupHome != "" {
+		sessionsRoot = filepath.Join(agentRunInfo.CodexSessionLookupHome, ".codex", "sessions")
+	}
+	if sessionsRoot == "" || agentRunInfo.CodexSessionLookupCwd == "" {
 		return
 	}
 	var candidateId string
 	var candidateFirstSeen time.Time
 	const settleDuration = 1200 * time.Millisecond
-	for attempt := 0; attempt < 15; attempt++ {
-		sessionId, matchCount, err := findUniqueCodexSessionId(
-			agentRunInfo.CodexSessionLookupHome,
+	for attempt := 0; attempt < 30; attempt++ {
+		sessionId, matchCount, err := findUniqueCodexSessionIdInRoot(
+			sessionsRoot,
 			agentRunInfo.CodexSessionLookupCwd,
 			agentRunInfo.CodexSessionStartedAt,
 		)

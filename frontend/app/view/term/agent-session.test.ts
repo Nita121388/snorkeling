@@ -126,4 +126,19 @@ describe("resolveAgentSessionId", () => {
             },
         });
     });
+
+    it("distinguishes new codex sessions waiting for persisted ids from missing resume commands", () => {
+        expect(
+            resolveAgentSessionId({ cmd: "codex", "agent:autoresume": true, "agent:provider": "codex" })
+        ).toMatchObject({
+            sessionId: "",
+            source: "none",
+            provider: "codex",
+            reason: "new-codex-session-unbound",
+            startupCommand: {
+                executable: "codex",
+                reason: "missing-codex-resume",
+            },
+        });
+    });
 });

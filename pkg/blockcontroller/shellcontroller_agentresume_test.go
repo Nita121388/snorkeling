@@ -113,6 +113,64 @@ func TestFindUniqueCodexSessionId(t *testing.T) {
 	}
 }
 
+func TestFindUniqueCodexSessionIdReadsTopLevelTimestamp(t *testing.T) {
+	tmpHome := t.TempDir()
+	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	sessionDir := filepath.Join(tmpHome, ".codex", "sessions", "2026", "04", "18")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	sessionPath := filepath.Join(sessionDir, "rollout-2026-04-18T12-00-01-111.jsonl")
+	data := `{"timestamp":"2026-04-18T12:00:01.000Z","type":"session_meta","payload":{"id":"session-top-level-ts","cwd":"/tmp/project-a"}}` + "\n"
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatalf("write session failed: %v", err)
+	}
+	sessionId, count, err := findUniqueCodexSessionId(tmpHome, "/tmp/project-a", startTs)
+	if err != nil {
+		t.Fatalf("findUniqueCodexSessionId returned error: %v", err)
+	}
+	if sessionId != "session-top-level-ts" || count != 1 {
+		t.Fatalf("expected session-top-level-ts with count 1, got session=%q count=%d", sessionId, count)
+	}
+}
+
+func TestFindUniqueCodexSessionIdInRootSupportsCodexHomeRoot(t *testing.T) {
+	codexHome := t.TempDir()
+	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "04", "18")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	sessionPath := filepath.Join(sessionDir, "rollout-2026-04-18T12-00-01-111.jsonl")
+	data := `{"timestamp":"2026-04-18T12:00:01.000Z","type":"session_meta","payload":{"id":"session-codex-home","cwd":"/tmp/project-a"}}` + "\n"
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatalf("write session failed: %v", err)
+	}
+	sessionId, count, err := findUniqueCodexSessionIdInRoot(filepath.Join(codexHome, "sessions"), "/tmp/project-a", startTs)
+	if err != nil {
+		t.Fatalf("findUniqueCodexSessionIdInRoot returned error: %v", err)
+	}
+	if sessionId != "session-codex-home" || count != 1 {
+		t.Fatalf("expected session-codex-home with count 1, got session=%q count=%d", sessionId, count)
+	}
+}
+
+func TestNormalizeCwdForComparisonSupportsWindowsPathVariants(t *testing.T) {
+	expected := "e:/file/nitafile/obsidians/obsidian"
+	variants := []string{
+		`E:\File\NitaFile\Obsidians\Obsidian`,
+		"E:/File/NitaFile/Obsidians/Obsidian",
+		"/e/File/NitaFile/Obsidians/Obsidian",
+		"/mnt/e/File/NitaFile/Obsidians/Obsidian",
+		"/cygdrive/e/File/NitaFile/Obsidians/Obsidian",
+	}
+	for _, variant := range variants {
+		if got := normalizeCwdForComparison(variant); got != expected {
+			t.Fatalf("expected %q for %q, got %q", expected, variant, got)
+		}
+	}
+}
+
 func TestFindUniqueCodexSessionIdRejectsAmbiguousSameCwdCandidates(t *testing.T) {
 	tmpHome := t.TempDir()
 	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)

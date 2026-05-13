@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+    formatSearchTextLocation,
     groupContentSearchMatches,
     matchesFileNameSearchQuery,
     shouldFallbackFileNameSearch,
@@ -48,6 +49,19 @@ describe("preview search helpers", () => {
         expect(matchesFileNameSearchQuery("ConfigMap.yaml", "Config")).toBe(true);
         expect(matchesFileNameSearchQuery("config-map.yaml", "Config")).toBe(false);
         expect(matchesFileNameSearchQuery("ConfigMap.yaml", "config")).toBe(true);
+    });
+
+    it("formats text locations without rewriting platform-specific paths", () => {
+        expect(formatSearchTextLocation("/repo/src/app.ts", 42)).toBe("/repo/src/app.ts:42");
+        expect(formatSearchTextLocation("C:\\repo\\src\\app.ts", 42)).toBe("C:\\repo\\src\\app.ts:42");
+        expect(formatSearchTextLocation("\\\\server\\share\\src\\app.ts", 42)).toBe(
+            "\\\\server\\share\\src\\app.ts:42"
+        );
+    });
+
+    it("does not append invalid text location line numbers", () => {
+        expect(formatSearchTextLocation("/repo/src/app.ts", 0)).toBe("/repo/src/app.ts");
+        expect(formatSearchTextLocation("/repo/src/app.ts", Number.NaN)).toBe("/repo/src/app.ts");
     });
 
     it("falls back when the filename-search command is unavailable", () => {

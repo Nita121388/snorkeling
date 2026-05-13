@@ -20,6 +20,7 @@ import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigati
 import { openPreviewEntry } from "./preview-open";
 import {
     FileNameSearchSkipDirNames,
+    formatSearchTextLocation,
     groupContentSearchMatches,
     matchesFileNameSearchQuery,
     shouldFallbackFileNameSearch,
@@ -430,6 +431,58 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         ]
     );
 
+    const showSearchResultContextMenu = useCallback(
+        (event: MouseEvent<HTMLElement>, menu: ContextMenuItem[]) => {
+            event.preventDefault();
+            event.stopPropagation();
+            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
+        },
+        [blockMoveMenuItems]
+    );
+
+    const handleNameSearchResultContextMenu = useCallback(
+        (event: MouseEvent<HTMLElement>, match: FileNameSearchMatch) => {
+            showSearchResultContextMenu(event, [
+                {
+                    label: match.isdir ? "Copy Folder Location" : "Copy File Location",
+                    click: () => fireAndForget(() => navigator.clipboard.writeText(match.path)),
+                },
+            ]);
+        },
+        [showSearchResultContextMenu]
+    );
+
+    const handleContentSearchGroupContextMenu = useCallback(
+        (event: MouseEvent<HTMLElement>, group: { path: string }) => {
+            showSearchResultContextMenu(event, [
+                {
+                    label: "Copy File Location",
+                    click: () => fireAndForget(() => navigator.clipboard.writeText(group.path)),
+                },
+            ]);
+        },
+        [showSearchResultContextMenu]
+    );
+
+    const handleContentSearchMatchContextMenu = useCallback(
+        (event: MouseEvent<HTMLElement>, match: FileSearchMatch) => {
+            showSearchResultContextMenu(event, [
+                {
+                    label: "Copy Text Location",
+                    click: () =>
+                        fireAndForget(() =>
+                            navigator.clipboard.writeText(formatSearchTextLocation(match.path, match.linenumber))
+                        ),
+                },
+                {
+                    label: "Copy File Location",
+                    click: () => fireAndForget(() => navigator.clipboard.writeText(match.path)),
+                },
+            ]);
+        },
+        [showSearchResultContextMenu]
+    );
+
     const runNameSearchFallback = useCallback(
         async (query: string, limit: number, isCancelled: () => boolean) => {
             const matches: FileNameSearchMatch[] = [];
@@ -803,6 +856,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                 })
                                                             );
                                                         }}
+                                                        onContextMenu={(event) =>
+                                                            handleNameSearchResultContextMenu(event, match)
+                                                        }
                                                     >
                                                         <i
                                                             className={clsx(
@@ -859,6 +915,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                             return next;
                                                         });
                                                     }}
+                                                    onContextMenu={(event) =>
+                                                        handleContentSearchGroupContextMenu(event, group)
+                                                    }
                                                 >
                                                     <i
                                                         className={clsx(
@@ -896,6 +955,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                         })
                                                                     );
                                                                 }}
+                                                                onContextMenu={(event) =>
+                                                                    handleContentSearchMatchContextMenu(event, match)
+                                                                }
                                                             >
                                                                 <span className="min-w-[2.5rem] text-[11px] font-[600] text-[var(--accent-color)]">
                                                                     {match.linenumber}

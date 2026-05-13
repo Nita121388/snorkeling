@@ -65,6 +65,13 @@ export function matchesFileNameSearchQuery(label: string, query: string): boolea
     return label.toLocaleLowerCase().includes(query.toLocaleLowerCase());
 }
 
+export function formatSearchTextLocation(path: string, lineNumber: number): string {
+    if (!Number.isFinite(lineNumber) || lineNumber < 1) {
+        return path;
+    }
+    return `${path}:${Math.trunc(lineNumber)}`;
+}
+
 export function shouldFallbackFileNameSearch(error: unknown): boolean {
     const message = `${error}`.toLocaleLowerCase();
     return (

@@ -131,6 +131,12 @@ function makeTerminalSessionDebugInfo(input: TerminalSessionDebugInput): Record<
             cwd: meta["cmd:cwd"] ?? null,
             cmd: debugPreview(meta.cmd),
             cmdArgs: cmdArgsDebug(meta["cmd:args"]),
+            cmdShell: meta["cmd:shell"] ?? null,
+            cmdRunOnStart: meta["cmd:runonstart"] ?? null,
+            agentAutoResume: meta["agent:autoresume"] ?? null,
+            agentProvider: meta["agent:provider"] ?? null,
+            hasPersistedAgentSessionId: stringValue(meta["agent:sessionid"]) !== "",
+            persistedAgentSessionIdLength: stringValue(meta["agent:sessionid"]).length,
             blockJobId: stringValue(input.blockData?.jobid),
         },
         session: {

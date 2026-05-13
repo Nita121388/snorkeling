@@ -298,6 +298,18 @@ function providerFromMeta(meta: TermCommandMeta): AgentSessionProvider {
     return provider === "codex" || provider === "claude" ? provider : "";
 }
 
+function isAgentAutoResume(meta: TermCommandMeta): boolean {
+    return meta["agent:autoresume"] === true;
+}
+
+function unresolvedAgentReason(meta: TermCommandMeta, startupCommand: AgentCommandResolution): string {
+    const provider = providerFromMeta(meta) || startupCommand.provider;
+    if (isAgentAutoResume(meta) && provider === "codex" && startupCommand.reason === "missing-codex-resume") {
+        return "new-codex-session-unbound";
+    }
+    return startupCommand.reason;
+}
+
 function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown): AgentSessionIdResolution {
     const startupCommand = resolveAgentCommandFromMeta(meta);
     const lastCommand = resolveAgentCommand(shellLastCommand);
@@ -336,7 +348,8 @@ function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown
         sessionId: "",
         source: "none",
         provider: startupCommand.provider || lastCommand.provider,
-        reason: lastCommand.reason !== "empty-command" ? lastCommand.reason : startupCommand.reason,
+        reason:
+            lastCommand.reason !== "empty-command" ? lastCommand.reason : unresolvedAgentReason(meta, startupCommand),
         startupCommand,
         shellLastCommand: lastCommand,
     };
