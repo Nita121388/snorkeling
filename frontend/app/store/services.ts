@@ -51,6 +51,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Note", Array.from(arguments))
     }
 
+    // stat a local AI session file without loading messages
+    // @returns AI session file stat
+    Stat(request: AISessionsStatRequest): Promise<AISessionsStatResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "Stat", Array.from(arguments))
+    }
+
     // load a local AI session summary without loading messages
     // @returns AI session summary
     Summary(request: AISessionsSummaryRequest): Promise<SessionSummary> {

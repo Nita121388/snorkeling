@@ -6,6 +6,8 @@ package aisessionsservice
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
@@ -37,6 +39,19 @@ type AISessionsDetailRequest struct {
 type AISessionsSummaryRequest struct {
 	ID      string `json:"id"`
 	Refresh bool   `json:"refresh,omitempty"`
+}
+
+type AISessionsStatRequest struct {
+	ID       string `json:"id,omitempty"`
+	FilePath string `json:"filePath,omitempty"`
+}
+
+type AISessionsStatResponse struct {
+	ID       string `json:"id,omitempty"`
+	FilePath string `json:"filePath,omitempty"`
+	MTime    int64  `json:"mtime,omitempty"`
+	Size     int64  `json:"size,omitempty"`
+	Missing  bool   `json:"missing,omitempty"`
 }
 
 func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
@@ -111,6 +126,84 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 		return nil, err
 	}
 	return &summary, nil
+}
+
+func isKnownAISessionFilePath(filePath string) bool {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" || !strings.EqualFold(filepath.Ext(filePath), ".jsonl") {
+		return false
+	}
+	absPath, err := filepath.Abs(filepath.Clean(filePath))
+	if err != nil {
+		return false
+	}
+	var roots []string
+	if codexRoot := aisessions.DefaultCodexSessionsDir(); codexRoot != "" {
+		roots = append(roots, codexRoot)
+	}
+	roots = append(roots, aisessions.DefaultClaudeProjectDirs()...)
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		absRoot, err := filepath.Abs(filepath.Clean(root))
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(absRoot, absPath)
+		if err != nil {
+			continue
+		}
+		if rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (svc *AISessionsService) Stat_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "stat a local AI session file without loading messages",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session file stat",
+	}
+}
+
+func (svc *AISessionsService) Stat(ctx context.Context, request *AISessionsStatRequest) (*AISessionsStatResponse, error) {
+	if request == nil || (strings.TrimSpace(request.ID) == "" && strings.TrimSpace(request.FilePath) == "") {
+		return nil, fmt.Errorf("session id or file path is required")
+	}
+	filePath := strings.TrimSpace(request.FilePath)
+	if filePath == "" {
+		summary, err := aisessions.NewManager("", nil).Summary(ctx, request.ID, false)
+		if err != nil {
+			return nil, err
+		}
+		filePath = summary.FilePath
+	}
+	if !isKnownAISessionFilePath(filePath) {
+		return nil, fmt.Errorf("session file path is outside known AI session roots")
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &AISessionsStatResponse{
+				ID:       strings.TrimSpace(request.ID),
+				FilePath: filePath,
+				Missing:  true,
+			}, nil
+		}
+		return nil, err
+	}
+	return &AISessionsStatResponse{
+		ID:       strings.TrimSpace(request.ID),
+		FilePath: filePath,
+		MTime:    stat.ModTime().UnixMilli(),
+		Size:     stat.Size(),
+	}, nil
 }
 
 func (svc *AISessionsService) Mark_Meta() tsgenmeta.MethodMeta {

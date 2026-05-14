@@ -65,6 +65,21 @@ declare global {
         sessions: SessionSummary[];
     };
 
+    // aisessionsservice.AISessionsStatRequest
+    type AISessionsStatRequest = {
+        id?: string;
+        filePath?: string;
+    };
+
+    // aisessionsservice.AISessionsStatResponse
+    type AISessionsStatResponse = {
+        id?: string;
+        filePath?: string;
+        mtime?: number;
+        size?: number;
+        missing?: boolean;
+    };
+
     // aisessionsservice.AISessionsSummaryRequest
     type AISessionsSummaryRequest = {
         id: string;

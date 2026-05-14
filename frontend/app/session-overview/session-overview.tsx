@@ -35,6 +35,12 @@ type DetailState = {
     error: string;
 };
 
+type SessionFileStat = {
+    mtime: number;
+    size: number;
+    missing: boolean;
+};
+
 type SummaryState = {
     loading: boolean;
     summary: SessionSummary | null;
@@ -104,6 +110,11 @@ function openSessionNote(sessionId: string): void {
     modalsModel.pushModal("AISessionNoteModal", { sessionId });
 }
 
+function sessionStatKey(stat: SessionFileStat | AISessionsStatResponse | null | undefined): string {
+    if (stat == null) return "";
+    return `${stat.missing === true ? 1 : 0}:${stat.mtime ?? 0}:${stat.size ?? 0}`;
+}
+
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
@@ -149,7 +160,73 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
     );
     const requestedRef = useRef(new Set<string>());
     const lastRefreshSeqRef = useRef(refreshSeq);
+    const detailsRef = useRef<Record<string, DetailState>>({});
+    const fileStatsRef = useRef<Record<string, SessionFileStat>>({});
+    const quietPollCountRef = useRef(0);
+    const mountedRef = useRef(true);
     const [details, setDetails] = useState<Record<string, DetailState>>({});
+
+    const loadSessionDetail = React.useCallback(
+        (sessionId: string, forceRefresh = false): void => {
+            if (!forceRefresh && requestedRef.current.has(sessionId)) {
+                return;
+            }
+            requestedRef.current.add(sessionId);
+            setDetails((prev) => ({
+                ...prev,
+                [sessionId]: {
+                    loading: true,
+                    detail: forceRefresh ? (prev[sessionId]?.detail ?? null) : null,
+                    error: "",
+                },
+            }));
+            service
+                .Detail({ id: sessionId, tail: 100, refresh: forceRefresh })
+                .then((detail) => {
+                    if (!mountedRef.current) return;
+                    setDetails((prev) => ({ ...prev, [sessionId]: { loading: false, detail, error: "" } }));
+                    const filePath = detail.summary.filePath?.trim();
+                    if (filePath) {
+                        service
+                            .Stat({ id: sessionId, filePath })
+                            .then((stat) => {
+                                if (!mountedRef.current) return;
+                                fileStatsRef.current[sessionId] = {
+                                    mtime: stat.mtime ?? 0,
+                                    size: stat.size ?? 0,
+                                    missing: stat.missing === true,
+                                };
+                            })
+                            .catch(() => {
+                                // The next poll will surface stat errors without blocking the detail render.
+                            });
+                    }
+                })
+                .catch((error) => {
+                    if (!mountedRef.current) return;
+                    setDetails((prev) => ({
+                        ...prev,
+                        [sessionId]: {
+                            loading: false,
+                            detail: null,
+                            error: error instanceof Error ? error.message : String(error),
+                        },
+                    }));
+                });
+        },
+        [service]
+    );
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        detailsRef.current = details;
+    }, [details]);
 
     useEffect(() => {
         const forceRefresh = refreshSeq !== lastRefreshSeqRef.current;
@@ -161,35 +238,92 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
             }
             return next;
         });
-        let cancelled = false;
         for (const sessionId of sessionIds) {
-            if (!forceRefresh && requestedRef.current.has(sessionId)) {
-                continue;
-            }
-            requestedRef.current.add(sessionId);
-            setDetails((prev) => ({ ...prev, [sessionId]: { loading: true, detail: null, error: "" } }));
-            service
-                .Detail({ id: sessionId, tail: 100 })
-                .then((detail) => {
-                    if (cancelled) return;
-                    setDetails((prev) => ({ ...prev, [sessionId]: { loading: false, detail, error: "" } }));
-                })
-                .catch((error) => {
-                    if (cancelled) return;
-                    setDetails((prev) => ({
-                        ...prev,
-                        [sessionId]: {
-                            loading: false,
-                            detail: null,
-                            error: error instanceof Error ? error.message : String(error),
-                        },
-                    }));
-                });
+            loadSessionDetail(sessionId, forceRefresh);
         }
+    }, [loadSessionDetail, sessionIds.join("\n"), refreshSeq]);
+
+    useEffect(() => {
+        if (sessionIds.length === 0) {
+            return;
+        }
+        let cancelled = false;
+        let timer: number | null = null;
+
+        const schedule = (delayMs: number) => {
+            if (cancelled) return;
+            timer = window.setTimeout(() => void poll(), delayMs);
+        };
+
+        const poll = async () => {
+            if (cancelled) return;
+            if (document.visibilityState === "hidden") {
+                schedule(30_000);
+                return;
+            }
+
+            const currentDetails = detailsRef.current;
+            let changed = false;
+            await Promise.all(
+                sessionIds.map(async (sessionId) => {
+                    const state = currentDetails[sessionId];
+                    if (state?.loading) return;
+                    const filePath = state?.detail?.summary?.filePath?.trim();
+                    if (!filePath) return;
+                    try {
+                        const stat = await service.Stat({ id: sessionId, filePath });
+                        if (cancelled) return;
+                        const prev = fileStatsRef.current[sessionId];
+                        fileStatsRef.current[sessionId] = {
+                            mtime: stat.mtime ?? 0,
+                            size: stat.size ?? 0,
+                            missing: stat.missing === true,
+                        };
+                        if (prev == null) {
+                            return;
+                        }
+                        if (sessionStatKey(prev) === sessionStatKey(stat)) {
+                            return;
+                        }
+                        changed = true;
+                        if (stat.missing === true) {
+                            setDetails((current) => ({
+                                ...current,
+                                [sessionId]: {
+                                    loading: false,
+                                    detail: current[sessionId]?.detail ?? null,
+                                    error: "Session file is missing.",
+                                },
+                            }));
+                            return;
+                        }
+                        loadSessionDetail(sessionId, true);
+                    } catch (error) {
+                        if (cancelled) return;
+                        setDetails((current) => ({
+                            ...current,
+                            [sessionId]: {
+                                loading: false,
+                                detail: current[sessionId]?.detail ?? null,
+                                error: error instanceof Error ? error.message : String(error),
+                            },
+                        }));
+                    }
+                })
+            );
+            quietPollCountRef.current = changed ? 0 : quietPollCountRef.current + 1;
+            const nextDelay = quietPollCountRef.current < 6 ? 5_000 : quietPollCountRef.current < 20 ? 15_000 : 30_000;
+            schedule(nextDelay);
+        };
+
+        schedule(5_000);
         return () => {
             cancelled = true;
+            if (timer != null) {
+                window.clearTimeout(timer);
+            }
         };
-    }, [service, sessionIds.join("\n"), refreshSeq]);
+    }, [loadSessionDetail, service, sessionIds.join("\n")]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
