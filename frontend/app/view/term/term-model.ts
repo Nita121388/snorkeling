@@ -3,6 +3,7 @@
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
+import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
 import { appHandleKeyDown } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
@@ -855,6 +856,7 @@ export class TermViewModel implements ViewModel {
                     }
                 },
             });
+            menu.push(makeSelectionSearchInFilesMenuItem(selection));
             menu.push({ type: "separator" });
             menu.push({
                 label: "Send to Wave AI",
@@ -1023,6 +1025,12 @@ export class TermViewModel implements ViewModel {
                     label: "Copy Agent Session ID",
                     click: () => {
                         fireAndForget(() => copyText(agentSessionId));
+                    },
+                },
+                {
+                    label: "View Agent Session Details...",
+                    click: () => {
+                        modalsModel.pushModal("AISessionDetailModal", { sessionId: agentSessionId });
                     },
                 },
                 {

@@ -10,6 +10,7 @@ const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 
 const TextApplicationMimetypes = [
     "application/sql",
+    "application/x-subrip",
     "application/x-php",
     "application/x-pem-file",
     "application/x-httpd-php",

@@ -3,11 +3,9 @@
 
 import { Button } from "@/app/element/button";
 import { CenteredDiv } from "@/app/element/quickelems";
-import { globalStore } from "@/app/store/jotaiStore";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { formatRemoteUri } from "@/util/waveutil";
 import { useAtomValue } from "jotai";
-import { useEffect } from "react";
 import { TransformComponent, TransformWrapper, useControls } from "react-zoom-pan-pinch";
 import type { SpecializedViewProps } from "./preview";
 
@@ -33,28 +31,16 @@ function StreamingImagePreview({ url }: { url: string }) {
     return (
         <div className="flex flex-row h-full overflow-hidden items-center justify-center relative">
             <TransformWrapper initialScale={1} centerOnInit pinch={{ step: 10 }}>
-                {({ zoomIn, zoomOut, resetTransform, ...rest }) => (
-                    <>
-                        <ImageZoomControls />
-                        <TransformComponent wrapperClass="!h-full !w-full">
-                            <img src={url} className="z-[1]" />
-                        </TransformComponent>
-                    </>
-                )}
+                <ImageZoomControls />
+                <TransformComponent wrapperClass="!h-full !w-full">
+                    <img src={url} className="z-[1]" />
+                </TransformComponent>
             </TransformWrapper>
         </div>
     );
 }
 
 function StreamingPreview({ model }: SpecializedViewProps) {
-    useEffect(() => {
-        model.refreshCallback = () => {
-            globalStore.set(model.refreshVersion, (v) => v + 1);
-        };
-        return () => {
-            model.refreshCallback = null;
-        };
-    }, []);
     const conn = useAtomValue(model.connection);
     const fileInfo = useAtomValue(model.statFile);
     const filePath = fileInfo.path;

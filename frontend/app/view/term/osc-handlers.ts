@@ -14,6 +14,7 @@ import {
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
 import debug from "debug";
+import { resolveAgentCommandBinding } from "./agent-session";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -95,6 +96,26 @@ export function isClaudeCodeCommand(decodedCmd: string): boolean {
     return ClaudeCodeRegex.test(normalizeCmd(decodedCmd));
 }
 
+function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
+    const binding = resolveAgentCommandBinding(decodedCmd);
+    if (binding == null) {
+        return;
+    }
+    const meta: MetaType = {
+        "agent:provider": binding.provider,
+        "agent:autoresume": true,
+    };
+    if (binding.sessionId !== "") {
+        meta["agent:sessionid"] = binding.sessionId;
+    }
+    fireAndForget(async () => {
+        await RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: WOS.makeORef("block", blockId),
+            meta,
+        }).catch((e) => console.log("error binding manual agent command", e));
+    });
+}
+
 function handleShellIntegrationCommandStart(
     termWrap: TermWrap,
     blockId: string,
@@ -121,6 +142,7 @@ function handleShellIntegrationCommandStart(
                 const isCC = isClaudeCodeCommand(decodedCmd);
                 globalStore.set(termWrap.claudeCodeActiveAtom, isCC);
                 checkCommandForTelemetry(decodedCmd);
+                bindManualAgentCommand(blockId, decodedCmd);
             } catch (e) {
                 console.error("Error decoding cmd64:", e);
                 rtInfo["shell:lastcmd"] = null;

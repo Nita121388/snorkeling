@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     extractAgentCommandFromTerminalText,
+    resolveAgentCommandBinding,
     resolveAgentSessionId,
     resolveAgentSessionIdFromCommand,
     resolveAgentSessionIdFromMeta,
@@ -92,6 +93,38 @@ describe("resolveAgentSessionIdFromCommand", () => {
         expect(resolveAgentSessionIdFromCommand("printf 'claude --resume nope'")).toBe("");
         expect(resolveAgentSessionIdFromCommand("codex resume --last")).toBe("");
         expect(resolveAgentSessionIdFromCommand("claude --resume --model sonnet")).toBe("");
+    });
+});
+
+describe("resolveAgentCommandBinding", () => {
+    it("binds resume commands with session ids", () => {
+        expect(resolveAgentCommandBinding("codex resume codex-session")).toEqual({
+            provider: "codex",
+            sessionId: "codex-session",
+        });
+        expect(resolveAgentCommandBinding("claude --session-id claude-session")).toEqual({
+            provider: "claude",
+            sessionId: "claude-session",
+        });
+    });
+
+    it("binds new agent commands without session ids", () => {
+        expect(resolveAgentCommandBinding("codex")).toEqual({
+            provider: "codex",
+            sessionId: "",
+        });
+        expect(resolveAgentCommandBinding("claude --model sonnet")).toEqual({
+            provider: "claude",
+            sessionId: "",
+        });
+        expect(resolveAgentCommandBinding("cd repo && codex")).toEqual({
+            provider: "codex",
+            sessionId: "",
+        });
+    });
+
+    it("ignores non-agent commands", () => {
+        expect(resolveAgentCommandBinding("echo codex")).toBeNull();
     });
 });
 

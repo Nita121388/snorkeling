@@ -111,7 +111,7 @@ export function handleRename(
             };
             setErrorMsg(errorMsg);
         }
-        model.refreshCallback();
+        model.refresh();
     });
 }
 
@@ -152,7 +152,7 @@ export function handleFileDelete(
             }
             setErrorMsg(errorMsg);
         }
-        model.refreshCallback();
+        model.refresh();
     });
 }
 
@@ -381,7 +381,7 @@ async function syncRepo(
             text: `${e}`,
         });
     } finally {
-        model.refreshCallback?.();
+        model.refresh();
     }
 }
 

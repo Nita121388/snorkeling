@@ -34,7 +34,6 @@ const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
 const SearchAutoSubmitMs = 250;
-const DirectoryAutoRefreshMs = 4000;
 
 function normalizeRootLabel(path: string): string {
     if (path === "/" || path === "~") {
@@ -265,30 +264,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         });
     }, [groupedContentResults]);
 
-    useEffect(() => {
-        model.refreshCallback = () => {
-            globalStore.set(model.refreshVersion, (v) => v + 1);
-        };
-        return () => {
-            model.refreshCallback = null;
-        };
-    }, [model]);
-
-    useEffect(() => {
-        if (!rootPath) {
-            return;
-        }
-        const intervalId = window.setInterval(() => {
-            if (document.visibilityState === "hidden") {
-                return;
-            }
-            globalStore.set(model.refreshVersion, (v) => v + 1);
-        }, DirectoryAutoRefreshMs);
-        return () => {
-            window.clearInterval(intervalId);
-        };
-    }, [model, rootPath]);
-
     const fetchDir = useCallback(
         async (id: string, limit: number) => {
             const remotePath = await model.formatRemoteUri(id, globalStore.get);
@@ -333,7 +308,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             },
                             null
                         );
-                        model.refreshCallback();
+                        model.refresh();
                     });
                     setEntryManagerProps(null);
                 },
@@ -353,7 +328,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 path: await model.formatRemoteUri(`${targetDir}/${newName}`, globalStore.get),
                             },
                         });
-                        model.refreshCallback();
+                        model.refresh();
                     });
                     setEntryManagerProps(null);
                 },

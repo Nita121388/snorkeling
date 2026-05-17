@@ -97,6 +97,8 @@ const (
 	codexSessionCaptureMaxAttempts    = 900
 )
 
+const ManualCodexSessionCaptureAttempts = 120
+
 type ShellController struct {
 	Lock *sync.Mutex
 
@@ -1199,6 +1201,49 @@ func (bc *ShellController) captureCodexSessionIdForBlockWithAttempts(agentRunInf
 		sessionsRoot,
 		maxAttempts,
 	)
+}
+
+func CaptureManualCodexSessionIdForBlock(blockId string, startedAt time.Time) {
+	if blockId == "" {
+		return
+	}
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	blockData, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+	if err != nil || blockData == nil {
+		if err != nil {
+			log.Printf("error loading block for manual codex session capture (block=%s): %v", blockId, err)
+		}
+		return
+	}
+	blockMeta := blockData.Meta
+	if blockMeta.GetString(MetaKey_AgentSessionId, "") != "" {
+		return
+	}
+	if getAgentProvider(blockMeta, blockMeta.GetString(waveobj.MetaKey_Cmd, "")) != AgentProviderCodex {
+		return
+	}
+	if !blockMeta.GetBool(MetaKey_AgentAutoResume, false) {
+		return
+	}
+	cwd := strings.TrimSpace(blockMeta.GetString(waveobj.MetaKey_CmdCwd, ""))
+	if cwd == "" {
+		cwd = wavebase.GetHomeDir()
+	}
+	expandedCwd, err := wavebase.ExpandHomeDir(cwd)
+	if err == nil {
+		cwd = expandedCwd
+	}
+	agentRunInfo := &AgentRunInfo{
+		Provider:               AgentProviderCodex,
+		CaptureCodexSessionId:  true,
+		CodexSessionLookupHome: wavebase.GetHomeDir(),
+		CodexSessionLookupRoot: codexSessionLookupRoot(wavebase.GetHomeDir(), blockMeta),
+		CodexSessionLookupCwd:  cwd,
+		CodexSessionStartedAt:  startedAt,
+	}
+	bc := &ShellController{BlockId: blockId}
+	bc.captureCodexSessionIdForBlockWithAttempts(agentRunInfo, ManualCodexSessionCaptureAttempts)
 }
 
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {

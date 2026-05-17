@@ -43,3 +43,18 @@ func TestAtomicWriteFileRenameErrorCleansTempFile(t *testing.T) {
 		t.Fatalf("temporary file should be removed on rename error, stat err: %v", statErr)
 	}
 }
+
+func TestDetectMimeTypeRecognizesSRT(t *testing.T) {
+	tmpDir := t.TempDir()
+	fileName := filepath.Join(tmpDir, "captions.srt")
+
+	err := os.WriteFile(fileName, []byte("1\n00:00:01,000 --> 00:00:02,000\nHello\n"), 0644)
+	if err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mimeType := DetectMimeType(fileName, nil, false)
+	if mimeType != "application/x-subrip" {
+		t.Fatalf("DetectMimeType returned %q, expected application/x-subrip", mimeType)
+	}
+}

@@ -1117,6 +1117,7 @@ var StaticMimeTypeMap = map[string]string{
 	".txt":                       "text/plain",
 	".conf":                      "text/plain",
 	".pub":                       "text/plain",
+	".srt":                       "application/x-subrip",
 	".awk":                       "text/x-awk",
 	".provn":                     "text/provenance-notation",
 	".rst":                       "text/prs.fallenstein.rst",

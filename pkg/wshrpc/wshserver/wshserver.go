@@ -183,7 +183,26 @@ func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetM
 		return fmt.Errorf("error updating object meta: %w", err)
 	}
 	wcore.SendWaveObjUpdate(oref)
+	maybeCaptureManualCodexSessionId(oref, data.Meta)
 	return nil
+}
+
+func maybeCaptureManualCodexSessionId(oref waveobj.ORef, meta waveobj.MetaMapType) {
+	if oref.OType != waveobj.OType_Block {
+		return
+	}
+	provider := strings.TrimSpace(strings.ToLower(meta.GetString(blockcontroller.MetaKey_AgentProvider, "")))
+	if provider != blockcontroller.AgentProviderCodex {
+		return
+	}
+	if !meta.GetBool(blockcontroller.MetaKey_AgentAutoResume, false) {
+		return
+	}
+	if strings.TrimSpace(meta.GetString(blockcontroller.MetaKey_AgentSessionId, "")) != "" {
+		return
+	}
+	startedAt := time.Now()
+	go blockcontroller.CaptureManualCodexSessionIdForBlock(oref.OID, startedAt)
 }
 
 func (ws *WshServer) GetRTInfoCommand(ctx context.Context, data wshrpc.CommandGetRTInfoData) (*waveobj.ObjRTInfo, error) {

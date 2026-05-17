@@ -5,7 +5,6 @@ import { Tooltip } from "@/app/element/tooltip";
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiSessionsViewModel } from "./aisessions";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { MessageCard } from "./session-message";
@@ -24,6 +23,16 @@ import {
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const OutlineTooltipPreviewLength = 1800;
 const ToolCallPreviewLength = 1200;
+
+export type SessionDetailController = {
+    loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
+    loadDetailTools: (refresh?: boolean) => Promise<void>;
+    updateNote: (session: SessionSummary, note: string) => Promise<boolean>;
+    deleteSession: (session: SessionSummary) => Promise<void>;
+    restoreSession: (session: SessionSummary) => Promise<void>;
+    openSessionFolder: (summary: SessionSummary) => Promise<void>;
+    toggleMark: (session: SessionSummary) => Promise<void>;
+};
 
 function outlineTooltipText(message: Message): string {
     const text = trimMessageText(message.text).trim();
@@ -113,13 +122,15 @@ export function SessionDetailPane({
     toolCallsLoading,
     restoring,
     deleting,
+    onClose,
 }: {
-    model: AiSessionsViewModel;
+    model: SessionDetailController;
     detail: SessionDetail | null;
     loading: boolean;
     toolCallsLoading: boolean;
     restoring: boolean;
     deleting: boolean;
+    onClose?: () => void;
 }) {
     const [noteDraft, setNoteDraft] = useState("");
     const [noteCollapsed, setNoteCollapsed] = useState(true);
@@ -269,7 +280,7 @@ export function SessionDetailPane({
                 ? "Save failed"
                 : "";
     return (
-        <div className="relative flex min-h-0 flex-col">
+        <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 border-b border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -430,6 +441,16 @@ export function SessionDetailPane({
                         ) : null}
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-1">
+                        {onClose ? (
+                            <button
+                                className="h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
+                                title="Close"
+                                aria-label="Close"
+                                onClick={onClose}
+                            >
+                                <i className="fa-sharp fa-solid fa-xmark" />
+                            </button>
+                        ) : null}
                         <button
                             className={cn(
                                 "h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary",

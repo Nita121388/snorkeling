@@ -7,6 +7,8 @@ import {
     SelectionCopyOverlay,
     type SelectionCopyOverlayState,
 } from "@/app/element/selection-copy-overlay";
+import { parseFileReference } from "@/app/element/selection-reference-parser";
+import { searchSelectionInFiles } from "@/app/element/selection-search-in-files";
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
@@ -356,13 +358,9 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
 
     useEffect(() => {
         model.codeEditKeyDownHandler = codeEditKeyDownHandler;
-        model.refreshCallback = () => {
-            globalStore.set(model.refreshVersion, (v) => v + 1);
-        };
         return () => {
             model.codeEditKeyDownHandler = null;
             model.monacoRef.current = null;
-            model.refreshCallback = null;
         };
     }, []);
 
@@ -442,6 +440,12 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             setSelectionCopyOverlay({
                 ...position,
                 text,
+                contextText: buildCopyContextText(
+                    getAbsoluteFilePath(fileInfo),
+                    selection.startLineNumber,
+                    text,
+                    language
+                ),
             });
         };
 
@@ -475,6 +479,31 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 await navigator.clipboard.writeText(contextText);
             },
         });
+        const searchInFilesDisposer = editor.addAction({
+            id: "snorkeling.search-in-files",
+            label: "Search In Files",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 0.6,
+            run: async () => {
+                const editorModel = editor.getModel();
+                if (!editorModel) {
+                    return;
+                }
+                const selection = editor.getSelection();
+                const cursorPosition = editor.getPosition();
+                const lineNumber = selection?.startLineNumber ?? cursorPosition?.lineNumber ?? 1;
+                let text = selection ? editorModel.getValueInRange(selection) : "";
+                if (!text) {
+                    text = editorModel.getLineContent(lineNumber);
+                }
+                const reference = parseFileReference(text);
+                if (reference == null) {
+                    window.alert("No file reference found in the selected text.");
+                    return;
+                }
+                await searchSelectionInFiles(reference);
+            },
+        });
         const selectionDisposer = editor.onDidChangeCursorSelection(updateSelectionCopyOverlay);
         const scrollDisposer = editor.onDidScrollChange(() => setSelectionCopyOverlay(null));
         const blurDisposer = editor.onDidBlurEditorText(() => setSelectionCopyOverlay(null));
@@ -490,6 +519,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             searchDecorationIdsRef.current = editor.deltaDecorations(searchDecorationIdsRef.current, []);
             keyDownDisposer.dispose();
             copyContextDisposer.dispose();
+            searchInFilesDisposer.dispose();
             selectionDisposer.dispose();
             scrollDisposer.dispose();
             blurDisposer.dispose();
@@ -513,7 +543,23 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 onMount={onMount}
             />
             <Search {...searchProps} />
-            <SelectionCopyOverlay overlay={selectionCopyOverlay} onHide={hideSelectionCopyOverlay} />
+            <SelectionCopyOverlay
+                overlay={selectionCopyOverlay}
+                onHide={hideSelectionCopyOverlay}
+                extraMenuItems={
+                    selectionCopyOverlay?.contextText
+                        ? [
+                              {
+                                  label: "Copy Context",
+                                  click: () =>
+                                      fireAndForget(() =>
+                                          navigator.clipboard.writeText(selectionCopyOverlay.contextText)
+                                      ),
+                              },
+                          ]
+                        : undefined
+                }
+            />
         </div>
     );
 }

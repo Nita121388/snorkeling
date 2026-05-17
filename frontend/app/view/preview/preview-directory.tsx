@@ -48,7 +48,6 @@ import { openPreviewEntry } from "./preview-open";
 import type { PreviewEnv } from "./previewenv";
 
 const PageJumpSize = 20;
-const DirectoryAutoRefreshMs = 4000;
 
 interface DirectoryTableHeaderCellProps {
     header: Header<FileInfo, unknown>;
@@ -610,37 +609,13 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     const showHiddenFiles = useAtomValue(model.showHiddenFiles);
     const [selectedPath, setSelectedPath] = useState("");
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
-    const [refreshVersion, setRefreshVersion] = useAtom(model.refreshVersion);
+    const refreshVersion = useAtomValue(model.refreshVersion);
     const conn = useAtomValue(model.connection);
     const blockData = useAtomValue(model.blockAtom);
     const finfo = useAtomValue(model.statFile);
     const dirPath = finfo?.path;
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const blockMoveMenuItems = useBlockMoveMenuItems();
-
-    useEffect(() => {
-        model.refreshCallback = () => {
-            setRefreshVersion((refreshVersion) => refreshVersion + 1);
-        };
-        return () => {
-            model.refreshCallback = null;
-        };
-    }, [model, setRefreshVersion]);
-
-    useEffect(() => {
-        if (!dirPath) {
-            return;
-        }
-        const intervalId = window.setInterval(() => {
-            if (document.visibilityState === "hidden") {
-                return;
-            }
-            setRefreshVersion((refreshVersion) => refreshVersion + 1);
-        }, DirectoryAutoRefreshMs);
-        return () => {
-            window.clearInterval(intervalId);
-        };
-    }, [dirPath, setRefreshVersion]);
 
     useEffect(
         () =>
@@ -851,9 +826,9 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 }
                 setErrorMsg(errorMsg);
             }
-            model.refreshCallback();
+            model.refresh();
         },
-        [model.refreshCallback]
+        [model]
     );
 
     const [, drop] = useDrop(
@@ -885,7 +860,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
             },
             // TODO: mabe add a hover option?
         }),
-        [dirPath, model.formatRemoteUri, model.refreshCallback]
+        [dirPath, model]
     );
 
     useEffect(() => {
@@ -910,12 +885,12 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                         },
                         null
                     );
-                    model.refreshCallback();
+                    model.refresh();
                 });
                 setEntryManagerProps(undefined);
             },
         });
-    }, [dirPath]);
+    }, [dirPath, env.rpc, model]);
     const newDirectory = useCallback(() => {
         setEntryManagerProps({
             entryManagerType: EntryManagerType.NewDirectory,
@@ -927,12 +902,12 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                             path: await model.formatRemoteUri(`${dirPath}/${newName}`, globalStore.get),
                         },
                     });
-                    model.refreshCallback();
+                    model.refresh();
                 });
                 setEntryManagerProps(undefined);
             },
         });
-    }, [dirPath]);
+    }, [dirPath, env.rpc, model]);
 
     const handleFileContextMenu = useCallback(
         async (e: any) => {

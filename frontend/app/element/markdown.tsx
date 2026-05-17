@@ -10,7 +10,7 @@ import {
     transformBlocks,
 } from "@/app/element/markdown-util";
 import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
-import { boundNumber, useAtomValueSafe, cn } from "@/util/util";
+import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { Atom } from "jotai";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -60,9 +60,19 @@ const Link = ({
     );
 };
 
+function getSourceLine(props: any): number | undefined {
+    const line = props?.node?.position?.start?.line;
+    return Number.isInteger(line) && line > 0 ? line : undefined;
+}
+
+function sourceLineAttrs(sourceLine?: number): Record<string, number> {
+    return sourceLine == null ? {} : { "data-source-line": sourceLine };
+}
+
 const Heading = ({ props, hnum }: { props: React.HTMLAttributes<HTMLHeadingElement>; hnum: number }) => {
+    const sourceLine = getSourceLine(props);
     return (
-        <div id={props.id} className={clsx("heading", `is-${hnum}`)}>
+        <div id={props.id} className={clsx("heading", `is-${hnum}`)} {...sourceLineAttrs(sourceLine)}>
             {props.children}
         </div>
     );
@@ -85,7 +95,7 @@ const Mermaid = ({ chart }: { chart: string }) => {
                 }
 
                 // Normalize the chart text
-                let normalizedChart = chart
+                const normalizedChart = chart
                     .replace(/<br\s*\/?>/gi, "\n") // Convert <br/> and <br> to newlines
                     .replace(/\r\n?/g, "\n") // Normalize \r \r\n to \n
                     .replace(/\n+$/, ""); // Remove final newline
@@ -133,9 +143,10 @@ const Code = ({ className = "", children }: { className?: string; children: Reac
 type CodeBlockProps = {
     children: React.ReactNode;
     onClickExecute?: (cmd: string) => void;
+    sourceLine?: number;
 };
 
-const CodeBlock = ({ children, onClickExecute }: CodeBlockProps) => {
+const CodeBlock = ({ children, onClickExecute, sourceLine }: CodeBlockProps) => {
     const getTextContent = (children: any): string => {
         if (typeof children === "string") {
             return children;
@@ -163,7 +174,7 @@ const CodeBlock = ({ children, onClickExecute }: CodeBlockProps) => {
     };
 
     return (
-        <pre className="codeblock">
+        <pre className="codeblock" {...sourceLineAttrs(sourceLine)}>
             {children}
             <div className="codeblock-actions">
                 <CopyButton onClick={handleCopy} title="Copy" />
@@ -304,6 +315,7 @@ type MarkdownProps = {
     rehype?: boolean;
     fontSizeOverride?: number;
     fixedFontSizeOverride?: number;
+    scrollTargetLine?: number | null;
 };
 
 const Markdown = ({
@@ -316,6 +328,7 @@ const Markdown = ({
     resolveOpts,
     fontSizeOverride,
     fixedFontSizeOverride,
+    scrollTargetLine,
     scrollable = true,
     rehype = true,
     onClickExecute,
@@ -347,24 +360,62 @@ const Markdown = ({
         }
     }, [focusedHeading]);
 
+    useEffect(() => {
+        if (scrollTargetLine == null || !contentsOsRef.current?.osInstance()) {
+            return;
+        }
+        const { viewport } = contentsOsRef.current.osInstance().elements();
+        const lineElems = Array.from(viewport.querySelectorAll<HTMLElement>("[data-source-line]"));
+        if (lineElems.length === 0) {
+            return;
+        }
+        let targetElem: HTMLElement | null = null;
+        for (const elem of lineElems) {
+            const elemLine = Number(elem.dataset.sourceLine);
+            if (!Number.isFinite(elemLine)) {
+                continue;
+            }
+            if (elemLine <= scrollTargetLine) {
+                targetElem = elem;
+                continue;
+            }
+            if (targetElem == null) {
+                targetElem = elem;
+            }
+            break;
+        }
+        if (targetElem == null) {
+            targetElem = lineElems[lineElems.length - 1];
+        }
+        const targetBoundingRect = targetElem.getBoundingClientRect();
+        const viewportBoundingRect = viewport.getBoundingClientRect();
+        const targetTop = targetBoundingRect.top - viewportBoundingRect.top;
+        viewport.scrollBy({ top: targetTop - 24, behavior: "smooth" });
+    }, [scrollTargetLine, transformedText]);
+
     const markdownComponents: Partial<Components> = {
         a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
             <Link props={props} setFocusedHeading={setFocusedHeading} />
         ),
-        p: (props: React.HTMLAttributes<HTMLParagraphElement>) => <div className="paragraph" {...props} />,
+        p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
+            <div className="paragraph" {...props} {...sourceLineAttrs(getSourceLine(props))} />
+        ),
         h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={1} />,
         h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={2} />,
         h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={3} />,
         h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={4} />,
         h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={5} />,
         h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading props={props} hnum={6} />,
+        li: (props: React.HTMLAttributes<HTMLLIElement>) => (
+            <li {...props} {...sourceLineAttrs(getSourceLine(props))} />
+        ),
         img: (props: React.HTMLAttributes<HTMLImageElement>) => <MarkdownImg props={props} resolveOpts={resolveOpts} />,
         source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
             <MarkdownSource props={props} resolveOpts={resolveOpts} />
         ),
         code: Code,
         pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-            <CodeBlock children={props.children} onClickExecute={onClickExecute} />
+            <CodeBlock children={props.children} onClickExecute={onClickExecute} sourceLine={getSourceLine(props)} />
         ),
     };
     markdownComponents["waveblock"] = (props: any) => <WaveBlock {...props} blockmap={contentBlocksMap} />;

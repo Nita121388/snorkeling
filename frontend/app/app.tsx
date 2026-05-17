@@ -33,6 +33,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
+import { makeSelectionSearchInFilesMenuItem } from "./element/selection-copy-overlay";
 
 import "./app.scss";
 
@@ -117,6 +118,8 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     }
     if (canCopy) {
         menu.push({ label: "Copy", role: "copy" });
+        const selectionText = window.getSelection()?.toString() ?? "";
+        menu.push(makeSelectionSearchInFilesMenuItem(selectionText));
     }
     if (canPaste) {
         menu.push({ label: "Paste", role: "paste" });

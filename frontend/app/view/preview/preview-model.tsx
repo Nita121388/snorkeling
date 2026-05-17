@@ -58,6 +58,8 @@ const PreviewSearchLineMetaKey = "preview:searchline";
 type PreviewOpenPathOptions = {
     lineNumber?: number;
     forceNewBlock?: boolean;
+    forceCurrentBlock?: boolean;
+    editMode?: boolean;
 };
 
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
@@ -107,6 +109,7 @@ function openTargetLabel(direction: PreviewOpenTargetDirection): string {
 
 const textApplicationMimetypes = [
     "application/sql",
+    "application/x-subrip",
     "application/x-php",
     "application/x-pem-file",
     "application/x-httpd-php",
@@ -175,12 +178,7 @@ function iconForFile(mimeType: string): string {
         return "file-lines";
     } else if (mimeType == "text/csv") {
         return "file-csv";
-    } else if (
-        mimeType.startsWith("text/") ||
-        mimeType == "application/sql" ||
-        (mimeType.startsWith("application/") &&
-            (mimeType.includes("json") || mimeType.includes("yaml") || mimeType.includes("toml")))
-    ) {
+    } else if (isTextFile(mimeType)) {
         return "file-code";
     } else {
         return "file";
@@ -205,6 +203,10 @@ function normalizeSearchTargetLine(val: any): number | null {
         return null;
     }
     return Math.max(1, Math.floor(val));
+}
+
+function normalizePath(filePath: string): string {
+    return (filePath ?? "").replace(/\\/g, "/").replace(/\/+/g, "/");
 }
 
 export class PreviewModel implements ViewModel {
@@ -259,7 +261,6 @@ export class PreviewModel implements ViewModel {
     showHiddenFiles: PrimitiveAtom<boolean>;
     refreshVersion: PrimitiveAtom<number>;
     directorySearchActive: PrimitiveAtom<boolean>;
-    refreshCallback: () => void;
     directoryKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     codeEditKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     env: PreviewEnv;
@@ -523,7 +524,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
                     title: "Refresh",
-                    click: () => this.refreshCallback?.(),
+                    click: () => this.refresh(),
                 });
             }
             if (buttons.length > 0) {
@@ -556,6 +557,7 @@ export class PreviewModel implements ViewModel {
             return get(this.blockAtom)?.meta?.connection;
         });
         this.statFile = atom<Promise<FileInfo>>(async (get) => {
+            get(this.refreshVersion);
             const fileName = get(this.metaFilePath);
             const path = await this.formatRemoteUri(fileName, get);
             if (fileName == null) {
@@ -734,6 +736,9 @@ export class PreviewModel implements ViewModel {
     private applyOpenPathOptions(meta: MetaType, options?: PreviewOpenPathOptions): MetaType {
         const nextMeta: Record<string, any> = { ...meta };
         nextMeta[PreviewSearchLineMetaKey] = normalizeSearchTargetLine(options?.lineNumber);
+        if (options?.editMode != null) {
+            nextMeta.edit = options.editMode;
+        }
         return nextMeta as MetaType;
     }
 
@@ -879,10 +884,26 @@ export class PreviewModel implements ViewModel {
         if (updateMeta == null) {
             return false;
         }
-        updateMeta.edit = false;
+        if (options?.editMode == null) {
+            updateMeta.edit = false;
+        }
         updateMeta.connection = connection;
         await this.env.services.object.UpdateObjectMeta(WOS.makeORef("block", blockId), updateMeta);
         return true;
+    }
+
+    private async openPathInCurrentBlock(newPath: string, options?: PreviewOpenPathOptions) {
+        const currentPath = globalStore.get(this.metaFilePath);
+        if (normalizePath(currentPath) === normalizePath(newPath)) {
+            const blockMeta = globalStore.get(this.blockAtom)?.meta ?? {};
+            const updateMeta = this.applyOpenPathOptions(blockMeta, options);
+            const blockOref = WOS.makeORef("block", this.blockId);
+            await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
+            refocusNode(this.blockId);
+            return;
+        }
+        await this.goHistory(newPath, options);
+        refocusNode(this.blockId);
     }
 
     private async openPathInNewBlock(
@@ -899,6 +920,9 @@ export class PreviewModel implements ViewModel {
         const lineNumber = normalizeSearchTargetLine(options?.lineNumber);
         if (lineNumber != null) {
             blockMeta[PreviewSearchLineMetaKey] = lineNumber;
+        }
+        if (options?.editMode != null) {
+            blockMeta.edit = options.editMode;
         }
         const blockDef: BlockDef = {
             meta: blockMeta,
@@ -942,6 +966,10 @@ export class PreviewModel implements ViewModel {
     }
 
     async openPathWithTarget(newPath: string, options?: PreviewOpenPathOptions) {
+        if (options?.forceCurrentBlock) {
+            await this.openPathInCurrentBlock(newPath, options);
+            return;
+        }
         if (options?.forceNewBlock) {
             const direction = this.getOpenTargetDirection();
             await this.openPathInNewBlock(newPath, direction, options);
@@ -1084,6 +1112,10 @@ export class PreviewModel implements ViewModel {
     isSpecializedView(sv: string): boolean {
         const loadableSV = globalStore.get(this.loadableSpecializedView);
         return loadableSV.state == "hasData" && loadableSV.data.specializedView == sv;
+    }
+
+    refresh(): void {
+        globalStore.set(this.refreshVersion, (v) => v + 1);
     }
 
     getSettingsMenuItems(): ContextMenuItem[] {

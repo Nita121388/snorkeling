@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
     collectAgentLaunchTargetsInTab,
+    createAgentBlockDefForProfile,
+    createAgentBlockDefForTarget,
     createDefaultAgentBlockDef,
     extractTerminalContextMeta,
     resolveWorkspaceAgentContextMeta,
@@ -32,9 +34,13 @@ function makeTab(blockids: string[], meta?: Record<string, unknown>): Tab {
 
 describe("agent launch context", () => {
     it("extracts context only from terminal blocks", () => {
-        expect(extractTerminalContextMeta(makeBlock("block:preview", { view: "preview", connection: "ssh://a" }))).toBeNull();
         expect(
-            extractTerminalContextMeta(makeBlock("block:term", { view: "term", connection: "ssh://a", "cmd:cwd": "/tmp" }))
+            extractTerminalContextMeta(makeBlock("block:preview", { view: "preview", connection: "ssh://a" }))
+        ).toBeNull();
+        expect(
+            extractTerminalContextMeta(
+                makeBlock("block:term", { view: "term", connection: "ssh://a", "cmd:cwd": "/tmp" })
+            )
         ).toEqual({ connection: "ssh://a", "cmd:cwd": "/tmp" });
     });
 
@@ -132,7 +138,11 @@ describe("agent launch context", () => {
     it("adds focused Files target when no terminal target exists", () => {
         const tab = makeTab(["block:preview"]);
         const blockMap: Record<string, Block> = {
-            "block:preview": makeBlock("block:preview", { view: "preview", connection: "ssh://host-a", file: "/srv/repo" }),
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                connection: "ssh://host-a",
+                file: "/srv/repo",
+            }),
         };
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
@@ -294,5 +304,46 @@ describe("agent launch context", () => {
         const metaRecord = blockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:provider"]).toBe("claude");
         expect(metaRecord["agent:autoresume"]).toBe(true);
+    });
+
+    it("builds an agent block for an explicit profile without changing the default profile", () => {
+        const settings = {
+            "agent:defaultprofile": "codex",
+            "agent:profiles": {
+                claude: {
+                    cmd: "claude",
+                    model: "sonnet-4",
+                },
+            },
+        } as SettingsType;
+
+        const defaultBlockDef = createDefaultAgentBlockDef(settings, { inheritWorkspaceContext: false });
+        expect(defaultBlockDef.meta?.cmd).toBe("codex");
+
+        const claudeBlockDef = createAgentBlockDefForProfile("claude", settings, { inheritWorkspaceContext: false });
+        expect(claudeBlockDef.meta?.cmd).toBe("claude");
+        expect(claudeBlockDef.meta?.["cmd:args"]).toEqual(["--model", "sonnet-4"]);
+        const metaRecord = claudeBlockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:provider"]).toBe("claude");
+        expect(metaRecord["agent:autoresume"]).toBe(true);
+    });
+
+    it("applies an explicit profile to a selected launch target", () => {
+        const target = {
+            blockId: "block:term",
+            connection: null,
+            cwd: "/Users/nita/project",
+            filePath: null,
+            source: "terminal",
+            isLocal: true,
+            label: "local",
+            detail: "/Users/nita/project • block block:ter",
+        } as const;
+
+        const blockDef = createAgentBlockDefForTarget(undefined, target, "claude");
+        expect(blockDef.meta?.cmd).toBe("claude");
+        expect(blockDef.meta?.["cmd:cwd"]).toBe("/Users/nita/project");
+        const metaRecord = blockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:provider"]).toBe("claude");
     });
 });

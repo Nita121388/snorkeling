@@ -416,7 +416,9 @@ export class LayoutModel {
 
     private async cleanupOrphanedBlocks() {
         const tab = this.getter(this.tabAtom);
+        const tabBlockIds = new Set(tab.blockids || []);
         const layoutBlockIds = new Set<string>();
+        const layoutOnlyNodeIds: string[] = [];
 
         if (this.treeState.rootNode == null) {
             return;
@@ -425,8 +427,22 @@ export class LayoutModel {
         walkNodes(this.treeState.rootNode, (node) => {
             if (node.data?.blockId) {
                 layoutBlockIds.add(node.data.blockId);
+                if (!tabBlockIds.has(node.data.blockId)) {
+                    layoutOnlyNodeIds.push(node.id);
+                }
             }
         });
+
+        for (const nodeId of layoutOnlyNodeIds) {
+            console.log("Cleaning up layout-only block node:", nodeId);
+            this.treeReducer(
+                {
+                    type: LayoutTreeActionType.RemoveNodeFromLayout,
+                    nodeId,
+                } as LayoutTreeRemoveNodeFromLayoutAction,
+                false
+            );
+        }
 
         for (const blockId of tab.blockids || []) {
             if (!layoutBlockIds.has(blockId)) {

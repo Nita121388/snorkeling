@@ -9,9 +9,10 @@ import { atoms, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
-import { AISessionsServiceType } from "@/app/store/services";
+import { AISessionsServiceType, ObjectService } from "@/app/store/services";
 import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
+import { getLayoutModelForTabById } from "@/layout/index";
 import { cn, makeIconClass } from "@/util/util";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -108,6 +109,24 @@ function sessionMatchesSummary(sessionId: string, summary: SessionSummary): bool
 function openSessionNote(sessionId: string): void {
     if (!sessionId) return;
     modalsModel.pushModal("AISessionNoteModal", { sessionId });
+}
+
+async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
+    const staticTabId = globalStore.get(atoms.staticTabId);
+    if (block.tabId === staticTabId) {
+        uxCloseBlock(block.blockId);
+        return;
+    }
+
+    const layoutModel = getLayoutModelForTabById(block.tabId);
+    const node = layoutModel?.getNodeByBlockId(block.blockId);
+    const shouldDeleteDirectly = node == null || layoutModel?.onNodeDelete == null;
+    if (node != null) {
+        await layoutModel.closeNode(node.id);
+    }
+    if (shouldDeleteDirectly) {
+        await ObjectService.DeleteBlock(block.blockId);
+    }
 }
 
 function sessionStatKey(stat: SessionFileStat | AISessionsStatResponse | null | undefined): string {
@@ -560,15 +579,12 @@ function MessageSquares({
     if (!block.sessionId) {
         return <div className="session-overview-muted">No session id</div>;
     }
-    if (detailState?.loading) {
-        return <div className="session-overview-muted">Loading messages...</div>;
-    }
     if (detailState?.error) {
         return <div className="session-overview-error">{detailState.error}</div>;
     }
     const messages = readableMessages(detailState?.detail);
     const visibleMessages = messages.slice(-limit);
-    if (messages.length === 0) {
+    if (messages.length === 0 && !detailState?.loading) {
         return <div className="session-overview-muted">No readable messages</div>;
     }
     return (
@@ -590,6 +606,9 @@ function MessageSquares({
                 />
             ))}
             {unreadText ? <span className="session-overview-unread-time">{unreadText}</span> : null}
+            {detailState?.loading ? (
+                <i className={cn(makeIconClass("spinner", false), "session-overview-loading-icon")} />
+            ) : null}
         </div>
     );
 }
@@ -632,21 +651,6 @@ function BlockRow({
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
-                <Tooltip
-                    content="Jump to block"
-                    placement="top"
-                    hideOnClick
-                    divClassName="session-overview-block-jump-wrap"
-                >
-                    <button
-                        type="button"
-                        className="session-overview-block-jump-button"
-                        onClick={() => onJumpBlock(block)}
-                        aria-label={`Jump to ${block.title}`}
-                    >
-                        <i className={makeIconClass("location-crosshairs", false)} />
-                    </button>
-                </Tooltip>
                 <span className="session-overview-block-icon">
                     <i className={iconClass} />
                 </span>
@@ -687,6 +691,24 @@ function BlockRow({
                 )}
             </div>
             <div className="session-overview-block-actions">
+                <Tooltip
+                    content="Jump to block"
+                    placement="top"
+                    hideOnClick
+                    divClassName="session-overview-block-jump-wrap"
+                >
+                    <button
+                        type="button"
+                        className="session-overview-block-action-button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onJumpBlock(block);
+                        }}
+                        aria-label={`Jump to ${block.title}`}
+                    >
+                        <i className={makeIconClass("location-crosshairs", false)} />
+                    </button>
+                </Tooltip>
                 {block.sessionId ? (
                     <Tooltip content="Delete session file" placement="top" hideOnClick divClassName="inline-flex">
                         <button
@@ -827,6 +849,26 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         : currentBlockInOverview
           ? currentBlockId
           : null;
+    const focusedOverviewBlock = useMemo(
+        () =>
+            currentBlockId == null
+                ? null
+                : (blocks.find((block) => block.blockId === currentBlockId && block.isAgentLike && block.sessionId) ??
+                  null),
+        [blocks, currentBlockId]
+    );
+    const focusedOverviewBlockUpdatedAt =
+        focusedOverviewBlock == null
+            ? 0
+            : normalizeTimeMs(details[focusedOverviewBlock.sessionId]?.detail?.summary?.updatedAt);
+
+    useEffect(() => {
+        if (focusedOverviewBlock == null) return;
+        overviewModel.markBlockViewed(
+            focusedOverviewBlock.blockId,
+            Math.max(Date.now(), focusedOverviewBlockUpdatedAt)
+        );
+    }, [focusedOverviewBlock?.blockId, focusedOverviewBlockUpdatedAt, overviewModel]);
 
     const unreadCount = blocks.filter((block) => {
         const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
@@ -910,7 +952,23 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 }}
                                 onDeleteBlock={(nextBlock) => {
                                     setSelectedBlockId(nextBlock.blockId);
-                                    uxCloseBlock(nextBlock.blockId);
+                                    setSessionAction((current) => ({ ...current, error: "" }));
+                                    deleteOverviewBlock(nextBlock)
+                                        .then(() => {
+                                            setSelectedBlockId((current) =>
+                                                current === nextBlock.blockId ? null : current
+                                            );
+                                            setSelected((current) =>
+                                                current?.block.blockId === nextBlock.blockId ? null : current
+                                            );
+                                            model.refresh();
+                                        })
+                                        .catch((error) => {
+                                            setSessionAction((current) => ({
+                                                ...current,
+                                                error: error instanceof Error ? error.message : String(error),
+                                            }));
+                                        });
                                 }}
                                 onOpenMessage={(nextBlock, message) => {
                                     setSelectedBlockId(nextBlock.blockId);

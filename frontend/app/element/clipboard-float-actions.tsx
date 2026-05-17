@@ -1,8 +1,12 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { isBlank } from "@/util/util";
 import { useEffect, useRef, useState } from "react";
+import {
+    clampSelectionCopyOverlayPosition,
+    SelectionCopyOverlay,
+    type SelectionCopyOverlayState,
+} from "./selection-copy-overlay";
 
 const CopySelectionMinLength = 1;
 const RecentCopyWindowMs = 45_000;
@@ -104,13 +108,10 @@ function writePasteHintDisabled(value: boolean): void {
 }
 
 export function ClipboardFloatActions() {
-    const [copyPos, setCopyPos] = useState<FloatPos>(null);
-    const [copyText, setCopyText] = useState<string>("");
-    const [copyDone, setCopyDone] = useState<boolean>(false);
+    const [copyPos, setCopyPos] = useState<SelectionCopyOverlayState | null>(null);
     const [pasteHint, setPasteHint] = useState<PasteHintState>(null);
     const [pasteHintDisabled, setPasteHintDisabled] = useState<boolean>(() => readPasteHintDisabled());
 
-    const copyDoneTimerRef = useRef<number>(null);
     const pasteHintTimerRef = useRef<number>(null);
     const lastCopyAtRef = useRef<number>(0);
     const pendingPointerRef = useRef<FloatPos>(null);
@@ -118,9 +119,6 @@ export function ClipboardFloatActions() {
 
     useEffect(() => {
         return () => {
-            if (copyDoneTimerRef.current != null) {
-                window.clearTimeout(copyDoneTimerRef.current);
-            }
             if (pasteHintTimerRef.current != null) {
                 window.clearTimeout(pasteHintTimerRef.current);
             }
@@ -140,30 +138,29 @@ export function ClipboardFloatActions() {
             const selection = window.getSelection();
             if (selection == null || selection.rangeCount === 0 || selection.isCollapsed) {
                 setCopyPos(null);
-                setCopyText("");
                 return;
             }
             const text = getSelectionText();
             if (text.length < CopySelectionMinLength) {
                 setCopyPos(null);
-                setCopyText("");
                 return;
             }
             const rect = selection.getRangeAt(0).getBoundingClientRect();
             if (rect.width === 0 && rect.height === 0) {
                 setCopyPos(null);
-                setCopyText("");
                 return;
             }
-            const x = clamp(rect.right + 8, 8, window.innerWidth - 32);
-            const y = clamp(rect.bottom + 8, 8, window.innerHeight - 32);
-            setCopyPos({ x, y });
-            setCopyText(text);
+            const position = clampSelectionCopyOverlayPosition(
+                window.innerWidth,
+                window.innerHeight,
+                rect.right + 8,
+                rect.bottom + 8
+            );
+            setCopyPos({ ...position, text });
         };
 
         const hideCopyButton = () => {
             setCopyPos(null);
-            setCopyText("");
         };
 
         document.addEventListener("selectionchange", updateCopyButton);
@@ -252,22 +249,12 @@ export function ClipboardFloatActions() {
         };
     }, [pasteHintDisabled]);
 
-    const handleCopyClick = async () => {
-        const text = !isBlank(copyText) ? copyText : getSelectionText();
-        if (isBlank(text)) {
-            return;
-        }
-        await navigator.clipboard.writeText(text);
-        lastCopyAtRef.current = Date.now();
-        setCopyDone(true);
+    const hideCopyButton = () => {
         setCopyPos(null);
-        setCopyText("");
-        if (copyDoneTimerRef.current != null) {
-            window.clearTimeout(copyDoneTimerRef.current);
-        }
-        copyDoneTimerRef.current = window.setTimeout(() => {
-            setCopyDone(false);
-        }, 900);
+    };
+
+    const recordOverlayCopy = () => {
+        lastCopyAtRef.current = Date.now();
     };
 
     const handlePasteClick = async () => {
@@ -290,18 +277,12 @@ export function ClipboardFloatActions() {
 
     return (
         <>
-            {copyPos && (
-                <button
-                    type="button"
-                    className="fixed z-[1500] h-6 w-6 rounded border border-border bg-modalbg/95 text-[11px] text-secondary shadow-md hover:text-white hover:bg-hoverbg transition-colors"
-                    style={{ left: `${copyPos.x}px`, top: `${copyPos.y}px` }}
-                    title={copyDone ? "Copied" : "Copy"}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => void handleCopyClick()}
-                >
-                    <i className={copyDone ? "fa fa-solid fa-check" : "fa fa-regular fa-copy"} />
-                </button>
-            )}
+            <SelectionCopyOverlay
+                overlay={copyPos}
+                position="fixed"
+                onHide={hideCopyButton}
+                onCopied={recordOverlayCopy}
+            />
             {pasteHint && (
                 <div
                     ref={pasteHintBubbleRef}

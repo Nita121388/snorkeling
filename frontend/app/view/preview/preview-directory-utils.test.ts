@@ -44,7 +44,7 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
             getSettingsKeyAtom: () => atom("name"),
         },
         showHiddenFiles: atom(true),
-        refreshCallback: vi.fn(),
+        refresh: vi.fn(),
     };
 
     return {

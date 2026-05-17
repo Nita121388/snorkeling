@@ -116,13 +116,15 @@ function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
     return normalized;
 }
 
-function getProfileConfig(settings?: SettingsType): AgentProfileConfig {
-    const defaultProfileName = isBlank(settings?.["agent:defaultprofile"])
-        ? DefaultAgentProfile
-        : settings["agent:defaultprofile"]?.trim();
-    const builtInProfile = BuiltinAgentProfiles[defaultProfileName] ?? BuiltinAgentProfiles[DefaultAgentProfile];
+function getProfileConfig(settings?: SettingsType, profileName?: string): AgentProfileConfig {
+    const selectedProfileName = isBlank(profileName)
+        ? isBlank(settings?.["agent:defaultprofile"])
+            ? DefaultAgentProfile
+            : settings["agent:defaultprofile"]?.trim()
+        : profileName.trim();
+    const builtInProfile = BuiltinAgentProfiles[selectedProfileName] ?? BuiltinAgentProfiles[DefaultAgentProfile];
     const rawProfiles = settings?.["agent:profiles"];
-    const rawSelected = rawProfiles?.[defaultProfileName];
+    const rawSelected = rawProfiles?.[selectedProfileName];
     const selectedProfile = normalizeProfile(rawSelected);
 
     return {
@@ -260,7 +262,8 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     const shortBlockId = (block.oid ?? blockId).slice(0, 8);
     const isLocal = connection == null;
     const label = isLocal ? "local" : connection;
-    const locationDetail = filePath != null && cwd != null && filePath !== cwd ? `${filePath} -> ${cwd}` : cwd ?? filePath;
+    const locationDetail =
+        filePath != null && cwd != null && filePath !== cwd ? `${filePath} -> ${cwd}` : (cwd ?? filePath);
     const detail = locationDetail == null ? `block ${shortBlockId}` : `${locationDetail} • block ${shortBlockId}`;
     return {
         blockId,
@@ -474,7 +477,8 @@ function getCurrentWorkspaceContextMeta(): AgentContextMeta {
     return resolveWorkspaceAgentContextMeta({
         focusedBlock,
         tab: tabData,
-        getBlockById: (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
+        getBlockById: (blockId: string) =>
+            globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
     });
 }
 
@@ -501,8 +505,20 @@ function resolveContextMeta(context?: AgentLaunchContext): AgentContextMeta {
 }
 
 export function createDefaultAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext): BlockDef {
+    return createAgentBlockDef(settings, context);
+}
+
+export function createAgentBlockDefForProfile(
+    profileName: string,
+    settings?: SettingsType,
+    context?: AgentLaunchContext
+): BlockDef {
+    return createAgentBlockDef(settings, context, profileName);
+}
+
+function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext, profileName?: string): BlockDef {
     const contextMeta = resolveContextMeta(context);
-    const profile = getProfileConfig(settings);
+    const profile = getProfileConfig(settings, profileName);
     const cmd = !isBlank(profile.cmd) ? profile.cmd : DefaultAgentCommand;
     const provider = resolveAgentProvider(settings, cmd);
     const cmdArgs = sanitizeArgs(profile.args);
@@ -540,10 +556,18 @@ export function createDefaultAgentBlockDef(settings?: SettingsType, context?: Ag
     };
 }
 
-export function createAgentBlockDefForTarget(settings: SettingsType | undefined, target: AgentLaunchTarget): BlockDef {
-    return createDefaultAgentBlockDef(settings, {
+export function createAgentBlockDefForTarget(
+    settings: SettingsType | undefined,
+    target: AgentLaunchTarget,
+    profileName?: string
+): BlockDef {
+    const context = {
         connection: target.connection,
         cwd: target.cwd,
         inheritWorkspaceContext: false,
-    });
+    };
+    if (isBlank(profileName)) {
+        return createDefaultAgentBlockDef(settings, context);
+    }
+    return createAgentBlockDefForProfile(profileName!, settings, context);
 }

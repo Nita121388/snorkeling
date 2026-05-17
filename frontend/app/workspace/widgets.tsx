@@ -6,6 +6,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentLaunchTarget,
+    createAgentBlockDefForProfile,
     createAgentBlockDefForTarget,
     createDefaultAgentBlockDef,
     DefaultAgentWidgetId,
@@ -66,9 +67,10 @@ type WidgetPropsType = {
     widget: WidgetConfigType;
     mode: "normal" | "compact" | "supercompact";
     onWidgetSelect: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
+    onWidgetContextMenu?: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
-const Widget = memo(({ widgetId, widget, mode, onWidgetSelect }: WidgetPropsType) => {
+const Widget = memo(({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu }: WidgetPropsType) => {
     const [isTruncated, setIsTruncated] = useState(false);
     const labelRef = useRef<HTMLDivElement>(null);
     const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
@@ -93,6 +95,7 @@ const Widget = memo(({ widgetId, widget, mode, onWidgetSelect }: WidgetPropsType
                 widget["display:hidden"] && "hidden"
             )}
             divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
+            divOnContextMenu={(e) => onWidgetContextMenu?.(widgetId, widget, e)}
         >
             <div style={{ color: widget.color }}>
                 <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
@@ -270,6 +273,8 @@ type AgentTargetFloatingWindowProps = {
     settings?: SettingsType;
     magnified?: boolean;
     env: WidgetsEnv;
+    profileName?: string;
+    profileLabel?: string;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -279,8 +284,28 @@ function getErrorMessage(error: unknown): string {
     return String(error ?? "unknown error");
 }
 
+type AgentWidgetProfile = {
+    name: string;
+    label: string;
+};
+
+const AgentWidgetProfiles: AgentWidgetProfile[] = [
+    { name: "codex", label: "Codex" },
+    { name: "claude", label: "Claude Code" },
+];
+
 const AgentTargetFloatingWindow = memo(
-    ({ isOpen, onClose, referenceElement, targets, settings, magnified, env }: AgentTargetFloatingWindowProps) => {
+    ({
+        isOpen,
+        onClose,
+        referenceElement,
+        targets,
+        settings,
+        magnified,
+        env,
+        profileName,
+        profileLabel,
+    }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
@@ -306,7 +331,7 @@ const AgentTargetFloatingWindow = memo(
                     {...getFloatingProps()}
                     className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select context for Agent</div>
+                    <div className="px-2 py-1 text-xs text-secondary">Select context for {profileLabel ?? "Agent"}</div>
                     <div className="max-h-[280px] overflow-y-auto">
                         {targets.map((target) => (
                             <button
@@ -315,7 +340,7 @@ const AgentTargetFloatingWindow = memo(
                                 className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
                                 onClick={() => {
                                     fireAndForget(async () => {
-                                        const blockDef = createAgentBlockDefForTarget(settings, target);
+                                        const blockDef = createAgentBlockDefForTarget(settings, target, profileName);
                                         try {
                                             await env.createBlock(blockDef, magnified);
                                             onClose();
@@ -481,27 +506,26 @@ const Widgets = memo(() => {
     const [agentTargets, setAgentTargets] = useState<AgentLaunchTarget[]>([]);
     const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
     const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
+    const [agentProfileName, setAgentProfileName] = useState<string | undefined>(undefined);
+    const [agentProfileLabel, setAgentProfileLabel] = useState<string | undefined>(undefined);
 
     const closeAgentTargetSelector = useCallback(() => {
         setIsAgentTargetOpen(false);
         setAgentReferenceElement(null);
         setAgentTargets([]);
+        setAgentProfileName(undefined);
+        setAgentProfileLabel(undefined);
     }, []);
 
-    const handleWidgetSelect = useCallback(
-        (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
-            if (widgetId !== DefaultAgentWidgetId) {
-                closeAgentTargetSelector();
-                const blockDef = widget.blockdef;
-                env.createBlock(blockDef, widget.magnified);
-                return;
-            }
-
+    const launchAgentForProfile = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement, profile?: AgentWidgetProfile) => {
             const launchTargets = getCurrentTabAgentLaunchTargets();
             if (launchTargets.length > 1) {
                 setAgentTargets(launchTargets);
                 setAgentWidgetMagnified(Boolean(widget.magnified));
-                setAgentReferenceElement(e.currentTarget);
+                setAgentReferenceElement(referenceElement);
+                setAgentProfileName(profile?.name);
+                setAgentProfileLabel(profile?.label);
                 setIsAgentTargetOpen(true);
                 return;
             }
@@ -509,8 +533,10 @@ const Widgets = memo(() => {
             closeAgentTargetSelector();
             const blockDef =
                 launchTargets.length === 1
-                    ? createAgentBlockDefForTarget(fullConfig?.settings, launchTargets[0])
-                    : createDefaultAgentBlockDef(fullConfig?.settings);
+                    ? createAgentBlockDefForTarget(fullConfig?.settings, launchTargets[0], profile?.name)
+                    : profile == null
+                      ? createDefaultAgentBlockDef(fullConfig?.settings)
+                      : createAgentBlockDefForProfile(profile.name, fullConfig?.settings);
             fireAndForget(async () => {
                 try {
                     await env.createBlock(blockDef, widget.magnified);
@@ -523,6 +549,38 @@ const Widgets = memo(() => {
             });
         },
         [closeAgentTargetSelector, env, fullConfig?.settings]
+    );
+
+    const handleWidgetSelect = useCallback(
+        (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
+            if (widgetId !== DefaultAgentWidgetId) {
+                closeAgentTargetSelector();
+                const blockDef = widget.blockdef;
+                env.createBlock(blockDef, widget.magnified);
+                return;
+            }
+
+            launchAgentForProfile(widget, e.currentTarget);
+        },
+        [closeAgentTargetSelector, env, launchAgentForProfile]
+    );
+
+    const handleWidgetContextMenu = useCallback(
+        (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
+            if (widgetId !== DefaultAgentWidgetId) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            closeAgentTargetSelector();
+            const referenceElement = e.currentTarget;
+            const menu: ContextMenuItem[] = AgentWidgetProfiles.map((profile) => ({
+                label: profile.label,
+                click: () => launchAgentForProfile(widget, referenceElement, profile),
+            }));
+            env.showContextMenu(menu, e);
+        },
+        [closeAgentTargetSelector, env, launchAgentForProfile]
     );
 
     const checkModeNeeded = useCallback(() => {
@@ -608,6 +666,7 @@ const Widgets = memo(() => {
                                     widget={data.config}
                                     mode={mode}
                                     onWidgetSelect={handleWidgetSelect}
+                                    onWidgetContextMenu={handleWidgetContextMenu}
                                 />
                             ))}
                         </div>
@@ -655,6 +714,7 @@ const Widgets = memo(() => {
                                 widget={data.config}
                                 mode={mode}
                                 onWidgetSelect={handleWidgetSelect}
+                                onWidgetContextMenu={handleWidgetContextMenu}
                             />
                         ))}
                         <div className="flex-grow" />
@@ -740,6 +800,8 @@ const Widgets = memo(() => {
                     settings={fullConfig?.settings}
                     magnified={agentWidgetMagnified}
                     env={env}
+                    profileName={agentProfileName}
+                    profileLabel={agentProfileLabel}
                 />
             )}
 
@@ -754,6 +816,7 @@ const Widgets = memo(() => {
                         widget={data.config}
                         mode="normal"
                         onWidgetSelect={handleWidgetSelect}
+                        onWidgetContextMenu={handleWidgetContextMenu}
                     />
                 ))}
                 <div className="flex-grow" />

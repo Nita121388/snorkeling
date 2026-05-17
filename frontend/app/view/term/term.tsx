@@ -23,7 +23,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import { shortSessionId } from "@/app/view/aisessions/utils";
 import type { TermViewModel } from "@/app/view/term/term-model";
-import { atoms, getOverrideConfigAtom, getSettingsKeyAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
+import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
@@ -426,10 +426,6 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         termWrap.onSelectionTextChange = (selectionText) => {
             const container = viewRef.current;
             if (selectionText == null || container == null) {
-                setSelectionCopyOverlay(null);
-                return;
-            }
-            if (globalStore.get(getSettingsKeyAtom("term:copyonselect"))) {
                 setSelectionCopyOverlay(null);
                 return;
             }

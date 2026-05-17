@@ -24,6 +24,11 @@ type AgentSessionIdResolution = {
     shellLastCommand: AgentCommandResolution;
 };
 
+type AgentCommandBinding = {
+    provider: AgentSessionProvider;
+    sessionId: string;
+};
+
 function stringValue(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -281,6 +286,30 @@ function resolveAgentCommand(commandText: unknown): AgentCommandResolution {
     return firstResolution ?? emptyCommandResolution("empty-command", { segmentCount: segments.length });
 }
 
+function resolveAgentCommandBinding(commandText: unknown): AgentCommandBinding | null {
+    const command = stringValue(commandText);
+    if (command === "") {
+        return null;
+    }
+    const segments = splitCommandSegments(command);
+    let firstAgentBinding: AgentCommandBinding | null = null;
+    for (const segment of segments) {
+        const resolution = resolveAgentSessionIdFromTokens(splitCommandText(segment), segments.length);
+        if (resolution.provider === "") {
+            continue;
+        }
+        const binding = {
+            provider: resolution.provider,
+            sessionId: resolution.sessionId,
+        };
+        if (binding.sessionId !== "") {
+            return binding;
+        }
+        firstAgentBinding ??= binding;
+    }
+    return firstAgentBinding;
+}
+
 function resolveAgentCommandFromMeta(meta: TermCommandMeta): AgentCommandResolution {
     const tokens = commandTokensFromMeta(meta);
     if (tokens.length === 0) {
@@ -360,7 +389,7 @@ function resolveAgentSessionIdFromCommand(commandText: unknown): string {
 }
 
 function stripAnsiControlCodes(value: string): string {
-    return value.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+    return value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g"), "");
 }
 
 function commandCandidatesFromTerminalLine(line: string): string[] {
@@ -408,8 +437,9 @@ function resolveAgentSessionIdFromMeta(meta: TermCommandMeta): string {
 
 export {
     extractAgentCommandFromTerminalText,
+    resolveAgentCommandBinding,
     resolveAgentSessionId,
     resolveAgentSessionIdFromCommand,
     resolveAgentSessionIdFromMeta,
 };
-export type { AgentCommandResolution, AgentSessionIdResolution };
+export type { AgentCommandBinding, AgentCommandResolution, AgentSessionIdResolution };
