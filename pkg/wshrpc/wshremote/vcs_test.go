@@ -167,6 +167,64 @@ func TestParseGitAheadBehind(t *testing.T) {
 	}
 }
 
+func TestNonInteractiveGitSSHCommandAddsSafetyOptions(t *testing.T) {
+	got := nonInteractiveGitSSHCommand("ssh -i ~/.ssh/id_ed25519")
+
+	for _, want := range []string{"ssh -i ~/.ssh/id_ed25519", "-o BatchMode=yes", "-o ConnectTimeout=15", "-o ConnectionAttempts=1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q to contain %q", got, want)
+		}
+	}
+}
+
+func TestVcsCommandEnvDisablesInteractiveGitPrompts(t *testing.T) {
+	t.Setenv("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+
+	env := vcsCommandEnv()
+	envMap := make(map[string]string)
+	for _, entry := range env {
+		key, value, found := strings.Cut(entry, "=")
+		if found {
+			envMap[key] = value
+		}
+	}
+
+	if envMap["GIT_TERMINAL_PROMPT"] != "0" {
+		t.Fatalf("expected GIT_TERMINAL_PROMPT=0, got %q", envMap["GIT_TERMINAL_PROMPT"])
+	}
+	if envMap["GCM_INTERACTIVE"] != "never" {
+		t.Fatalf("expected GCM_INTERACTIVE=never, got %q", envMap["GCM_INTERACTIVE"])
+	}
+	if envMap["SSH_ASKPASS_REQUIRE"] != "never" {
+		t.Fatalf("expected SSH_ASKPASS_REQUIRE=never, got %q", envMap["SSH_ASKPASS_REQUIRE"])
+	}
+	if !strings.Contains(envMap["GIT_SSH_COMMAND"], "-o ConnectTimeout=15") {
+		t.Fatalf("expected GIT_SSH_COMMAND to include ConnectTimeout, got %q", envMap["GIT_SSH_COMMAND"])
+	}
+}
+
+func TestFormatCopyableVcsCommandRedactsCommitMessage(t *testing.T) {
+	t.Setenv("GIT_SSH_COMMAND", "ssh")
+
+	got := formatCopyableVcsCommand("git", []string{"commit", "-m", "secret message", "--", "file name.txt"})
+
+	if strings.Contains(got, "secret message") {
+		t.Fatalf("expected commit message to be redacted, got %q", got)
+	}
+	for _, want := range []string{"GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "git", "commit", "<redacted>", "file name.txt"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q to contain %q", got, want)
+		}
+	}
+}
+
+func TestSummarizeVcsOutputTruncatesLongOutput(t *testing.T) {
+	got := summarizeVcsOutput(strings.Repeat("a", 900))
+	if len(got) <= 800 || !strings.HasSuffix(got, "...(truncated)") {
+		t.Fatalf("expected long output summary to be truncated, got len=%d value=%q", len(got), got)
+	}
+}
+
 func TestParseSvnRemoteStatusXML(t *testing.T) {
 	statusOut := `
 <status>

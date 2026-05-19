@@ -673,24 +673,32 @@ function BlockRow({
                             unreadText={unread ? formatUnreadDuration(updatedAtMs, now) : ""}
                             onOpenMessage={onOpenMessage}
                         />
-                        <div className="session-overview-note-line">
-                            <button
-                                type="button"
-                                onClick={() => openSessionNote(block.sessionId)}
-                                disabled={!block.sessionId}
-                                aria-label="Edit session note"
-                                title="Edit session note"
-                            >
-                                <i className={makeIconClass("tag", false)} />
-                            </button>
-                            {detail?.summary?.note ? <span>{detail.summary.note}</span> : null}
-                        </div>
+                        {detail?.summary?.note ? (
+                            <div className="session-overview-note-line">
+                                <span>{detail.summary.note}</span>
+                            </div>
+                        ) : null}
                     </>
                 ) : (
                     <div className="session-overview-muted">Click block name to jump</div>
                 )}
             </div>
             <div className="session-overview-block-actions">
+                {block.isAgentLike && block.sessionId ? (
+                    <Tooltip content="Edit session note" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-action-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                openSessionNote(block.sessionId);
+                            }}
+                            aria-label={`Edit session note for ${block.title}`}
+                        >
+                            <i className={makeIconClass("tag", false)} />
+                        </button>
+                    </Tooltip>
+                ) : null}
                 <Tooltip
                     content="Jump to block"
                     placement="top"

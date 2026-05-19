@@ -99,6 +99,7 @@ const previewElectronApi: ElectronApi = {
     incrementTermCommands: (_opts?: { isRemote?: boolean; isWsl?: boolean; isDurable?: boolean }) => {},
     nativePaste: () => {},
     writeClipboardText: (_text: string) => Promise.resolve(true),
+    writeClipboardFiles: (_filePaths: string[], _fallbackText?: string) => Promise.resolve(false),
     openBuilder: (_appId?: string) => {},
     setBuilderWindowAppId: (_appId: string) => {},
     doRefresh: () => {},

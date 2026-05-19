@@ -41,6 +41,27 @@ const electronApp = electron.app;
 let webviewFocusId: number = null;
 let webviewKeys: string[] = [];
 
+function encodeMacClipboardFileList(filePaths: string[]): Buffer {
+    const escapedFilePaths = filePaths.map((filePath) => {
+        return filePath
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&apos;");
+    });
+    const plist = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+        '<plist version="1.0">',
+        "<array>",
+        ...escapedFilePaths.map((filePath) => `  <string>${filePath}</string>`),
+        "</array>",
+        "</plist>",
+    ].join("\n");
+    return Buffer.from(plist, "utf8");
+}
+
 export function openBuilderWindow(appId?: string) {
     const normalizedAppId = appId || "";
     const existingBuilderWindows = getAllBuilderWindows();
@@ -664,6 +685,28 @@ export function initIpcHandlers() {
         }
         electron.clipboard.writeText(text);
         return true;
+    });
+
+    electron.ipcMain.handle("write-clipboard-files", async (_event, filePaths: string[], fallbackText?: string) => {
+        const validFilePaths = (Array.isArray(filePaths) ? filePaths : []).filter((filePath) => {
+            return typeof filePath === "string" && filePath !== "" && fs.existsSync(filePath);
+        });
+        const text = typeof fallbackText === "string" && fallbackText !== "" ? fallbackText : validFilePaths.join("\n");
+        if (validFilePaths.length === 0) {
+            if (text !== "") {
+                electron.clipboard.writeText(text);
+            }
+            return false;
+        }
+        if (process.platform === "darwin") {
+            electron.clipboard.write({
+                text,
+            });
+            electron.clipboard.writeBuffer("NSFilenamesPboardType", encodeMacClipboardFileList(validFilePaths));
+            return true;
+        }
+        electron.clipboard.writeText(text);
+        return false;
     });
 
     electron.ipcMain.on("open-builder", (event, appId?: string) => {

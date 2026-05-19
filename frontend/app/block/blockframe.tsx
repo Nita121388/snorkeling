@@ -124,6 +124,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const connName = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "connection"));
     const iconColor = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "icon:color"));
     const noHeader = util.useAtomValueSafe(viewModel?.noHeader);
+    const isMinimizedPreview = jotai.useAtomValue(nodeModel.isMinimizedPreview);
     const { moveContext, moveTabModal } = useBlockMoveMenu(nodeModel, viewModel, preview);
 
     React.useEffect(() => {
@@ -207,6 +208,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                 "block-preview": preview,
                 "block-no-highlight": numBlocksInTab === 1 && !aiPanelVisible,
                 ephemeral: isEphemeral,
+                "minimized-preview": isMinimizedPreview,
                 magnified: isMagnified,
             })}
             data-blockid={nodeModel.blockId}

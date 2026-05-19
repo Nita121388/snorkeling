@@ -42,6 +42,7 @@ import {
     mergeError,
     overwriteError,
 } from "./preview-directory-utils";
+import { copyPreviewFileItems, getPreviewFileClipboard, pastePreviewFileItems } from "./preview-file-clipboard";
 import { type PreviewModel } from "./preview-model";
 import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigation";
 import { openPreviewEntry } from "./preview-open";
@@ -687,6 +688,23 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 globalStore.set(model.directorySearchActive, true);
                 return true;
             }
+            if (checkKeyPressed(waveEvent, "Cmd:c") || checkKeyPressed(waveEvent, "Ctrl:c")) {
+                const selectedFileInfos = filteredData.filter((fileInfo) => selectedPaths.has(fileInfo.path));
+                if (selectedFileInfos.length === 0) {
+                    return true;
+                }
+                copyPreviewFileItems(selectedFileInfos, conn);
+                return true;
+            }
+            if (checkKeyPressed(waveEvent, "Cmd:v") || checkKeyPressed(waveEvent, "Ctrl:v")) {
+                if (dirPath == null || dirPath === "") {
+                    return true;
+                }
+                fireAndForget(() =>
+                    pastePreviewFileItems(model, getPreviewFileClipboard(), dirPath, conn, setErrorMsg)
+                );
+                return true;
+            }
             if (checkKeyPressed(waveEvent, "Escape")) {
                 setSearchText("");
                 globalStore.set(model.directorySearchActive, false);
@@ -767,7 +785,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
         return () => {
             model.directoryKeyDownHandler = null;
         };
-    }, [filteredData, selectedPath, searchText]);
+    }, [conn, dirPath, filteredData, model, selectedPath, selectedPaths, setErrorMsg, searchText]);
 
     useEffect(() => {
         if (filteredData.length != 0 && focusIndex > filteredData.length - 1) {

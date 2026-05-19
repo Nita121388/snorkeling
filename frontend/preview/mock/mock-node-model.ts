@@ -30,6 +30,7 @@ export function makeMockNodeModel(opts: MockNodeModelOpts): NodeModel {
         isMagnified: isMagnifiedAtom,
         anyMagnified: atom((get) => get(isMagnifiedAtom)),
         isEphemeral: atom(false),
+        isMinimizedPreview: atom(false),
         ready: atom(true),
         disablePointerEvents: atom(false),
         toggleMagnify: () => {

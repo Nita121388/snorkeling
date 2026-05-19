@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld("api", {
         ipcRenderer.send("increment-term-commands", opts),
     nativePaste: () => ipcRenderer.send("native-paste"),
     writeClipboardText: (text: string) => ipcRenderer.invoke("write-clipboard-text", text),
+    writeClipboardFiles: (filePaths: string[], fallbackText?: string) =>
+        ipcRenderer.invoke("write-clipboard-files", filePaths, fallbackText),
     openBuilder: (appId?: string) => ipcRenderer.send("open-builder", appId),
     setBuilderWindowAppId: (appId: string) => ipcRenderer.send("set-builder-window-appid", appId),
     doRefresh: () => ipcRenderer.send("do-refresh"),

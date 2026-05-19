@@ -399,6 +399,7 @@ export interface NodeModel {
     isMagnified: Atom<boolean>;
     anyMagnified: Atom<boolean>;
     isEphemeral: Atom<boolean>;
+    isMinimizedPreview: Atom<boolean>;
     ready: Atom<boolean>;
     disablePointerEvents: Atom<boolean>;
     toggleMagnify: () => void;

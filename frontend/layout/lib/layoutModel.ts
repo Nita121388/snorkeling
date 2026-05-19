@@ -27,6 +27,7 @@ import {
     splitVertical,
     swapNode,
 } from "./layoutTree";
+import { getMinimizedBlockIdsFromTab } from "./minimizedBlocks";
 import {
     ContentRenderer,
     FlexDirection,
@@ -217,6 +218,7 @@ export class LayoutModel {
      * Atom holding an ephemeral node that is not part of the layout tree. This node displays above all other nodes.
      */
     ephemeralNode: PrimitiveAtom<LayoutNode>;
+    ephemeralNodeDeleteOnClose: PrimitiveAtom<boolean>;
     /**
      * The last node to be an ephemeral node. This node should sit at a higher z-index than the others so that it floats above the other nodes as it returns to its original position.
      */
@@ -331,6 +333,7 @@ export class LayoutModel {
         });
 
         this.ephemeralNode = atom();
+        this.ephemeralNodeDeleteOnClose = atom(true);
         this.magnifiedNodeSizeAtom = getSettingsKeyAtom("window:magnifiedblocksize");
 
         this.magnifiedNodeIdAtom = atom((get) => {
@@ -417,6 +420,7 @@ export class LayoutModel {
     private async cleanupOrphanedBlocks() {
         const tab = this.getter(this.tabAtom);
         const tabBlockIds = new Set(tab.blockids || []);
+        const minimizedBlockIds = new Set(getMinimizedBlockIdsFromTab(tab));
         const layoutBlockIds = new Set<string>();
         const layoutOnlyNodeIds: string[] = [];
 
@@ -445,7 +449,7 @@ export class LayoutModel {
         }
 
         for (const blockId of tab.blockids || []) {
-            if (!layoutBlockIds.has(blockId)) {
+            if (!layoutBlockIds.has(blockId) && !minimizedBlockIds.has(blockId)) {
                 console.log("Cleaning up orphaned block:", blockId);
                 if (this.onNodeDelete) {
                     await this.onNodeDelete({ blockId });
@@ -1127,6 +1131,10 @@ export class LayoutModel {
                     const ephemeralNode = get(this.ephemeralNode);
                     return ephemeralNode?.id === nodeid;
                 }),
+                isMinimizedPreview: atom((get) => {
+                    const ephemeralNode = get(this.ephemeralNode);
+                    return ephemeralNode?.id === nodeid && !get(this.ephemeralNodeDeleteOnClose);
+                }),
                 addEphemeralNodeToLayout: () => this.addEphemeralNodeToLayout(),
                 animationTimeS: this.animationTimeS,
                 ready: this.ready,
@@ -1438,12 +1446,16 @@ export class LayoutModel {
             // The ephemeral node is not in the tree, so we need to handle it separately.
             const ephemeralNode = this.getter(this.ephemeralNode);
             if (ephemeralNode?.id === nodeId) {
+                const deleteOnClose = this.getter(this.ephemeralNodeDeleteOnClose);
                 this.setter(this.ephemeralNode, undefined);
+                this.setter(this.ephemeralNodeDeleteOnClose, true);
                 this.treeState.focusedNodeId = undefined;
                 this.updateTree(false);
                 this.setter(this.localTreeStateAtom, { ...this.treeState });
                 this.persistToBackend();
-                await this.onNodeDelete?.(ephemeralNode.data);
+                if (deleteOnClose) {
+                    await this.onNodeDelete?.(ephemeralNode.data);
+                }
                 return;
             }
             console.error("unable to close node, cannot find it in tree", nodeId);
@@ -1467,13 +1479,14 @@ export class LayoutModel {
         await this.closeNode(this.focusedNodeId);
     }
 
-    newEphemeralNode(blockId: string) {
+    newEphemeralNode(blockId: string, opts?: { deleteOnClose?: boolean }) {
         if (this.getter(this.ephemeralNode)) {
             this.closeNode(this.getter(this.ephemeralNode).id);
         }
 
         const ephemeralNode = newLayoutNode(undefined, undefined, undefined, { blockId });
         this.setter(this.ephemeralNode, ephemeralNode);
+        this.setter(this.ephemeralNodeDeleteOnClose, opts?.deleteOnClose ?? true);
 
         const addlProps = this.getter(this.additionalProps);
         const leafs = this.getter(this.leafs);
@@ -1484,9 +1497,23 @@ export class LayoutModel {
         this.focusNode(ephemeralNode.id);
     }
 
+    closeEphemeralNodeForBlock(blockId: string): boolean {
+        const ephemeralNode = this.getter(this.ephemeralNode);
+        if (ephemeralNode?.data?.blockId !== blockId) {
+            return false;
+        }
+        this.setter(this.ephemeralNode, undefined);
+        this.setter(this.ephemeralNodeDeleteOnClose, true);
+        this.treeState.focusedNodeId = undefined;
+        this.updateTree(false);
+        this.setter(this.localTreeStateAtom, { ...this.treeState });
+        return true;
+    }
+
     addEphemeralNodeToLayout() {
         const ephemeralNode = this.getter(this.ephemeralNode);
         this.setter(this.ephemeralNode, undefined);
+        this.setter(this.ephemeralNodeDeleteOnClose, true);
         if (this.magnifiedNodeId) {
             this.magnifyNodeToggle(this.magnifiedNodeId, false);
         }
@@ -1648,6 +1675,13 @@ export class LayoutModel {
             }
         }
         return null;
+    }
+
+    getBlockById(blockId: string): Block {
+        if (!blockId) {
+            return null;
+        }
+        return this.getter(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
     }
 
     /**

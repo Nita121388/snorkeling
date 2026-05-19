@@ -136,6 +136,7 @@ declare global {
         incrementTermCommands: (opts?: { isRemote?: boolean; isWsl?: boolean; isDurable?: boolean }) => void; // increment-term-commands
         nativePaste: () => void; // native-paste
         writeClipboardText: (text: string) => Promise<boolean>; // write-clipboard-text
+        writeClipboardFiles: (filePaths: string[], fallbackText?: string) => Promise<boolean>; // write-clipboard-files
         openBuilder: (appId?: string) => void; // open-builder
         setBuilderWindowAppId: (appId: string) => void; // set-builder-window-appid
         doRefresh: () => void; // do-refresh

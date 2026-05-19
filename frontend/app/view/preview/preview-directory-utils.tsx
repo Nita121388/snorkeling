@@ -9,6 +9,16 @@ import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import dayjs from "dayjs";
 import React from "react";
 import { quote as shellQuote } from "shell-quote";
+import {
+    copyPreviewFileItems,
+    getPasteableItems,
+    getPreviewFileClipboard,
+    getUnsupportedPasteItems,
+    makeCopyLabel,
+    makePasteLabel,
+    pastePreviewFileItems,
+    type PreviewFileClipboard,
+} from "./preview-file-clipboard";
 import { type PreviewModel } from "./preview-model";
 import { makeRelativePathForCopy } from "./preview-paths";
 
@@ -223,11 +233,16 @@ type DirectoryEntryMenuOptions = {
     relativePathRoot?: string | null;
     openInCurrentBlock?: (() => void | Promise<void>) | null;
     selectedFileInfos?: FileInfo[];
+    clipboard?: PreviewFileClipboard | null;
 };
 
 type DirectoryBackgroundMenuActions = {
     newFile: () => void;
     newDirectory: () => void;
+};
+
+type DirectoryBackgroundMenuOptions = {
+    clipboard?: PreviewFileClipboard | null;
 };
 
 type DirectoryVcsMenuScope = "file" | "directory" | "background";
@@ -426,6 +441,29 @@ function getCopyFileInfos(finfo: FileInfo, selectedFileInfos?: FileInfo[]): File
     return copyFileInfos.length === 0 ? [finfo] : copyFileInfos;
 }
 
+function getDirectoryEntryPasteDestPath(finfo: FileInfo): string {
+    if (finfo.isdir) {
+        return finfo.path;
+    }
+    if (!isBlank(finfo.dir)) {
+        return finfo.dir;
+    }
+    const fullPath = finfo.path ?? "";
+    const separatorIndex = Math.max(fullPath.lastIndexOf("/"), fullPath.lastIndexOf("\\"));
+    if (separatorIndex === 0) {
+        return fullPath.slice(0, 1);
+    }
+    if (separatorIndex > 0) {
+        return fullPath.slice(0, separatorIndex);
+    }
+    return "";
+}
+
+function makeDirectoryEntryPasteLabel(clipboard: PreviewFileClipboard | null, finfo: FileInfo): string {
+    const baseLabel = makePasteLabel(clipboard);
+    return finfo.isdir ? `${baseLabel} Into Folder` : `${baseLabel} Here`;
+}
+
 function getRelativePathsForCopy(fileInfos: FileInfo[], relativePathRoot?: string | null): string[] | null {
     if (isBlank(relativePathRoot)) {
         return null;
@@ -510,6 +548,10 @@ export async function makeDirectoryEntryMenuItems(
     const fileNames = copyFileInfos.map(getFileNameForCopy);
     const fullFileNames = copyFileInfos.map((fileInfo) => fileInfo.path);
     const relativePaths = getRelativePathsForCopy(copyFileInfos, options.relativePathRoot);
+    const clipboard = options.clipboard ?? getPreviewFileClipboard();
+    const pasteableItems = getPasteableItems(clipboard);
+    const unsupportedPasteItems = getUnsupportedPasteItems(clipboard);
+    const pasteDestPath = getDirectoryEntryPasteDestPath(finfo);
     const menu: ContextMenuItem[] = [
         {
             label: "New File",
@@ -525,6 +567,17 @@ export async function makeDirectoryEntryMenuItems(
         },
         {
             type: "separator",
+        },
+        {
+            label: makeCopyLabel(copyFileInfos),
+            click: () => {
+                copyPreviewFileItems(copyFileInfos, conn);
+            },
+        },
+        {
+            label: makeDirectoryEntryPasteLabel(clipboard, finfo),
+            enabled: !isBlank(pasteDestPath) && (pasteableItems.length > 0 || unsupportedPasteItems.length > 0),
+            click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg)),
         },
     ];
     const vcsMenuItems = await makeDirectoryVcsMenuItems(
@@ -588,8 +641,12 @@ export async function makeDirectoryBackgroundMenuItems(
     conn: string,
     finfo: FileInfo,
     setErrorMsg: (msg: ErrorMsg) => void,
-    actions: DirectoryBackgroundMenuActions
+    actions: DirectoryBackgroundMenuActions,
+    options: DirectoryBackgroundMenuOptions = {}
 ): Promise<ContextMenuItem[]> {
+    const clipboard = options.clipboard ?? getPreviewFileClipboard();
+    const pasteableItems = getPasteableItems(clipboard);
+    const unsupportedPasteItems = getUnsupportedPasteItems(clipboard);
     const menu: ContextMenuItem[] = [
         {
             label: "New File",
@@ -598,6 +655,14 @@ export async function makeDirectoryBackgroundMenuItems(
         {
             label: "New Folder",
             click: actions.newDirectory,
+        },
+        {
+            type: "separator",
+        },
+        {
+            label: makePasteLabel(clipboard),
+            enabled: pasteableItems.length > 0 || unsupportedPasteItems.length > 0,
+            click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg)),
         },
     ];
     const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);

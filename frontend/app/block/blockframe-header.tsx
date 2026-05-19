@@ -31,6 +31,7 @@ import * as util from "@/util/util";
 import { cn, makeIconClass } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { minimizeBlockToFloat, restoreMinimizedBlockToLayout } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
 import { BlockFrameProps } from "./blocktypes";
 
@@ -60,13 +61,19 @@ export function showBlockContextMenu(
     e.stopPropagation();
     const magnified = globalStore.get(nodeModel.isMagnified);
     const ephemeral = globalStore.get(nodeModel.isEphemeral);
+    const minimizedPreview = globalStore.get(nodeModel.isMinimizedPreview);
     const menu: ContextMenuItem[] = [
-        {
-            label: magnified ? "Un-Magnify Block" : "Magnify Block",
-            click: () => {
-                nodeModel.toggleMagnify();
-            },
-        },
+        minimizedPreview
+            ? {
+                  label: "Show in Tab",
+                  click: () => restoreMinimizedBlockToLayout(moveContext?.currentTabId, blockId),
+              }
+            : {
+                  label: magnified ? "Un-Magnify Block" : "Magnify Block",
+                  click: () => {
+                      nodeModel.toggleMagnify();
+                  },
+              },
         { type: "separator" },
         {
             label: "Copy BlockId",
@@ -76,6 +83,11 @@ export function showBlockContextMenu(
         },
     ];
     if (moveContext && !ephemeral) {
+        menu.push({
+            label: "Minimize to Float",
+            enabled: !minimizedPreview,
+            click: () => minimizeBlockToFloat(moveContext.currentTabId, blockId),
+        });
         menu.push({ type: "separator" }, ...makeBlockMoveMenuItems(blockId, blockEnv, moveContext));
     }
     const extraItems = viewModel?.getSettingsMenuItems?.();
@@ -83,8 +95,8 @@ export function showBlockContextMenu(
     menu.push(
         { type: "separator" },
         {
-            label: "Close Block",
-            click: () => uxCloseBlock(blockId),
+            label: minimizedPreview ? "Close Preview" : "Close Block",
+            click: () => (minimizedPreview ? nodeModel.onClose() : uxCloseBlock(blockId)),
         }
     );
     blockEnv.showContextMenu(menu, e);
@@ -175,6 +187,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
     const endIconButtons = util.useAtomValueSafe(viewModel?.endIconButtons);
     const magnified = jotai.useAtomValue(nodeModel.isMagnified);
     const ephemeral = jotai.useAtomValue(nodeModel.isEphemeral);
+    const minimizedPreview = jotai.useAtomValue(nodeModel.isMinimizedPreview);
     const numLeafs = jotai.useAtomValue(nodeModel.numLeafs);
     const magnifyDisabled = numLeafs <= 1;
     const showSplitButtons = jotai.useAtomValue(blockEnv.getSettingsKeyAtom("term:showsplitbuttons"));
@@ -223,7 +236,17 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
         click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, moveContext),
     };
     endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
-    if (ephemeral) {
+    if (minimizedPreview) {
+        const restoreDecl: IconButtonDecl = {
+            elemtype: "iconbutton",
+            icon: "arrow-up-right-from-square",
+            title: "Show in Tab",
+            click: () => {
+                restoreMinimizedBlockToLayout(moveContext?.currentTabId, blockId);
+            },
+        };
+        endIconsElem.push(<IconButton key="restore-minimized" decl={restoreDecl} />);
+    } else if (ephemeral) {
         const addToLayoutDecl: IconButtonDecl = {
             elemtype: "iconbutton",
             icon: "circle-plus",
@@ -245,13 +268,22 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
                 disabled={magnifyDisabled}
             />
         );
+        if (moveContext) {
+            const minimizeDecl: IconButtonDecl = {
+                elemtype: "iconbutton",
+                icon: "box",
+                title: "Minimize to Float",
+                click: () => minimizeBlockToFloat(moveContext.currentTabId, blockId),
+            };
+            endIconsElem.push(<IconButton key="minimize-to-float" decl={minimizeDecl} />);
+        }
     }
 
     const closeDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "xmark-large",
-        title: "Close",
-        click: () => uxCloseBlock(nodeModel.blockId),
+        title: minimizedPreview ? "Close Preview" : "Close",
+        click: () => (minimizedPreview ? nodeModel.onClose() : uxCloseBlock(nodeModel.blockId)),
     };
     endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close" />);
 

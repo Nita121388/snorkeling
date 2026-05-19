@@ -21,16 +21,18 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
 const (
-	DefaultVcsScanDepth   = 3
-	DefaultVcsStatusLimit = 200
-	DefaultVcsCommitLimit = 50
-	MaxVcsCommitScanLimit = 2000
-	MaxVcsRepos           = 64
+	DefaultVcsScanDepth      = 3
+	DefaultVcsStatusLimit    = 200
+	DefaultVcsCommitLimit    = 50
+	DefaultVcsCommandTimeout = 2 * time.Minute
+	MaxVcsCommitScanLimit    = 2000
+	MaxVcsRepos              = 64
 )
 
 var vcsScanSkipDirNames = map[string]struct{}{
@@ -47,6 +49,155 @@ var vcsScanSkipDirNames = map[string]struct{}{
 }
 
 var errVcsNonTextContent = errors.New("content is binary or not utf-8")
+
+func summarizeVcsOutput(output string) string {
+	const maxLen = 800
+	output = strings.TrimSpace(output)
+	if len(output) <= maxLen {
+		return output
+	}
+	return output[:maxLen] + "...(truncated)"
+}
+
+func redactVcsCommandArgs(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
+	for idx, arg := range redacted {
+		switch arg {
+		case "-m", "--message", "-F", "--file":
+			if idx+1 < len(redacted) {
+				redacted[idx+1] = "<redacted>"
+			}
+		}
+	}
+	return redacted
+}
+
+func formatCopyableVcsCommand(command string, args []string) string {
+	parts := make([]string, 0, len(args)+6)
+	parts = append(
+		parts,
+		"env",
+		shellutil.HardQuote("GIT_TERMINAL_PROMPT=0"),
+		shellutil.HardQuote("GCM_INTERACTIVE=never"),
+		shellutil.HardQuote("SSH_ASKPASS_REQUIRE=never"),
+		shellutil.HardQuote("GIT_SSH_COMMAND="+nonInteractiveGitSSHCommand(os.Getenv("GIT_SSH_COMMAND"))),
+		shellutil.HardQuote(command),
+	)
+	for _, arg := range redactVcsCommandArgs(args) {
+		parts = append(parts, shellutil.HardQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func logVcsCommandFailure(dir string, command string, args []string, stdout string, stderr string, elapsed time.Duration, err error, ctxErr error) {
+	log.Printf(
+		"[vcscommand] failed dir=%q command=%q elapsed=%s ctxerr=%v err=%v stderr=%q stdout=%q",
+		dir,
+		formatCopyableVcsCommand(command, args),
+		elapsed.Round(time.Millisecond),
+		ctxErr,
+		err,
+		summarizeVcsOutput(stderr),
+		summarizeVcsOutput(stdout),
+	)
+}
+
+func upsertEnvVar(env []string, key string, value string) []string {
+	prefix := key + "="
+	for idx, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			env[idx] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+func nonInteractiveGitSSHCommand(existing string) string {
+	cmd := strings.TrimSpace(existing)
+	if cmd == "" {
+		cmd = "ssh"
+	}
+	lowerCmd := strings.ToLower(cmd)
+	if !strings.Contains(lowerCmd, "batchmode") {
+		cmd += " -o BatchMode=yes"
+	}
+	if !strings.Contains(lowerCmd, "connecttimeout") {
+		cmd += " -o ConnectTimeout=15"
+	}
+	if !strings.Contains(lowerCmd, "connectionattempts") {
+		cmd += " -o ConnectionAttempts=1"
+	}
+	return cmd
+}
+
+func vcsCommandEnv() []string {
+	env := os.Environ()
+	env = upsertEnvVar(env, "GIT_TERMINAL_PROMPT", "0")
+	env = upsertEnvVar(env, "GCM_INTERACTIVE", "never")
+	env = upsertEnvVar(env, "SSH_ASKPASS_REQUIRE", "never")
+	env = upsertEnvVar(env, "GIT_SSH_COMMAND", nonInteractiveGitSSHCommand(os.Getenv("GIT_SSH_COMMAND")))
+	return env
+}
+
+func newVcsCommand(ctx context.Context, dir string, command string, args ...string) (*exec.Cmd, context.Context, context.CancelFunc) {
+	cmdCtx, cancelFn := context.WithTimeout(ctx, DefaultVcsCommandTimeout)
+	cmd := exec.CommandContext(cmdCtx, command, args...)
+	cmd.Env = vcsCommandEnv()
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	return cmd, cmdCtx, cancelFn
+}
+
+func formatVcsCommandError(ctx context.Context, command string, args []string, stdout string, stderr string, err error) error {
+	errStr := strings.TrimSpace(stderr)
+	if errStr == "" {
+		errStr = strings.TrimSpace(stdout)
+	}
+	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
+		timeoutMsg := fmt.Sprintf("timed out after %s", DefaultVcsCommandTimeout)
+		if errStr == "" {
+			errStr = timeoutMsg
+		} else {
+			errStr += " (" + timeoutMsg + ")"
+		}
+	} else if errors.Is(ctxErr, context.Canceled) {
+		if errStr == "" {
+			errStr = "command canceled"
+		} else {
+			errStr += " (command canceled)"
+		}
+	}
+	if errStr == "" {
+		errStr = err.Error()
+	}
+	return fmt.Errorf("%s %s: %s", command, strings.Join(args, " "), errStr)
+}
+
+func runVcsCommandOutput(ctx context.Context, dir string, command string, trimOutput bool, logFailure bool, args ...string) (string, error) {
+	cmd, cmdCtx, cancelFn := newVcsCommand(ctx, dir, command, args...)
+	defer cancelFn()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	startTime := time.Now()
+	err := cmd.Run()
+	elapsed := time.Since(startTime)
+	outStr := stdout.String()
+	if trimOutput {
+		outStr = strings.TrimSpace(outStr)
+	}
+	if err != nil {
+		if logFailure {
+			logVcsCommandFailure(dir, command, args, stdout.String(), stderr.String(), elapsed, err, cmdCtx.Err())
+		}
+		return outStr, formatVcsCommandError(cmdCtx, command, args, stdout.String(), stderr.String(), err)
+	}
+	return outStr, nil
+}
 
 type svnInfoXML struct {
 	Entries []struct {
@@ -89,34 +240,17 @@ type detectedRepoRoot struct {
 }
 
 func runVcsCommand(ctx context.Context, dir string, command string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	outStr := strings.TrimSpace(stdout.String())
-	if err != nil {
-		errStr := strings.TrimSpace(stderr.String())
-		if errStr == "" {
-			errStr = outStr
-		}
-		if errStr == "" {
-			errStr = err.Error()
-		}
-		return outStr, fmt.Errorf("%s %s: %s", command, strings.Join(args, " "), errStr)
-	}
-	return outStr, nil
+	return runVcsCommandOutput(ctx, dir, command, true, false, args...)
+}
+
+func runVcsCommandLogged(ctx context.Context, dir string, command string, args ...string) (string, error) {
+	return runVcsCommandOutput(ctx, dir, command, true, true, args...)
 }
 
 func runSvnStatusXMLCommand(ctx context.Context, dir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "svn", "status", "--xml")
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	args := []string{"status", "--xml"}
+	cmd, cmdCtx, cancelFn := newVcsCommand(ctx, dir, "svn", args...)
+	defer cancelFn()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -132,21 +266,13 @@ func runSvnStatusXMLCommand(ctx context.Context, dir string) (string, error) {
 			return outStr, nil
 		}
 	}
-	errStr := strings.TrimSpace(stderr.String())
-	if errStr == "" {
-		errStr = outStr
-	}
-	if errStr == "" {
-		errStr = err.Error()
-	}
-	return outStr, fmt.Errorf("svn status --xml: %s", errStr)
+	return outStr, formatVcsCommandError(cmdCtx, "svn", args, stdout.String(), stderr.String(), err)
 }
 
 func runSvnRemoteStatusXMLCommand(ctx context.Context, dir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "svn", "status", "-u", "--xml", "--non-interactive")
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	args := []string{"status", "-u", "--xml", "--non-interactive"}
+	cmd, cmdCtx, cancelFn := newVcsCommand(ctx, dir, "svn", args...)
+	defer cancelFn()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -162,21 +288,12 @@ func runSvnRemoteStatusXMLCommand(ctx context.Context, dir string) (string, erro
 			return outStr, nil
 		}
 	}
-	errStr := strings.TrimSpace(stderr.String())
-	if errStr == "" {
-		errStr = outStr
-	}
-	if errStr == "" {
-		errStr = err.Error()
-	}
-	return outStr, fmt.Errorf("svn status -u --xml: %s", errStr)
+	return outStr, formatVcsCommandError(cmdCtx, "svn", args, stdout.String(), stderr.String(), err)
 }
 
 func runSvnLogXMLCommand(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "svn", args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	cmd, cmdCtx, cancelFn := newVcsCommand(ctx, dir, "svn", args...)
+	defer cancelFn()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -194,7 +311,7 @@ func runSvnLogXMLCommand(ctx context.Context, dir string, args ...string) (strin
 	}
 	errStr := strings.TrimSpace(stderr.String())
 	if errStr == "" {
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		if ctxErr := cmdCtx.Err(); ctxErr != nil {
 			errStr = ctxErr.Error()
 			if outStr != "" {
 				errStr += " before svn returned complete XML output"
@@ -209,27 +326,11 @@ func runSvnLogXMLCommand(ctx context.Context, dir string, args ...string) (strin
 }
 
 func runVcsCommandRaw(ctx context.Context, dir string, command string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	outStr := stdout.String()
-	if err != nil {
-		errStr := strings.TrimSpace(stderr.String())
-		if errStr == "" {
-			errStr = strings.TrimSpace(outStr)
-		}
-		if errStr == "" {
-			errStr = err.Error()
-		}
-		return outStr, fmt.Errorf("%s %s: %s", command, strings.Join(args, " "), errStr)
-	}
-	return outStr, nil
+	return runVcsCommandOutput(ctx, dir, command, false, false, args...)
+}
+
+func runVcsCommandRawLogged(ctx context.Context, dir string, command string, args ...string) (string, error) {
+	return runVcsCommandOutput(ctx, dir, command, false, true, args...)
 }
 
 func normalizeVcsInputPath(path string) string {
@@ -1350,11 +1451,11 @@ func commitGit(ctx context.Context, repoPath string, message string, files []str
 		return "", fmt.Errorf("no files selected")
 	}
 	addArgs := append([]string{"add", "--"}, files...)
-	if _, err := runVcsCommand(ctx, repoPath, "git", addArgs...); err != nil {
+	if _, err := runVcsCommandLogged(ctx, repoPath, "git", addArgs...); err != nil {
 		return "", err
 	}
 	commitArgs := append([]string{"commit", "-m", message, "--"}, files...)
-	out, err := runVcsCommand(ctx, repoPath, "git", commitArgs...)
+	out, err := runVcsCommandLogged(ctx, repoPath, "git", commitArgs...)
 	if err != nil {
 		return out, err
 	}
@@ -1366,9 +1467,9 @@ func commitSvn(ctx context.Context, repoPath string, message string, files []str
 		return "", fmt.Errorf("no files selected")
 	}
 	addArgs := append([]string{"add", "--force"}, files...)
-	_, _ = runVcsCommand(ctx, repoPath, "svn", addArgs...)
+	_, _ = runVcsCommandLogged(ctx, repoPath, "svn", addArgs...)
 	commitArgs := append([]string{"commit", "-m", message}, files...)
-	out, err := runVcsCommand(ctx, repoPath, "svn", commitArgs...)
+	out, err := runVcsCommandLogged(ctx, repoPath, "svn", commitArgs...)
 	if err != nil {
 		return out, err
 	}
@@ -1619,13 +1720,13 @@ func (impl *ServerImpl) RemoteVcsSyncCommand(ctx context.Context, data wshrpc.Co
 	case "git":
 		switch action {
 		case "fetch":
-			output, err = runVcsCommandRaw(ctx, repoPath, "git", "fetch", "--prune")
+			output, err = runVcsCommandRawLogged(ctx, repoPath, "git", "fetch", "--prune")
 			defaultOutput = "Fetch completed."
 		case "pull":
-			output, err = runVcsCommandRaw(ctx, repoPath, "git", "pull", "--ff-only")
+			output, err = runVcsCommandRawLogged(ctx, repoPath, "git", "pull", "--ff-only")
 			defaultOutput = "Pull completed."
 		case "push":
-			output, err = runVcsCommandRaw(ctx, repoPath, "git", "push")
+			output, err = runVcsCommandRawLogged(ctx, repoPath, "git", "push")
 			defaultOutput = "Push completed."
 		default:
 			return &wshrpc.RemoteVcsSyncRtnData{
@@ -1636,7 +1737,7 @@ func (impl *ServerImpl) RemoteVcsSyncCommand(ctx context.Context, data wshrpc.Co
 	case "svn":
 		switch action {
 		case "update":
-			output, err = runVcsCommandRaw(ctx, repoPath, "svn", "update", "--accept", "postpone", "--non-interactive")
+			output, err = runVcsCommandRawLogged(ctx, repoPath, "svn", "update", "--accept", "postpone", "--non-interactive")
 			defaultOutput = "Update completed."
 		case "fetch":
 			_, err = runSvnRemoteStatusXMLCommand(ctx, repoPath)
