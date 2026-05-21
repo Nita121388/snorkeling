@@ -10,6 +10,7 @@ import { EmptyState } from "./empty-state";
 import { MessageCard } from "./session-message";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
+    buildSessionDetailTimeline,
     formatDateTimeToSecond,
     formatToolCallPreview,
     isReadableMessage,
@@ -170,6 +171,10 @@ export function SessionDetailPane({
     const detailMessages = useMemo(
         () => readableMessages.slice(-visibleMessageCount),
         [readableMessages, visibleMessageCount]
+    );
+    const timelineItems = useMemo(
+        () => buildSessionDetailTimeline(detail?.messages ?? [], detailMessages, detail?.toolCalls, showToolCalls),
+        [detail?.messages, detailMessages, detail?.toolCalls, showToolCalls]
     );
     const outlineMessages = useMemo(
         () => readableMessages.filter((message) => message.role === "user"),
@@ -494,49 +499,36 @@ export function SessionDetailPane({
                                         <div className="text-xxs uppercase text-secondary">Start reached</div>
                                     )}
                                 </div>
-                                {detailMessages.map((message) => (
-                                    <MessageCard
-                                        key={message.seq}
-                                        message={message}
-                                        collapsed={Boolean(collapsedMessages[message.seq])}
-                                        onToggleCollapsed={() => toggleMessageCollapsed(message.seq)}
-                                        registerRef={(node) => {
-                                            messageRefs.current[message.seq] = node;
-                                        }}
-                                    />
-                                ))}
-                                {showToolCalls ? (
-                                    <div className="rounded border border-border bg-panel/70 p-3">
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <div className="text-xxs uppercase text-secondary">Tool Calls</div>
-                                            <div className="text-[11px] text-secondary">
-                                                {toolsLoaded
-                                                    ? `${toolCalls.length} tool call${toolCalls.length === 1 ? "" : "s"}`
-                                                    : "Loading..."}
-                                            </div>
-                                        </div>
-                                        {!toolsLoaded ? (
-                                            <div className="rounded border border-border bg-bg/40 px-3 py-4 text-center text-xs text-secondary">
-                                                Loading tool calls...
-                                            </div>
-                                        ) : toolCalls.length === 0 ? (
-                                            <div className="rounded border border-border bg-bg/40 px-3 py-4 text-center text-xs text-secondary">
-                                                No tool calls.
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {toolCalls.map((toolCall) => (
-                                                    <ToolCallCard
-                                                        key={toolCall.seq}
-                                                        toolCall={toolCall}
-                                                        expanded={Boolean(expandedToolCalls[toolCall.seq])}
-                                                        onToggle={() => toggleToolCallExpanded(toolCall.seq)}
-                                                    />
-                                                ))}
-                                            </div>
-                                        )}
+                                {showToolCalls && !toolsLoaded ? (
+                                    <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                        Loading tool calls...
                                     </div>
                                 ) : null}
+                                {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
+                                    <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                        No tool calls.
+                                    </div>
+                                ) : null}
+                                {timelineItems.map((item) =>
+                                    item.kind === "message" ? (
+                                        <MessageCard
+                                            key={`message-${item.message.seq}`}
+                                            message={item.message}
+                                            collapsed={Boolean(collapsedMessages[item.message.seq])}
+                                            onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
+                                            registerRef={(node) => {
+                                                messageRefs.current[item.message.seq] = node;
+                                            }}
+                                        />
+                                    ) : (
+                                        <ToolCallCard
+                                            key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
+                                            toolCall={item.toolCall}
+                                            expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
+                                            onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
+                                        />
+                                    )
+                                )}
                             </div>
                         )}
                     </div>

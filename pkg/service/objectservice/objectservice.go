@@ -22,6 +22,11 @@ type ObjectService struct{}
 const DefaultTimeout = 2 * time.Second
 const ConnContextTimeout = 60 * time.Second
 
+type CopyBlockToNewTabResult struct {
+	TabId   string `json:"tabid"`
+	BlockId string `json:"blockid"`
+}
+
 func sendUpdateEvents(label string, updates waveobj.UpdatesRtnType) {
 	go func() {
 		defer func() {
@@ -209,6 +214,84 @@ func (svc *ObjectService) MoveBlockToNewTab(ctx context.Context, blockId string,
 	updates := waveobj.ContextGetUpdatesRtn(ctx)
 	sendUpdateEvents("ObjectService:MoveBlockToNewTab", updates)
 	return targetTabId, updates, nil
+}
+
+func (svc *ObjectService) CopyBlockToTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "copy an existing block to another tab",
+		ArgNames:   []string{"ctx", "blockId", "targetTabId", "activateTargetTab"},
+		ReturnDesc: "blockId",
+	}
+}
+
+func (svc *ObjectService) CopyBlockToTab(ctx context.Context, blockId string, targetTabId string, activateTargetTab bool) (string, waveobj.UpdatesRtnType, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	newBlockId, sourceTabId, err := wcore.CopyBlockToTab(ctx, blockId, targetTabId, true)
+	if err != nil {
+		return "", nil, fmt.Errorf("error copying block: %w", err)
+	}
+	if activateTargetTab && sourceTabId != targetTabId {
+		workspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, targetTabId)
+		if err != nil {
+			return "", nil, fmt.Errorf("error finding target workspace: %w", err)
+		}
+		if err := wcore.SetActiveTab(ctx, workspaceId, targetTabId); err != nil {
+			return "", nil, fmt.Errorf("error setting active tab: %w", err)
+		}
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	sendUpdateEvents("ObjectService:CopyBlockToTab", updates)
+	return newBlockId, updates, nil
+}
+
+func (svc *ObjectService) CopyBlockToNewTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "copy an existing block to a newly created empty tab",
+		ArgNames:   []string{"ctx", "blockId", "tabNameBase"},
+		ReturnDesc: "copy result",
+	}
+}
+
+func (svc *ObjectService) CopyBlockToNewTab(ctx context.Context, blockId string, tabNameBase string) (*CopyBlockToNewTabResult, waveobj.UpdatesRtnType, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	sourceTabId, err := wstore.DBFindTabForBlockId(ctx, blockId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error finding source tab: %w", err)
+	}
+	sourceTab, err := wstore.DBMustGet[*waveobj.Tab](ctx, sourceTabId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error finding source tab object: %w", err)
+	}
+	sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, sourceTabId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error finding source workspace: %w", err)
+	}
+	if sourceWorkspaceId == "" {
+		return nil, nil, fmt.Errorf("source tab %q has no workspace", sourceTabId)
+	}
+	tabNameBase = resolveMoveBlockToNewTabBaseName(sourceTab.Name, tabNameBase)
+	tabName, err := wcore.MakeUniqueTabName(ctx, sourceWorkspaceId, tabNameBase)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error making unique tab name: %w", err)
+	}
+	targetTabId, err := wcore.CreateEmptyTab(ctx, sourceWorkspaceId, tabName, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating target tab: %w", err)
+	}
+	copySucceeded := false
+	defer func() {
+		if !copySucceeded {
+			_, _ = wcore.DeleteTab(ctx, sourceWorkspaceId, targetTabId, false)
+		}
+	}()
+	newBlockId, _, err := wcore.CopyBlockToTab(ctx, blockId, targetTabId, true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error copying block to new tab: %w", err)
+	}
+	copySucceeded = true
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	sendUpdateEvents("ObjectService:CopyBlockToNewTab", updates)
+	return &CopyBlockToNewTabResult{TabId: targetTabId, BlockId: newBlockId}, updates, nil
 }
 
 func (svc *ObjectService) UpdateObjectMeta_Meta() tsgenmeta.MethodMeta {

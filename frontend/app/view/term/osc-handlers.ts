@@ -104,9 +104,12 @@ function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
     const meta: MetaType = {
         "agent:provider": binding.provider,
         "agent:autoresume": true,
-    };
+    } as MetaType;
+    const metaRecord = meta as Record<string, unknown>;
     if (binding.sessionId !== "") {
-        meta["agent:sessionid"] = binding.sessionId;
+        metaRecord["agent:sessionid"] = binding.sessionId;
+    } else {
+        metaRecord["agent:sessionid"] = null;
     }
     fireAndForget(async () => {
         await RpcApi.SetMetaCommand(TabRpcClient, {

@@ -153,6 +153,95 @@ function cleanSessionId(value: unknown): string {
     return sessionId;
 }
 
+const CodexOptionValueFlags = new Set([
+    "-a",
+    "--add-dir",
+    "--ask-for-approval",
+    "-c",
+    "--cd",
+    "--config",
+    "--disable",
+    "--enable",
+    "-i",
+    "--image",
+    "--local-provider",
+    "-m",
+    "--model",
+    "-p",
+    "--profile",
+    "--profile-v2",
+    "--remote",
+    "--remote-auth-token-env",
+    "-s",
+    "--sandbox",
+]);
+
+const CodexOptionOnlyFlags = new Set([
+    "--all",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--dangerously-bypass-hook-trust",
+    "-h",
+    "--help",
+    "--include-non-interactive",
+    "--last",
+    "--no-alt-screen",
+    "--oss",
+    "--search",
+    "--strict-config",
+    "-V",
+    "--version",
+]);
+
+function skipCodexOption(tokens: string[], idx: number): number {
+    const token = tokens[idx] ?? "";
+    if (token === "") {
+        return idx;
+    }
+    if (token === "--") {
+        return idx + 1;
+    }
+    const eqIdx = token.indexOf("=");
+    const flag = eqIdx === -1 ? token : token.slice(0, eqIdx);
+    if (CodexOptionValueFlags.has(flag)) {
+        return eqIdx === -1 ? Math.min(tokens.length, idx + 2) : idx + 1;
+    }
+    if (CodexOptionOnlyFlags.has(flag)) {
+        return idx + 1;
+    }
+    if (token.startsWith("-")) {
+        return idx + 1;
+    }
+    return idx;
+}
+
+function findCodexResumeIndex(tokens: string[], codexIdx: number): number {
+    let idx = codexIdx + 1;
+    while (idx < tokens.length) {
+        if (tokens[idx] === "resume") {
+            return idx;
+        }
+        const nextIdx = skipCodexOption(tokens, idx);
+        if (nextIdx === idx) {
+            return -1;
+        }
+        idx = nextIdx;
+    }
+    return -1;
+}
+
+function parseCodexResumeSessionId(tokens: string[], resumeIdx: number): string {
+    let idx = resumeIdx + 1;
+    while (idx < tokens.length) {
+        const nextIdx = skipCodexOption(tokens, idx);
+        if (nextIdx !== idx) {
+            idx = nextIdx;
+            continue;
+        }
+        return cleanSessionId(tokens[idx]);
+    }
+    return "";
+}
+
 function parseCodexSessionId(tokens: string[]): AgentCommandResolution {
     const codexIdx = executableTokenIndex(tokens);
     const executable = commandBaseName(tokens[codexIdx] ?? "");
@@ -163,8 +252,8 @@ function parseCodexSessionId(tokens: string[]): AgentCommandResolution {
             segmentCount: 1,
         });
     }
-    const resumeIdx = codexIdx + 1;
-    if (tokens[resumeIdx] !== "resume") {
+    const resumeIdx = findCodexResumeIndex(tokens, codexIdx);
+    if (resumeIdx === -1) {
         return emptyCommandResolution("missing-codex-resume", {
             provider: "codex",
             executable,
@@ -172,7 +261,7 @@ function parseCodexSessionId(tokens: string[]): AgentCommandResolution {
             segmentCount: 1,
         });
     }
-    const sessionId = cleanSessionId(tokens[resumeIdx + 1]);
+    const sessionId = parseCodexResumeSessionId(tokens, resumeIdx);
     if (sessionId === "") {
         return emptyCommandResolution("missing-codex-session-id", {
             provider: "codex",

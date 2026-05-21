@@ -130,6 +130,18 @@ export class ObjectServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // copy an existing block to a newly created empty tab
+    // @returns copy result (and object updates)
+    CopyBlockToNewTab(blockId: string, tabNameBase: string): Promise<CopyBlockToNewTabResult> {
+        return callBackendService(this?.waveEnv, "object", "CopyBlockToNewTab", Array.from(arguments))
+    }
+
+    // copy an existing block to another tab
+    // @returns blockId (and object updates)
+    CopyBlockToTab(blockId: string, targetTabId: string, activateTargetTab: boolean): Promise<string> {
+        return callBackendService(this?.waveEnv, "object", "CopyBlockToTab", Array.from(arguments))
+    }
+
     // @returns blockId (and object updates)
     CreateBlock(blockDef: BlockDef, rtOpts: RuntimeOpts): Promise<string> {
         return callBackendService(this?.waveEnv, "object", "CreateBlock", Array.from(arguments))

@@ -35,6 +35,45 @@ func TestResolveAgentCmdAndArgs_CodexResume(t *testing.T) {
 	}
 }
 
+func TestResolveAgentCmdAndArgs_CodexResumeStripsExistingResumeWithOptions(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd: "codex",
+		waveobj.MetaKey_CmdArgs: []string{
+			"--model",
+			"gpt-5",
+			"resume",
+			"--cd",
+			"/tmp/project-a",
+			"old-session",
+			"continue this",
+		},
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderCodex,
+		MetaKey_AgentSessionId:  "persisted-session",
+	}
+	_, args, _, err := resolveAgentCmdAndArgs("block:test", meta, true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	expected := []string{
+		"resume",
+		"persisted-session",
+		"--model",
+		"gpt-5",
+		"--cd",
+		"/tmp/project-a",
+		"continue this",
+	}
+	if len(args) != len(expected) {
+		t.Fatalf("expected args %#v, got %#v", expected, args)
+	}
+	for idx := range expected {
+		if args[idx] != expected[idx] {
+			t.Fatalf("expected args %#v, got %#v", expected, args)
+		}
+	}
+}
+
 func TestResolveAgentCmdAndArgs_CodexCaptureWhenNoSession(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_Cmd:     "codex",
@@ -73,6 +112,20 @@ func TestCreateCmdStrAndOptsSetsCodexSessionLookupRoot(t *testing.T) {
 	}
 	if runInfo.CodexSessionLookupRoot != filepath.Join(codexHome, "sessions") {
 		t.Fatalf("unexpected lookup root: %q", runInfo.CodexSessionLookupRoot)
+	}
+}
+
+func TestCreateCmdStrAndOptsDoesNotExpandRemoteHomeCwdLocally(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:    "codex",
+		waveobj.MetaKey_CmdCwd: "~/project",
+	}
+	_, cmdOpts, _, err := createCmdStrAndOpts("block:test", meta, "ssh://remote-host", false, "/home/remote-user")
+	if err != nil {
+		t.Fatalf("createCmdStrAndOpts returned error: %v", err)
+	}
+	if cmdOpts.Cwd != "~/project" {
+		t.Fatalf("expected remote cwd to remain unexpanded, got %q", cmdOpts.Cwd)
 	}
 }
 

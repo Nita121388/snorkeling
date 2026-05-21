@@ -41,7 +41,9 @@ export type MoveBlockMenuContext = {
     workspace: Workspace;
     canMoveToExistingTab: boolean;
     onMoveToExistingTab: () => void;
+    onCopyToExistingTab: () => void;
     onMoved: (targetTabId: string) => void;
+    onCopied: (targetTabId: string, blockId: string) => void;
 };
 
 export type BlockMoveMenuState = {
@@ -127,6 +129,20 @@ export function makeBlockMoveMenuItems(
             label: "Move to Existing Tab...",
             enabled: moveContext.canMoveToExistingTab,
             click: () => moveContext.onMoveToExistingTab(),
+        },
+        {
+            label: "Copy to New Tab",
+            click: () => {
+                util.fireAndForget(async () => {
+                    const result = await blockEnv.services.object.CopyBlockToNewTab(blockId, moveContext.sourceTabName);
+                    moveContext.onCopied(result.tabid, result.blockid);
+                });
+            },
+        },
+        {
+            label: "Copy to Existing Tab...",
+            enabled: moveContext.canMoveToExistingTab,
+            click: () => moveContext.onCopyToExistingTab(),
         },
     ];
 }
@@ -291,55 +307,72 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
+type BlockTabActionMode = "move" | "copy";
+
 type MoveBlockToTabModalProps = {
+    mode: BlockTabActionMode;
     blockId: string;
     currentTabId: string;
     workspace: Workspace;
     sourceTabName: string;
     onClose: () => void;
     onMoved: (targetTabId: string) => void;
+    onCopied: (targetTabId: string, blockId: string) => void;
 };
 
 type MoveBlockToTabRowProps = {
     tabId: string;
-    moving: boolean;
+    mode: BlockTabActionMode;
+    working: boolean;
     disabled: boolean;
-    onMove: (tabId: string) => void;
+    onSelect: (tabId: string) => void;
 };
 
-const MoveBlockToTabRow = React.memo(({ tabId, moving, disabled, onMove }: MoveBlockToTabRowProps) => {
+const MoveBlockToTabRow = React.memo(({ tabId, mode, working, disabled, onSelect }: MoveBlockToTabRowProps) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabAtom = waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
     const tab = jotai.useAtomValue(tabAtom);
     const tabName = tab?.name || "Untitled Tab";
+    const actionLabel = mode === "move" ? "Move" : "Copy";
+    const workingLabel = mode === "move" ? "Moving..." : "Copying...";
 
     return (
         <button
             type="button"
             className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-hoverbg disabled:cursor-default disabled:opacity-60"
             disabled={disabled}
-            onClick={() => onMove(tabId)}
+            onClick={() => onSelect(tabId)}
         >
             <div className="min-w-0">
                 <div className="truncate text-sm text-primary">{tabName}</div>
                 <div className="truncate text-[11px] text-secondary">{tabId}</div>
             </div>
-            <span className="shrink-0 text-xs text-secondary">{moving ? "Moving..." : "Move"}</span>
+            <span className="shrink-0 text-xs text-secondary">{working ? workingLabel : actionLabel}</span>
         </button>
     );
 });
 MoveBlockToTabRow.displayName = "MoveBlockToTabRow";
 
 const MoveBlockToTabModal = React.memo(
-    ({ blockId, currentTabId, workspace, sourceTabName, onClose, onMoved }: MoveBlockToTabModalProps) => {
+    ({
+        mode,
+        blockId,
+        currentTabId,
+        workspace,
+        sourceTabName,
+        onClose,
+        onMoved,
+        onCopied,
+    }: MoveBlockToTabModalProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
         const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
-        const [movingTabId, setMovingTabId] = React.useState<string>(null);
+        const [workingTabId, setWorkingTabId] = React.useState<string>(null);
         const [error, setError] = React.useState<string>(null);
         const tabIds = React.useMemo(
             () => (workspace?.tabids ?? []).filter((tabId) => tabId !== currentTabId),
             [workspace?.tabids, currentTabId]
         );
+        const title = mode === "move" ? "Move Block" : "Copy Block";
 
         React.useEffect(() => {
             setModalOpen(true);
@@ -356,28 +389,37 @@ const MoveBlockToTabModal = React.memo(
             return () => document.removeEventListener("keydown", handleKeyDown);
         }, [onClose]);
 
-        const moveToTab = React.useCallback(
+        const runTabAction = React.useCallback(
             (targetTabId: string) => {
-                setMovingTabId(targetTabId);
+                setWorkingTabId(targetTabId);
                 setError(null);
                 util.fireAndForget(async () => {
                     try {
-                        await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
-                        onMoved(targetTabId);
+                        if (mode === "move") {
+                            await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
+                            onMoved(targetTabId);
+                        } else {
+                            const newBlockId = await waveEnv.services.object.CopyBlockToTab(
+                                blockId,
+                                targetTabId,
+                                false
+                            );
+                            onCopied(targetTabId, newBlockId);
+                        }
                         onClose();
                     } catch (e) {
                         setError(e instanceof Error ? e.message : String(e));
-                        setMovingTabId(null);
+                        setWorkingTabId(null);
                     }
                 });
             },
-            [waveEnv, blockId, onMoved, onClose]
+            [waveEnv, mode, blockId, onMoved, onCopied, onClose]
         );
 
         return (
             <Modal className="w-[420px] max-w-[calc(100vw-32px)] pt-8 pb-4" onClose={onClose} onClickBackdrop={onClose}>
                 <div className="mb-3 pr-8">
-                    <div className="truncate text-base font-semibold text-primary">Move Block</div>
+                    <div className="truncate text-base font-semibold text-primary">{title}</div>
                     <div className="mt-1 truncate text-xs text-secondary">{sourceTabName}</div>
                 </div>
                 <div className="max-h-[320px] w-full overflow-y-auto rounded-md border border-border/50 p-1">
@@ -388,16 +430,17 @@ const MoveBlockToTabModal = React.memo(
                             <MoveBlockToTabRow
                                 key={tabId}
                                 tabId={tabId}
-                                moving={movingTabId === tabId}
-                                disabled={movingTabId != null}
-                                onMove={moveToTab}
+                                mode={mode}
+                                working={workingTabId === tabId}
+                                disabled={workingTabId != null}
+                                onSelect={runTabAction}
                             />
                         ))
                     )}
                 </div>
                 {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
                 <div className="mt-4 flex w-full justify-end">
-                    <Button className="grey ghost" onClick={onClose} disabled={movingTabId != null}>
+                    <Button className="grey ghost" onClick={onClose} disabled={workingTabId != null}>
                         Cancel
                     </Button>
                 </div>
@@ -411,7 +454,7 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const workspace = jotai.useAtomValue(waveEnv.atoms.workspace);
-    const [moveTabModalOpen, setMoveTabModalOpen] = React.useState(false);
+    const [tabActionModalMode, setTabActionModalMode] = React.useState<BlockTabActionMode>(null);
     const canMoveToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== tabModel.tabId);
     const handleMoved = React.useCallback(
         (targetTabId: string) => {
@@ -419,6 +462,13 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
             setTimeout(() => refocusNode(nodeModel.blockId), 150);
         },
         [waveEnv, nodeModel.blockId]
+    );
+    const handleCopied = React.useCallback(
+        (targetTabId: string, blockId: string) => {
+            waveEnv.electron.setActiveTab(targetTabId);
+            setTimeout(() => refocusNode(blockId), 150);
+        },
+        [waveEnv]
     );
     const sourceTabName = jotai.useAtomValue(
         waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabModel.tabId))
@@ -431,22 +481,26 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
                       sourceTabName: sourceTabName || "Tab",
                       workspace,
                       canMoveToExistingTab,
-                      onMoveToExistingTab: () => setMoveTabModalOpen(true),
+                      onMoveToExistingTab: () => setTabActionModalMode("move"),
+                      onCopyToExistingTab: () => setTabActionModalMode("copy"),
                       onMoved: handleMoved,
+                      onCopied: handleCopied,
                   }
                 : null,
-        [preview, workspace, tabModel.tabId, sourceTabName, canMoveToExistingTab, handleMoved]
+        [preview, workspace, tabModel.tabId, sourceTabName, canMoveToExistingTab, handleMoved, handleCopied]
     );
 
     const moveTabModal =
-        moveTabModalOpen && moveContext ? (
+        tabActionModalMode && moveContext ? (
             <MoveBlockToTabModal
+                mode={tabActionModalMode}
                 blockId={nodeModel.blockId}
                 currentTabId={moveContext.currentTabId}
                 workspace={moveContext.workspace}
                 sourceTabName={moveContext.sourceTabName}
-                onClose={() => setMoveTabModalOpen(false)}
+                onClose={() => setTabActionModalMode(null)}
                 onMoved={handleMoved}
+                onCopied={handleCopied}
             />
         ) : null;
 

@@ -479,6 +479,7 @@ export class PreviewModel implements ViewModel {
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
+            const hasUnsavedChanges = get(this.newFileContent) != null;
             const explorerActive = get(this.directoryDisplayMode) === "tree" && mimeType == "directory";
             const directorySearchActive = get(this.directorySearchActive);
             const vcsButton: IconButtonDecl = {
@@ -519,7 +520,7 @@ export class PreviewModel implements ViewModel {
                     click: () => this.markdownShowTocToggle(),
                 });
             }
-            if ((!isCeView && mimeType) || explorerActive) {
+            if ((!isCeView && mimeType) || explorerActive || (isCeView && mimeType && !hasUnsavedChanges)) {
                 buttons.push({
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
@@ -1115,6 +1116,7 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
+        globalStore.set(this.fileContentSaved, null);
         globalStore.set(this.refreshVersion, (v) => v + 1);
     }
 

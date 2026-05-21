@@ -560,7 +560,8 @@
 
 .minimized-blocks-button,
 .minimized-block-preview-button,
-.minimized-block-restore-button {
+.minimized-block-restore-button,
+.minimized-block-delete-button {
     border: 1px solid var(--border-color);
     background: rgb(from var(--modal-bg-color) r g b / 0.92);
     color: var(--main-text-color);
@@ -715,7 +716,8 @@
     font-weight: 400;
 }
 
-.minimized-block-restore-button {
+.minimized-block-restore-button,
+.minimized-block-delete-button {
     display: inline-flex;
     width: 28px;
     height: 28px;
@@ -727,8 +729,17 @@
     background: transparent;
     color: var(--secondary-text-color);
 
-    &:hover {
+    &:not(:disabled):hover {
         background: var(--hover-bg-color);
         color: var(--main-text-color);
     }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+}
+
+.minimized-block-delete-button:not(:disabled):hover {
+    color: var(--error-color);
 }

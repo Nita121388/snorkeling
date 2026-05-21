@@ -1024,6 +1024,12 @@ declare global {
         keepalivesenttime?: number;
     };
 
+    // objectservice.CopyBlockToNewTabResult
+    type CopyBlockToNewTabResult = {
+        tabid: string;
+        blockid: string;
+    };
+
     // wshrpc.CpuDataRequest
     type CpuDataRequest = {
         id: string;

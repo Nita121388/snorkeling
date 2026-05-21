@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getLayoutModelForTabById } from "@/layout/index";
+import { ObjectService } from "@/store/services";
 import { makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { type Atom, useAtomValue } from "jotai";
@@ -15,7 +16,7 @@ import {
     useRef,
     useState,
 } from "react";
-import { getMinimizedBlockIds, restoreMinimizedBlockToLayout } from "./block-minimize";
+import { getMinimizedBlockIds, removeMinimizedBlockId, restoreMinimizedBlockToLayout } from "./block-minimize";
 
 const FloatPositionStoragePrefix = "snorkeling:minimized-blocks-float-position:";
 const FloatButtonSize = 42;
@@ -116,11 +117,15 @@ function MinimizedBlockRow({
     tabId,
     onPreview,
     onRestore,
+    onDelete,
+    deleting,
 }: {
     item: MinimizedBlockItem;
     tabId: string;
     onPreview: (blockId: string) => void;
     onRestore: (blockId: string) => void;
+    onDelete: (blockId: string) => void;
+    deleting: boolean;
 }) {
     return (
         <div className="minimized-block-row">
@@ -148,6 +153,16 @@ function MinimizedBlockRow({
             >
                 <i className={makeIconClass("arrow-up-right-from-square", false)} />
             </button>
+            <button
+                type="button"
+                className="minimized-block-delete-button"
+                onClick={() => onDelete(item.blockId)}
+                title={deleting ? "Deleting Block" : "Delete Block"}
+                aria-label={`Delete Block ${item.title}`}
+                disabled={deleting}
+            >
+                <i className={makeIconClass("trash", false)} />
+            </button>
         </div>
     );
 }
@@ -159,8 +174,10 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
     const [position, setPosition] = useState<FloatPosition>(() => readStoredFloatPosition(tabId));
     const [containerWidth, setContainerWidth] = useState(0);
     const [dragging, setDragging] = useState(false);
+    const [deletingBlockIds, setDeletingBlockIds] = useState<Set<string>>(() => new Set());
     const floatRef = useRef<HTMLDivElement>(null);
     const dragStateRef = useRef<FloatDragState | null>(null);
+    const deletingBlockIdsRef = useRef<Set<string>>(new Set());
     const latestPositionRef = useRef(position);
     const suppressClickRef = useRef(false);
     const layoutModel = getLayoutModelForTabById(tabId);
@@ -238,6 +255,36 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
             }
         },
         [items.length]
+    );
+
+    const deleteBlock = useCallback(
+        (blockId: string) => {
+            if (deletingBlockIdsRef.current.has(blockId)) {
+                return;
+            }
+            deletingBlockIdsRef.current.add(blockId);
+            setDeletingBlockIds((current) => new Set(current).add(blockId));
+            ObjectService.DeleteBlock(blockId)
+                .then(() => {
+                    layoutModel?.closeEphemeralNodeForBlock(blockId);
+                    removeMinimizedBlockId(tabId, blockId);
+                    if (items.length <= 1) {
+                        setOpen(false);
+                    }
+                })
+                .catch((e) => {
+                    console.warn("Failed to delete minimized block:", e);
+                })
+                .finally(() => {
+                    deletingBlockIdsRef.current.delete(blockId);
+                    setDeletingBlockIds((current) => {
+                        const next = new Set(current);
+                        next.delete(blockId);
+                        return next;
+                    });
+                });
+        },
+        [items.length, layoutModel, tabId]
     );
 
     const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -350,6 +397,8 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                                 tabId={tabId}
                                 onPreview={previewBlock}
                                 onRestore={restoreBlock}
+                                onDelete={deleteBlock}
+                                deleting={deletingBlockIds.has(item.blockId)}
                             />
                         ))}
                     </div>

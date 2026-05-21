@@ -28,6 +28,21 @@ describe("resolveAgentSessionIdFromMeta", () => {
         );
     });
 
+    it("parses codex resume session ids around options", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "codex --model gpt-5 resume codex-after-global-option" })).toBe(
+            "codex-after-global-option"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "codex resume --model gpt-5 codex-after-resume-option" })).toBe(
+            "codex-after-resume-option"
+        );
+        expect(
+            resolveAgentSessionIdFromMeta({
+                cmd: "codex",
+                "cmd:args": ["--model", "gpt-5", "resume", "--cd", "/tmp/project", "codex-args-option-session"],
+            })
+        ).toBe("codex-args-option-session");
+    });
+
     it("parses claude resume flags from cmd args", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "claude", "cmd:args": ["--resume", "claude-session"] })).toBe(
             "claude-session"
@@ -63,6 +78,12 @@ describe("resolveAgentSessionIdFromMeta", () => {
 describe("resolveAgentSessionIdFromCommand", () => {
     it("parses agent resume ids from shell command text", () => {
         expect(resolveAgentSessionIdFromCommand("codex resume shell-codex")).toBe("shell-codex");
+        expect(resolveAgentSessionIdFromCommand("codex --model gpt-5 resume shell-codex-global-option")).toBe(
+            "shell-codex-global-option"
+        );
+        expect(resolveAgentSessionIdFromCommand("codex resume --model gpt-5 shell-codex-resume-option")).toBe(
+            "shell-codex-resume-option"
+        );
         expect(resolveAgentSessionIdFromCommand("claude --resume shell-claude")).toBe("shell-claude");
         expect(resolveAgentSessionIdFromCommand("claude -r shell-claude-short")).toBe("shell-claude-short");
         expect(resolveAgentSessionIdFromCommand("claude --session-id shell-claude-session")).toBe(
@@ -101,6 +122,10 @@ describe("resolveAgentCommandBinding", () => {
         expect(resolveAgentCommandBinding("codex resume codex-session")).toEqual({
             provider: "codex",
             sessionId: "codex-session",
+        });
+        expect(resolveAgentCommandBinding("codex resume --model gpt-5 codex-option-session")).toEqual({
+            provider: "codex",
+            sessionId: "codex-option-session",
         });
         expect(resolveAgentCommandBinding("claude --session-id claude-session")).toEqual({
             provider: "claude",

@@ -54,6 +54,24 @@ type ShellProc struct {
 	WaitErr   error    // WaitErr is synchronized by DoneCh (written before DoneCh is closed) and CloseOnce
 }
 
+func applyCwdToShellCommand(cmdStr string, cmdOpts CommandOptsType) string {
+	cwd := strings.TrimSpace(cmdOpts.Cwd)
+	if cwd == "" || cmdStr == "" {
+		return cmdStr
+	}
+	return fmt.Sprintf("cd %s && %s", quoteCwdForShell(cwd), cmdStr)
+}
+
+func quoteCwdForShell(cwd string) string {
+	if cwd == "~" {
+		return "~"
+	}
+	if strings.HasPrefix(cwd, "~/") {
+		return "~/" + shellutil.HardQuote(strings.TrimPrefix(cwd, "~/"))
+	}
+	return shellutil.HardQuote(cwd)
+}
+
 func (sp *ShellProc) Close() {
 	sp.Cmd.KillGraceful(DefaultGracefulKillWait)
 	go func() {
@@ -158,11 +176,7 @@ func StartWslShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, cmdS
 
 	args := []string{"~", "-d", client.Name()}
 	if cmdStr != "" {
-		cmdToRun := cmdStr
-		if cmdOpts.Cwd != "" {
-			cmdToRun = fmt.Sprintf("cd %s && %s", shellutil.HardQuote(cmdOpts.Cwd), cmdToRun)
-		}
-		args = append(args, "--", "sh", "-c", cmdToRun)
+		args = append(args, "--", "sh", "-c", applyCwdToShellCommand(cmdStr, cmdOpts))
 	}
 	ecmd := exec.Command("wsl.exe", args...)
 
@@ -226,7 +240,8 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 	conn.Infof(ctx, "detected shell type: %s\n", shellType)
 	conn.Debugf(ctx, "cmdStr: %q\n", cmdStr)
 
-	if cmdStr == "" {
+	cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
+	if cmdToRun == "" {
 		/* transform command in order to inject environment vars */
 		if shellType == shellutil.ShellType_bash {
 			// add --rcfile
@@ -257,8 +272,7 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 		}
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	} else {
-		// TODO check quoting of cmdStr
-		shellOpts = append(shellOpts, "-c", cmdStr)
+		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	}
 	conn.Infof(ctx, "starting shell, using command: %s\n", cmdCombined)
@@ -334,9 +348,7 @@ func StartRemoteShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, c
 
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
 	startCmd := cmdStr
-	if startCmd != "" && cmdOpts.Cwd != "" {
-		startCmd = fmt.Sprintf("cd %s && %s", shellutil.HardQuote(cmdOpts.Cwd), startCmd)
-	}
+	startCmd = applyCwdToShellCommand(startCmd, cmdOpts)
 	sessionWrap := MakeSessionWrap(session, startCmd, pipePty)
 	if startCmd == "" {
 		err = session.Shell()
@@ -392,7 +404,8 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 	conn.Infof(logCtx, "swaptoken: %s\n", cmdOpts.SwapToken.Token)
 	conn.Debugf(logCtx, "cmdStr: %q\n", cmdStr)
 
-	if cmdStr == "" {
+	cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
+	if cmdToRun == "" {
 		/* transform command in order to inject environment vars */
 		if shellType == shellutil.ShellType_bash {
 			// add --rcfile
@@ -423,8 +436,7 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		}
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	} else {
-		// TODO check quoting of cmdStr
-		shellOpts = append(shellOpts, "-c", cmdStr)
+		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	}
 	conn.Infof(logCtx, "starting shell, using command: %s\n", cmdCombined)

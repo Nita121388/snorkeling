@@ -5,6 +5,7 @@ package wcore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -249,6 +250,144 @@ func MoveBlockToTab(ctx context.Context, blockId string, targetTabId string, foc
 		return sourceTabId, nil
 	}
 	return sourceTabId, nil
+}
+
+type copyBlockToTabRtn struct {
+	NewBlockId  string
+	SourceTabId string
+}
+
+func CopyBlockToTab(ctx context.Context, blockId string, targetTabId string, focusCopiedBlock bool) (string, string, error) {
+	if blockId == "" {
+		return "", "", fmt.Errorf("blockId cannot be empty")
+	}
+	if targetTabId == "" {
+		return "", "", fmt.Errorf("targetTabId cannot be empty")
+	}
+
+	rtn, err := wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (copyBlockToTabRtn, error) {
+		block, err := wstore.DBGet[*waveobj.Block](tx.Context(), blockId)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error getting block: %w", err)
+		}
+		if block == nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("block not found: %q", blockId)
+		}
+		parentORef, err := waveobj.ParseORef(block.ParentORef)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("bad block parent oref: %w", err)
+		}
+		if parentORef.OType != waveobj.OType_Tab {
+			return copyBlockToTabRtn{}, fmt.Errorf("cannot copy subblock %q with parent %q", blockId, block.ParentORef)
+		}
+		sourceTabId := parentORef.OID
+
+		sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(tx.Context(), sourceTabId)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error finding source workspace: %w", err)
+		}
+		targetWorkspaceId, err := wstore.DBFindWorkspaceForTabId(tx.Context(), targetTabId)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error finding target workspace: %w", err)
+		}
+		if sourceWorkspaceId == "" {
+			return copyBlockToTabRtn{}, fmt.Errorf("source tab %q has no workspace", sourceTabId)
+		}
+		if targetWorkspaceId == "" {
+			return copyBlockToTabRtn{}, fmt.Errorf("target tab %q has no workspace", targetTabId)
+		}
+		if sourceWorkspaceId != targetWorkspaceId {
+			return copyBlockToTabRtn{}, fmt.Errorf("cannot copy block across workspaces")
+		}
+
+		sourceTab, err := wstore.DBGet[*waveobj.Tab](tx.Context(), sourceTabId)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error getting source tab: %w", err)
+		}
+		targetTab, err := wstore.DBGet[*waveobj.Tab](tx.Context(), targetTabId)
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error getting target tab: %w", err)
+		}
+		if sourceTab == nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("source tab not found: %q", sourceTabId)
+		}
+		if targetTab == nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("target tab not found: %q", targetTabId)
+		}
+		if utilfn.FindStringInSlice(sourceTab.BlockIds, blockId) == -1 {
+			return copyBlockToTabRtn{}, fmt.Errorf("source tab %q does not contain block %q", sourceTabId, blockId)
+		}
+
+		newBlockId := uuid.NewString()
+		newBlock := &waveobj.Block{
+			OID:        newBlockId,
+			ParentORef: waveobj.MakeORef(waveobj.OType_Tab, targetTabId).String(),
+			Meta:       copyBlockMetaForDuplicate(block.Meta),
+		}
+		if len(block.Stickers) > 0 {
+			newBlock.Stickers = copyBlockStickersForDuplicate(block.Stickers)
+		}
+		if err := wstore.DBInsert(tx.Context(), newBlock); err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error inserting copied block: %w", err)
+		}
+		targetTab.BlockIds = append(targetTab.BlockIds, newBlockId)
+		if err := wstore.DBUpdate(tx.Context(), targetTab); err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error updating target tab: %w", err)
+		}
+		err = QueueLayoutActionForTab(tx.Context(), targetTabId, waveobj.LayoutActionData{
+			ActionType: LayoutActionDataType_Insert,
+			BlockId:    newBlockId,
+			Focused:    focusCopiedBlock,
+		})
+		if err != nil {
+			return copyBlockToTabRtn{}, fmt.Errorf("error queuing target layout action: %w", err)
+		}
+		return copyBlockToTabRtn{NewBlockId: newBlockId, SourceTabId: sourceTabId}, nil
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return rtn.NewBlockId, rtn.SourceTabId, nil
+}
+
+func copyBlockMetaForDuplicate(meta waveobj.MetaMapType) waveobj.MetaMapType {
+	if meta == nil {
+		return nil
+	}
+	var rtn waveobj.MetaMapType
+	if data, err := json.Marshal(meta); err == nil {
+		if err := json.Unmarshal(data, &rtn); err == nil {
+			deleteCopiedBlockTransientMeta(rtn)
+			return rtn
+		}
+	}
+	rtn = make(waveobj.MetaMapType, len(meta))
+	for k, v := range meta {
+		rtn[k] = v
+	}
+	deleteCopiedBlockTransientMeta(rtn)
+	return rtn
+}
+
+func deleteCopiedBlockTransientMeta(meta waveobj.MetaMapType) {
+	delete(meta, "agent:sessionid")
+	delete(meta, waveobj.MetaKey_TermVDomSubBlockId)
+	delete(meta, waveobj.MetaKey_TermVDomToolbarBlockId)
+}
+
+func copyBlockStickersForDuplicate(stickers []*waveobj.StickerType) []*waveobj.StickerType {
+	if stickers == nil {
+		return nil
+	}
+	data, err := json.Marshal(stickers)
+	if err != nil {
+		return nil
+	}
+	var rtn []*waveobj.StickerType
+	if err := json.Unmarshal(data, &rtn); err != nil {
+		return nil
+	}
+	return rtn
 }
 
 // Deletes a block and its subblocks. Deleting the last block in a tab leaves an

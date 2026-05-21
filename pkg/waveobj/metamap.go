@@ -39,6 +39,9 @@ func (m MetaMapType) GetStringList(key string) []string {
 	if !ok {
 		return nil
 	}
+	if sarr, ok := v.([]string); ok {
+		return append([]string{}, sarr...)
+	}
 	varr, ok := v.([]any)
 	if !ok {
 		return nil

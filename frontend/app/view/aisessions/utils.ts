@@ -9,6 +9,9 @@ import {
     sortPreferenceStorageKey,
 } from "./types";
 
+const ExactToolCallAnchorPattern = /^\[Tool:\s*[^\]]+\]$/;
+const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
+
 export function emptySessionsText(markedOnly: boolean, remoteFilterActive: boolean): string {
     if (markedOnly && remoteFilterActive) return "No marked sessions match.";
     if (markedOnly) return "No marked sessions.";
@@ -37,8 +40,79 @@ export function isReadableMessage(message: Message): boolean {
     const text = message.text.trim();
     if (!text) return false;
     if (message.role === "tool") return false;
-    if (/^\[Tool:\s*[^\]]+\]$/.test(text)) return false;
+    if (isToolCallAnchorMessage(message)) return false;
     return true;
+}
+
+export function isToolCallAnchorMessage(message: Message): boolean {
+    const text = message.text.trim();
+    if (!text || message.role === "tool") return false;
+    return ExactToolCallAnchorPattern.test(text);
+}
+
+function hasToolCallAnchor(message: Message): boolean {
+    const text = message.text.trim();
+    if (!text || message.role === "tool") return false;
+    return ToolCallAnchorPattern.test(text);
+}
+
+export type SessionDetailTimelineItem =
+    | {
+          kind: "message";
+          message: Message;
+      }
+    | {
+          kind: "tool";
+          toolCall: ToolCall;
+          anchorSeq: number;
+      };
+
+export function buildSessionDetailTimeline(
+    allMessages: Message[],
+    visibleMessages: Message[],
+    toolCalls: ToolCall[] | null | undefined,
+    showToolCalls: boolean
+): SessionDetailTimelineItem[] {
+    const visibleMessageSeqs = new Set(visibleMessages.map((message) => message.seq));
+    const firstVisibleSeq = visibleMessages[0]?.seq;
+    const lastVisibleSeq = allMessages[allMessages.length - 1]?.seq;
+    const toolCallByAnchorSeq = new Map<number, ToolCall>();
+
+    if (showToolCalls && toolCalls != null && toolCalls.length > 0) {
+        let toolCallIdx = 0;
+        for (const message of allMessages) {
+            if (!hasToolCallAnchor(message)) {
+                continue;
+            }
+            const toolCall = toolCalls[toolCallIdx];
+            toolCallIdx++;
+            if (toolCall != null) {
+                toolCallByAnchorSeq.set(message.seq, toolCall);
+            }
+        }
+    }
+
+    const timelineItems: SessionDetailTimelineItem[] = [];
+    for (const message of allMessages) {
+        if (visibleMessageSeqs.has(message.seq) && isReadableMessage(message)) {
+            timelineItems.push({ kind: "message", message });
+        }
+        const toolCall = toolCallByAnchorSeq.get(message.seq);
+        if (
+            toolCall != null &&
+            firstVisibleSeq != null &&
+            lastVisibleSeq != null &&
+            message.seq >= firstVisibleSeq &&
+            message.seq <= lastVisibleSeq
+        ) {
+            timelineItems.push({ kind: "tool", toolCall, anchorSeq: message.seq });
+        }
+    }
+
+    if (timelineItems.length === 0 && visibleMessages.length > 0) {
+        return visibleMessages.map((message) => ({ kind: "message", message }));
+    }
+    return timelineItems;
 }
 
 export function outlinePreview(message: Message): string {

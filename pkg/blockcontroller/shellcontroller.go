@@ -99,6 +99,45 @@ const (
 
 const ManualCodexSessionCaptureAttempts = 120
 
+var codexOptionValueFlags = map[string]bool{
+	"-a":                      true,
+	"--add-dir":               true,
+	"--ask-for-approval":      true,
+	"-c":                      true,
+	"--cd":                    true,
+	"--config":                true,
+	"--disable":               true,
+	"--enable":                true,
+	"-i":                      true,
+	"--image":                 true,
+	"--local-provider":        true,
+	"-m":                      true,
+	"--model":                 true,
+	"-p":                      true,
+	"--profile":               true,
+	"--profile-v2":            true,
+	"--remote":                true,
+	"--remote-auth-token-env": true,
+	"-s":                      true,
+	"--sandbox":               true,
+}
+
+var codexOptionOnlyFlags = map[string]bool{
+	"--all": true,
+	"--dangerously-bypass-approvals-and-sandbox": true,
+	"--dangerously-bypass-hook-trust":            true,
+	"-h":                                         true,
+	"--help":                                     true,
+	"--include-non-interactive":                  true,
+	"--last":                                     true,
+	"--no-alt-screen":                            true,
+	"--oss":                                      true,
+	"--search":                                   true,
+	"--strict-config":                            true,
+	"-V":                                         true,
+	"--version":                                  true,
+}
+
 type ShellController struct {
 	Lock *sync.Mutex
 
@@ -801,11 +840,15 @@ func createCmdStrAndOpts(
 	}
 	cmdOpts.Cwd = blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
 	if cmdOpts.Cwd != "" {
-		cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
-		if err != nil {
-			return "", nil, nil, err
+		if isLocalConn {
+			cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
+			if err != nil {
+				return "", nil, nil, err
+			}
+			cmdOpts.Cwd = cwdPath
+		} else {
+			cmdOpts.Cwd = strings.TrimSpace(cmdOpts.Cwd)
 		}
-		cmdOpts.Cwd = cwdPath
 	}
 	if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
 		agentRunInfo.CodexSessionLookupRoot = codexSessionLookupRoot(localHomeDir, blockMeta)
@@ -934,10 +977,77 @@ func stripClaudeSessionArgs(args []string) []string {
 	return out
 }
 
+func skipCodexOptionArgs(args []string, idx int) int {
+	if idx < 0 || idx >= len(args) {
+		return idx
+	}
+	arg := args[idx]
+	if arg == "" {
+		return idx
+	}
+	if arg == "--" {
+		return idx + 1
+	}
+	flag := arg
+	if eqIdx := strings.Index(arg, "="); eqIdx >= 0 {
+		flag = arg[:eqIdx]
+	}
+	if codexOptionValueFlags[flag] {
+		if strings.Contains(arg, "=") {
+			return idx + 1
+		}
+		if idx+1 < len(args) {
+			return idx + 2
+		}
+		return idx + 1
+	}
+	if codexOptionOnlyFlags[flag] {
+		return idx + 1
+	}
+	if strings.HasPrefix(arg, "-") {
+		return idx + 1
+	}
+	return idx
+}
+
+func findCodexResumeArgIndex(args []string) int {
+	for idx := 0; idx < len(args); {
+		if args[idx] == "resume" {
+			return idx
+		}
+		nextIdx := skipCodexOptionArgs(args, idx)
+		if nextIdx == idx {
+			return -1
+		}
+		idx = nextIdx
+	}
+	return -1
+}
+
+func findCodexResumeSessionArgIndex(args []string, resumeIdx int) int {
+	for idx := resumeIdx + 1; idx < len(args); {
+		nextIdx := skipCodexOptionArgs(args, idx)
+		if nextIdx != idx {
+			idx = nextIdx
+			continue
+		}
+		if strings.TrimSpace(args[idx]) == "" || strings.HasPrefix(args[idx], "-") {
+			return -1
+		}
+		return idx
+	}
+	return -1
+}
+
 func stripCodexResumeArgs(args []string) []string {
+	resumeIdx := findCodexResumeArgIndex(args)
+	sessionIdx := -1
+	if resumeIdx >= 0 {
+		sessionIdx = findCodexResumeSessionArgIndex(args, resumeIdx)
+	}
 	out := make([]string, 0, len(args))
 	for idx, arg := range args {
-		if idx == 0 && arg == "resume" {
+		if idx == resumeIdx || idx == sessionIdx {
 			continue
 		}
 		if arg == "--last" || arg == "--all" || arg == "--include-non-interactive" {
