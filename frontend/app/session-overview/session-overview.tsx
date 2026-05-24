@@ -680,7 +680,7 @@ function BlockRow({
                         ) : null}
                     </>
                 ) : (
-                    <div className="session-overview-muted">Click block name to jump</div>
+                    <div className="session-overview-muted">Use the right button to jump to this block.</div>
                 )}
             </div>
             <div className="session-overview-block-actions">

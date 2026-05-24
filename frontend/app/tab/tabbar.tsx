@@ -3,6 +3,12 @@
 
 import { Tooltip } from "@/app/element/tooltip";
 import { SessionOverviewButton } from "@/app/session-overview/session-overview";
+import {
+    filterSessionOverviewTabIds,
+    mergeVisibleTabIdsWithSessionOverview,
+} from "@/app/session-overview/session-overview-model";
+import { globalStore } from "@/app/store/jotaiStore";
+import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -13,7 +19,7 @@ import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
-import { Tab } from "./tab";
+import { Tab as TabComponent } from "./tab";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -148,7 +154,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         if (!workspace) {
             return;
         }
-        const newTabIdsArr = workspace.tabids ?? [];
+        const newTabIdsArr = filterSessionOverviewTabIds(workspace.tabids ?? [], (tabId) =>
+            globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
+        );
 
         const areEqual = strArrayIsEqual(tabIds, newTabIdsArr);
 
@@ -429,6 +437,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
     const setUpdatedTabsDebounced = useCallback(
         debounce(300, (tabIds: string[]) => {
+            const mergedTabIds = mergeVisibleTabIdsWithSessionOverview(workspace.tabids ?? [], tabIds, (tabId) =>
+                globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
+            );
             // Reset styles
             tabRefs.current.forEach((ref) => {
                 ref.current.style.zIndex = "0";
@@ -437,9 +448,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             // Reset dragging state
             setDraggingTab(null);
             // Update workspace tab ids
-            fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, tabIds));
+            fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, mergedTabIds));
         }),
-        []
+        [workspace?.oid, workspace?.tabids, env]
     );
 
     const handleMouseUp = (_event: MouseEvent) => {
@@ -628,7 +639,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                             const isActive = activeTabId === tabId;
                             const showDivider = index !== 0 && !isActive && index !== activeTabIndex + 1;
                             return (
-                                <Tab
+                                <TabComponent
                                     key={tabId}
                                     ref={tabRefs.current[index]}
                                     id={tabId}

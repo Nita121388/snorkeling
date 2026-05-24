@@ -3,7 +3,12 @@
 
 import { Tooltip } from "@/app/element/tooltip";
 import { SessionOverviewButton } from "@/app/session-overview/session-overview";
+import {
+    filterSessionOverviewTabIds,
+    mergeVisibleTabIdsWithSessionOverview,
+} from "@/app/session-overview/session-overview-model";
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -190,7 +195,9 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
-    const tabIds = workspace?.tabids ?? [];
+    const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
+        globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
+    );
 
     const [orderedTabIds, setOrderedTabIds] = useState<string[]>(tabIds);
     const [dragTabId, setDragTabId] = useState<string | null>(null);
@@ -212,7 +219,11 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
 
     useEffect(() => {
         if (reinitVersion > 0) {
-            setOrderedTabIds(workspace?.tabids ?? []);
+            setOrderedTabIds(
+                filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
+                    globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
+                )
+            );
         }
     }, [reinitVersion]);
 
@@ -312,8 +323,11 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
         const nextTabIds = [...orderedTabIds];
         const [movedId] = nextTabIds.splice(sourceIndex, 1);
         nextTabIds.splice(adjustedTargetIndex, 0, movedId);
+        const mergedTabIds = mergeVisibleTabIdsWithSessionOverview(workspace.tabids ?? [], nextTabIds, (tabId) =>
+            globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
+        );
         setOrderedTabIds(nextTabIds);
-        fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, nextTabIds));
+        fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, mergedTabIds));
     };
 
     const handleTabBarContextMenu = useCallback(

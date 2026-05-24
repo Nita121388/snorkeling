@@ -5,7 +5,7 @@ import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/blo
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { TreeNodeData, TreeView } from "@/app/treeview/treeview";
+import { TreeNodeData, TreeView, TreeViewRef } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { fireAndForget, makeConnRoute } from "@/util/util";
@@ -30,6 +30,8 @@ import type { PreviewEnv } from "./previewenv";
 
 const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
+const TreeExpandAllMaxDepth = 8;
+const TreeExpandAllMaxDirectories = 500;
 const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
@@ -114,6 +116,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [nameSearchTruncated, setNameSearchTruncated] = useState(false);
     const [collapsedSearchPaths, setCollapsedSearchPaths] = useState<Set<string>>(() => new Set());
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
+    const [treeExpandingAll, setTreeExpandingAll] = useState(false);
+    const treeRef = useRef<TreeViewRef>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
@@ -668,6 +672,32 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const treeKey = `${rootPath}:${connection ?? ""}`;
     const treeRefreshKey = `${refreshVersion}:${showHiddenFiles ? "show" : "hide"}`;
 
+    const collapseTree = useCallback(() => {
+        treeRef.current?.collapseAll();
+    }, []);
+
+    const expandTree = useCallback(() => {
+        if (treeExpandingAll) {
+            return;
+        }
+        setTreeExpandingAll(true);
+        fireAndForget(async () => {
+            try {
+                const result = await treeRef.current?.expandAll();
+                if (result?.reachedLimit) {
+                    setErrorMsg({
+                        status: "Tree Expansion Limited",
+                        text: `Expanded the first ${TreeExpandAllMaxDirectories} folders or ${TreeExpandAllMaxDepth} levels. Some folders were left collapsed.`,
+                        level: "warning",
+                        showDismiss: true,
+                    });
+                }
+            } finally {
+                setTreeExpandingAll(false);
+            }
+        });
+    }, [setErrorMsg, treeExpandingAll]);
+
     return (
         <div
             ref={refs.setReference}
@@ -694,10 +724,38 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 >
                     Search
                 </button>
+                {!searchActive && (
+                    <div className="ml-auto flex items-center gap-1">
+                        <button
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
+                            title="Collapse All"
+                            aria-label="Collapse All"
+                            disabled={treeExpandingAll}
+                            onClick={collapseTree}
+                        >
+                            <i className="fa-sharp fa-solid fa-angles-up text-[11px]" />
+                        </button>
+                        <button
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
+                            title="Expand All"
+                            aria-label="Expand All"
+                            disabled={treeExpandingAll}
+                            onClick={expandTree}
+                        >
+                            <i
+                                className={clsx(
+                                    "fa-sharp fa-solid text-[11px]",
+                                    treeExpandingAll ? "fa-spinner fa-spin" : "fa-angles-down"
+                                )}
+                            />
+                        </button>
+                    </div>
+                )}
             </div>
             <div className="relative flex-1 overflow-hidden p-2">
                 <div className={clsx("absolute inset-2", searchActive && "hidden")}>
                     <TreeView
+                        ref={treeRef}
                         key={treeKey}
                         rootIds={rootIds}
                         initialNodes={initialNodes}
@@ -710,6 +768,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         minWidth={160}
                         maxWidth={9999}
                         maxDirEntries={TreeMaxEntries}
+                        maxExpandAllDepth={TreeExpandAllMaxDepth}
+                        maxExpandAllDirectories={TreeExpandAllMaxDirectories}
                         className="h-full"
                         expandDirectoriesOnSingleClick={true}
                         onOpenFile={(_id, node, event) => {

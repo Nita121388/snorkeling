@@ -1,7 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { buildVisibleRows, mergeFetchedTreeChildren, TreeNodeData } from "@/app/treeview/treeview";
+import {
+    buildVisibleRows,
+    collapseTreeExpandedIds,
+    getExpandableDirectoryChildIds,
+    mergeFetchedTreeChildren,
+    TreeNodeData,
+} from "@/app/treeview/treeview";
 import { describe, expect, it } from "vitest";
 
 function makeNodes(entries: TreeNodeData[]): Map<string, TreeNodeData> {
@@ -97,5 +103,32 @@ describe("treeview visible rows", () => {
         expect(next.get("dir")?.childrenIds).toEqual(["nested"]);
         expect(next.has("nested")).toBe(true);
         expect(next.has("gone")).toBe(false);
+    });
+
+    it("collapses all expanded ids except tree roots", () => {
+        const expandedIds = new Set(["root", "src", "src/components", "docs"]);
+        const next = collapseTreeExpandedIds(expandedIds, ["root"]);
+
+        expect(Array.from(next)).toEqual(["root"]);
+        expect(collapseTreeExpandedIds(next, ["root"])).toBe(next);
+        expect(Array.from(collapseTreeExpandedIds(new Set(["src"]), ["root"]))).toEqual(["root"]);
+    });
+
+    it("returns only expandable directory children in tree sort order", () => {
+        const nodes = makeNodes([
+            {
+                id: "root",
+                isDirectory: true,
+                childrenStatus: "loaded",
+                childrenIds: ["file", "bad", "z", "a", "missing"],
+            },
+            { id: "file", parentId: "root", isDirectory: false, label: "file.txt" },
+            { id: "bad", parentId: "root", isDirectory: true, label: "bad", staterror: "denied" },
+            { id: "z", parentId: "root", isDirectory: true, label: "Zed", childrenStatus: "loaded" },
+            { id: "a", parentId: "root", isDirectory: true, label: "Alpha", childrenStatus: "loaded" },
+            { id: "missing", parentId: "root", isDirectory: true, label: "Missing", notfound: true },
+        ]);
+
+        expect(getExpandableDirectoryChildIds(nodes, "root")).toEqual(["a", "z"]);
     });
 });

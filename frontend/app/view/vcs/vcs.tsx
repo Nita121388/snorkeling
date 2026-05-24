@@ -13,6 +13,8 @@ import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
 const DefaultCommitMessage = "chore: update selected files";
+const VcsRepositoryRpcTimeoutMs = 60000;
+const VcsMutationRpcTimeoutMs = 150000;
 
 type VcsUiEnv = WaveEnv;
 
@@ -227,48 +229,56 @@ function RepoHeader({
     const syncRunningLabel = repo.repotype === "svn" ? "Updating..." : "Pulling...";
     return (
         <div
-            className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${
-                isActive ? "border-accent bg-white/7" : "border-white/10 bg-black/20"
+            className={`relative flex items-center gap-2 rounded-md px-2 py-1.5 ${
+                isActive
+                    ? "bg-white/7 before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-accent"
+                    : "bg-black/15"
             }`}
             onContextMenu={onContextMenu}
         >
             <button
-                className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+                className="flex min-w-0 flex-1 items-stretch gap-2 text-left cursor-pointer"
                 onClick={onToggle}
                 title="Toggle repository"
             >
-                <span className="text-[11px] text-muted w-[14px]">{isExpanded ? "▾" : "▸"}</span>
-                <span className="text-[11px] rounded border border-white/10 px-1.5 py-[1px] text-secondary uppercase">
-                    {repo.repotype}
-                </span>
-                <div className="min-w-0 flex-1 overflow-x-auto">
-                    <div className="flex w-max min-w-full items-center gap-2 pr-2">
-                        <span className="font-medium text-sm whitespace-nowrap">{repo.name}</span>
-                        <span className="text-xs text-secondary whitespace-nowrap">{repo.branch || "(no branch)"}</span>
+                <span className="flex w-[14px] items-center text-[11px] text-muted">{isExpanded ? "▾" : "▸"}</span>
+                <div className="min-w-0 flex-1 pr-2">
+                    <div className="flex min-w-0 items-start gap-2">
+                        <span className="mt-[1px] shrink-0 rounded border border-white/10 px-1.5 py-[1px] text-[11px] uppercase text-secondary">
+                            {repo.repotype}
+                        </span>
+                        <span className="min-w-0 flex-1 break-words text-sm font-medium leading-[18px]">
+                            {repo.name}
+                        </span>
+                    </div>
+                    <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-[48px] text-xs text-secondary">
+                        <span className="min-w-0 break-words">{repo.branch || "(no branch)"}</span>
+                        <span className="shrink-0 text-[11px] text-muted">
+                            C:{summary.changed} U:{summary.untracked} R:{remoteCount}
+                        </span>
                     </div>
                 </div>
-                <span className="text-[11px] text-muted shrink-0">
-                    C:{summary.changed} U:{summary.untracked} R:{remoteCount}
-                </span>
             </button>
-            <button
-                className="rounded border border-white/15 px-2 py-[3px] text-[11px] text-secondary hover:bg-white/5 cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
-                title={syncLabel}
-                disabled={syncRunning}
-                onClick={onSync}
-            >
-                {syncRunning ? syncRunningLabel : syncLabel}
-            </button>
-            <button className="iconbutton !h-[20px] !w-[20px] cursor-pointer" title="Refresh" onClick={onRefresh}>
-                <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
-            </button>
-            <button
-                className="iconbutton !h-[20px] !w-[20px] cursor-pointer"
-                title="Open Commits"
-                onClick={onOpenCommits}
-            >
-                <i className="fa-sharp fa-solid fa-clock-rotate-left text-[11px]" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5 self-center">
+                <button
+                    className="rounded border border-white/15 px-2 py-[3px] text-[11px] text-secondary hover:bg-white/5 cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
+                    title={syncLabel}
+                    disabled={syncRunning}
+                    onClick={onSync}
+                >
+                    {syncRunning ? syncRunningLabel : syncLabel}
+                </button>
+                <button className="iconbutton !h-[20px] !w-[20px] cursor-pointer" title="Refresh" onClick={onRefresh}>
+                    <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
+                </button>
+                <button
+                    className="iconbutton !h-[20px] !w-[20px] cursor-pointer"
+                    title="Open Commits"
+                    onClick={onOpenCommits}
+                >
+                    <i className="fa-sharp fa-solid fa-clock-rotate-left text-[11px]" />
+                </button>
+            </div>
         </div>
     );
 }
@@ -824,7 +834,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     scandepth: 3,
                     includeparent: true,
                 },
-                { route }
+                { route, timeout: VcsRepositoryRpcTimeoutMs }
             );
             const repoList = response.repositories ?? [];
             setRepos(repoList);
@@ -947,7 +957,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     message: commitMessage,
                     files: selectedFiles,
                 },
-                { route }
+                { route, timeout: VcsMutationRpcTimeoutMs }
             );
             if (response.success) {
                 setOperationNotice(repo.repoid, response.output || "Commit completed.", false);
@@ -970,6 +980,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         setExpandedRepos((prev) => ({ ...prev, [repo.repoid]: true }));
         setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
         clearOperationNotice(repo.repoid);
+        let shouldRefresh = false;
         try {
             const response = await env.rpc.RemoteVcsSyncCommand(
                 TabRpcClient,
@@ -978,11 +989,11 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     repopath: repo.rootpath,
                     action: syncAction,
                 },
-                { route }
+                { route, timeout: VcsMutationRpcTimeoutMs }
             );
             if (response.success) {
                 setOperationNotice(repo.repoid, response.output || getSyncCompletionLabel(syncAction), false);
-                await loadRepositories();
+                shouldRefresh = true;
             } else {
                 setOperationNotice(
                     repo.repoid,
@@ -994,6 +1005,9 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             setOperationNotice(repo.repoid, String(e), true);
         } finally {
             setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+        }
+        if (shouldRefresh) {
+            await loadRepositories();
         }
     };
 

@@ -62,6 +62,8 @@ export interface TreeViewProps {
     refreshKey?: string | number;
     defaultExpandedIds?: string[];
     maxDirEntries?: number;
+    maxExpandAllDepth?: number;
+    maxExpandAllDirectories?: number;
     rowHeight?: number;
     indentWidth?: number;
     overscan?: number;
@@ -78,14 +80,23 @@ export interface TreeViewProps {
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
+export interface TreeViewExpandAllResult {
+    expandedCount: number;
+    reachedLimit: boolean;
+}
+
 export interface TreeViewRef {
     scrollToId: (id: string) => void;
     refresh: (id?: string) => void;
+    collapseAll: () => void;
+    expandAll: () => Promise<TreeViewExpandAllResult>;
 }
 
 const DefaultRowHeight = 24;
 const DefaultIndentWidth = 12;
 const DefaultOverscan = 10;
+const DefaultMaxExpandAllDepth = 8;
+const DefaultMaxExpandAllDirectories = 500;
 const ChevronWidth = 12;
 
 function normalizeLabel(node: TreeNodeData): string {
@@ -290,6 +301,37 @@ export function mergeFetchedTreeChildren(
     return next;
 }
 
+export function getExpandableDirectoryChildIds(nodesById: Map<string, TreeNodeData>, id: string): string[] {
+    const node = nodesById.get(id);
+    if (node == null || node.childrenStatus === "capped") {
+        return [];
+    }
+    return sortIdsByNode(
+        nodesById,
+        (node.childrenIds ?? []).filter((childId) => {
+            const child = nodesById.get(childId);
+            return !!child?.isDirectory && !child.notfound && !child.staterror;
+        })
+    );
+}
+
+export function collapseTreeExpandedIds(expandedIds: Set<string>, rootIds: string[]): Set<string> {
+    const roots = new Set(rootIds);
+    let changed = false;
+    const next = new Set<string>(rootIds);
+    if (next.size !== expandedIds.size) {
+        changed = true;
+    }
+    expandedIds.forEach((id) => {
+        if (roots.has(id)) {
+            next.add(id);
+        } else {
+            changed = true;
+        }
+    });
+    return changed ? next : expandedIds;
+}
+
 export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const {
         rootIds,
@@ -298,6 +340,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         refreshKey,
         defaultExpandedIds,
         maxDirEntries = 500,
+        maxExpandAllDepth = DefaultMaxExpandAllDepth,
+        maxExpandAllDirectories = DefaultMaxExpandAllDirectories,
         rowHeight = DefaultRowHeight,
         indentWidth = DefaultIndentWidth,
         overscan = DefaultOverscan,
@@ -373,6 +417,25 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         virtualizer.scrollToIndex(index, { align: "auto" });
     };
 
+    const updateNodesById = React.useCallback(
+        (updater: (prev: Map<string, TreeNodeData>) => Map<string, TreeNodeData>) => {
+            setNodesById((prev) => {
+                const next = updater(prev);
+                nodesByIdRef.current = next;
+                return next;
+            });
+        },
+        []
+    );
+
+    const updateExpandedIds = React.useCallback((updater: (prev: Set<string>) => Set<string>) => {
+        setExpandedIds((prev) => {
+            const next = updater(prev);
+            expandedIdsRef.current = next;
+            return next;
+        });
+    }, []);
+
     const loadChildren = React.useCallback(
         async (id: string, force = false) => {
             const currentNode = nodesByIdRef.current.get(id);
@@ -392,7 +455,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             loadingIdsRef.current.add(id);
             const keepCurrentChildrenOnError = force && status !== "unloaded" && status !== "error";
             if (status === "unloaded" || status === "error") {
-                setNodesById((prev) => {
+                updateNodesById((prev) => {
                     const source = prev.get(id);
                     if (source == null) {
                         return prev;
@@ -404,9 +467,9 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             }
             try {
                 const result = await fetchDir(id, maxDirEntries);
-                setNodesById((prev) => mergeFetchedTreeChildren(prev, id, result, maxDirEntries));
+                updateNodesById((prev) => mergeFetchedTreeChildren(prev, id, result, maxDirEntries));
             } catch (error) {
-                setNodesById((prev) => {
+                updateNodesById((prev) => {
                     const next = new Map(prev);
                     const source = next.get(id);
                     if (source == null || keepCurrentChildrenOnError) {
@@ -423,7 +486,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 loadingIdsRef.current.delete(id);
             }
         },
-        [fetchDir, maxDirEntries]
+        [fetchDir, maxDirEntries, updateNodesById]
     );
 
     const refreshDirectory = React.useCallback(
@@ -439,13 +502,77 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         [loadChildren]
     );
 
+    const collapseAll = React.useCallback(() => {
+        updateExpandedIds((prev) => collapseTreeExpandedIds(prev, rootIds));
+    }, [rootIdsKey, updateExpandedIds]);
+
+    const expandAll = React.useCallback(async (): Promise<TreeViewExpandAllResult> => {
+        let expandedCount = 0;
+        let reachedLimit = false;
+        const rootSet = new Set(rootIds);
+        const visitedIds = new Set<string>();
+
+        const markExpanded = (id: string) => {
+            updateExpandedIds((prev) => {
+                if (prev.has(id)) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+        };
+
+        const visitDirectory = async (id: string, depth: number) => {
+            if (reachedLimit || visitedIds.has(id)) {
+                return;
+            }
+            const node = nodesByIdRef.current.get(id);
+            if (node == null || !node.isDirectory || node.notfound || node.staterror) {
+                return;
+            }
+            visitedIds.add(id);
+            markExpanded(id);
+            if (!rootSet.has(id)) {
+                expandedCount++;
+            }
+            if (expandedCount >= maxExpandAllDirectories || depth >= maxExpandAllDepth) {
+                reachedLimit = true;
+                return;
+            }
+            if ((node.childrenStatus ?? "unloaded") === "unloaded") {
+                await loadChildren(id);
+            }
+            const currentNode = nodesByIdRef.current.get(id);
+            if (currentNode?.childrenStatus === "capped" || currentNode?.childrenStatus === "error") {
+                return;
+            }
+            for (const childId of getExpandableDirectoryChildIds(nodesByIdRef.current, id)) {
+                await visitDirectory(childId, depth + 1);
+                if (reachedLimit) {
+                    return;
+                }
+            }
+        };
+
+        for (const rootId of rootIds) {
+            await visitDirectory(rootId, 0);
+            if (reachedLimit) {
+                break;
+            }
+        }
+        return { expandedCount, reachedLimit };
+    }, [loadChildren, maxExpandAllDepth, maxExpandAllDirectories, rootIdsKey, updateExpandedIds]);
+
     useImperativeHandle(
         ref,
         () => ({
             scrollToId,
             refresh: refreshDirectory,
+            collapseAll,
+            expandAll,
         }),
-        [idToIndex, refreshDirectory, virtualizer]
+        [collapseAll, expandAll, idToIndex, refreshDirectory, virtualizer]
     );
 
     useEffect(() => {
@@ -489,7 +616,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         if (!expanded) {
             loadChildren(id);
         }
-        setExpandedIds((prev) => {
+        updateExpandedIds((prev) => {
             const next = new Set(prev);
             if (expanded) {
                 next.delete(id);

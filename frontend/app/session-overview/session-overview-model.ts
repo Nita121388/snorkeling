@@ -2,18 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockModel } from "@/app/block/block-model";
-import { atoms, createBlock, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
+import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
+import { ObjectService, WorkspaceService } from "@/app/store/services";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import * as jotai from "jotai";
 
 const SessionOverviewView = "sessionoverview";
+const SessionOverviewTabKind = "overview";
+const SessionOverviewTabKindMetaKey = "snorkeling:tab-kind";
+const SessionOverviewTabName = "Overview";
 
 export class SessionOverviewModel {
     private static instance: SessionOverviewModel | null = null;
+    private openPromise: Promise<void> | null = null;
 
     isOpenAtom = jotai.atom((get) => {
         const tabId = get(atoms.staticTabId);
         if (!tabId) return false;
-        return findSessionOverviewBlockIdInTab(tabId, get) !== "";
+        const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+        return isSessionOverviewTab(tab);
     });
     displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
     blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
@@ -27,22 +35,28 @@ export class SessionOverviewModel {
         return SessionOverviewModel.instance;
     }
 
-    async open(): Promise<void> {
-        const tabId = globalStore.get(atoms.staticTabId);
-        if (!tabId) return;
-        const existingBlockId = findSessionOverviewBlockIdInTab(tabId, globalStore.get);
-        if (existingBlockId) {
-            refocusNode(existingBlockId);
-            return;
+    open(): Promise<void> {
+        if (this.openPromise != null) {
+            return this.openPromise;
         }
-        const blockId = await createBlock({
-            meta: {
-                view: SessionOverviewView,
-                "frame:title": "Overview",
-                icon: "list-tree",
-            },
+        this.openPromise = this.openInternal().finally(() => {
+            this.openPromise = null;
         });
-        window.setTimeout(() => refocusNode(blockId), 80);
+        return this.openPromise;
+    }
+
+    private async openInternal(): Promise<void> {
+        const workspace = globalStore.get(atoms.workspace);
+        if (!workspace?.oid) return;
+
+        const overviewTabId = await ensureSessionOverviewTab(workspace);
+        const overviewBlockId = await ensureSessionOverviewBlock(overviewTabId);
+        const currentTabId = globalStore.get(atoms.staticTabId);
+        setActiveTab(overviewTabId);
+        if (currentTabId === overviewTabId) {
+            window.setTimeout(() => refocusNode(overviewBlockId), 80);
+            window.setTimeout(() => refocusNode(overviewBlockId), 220);
+        }
     }
 
     setDisplayLimit(limit: number): void {
@@ -75,10 +89,84 @@ export class SessionOverviewModel {
     }
 }
 
-function findSessionOverviewBlockIdInTab(tabId: string, get: jotai.Getter): string {
-    const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+export function isSessionOverviewTab(tab: Tab | null): boolean {
+    return tab?.meta?.[SessionOverviewTabKindMetaKey] === SessionOverviewTabKind;
+}
+
+export function filterSessionOverviewTabIds(tabIds: string[], getTab: (tabId: string) => Tab | null): string[] {
+    return tabIds.filter((tabId) => !isSessionOverviewTab(getTab(tabId)));
+}
+
+export function mergeVisibleTabIdsWithSessionOverview(
+    workspaceTabIds: string[],
+    visibleTabIds: string[],
+    getTab: (tabId: string) => Tab | null
+): string[] {
+    const overviewTabIds = workspaceTabIds.filter((tabId) => isSessionOverviewTab(getTab(tabId)));
+    const visibleSet = new Set(visibleTabIds);
+    const remainingHiddenTabIds = workspaceTabIds.filter(
+        (tabId) => !overviewTabIds.includes(tabId) && !visibleSet.has(tabId)
+    );
+    return [...overviewTabIds, ...visibleTabIds, ...remainingHiddenTabIds];
+}
+
+async function findSessionOverviewTabId(workspace: Workspace): Promise<string> {
+    for (const tabId of workspace?.tabids ?? []) {
+        const tab = await WOS.loadAndPinWaveObject<Tab>(WOS.makeORef("tab", tabId));
+        if (isSessionOverviewTab(tab)) {
+            return tabId;
+        }
+    }
+    return "";
+}
+
+async function ensureSessionOverviewTab(workspace: Workspace): Promise<string> {
+    const existingTabId = await findSessionOverviewTabId(workspace);
+    if (existingTabId) {
+        await pinSessionOverviewTabFirst(workspace, existingTabId);
+        return existingTabId;
+    }
+    const tabId = await WorkspaceService.CreateEmptyTab(workspace.oid, SessionOverviewTabName, false);
+    await ObjectService.UpdateObjectMeta(WOS.makeORef("tab", tabId), {
+        [SessionOverviewTabKindMetaKey]: SessionOverviewTabKind,
+        icon: "list-tree",
+    } as MetaType);
+    await pinSessionOverviewTabFirst(workspace, tabId);
+    return tabId;
+}
+
+async function pinSessionOverviewTabFirst(workspace: Workspace, tabId: string): Promise<void> {
+    const currentTabIds = globalStore.get(atoms.workspace)?.tabids ?? workspace.tabids ?? [];
+    const nextTabIds = [tabId, ...currentTabIds.filter((nextTabId) => nextTabId !== tabId)];
+    if (nextTabIds.join("\0") === currentTabIds.join("\0")) {
+        return;
+    }
+    await RpcApi.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, nextTabIds);
+}
+
+async function ensureSessionOverviewBlock(tabId: string): Promise<string> {
+    const existingBlockId = await findSessionOverviewBlockIdInTab(tabId);
+    if (existingBlockId) {
+        return existingBlockId;
+    }
+    const blockRef = await RpcApi.CreateBlockCommand(TabRpcClient, {
+        tabid: tabId,
+        blockdef: {
+            meta: {
+                view: SessionOverviewView,
+                "frame:title": SessionOverviewTabName,
+                icon: "list-tree",
+            },
+        },
+        focused: true,
+    });
+    return WOS.splitORef(blockRef)[1];
+}
+
+async function findSessionOverviewBlockIdInTab(tabId: string): Promise<string> {
+    const tab = await WOS.loadAndPinWaveObject<Tab>(WOS.makeORef("tab", tabId));
     for (const blockId of tab?.blockids ?? []) {
-        const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        const block = await WOS.loadAndPinWaveObject<Block>(WOS.makeORef("block", blockId));
         if (block?.meta?.view === SessionOverviewView) {
             return blockId;
         }

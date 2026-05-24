@@ -254,6 +254,9 @@ type DirectoryVcsResolveResult =
 
 type SupportedVcsRepoType = "git" | "svn";
 
+const DirectoryVcsResolveTimeoutMs = 60000;
+const DirectoryVcsSyncTimeoutMs = 150000;
+
 function getSupportedRepoType(repo: VcsRepositoryInfo): SupportedVcsRepoType | null {
     const repoType = repo.repotype?.trim().toLowerCase();
     if (repoType === "git" || repoType === "svn") {
@@ -284,7 +287,7 @@ async function resolveRepoForPath(
                 scandepth: 1,
                 includeparent: true,
             },
-            { route }
+            { route, timeout: DirectoryVcsResolveTimeoutMs }
         );
         const repositories = (repositoriesResponse.repositories ?? []).filter(
             (repo) => getSupportedRepoType(repo) != null && !isBlank(repo.rootpath)
@@ -382,7 +385,7 @@ async function syncRepo(
                 repotype: repo.repotype,
                 repopath: repo.rootpath,
             },
-            { route }
+            { route, timeout: DirectoryVcsSyncTimeoutMs }
         );
         if (!response.success) {
             setErrorMsg({
