@@ -120,10 +120,10 @@ func DetectMimeType(path string, fileInfo fs.FileInfo, extended bool) string {
 	if fileInfo.Mode()&os.ModeDevice == os.ModeDevice {
 		return "block-special"
 	}
-	ext := strings.ToLower(filepath.Ext(path))
-	if mimeType, ok := StaticMimeTypeMap[ext]; ok {
+	if mimeType := DetectStaticMimeType(path); mimeType != "" {
 		return mimeType
 	}
+	ext := strings.ToLower(filepath.Ext(path))
 	if mimeType := mime.TypeByExtension(ext); mimeType != "" {
 		return mimeType
 	}
@@ -168,6 +168,20 @@ func DetectMimeTypeWithDirEnt(path string, dirEnt fs.DirEntry) string {
 		if mode&os.ModeDevice == os.ModeDevice {
 			return "block-special"
 		}
+	}
+	if mimeType := DetectStaticMimeType(path); mimeType != "" {
+		return mimeType
+	}
+	return ""
+}
+
+func DetectStaticMimeType(path string) string {
+	baseName := strings.ToLower(filepath.Base(path))
+	if mimeType, ok := StaticMimeTypeNameMap[baseName]; ok {
+		return mimeType
+	}
+	if strings.HasPrefix(baseName, ".env.") {
+		return "text/plain"
 	}
 	ext := strings.ToLower(filepath.Ext(path))
 	if mimeType, ok := StaticMimeTypeMap[ext]; ok {

@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { app, autoUpdater as electronAutoUpdater, dialog, ipcMain, Notification, shell } from "electron";
+import { app, dialog, autoUpdater as electronAutoUpdater, ipcMain, Notification, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
@@ -74,6 +74,7 @@ export class Updater {
     availableUpdateReleaseName: string | null;
     availableUpdateReleaseNotes: string | null;
     updateSupport: UpdateSupportState;
+    lastUpdateErrorMessage: string | null;
     private _status: UpdaterStatus;
     lastUpdateCheck: Date;
 
@@ -88,6 +89,7 @@ export class Updater {
         this.lastUpdateCheck = new Date(0);
         this.autoCheckInterval = null;
         this.availableUpdateReleaseName = null;
+        this.lastUpdateErrorMessage = null;
         this.updateSupport = detectUpdateSupportState();
 
         autoUpdater.autoInstallOnAppQuit = settings["autoupdate:installonquit"];
@@ -106,7 +108,11 @@ export class Updater {
         autoUpdater.on("error", (err) => {
             console.log("updater error");
             console.log(err);
-            if (!err.toString()?.includes("net::ERR_INTERNET_DISCONNECTED")) this.status = "error";
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            if (!errorMessage.includes("net::ERR_INTERNET_DISCONNECTED")) {
+                this.lastUpdateErrorMessage = errorMessage;
+                this.status = "error";
+            }
         });
 
         autoUpdater.on("checking-for-update", () => {
@@ -121,6 +127,7 @@ export class Updater {
 
         autoUpdater.on("update-not-available", () => {
             console.log("update-not-available");
+            this.lastUpdateErrorMessage = null;
             this.status = "up-to-date";
         });
 
@@ -128,6 +135,7 @@ export class Updater {
             console.log("update-downloaded", [event]);
             this.availableUpdateReleaseName = event.releaseName;
             this.availableUpdateReleaseNotes = event.releaseNotes as string | null;
+            this.lastUpdateErrorMessage = null;
 
             // Display the update banner and create a system notification
             this.status = "ready";
@@ -253,7 +261,9 @@ export class Updater {
                     const detail =
                         code === "ERR_UPDATER_NO_PUBLISHED_VERSIONS"
                             ? "No published update versions were found. Please ensure releases are tagged with a valid semantic version (for example: v0.14.5-beta.4.snorkeling.0.0.6)."
-                            : (err instanceof Error ? err.message : String(err));
+                            : err instanceof Error
+                              ? err.message
+                              : String(err);
                     const dialogOpts: Electron.MessageBoxOptions = {
                         type: "error",
                         message: "Failed to check for updates.",
@@ -274,6 +284,11 @@ export class Updater {
      * Prompts the user to install the downloaded application update and restarts the application
      */
     async promptToInstallUpdate() {
+        if (this.status !== "ready") {
+            await this.showInstallUnavailableDialog();
+            return;
+        }
+
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "info",
             buttons: ["Restart", "Later"],
@@ -296,20 +311,46 @@ export class Updater {
      * Restarts the app and installs an update if it is available.
      */
     async installUpdate() {
-        if (this.status == "ready") {
-            quittingForUpdate = true;
-            setGlobalIsQuitting(true);
-            setUserConfirmedQuit(true);
-            this.status = "installing";
-            await delay(1000);
-            try {
-                autoUpdater.quitAndInstall();
-            } catch (e) {
-                console.warn("failed to quit and install update", e);
-                quittingForUpdate = false;
-                setGlobalIsQuitting(false);
-                this.status = "error";
-            }
+        if (this.status !== "ready") {
+            await this.showInstallUnavailableDialog();
+            return;
+        }
+
+        quittingForUpdate = true;
+        setGlobalIsQuitting(true);
+        setUserConfirmedQuit(true);
+        this.status = "installing";
+        await delay(1000);
+        try {
+            autoUpdater.quitAndInstall();
+        } catch (e) {
+            console.warn("failed to quit and install update", e);
+            quittingForUpdate = false;
+            setGlobalIsQuitting(false);
+            this.lastUpdateErrorMessage = e instanceof Error ? e.message : String(e);
+            this.status = "error";
+        }
+    }
+
+    private async showInstallUnavailableDialog() {
+        const detail = this.lastUpdateErrorMessage
+            ? `The downloaded update could not be prepared for installation.\n\n${this.lastUpdateErrorMessage}\n\nPlease install the latest release manually.`
+            : "The downloaded update is no longer ready to install. Please check for updates again or install the latest release manually.";
+        const dialogOpts: Electron.MessageBoxOptions = {
+            type: "error",
+            buttons: ["OK", "Open Latest Release"],
+            defaultId: 0,
+            cancelId: 0,
+            message: "Automatic update failed.",
+            detail,
+        };
+        const allWindows = getAllWaveWindows();
+        const dialogResult =
+            allWindows.length > 0
+                ? await dialog.showMessageBox(focusedWaveWindow ?? allWindows[0], dialogOpts)
+                : await dialog.showMessageBox(dialogOpts);
+        if (dialogResult.response === 1) {
+            await shell.openExternal(SnorkelingLatestReleaseUrl);
         }
     }
 }

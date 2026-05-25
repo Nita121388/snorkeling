@@ -1,8 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Tooltip } from "@/element/tooltip";
 import { WaveEnv, WaveEnvSubset, useWaveEnv } from "@/app/waveenv/waveenv";
+import { Tooltip } from "@/element/tooltip";
 import { useAtomValue } from "jotai";
 import { memo, useCallback } from "react";
 
@@ -23,6 +23,8 @@ function getUpdateStatusMessage(status: string): string {
             return "Downloading";
         case "installing":
             return "Installing";
+        case "error":
+            return "Update Error";
         default:
             return null;
     }
@@ -34,25 +36,36 @@ const UpdateStatusBannerComponent = () => {
     const updateStatusMessage = getUpdateStatusMessage(appUpdateStatus);
 
     const onClick = useCallback(() => {
-        env.electron.installAppUpdate();
-    }, [env]);
+        if (appUpdateStatus === "ready" || appUpdateStatus === "error") {
+            env.electron.installAppUpdate();
+        }
+    }, [appUpdateStatus, env]);
 
     if (!updateStatusMessage) {
         return null;
     }
 
     const isReady = appUpdateStatus === "ready";
-    const tooltipContent = isReady ? "Click to Install Update" : updateStatusMessage;
+    const isError = appUpdateStatus === "error";
+    const tooltipContent = isReady
+        ? "Click to Install Update"
+        : isError
+          ? "Update failed. Click for details."
+          : updateStatusMessage;
 
     return (
         <Tooltip
             content={tooltipContent}
             placement="bottom"
-            divOnClick={isReady ? onClick : undefined}
-            divClassName={`flex items-center gap-1 px-2 mb-1 h-[22px] text-xs font-medium text-black bg-accent rounded-sm transition-all ${isReady ? "cursor-pointer hover:bg-[var(--button-green-border-color)]" : ""}`}
+            divOnClick={isReady || isError ? onClick : undefined}
+            divClassName={`flex items-center gap-1 px-2 mb-1 h-[22px] text-xs font-medium text-black rounded-sm transition-all ${
+                isError
+                    ? "bg-error text-white cursor-pointer hover:bg-[var(--button-red-hover-bg)]"
+                    : `bg-accent ${isReady ? "cursor-pointer hover:bg-[var(--button-green-border-color)]" : ""}`
+            }`}
             divStyle={{ WebkitAppRegion: "no-drag" } as any}
         >
-            <i className="fa fa-download" />
+            <i className={`fa ${isError ? "fa-triangle-exclamation" : "fa-download"}`} />
             {updateStatusMessage}
         </Tooltip>
     );

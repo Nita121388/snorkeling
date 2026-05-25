@@ -63,6 +63,17 @@ export const shellFileMap: Record<string, string> = {
     ".gvimrc": "shell",
 };
 
+const extensionLanguageMap: Record<string, string> = {
+    ".astro": "html",
+    ".cts": "typescript",
+    ".j2": "html",
+    ".jinja": "html",
+    ".jinja2": "html",
+    ".jsonc": "json",
+    ".svelte": "html",
+    ".vue": "html",
+};
+
 function joinAbsolutePath(dir: string, name: string): string {
     if (!dir) {
         return name;
@@ -84,6 +95,21 @@ function getAbsoluteFilePath(fileInfo: FileInfo | null): string {
         return fileInfo.path;
     }
     return fileInfo.name ?? "";
+}
+
+function getFileLanguage(fileName: string | null): string | undefined {
+    const baseName = fileName ? fileName.split("/").pop() : null;
+    if (!baseName) {
+        return undefined;
+    }
+    if (shellFileMap[baseName]) {
+        return shellFileMap[baseName];
+    }
+    const extensionMatch = baseName.toLowerCase().match(/(\.[^.]+)$/);
+    if (!extensionMatch) {
+        return undefined;
+    }
+    return extensionLanguageMap[extensionMatch[1]];
 }
 
 function buildCopyContextText(
@@ -157,8 +183,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const suppressSelectionCopyOverlayRef = useRef(false);
     const fileName = fileInfo?.path || fileInfo?.name;
 
-    const baseName = fileName ? fileName.split("/").pop() : null;
-    const language = baseName && shellFileMap[baseName] ? shellFileMap[baseName] : undefined;
+    const language = getFileLanguage(fileName);
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
         viewModel: model,

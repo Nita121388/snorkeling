@@ -61,6 +61,7 @@ const config = {
         singleArchFiles: "**/dist/bin/wavesrv.*",
         entitlements: "build/entitlements.mac.plist",
         entitlementsInherit: "build/entitlements.mac.plist",
+        forceCodeSigning: process.env.SNORKELING_FORCE_MACOS_SIGNING === "true",
         extendInfo: {
             NSContactsUsageDescription: "A CLI application running in Snorkeling wants to use your contacts.",
             NSRemindersUsageDescription: "A CLI application running in Snorkeling wants to use your reminders.",
@@ -71,7 +72,8 @@ const config = {
             NSCameraUsageDescription: "A CLI application running in Snorkeling wants to use the camera.",
             NSMicrophoneUsageDescription: "A CLI application running in Snorkeling wants to use your microphone.",
             NSCalendarsUsageDescription: "A CLI application running in Snorkeling wants to use Calendar data.",
-            NSLocationUsageDescription: "A CLI application running in Snorkeling wants to use your location information.",
+            NSLocationUsageDescription:
+                "A CLI application running in Snorkeling wants to use your location information.",
             NSAppleEventsUsageDescription: "A CLI application running in Snorkeling wants to use AppleScript.",
         },
     },
