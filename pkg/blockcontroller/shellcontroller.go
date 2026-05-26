@@ -95,6 +95,7 @@ const (
 	codexSessionCaptureSettleDuration = 1200 * time.Millisecond
 	codexSessionCaptureQuickAttempts  = 30
 	codexSessionCaptureMaxAttempts    = 900
+	codexSessionMetaScanLines         = 50
 )
 
 const ManualCodexSessionCaptureAttempts = 120
@@ -857,6 +858,13 @@ func createCmdStrAndOpts(
 		} else {
 			agentRunInfo.CodexSessionLookupCwd = localHomeDir
 		}
+		log.Printf(
+			"starting codex session id capture (block=%s root=%q cwd=%q startedAt=%s)",
+			blockId,
+			agentRunInfo.CodexSessionLookupRoot,
+			agentRunInfo.CodexSessionLookupCwd,
+			agentRunInfo.CodexSessionStartedAt.Format(time.RFC3339Nano),
+		)
 	}
 	useShell := blockMeta.GetBool(waveobj.MetaKey_CmdShell, true)
 	if !useShell {
@@ -1175,35 +1183,39 @@ func readCodexSessionMeta(filePath string) (string, string, time.Time, error) {
 		return "", "", time.Time{}, err
 	}
 	defer fd.Close()
-	reader := bufio.NewReader(fd)
-	lineBytes, err := reader.ReadBytes('\n')
-	if err != nil && err != io.EOF {
+
+	scanner := bufio.NewScanner(fd)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for lineCount := 0; lineCount < codexSessionMetaScanLines && scanner.Scan(); lineCount++ {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var metaLine codexSessionMetaLine
+		if err := json.Unmarshal([]byte(line), &metaLine); err != nil {
+			continue
+		}
+		if metaLine.Type != "session_meta" {
+			continue
+		}
+		if metaLine.Payload.Id == "" || metaLine.Payload.Cwd == "" {
+			continue
+		}
+		timestamp := parseCodexSessionTimestamp(metaLine.Payload.Timestamp)
+		if timestamp.IsZero() {
+			timestamp = parseCodexSessionTimestamp(metaLine.Timestamp)
+		}
+		if timestamp.IsZero() {
+			if stat, err := fd.Stat(); err == nil {
+				timestamp = stat.ModTime()
+			}
+		}
+		return metaLine.Payload.Id, metaLine.Payload.Cwd, timestamp, nil
+	}
+	if err := scanner.Err(); err != nil {
 		return "", "", time.Time{}, err
 	}
-	line := strings.TrimSpace(string(lineBytes))
-	if line == "" {
-		return "", "", time.Time{}, nil
-	}
-	var metaLine codexSessionMetaLine
-	if err := json.Unmarshal([]byte(line), &metaLine); err != nil {
-		return "", "", time.Time{}, nil
-	}
-	if metaLine.Type != "session_meta" {
-		return "", "", time.Time{}, nil
-	}
-	if metaLine.Payload.Id == "" || metaLine.Payload.Cwd == "" {
-		return "", "", time.Time{}, nil
-	}
-	timestamp := parseCodexSessionTimestamp(metaLine.Payload.Timestamp)
-	if timestamp.IsZero() {
-		timestamp = parseCodexSessionTimestamp(metaLine.Timestamp)
-	}
-	if timestamp.IsZero() {
-		if stat, err := fd.Stat(); err == nil {
-			timestamp = stat.ModTime()
-		}
-	}
-	return metaLine.Payload.Id, metaLine.Payload.Cwd, timestamp, nil
+	return "", "", time.Time{}, nil
 }
 
 func findUniqueCodexSessionIdInRoot(sessionsRoot string, cwd string, startedAt time.Time) (string, int, error) {
@@ -1263,6 +1275,12 @@ func (bc *ShellController) captureCodexSessionIdForBlockWithAttempts(agentRunInf
 		sessionsRoot = filepath.Join(agentRunInfo.CodexSessionLookupHome, ".codex", "sessions")
 	}
 	if sessionsRoot == "" || agentRunInfo.CodexSessionLookupCwd == "" {
+		log.Printf(
+			"skipping codex session id capture because lookup context is incomplete (block=%s root=%q cwd=%q)",
+			bc.BlockId,
+			sessionsRoot,
+			agentRunInfo.CodexSessionLookupCwd,
+		)
 		return
 	}
 	var candidateId string
@@ -1295,6 +1313,7 @@ func (bc *ShellController) captureCodexSessionIdForBlockWithAttempts(agentRunInf
 				if err := persistAgentSessionId(bc.BlockId, sessionId); err != nil {
 					log.Printf("error persisting codex session id (block=%s): %v", bc.BlockId, err)
 				}
+				log.Printf("persisted codex session id (block=%s session=%s)", bc.BlockId, sessionId)
 				return
 			}
 		}

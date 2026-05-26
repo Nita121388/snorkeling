@@ -36,6 +36,18 @@ type AISessionsDetailRequest struct {
 	IncludeTools bool   `json:"includeTools,omitempty"`
 }
 
+type AISessionsUserOutlineRequest struct {
+	ID      string `json:"id"`
+	Refresh bool   `json:"refresh,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+type AISessionsUserOutlineResponse struct {
+	Summary          aisessions.SessionSummary `json:"summary"`
+	Messages         []aisessions.Message      `json:"messages"`
+	UserMessageCount int                       `json:"userMessageCount"`
+}
+
 type AISessionsSummaryRequest struct {
 	ID      string `json:"id"`
 	Refresh bool   `json:"refresh,omitempty"`
@@ -107,6 +119,56 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		detail.Messages = detail.Messages[len(detail.Messages)-tail:]
 	}
 	return &detail, nil
+}
+
+func (svc *AISessionsService) UserOutline_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "load latest user messages for a local AI session outline",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session user outline",
+	}
+}
+
+func (svc *AISessionsService) UserOutline(ctx context.Context, request *AISessionsUserOutlineRequest) (*AISessionsUserOutlineResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	detail, err := aisessions.NewManager("", nil).Load(ctx, request.ID, aisessions.LoadOptions{
+		Refresh: request.Refresh,
+	})
+	if err != nil {
+		return nil, err
+	}
+	messages, count := latestUserOutlineMessages(detail.Messages, request.Limit)
+	return &AISessionsUserOutlineResponse{
+		Summary:          detail.Summary,
+		Messages:         messages,
+		UserMessageCount: count,
+	}, nil
+}
+
+func latestUserOutlineMessages(messages []aisessions.Message, limit int) ([]aisessions.Message, int) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	var latest []aisessions.Message
+	count := 0
+	for _, message := range messages {
+		if message.Role != aisessions.RoleUser || strings.TrimSpace(message.Text) == "" {
+			continue
+		}
+		count++
+		if len(latest) < limit {
+			latest = append(latest, message)
+			continue
+		}
+		copy(latest, latest[1:])
+		latest[len(latest)-1] = message
+	}
+	return latest, count
 }
 
 func (svc *AISessionsService) Summary_Meta() tsgenmeta.MethodMeta {

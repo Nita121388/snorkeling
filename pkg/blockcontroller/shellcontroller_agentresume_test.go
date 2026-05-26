@@ -207,6 +207,27 @@ func TestFindUniqueCodexSessionIdReadsTopLevelTimestamp(t *testing.T) {
 	}
 }
 
+func TestReadCodexSessionMetaScansPreludeLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "rollout-2026-04-18T12-00-01-111.jsonl")
+	data := `{"type":"environment_context","payload":{"cwd":"/tmp/project-a"}}` + "\n" +
+		`not json` + "\n" +
+		`{"type":"session_meta","payload":{"id":"session-after-prelude","cwd":"/tmp/project-a","timestamp":"2026-04-18T12:00:01.000Z"}}` + "\n"
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatalf("write session failed: %v", err)
+	}
+	sessionId, cwd, timestamp, err := readCodexSessionMeta(sessionPath)
+	if err != nil {
+		t.Fatalf("readCodexSessionMeta returned error: %v", err)
+	}
+	if sessionId != "session-after-prelude" || cwd != "/tmp/project-a" {
+		t.Fatalf("expected prelude session meta, got session=%q cwd=%q", sessionId, cwd)
+	}
+	if timestamp.IsZero() {
+		t.Fatalf("expected non-zero timestamp")
+	}
+}
+
 func TestFindUniqueCodexSessionIdInRootSupportsCodexHomeRoot(t *testing.T) {
 	codexHome := t.TempDir()
 	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
@@ -225,6 +246,27 @@ func TestFindUniqueCodexSessionIdInRootSupportsCodexHomeRoot(t *testing.T) {
 	}
 	if sessionId != "session-codex-home" || count != 1 {
 		t.Fatalf("expected session-codex-home with count 1, got session=%q count=%d", sessionId, count)
+	}
+}
+
+func TestFindUniqueCodexSessionIdInRootSupportsWindowsCwdVariants(t *testing.T) {
+	codexHome := t.TempDir()
+	startTs := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "04", "18")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	sessionPath := filepath.Join(sessionDir, "rollout-2026-04-18T12-00-01-111.jsonl")
+	data := `{"type":"session_meta","payload":{"id":"session-windows-cwd","cwd":"E:\\File\\NitaFile\\Obsidians\\Obsidian","timestamp":"2026-04-18T12:00:01.000Z"}}` + "\n"
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatalf("write session failed: %v", err)
+	}
+	sessionId, count, err := findUniqueCodexSessionIdInRoot(filepath.Join(codexHome, "sessions"), "/mnt/e/File/NitaFile/Obsidians/Obsidian", startTs)
+	if err != nil {
+		t.Fatalf("findUniqueCodexSessionIdInRoot returned error: %v", err)
+	}
+	if sessionId != "session-windows-cwd" || count != 1 {
+		t.Fatalf("expected session-windows-cwd with count 1, got session=%q count=%d", sessionId, count)
 	}
 }
 

@@ -14,14 +14,16 @@ import {
 } from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
-import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { useTabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
-import { shortSessionId } from "@/app/view/aisessions/utils";
+import {
+    AiSessionNoteUpdatedEvent,
+    dispatchAISessionNoteUpdated,
+    isAISessionNoteUpdatedEvent,
+} from "@/app/view/aisessions/session-note-events";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
@@ -193,47 +195,299 @@ function sessionSummaryMatchesId(summary: SessionSummary, sessionId: string): bo
     return summary.key === sessionId || summary.id === sessionId;
 }
 
-const TermSessionNoteButton = React.memo(
+function useTerminalAgentSessionId(blockData: Block | null, termWrap: TermWrap | null): string {
+    const shellLastCommand = useAtomValueSafe<string | null>(termWrap?.lastCommandAtom);
+    const fallbackShellLastCommand = React.useMemo(() => {
+        if (shellLastCommand || !termWrap) {
+            return shellLastCommand;
+        }
+        const command = extractAgentCommandFromTerminalText(termWrap.getScrollbackContent());
+        return command !== "" ? command : null;
+    }, [shellLastCommand, termWrap]);
+    const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+    return React.useMemo(
+        () => resolveAgentSessionId(meta, fallbackShellLastCommand).sessionId,
+        [fallbackShellLastCommand, meta]
+    );
+}
+
+function outlinePreviewText(text: string, maxLength = 120): string {
+    const normalized = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line !== "")
+        ?.replace(/\s+/g, " ")
+        .trim();
+    if (!normalized) {
+        return "(empty)";
+    }
+    if (normalized.length <= maxLength) {
+        return normalized;
+    }
+    return `${normalized.slice(0, maxLength).trim()}...`;
+}
+
+function userOutlineMessages(outline: AISessionsUserOutlineResponse | null): Message[] {
+    return (outline?.messages ?? []).filter((message) => message.role === "user" && message.text?.trim() !== "");
+}
+
+const TermSessionUserOutlineOverlay = React.memo(
+    ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+        const service = React.useMemo(() => new AISessionsServiceType(), []);
+        const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+        const [isOpen, setIsOpen] = React.useState(false);
+        const [outline, setOutline] = React.useState<AISessionsUserOutlineResponse | null>(null);
+        const [loading, setLoading] = React.useState(false);
+        const [error, setError] = React.useState("");
+        const [activeSeq, setActiveSeq] = React.useState<number | null>(null);
+        const requestSeqRef = React.useRef(0);
+
+        React.useEffect(() => {
+            return () => {
+                requestSeqRef.current++;
+            };
+        }, []);
+
+        const loadOutline = React.useCallback(
+            (refresh = false, silent = false) => {
+                requestSeqRef.current++;
+                const requestSeq = requestSeqRef.current;
+                if (sessionId === "") {
+                    setOutline(null);
+                    setError("");
+                    setLoading(false);
+                    return;
+                }
+                if (!silent) {
+                    setLoading(true);
+                }
+                setError("");
+                service
+                    .UserOutline({ id: sessionId, limit: 20, refresh })
+                    .then((nextOutline) => {
+                        if (requestSeq !== requestSeqRef.current) {
+                            return;
+                        }
+                        setOutline(nextOutline);
+                    })
+                    .catch((e) => {
+                        if (requestSeq !== requestSeqRef.current) {
+                            return;
+                        }
+                        console.debug("[term-session-outline] failed to load user outline", { sessionId, error: e });
+                        setError(e instanceof Error ? e.message : String(e));
+                    })
+                    .finally(() => {
+                        if (requestSeq !== requestSeqRef.current) {
+                            return;
+                        }
+                        setLoading(false);
+                    });
+            },
+            [service, sessionId]
+        );
+
+        React.useEffect(() => {
+            requestSeqRef.current++;
+            setIsOpen(false);
+            setActiveSeq(null);
+            setOutline(null);
+            setError("");
+            setLoading(false);
+            if (sessionId === "") {
+                return;
+            }
+            const loadTimer = window.setTimeout(() => loadOutline(false, true), 300);
+            return () => {
+                window.clearTimeout(loadTimer);
+                requestSeqRef.current++;
+            };
+        }, [loadOutline, sessionId]);
+
+        React.useEffect(() => {
+            if (!isOpen) {
+                return;
+            }
+            const onKeyDown = (event: KeyboardEvent) => {
+                if (event.key === "Escape") {
+                    setIsOpen(false);
+                    setActiveSeq(null);
+                }
+            };
+            window.addEventListener("keydown", onKeyDown);
+            return () => window.removeEventListener("keydown", onKeyDown);
+        }, [isOpen]);
+
+        if (sessionId === "") {
+            return null;
+        }
+
+        const userMessages = userOutlineMessages(outline);
+        const userMessageCount = outline?.userMessageCount ?? userMessages.length;
+        if (!isOpen && userMessages.length === 0) {
+            return null;
+        }
+
+        const visibleMessages = userMessages.slice(-5);
+        const latestMessage = userMessages[userMessages.length - 1] ?? null;
+        const activeMessage =
+            activeSeq == null ? null : (userMessages.find((message) => message.seq === activeSeq) ?? null);
+        const hiddenCount = Math.max(0, userMessageCount - visibleMessages.length);
+        const title = outline?.summary?.title || outline?.summary?.id || sessionId;
+
+        const toggleOpen = () => {
+            const nextOpen = !isOpen;
+            setIsOpen(nextOpen);
+            setActiveSeq(null);
+            if (nextOpen && !loading) {
+                loadOutline(true, true);
+            }
+        };
+
+        return (
+            <div
+                className={clsx(
+                    "term-session-outline",
+                    isOpen ? "is-open" : "is-collapsed",
+                    dimmed && !isOpen && "is-dimmed"
+                )}
+                title={isOpen ? title : latestMessage ? outlinePreviewText(latestMessage.text, 220) : title}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <button
+                    type="button"
+                    className="term-session-outline-toggle"
+                    onClick={toggleOpen}
+                    aria-label={isOpen ? "Collapse user outline" : "Expand user outline"}
+                >
+                    <i
+                        className={clsx(
+                            "fa-sharp fa-solid shrink-0 text-[10px]",
+                            isOpen ? "fa-chevron-down" : "fa-chevron-right"
+                        )}
+                    />
+                    <i className="fa-sharp fa-solid fa-list-ul term-session-outline-icon" aria-hidden="true" />
+                    <span className="term-session-outline-count">
+                        {loading && userMessages.length === 0 ? "..." : userMessageCount}
+                    </span>
+                    {!isOpen && latestMessage ? (
+                        <span className="term-session-outline-latest">
+                            {outlinePreviewText(latestMessage.text, 88)}
+                        </span>
+                    ) : null}
+                    {loading ? (
+                        <i className="fa-sharp fa-solid fa-spinner ml-auto shrink-0 animate-spin text-[10px]" />
+                    ) : null}
+                </button>
+                {isOpen ? (
+                    <div className="term-session-outline-body">
+                        {error ? <div className="py-1 text-[11px] text-error">{error}</div> : null}
+                        {visibleMessages.length === 0 && !error ? (
+                            <div className="py-1 text-[11px] text-secondary">No user messages found.</div>
+                        ) : null}
+                        {hiddenCount > 0 ? (
+                            <div className="mb-1 text-[10px] text-secondary">
+                                Showing latest {visibleMessages.length}; {hiddenCount} older hidden
+                            </div>
+                        ) : null}
+                        <div className="flex flex-col gap-1">
+                            {visibleMessages.map((message) => (
+                                <button
+                                    key={message.seq}
+                                    type="button"
+                                    className={clsx(
+                                        "flex min-w-0 items-start gap-2 rounded border border-transparent px-1.5 py-1 text-left hover:border-accent/25 hover:bg-accent/10",
+                                        activeSeq === message.seq && "border-accent/35 bg-accent/10"
+                                    )}
+                                    title={message.text}
+                                    onClick={() =>
+                                        setActiveSeq((current) => (current === message.seq ? null : message.seq))
+                                    }
+                                >
+                                    <span className="shrink-0 font-mono text-[10px] text-accent/80">
+                                        #{message.seq}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate text-secondary">
+                                        {outlinePreviewText(message.text, 110)}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                        {activeMessage ? (
+                            <div className="term-session-outline-message">{activeMessage.text}</div>
+                        ) : null}
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
+);
+
+TermSessionUserOutlineOverlay.displayName = "TermSessionUserOutlineOverlay";
+
+type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+
+const TermSessionNoteEditor = React.memo(
     ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
-        const shellLastCommand = useAtomValueSafe<string | null>(termWrap?.lastCommandAtom);
-        const fallbackShellLastCommand = React.useMemo(() => {
-            if (shellLastCommand || !termWrap) {
-                return shellLastCommand;
-            }
-            const command = extractAgentCommandFromTerminalText(termWrap.getScrollbackContent());
-            return command !== "" ? command : null;
-        }, [shellLastCommand, termWrap]);
-        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const sessionId = React.useMemo(
-            () => resolveAgentSessionId(meta, fallbackShellLastCommand).sessionId,
-            [meta, fallbackShellLastCommand]
-        );
+        const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const [summary, setSummary] = React.useState<SessionSummary | null>(null);
+        const [noteDraft, setNoteDraft] = React.useState("");
+        const [isEditing, setIsEditing] = React.useState(false);
+        const [saveStatus, setSaveStatus] = React.useState<NoteSaveStatus>("idle");
+        const [error, setError] = React.useState("");
+        const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+        const saveSeqRef = React.useRef(0);
+        const saveTimerRef = React.useRef<number | null>(null);
+        const latestDraftRef = React.useRef("");
 
         React.useEffect(() => {
             if (sessionId === "") {
                 setSummary(null);
+                setNoteDraft("");
+                setIsEditing(false);
+                setError("");
+                setSaveStatus("idle");
                 return;
             }
             let cancelled = false;
+            setSummary(null);
+            setNoteDraft("");
+            setIsEditing(false);
+            setError("");
+            setSaveStatus("idle");
             service
                 .Summary({ id: sessionId })
                 .then((nextSummary) => {
                     if (!cancelled) {
                         setSummary(nextSummary);
+                        setNoteDraft(nextSummary.note ?? "");
                     }
                 })
                 .catch((e) => {
                     if (!cancelled) {
                         console.debug("[term-session-note] failed to load session note", { sessionId, error: e });
                         setSummary(null);
+                        setError(e instanceof Error ? e.message : String(e));
                     }
                 });
             return () => {
                 cancelled = true;
             };
         }, [service, sessionId]);
+
+        React.useEffect(() => {
+            latestDraftRef.current = noteDraft;
+        }, [noteDraft]);
+
+        React.useEffect(() => {
+            if (saveStatus !== "saved" && saveStatus !== "error") {
+                return;
+            }
+            const handle = window.setTimeout(() => setSaveStatus("idle"), saveStatus === "saved" ? 1200 : 1800);
+            return () => window.clearTimeout(handle);
+        }, [saveStatus]);
 
         React.useEffect(() => {
             if (sessionId === "") {
@@ -245,37 +499,176 @@ const TermSessionNoteButton = React.memo(
                 }
                 if (sessionSummaryMatchesId(event.detail.summary, sessionId)) {
                     setSummary(event.detail.summary);
+                    const nextNote = event.detail.summary.note ?? "";
+                    if (saveStatus !== "saving" && latestDraftRef.current.trim() === (summary?.note ?? "")) {
+                        setNoteDraft(nextNote);
+                    }
                 }
             };
             window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
             return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
-        }, [sessionId]);
+        }, [saveStatus, sessionId, summary?.note]);
 
-        const note = summary?.note?.trim() ?? "";
-        if (sessionId === "" || note === "") {
+        const saveNote = React.useCallback(
+            (nextNote: string) => {
+                if (summary == null) {
+                    return;
+                }
+                const trimmedNote = nextNote.trim();
+                if (trimmedNote === (summary.note ?? "")) {
+                    setError("");
+                    return;
+                }
+                saveSeqRef.current++;
+                const saveSeq = saveSeqRef.current;
+                setSaveStatus("saving");
+                setError("");
+                service
+                    .Note(summary.key, trimmedNote)
+                    .then((updated) => {
+                        if (saveSeq !== saveSeqRef.current) {
+                            return;
+                        }
+                        setSummary(updated);
+                        if (!isEditing) {
+                            setNoteDraft(updated.note ?? "");
+                        }
+                        setSaveStatus("saved");
+                        dispatchAISessionNoteUpdated(updated);
+                    })
+                    .catch((e) => {
+                        if (saveSeq !== saveSeqRef.current) {
+                            return;
+                        }
+                        console.debug("[term-session-note] failed to save session note", { sessionId, error: e });
+                        setSaveStatus("error");
+                        setError(e instanceof Error ? e.message : String(e));
+                    });
+            },
+            [isEditing, service, sessionId, summary]
+        );
+
+        const finishEditing = React.useCallback(() => {
+            setIsEditing(false);
+            if (saveTimerRef.current != null) {
+                window.clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
+            }
+            saveNote(noteDraft);
+        }, [noteDraft, saveNote]);
+
+        React.useEffect(() => {
+            if (summary == null || noteDraft.trim() === (summary.note ?? "")) {
+                return;
+            }
+            saveTimerRef.current = window.setTimeout(() => {
+                saveTimerRef.current = null;
+                saveNote(noteDraft);
+            }, 800);
+            return () => {
+                if (saveTimerRef.current != null) {
+                    window.clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = null;
+                }
+            };
+        }, [noteDraft, saveNote, summary]);
+
+        React.useEffect(() => {
+            return () => {
+                if (saveTimerRef.current != null) {
+                    window.clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = null;
+                }
+                saveSeqRef.current++;
+            };
+        }, []);
+
+        if (sessionId === "" || summary == null) {
             return null;
         }
         const title = summary?.title || summary?.id || sessionId;
+        const trimmedDraft = noteDraft.trim();
+        const previewText =
+            trimmedDraft
+                .split(/\r?\n/)
+                .find((line) => line.trim() !== "")
+                ?.trim() || "Note";
+        const statusIcon =
+            saveStatus === "saving"
+                ? "fa-spinner animate-spin"
+                : saveStatus === "saved"
+                  ? "fa-check"
+                  : saveStatus === "error"
+                    ? "fa-triangle-exclamation"
+                    : "fa-tag";
         return (
-            <button
-                className="absolute right-2 top-2 z-20 flex max-w-[min(360px,calc(100%-16px))] items-center gap-2 rounded border border-accent/40 bg-bg/70 px-2 py-1 text-xs text-primary opacity-45 shadow-sm backdrop-blur transition-opacity hover:opacity-100 focus:opacity-100"
-                title={`${title}\n\n${note}`}
-                aria-label="Show agent session note"
+            <div
+                className={clsx(
+                    "term-session-note-editor",
+                    isEditing ? "is-editing" : "is-preview",
+                    trimmedDraft === "" && "is-empty",
+                    saveStatus === "saving" && "is-saving",
+                    saveStatus === "saved" && "is-saved",
+                    saveStatus === "error" && "is-error"
+                )}
+                title={error || title}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
-                    e.preventDefault();
                     e.stopPropagation();
-                    modalsModel.pushModal("AISessionNoteModal", { sessionId });
                 }}
             >
-                <i className="fa-sharp fa-solid fa-tag shrink-0 text-accent" />
-                <span className="min-w-0 truncate">{note}</span>
-                <span className="shrink-0 text-[10px] text-secondary">{shortSessionId(summary?.id ?? sessionId)}</span>
-            </button>
+                <button
+                    type="button"
+                    className="term-session-note-preview"
+                    aria-label="Edit session note"
+                    onClick={() => {
+                        setIsEditing(true);
+                        window.setTimeout(() => {
+                            inputRef.current?.focus();
+                            inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
+                        }, 0);
+                    }}
+                >
+                    <i className={clsx("fa-sharp fa-solid term-session-note-icon", statusIcon)} />
+                    <span className="term-session-note-preview-text">{previewText}</span>
+                </button>
+                {isEditing ? (
+                    <div className="term-session-note-popover">
+                        <div className="term-session-note-popover-head">
+                            <i className={clsx("fa-sharp fa-solid term-session-note-icon", statusIcon)} />
+                            <span className="term-session-note-popover-title">{title}</span>
+                        </div>
+                        <textarea
+                            ref={inputRef}
+                            className="term-session-note-input"
+                            value={noteDraft}
+                            rows={4}
+                            placeholder="Note"
+                            aria-label="Session note"
+                            spellCheck={false}
+                            onChange={(event) => {
+                                setNoteDraft(event.target.value);
+                                setError("");
+                                if (saveStatus !== "saving") {
+                                    setSaveStatus("idle");
+                                }
+                            }}
+                            onBlur={finishEditing}
+                            onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Escape") {
+                                    event.currentTarget.blur();
+                                }
+                            }}
+                        />
+                    </div>
+                ) : null}
+            </div>
         );
     }
 );
 
-TermSessionNoteButton.displayName = "TermSessionNoteButton";
+TermSessionNoteEditor.displayName = "TermSessionNoteEditor";
 
 const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => {
     const viewRef = React.useRef<HTMLDivElement>(null);
@@ -565,7 +958,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermVDomNode key="vdom" blockId={blockId} model={model} />
-            <TermSessionNoteButton blockData={blockData ?? null} termWrap={termWrapInst} />
+            <TermSessionUserOutlineOverlay
+                blockData={blockData ?? null}
+                dimmed={selectionCopyOverlay != null || searchIsOpen}
+                termWrap={termWrapInst}
+            />
+            <TermSessionNoteEditor blockData={blockData ?? null} termWrap={termWrapInst} />
             <div
                 key="connect-elem"
                 className="term-connectelem"

@@ -86,6 +86,20 @@ declare global {
         refresh?: boolean;
     };
 
+    // aisessionsservice.AISessionsUserOutlineRequest
+    type AISessionsUserOutlineRequest = {
+        id: string;
+        refresh?: boolean;
+        limit?: number;
+    };
+
+    // aisessionsservice.AISessionsUserOutlineResponse
+    type AISessionsUserOutlineResponse = {
+        summary: SessionSummary;
+        messages: Message[];
+        userMessageCount: number;
+    };
+
     // wshrpc.ActivityDisplayType
     type ActivityDisplayType = {
         width: number;

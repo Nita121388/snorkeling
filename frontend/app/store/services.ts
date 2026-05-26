@@ -62,6 +62,12 @@ export class AISessionsServiceType {
     Summary(request: AISessionsSummaryRequest): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Summary", Array.from(arguments))
     }
+
+    // load latest user messages for a local AI session outline
+    // @returns AI session user outline
+    UserOutline(request: AISessionsUserOutlineRequest): Promise<AISessionsUserOutlineResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "UserOutline", Array.from(arguments))
+    }
 }
 
 export const AISessionsService = new AISessionsServiceType();
