@@ -101,7 +101,7 @@ jobs:
                   version: 3.x
                   repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Validate macOS signing secrets
+            - name: Detect macOS signing secrets
               if: matrix.os == 'macos-latest'
               shell: bash
               env:
@@ -115,14 +115,18 @@ jobs:
                   missing=0
                   for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
                       if [[ -z "${!name:-}" ]]; then
-                          echo "::error::$name is required for signed macOS releases"
+                          echo "::warning::$name is missing; macOS release artifacts will be skipped"
                           missing=1
                       fi
                   done
-                  exit "$missing"
+                  if [[ "$missing" == "0" ]]; then
+                      echo "SNORKELING_MACOS_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
+                  else
+                      echo "SNORKELING_MACOS_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
+                  fi
 
             - name: Build distributables (Linux/macOS)
-              if: matrix.os != 'windows-latest'
+              if: matrix.os == 'ubuntu-latest' || (matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true')
               run: task package
               env:
                   USE_SYSTEM_FPM: true
@@ -143,6 +147,7 @@ jobs:
               shell: powershell
 
             - name: Upload build artifacts
+              if: matrix.os != 'macos-latest' || env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true'
               uses: actions/upload-artifact@v5
               with:
                   name: release-${{ matrix.os }}
