@@ -306,6 +306,22 @@ describe("agent launch context", () => {
         expect(metaRecord["agent:autoresume"]).toBe(true);
     });
 
+    it("normalizes Windows shim executables when resolving agent provider", () => {
+        const settings = {
+            "agent:defaultprofile": "codex",
+            "agent:profiles": {
+                codex: {
+                    cmd: "C:\\Users\\chemclin\\AppData\\Roaming\\npm\\codex.ps1",
+                },
+            },
+        } as SettingsType;
+
+        const blockDef = createDefaultAgentBlockDef(settings, { inheritWorkspaceContext: false });
+        expect(blockDef.meta?.cmd).toBe("C:\\Users\\chemclin\\AppData\\Roaming\\npm\\codex.ps1");
+        const metaRecord = blockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:provider"]).toBe("codex");
+    });
+
     it("builds an agent block for an explicit profile without changing the default profile", () => {
         const settings = {
             "agent:defaultprofile": "codex",

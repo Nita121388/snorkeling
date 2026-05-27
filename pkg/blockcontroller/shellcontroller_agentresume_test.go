@@ -35,6 +35,34 @@ func TestResolveAgentCmdAndArgs_CodexResume(t *testing.T) {
 	}
 }
 
+func TestGetAgentProviderNormalizesWindowsCodexShims(t *testing.T) {
+	for _, cmd := range []string{
+		"codex.exe",
+		"codex.cmd",
+		"codex.bat",
+		"codex.ps1",
+		`C:\Users\chemclin\AppData\Roaming\npm\codex.ps1`,
+	} {
+		if got := getAgentProvider(waveobj.MetaMapType{}, cmd); got != AgentProviderCodex {
+			t.Fatalf("expected codex provider for %q, got %q", cmd, got)
+		}
+	}
+}
+
+func TestResolveAgentCmdAndArgs_CodexCaptureWithWindowsShim(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     `C:\Users\chemclin\AppData\Roaming\npm\codex.ps1`,
+		MetaKey_AgentAutoResume: true,
+	}
+	_, _, runInfo, err := resolveAgentCmdAndArgs("block:test", meta, true, `C:\Users\chemclin`)
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	if runInfo == nil || runInfo.Provider != AgentProviderCodex || !runInfo.CaptureCodexSessionId {
+		t.Fatalf("expected codex capture run info, got %#v", runInfo)
+	}
+}
+
 func TestResolveAgentCmdAndArgs_CodexResumeStripsExistingResumeWithOptions(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_Cmd: "codex",

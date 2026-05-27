@@ -22,6 +22,20 @@ describe("resolveAgentSessionIdFromMeta", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "codex resume codex-session" })).toBe("codex-session");
     });
 
+    it("parses codex resume commands from Windows shim executables", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "codex.ps1 resume codex-ps1-session" })).toBe(
+            "codex-ps1-session"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "codex.cmd resume codex-cmd-session" })).toBe(
+            "codex-cmd-session"
+        );
+        expect(
+            resolveAgentSessionIdFromMeta({
+                cmd: "C:\\Users\\chemclin\\AppData\\Roaming\\npm\\codex.ps1 resume codex-path-session",
+            })
+        ).toBe("codex-path-session");
+    });
+
     it("parses codex resume commands from cmd args", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "codex", "cmd:args": ["resume", "codex-args-session"] })).toBe(
             "codex-args-session"
@@ -123,6 +137,14 @@ describe("resolveAgentCommandBinding", () => {
             provider: "codex",
             sessionId: "codex-session",
         });
+        expect(resolveAgentCommandBinding("codex.ps1 resume codex-ps1-session")).toEqual({
+            provider: "codex",
+            sessionId: "codex-ps1-session",
+        });
+        expect(resolveAgentCommandBinding("codex.cmd resume codex-cmd-session")).toEqual({
+            provider: "codex",
+            sessionId: "codex-cmd-session",
+        });
         expect(resolveAgentCommandBinding("codex resume --model gpt-5 codex-option-session")).toEqual({
             provider: "codex",
             sessionId: "codex-option-session",
@@ -164,6 +186,15 @@ describe("extractAgentCommandFromTerminalText", () => {
                 ].join("\n")
             )
         ).toBe("codex resume session-from-pwsh");
+        expect(
+            extractAgentCommandFromTerminalText(
+                [
+                    "Microsoft Windows [Version 10.0.22631.0000]",
+                    "PS E:\\code\\snorkeling> codex.ps1 resume session-from-pwsh-shim",
+                    "Welcome to Codex",
+                ].join("\n")
+            )
+        ).toBe("codex.ps1 resume session-from-pwsh-shim");
         expect(
             extractAgentCommandFromTerminalText(
                 [

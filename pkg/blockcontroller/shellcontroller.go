@@ -941,7 +941,9 @@ func getAgentProvider(blockMeta waveobj.MetaMapType, cmd string) string {
 	cmd = strings.ReplaceAll(cmd, "\\", "/")
 	parts := strings.Split(cmd, "/")
 	base := strings.ToLower(parts[len(parts)-1])
-	base = strings.TrimSuffix(base, ".exe")
+	for _, suffix := range []string{".exe", ".cmd", ".bat", ".ps1"} {
+		base = strings.TrimSuffix(base, suffix)
+	}
 	return base
 }
 

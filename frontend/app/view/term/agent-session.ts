@@ -105,7 +105,7 @@ function commandBaseName(command: string): string {
     const normalized = command.replace(/\\/g, "/");
     const slashIdx = normalized.lastIndexOf("/");
     const baseName = slashIdx === -1 ? normalized : normalized.slice(slashIdx + 1);
-    return baseName.toLowerCase().replace(/\.exe$/, "");
+    return baseName.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "");
 }
 
 function isEnvAssignment(token: string): boolean {

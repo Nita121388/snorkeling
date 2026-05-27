@@ -86,7 +86,7 @@ function extractCommandBaseName(cmd: string): string {
     const slashNormalized = trimmed.replace(/\\/g, "/");
     const parts = slashNormalized.split("/");
     const lastPart = parts[parts.length - 1] ?? "";
-    return lastPart.toLowerCase();
+    return lastPart.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "");
 }
 
 function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
