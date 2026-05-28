@@ -161,13 +161,10 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
             }
             setModeSaving(true);
             try {
-                await model.env.services.object.UpdateObjectMeta(
-                    WOS.makeORef("block", model.blockId),
-                    {
-                        ...(blockData?.meta ?? {}),
-                        "vcsdiff:mode": nextMode,
-                    } as any
-                );
+                await model.env.services.object.UpdateObjectMeta(WOS.makeORef("block", model.blockId), {
+                    ...(blockData?.meta ?? {}),
+                    "vcsdiff:mode": nextMode,
+                } as any);
             } catch (e) {
                 setError(String(e));
             } finally {
@@ -216,7 +213,9 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                     setModifiedText(null);
                     setPatchText(response.diff ?? "");
                     if (!isBlank(response.diff)) {
-                        setRenderHint("Showing raw patch because this diff is not renderable as a single-file visual diff.");
+                        setRenderHint(
+                            "Showing raw patch because this diff is not renderable as a single-file visual diff."
+                        );
                     } else {
                         setRenderHint("No diff output.");
                     }
@@ -245,7 +244,11 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     }, [connStatus?.status, repoType, repoPath, filePath, revision, route, refreshNonce]);
 
     if (connStatus?.status !== "connected") {
-        return <div className="h-full w-full flex items-center justify-center text-sm text-muted">Connection unavailable.</div>;
+        return (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">
+                Connection unavailable.
+            </div>
+        );
     }
 
     return (
