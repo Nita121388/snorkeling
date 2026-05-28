@@ -147,7 +147,8 @@ export function CopyIconButton({
             className={cn(
                 status === "copied" && "border-accent bg-accent/10 text-accent",
                 status === "failed" && "border-error bg-error/10 text-error",
-                className
+                className,
+                status !== "idle" && "opacity-100"
             )}
             onClick={(e) => {
                 e.stopPropagation();

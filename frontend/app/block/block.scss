@@ -180,6 +180,13 @@
                     .wave-iconbutton.preview-filename-copy-button:focus-visible {
                         opacity: 1;
                     }
+
+                    .wave-iconbutton.preview-filename-copy-button.copied,
+                    .wave-iconbutton.preview-filename-copy-button.failed {
+                        opacity: 1;
+                        pointer-events: auto;
+                        transform: scale(1);
+                    }
                 }
 
                 .connection-button {

@@ -30,7 +30,7 @@ export function MessageCard({
             ref={registerRef}
             id={`aisession-message-${message.seq}`}
             className={cn(
-                "max-w-[92%] scroll-mt-3 rounded border p-3",
+                "group max-w-[92%] scroll-mt-3 rounded border p-3",
                 collapsible && "cursor-pointer",
                 isUser ? "ml-auto border-accent/35 bg-accent/10" : "mr-auto border-border bg-bg"
             )}
@@ -49,7 +49,12 @@ export function MessageCard({
                         {collapsed ? "Collapsed" : "Double-click"}
                     </span>
                 ) : null}
-                <CopyIconButton text={message.text} label="Copy message" className="ml-auto" size="xs" />
+                <CopyIconButton
+                    text={message.text}
+                    label="Copy message"
+                    className="ml-auto opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    size="xs"
+                />
             </div>
             <div className={cn("whitespace-pre-wrap break-words text-xs leading-5", isUser && "text-primary")}>
                 {shownText}

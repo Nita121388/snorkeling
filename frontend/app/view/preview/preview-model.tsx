@@ -62,6 +62,8 @@ type PreviewOpenPathOptions = {
     editMode?: boolean;
 };
 
+type CopyPathStatus = "idle" | "copied" | "failed";
+
 function openTargetToNavigateDirection(direction: PreviewOpenTargetDirection): NavigateDirection | null {
     switch (direction) {
         case "left":
@@ -245,6 +247,8 @@ export class PreviewModel implements ViewModel {
     newFileContent: PrimitiveAtom<string | null>;
     connectionError: PrimitiveAtom<string>;
     errorMsgAtom: PrimitiveAtom<ErrorMsg>;
+    copyPathStatus: PrimitiveAtom<CopyPathStatus>;
+    copyPathStatusResetTimer: number | null;
 
     openFileModal: PrimitiveAtom<boolean>;
     openFileModalDelay: PrimitiveAtom<boolean>;
@@ -279,6 +283,8 @@ export class PreviewModel implements ViewModel {
         this.openFileModal = atom(false);
         this.openFileModalDelay = atom(false);
         this.openFileError = atom(null) as PrimitiveAtom<string>;
+        this.copyPathStatus = atom("idle") as PrimitiveAtom<CopyPathStatus>;
+        this.copyPathStatusResetTimer = null;
         this.openFileModalGiveFocusRef = createRef();
         this.manageConnection = atom(true);
         this.blockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
@@ -359,6 +365,7 @@ export class PreviewModel implements ViewModel {
             if (!isBlank(headerPath) && headerPath != "/" && headerPath.endsWith("/")) {
                 headerPath = headerPath.slice(0, -1);
             }
+            const copyPathStatus = get(this.copyPathStatus);
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
@@ -373,11 +380,27 @@ export class PreviewModel implements ViewModel {
                         },
                         {
                             elemtype: "iconbutton",
-                            icon: "copy",
-                            title: "Copy Full Path",
-                            className: "preview-filename-copy-button",
+                            icon:
+                                copyPathStatus === "copied"
+                                    ? "check"
+                                    : copyPathStatus === "failed"
+                                      ? "triangle-exclamation"
+                                      : "copy",
+                            title:
+                                copyPathStatus === "copied"
+                                    ? "Copied"
+                                    : copyPathStatus === "failed"
+                                      ? "Copy Failed"
+                                      : "Copy Full Path",
+                            iconColor:
+                                copyPathStatus === "copied"
+                                    ? "var(--success-color)"
+                                    : copyPathStatus === "failed"
+                                      ? "var(--error-color)"
+                                      : undefined,
+                            className: clsx("preview-filename-copy-button", copyPathStatus),
                             click: () => {
-                                fireAndForget(() => this.copyCurrentPathToClipboard());
+                                fireAndForget(() => this.copyCurrentPathToClipboardWithFeedback());
                             },
                         },
                     ],
@@ -1097,17 +1120,46 @@ export class PreviewModel implements ViewModel {
         }
     }
 
-    async copyCurrentPathToClipboard() {
+    async copyCurrentPathToClipboard(): Promise<boolean> {
         const filePath = await globalStore.get(this.statFilePath);
         if (filePath == null) {
-            return;
+            return false;
         }
         const conn = await globalStore.get(this.connection);
         if (conn) {
             await navigator.clipboard.writeText(formatRemoteUri(filePath, conn));
-            return;
+            return true;
         }
         await navigator.clipboard.writeText(filePath);
+        return true;
+    }
+
+    setCopyPathStatus(status: CopyPathStatus) {
+        globalStore.set(this.copyPathStatus, status);
+        if (this.copyPathStatusResetTimer != null) {
+            window.clearTimeout(this.copyPathStatusResetTimer);
+            this.copyPathStatusResetTimer = null;
+        }
+        if (status === "idle") {
+            return;
+        }
+        this.copyPathStatusResetTimer = window.setTimeout(
+            () => {
+                globalStore.set(this.copyPathStatus, "idle");
+                this.copyPathStatusResetTimer = null;
+            },
+            status === "copied" ? 1200 : 1600
+        );
+    }
+
+    async copyCurrentPathToClipboardWithFeedback() {
+        try {
+            const copied = await this.copyCurrentPathToClipboard();
+            this.setCopyPathStatus(copied ? "copied" : "failed");
+        } catch (e) {
+            this.setCopyPathStatus("failed");
+            throw e;
+        }
     }
 
     isSpecializedView(sv: string): boolean {
