@@ -142,6 +142,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     const [error, setError] = React.useState<string>(null);
     const [originalText, setOriginalText] = React.useState<string>(null);
     const [modifiedText, setModifiedText] = React.useState<string>(null);
+    const [patchText, setPatchText] = React.useState<string>(null);
     const [renderHint, setRenderHint] = React.useState<string>("");
     const [modeSaving, setModeSaving] = React.useState(false);
 
@@ -208,12 +209,14 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                 if (response.original != null && response.modified != null) {
                     setOriginalText(response.original);
                     setModifiedText(response.modified);
+                    setPatchText(null);
                     setRenderHint("");
                 } else {
                     setOriginalText(null);
                     setModifiedText(null);
+                    setPatchText(response.diff ?? "");
                     if (!isBlank(response.diff)) {
-                        setRenderHint("This file diff is not renderable as visual text diff (binary or unsupported encoding).");
+                        setRenderHint("Showing raw patch because this diff is not renderable as a single-file visual diff.");
                     } else {
                         setRenderHint("No diff output.");
                     }
@@ -225,6 +228,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                 setError(String(e));
                 setOriginalText(null);
                 setModifiedText(null);
+                setPatchText(null);
                 setRenderHint("");
             } finally {
                 if (!isCanceled) {
@@ -287,7 +291,14 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                     />
                 )}
                 {!loading && !error && (originalText == null || modifiedText == null) && (
-                    <div className="text-sm text-muted">{renderHint || "No visual diff content available."}</div>
+                    <div className="flex flex-col gap-2">
+                        <div className="text-sm text-muted">{renderHint || "No visual diff content available."}</div>
+                        {!isBlank(patchText) && (
+                            <pre className="overflow-auto rounded border border-white/10 bg-black/30 p-2 font-mono text-[12px] leading-5 text-secondary whitespace-pre">
+                                {patchText}
+                            </pre>
+                        )}
+                    </div>
                 )}
             </div>
         </div>

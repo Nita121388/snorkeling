@@ -1906,6 +1906,13 @@ func isSvnPathMissingError(err error) bool {
 		strings.Contains(lowerErr, "e200009")
 }
 
+func isSvnNotFileError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "e200009")
+}
+
 func loadGitFileAtRevision(ctx context.Context, repoPath string, relPath string, revision string) (string, error) {
 	showSpec := fmt.Sprintf("%s:%s", revision, relPath)
 	out, err := runVcsCommandRaw(ctx, repoPath, "git", "show", showSpec)
@@ -2011,6 +2018,9 @@ func loadSvnDiffContentPair(ctx context.Context, repoPath string, filePath strin
 		return nil, nil
 	}
 	modified, modifiedErr := loadSvnFileAtRevision(ctx, repoPath, relPath, strconv.Itoa(revisionNum))
+	if isSvnNotFileError(modifiedErr) {
+		return nil, nil
+	}
 	if isSvnPathMissingError(modifiedErr) {
 		modified = ""
 		modifiedErr = nil
@@ -2019,6 +2029,9 @@ func loadSvnDiffContentPair(ctx context.Context, repoPath string, filePath strin
 	var originalErr error
 	if revisionNum > 1 {
 		original, originalErr = loadSvnFileAtRevision(ctx, repoPath, relPath, strconv.Itoa(revisionNum-1))
+		if isSvnNotFileError(originalErr) {
+			return nil, nil
+		}
 		if isSvnPathMissingError(originalErr) {
 			original = ""
 			originalErr = nil
