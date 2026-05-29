@@ -7,6 +7,7 @@ export type ParsedFileReference = {
     lineNumber?: number;
     columnNumber?: number;
     endLineNumber?: number;
+    textHint?: string;
 };
 
 type ScoredParsedFileReference = ParsedFileReference & {
@@ -22,6 +23,9 @@ const FilePathPattern =
     "((?:[A-Za-z]:)?(?:[\\\\/])?(?:\\.{1,2}[\\\\/])?(?:[^\\\\/:*?\"<>|\\r\\n\\'`\\[\\]()]+[\\\\/])*[^\\\\/:*?\"<>|\\r\\n\\'`\\[\\]()]+\\.[A-Za-z0-9._-]+)";
 const HashLineReferencePattern = new RegExp(String.raw`^${FilePathPattern}#L(\d+)(?:C(\d+))?(?:-L?(\d+))?$`);
 const ColonLineReferencePattern = new RegExp(String.raw`^${FilePathPattern}:(\d+)(?::(\d+)|-(\d+))?$`);
+const ColonLineTextHintReferencePattern = new RegExp(
+    String.raw`${FilePathPattern}:(\d+)(?::(\d+))?(?:\s*[:\-–—]\s*|\s+)(\S[\s\S]*)$`
+);
 const ParenLineReferencePattern = new RegExp(String.raw`^${FilePathPattern}\((\d+)(?:,(\d+))?\)$`);
 const ParenLineKeywordReferencePattern = new RegExp(
     String.raw`^${FilePathPattern}\s*\(\s*line\s*[:#]?\s*(\d+)(?:\s*,\s*(?:(?:column|col)\s*[:#]?\s*)?(\d+))?\s*\)$`,
@@ -38,6 +42,7 @@ const LineNumberPatterns = [
 const ColumnNumberPatterns = [/\b(?:column|col)\s*[:#=]?\s*(\d{1,7})\b/i, /列\s*[:#=]?\s*(\d{1,7})/i];
 const WrappingPrefix = "`'\"([{<";
 const WrappingSuffix = "`'\"`)]}>,;.!?";
+const TextHintMaxLength = 500;
 
 export function parseFileReference(text: string): ParsedFileReference | null {
     const normalizedText = normalizeInput(text);
@@ -52,6 +57,7 @@ export function parseFileReference(text: string): ParsedFileReference | null {
         }
 
         bestMatch = pickBetterReference(bestMatch, parsePythonTraceReference(line));
+        bestMatch = pickBetterReference(bestMatch, parseColonTextHintReference(line));
 
         for (const candidate of expandCandidateSegments(line)) {
             bestMatch = pickBetterReference(bestMatch, parseCandidate(candidate));
@@ -206,6 +212,23 @@ function parseColonReference(candidateText: string, scoreBoost: number): ScoredP
         columnNumber: columnNumberText ? parseInt(columnNumberText, 10) : undefined,
         endLineNumber: endLineNumberText ? parseInt(endLineNumberText, 10) : undefined,
         score: 72 + scoreBoost,
+    });
+}
+
+function parseColonTextHintReference(line: string): ScoredParsedFileReference | null {
+    if (stripWrappingPunctuation(line).match(ColonLineReferencePattern)) return null;
+    const match = line.match(ColonLineTextHintReferencePattern);
+    if (!match) return null;
+    const [, filePath, lineNumberText, columnNumberText, textHintText] = match;
+    const textHint = sanitizeTextHint(textHintText);
+    if (!textHint) return null;
+    return createReference({
+        rawText: match[0].trim(),
+        filePath,
+        lineNumber: parseInt(lineNumberText, 10),
+        columnNumber: columnNumberText ? parseInt(columnNumberText, 10) : undefined,
+        textHint,
+        score: 84,
     });
 }
 
@@ -387,6 +410,17 @@ function stripWrappingPunctuation(value: string): string {
         sanitized = sanitized.slice(0, -1);
     }
     return sanitized.trim();
+}
+
+function sanitizeTextHint(textHint: string): string {
+    let sanitized = textHint.trim();
+    if (sanitized.startsWith("`") && sanitized.endsWith("`") && sanitized.length > 1) {
+        sanitized = sanitized.slice(1, -1).trim();
+    }
+    if (sanitized.length > TextHintMaxLength) {
+        sanitized = sanitized.slice(0, TextHintMaxLength).trimEnd();
+    }
+    return sanitized;
 }
 
 function extractBestFilePath(text: string): string | null {

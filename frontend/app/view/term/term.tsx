@@ -427,6 +427,7 @@ const TermSessionUserOutlineOverlay = React.memo(
 TermSessionUserOutlineOverlay.displayName = "TermSessionUserOutlineOverlay";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+const TermSessionNoteAutoSaveDelayMs = 3000;
 
 const TermSessionNoteEditor = React.memo(
     ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
@@ -564,7 +565,7 @@ const TermSessionNoteEditor = React.memo(
             saveTimerRef.current = window.setTimeout(() => {
                 saveTimerRef.current = null;
                 saveNote(noteDraft);
-            }, 800);
+            }, TermSessionNoteAutoSaveDelayMs);
             return () => {
                 if (saveTimerRef.current != null) {
                     window.clearTimeout(saveTimerRef.current);

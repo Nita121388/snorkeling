@@ -7,9 +7,10 @@ import { AISessionsServiceType } from "@/app/store/services";
 import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
 import { shortSessionId } from "@/app/view/aisessions/utils";
 import { cn } from "@/util/util";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+const NoteAutoSaveDelayMs = 3000;
 
 type AISessionNoteModalProps = {
     sessionId: string;
@@ -22,10 +23,7 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("idle");
-
-    const closeModal = useCallback(() => {
-        modalsModel.popModal();
-    }, []);
+    const latestDraftRef = useRef("");
 
     useEffect(() => {
         let cancelled = false;
@@ -37,6 +35,7 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                 if (cancelled) return;
                 setSummary(nextSummary);
                 setNoteDraft(nextSummary.note ?? "");
+                latestDraftRef.current = nextSummary.note ?? "";
             })
             .catch((e) => {
                 if (cancelled) return;
@@ -59,19 +58,30 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     }, [saveStatus]);
 
     const saveNote = useCallback(
-        async (nextNote: string) => {
-            if (summary == null || saveStatus === "saving") return;
+        async (nextNote: string): Promise<boolean> => {
+            if (summary == null || saveStatus === "saving") return false;
+            const trimmedNote = nextNote.trim();
+            if (trimmedNote === (summary.note ?? "")) {
+                setError("");
+                return true;
+            }
             setSaveStatus("saving");
             setError("");
             try {
-                const updated = await service.Note(summary.key, nextNote.trim());
-                setSummary({ ...summary, ...updated });
-                setNoteDraft(updated.note ?? "");
-                setSaveStatus("saved");
+                const updated = await service.Note(summary.key, trimmedNote);
+                const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
+                setSummary((current) => (current?.key === updated.key ? { ...current, ...updated } : current));
+                if (currentDraftSaved) {
+                    setNoteDraft(updated.note ?? "");
+                    latestDraftRef.current = updated.note ?? "";
+                }
+                setSaveStatus(currentDraftSaved ? "saved" : "idle");
                 dispatchAISessionNoteUpdated(updated);
+                return currentDraftSaved;
             } catch (e) {
                 setSaveStatus("error");
                 setError(e instanceof Error ? e.message : String(e));
+                return false;
             }
         },
         [saveStatus, service, summary]
@@ -82,6 +92,25 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     const noteUnchanged = trimmedNoteDraft === currentNote;
     const saving = saveStatus === "saving";
     const title = summary?.title || summary?.id || sessionId;
+    const closeModal = useCallback(() => {
+        if (saving) return;
+        if (summary != null && !saving && !noteUnchanged) {
+            void saveNote(trimmedNoteDraft).then((saved) => {
+                if (saved) {
+                    modalsModel.popModal();
+                }
+            });
+            return;
+        }
+        modalsModel.popModal();
+    }, [noteUnchanged, saveNote, saving, summary, trimmedNoteDraft]);
+
+    useEffect(() => {
+        if (summary == null || noteUnchanged || saving) return;
+        const handle = window.setTimeout(() => void saveNote(trimmedNoteDraft), NoteAutoSaveDelayMs);
+        return () => window.clearTimeout(handle);
+    }, [noteUnchanged, saveNote, saving, summary, trimmedNoteDraft]);
+
     const statusText =
         saveStatus === "saving"
             ? "Saving..."
@@ -89,7 +118,9 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
               ? "Saved"
               : saveStatus === "error"
                 ? "Save failed"
-                : "";
+                : !noteUnchanged
+                  ? "Unsaved changes"
+                  : "";
 
     return (
         <Modal className="w-[520px] max-w-[calc(100vw-32px)]" onClose={closeModal} onClickBackdrop={closeModal}>
@@ -126,7 +157,19 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                             className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
                             placeholder="Add a note"
                             value={noteDraft}
-                            onChange={(e) => setNoteDraft(e.target.value)}
+                            onChange={(e) => {
+                                latestDraftRef.current = e.target.value;
+                                setNoteDraft(e.target.value);
+                                setError("");
+                                if (saveStatus !== "saving") {
+                                    setSaveStatus("idle");
+                                }
+                            }}
+                            onBlur={() => {
+                                if (!noteUnchanged && !saving) {
+                                    void saveNote(trimmedNoteDraft);
+                                }
+                            }}
                         />
                         <div className="flex items-center justify-between gap-3">
                             <span
@@ -145,20 +188,7 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                                     disabled={saving}
                                     onClick={closeModal}
                                 >
-                                    Cancel
-                                </button>
-                                <button
-                                    className="flex h-8 items-center gap-2 rounded border border-accent bg-accent px-3 text-xs text-white hover:bg-accent/90 disabled:opacity-60"
-                                    disabled={saving || noteUnchanged}
-                                    onClick={() => void saveNote(trimmedNoteDraft)}
-                                >
-                                    <i
-                                        className={cn(
-                                            "fa-sharp fa-solid",
-                                            saving ? "fa-spinner animate-spin" : "fa-floppy-disk"
-                                        )}
-                                    />
-                                    <span>Save</span>
+                                    Close
                                 </button>
                             </div>
                         </div>

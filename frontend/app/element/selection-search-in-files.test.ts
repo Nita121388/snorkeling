@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { isMarkdownPath, isSamePath, resolvePreviewRootPathForSearch } from "./selection-search-in-files";
+import {
+    isMarkdownPath,
+    isSamePath,
+    resolvePreviewRootPathForSearch,
+    resolveTextHintLine,
+} from "./selection-search-in-files";
 
 describe("selection search in files", () => {
     it("detects markdown files for edit-mode opening", () => {
@@ -46,5 +51,41 @@ describe("selection search in files", () => {
         expect(isSamePath("/Users/nita/project/README.md", "/Users/nita/project//README.md")).toBe(true);
         expect(isSamePath("C:\\repo\\README.md", "c:/repo/README.md")).toBe(true);
         expect(isSamePath("/Users/nita/project/README.md", "/Users/nita/project/CHANGELOG.md")).toBe(false);
+    });
+
+    it("prefers text matches near the original line number", () => {
+        const fileContent = [
+            "def normalize_date_series_old():",
+            "    pass",
+            "def unrelated():",
+            "    pass",
+            "def normalize_date_series():",
+            "    return values",
+            "def normalize_date_series():",
+            "    return other_values",
+        ].join("\n");
+
+        expect(resolveTextHintLine(fileContent, "normalize_date_series()", 7)).toBe(7);
+    });
+
+    it("falls back to the nearest fuzzy text match when the nearby line no longer matches exactly", () => {
+        const fileContent = [
+            "def normalize_date_series_old():",
+            "    pass",
+            "def normalize_date_series(value):",
+            "    return value",
+            "def unrelated():",
+            "    pass",
+            "def normalize_date_series(value):",
+            "    return other_value",
+        ].join("\n");
+
+        expect(resolveTextHintLine(fileContent, "normalize_date_series()", 6)).toBe(7);
+    });
+
+    it("falls back to the original line number when no text match is close enough", () => {
+        const fileContent = ["def unrelated():", "    pass", "def another_function():", "    pass"].join("\n");
+
+        expect(resolveTextHintLine(fileContent, "normalize_date_series()", 84)).toBe(84);
     });
 });

@@ -6,3 +6,57 @@
     background-color: rgb(255 150 50 / 42%);
     outline: 1px solid rgb(255 150 50 / 85%);
 }
+
+.preview-editor-list-moved {
+    background-color: rgb(65 145 255 / 24%);
+    outline: 1px solid rgb(65 145 255 / 42%);
+}
+
+.preview-editor-list-swapped {
+    background-color: rgb(245 176 65 / 22%);
+    outline: 1px solid rgb(245 176 65 / 38%);
+}
+
+.preview-editor-list-preview-moved {
+    background-color: rgb(65 145 255 / 13%);
+    outline: 1px solid rgb(65 145 255 / 24%);
+}
+
+.preview-editor-list-preview-swapped {
+    background-color: rgb(245 176 65 / 12%);
+    outline: 1px solid rgb(245 176 65 / 23%);
+}
+
+.preview-editor-list-controls {
+    position: absolute;
+    z-index: 1200;
+    display: flex;
+    gap: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: rgb(from var(--modal-bg-color) r g b / 0.92);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 24%);
+
+    button {
+        display: flex;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+
+        &:hover:not(:disabled) {
+            background: var(--hover-bg-color);
+            color: var(--main-text-color);
+        }
+
+        &:disabled {
+            cursor: default;
+            opacity: 0.35;
+        }
+    }
+}

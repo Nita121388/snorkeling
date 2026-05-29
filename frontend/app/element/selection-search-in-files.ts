@@ -5,6 +5,7 @@ import { getAllBlockComponentModels } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
+import { base64ToString } from "@/util/util";
 import type { ParsedFileReference } from "./selection-reference-parser";
 
 type PreviewOpenTarget = {
@@ -42,6 +43,8 @@ type OpenPathCapablePreviewModel = PreviewModel & {
 };
 
 const SearchInFilesMaxTargets = 8;
+const ExactHintLineRadius = 8;
+const FuzzyHintMinScore = 0.42;
 
 export async function searchSelectionInFiles(reference: ParsedFileReference): Promise<void> {
     const targets = await collectPreviewTargets();
@@ -67,8 +70,9 @@ export async function searchSelectionInFiles(reference: ParsedFileReference): Pr
 
     const openTarget = findOpenFileTarget(result.target.filePath, result.target.connection, targets);
     const target = openTarget ?? result.target;
+    const lineNumber = await resolveSearchTargetLine(reference, result.target);
     await (target.model as OpenPathCapablePreviewModel).openPathWithTarget(result.target.filePath, {
-        lineNumber: reference.lineNumber,
+        lineNumber,
         forceCurrentBlock: openTarget != null,
         forceNewBlock: openTarget == null,
         editMode: isMarkdownPath(result.target.filePath),
@@ -77,6 +81,28 @@ export async function searchSelectionInFiles(reference: ParsedFileReference): Pr
 
 export function isMarkdownPath(filePath: string): boolean {
     return /\.(?:md|markdown|mdx)$/i.test(filePath);
+}
+
+export function resolveTextHintLine(
+    fileContent: string,
+    textHint: string | undefined,
+    originalLineNumber?: number
+): number | undefined {
+    const normalizedHint = normalizeSearchTextHint(textHint ?? "");
+    if (!normalizedHint) {
+        return originalLineNumber;
+    }
+    const lines = fileContent.split(/\r?\n/);
+    const originalLineIndex =
+        originalLineNumber != null ? Math.max(0, Math.min(lines.length - 1, originalLineNumber - 1)) : null;
+    if (originalLineIndex != null) {
+        const exactNearbyLine = findExactHintLineNear(lines, normalizedHint, originalLineIndex);
+        if (exactNearbyLine != null) {
+            return exactNearbyLine;
+        }
+    }
+    const fuzzyLine = findNearestFuzzyHintLine(lines, normalizedHint, originalLineIndex);
+    return fuzzyLine ?? originalLineNumber;
 }
 
 export function resolvePreviewRootPathForSearch(fileInfo: FileInfo | null, currentPath: string): string | null {
@@ -234,6 +260,102 @@ async function statFile(model: PreviewModel, filePath: string): Promise<FileInfo
     } catch {
         return null;
     }
+}
+
+async function resolveSearchTargetLine(
+    reference: ParsedFileReference,
+    target: ResolvedPreviewTarget
+): Promise<number | undefined> {
+    if (!reference.textHint) {
+        return reference.lineNumber;
+    }
+    try {
+        const remotePath = await target.model.formatRemoteUri(target.filePath, globalStore.get);
+        const fileData = await target.model.env.rpc.FileReadCommand(TabRpcClient, { info: { path: remotePath } });
+        return resolveTextHintLine(base64ToString(fileData.data64 ?? ""), reference.textHint, reference.lineNumber);
+    } catch {
+        return reference.lineNumber;
+    }
+}
+
+function findExactHintLineNear(lines: string[], normalizedHint: string, originalLineIndex: number): number | undefined {
+    const start = Math.max(0, originalLineIndex - ExactHintLineRadius);
+    const end = Math.min(lines.length - 1, originalLineIndex + ExactHintLineRadius);
+    let bestLineIndex: number | null = null;
+    for (let idx = start; idx <= end; idx++) {
+        const normalizedLine = normalizeSearchTextHint(lines[idx]);
+        if (!normalizedLine.includes(normalizedHint)) {
+            continue;
+        }
+        if (bestLineIndex == null || Math.abs(idx - originalLineIndex) < Math.abs(bestLineIndex - originalLineIndex)) {
+            bestLineIndex = idx;
+        }
+    }
+    return bestLineIndex == null ? undefined : bestLineIndex + 1;
+}
+
+function findNearestFuzzyHintLine(
+    lines: string[],
+    normalizedHint: string,
+    originalLineIndex: number | null
+): number | undefined {
+    let bestLineIndex: number | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestSimilarity = 0;
+    for (let idx = 0; idx < lines.length; idx++) {
+        const normalizedLine = normalizeSearchTextHint(lines[idx]);
+        if (!normalizedLine) {
+            continue;
+        }
+        const similarity = textSimilarity(normalizedLine, normalizedHint);
+        if (similarity < FuzzyHintMinScore) {
+            continue;
+        }
+        const distance = originalLineIndex == null ? idx : Math.abs(idx - originalLineIndex);
+        if (distance < bestDistance || (distance === bestDistance && similarity > bestSimilarity)) {
+            bestDistance = distance;
+            bestSimilarity = similarity;
+            bestLineIndex = idx;
+        }
+    }
+    if (bestLineIndex == null) {
+        return undefined;
+    }
+    return bestLineIndex + 1;
+}
+
+function textSimilarity(line: string, hint: string): number {
+    if (!line || !hint) {
+        return 0;
+    }
+    if (line.includes(hint)) {
+        return hint.length / line.length;
+    }
+    if (hint.includes(line) && line.length >= Math.max(8, hint.length * 0.6)) {
+        return line.length / hint.length;
+    }
+    const lineTokens = tokenizeSearchText(line);
+    const hintTokens = tokenizeSearchText(hint);
+    if (lineTokens.length === 0 || hintTokens.length === 0) {
+        return 0;
+    }
+    const lineTokenSet = new Set(lineTokens);
+    const hintTokenSet = new Set(hintTokens);
+    let overlap = 0;
+    for (const token of hintTokenSet) {
+        if (lineTokenSet.has(token)) {
+            overlap++;
+        }
+    }
+    return overlap / hintTokenSet.size;
+}
+
+function tokenizeSearchText(text: string): string[] {
+    return text.match(/[a-z0-9_]+/g) ?? [];
+}
+
+function normalizeSearchTextHint(text: string): string {
+    return text.trim().toLocaleLowerCase().replace(/\s+/g, " ");
 }
 
 function normalizePath(filePath: string): string {

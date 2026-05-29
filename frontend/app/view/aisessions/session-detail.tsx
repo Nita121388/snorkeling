@@ -146,9 +146,25 @@ export function SessionDetailPane({
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
+    const latestNoteDraftRef = useRef("");
+    const summaryKeyRef = useRef<string | null>(null);
+    const summaryNoteRef = useRef("");
+    const summary = detail?.summary ?? null;
+    const trimmedNoteDraft = noteDraft.trim();
+    const noteUnchanged = trimmedNoteDraft === (summary?.note ?? "");
+    const noteSaving = noteSaveStatus === "saving";
 
     useEffect(() => {
-        setNoteDraft(detail?.summary?.note ?? "");
+        const nextKey = detail?.summary?.key ?? null;
+        const nextNote = detail?.summary?.note ?? "";
+        const previousKey = summaryKeyRef.current;
+        const previousNote = summaryNoteRef.current;
+        summaryKeyRef.current = nextKey;
+        summaryNoteRef.current = nextNote;
+        if (nextKey !== previousKey || latestNoteDraftRef.current.trim() === previousNote) {
+            latestNoteDraftRef.current = nextNote;
+            setNoteDraft(nextNote);
+        }
     }, [detail?.summary?.key, detail?.summary?.note]);
 
     useEffect(() => {
@@ -257,13 +273,19 @@ export function SessionDetailPane({
     }, [noteSaveStatus]);
 
     const saveNote = useCallback(
-        async (nextNote: string) => {
-            if (detail?.summary == null || noteSaveStatus === "saving") return;
+        async (nextNote: string): Promise<boolean> => {
+            if (summary == null || noteSaveStatus === "saving") return false;
+            const trimmedNote = nextNote.trim();
+            if (trimmedNote === (summary.note ?? "")) {
+                return true;
+            }
             setNoteSaveStatus("saving");
-            const saved = await model.updateNote(detail.summary, nextNote);
-            setNoteSaveStatus(saved ? "saved" : "error");
+            const saved = await model.updateNote(summary, trimmedNote);
+            const currentDraftSaved = latestNoteDraftRef.current.trim() === trimmedNote;
+            setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
+            return saved && currentDraftSaved;
         },
-        [detail?.summary, model, noteSaveStatus]
+        [model, noteSaveStatus, summary]
     );
 
     if (loading && detail == null) {
@@ -272,10 +294,6 @@ export function SessionDetailPane({
     if (detail == null) {
         return <EmptyState text="Select a session to view details." />;
     }
-    const summary = detail.summary;
-    const trimmedNoteDraft = noteDraft.trim();
-    const noteUnchanged = trimmedNoteDraft === (summary.note ?? "");
-    const noteSaving = noteSaveStatus === "saving";
     const noteStatusText =
         noteSaveStatus === "saving"
             ? "Saving..."
@@ -283,7 +301,9 @@ export function SessionDetailPane({
               ? "Saved"
               : noteSaveStatus === "error"
                 ? "Save failed"
-                : "";
+                : !noteUnchanged
+                  ? "Unsaved changes"
+                  : "";
     return (
         <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 border-b border-border p-3">
@@ -401,32 +421,46 @@ export function SessionDetailPane({
                                     className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
                                     placeholder="Add a note"
                                     value={noteDraft}
-                                    onChange={(e) => setNoteDraft(e.target.value)}
+                                    onChange={(e) => {
+                                        latestNoteDraftRef.current = e.target.value;
+                                        setNoteDraft(e.target.value);
+                                        if (noteSaveStatus !== "saving") {
+                                            setNoteSaveStatus("idle");
+                                        }
+                                    }}
                                 />
                                 <div className="flex items-center gap-2">
-                                    <IconButton
-                                        icon={
-                                            noteSaveStatus === "saving"
-                                                ? "fa-spinner animate-spin"
-                                                : noteSaveStatus === "saved"
-                                                  ? "fa-check"
-                                                  : noteSaveStatus === "error"
-                                                    ? "fa-triangle-exclamation"
-                                                    : "fa-floppy-disk"
-                                        }
-                                        label={noteStatusText || "Save note"}
+                                    <button
+                                        type="button"
+                                        title={noteStatusText || "Save note"}
                                         disabled={noteSaving || noteUnchanged}
                                         className={cn(
+                                            "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
                                             noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
                                             noteSaveStatus === "error" && "border-error bg-error/10 text-error"
                                         )}
                                         onClick={() => void saveNote(trimmedNoteDraft)}
-                                    />
+                                    >
+                                        <i
+                                            className={cn(
+                                                "fa-sharp fa-solid",
+                                                noteSaveStatus === "saving"
+                                                    ? "fa-spinner animate-spin"
+                                                    : noteSaveStatus === "saved"
+                                                      ? "fa-check"
+                                                      : noteSaveStatus === "error"
+                                                        ? "fa-triangle-exclamation"
+                                                        : "fa-floppy-disk"
+                                            )}
+                                        />
+                                        <span>Save</span>
+                                    </button>
                                     <IconButton
                                         icon="fa-eraser"
                                         label="Clear note"
                                         disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
                                         onClick={() => {
+                                            latestNoteDraftRef.current = "";
                                             setNoteDraft("");
                                             void saveNote("");
                                         }}

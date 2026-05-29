@@ -1,6 +1,15 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    getOrderedListMoveState,
+    getOrderedListSwapPreview,
+    isMarkdownOrderedListPath,
+    moveOrderedListItem,
+    renumberOrderedListsInSelection,
+    type OrderedListLineRange,
+    type OrderedListMoveState,
+} from "@/app/element/markdown-ordered-list";
 import { Search, useSearch } from "@/app/element/search";
 import {
     clampSelectionCopyOverlayPosition,
@@ -140,6 +149,18 @@ type MonacoFindMatch = ReturnType<MonacoTypes.editor.ITextModel["findMatches"]>[
 
 const SearchMatchDecorationClass = "preview-editor-search-match";
 const SearchActiveMatchDecorationClass = "preview-editor-search-active-match";
+const OrderedListMovedDecorationClass = "preview-editor-list-moved";
+const OrderedListSwappedDecorationClass = "preview-editor-list-swapped";
+const OrderedListPreviewMovedDecorationClass = "preview-editor-list-preview-moved";
+const OrderedListPreviewSwappedDecorationClass = "preview-editor-list-preview-swapped";
+const OrderedListActionButtonOffset = 8;
+const OrderedListControlsWidth = 50;
+const OrderedListControlsHeight = 24;
+const OrderedListMoveFeedbackMs = 900;
+const MarkdownListEnabledContextKey = "snorkelingMarkdownListEnabled";
+const MarkdownListCanMoveUpContextKey = "snorkelingMarkdownListCanMoveUp";
+const MarkdownListCanMoveDownContextKey = "snorkelingMarkdownListCanMoveDown";
+const MarkdownListHasSelectionContextKey = "snorkelingMarkdownListHasSelection";
 
 function wrapSearchIndex(index: number, matchCount: number): number {
     if (matchCount <= 0) {
@@ -167,23 +188,85 @@ function compareSearchMatchStartDescending(left: MonacoFindMatch, right: MonacoF
     return right.range.startColumn - left.range.startColumn;
 }
 
+function clampOrderedListControlsPosition(
+    containerWidth: number,
+    containerHeight: number,
+    desiredX: number,
+    desiredY: number
+): Pick<SelectionCopyOverlayState, "x" | "y"> {
+    return {
+        x: Math.max(
+            OrderedListActionButtonOffset,
+            Math.min(desiredX, containerWidth - OrderedListControlsWidth - OrderedListActionButtonOffset)
+        ),
+        y: Math.max(
+            OrderedListActionButtonOffset,
+            Math.min(desiredY, containerHeight - OrderedListControlsHeight - OrderedListActionButtonOffset)
+        ),
+    };
+}
+
+function makeOrderedListMoveDecorations(
+    movedRange: OrderedListLineRange | undefined,
+    swappedRange: OrderedListLineRange | undefined,
+    options?: { preview?: boolean }
+): MonacoTypes.editor.IModelDeltaDecoration[] {
+    const movedClassName = options?.preview ? OrderedListPreviewMovedDecorationClass : OrderedListMovedDecorationClass;
+    const swappedClassName = options?.preview
+        ? OrderedListPreviewSwappedDecorationClass
+        : OrderedListSwappedDecorationClass;
+    const decorations: MonacoTypes.editor.IModelDeltaDecoration[] = [];
+    if (movedRange) {
+        decorations.push({
+            range: new monaco.Range(movedRange.startLineNumber, 1, movedRange.endLineNumber, 1),
+            options: {
+                isWholeLine: true,
+                className: movedClassName,
+            },
+        });
+    }
+    if (swappedRange) {
+        decorations.push({
+            range: new monaco.Range(swappedRange.startLineNumber, 1, swappedRange.endLineNumber, 1),
+            options: {
+                isWholeLine: true,
+                className: swappedClassName,
+            },
+        });
+    }
+    return decorations;
+}
+
 function CodeEditPreview({ model }: SpecializedViewProps) {
     const fileContent = useAtomValue(model.fileContent);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
     const [selectionCopyOverlay, setSelectionCopyOverlay] = useState<SelectionCopyOverlayState | null>(null);
+    const [orderedListControls, setOrderedListControls] = useState<{
+        x: number;
+        y: number;
+        state: OrderedListMoveState;
+    } | null>(null);
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const searchDecorationIdsRef = useRef<string[]>([]);
+    const orderedListMoveDecorationIdsRef = useRef<string[]>([]);
+    const orderedListMovePreviewDecorationIdsRef = useRef<string[]>([]);
+    const orderedListMoveFeedbackTimerRef = useRef<number | null>(null);
     const searchMatchesRef = useRef<MonacoFindMatch[]>([]);
     const currentSearchIndexRef = useRef(0);
     const searchValueRef = useRef("");
     const replaceValueRef = useRef("");
     const wasSearchOpenRef = useRef(false);
     const suppressSelectionCopyOverlayRef = useRef(false);
+    const markdownListActionsEnabledRef = useRef(false);
+    const moveCurrentOrderedListItemRef = useRef<(direction: "up" | "down") => void>(() => {});
+    const renumberSelectedOrderedListRef = useRef<() => void>(() => {});
+    const refreshMarkdownListStateRef = useRef<() => void>(() => {});
     const fileName = fileInfo?.path || fileInfo?.name;
 
     const language = getFileLanguage(fileName);
+    const markdownListActionsEnabled = isMarkdownOrderedListPath(fileName) && !fileInfo?.readonly;
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
         viewModel: model,
@@ -365,6 +448,155 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     searchProps.onReplaceAll = replaceAllMatches;
     searchProps.replaceDisabled = !!fileInfo?.readonly;
 
+    const clearOrderedListMoveFeedback = useCallback(
+        (editor?: MonacoTypes.editor.IStandaloneCodeEditor): void => {
+            if (orderedListMoveFeedbackTimerRef.current != null) {
+                window.clearTimeout(orderedListMoveFeedbackTimerRef.current);
+                orderedListMoveFeedbackTimerRef.current = null;
+            }
+            const targetEditor = editor ?? model.monacoRef.current;
+            if (targetEditor) {
+                orderedListMoveDecorationIdsRef.current = targetEditor.deltaDecorations(
+                    orderedListMoveDecorationIdsRef.current,
+                    []
+                );
+            } else {
+                orderedListMoveDecorationIdsRef.current = [];
+            }
+        },
+        [model]
+    );
+
+    const clearOrderedListMovePreview = useCallback(
+        (editor?: MonacoTypes.editor.IStandaloneCodeEditor): void => {
+            const targetEditor = editor ?? model.monacoRef.current;
+            if (targetEditor) {
+                orderedListMovePreviewDecorationIdsRef.current = targetEditor.deltaDecorations(
+                    orderedListMovePreviewDecorationIdsRef.current,
+                    []
+                );
+            } else {
+                orderedListMovePreviewDecorationIdsRef.current = [];
+            }
+        },
+        [model]
+    );
+
+    const showOrderedListMovePreview = useCallback(
+        (direction: "up" | "down"): void => {
+            if (!markdownListActionsEnabled) return;
+            const editor = model.monacoRef.current;
+            const editorModel = editor?.getModel();
+            const position = editor?.getPosition();
+            if (!editor || !editorModel || !position) return;
+            const preview = getOrderedListSwapPreview(editorModel.getValue(), position.lineNumber, direction);
+            clearOrderedListMovePreview(editor);
+            if (preview == null) return;
+            orderedListMovePreviewDecorationIdsRef.current = editor.deltaDecorations(
+                [],
+                makeOrderedListMoveDecorations(preview.movedRange, preview.swappedRange, { preview: true })
+            );
+        },
+        [clearOrderedListMovePreview, markdownListActionsEnabled, model]
+    );
+
+    const showOrderedListMoveFeedback = useCallback(
+        (
+            editor: MonacoTypes.editor.IStandaloneCodeEditor,
+            movedRange: OrderedListLineRange | undefined,
+            swappedRange: OrderedListLineRange | undefined
+        ): void => {
+            clearOrderedListMoveFeedback(editor);
+            const decorations = makeOrderedListMoveDecorations(movedRange, swappedRange);
+            if (decorations.length === 0) return;
+            orderedListMoveDecorationIdsRef.current = editor.deltaDecorations([], decorations);
+            orderedListMoveFeedbackTimerRef.current = window.setTimeout(() => {
+                orderedListMoveDecorationIdsRef.current = editor.deltaDecorations(
+                    orderedListMoveDecorationIdsRef.current,
+                    []
+                );
+                orderedListMoveFeedbackTimerRef.current = null;
+            }, OrderedListMoveFeedbackMs);
+        },
+        [clearOrderedListMoveFeedback]
+    );
+
+    const applyFullEditorText = useCallback(
+        (
+            editor: MonacoTypes.editor.IStandaloneCodeEditor,
+            nextText: string,
+            targetLineNumber?: number,
+            moveFeedback?: { movedRange?: OrderedListLineRange; swappedRange?: OrderedListLineRange }
+        ): void => {
+            const editorModel = editor.getModel();
+            if (!editorModel) return;
+            editor.pushUndoStop();
+            editor.executeEdits("preview-editor-markdown-list", [
+                {
+                    range: editorModel.getFullModelRange(),
+                    text: nextText,
+                    forceMoveMarkers: true,
+                },
+            ]);
+            if (targetLineNumber != null) {
+                const lineNumber = Math.max(1, Math.min(targetLineNumber, editorModel.getLineCount()));
+                editor.setPosition({ lineNumber, column: 1 });
+                editor.revealLineInCenter(lineNumber);
+            }
+            if (moveFeedback) {
+                showOrderedListMoveFeedback(editor, moveFeedback.movedRange, moveFeedback.swappedRange);
+            }
+            editor.pushUndoStop();
+            model.monacoRef.current?.focus();
+        },
+        [model, showOrderedListMoveFeedback]
+    );
+
+    const moveCurrentOrderedListItem = useCallback(
+        (direction: "up" | "down"): void => {
+            if (!markdownListActionsEnabled) return;
+            const editor = model.monacoRef.current;
+            const editorModel = editor?.getModel();
+            const position = editor?.getPosition();
+            if (!editor || !editorModel || !position) return;
+            clearOrderedListMovePreview(editor);
+            const result = moveOrderedListItem(editorModel.getValue(), position.lineNumber, direction);
+            if (result == null) return;
+            applyFullEditorText(editor, result.text, result.targetLineNumber, {
+                movedRange: result.movedRange,
+                swappedRange: result.swappedRange,
+            });
+            setSelectionCopyOverlay(null);
+        },
+        [applyFullEditorText, clearOrderedListMovePreview, markdownListActionsEnabled, model]
+    );
+
+    const renumberSelectedOrderedList = useCallback((): void => {
+        if (!markdownListActionsEnabled) return;
+        const editor = model.monacoRef.current;
+        const editorModel = editor?.getModel();
+        const selection = editor?.getSelection();
+        if (!editor || !editorModel || !selection || selection.isEmpty()) return;
+        const result = renumberOrderedListsInSelection(
+            editorModel.getValue(),
+            selection.startLineNumber,
+            selection.endLineNumber
+        );
+        if (result == null) return;
+        applyFullEditorText(editor, result.text);
+        setSelectionCopyOverlay(null);
+    }, [applyFullEditorText, markdownListActionsEnabled, model]);
+
+    useEffect(() => {
+        markdownListActionsEnabledRef.current = markdownListActionsEnabled;
+        moveCurrentOrderedListItemRef.current = moveCurrentOrderedListItem;
+        renumberSelectedOrderedListRef.current = renumberSelectedOrderedList;
+    }, [markdownListActionsEnabled, moveCurrentOrderedListItem, renumberSelectedOrderedList]);
+
+    useEffect(() => {
+        refreshMarkdownListStateRef.current();
+    }, [fileInfo?.path, markdownListActionsEnabled]);
+
     function codeEditKeyDownHandler(e: WaveKeyboardEvent): boolean {
         if (checkKeyPressed(e, "Cmd:e")) {
             fireAndForget(() => model.setEditMode(false));
@@ -429,10 +661,56 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
 
     useEffect(() => {
         setSelectionCopyOverlay(null);
+        clearOrderedListMovePreview();
     }, [fileInfo?.path]);
 
     function onMount(editor: MonacoTypes.editor.IStandaloneCodeEditor, _monacoApi: typeof monaco): () => void {
         model.monacoRef.current = editor;
+        const markdownListEnabledKey = editor.createContextKey<boolean>(MarkdownListEnabledContextKey, false);
+        const markdownListCanMoveUpKey = editor.createContextKey<boolean>(MarkdownListCanMoveUpContextKey, false);
+        const markdownListCanMoveDownKey = editor.createContextKey<boolean>(MarkdownListCanMoveDownContextKey, false);
+        const markdownListHasSelectionKey = editor.createContextKey<boolean>(MarkdownListHasSelectionContextKey, false);
+
+        const updateMarkdownListState = () => {
+            const editorModel = editor.getModel();
+            const position = editor.getPosition();
+            const selection = editor.getSelection();
+            const container = editorContainerRef.current;
+            const enabled = markdownListActionsEnabledRef.current;
+            markdownListEnabledKey.set(enabled);
+            markdownListHasSelectionKey.set(enabled && !!selection && !selection.isEmpty());
+            if (!enabled || !editorModel || !position || !container) {
+                markdownListCanMoveUpKey.set(false);
+                markdownListCanMoveDownKey.set(false);
+                setOrderedListControls(null);
+                return;
+            }
+            const state = getOrderedListMoveState(editorModel.getValue(), position.lineNumber);
+            if (state == null || (!state.canMoveUp && !state.canMoveDown)) {
+                markdownListCanMoveUpKey.set(false);
+                markdownListCanMoveDownKey.set(false);
+                setOrderedListControls(null);
+                return;
+            }
+            markdownListCanMoveUpKey.set(state.canMoveUp);
+            markdownListCanMoveDownKey.set(state.canMoveDown);
+            const visiblePosition = editor.getScrolledVisiblePosition(position);
+            if (!visiblePosition) {
+                setOrderedListControls(null);
+                return;
+            }
+            const controlsPosition = clampOrderedListControlsPosition(
+                container.clientWidth,
+                container.clientHeight,
+                visiblePosition.left + OrderedListActionButtonOffset,
+                visiblePosition.top + visiblePosition.height + OrderedListActionButtonOffset
+            );
+            setOrderedListControls({
+                ...controlsPosition,
+                state,
+            });
+        };
+        refreshMarkdownListStateRef.current = updateMarkdownListState;
 
         const updateSelectionCopyOverlay = () => {
             const editorModel = editor.getModel();
@@ -529,23 +807,78 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 await searchSelectionInFiles(reference);
             },
         });
-        const selectionDisposer = editor.onDidChangeCursorSelection(updateSelectionCopyOverlay);
-        const scrollDisposer = editor.onDidScrollChange(() => setSelectionCopyOverlay(null));
-        const blurDisposer = editor.onDidBlurEditorText(() => setSelectionCopyOverlay(null));
-        const mouseDownDisposer = editor.onMouseDown(() => setSelectionCopyOverlay(null));
+        const moveUpDisposer = editor.addAction({
+            id: "snorkeling.markdown-list-move-up",
+            label: "Move List Item Up",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 0.7,
+            precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListCanMoveUpContextKey}`,
+            run: async () => moveCurrentOrderedListItemRef.current("up"),
+        });
+        const moveDownDisposer = editor.addAction({
+            id: "snorkeling.markdown-list-move-down",
+            label: "Move List Item Down",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 0.71,
+            precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListCanMoveDownContextKey}`,
+            run: async () => moveCurrentOrderedListItemRef.current("down"),
+        });
+        const renumberDisposer = editor.addAction({
+            id: "snorkeling.markdown-list-renumber",
+            label: "Renumber Ordered List",
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 0.72,
+            precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListHasSelectionContextKey}`,
+            run: async () => renumberSelectedOrderedListRef.current(),
+        });
+        const selectionDisposer = editor.onDidChangeCursorSelection(() => {
+            updateSelectionCopyOverlay();
+            updateMarkdownListState();
+            clearOrderedListMovePreview(editor);
+        });
+        const orderedListCursorDisposer = editor.onDidChangeCursorPosition(() => {
+            updateMarkdownListState();
+            clearOrderedListMovePreview(editor);
+        });
+        const contentDisposer = editor.onDidChangeModelContent(() => {
+            updateMarkdownListState();
+            clearOrderedListMovePreview(editor);
+        });
+        const scrollDisposer = editor.onDidScrollChange(() => {
+            setSelectionCopyOverlay(null);
+            updateMarkdownListState();
+            clearOrderedListMovePreview(editor);
+        });
+        const blurDisposer = editor.onDidBlurEditorText(() => {
+            setSelectionCopyOverlay(null);
+            clearOrderedListMovePreview(editor);
+        });
+        const mouseDownDisposer = editor.onMouseDown(() => {
+            setSelectionCopyOverlay(null);
+            clearOrderedListMovePreview(editor);
+        });
 
         const isFocused = globalStore.get(model.nodeModel.isFocused);
         if (isFocused) {
             editor.focus();
         }
         revealSearchTargetLine(editor, globalStore.get(model.searchTargetLine));
+        updateMarkdownListState();
 
         return () => {
             searchDecorationIdsRef.current = editor.deltaDecorations(searchDecorationIdsRef.current, []);
+            clearOrderedListMoveFeedback(editor);
+            clearOrderedListMovePreview(editor);
+            refreshMarkdownListStateRef.current = () => {};
             keyDownDisposer.dispose();
             copyContextDisposer.dispose();
             searchInFilesDisposer.dispose();
+            moveUpDisposer.dispose();
+            moveDownDisposer.dispose();
+            renumberDisposer.dispose();
             selectionDisposer.dispose();
+            orderedListCursorDisposer.dispose();
+            contentDisposer.dispose();
             scrollDisposer.dispose();
             blurDisposer.dispose();
             mouseDownDisposer.dispose();
@@ -574,6 +907,14 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 extraMenuItems={
                     selectionCopyOverlay?.contextText
                         ? [
+                              ...(markdownListActionsEnabled
+                                  ? [
+                                        {
+                                            label: "Renumber Ordered List",
+                                            click: () => renumberSelectedOrderedList(),
+                                        },
+                                    ]
+                                  : []),
                               {
                                   label: "Copy Context",
                                   click: () =>
@@ -585,6 +926,34 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         : undefined
                 }
             />
+            {orderedListControls ? (
+                <div
+                    className="preview-editor-list-controls"
+                    style={{ left: `${orderedListControls.x}px`, top: `${orderedListControls.y}px` }}
+                    onMouseDown={(e) => e.preventDefault()}
+                >
+                    <button
+                        type="button"
+                        title="Move list item up"
+                        disabled={!orderedListControls.state.canMoveUp}
+                        onMouseEnter={() => showOrderedListMovePreview("up")}
+                        onMouseLeave={() => clearOrderedListMovePreview()}
+                        onClick={() => moveCurrentOrderedListItem("up")}
+                    >
+                        <i className="fa-sharp fa-solid fa-arrow-up" />
+                    </button>
+                    <button
+                        type="button"
+                        title="Move list item down"
+                        disabled={!orderedListControls.state.canMoveDown}
+                        onMouseEnter={() => showOrderedListMovePreview("down")}
+                        onMouseLeave={() => clearOrderedListMovePreview()}
+                        onClick={() => moveCurrentOrderedListItem("down")}
+                    >
+                        <i className="fa-sharp fa-solid fa-arrow-down" />
+                    </button>
+                </div>
+            ) : null}
         </div>
     );
 }

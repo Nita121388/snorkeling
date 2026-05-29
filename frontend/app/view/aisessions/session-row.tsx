@@ -3,7 +3,7 @@
 
 import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { formatDateTimeToSecond, restoreCommandForSession } from "./utils";
 
@@ -25,10 +25,13 @@ export function SessionRow({
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
+    const latestDraftRef = useRef(session.note ?? "");
 
     useEffect(() => {
         if (!noteEditing) {
-            setNoteDraft(session.note ?? "");
+            const nextNote = session.note ?? "";
+            latestDraftRef.current = nextNote;
+            setNoteDraft(nextNote);
         }
     }, [noteEditing, session.note]);
 
@@ -51,19 +54,21 @@ export function SessionRow({
         [session]
     );
 
-    const saveNote = useCallback(async () => {
-        if (noteSaveStatus === "saving") return;
-        const nextNote = noteDraft.trim();
-        setNoteSaveStatus("saving");
-        const saved = await onNoteSave(nextNote);
-        setNoteSaveStatus(saved ? "saved" : "error");
-        if (saved) {
-            setNoteEditing(false);
-        }
-    }, [noteDraft, noteSaveStatus, onNoteSave]);
-
     const noteUnchanged = noteDraft.trim() === (session.note ?? "");
     const noteSaving = noteSaveStatus === "saving";
+
+    const saveNote = useCallback(async (): Promise<boolean> => {
+        if (noteSaveStatus === "saving") return false;
+        const nextNote = noteDraft.trim();
+        if (nextNote === (session.note ?? "")) {
+            return true;
+        }
+        setNoteSaveStatus("saving");
+        const saved = await onNoteSave(nextNote);
+        const currentDraftSaved = latestDraftRef.current.trim() === nextNote;
+        setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
+        return saved && currentDraftSaved;
+    }, [noteDraft, noteSaveStatus, onNoteSave, session.note]);
 
     return (
         <div
@@ -129,20 +134,18 @@ export function SessionRow({
                                 className="min-h-[56px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
                                 placeholder="Add a note"
                                 value={noteDraft}
-                                onChange={(e) => setNoteDraft(e.target.value)}
+                                onChange={(e) => {
+                                    latestDraftRef.current = e.target.value;
+                                    setNoteDraft(e.target.value);
+                                    if (noteSaveStatus !== "saving") {
+                                        setNoteSaveStatus("idle");
+                                    }
+                                }}
                             />
                             <div className="flex items-center gap-2">
-                                <IconButton
-                                    icon={
-                                        noteSaveStatus === "saving"
-                                            ? "fa-spinner animate-spin"
-                                            : noteSaveStatus === "saved"
-                                              ? "fa-check"
-                                              : noteSaveStatus === "error"
-                                                ? "fa-triangle-exclamation"
-                                                : "fa-floppy-disk"
-                                    }
-                                    label={
+                                <button
+                                    type="button"
+                                    title={
                                         noteSaveStatus === "saving"
                                             ? "Saving..."
                                             : noteSaveStatus === "saved"
@@ -151,25 +154,42 @@ export function SessionRow({
                                                 ? "Save failed"
                                                 : "Save note"
                                     }
-                                    size="xs"
-                                    disabled={noteSaving || noteUnchanged}
                                     className={cn(
+                                        "flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
                                         noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
                                         noteSaveStatus === "error" && "border-error bg-error/10 text-error"
                                     )}
+                                    disabled={noteSaving || noteUnchanged}
                                     onClick={() => void saveNote()}
-                                />
+                                >
+                                    <i
+                                        className={cn(
+                                            "fa-sharp fa-solid",
+                                            noteSaveStatus === "saving"
+                                                ? "fa-spinner animate-spin"
+                                                : noteSaveStatus === "saved"
+                                                  ? "fa-check"
+                                                  : noteSaveStatus === "error"
+                                                    ? "fa-triangle-exclamation"
+                                                    : "fa-floppy-disk"
+                                        )}
+                                    />
+                                    <span>Save</span>
+                                </button>
                                 <IconButton
                                     icon="fa-eraser"
                                     label="Clear note"
                                     size="xs"
                                     disabled={noteSaving || (!session.note && noteDraft.trim() === "")}
                                     onClick={() => {
+                                        const nextNote = "";
+                                        latestDraftRef.current = nextNote;
                                         setNoteSaveStatus("saving");
-                                        setNoteDraft("");
-                                        void onNoteSave("").then((saved) => {
-                                            setNoteSaveStatus(saved ? "saved" : "error");
-                                            if (saved) {
+                                        setNoteDraft(nextNote);
+                                        void onNoteSave(nextNote).then((saved) => {
+                                            const currentDraftSaved = latestDraftRef.current.trim() === nextNote;
+                                            setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
+                                            if (saved && currentDraftSaved) {
                                                 setNoteEditing(false);
                                             }
                                         });
@@ -179,12 +199,29 @@ export function SessionRow({
                                     className="h-5 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary"
                                     disabled={noteSaving}
                                     onClick={() => {
-                                        setNoteDraft(session.note ?? "");
                                         setNoteEditing(false);
                                     }}
                                 >
-                                    Cancel
+                                    Close
                                 </button>
+                                <span
+                                    className={cn(
+                                        "text-[10px] text-secondary",
+                                        noteSaveStatus === "saved" && "text-accent",
+                                        noteSaveStatus === "error" && "text-error"
+                                    )}
+                                    aria-live="polite"
+                                >
+                                    {noteSaveStatus === "saving"
+                                        ? "Saving..."
+                                        : noteSaveStatus === "saved"
+                                          ? "Saved"
+                                          : noteSaveStatus === "error"
+                                            ? "Save failed"
+                                            : !noteUnchanged
+                                              ? "Unsaved changes"
+                                              : ""}
+                                </span>
                             </div>
                         </div>
                     ) : null}

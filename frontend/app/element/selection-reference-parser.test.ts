@@ -25,6 +25,16 @@ describe("selection reference parser", () => {
         });
     });
 
+    it("parses colon references with trailing text hints", () => {
+        expect(parseFileReference("code/scripts/s26_freeze_input_snapshot.py:84：normalize_date_series()")).toEqual({
+            rawText: "code/scripts/s26_freeze_input_snapshot.py:84:normalize_date_series()",
+            filePath: "code/scripts/s26_freeze_input_snapshot.py",
+            lineNumber: 84,
+            columnNumber: undefined,
+            textHint: "normalize_date_series()",
+        });
+    });
+
     it("parses Visual Studio style references", () => {
         expect(parseFileReference("C:\\repo\\src\\ReagentGridView.cs(128,9)")).toEqual({
             rawText: "C:\\repo\\src\\ReagentGridView.cs(128,9)",
