@@ -23,6 +23,7 @@ interface VTabProps {
     showDivider?: boolean;
     isDragging: boolean;
     isReordering: boolean;
+    unopenedThisLaunch?: boolean;
     onSelect: () => void;
     onClose?: () => void;
     onRename?: (newName: string) => void;
@@ -41,6 +42,7 @@ export function VTab({
     showDivider = true,
     isDragging,
     isReordering,
+    unopenedThisLaunch = false,
     onSelect,
     onClose,
     onRename,
@@ -165,6 +167,7 @@ export function VTab({
                 "group relative flex h-9 w-full shrink-0 cursor-pointer items-center pl-3 text-xs transition-colors select-none",
                 "whitespace-nowrap",
                 active ? "text-primary" : isReordering ? "text-secondary" : "text-secondary hover:text-primary",
+                unopenedThisLaunch && !active && "opacity-45 grayscale",
                 isDragging && "opacity-50"
             )}
         >

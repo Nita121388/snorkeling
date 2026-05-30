@@ -11,6 +11,7 @@ import {
     createBlock,
     createBlockSplitHorizontally,
     createBlockSplitVertically,
+    getBlockComponentModel,
     getOverrideConfigAtom,
     refocusNode,
 } from "@/store/global";
@@ -54,6 +55,38 @@ const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
 const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
 const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
 const PreviewSearchLineMetaKey = "preview:searchline";
+const PreviewLiveSourceBlockMetaKey = "preview:live-source-blockid";
+const PreviewLiveScrollSyncMetaKey = "preview:livescrollsync";
+const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
+const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();
+
+export type LiveScrollSourceState = {
+    sequence: number;
+    origin: "editor" | "preview" | "none";
+    previewControlUntil: number;
+    bottomScrollIntent: boolean;
+    scrollTop: number;
+    previousScrollTop: number;
+    scrollHeight: number;
+    viewportHeight: number;
+    direction: "up" | "down" | "none";
+    isAtBottom: boolean;
+    remainingPx: number;
+};
+
+const DefaultLiveScrollSourceState: LiveScrollSourceState = {
+    sequence: 0,
+    origin: "none",
+    previewControlUntil: 0,
+    bottomScrollIntent: false,
+    scrollTop: 0,
+    previousScrollTop: 0,
+    scrollHeight: 0,
+    viewportHeight: 0,
+    direction: "none",
+    isAtBottom: false,
+    remainingPx: Number.POSITIVE_INFINITY,
+};
 
 type PreviewOpenPathOptions = {
     lineNumber?: number;
@@ -187,6 +220,24 @@ function iconForFile(mimeType: string): string {
     }
 }
 
+export function getLiveScrollSourceLineAtom(blockId: string): PrimitiveAtom<number | null> {
+    let lineAtom = liveScrollSourceLineAtoms.get(blockId);
+    if (lineAtom == null) {
+        lineAtom = atom(null) as PrimitiveAtom<number | null>;
+        liveScrollSourceLineAtoms.set(blockId, lineAtom);
+    }
+    return lineAtom;
+}
+
+export function getLiveScrollSourceStateAtom(blockId: string): PrimitiveAtom<LiveScrollSourceState> {
+    let stateAtom = liveScrollSourceStateAtoms.get(blockId);
+    if (stateAtom == null) {
+        stateAtom = atom(DefaultLiveScrollSourceState) as PrimitiveAtom<LiveScrollSourceState>;
+        liveScrollSourceStateAtoms.set(blockId, stateAtom);
+    }
+    return stateAtom;
+}
+
 function deriveExplorerRootPath(fileInfo: FileInfo | null, fallbackPath: string): string {
     if (fileInfo?.isdir && !isBlank(fileInfo.path)) {
         return fileInfo.path;
@@ -256,6 +307,19 @@ export class PreviewModel implements ViewModel {
     openFileModalGiveFocusRef: React.RefObject<() => boolean>;
 
     markdownShowToc: PrimitiveAtom<boolean>;
+    liveSourceBlockId: Atom<string | null>;
+    liveSourceBlock: Atom<Block | null>;
+    liveSourceModel: Atom<PreviewModel | null>;
+    liveSourceFilePath: Atom<string | null>;
+    liveSourceConnection: Atom<string | null>;
+    liveSourceFileContent: Atom<Promise<string>>;
+    liveSourceScrollSyncEnabled: Atom<boolean>;
+    liveSourceScrollLine: Atom<number | null>;
+    liveSourceScrollState: Atom<LiveScrollSourceState>;
+    livePreviewBlockId: PrimitiveAtom<string | null>;
+    liveScrollSyncEnabled: Atom<boolean>;
+    liveScrollSourceLine: PrimitiveAtom<number | null>;
+    liveScrollSourceState: PrimitiveAtom<LiveScrollSourceState>;
 
     monacoRef: React.RefObject<MonacoTypes.editor.IStandaloneCodeEditor>;
     searchTargetLine: Atom<number | null>;
@@ -304,6 +368,69 @@ export class PreviewModel implements ViewModel {
         this.searchTargetLine = atom((get) =>
             normalizeSearchTargetLine(get(this.blockAtom)?.meta?.[PreviewSearchLineMetaKey])
         );
+        this.liveSourceBlockId = atom((get) => get(this.blockAtom)?.meta?.[PreviewLiveSourceBlockMetaKey] ?? null);
+        this.liveSourceBlock = atom((get) => {
+            const sourceBlockId = get(this.liveSourceBlockId);
+            if (isBlank(sourceBlockId)) {
+                return null;
+            }
+            const sourceBlock = get(this.env.wos.getWaveObjectAtom<Block>(`block:${sourceBlockId}`));
+            if (sourceBlock == null || sourceBlock.meta?.view !== "preview") {
+                return null;
+            }
+            return sourceBlock;
+        });
+        this.liveSourceModel = atom((get) => {
+            const sourceBlockId = get(this.liveSourceBlockId);
+            if (isBlank(sourceBlockId) || get(this.liveSourceBlock) == null) {
+                return null;
+            }
+            const sourceModel = getBlockComponentModel(sourceBlockId)?.viewModel;
+            if (sourceModel?.viewType !== "preview") {
+                return null;
+            }
+            return sourceModel as PreviewModel;
+        });
+        this.liveSourceFilePath = atom((get) => {
+            const sourceModel = get(this.liveSourceModel);
+            if (sourceModel != null) {
+                return get(sourceModel.metaFilePath);
+            }
+            return get(this.liveSourceBlock)?.meta?.file ?? null;
+        });
+        this.liveSourceConnection = atom((get) => {
+            const sourceModel = get(this.liveSourceModel);
+            if (sourceModel != null) {
+                return get(sourceModel.connectionImmediate);
+            }
+            return get(this.liveSourceBlock)?.meta?.connection ?? null;
+        });
+        this.liveSourceScrollSyncEnabled = atom((get) => {
+            const sourceBlock = get(this.liveSourceBlock);
+            if (sourceBlock == null) {
+                return false;
+            }
+            return sourceBlock.meta?.[PreviewLiveScrollSyncMetaKey] !== false;
+        });
+        this.liveSourceScrollLine = atom((get) => {
+            const sourceBlockId = get(this.liveSourceBlockId);
+            if (isBlank(sourceBlockId)) {
+                return null;
+            }
+            return get(getLiveScrollSourceLineAtom(sourceBlockId));
+        });
+        this.liveSourceScrollState = atom((get) => {
+            const sourceBlockId = get(this.liveSourceBlockId);
+            if (isBlank(sourceBlockId)) {
+                return DefaultLiveScrollSourceState;
+            }
+            return get(getLiveScrollSourceStateAtom(sourceBlockId));
+        });
+        this.livePreviewBlockId = atom(null) as PrimitiveAtom<string | null>;
+        globalStore.set(this.livePreviewBlockId, this.findLivePreviewBlockForSource());
+        this.liveScrollSyncEnabled = atom((get) => get(this.blockAtom)?.meta?.[PreviewLiveScrollSyncMetaKey] !== false);
+        this.liveScrollSourceLine = getLiveScrollSourceLineAtom(this.blockId);
+        this.liveScrollSourceState = getLiveScrollSourceStateAtom(this.blockId);
         this.connectionError = atom("");
         this.errorMsgAtom = atom(null) as PrimitiveAtom<ErrorMsg | null>;
         this.viewIcon = atom((get) => {
@@ -353,10 +480,17 @@ export class PreviewModel implements ViewModel {
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
+            const isLivePreviewView =
+                loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
+            const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
+            const isMarkdownView = isMarkdownLike(mimeType);
             const directoryDisplayMode = get(this.directoryDisplayMode);
             const explorerActive = directoryDisplayMode === "tree" && isDirectoryView;
             const loadableFileInfo = get(this.loadableFileInfo);
-            if (loadableFileInfo.state == "hasData") {
+            const liveSourcePath = get(this.liveSourceFilePath);
+            if (isLivePreviewView && !isBlank(liveSourcePath)) {
+                headerPath = liveSourcePath;
+            } else if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
                 if (headerPath == "~") {
                     headerPath = `~ (${loadableFileInfo.data?.dir + "/" + loadableFileInfo.data?.name})`;
@@ -449,26 +583,52 @@ export class PreviewModel implements ViewModel {
                     });
                 } else {
                     viewTextChildren.push({
-                        elemtype: "textbutton",
-                        text: "Save",
-                        className: clsx(`${saveClassName} rounded-[4px] !py-[2px] !px-[10px] text-[11px] font-[500]`),
-                        onClick: () => fireAndForget(this.handleFileSave.bind(this)),
+                        elemtype: "iconbutton",
+                        icon: "floppy-disk",
+                        title: "Save",
+                        iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
+                        click: () => fireAndForget(this.handleFileSave.bind(this)),
                     });
                 }
                 if (get(this.canPreview)) {
+                    const previewMenuItems: MenuItem[] = [
+                        {
+                            label: "Preview Here",
+                            onClick: () => fireAndForget(() => this.setEditMode(false)),
+                        },
+                    ];
+                    if (isMarkdownView) {
+                        previewMenuItems.push({
+                            label: "Open Live Preview Block",
+                            onClick: () => fireAndForget(() => this.openLivePreviewBlock()),
+                        });
+                    }
                     viewTextChildren.push({
-                        elemtype: "textbutton",
+                        elemtype: "menubutton",
                         text: "Preview",
-                        className: "grey rounded-[4px] !py-[2px] !px-[10px] text-[11px] font-[500]",
-                        onClick: () => fireAndForget(() => this.setEditMode(false)),
+                        icon: "eye",
+                        title: "Preview Options",
+                        className: "compact-open-target-menubutton",
+                        items: previewMenuItems,
                     });
                 }
-            } else if (get(this.canPreview)) {
+                if (!isBlank(get(this.livePreviewBlockId)) && isMarkdownView) {
+                    const syncEnabled = get(this.liveScrollSyncEnabled);
+                    viewTextChildren.push({
+                        elemtype: "iconbutton",
+                        icon: syncEnabled ? "link" : "link-slash",
+                        title: syncEnabled ? "Disable Live Preview Scroll Sync" : "Enable Live Preview Scroll Sync",
+                        iconColor: syncEnabled ? "var(--accent-color)" : undefined,
+                        click: () => fireAndForget(() => this.setLiveScrollSyncEnabled(!syncEnabled)),
+                    });
+                }
+            } else if (!isLivePreviewView && get(this.canPreview)) {
                 viewTextChildren.push({
-                    elemtype: "textbutton",
-                    text: "Edit",
-                    className: "grey rounded-[4px] !py-[2px] !px-[10px] text-[11px] font-[500]",
-                    onClick: () => fireAndForget(() => this.setEditMode(true)),
+                    elemtype: "iconbutton",
+                    icon: "pen-to-square",
+                    title: "Edit",
+                    className: "grey",
+                    click: () => fireAndForget(() => this.setEditMode(true)),
                 });
             }
             return [
@@ -654,6 +814,33 @@ export class PreviewModel implements ViewModel {
 
         this.fullFile = fullFileAtom;
         this.fileContent = fileContentAtom;
+        this.liveSourceFileContent = atom(async (get) => {
+            const sourceModel = get(this.liveSourceModel);
+            if (sourceModel != null) {
+                return await get(sourceModel.fileContent);
+            }
+            const sourcePath = get(this.liveSourceFilePath);
+            if (isBlank(sourcePath)) {
+                return "";
+            }
+            const sourceConnection = get(this.liveSourceConnection);
+            const path = formatRemoteUri(sourcePath, sourceConnection);
+            try {
+                const file = await this.env.rpc.FileReadCommand(TabRpcClient, {
+                    info: {
+                        path,
+                    },
+                });
+                return base64ToString(file?.data64);
+            } catch (e) {
+                const errorStatus: ErrorMsg = {
+                    status: "File Read Failed",
+                    text: `${e}`,
+                };
+                globalStore.set(this.errorMsgAtom, errorStatus);
+                return "";
+            }
+        });
 
         this.specializedView = atom<Promise<{ specializedView?: string; errorStr?: string }>>(async (get) => {
             return this.getSpecializedView(get);
@@ -680,6 +867,19 @@ export class PreviewModel implements ViewModel {
     }
 
     async getSpecializedView(getFn: Getter): Promise<{ specializedView?: string; errorStr?: string }> {
+        const liveSourceBlockId = getFn(this.liveSourceBlockId);
+        if (!isBlank(liveSourceBlockId)) {
+            const sourceModel = getFn(this.liveSourceModel);
+            if (sourceModel == null) {
+                return { specializedView: "markdownlivepreview" };
+            }
+            const sourceMimeType = await getFn(sourceModel.fileMimeType);
+            if (!isMarkdownLike(sourceMimeType)) {
+                return { errorStr: "Live Preview Block only supports Markdown files." };
+            }
+            return { specializedView: "markdownlivepreview" };
+        }
+
         const mimeType = await getFn(this.fileMimeType);
         const fileInfo = await getFn(this.statFile);
         const fileName = fileInfo?.name;
@@ -1069,6 +1269,70 @@ export class PreviewModel implements ViewModel {
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, { ...blockMeta, edit });
+    }
+
+    private findLivePreviewBlockForSource(): string {
+        const layoutModel = getLayoutModelForStaticTab();
+        for (const blockId of layoutModel.findBlockIdsInDirection(this.blockId, NavigateDirection.Right)) {
+            if (blockId === this.blockId) {
+                continue;
+            }
+            const blockData = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`));
+            if (
+                blockData?.meta?.view === "preview" &&
+                blockData.meta?.[PreviewLiveSourceBlockMetaKey] === this.blockId
+            ) {
+                return blockId;
+            }
+        }
+        return null;
+    }
+
+    async openLivePreviewBlock() {
+        const fileInfo = await globalStore.get(this.statFile);
+        const mimeType = await globalStore.get(this.fileMimeType);
+        if (!fileInfo || !isMarkdownLike(mimeType)) {
+            globalStore.set(this.errorMsgAtom, {
+                status: "Live Preview Unavailable",
+                text: "Live Preview Block only supports Markdown files.",
+            });
+            return;
+        }
+        const existingBlockId = this.findLivePreviewBlockForSource();
+        if (existingBlockId != null) {
+            globalStore.set(this.livePreviewBlockId, existingBlockId);
+            this.publishCurrentVisibleEditorLine();
+            await this.setLiveScrollSyncEnabled(true);
+            this.focusBlockById(existingBlockId);
+            return;
+        }
+        const connection = await globalStore.get(this.connection);
+        const blockDef: BlockDef = {
+            meta: {
+                view: "preview",
+                file: fileInfo.path,
+                connection,
+                edit: false,
+                [PreviewLiveSourceBlockMetaKey]: this.blockId,
+            } as any,
+        };
+        const livePreviewBlockId = await createBlockSplitHorizontally(blockDef, this.blockId, "after");
+        globalStore.set(this.livePreviewBlockId, livePreviewBlockId);
+        this.publishCurrentVisibleEditorLine();
+        await this.setLiveScrollSyncEnabled(true);
+    }
+
+    async setLiveScrollSyncEnabled(enabled: boolean) {
+        const blockOref = WOS.makeORef("block", this.blockId);
+        await this.env.services.object.UpdateObjectMeta(blockOref, { [PreviewLiveScrollSyncMetaKey]: enabled });
+    }
+
+    publishCurrentVisibleEditorLine() {
+        const visibleRanges = this.monacoRef.current?.getVisibleRanges();
+        const firstVisibleLine = visibleRanges?.[0]?.startLineNumber;
+        if (firstVisibleLine != null) {
+            globalStore.set(this.liveScrollSourceLine, firstVisibleLine);
+        }
     }
 
     async handleFileSave() {

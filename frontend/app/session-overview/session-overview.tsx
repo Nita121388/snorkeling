@@ -111,6 +111,11 @@ function openSessionNote(sessionId: string): void {
     modalsModel.pushModal("AISessionNoteModal", { sessionId });
 }
 
+function openSessionDetail(sessionId: string): void {
+    if (!sessionId) return;
+    modalsModel.pushModal("AISessionDetailModal", { sessionId });
+}
+
 async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
     const staticTabId = globalStore.get(atoms.staticTabId);
     if (block.tabId === staticTabId) {
@@ -622,6 +627,7 @@ function BlockRow({
     now,
     onSelectBlock,
     onJumpBlock,
+    onOpenSessionDetail,
     onDeleteSession,
     onDeleteBlock,
     onOpenMessage,
@@ -634,6 +640,7 @@ function BlockRow({
     now: number;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
+    onOpenSessionDetail: (block: OverviewBlock) => void;
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
@@ -699,6 +706,21 @@ function BlockRow({
                         </button>
                     </Tooltip>
                 ) : null}
+                {block.isAgentLike && block.sessionId ? (
+                    <Tooltip content="Open session details" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-action-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenSessionDetail(block);
+                            }}
+                            aria-label={`Open session details for ${block.title}`}
+                        >
+                            <i className={makeIconClass("list", false)} />
+                        </button>
+                    </Tooltip>
+                ) : null}
                 <Tooltip
                     content="Jump to block"
                     placement="top"
@@ -759,6 +781,7 @@ function TabGroupSection({
     now,
     onSelectBlock,
     onJumpBlock,
+    onOpenSessionDetail,
     onDeleteSession,
     onDeleteBlock,
     onOpenMessage,
@@ -771,6 +794,7 @@ function TabGroupSection({
     now: number;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
+    onOpenSessionDetail: (block: OverviewBlock) => void;
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
@@ -803,6 +827,7 @@ function TabGroupSection({
                             now={now}
                             onSelectBlock={onSelectBlock}
                             onJumpBlock={onJumpBlock}
+                            onOpenSessionDetail={onOpenSessionDetail}
                             onDeleteSession={onDeleteSession}
                             onDeleteBlock={onDeleteBlock}
                             onOpenMessage={onOpenMessage}
@@ -923,6 +948,12 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 onJumpBlock={(nextBlock) => {
                                     setSelectedBlockId(nextBlock.blockId);
                                     overviewModel.jumpToBlock(nextBlock.tabId, nextBlock.blockId);
+                                }}
+                                onOpenSessionDetail={(nextBlock) => {
+                                    if (!nextBlock.sessionId) return;
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    overviewModel.markBlockViewed(nextBlock.blockId);
+                                    openSessionDetail(nextBlock.sessionId);
                                 }}
                                 onDeleteSession={(nextBlock) => {
                                     if (!nextBlock.sessionId || sessionAction.deletingSessionId) return;

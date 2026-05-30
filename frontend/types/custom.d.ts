@@ -273,6 +273,7 @@ declare global {
         items: MenuItem[];
         className?: string;
         text: string;
+        icon?: string | React.ReactNode;
         title?: string;
         menuPlacement?: Placement;
     };

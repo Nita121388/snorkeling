@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,11 @@ func (p *CodexProvider) LoadMessages(ctx context.Context, filePath string) ([]Me
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	return parseCodexMessages(ctx, file)
+}
+
+func parseCodexMessages(ctx context.Context, r io.Reader) ([]Message, error) {
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var messages []Message
 	for scanner.Scan() {
@@ -178,7 +183,17 @@ func (p *CodexProvider) parseSummary(path string) (SessionSummary, bool) {
 	if err != nil {
 		return SessionSummary{}, false
 	}
+	mtime, size := fileStatFields(path)
+	return p.parseSummaryFromLines(path, head, tail, mtime, size)
+}
 
+func (p *CodexProvider) parseSummaryFromLines(
+	path string,
+	head []string,
+	tail []string,
+	mtime int64,
+	size int64,
+) (SessionSummary, bool) {
 	var id string
 	var projectPath string
 	var createdAt int64
@@ -250,7 +265,6 @@ func (p *CodexProvider) parseSummary(path string) (SessionSummary, bool) {
 	if id == "" {
 		return SessionSummary{}, false
 	}
-	mtime, size := fileStatFields(path)
 	title := normalizeTitle(firstUserMessage)
 	titleSource := "first_user_message"
 	if title == "" {

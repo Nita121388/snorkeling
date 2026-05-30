@@ -16,8 +16,9 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
 import { VTab, VTabItem } from "./vtab";
@@ -129,6 +130,8 @@ function VTabWrapper({
     const badges = useAtomValue(getTabBadgeAtom(tabId, env));
     const renameRef = useRef<(() => void) | null>(null);
     const tabModel = getTabModelByTabId(tabId, env);
+    const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+    const unopenedThisLaunch = !active && !wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
 
     useEffect(() => {
         const cb = () => renameRef.current?.();
@@ -176,6 +179,7 @@ function VTabWrapper({
             showDivider={showDivider}
             isDragging={isDragging}
             isReordering={isReordering}
+            unopenedThisLaunch={unopenedThisLaunch}
             onSelect={onSelect}
             onClose={onClose}
             onRename={onRename}
@@ -195,6 +199,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
+    const setOpenedThisLaunchTabIds = useSetAtom(openedThisLaunchTabIdsAtom);
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
@@ -306,6 +311,19 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
         setDropLineTop(null);
     };
 
+    const markTabOpened = useCallback(
+        (tabId: string) => {
+            setOpenedThisLaunchTabIds((openedTabIds) => markTabOpenedThisLaunch(openedTabIds, tabId));
+        },
+        [setOpenedThisLaunchTabIds]
+    );
+
+    useEffect(() => {
+        if (activeTabId != null) {
+            markTabOpened(activeTabId);
+        }
+    }, [activeTabId, markTabOpened]);
+
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
         if (sourceTabId == null) {
@@ -389,7 +407,10 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                             isReordering={dragTabId != null}
                             hoverResetVersion={hoverResetVersion}
                             index={index}
-                            onSelect={() => env.electron.setActiveTab(tabId)}
+                            onSelect={() => {
+                                markTabOpened(tabId);
+                                env.electron.setActiveTab(tabId);
+                            }}
                             onClose={() => fireAndForget(() => env.electron.closeTab(workspace.oid, tabId, false))}
                             onRename={(newName) =>
                                 fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))

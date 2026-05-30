@@ -231,10 +231,16 @@ function userOutlineMessages(outline: AISessionsUserOutlineResponse | null): Mes
     return (outline?.messages ?? []).filter((message) => message.role === "user" && message.text?.trim() !== "");
 }
 
+function agentSessionConnection(blockData: Block | null): string | undefined {
+    const connection = blockData?.meta?.connection;
+    return typeof connection === "string" && connection.trim() !== "" ? connection.trim() : undefined;
+}
+
 const TermSessionUserOutlineOverlay = React.memo(
     ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+        const connection = agentSessionConnection(blockData);
         const [isOpen, setIsOpen] = React.useState(false);
         const [outline, setOutline] = React.useState<AISessionsUserOutlineResponse | null>(null);
         const [loading, setLoading] = React.useState(false);
@@ -263,7 +269,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                 }
                 setError("");
                 service
-                    .UserOutline({ id: sessionId, limit: 20, refresh })
+                    .UserOutline({ id: sessionId, connection, limit: 20, refresh })
                     .then((nextOutline) => {
                         if (requestSeq !== requestSeqRef.current) {
                             return;
@@ -284,7 +290,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                         setLoading(false);
                     });
             },
-            [service, sessionId]
+            [connection, service, sessionId]
         );
 
         React.useEffect(() => {
@@ -433,6 +439,7 @@ const TermSessionNoteEditor = React.memo(
     ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+        const connection = agentSessionConnection(blockData);
         const [summary, setSummary] = React.useState<SessionSummary | null>(null);
         const [noteDraft, setNoteDraft] = React.useState("");
         const [isEditing, setIsEditing] = React.useState(false);
@@ -459,7 +466,7 @@ const TermSessionNoteEditor = React.memo(
             setError("");
             setSaveStatus("idle");
             service
-                .Summary({ id: sessionId })
+                .Summary({ id: sessionId, connection })
                 .then((nextSummary) => {
                     if (!cancelled) {
                         setSummary(nextSummary);
@@ -476,7 +483,7 @@ const TermSessionNoteEditor = React.memo(
             return () => {
                 cancelled = true;
             };
-        }, [service, sessionId]);
+        }, [connection, service, sessionId]);
 
         React.useEffect(() => {
             latestDraftRef.current = noteDraft;

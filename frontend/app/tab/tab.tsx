@@ -13,8 +13,9 @@ import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { makeORef } from "../store/wos";
-import { TabBadges } from "./tabbadges";
+import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import "./tab.scss";
+import { TabBadges } from "./tabbadges";
 import { buildTabContextMenu } from "./tabcontextmenu";
 
 export type TabEnv = WaveEnvSubset<{
@@ -44,6 +45,7 @@ interface TabVProps {
     isDragging: boolean;
     tabWidth: number;
     isNew: boolean;
+    unopenedThisLaunch: boolean;
     badges?: Badge[] | null;
     flagColor?: string | null;
     onClick: () => void;
@@ -64,6 +66,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         isDragging,
         tabWidth,
         isNew,
+        unopenedThisLaunch,
         badges,
         flagColor,
         onClick,
@@ -189,6 +192,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 active,
                 dragging: isDragging,
                 "new-tab": isNew,
+                "unopened-this-launch": unopenedThisLaunch,
             })}
             onMouseDown={onDragStart}
             onClick={onClick}
@@ -242,8 +246,10 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
+    const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
+    const unopenedThisLaunch = !active && !wasTabOpenedThisLaunch(openedThisLaunchTabIds, id);
     let flagColor: string | null = null;
     if (rawFlagColor) {
         try {
@@ -306,6 +312,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             isDragging={isDragging}
             tabWidth={tabWidth}
             isNew={isNew}
+            unopenedThisLaunch={unopenedThisLaunch}
             badges={badges}
             flagColor={flagColor}
             onClick={handleTabClick}

@@ -1,10 +1,11 @@
+import { makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { memo, useState } from "react";
 import { Button } from "./button";
 import { FlyoutMenu } from "./flyoutmenu";
 import "./menubutton.scss";
 
-const MenuButtonComponent = ({ items, className, text, title }: MenuButtonProps) => {
+const MenuButtonComponent = ({ items, className, text, icon, title }: MenuButtonProps) => {
     const [isOpen, setIsOpen] = useState(false);
     return (
         <div className={clsx("menubutton", className)}>
@@ -14,7 +15,10 @@ const MenuButtonComponent = ({ items, className, text, title }: MenuButtonProps)
                     style={{ borderColor: isOpen ? "var(--accent-color)" : "transparent" }}
                     title={title}
                 >
-                    <div>{text}</div>
+                    <div>
+                        {typeof icon === "string" ? <i className={makeIconClass(icon, true)} /> : icon}
+                        <span className={clsx({ "sr-only": icon != null })}>{text}</span>
+                    </div>
                     <i className="fa-sharp fa-solid fa-angle-down"></i>
                 </Button>
             </FlyoutMenu>

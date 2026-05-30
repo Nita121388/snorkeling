@@ -58,5 +58,10 @@ func providerBySource(providers []Provider, source string) Provider {
 			return provider
 		}
 	}
+	for _, provider := range providers {
+		if remoteProvider, ok := provider.(*RemoteProvider); ok && remoteProvider.SupportsSource(source) {
+			return provider
+		}
+	}
 	return nil
 }

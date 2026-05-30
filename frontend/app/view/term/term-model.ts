@@ -41,6 +41,7 @@ import { isMacOS, isWindows } from "@/util/platformutil";
 import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
@@ -1019,6 +1020,19 @@ export class TermViewModel implements ViewModel {
                 fireAndForget(() => copyText(debugText()));
             },
         };
+        const agentFolderMenuItem: ContextMenuItem = {
+            label: "Open Agent Folder",
+            enabled: canOpenAgentFolder(blockData ?? null, agentSessionId),
+            click: () => {
+                fireAndForget(() =>
+                    openAgentFolderInCurrentTab({
+                        blockId: this.blockId,
+                        block: blockData ?? null,
+                        sessionId: agentSessionId,
+                    })
+                );
+            },
+        };
         if (agentSessionId !== "") {
             return [
                 {
@@ -1033,6 +1047,7 @@ export class TermViewModel implements ViewModel {
                         modalsModel.pushModal("AISessionDetailModal", { sessionId: agentSessionId });
                     },
                 },
+                agentFolderMenuItem,
                 {
                     label: "Edit Agent Session Note...",
                     click: () => {
@@ -1041,6 +1056,9 @@ export class TermViewModel implements ViewModel {
                 },
                 debugMenuItem,
             ];
+        }
+        if (canOpenAgentFolder(blockData ?? null, "")) {
+            return [agentFolderMenuItem, debugMenuItem];
         }
         if (jobId === "") {
             console.log("[term-session-copy] no session id available for terminal block", {

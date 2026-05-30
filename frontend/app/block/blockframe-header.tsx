@@ -23,6 +23,8 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
+import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { Button } from "@/element/button";
 import { IconButton } from "@/element/iconbutton";
@@ -64,6 +66,14 @@ export function showBlockContextMenu(
     const magnified = globalStore.get(nodeModel.isMagnified);
     const ephemeral = globalStore.get(nodeModel.isEphemeral);
     const minimizedPreview = globalStore.get(nodeModel.isMinimizedPreview);
+    const blockData = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+    const blockMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
+    const agentSessionId = resolveAgentSessionIdFromMeta(blockMeta).trim();
+    const hasAgentMeta =
+        blockMeta.view === "agent" ||
+        blockMeta["agent:autoresume"] === true ||
+        (typeof blockMeta["agent:provider"] === "string" && blockMeta["agent:provider"].trim() !== "") ||
+        agentSessionId !== "";
     const menu: ContextMenuItem[] = [
         minimizedPreview
             ? {
@@ -84,6 +94,20 @@ export function showBlockContextMenu(
             },
         },
     ];
+    if (hasAgentMeta && canOpenAgentFolder(blockData ?? null, agentSessionId)) {
+        menu.push({
+            label: "Open Agent Folder",
+            click: () => {
+                util.fireAndForget(() =>
+                    openAgentFolderInCurrentTab({
+                        blockId,
+                        block: blockData ?? null,
+                        sessionId: agentSessionId,
+                    })
+                );
+            },
+        });
+    }
     if (moveContext && !ephemeral) {
         menu.push({
             label: "Minimize to Float",

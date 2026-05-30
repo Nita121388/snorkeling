@@ -95,6 +95,7 @@ export function TabPreview() {
                         isDragging={false}
                         tabWidth={TAB_WIDTH}
                         isNew={false}
+                        unopenedThisLaunch={false}
                         badges={tab.badges ?? null}
                         flagColor={tab.flagColor ?? null}
                         onClick={() => setActiveTabId(tab.tabId)}

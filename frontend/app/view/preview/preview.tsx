@@ -12,9 +12,9 @@ import { memo, useEffect } from "react";
 import { CSVView } from "./csvview";
 import { DirectoryPreview } from "./preview-directory";
 import { CodeEditPreview } from "./preview-edit";
-import { PreviewExplorer } from "./preview-explorer";
 import { ErrorOverlay } from "./preview-error-overlay";
-import { MarkdownPreview } from "./preview-markdown";
+import { PreviewExplorer } from "./preview-explorer";
+import { MarkdownLivePreview, MarkdownPreview } from "./preview-markdown";
 import type { PreviewModel } from "./preview-model";
 import { StreamingPreview } from "./preview-streaming";
 import type { PreviewEnv } from "./previewenv";
@@ -27,6 +27,7 @@ export type SpecializedViewProps = {
 const SpecializedViewMap: { [view: string]: ({ model }: SpecializedViewProps) => React.JSX.Element } = {
     streaming: StreamingPreview,
     markdown: MarkdownPreview,
+    markdownlivepreview: MarkdownLivePreview,
     codeedit: CodeEditPreview,
     csv: CSVViewPreview,
     directory: DirectoryPreview,

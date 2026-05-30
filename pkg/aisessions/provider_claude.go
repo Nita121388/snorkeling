@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +55,11 @@ func (p *ClaudeProvider) LoadMessages(ctx context.Context, filePath string) ([]M
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	return parseClaudeMessages(ctx, file)
+}
+
+func parseClaudeMessages(ctx context.Context, r io.Reader) ([]Message, error) {
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var messages []Message
 	for scanner.Scan() {
@@ -168,7 +173,17 @@ func (p *ClaudeProvider) parseSummary(path string) (SessionSummary, bool) {
 	if err != nil {
 		return SessionSummary{}, false
 	}
+	mtime, size := fileStatFields(path)
+	return p.parseSummaryFromLines(path, head, tail, mtime, size)
+}
 
+func (p *ClaudeProvider) parseSummaryFromLines(
+	path string,
+	head []string,
+	tail []string,
+	mtime int64,
+	size int64,
+) (SessionSummary, bool) {
 	var id string
 	var projectPath string
 	var createdAt int64
@@ -248,7 +263,6 @@ func (p *ClaudeProvider) parseSummary(path string) (SessionSummary, bool) {
 		titleSource = "project"
 	}
 
-	mtime, size := fileStatFields(path)
 	summary := SessionSummary{
 		ID:          id,
 		Source:      SourceClaude,

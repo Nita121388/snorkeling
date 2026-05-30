@@ -35,6 +35,17 @@ import "./preview-edit.scss";
 const dlog = debug("wave:preview:edit-search");
 dlog.enabled = true;
 
+function isLiveScrollDebugEnabled(): boolean {
+    return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingLiveScrollDebug") === "1";
+}
+
+function liveScrollDebug(message: string, details: Record<string, unknown> = {}) {
+    if (!isLiveScrollDebugEnabled()) {
+        return;
+    }
+    console.info("[live-scroll]", message, details);
+}
+
 function getActiveElementLog(): string {
     if (typeof document === "undefined") {
         return "no-document";
@@ -712,6 +723,116 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         };
         refreshMarkdownListStateRef.current = updateMarkdownListState;
 
+        const getLiveScrollEditorState = (
+            directionOverride?: "up" | "down" | "none"
+        ): {
+            scrollTop: number;
+            previousScrollTop: number;
+            scrollHeight: number;
+            viewportHeight: number;
+            direction: "up" | "down" | "none";
+            isAtBottom: boolean;
+            remainingPx: number;
+        } => {
+            const previousState = globalStore.get(model.liveScrollSourceState);
+            const scrollTop = editor.getScrollTop();
+            const scrollHeight = editor.getScrollHeight();
+            const viewportHeight = editor.getLayoutInfo().height;
+            const remainingPx = Math.max(0, scrollHeight - viewportHeight - scrollTop);
+            const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+            return {
+                scrollTop,
+                previousScrollTop: previousState.scrollTop,
+                scrollHeight,
+                viewportHeight,
+                direction:
+                    directionOverride ??
+                    (scrollTop > previousState.scrollTop
+                        ? "down"
+                        : scrollTop < previousState.scrollTop
+                          ? "up"
+                          : "none"),
+                isAtBottom: remainingPx <= lineHeight * 1.5,
+                remainingPx,
+            };
+        };
+
+        const publishLiveScrollSourceState = (directionOverride?: "up" | "down" | "none") => {
+            const previousState = globalStore.get(model.liveScrollSourceState);
+            const previewOwnsScroll =
+                previousState.origin === "preview" && Date.now() < previousState.previewControlUntil;
+            globalStore.set(model.liveScrollSourceState, {
+                sequence: previousState.sequence + 1,
+                origin: previewOwnsScroll ? "preview" : "editor",
+                previewControlUntil: previewOwnsScroll ? previousState.previewControlUntil : 0,
+                bottomScrollIntent: false,
+                ...getLiveScrollEditorState(directionOverride),
+            });
+        };
+
+        const updateLiveScrollSourceLine = () => {
+            const editorModel = editor.getModel();
+            if (!editorModel || !globalStore.get(model.liveScrollSyncEnabled)) {
+                liveScrollDebug("skip editor publish", {
+                    blockId: model.blockId,
+                    hasEditorModel: !!editorModel,
+                    syncEnabled: globalStore.get(model.liveScrollSyncEnabled),
+                });
+                return;
+            }
+            publishLiveScrollSourceState();
+            const visibleRanges = editor.getVisibleRanges();
+            const firstVisibleLine = visibleRanges[0]?.startLineNumber;
+            if (firstVisibleLine == null) {
+                liveScrollDebug("skip editor publish: no visible line", { blockId: model.blockId });
+                return;
+            }
+            if (globalStore.get(model.liveScrollSourceLine) === firstVisibleLine) {
+                liveScrollDebug("skip editor publish: duplicate line", {
+                    blockId: model.blockId,
+                    firstVisibleLine,
+                });
+                return;
+            }
+            globalStore.set(model.liveScrollSourceLine, firstVisibleLine);
+            liveScrollDebug("publish editor line", {
+                blockId: model.blockId,
+                firstVisibleLine,
+                visibleRanges: visibleRanges.map((range) => ({
+                    startLineNumber: range.startLineNumber,
+                    endLineNumber: range.endLineNumber,
+                })),
+            });
+        };
+
+        const handleEditorWheel = (event: WheelEvent) => {
+            if (event.deltaY <= 0 || !globalStore.get(model.liveScrollSyncEnabled)) {
+                return;
+            }
+            const editorModel = editor.getModel();
+            if (!editorModel) {
+                return;
+            }
+            const nextState = getLiveScrollEditorState("down");
+            if (!nextState.isAtBottom) {
+                return;
+            }
+            const previousState = globalStore.get(model.liveScrollSourceState);
+            globalStore.set(model.liveScrollSourceState, {
+                sequence: previousState.sequence + 1,
+                origin: "editor",
+                previewControlUntil: 0,
+                bottomScrollIntent: previousState.isAtBottom,
+                ...nextState,
+            });
+            liveScrollDebug("publish editor bottom wheel", {
+                blockId: model.blockId,
+                deltaY: event.deltaY,
+                remainingPx: nextState.remainingPx,
+                sequence: previousState.sequence + 1,
+            });
+        };
+
         const updateSelectionCopyOverlay = () => {
             const editorModel = editor.getModel();
             const selection = editor.getSelection();
@@ -848,6 +969,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             setSelectionCopyOverlay(null);
             updateMarkdownListState();
             clearOrderedListMovePreview(editor);
+            updateLiveScrollSourceLine();
         });
         const blurDisposer = editor.onDidBlurEditorText(() => {
             setSelectionCopyOverlay(null);
@@ -857,6 +979,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             setSelectionCopyOverlay(null);
             clearOrderedListMovePreview(editor);
         });
+        const editorDomNode = editor.getDomNode();
+        editorDomNode?.addEventListener("wheel", handleEditorWheel, { passive: true });
 
         const isFocused = globalStore.get(model.nodeModel.isFocused);
         if (isFocused) {
@@ -864,6 +988,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         }
         revealSearchTargetLine(editor, globalStore.get(model.searchTargetLine));
         updateMarkdownListState();
+        updateLiveScrollSourceLine();
 
         return () => {
             searchDecorationIdsRef.current = editor.deltaDecorations(searchDecorationIdsRef.current, []);
@@ -882,6 +1007,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             scrollDisposer.dispose();
             blurDisposer.dispose();
             mouseDownDisposer.dispose();
+            editorDomNode?.removeEventListener("wheel", handleEditorWheel);
         };
     }
 

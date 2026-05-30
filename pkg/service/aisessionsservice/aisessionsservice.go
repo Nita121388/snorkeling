@@ -5,13 +5,19 @@ package aisessionsservice
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
+	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
+	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
+	"github.com/wavetermdev/waveterm/pkg/wshrpc"
+	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
+	"github.com/wavetermdev/waveterm/pkg/wshutil"
 )
 
 type AISessionsService struct{}
@@ -31,15 +37,17 @@ type AISessionsListResponse struct {
 
 type AISessionsDetailRequest struct {
 	ID           string `json:"id"`
+	Connection   string `json:"connection,omitempty"`
 	Refresh      bool   `json:"refresh,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 	IncludeTools bool   `json:"includeTools,omitempty"`
 }
 
 type AISessionsUserOutlineRequest struct {
-	ID      string `json:"id"`
-	Refresh bool   `json:"refresh,omitempty"`
-	Limit   int    `json:"limit,omitempty"`
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+	Refresh    bool   `json:"refresh,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
 }
 
 type AISessionsUserOutlineResponse struct {
@@ -49,8 +57,9 @@ type AISessionsUserOutlineResponse struct {
 }
 
 type AISessionsSummaryRequest struct {
-	ID      string `json:"id"`
-	Refresh bool   `json:"refresh,omitempty"`
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+	Refresh    bool   `json:"refresh,omitempty"`
 }
 
 type AISessionsStatRequest struct {
@@ -64,6 +73,68 @@ type AISessionsStatResponse struct {
 	MTime    int64  `json:"mtime,omitempty"`
 	Size     int64  `json:"size,omitempty"`
 	Missing  bool   `json:"missing,omitempty"`
+}
+
+func connectionFromRemoteSessionKey(identifier string) string {
+	if !strings.HasPrefix(identifier, "codex:") && !strings.HasPrefix(identifier, "claude:") {
+		return ""
+	}
+	parts := strings.SplitN(identifier, ":", 6)
+	if len(parts) != 6 || parts[2] != "remote" {
+		return ""
+	}
+	rawConnection, err := base64.RawURLEncoding.DecodeString(parts[4])
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(rawConnection))
+}
+
+func (svc *AISessionsService) managerForConnection(ctx context.Context, connection string) (*aisessions.Manager, error) {
+	connection = strings.TrimSpace(connection)
+	if conncontroller.IsLocalConnName(connection) || conncontroller.IsWslConnName(connection) {
+		return aisessions.NewManager("", nil), nil
+	}
+	remoteInfo, err := wshclient.RemoteGetInfoCommand(
+		wshfs.RpcClient,
+		&wshrpc.RpcOpts{Route: wshutil.MakeConnectionRouteId(connection)},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get remote info for %q: %w", connection, err)
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	provider, err := aisessions.NewRemoteProvider(aisessions.RemoteProviderOptions{
+		Connection: connection,
+		HomeDir:    remoteInfo.HomeDir,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
+		Providers: []aisessions.Provider{provider},
+		MetaPath:  remoteMetaPath(connection),
+	}), nil
+}
+
+func (svc *AISessionsService) managerForIdentifier(ctx context.Context, identifier string) (*aisessions.Manager, error) {
+	if connection := connectionFromRemoteSessionKey(identifier); connection != "" {
+		return svc.managerForConnection(ctx, connection)
+	}
+	return aisessions.NewManager("", nil), nil
+}
+
+func (svc *AISessionsService) managerForRequest(ctx context.Context, identifier string, connection string) (*aisessions.Manager, error) {
+	if strings.TrimSpace(connection) != "" {
+		return svc.managerForConnection(ctx, connection)
+	}
+	return svc.managerForIdentifier(ctx, identifier)
+}
+
+func remoteMetaPath(connection string) string {
+	safeConnection := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(connection)
+	return filepath.Join(filepath.Dir(aisessions.DefaultMetaPath()), "remote-"+safeConnection+"-meta.json")
 }
 
 func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
@@ -107,7 +178,11 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	detail, err := aisessions.NewManager("", nil).Load(ctx, request.ID, aisessions.LoadOptions{
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{
 		Refresh:      request.Refresh,
 		IncludeTools: request.IncludeTools,
 	})
@@ -133,7 +208,11 @@ func (svc *AISessionsService) UserOutline(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	detail, err := aisessions.NewManager("", nil).Load(ctx, request.ID, aisessions.LoadOptions{
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{
 		Refresh: request.Refresh,
 	})
 	if err != nil {
@@ -183,7 +262,11 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	summary, err := aisessions.NewManager("", nil).Summary(ctx, request.ID, request.Refresh)
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.Summary(ctx, request.ID, request.Refresh)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +360,11 @@ func (svc *AISessionsService) Mark_Meta() tsgenmeta.MethodMeta {
 }
 
 func (svc *AISessionsService) Mark(ctx context.Context, id string, marked bool) (*aisessions.SessionSummary, error) {
-	summary, err := aisessions.NewManager("", nil).Mark(ctx, id, marked)
+	manager, err := svc.managerForIdentifier(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.Mark(ctx, id, marked)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +380,11 @@ func (svc *AISessionsService) Note_Meta() tsgenmeta.MethodMeta {
 }
 
 func (svc *AISessionsService) Note(ctx context.Context, id string, note string) (*aisessions.SessionSummary, error) {
-	summary, err := aisessions.NewManager("", nil).Note(ctx, id, note)
+	manager, err := svc.managerForIdentifier(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.Note(ctx, id, note)
 	if err != nil {
 		return nil, err
 	}

@@ -49,6 +49,14 @@
         }
     }
 
+    &.unopened-this-launch {
+        .name,
+        .tab-badges {
+            opacity: 0.42;
+            filter: grayscale(1);
+        }
+    }
+
     .name {
         position: absolute;
         top: 50%;
@@ -138,4 +146,3 @@ body.nohover .tab.active .close {
 .tab.new-tab {
     animation: expandWidthAndFadeIn 0.1s forwards;
 }
-

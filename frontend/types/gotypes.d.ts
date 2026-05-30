@@ -45,6 +45,7 @@ declare global {
     // aisessionsservice.AISessionsDetailRequest
     type AISessionsDetailRequest = {
         id: string;
+        connection?: string;
         refresh?: boolean;
         tail?: number;
         includeTools?: boolean;
@@ -83,12 +84,14 @@ declare global {
     // aisessionsservice.AISessionsSummaryRequest
     type AISessionsSummaryRequest = {
         id: string;
+        connection?: string;
         refresh?: boolean;
     };
 
     // aisessionsservice.AISessionsUserOutlineRequest
     type AISessionsUserOutlineRequest = {
         id: string;
+        connection?: string;
         refresh?: boolean;
         limit?: number;
     };
@@ -1385,6 +1388,7 @@ declare global {
         "web:useragenttype"?: string;
         "markdown:fontsize"?: number;
         "markdown:fixedfontsize"?: number;
+        "preview:livescrollsync"?: boolean;
         "tsunami:*"?: boolean;
         "tsunami:sdkreplacepath"?: string;
         "tsunami:apppath"?: string;
