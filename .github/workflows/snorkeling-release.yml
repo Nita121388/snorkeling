@@ -115,7 +115,7 @@ jobs:
                   missing=0
                   for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
                       if [[ -z "${!name:-}" ]]; then
-                          echo "::warning::$name is missing; macOS release artifacts will be skipped"
+                          echo "::warning::$name is missing; unsigned macOS release artifacts will be built"
                           missing=1
                       fi
                   done
@@ -126,17 +126,17 @@ jobs:
                   fi
 
             - name: Build distributables (Linux/macOS)
-              if: matrix.os == 'ubuntu-latest' || (matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true')
+              if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
               run: task package
               env:
                   USE_SYSTEM_FPM: true
-                  CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos-latest' && 'true' || 'false' }}
-                  CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.PROD_MACOS_CERTIFICATE_2 || '' }}
-                  CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.PROD_MACOS_CERTIFICATE_PWD_2 || '' }}
-                  APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.PROD_MACOS_NOTARIZATION_APPLE_ID_2 || '' }}
-                  APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.PROD_MACOS_NOTARIZATION_PWD_2 || '' }}
-                  APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && secrets.PROD_MACOS_NOTARIZATION_TEAM_ID_2 || '' }}
-                  SNORKELING_FORCE_MACOS_SIGNING: ${{ matrix.os == 'macos-latest' && 'true' || 'false' }}
+                  CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && 'true' || 'false' }}
+                  CSC_LINK: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_CERTIFICATE_2 || '' }}
+                  CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_CERTIFICATE_PWD_2 || '' }}
+                  APPLE_ID: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_APPLE_ID_2 || '' }}
+                  APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_PWD_2 || '' }}
+                  APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_TEAM_ID_2 || '' }}
+                  SNORKELING_FORCE_MACOS_SIGNING: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && 'true' || 'false' }}
 
             - name: Build distributables (Windows)
               if: matrix.os == 'windows-latest'
@@ -147,7 +147,6 @@ jobs:
               shell: powershell
 
             - name: Upload build artifacts
-              if: matrix.os != 'macos-latest' || env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true'
               uses: actions/upload-artifact@v5
               with:
                   name: release-${{ matrix.os }}
