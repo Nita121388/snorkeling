@@ -878,7 +878,7 @@ const Markdown = ({
                         className="toc-item toc-empty text-secondary"
                         style={{ "--indent-factor": 2 } as React.CSSProperties}
                     >
-                        No sub-headings found
+                        No headings found
                     </div>
                 );
             }
@@ -923,7 +923,7 @@ const Markdown = ({
         remarkMermaidToTag,
         remarkSoftBreaks,
         remarkGfm,
-        [RemarkFlexibleToc, { tocRef: tocRef.current }],
+        [RemarkFlexibleToc, { tocRef: tocRef.current, skipLevels: [] }],
         [createContentBlockPlugin, { blocks: contentBlocksMap }],
     ];
 
