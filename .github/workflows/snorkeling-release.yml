@@ -102,6 +102,7 @@ jobs:
                   repo-token: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Detect macOS signing secrets
+              id: macos-signing
               if: matrix.os == 'macos-latest'
               shell: bash
               env:
@@ -121,22 +122,42 @@ jobs:
                   done
                   if [[ "$missing" == "0" ]]; then
                       echo "SNORKELING_MACOS_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
+                      echo "available=true" >> "$GITHUB_OUTPUT"
                   else
                       echo "SNORKELING_MACOS_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
+                      echo "available=false" >> "$GITHUB_OUTPUT"
                   fi
 
-            - name: Build distributables (Linux/macOS)
-              if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+            - name: Build distributables (Linux)
+              if: matrix.os == 'ubuntu-latest'
               run: task package
               env:
                   USE_SYSTEM_FPM: true
-                  CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && 'true' || 'false' }}
-                  CSC_LINK: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_CERTIFICATE_2 || '' }}
-                  CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_CERTIFICATE_PWD_2 || '' }}
-                  APPLE_ID: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_APPLE_ID_2 || '' }}
-                  APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_PWD_2 || '' }}
-                  APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && secrets.PROD_MACOS_NOTARIZATION_TEAM_ID_2 || '' }}
-                  SNORKELING_FORCE_MACOS_SIGNING: ${{ matrix.os == 'macos-latest' && env.SNORKELING_MACOS_SIGNING_AVAILABLE == 'true' && 'true' || 'false' }}
+
+            - name: Build distributables (macOS signed)
+              if: matrix.os == 'macos-latest' && steps.macos-signing.outputs.available == 'true'
+              run: task package
+              env:
+                  USE_SYSTEM_FPM: true
+                  CSC_IDENTITY_AUTO_DISCOVERY: true
+                  CSC_LINK: ${{ secrets.PROD_MACOS_CERTIFICATE_2 }}
+                  CSC_KEY_PASSWORD: ${{ secrets.PROD_MACOS_CERTIFICATE_PWD_2 }}
+                  APPLE_ID: ${{ secrets.PROD_MACOS_NOTARIZATION_APPLE_ID_2 }}
+                  APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.PROD_MACOS_NOTARIZATION_PWD_2 }}
+                  APPLE_TEAM_ID: ${{ secrets.PROD_MACOS_NOTARIZATION_TEAM_ID_2 }}
+                  SNORKELING_FORCE_MACOS_SIGNING: true
+
+            - name: Build distributables (macOS unsigned)
+              if: matrix.os == 'macos-latest' && steps.macos-signing.outputs.available != 'true'
+              shell: bash
+              run: |
+                  unset CSC_LINK CSC_KEY_PASSWORD CSC_INSTALLER_LINK CSC_INSTALLER_KEY_PASSWORD
+                  unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+                  task package
+              env:
+                  USE_SYSTEM_FPM: true
+                  CSC_IDENTITY_AUTO_DISCOVERY: false
+                  SNORKELING_FORCE_MACOS_SIGNING: false
 
             - name: Build distributables (Windows)
               if: matrix.os == 'windows-latest'
