@@ -15,12 +15,12 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab } from "@/layout/index";
 import { isMacOSTahoeOrLater } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
-import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom } from "./tab-open-state";
+import { markTabOpenedThisLaunch } from "./tab-open-state";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -142,7 +142,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const confirmClose = useAtomValue(env.getSettingsKeyAtom("tab:confirmclose")) ?? false;
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
-    const setOpenedThisLaunchTabIds = useSetAtom(openedThisLaunchTabIdsAtom);
 
     let prevDelta: number;
     let prevDragDirection: string;
@@ -519,12 +518,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         }
     };
 
-    const markTabOpened = useCallback(
-        (tabId: string) => {
-            setOpenedThisLaunchTabIds((openedTabIds) => markTabOpenedThisLaunch(openedTabIds, tabId));
-        },
-        [setOpenedThisLaunchTabIds]
-    );
+    const markTabOpened = useCallback((tabId: string) => {
+        markTabOpenedThisLaunch(tabId);
+    }, []);
 
     useEffect(() => {
         if (activeTabId != null) {

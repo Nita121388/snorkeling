@@ -8,13 +8,14 @@ import { VTab, VTabItem } from "./vtab";
 const OriginalCss = globalThis.CSS;
 const HexColorRegex = /^#([\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
 
-function renderVTab(tab: VTabItem): string {
+function renderVTab(tab: VTabItem, props?: Partial<React.ComponentProps<typeof VTab>>): string {
     return renderToStaticMarkup(
         <VTab
             tab={tab}
-            active={false}
+            active={props?.active ?? false}
             isDragging={false}
             isReordering={false}
+            unopenedThisLaunch={props?.unopenedThisLaunch}
             onSelect={() => null}
             onDragStart={() => null}
             onDragOver={() => null}
@@ -59,5 +60,18 @@ describe("VTab badges", () => {
         expect(markup).not.toContain("definitely-not-a-color");
         expect(markup).not.toContain("fa-flag");
         expect(markup).toContain("#4ade80");
+    });
+
+    it("keeps unopened styling even when the tab is active", () => {
+        const markup = renderVTab(
+            {
+                id: "tab-3",
+                name: "Unread",
+            },
+            { active: true, unopenedThisLaunch: true }
+        );
+
+        expect(markup).toContain("opacity-45");
+        expect(markup).toContain("grayscale");
     });
 });

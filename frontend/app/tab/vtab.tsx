@@ -167,7 +167,7 @@ export function VTab({
                 "group relative flex h-9 w-full shrink-0 cursor-pointer items-center pl-3 text-xs transition-colors select-none",
                 "whitespace-nowrap",
                 active ? "text-primary" : isReordering ? "text-secondary" : "text-secondary hover:text-primary",
-                unopenedThisLaunch && !active && "opacity-45 grayscale",
+                unopenedThisLaunch && "opacity-45 grayscale",
                 isDragging && "opacity-50"
             )}
         >

@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld("api", {
     deleteWorkspace: (workspaceId) => ipcRenderer.send("delete-workspace", workspaceId),
     setActiveTab: (tabId) => ipcRenderer.send("set-active-tab", tabId),
     createTab: () => ipcRenderer.send("create-tab"),
+    getOpenedThisLaunchTabIds: () => ipcRenderer.sendSync("get-opened-this-launch-tab-ids"),
+    markTabOpenedThisLaunch: (tabId) => ipcRenderer.send("mark-tab-opened-this-launch", tabId),
+    onOpenedThisLaunchTabIdsChange: (callback: (tabIds: string[]) => void) =>
+        ipcRenderer.on("opened-this-launch-tab-ids-change", (_event, tabIds: string[]) => callback(tabIds)),
     closeTab: (workspaceId, tabId, confirmClose) => ipcRenderer.invoke("close-tab", workspaceId, tabId, confirmClose),
     moveTabToNewWindow: (tabId: string) => ipcRenderer.invoke("move-tab-to-new-window", tabId),
     moveTabBack: (tabId: string) => ipcRenderer.invoke("move-tab-back", tabId),

@@ -33,6 +33,31 @@ export type WindowOpts = {
 
 export const MinWindowWidth = 800;
 export const MinWindowHeight = 500;
+const openedThisLaunchTabIds = new Set<string>();
+
+function getOpenedThisLaunchTabIds(): string[] {
+    return Array.from(openedThisLaunchTabIds);
+}
+
+function broadcastOpenedThisLaunchTabIds() {
+    const tabIds = getOpenedThisLaunchTabIds();
+    for (const waveWindow of waveWindowMap.values()) {
+        for (const tabView of waveWindow.allLoadedTabViews.values()) {
+            if (!tabView.webContents.isDestroyed()) {
+                tabView.webContents.send("opened-this-launch-tab-ids-change", tabIds);
+            }
+        }
+    }
+}
+
+function markTabOpenedThisLaunch(tabId: string): boolean {
+    if (!tabId || openedThisLaunchTabIds.has(tabId)) {
+        return false;
+    }
+    openedThisLaunchTabIds.add(tabId);
+    broadcastOpenedThisLaunchTabIds();
+    return true;
+}
 
 export function calculateWindowBounds(
     winSize?: { width?: number; height?: number },
@@ -461,6 +486,7 @@ export class WaveBrowserWindow extends BaseWindow {
         if (this.activeTabView == tabView) {
             return;
         }
+        markTabOpenedThisLaunch(tabView.waveTabId);
         const oldActiveView = this.activeTabView;
         tabView.isActiveTab = true;
         if (oldActiveView != null) {
@@ -475,6 +501,7 @@ export class WaveBrowserWindow extends BaseWindow {
         } else {
             console.log("reusing an existing tab, calling wave-init", tabView.waveTabId);
             tabView.webContents.send("wave-init", tabView.savedInitOpts); // reinit
+            tabView.webContents.send("opened-this-launch-tab-ids-change", getOpenedThisLaunchTabIds());
             this.finalizePositioning();
         }
 
@@ -909,6 +936,14 @@ ipcMain.on("set-active-tab", async (event, tabId) => {
     const ww = getWaveWindowByWebContentsId(event.sender.id);
     console.log("set-active-tab", tabId, ww?.waveWindowId);
     await ww?.setActiveTab(tabId, true);
+});
+
+ipcMain.on("get-opened-this-launch-tab-ids", (event) => {
+    event.returnValue = getOpenedThisLaunchTabIds();
+});
+
+ipcMain.on("mark-tab-opened-this-launch", (_event, tabId: string) => {
+    markTabOpenedThisLaunch(tabId);
 });
 
 ipcMain.on("create-tab", async (event, _opts) => {

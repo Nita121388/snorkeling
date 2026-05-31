@@ -16,7 +16,7 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
@@ -131,7 +131,7 @@ function VTabWrapper({
     const renameRef = useRef<(() => void) | null>(null);
     const tabModel = getTabModelByTabId(tabId, env);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
-    const unopenedThisLaunch = !active && !wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
+    const unopenedThisLaunch = !wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
 
     useEffect(() => {
         const cb = () => renameRef.current?.();
@@ -199,7 +199,6 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
-    const setOpenedThisLaunchTabIds = useSetAtom(openedThisLaunchTabIdsAtom);
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
@@ -311,12 +310,9 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
         setDropLineTop(null);
     };
 
-    const markTabOpened = useCallback(
-        (tabId: string) => {
-            setOpenedThisLaunchTabIds((openedTabIds) => markTabOpenedThisLaunch(openedTabIds, tabId));
-        },
-        [setOpenedThisLaunchTabIds]
-    );
+    const markTabOpened = useCallback((tabId: string) => {
+        markTabOpenedThisLaunch(tabId);
+    }, []);
 
     useEffect(() => {
         if (activeTabId != null) {

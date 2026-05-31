@@ -249,7 +249,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
-    const unopenedThisLaunch = !active && !wasTabOpenedThisLaunch(openedThisLaunchTabIds, id);
+    const unopenedThisLaunch = !wasTabOpenedThisLaunch(openedThisLaunchTabIds, id);
     let flagColor: string | null = null;
     if (rawFlagColor) {
         try {

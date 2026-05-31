@@ -117,6 +117,9 @@ declare global {
         deleteWorkspace: (workspaceId: string) => void; // delete-workspace
         setActiveTab: (tabId: string) => void; // set-active-tab
         createTab: () => void; // create-tab
+        getOpenedThisLaunchTabIds: () => string[]; // get-opened-this-launch-tab-ids
+        markTabOpenedThisLaunch: (tabId: string) => void; // mark-tab-opened-this-launch
+        onOpenedThisLaunchTabIdsChange: (callback: (tabIds: string[]) => void) => void; // opened-this-launch-tab-ids-change
         closeTab: (workspaceId: string, tabId: string, confirmClose: boolean) => Promise<boolean>; // close-tab
         moveTabToNewWindow: (tabId: string) => Promise<boolean>; // move-tab-to-new-window
         moveTabBack: (tabId: string) => Promise<boolean>; // move-tab-back
