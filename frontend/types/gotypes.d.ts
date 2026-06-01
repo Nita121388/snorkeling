@@ -757,6 +757,7 @@ declare global {
         repotype: string;
         repopath: string;
         revision: string;
+        filepath?: string;
     };
 
     // wshrpc.CommandRemoteVcsCommitsData

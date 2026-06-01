@@ -99,6 +99,7 @@ const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
 
 const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const waveEnv = useWaveEnv<BlockEnv>();
+    const tabModel = useTabModel();
     const { nodeModel, viewModel, blockModel, preview, numBlocksInTab, children } = props;
     const isFocused = jotai.useAtomValue(nodeModel.isFocused);
     const aiPanelVisible = jotai.useAtomValue(WorkspaceLayoutModel.getInstance().panelVisibleAtom);
@@ -187,9 +188,9 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
             if (target.closest(".block-frame-default-header, .block-content")) {
                 return;
             }
-            showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, moveContext);
+            showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext);
         },
-        [nodeModel, viewModel, waveEnv, moveContext]
+        [nodeModel, viewModel, waveEnv, tabModel.tabId, moveContext]
     );
     const moveMenuItemsContextValue = React.useMemo(
         () => ({

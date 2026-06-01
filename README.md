@@ -138,7 +138,7 @@ Want to provide input to our future releases? Connect with us on [Discord](https
 
 ## Building from Source
 
-See [Building Wave Terminal](BUILD.md).
+See [Building Snorkeling](BUILD.md).
 
 ## Contributing
 

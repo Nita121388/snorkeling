@@ -138,6 +138,8 @@ const (
 	MetaKey_MarkdownFontSize                 = "markdown:fontsize"
 	MetaKey_MarkdownFixedFontSize            = "markdown:fixedfontsize"
 
+	MetaKey_PreviewLiveScrollSync            = "preview:livescrollsync"
+
 	MetaKey_TsunamiClear                     = "tsunami:*"
 	MetaKey_TsunamiSdkReplacePath            = "tsunami:sdkreplacepath"
 	MetaKey_TsunamiAppPath                   = "tsunami:apppath"

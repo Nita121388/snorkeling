@@ -29,6 +29,11 @@ import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import {
+    PreviewLiveScrollSyncMetaKey,
+    PreviewLiveSourceBlockMetaKey,
+    resolveLivePreviewBlockIdForSource,
+} from "./preview-live";
+import {
     applyExplorerRootForDirectoryNavigation,
     PreviewDirectoryDisplayMode,
     PreviewExplorerRootMetaKey,
@@ -55,8 +60,6 @@ const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
 const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
 const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
 const PreviewSearchLineMetaKey = "preview:searchline";
-const PreviewLiveSourceBlockMetaKey = "preview:live-source-blockid";
-const PreviewLiveScrollSyncMetaKey = "preview:livescrollsync";
 const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
 const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();
 
@@ -317,6 +320,7 @@ export class PreviewModel implements ViewModel {
     liveSourceScrollLine: Atom<number | null>;
     liveSourceScrollState: Atom<LiveScrollSourceState>;
     livePreviewBlockId: PrimitiveAtom<string | null>;
+    livePreviewOpenBlockId: Atom<string | null>;
     liveScrollSyncEnabled: Atom<boolean>;
     liveScrollSourceLine: PrimitiveAtom<number | null>;
     liveScrollSourceState: PrimitiveAtom<LiveScrollSourceState>;
@@ -428,6 +432,16 @@ export class PreviewModel implements ViewModel {
         });
         this.livePreviewBlockId = atom(null) as PrimitiveAtom<string | null>;
         globalStore.set(this.livePreviewBlockId, this.findLivePreviewBlockForSource());
+        this.livePreviewOpenBlockId = atom((get) => {
+            const tabBlockIds = get(this.tabModel.tabAtom)?.blockids ?? [];
+            const cachedBlockId = get(this.livePreviewBlockId);
+            return resolveLivePreviewBlockIdForSource(
+                this.blockId,
+                tabBlockIds,
+                (candidateBlockId) => get(this.env.wos.getWaveObjectAtom<Block>(`block:${candidateBlockId}`)),
+                cachedBlockId
+            );
+        });
         this.liveScrollSyncEnabled = atom((get) => get(this.blockAtom)?.meta?.[PreviewLiveScrollSyncMetaKey] !== false);
         this.liveScrollSourceLine = getLiveScrollSourceLineAtom(this.blockId);
         this.liveScrollSourceState = getLiveScrollSourceStateAtom(this.blockId);
@@ -612,7 +626,7 @@ export class PreviewModel implements ViewModel {
                         items: previewMenuItems,
                     });
                 }
-                if (!isBlank(get(this.livePreviewBlockId)) && isMarkdownView) {
+                if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
                     const syncEnabled = get(this.liveScrollSyncEnabled);
                     viewTextChildren.push({
                         elemtype: "iconbutton",
@@ -1298,7 +1312,7 @@ export class PreviewModel implements ViewModel {
             });
             return;
         }
-        const existingBlockId = this.findLivePreviewBlockForSource();
+        const existingBlockId = globalStore.get(this.livePreviewOpenBlockId) ?? this.findLivePreviewBlockForSource();
         if (existingBlockId != null) {
             globalStore.set(this.livePreviewBlockId, existingBlockId);
             this.publishCurrentVisibleEditorLine();

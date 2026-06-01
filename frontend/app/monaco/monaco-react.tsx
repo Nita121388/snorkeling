@@ -27,6 +27,13 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
     const editorRef = useRef<MonacoTypes.editor.IStandaloneCodeEditor | null>(null);
     const onUnmountRef = useRef<(() => void) | null>(null);
     const applyingFromProps = useRef(false);
+    const pendingCompositionChange = useRef(false);
+
+    function emitEditorChange(editor: MonacoTypes.editor.IStandaloneCodeEditor) {
+        const model = editor.getModel();
+        if (!model) return;
+        onChange?.(model.getValue());
+    }
 
     useEffect(() => {
         loadMonaco();
@@ -46,7 +53,19 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
 
         const sub = model.onDidChangeContent(() => {
             if (applyingFromProps.current) return;
+            if (editor.inComposition) {
+                pendingCompositionChange.current = true;
+                return;
+            }
             onChange?.(model.getValue());
+        });
+        const compositionStartSub = editor.onDidCompositionStart(() => {
+            pendingCompositionChange.current = false;
+        });
+        const compositionEndSub = editor.onDidCompositionEnd(() => {
+            if (!pendingCompositionChange.current) return;
+            pendingCompositionChange.current = false;
+            emitEditorChange(editor);
         });
 
         if (onMount) {
@@ -54,7 +73,13 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
         }
 
         return () => {
+            if (pendingCompositionChange.current) {
+                pendingCompositionChange.current = false;
+                emitEditorChange(editor);
+            }
             sub.dispose();
+            compositionStartSub.dispose();
+            compositionEndSub.dispose();
             if (onUnmountRef.current) onUnmountRef.current();
             editor.setModel(null);
             editor.dispose();
@@ -91,6 +116,7 @@ export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, 
 
         const current = model.getValue();
         if (current === text) return;
+        if (editor.inComposition) return;
 
         applyingFromProps.current = true;
         model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);

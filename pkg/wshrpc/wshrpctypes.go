@@ -1065,6 +1065,7 @@ type CommandRemoteVcsCommitFilesData struct {
 	RepoType string `json:"repotype"`
 	RepoPath string `json:"repopath"`
 	Revision string `json:"revision"`
+	FilePath string `json:"filepath,omitempty"`
 }
 
 type VcsCommitFileInfo struct {

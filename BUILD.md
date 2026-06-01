@@ -1,6 +1,8 @@
-# Building Wave Terminal
+# Building Snorkeling
 
-These instructions are for setting up dependencies and building Wave Terminal from source on macOS, Linux, and Windows.
+These instructions are for setting up dependencies and building Snorkeling from source on macOS, Linux, and Windows.
+
+Snorkeling is a Wave Terminal-based fork. Some internal package names, environment variables, and binaries still use the upstream Wave names, such as `WAVETERM_*`, `wavesrv`, and `wsh`.
 
 ## Prerequisites
 
@@ -76,13 +78,13 @@ We now use `npm`, so you can just run an `npm install` to install node dependenc
 ## Clone the Repo
 
 ```sh
-git clone git@github.com:wavetermdev/waveterm.git
+git clone git@github.com:Nita121388/snorkeling.git
 ```
 
 or
 
 ```sh
-git clone https://github.com/wavetermdev/waveterm.git
+git clone https://github.com/Nita121388/snorkeling.git
 ```
 
 ## Install code dependencies
@@ -135,4 +137,10 @@ You can use the regular Chrome DevTools to debug the frontend application. You c
 
 ### Backend logs
 
-Backend logs for the development version of Wave can be found at `~/.waveterm-dev/waveapp.log`. Both the NodeJS backend from Electron and the main Go backend will log here.
+Backend logs for the development version of Snorkeling can be found at the app data directory:
+
+- macOS: `~/Library/Application Support/snorkeling-dev/waveapp.log`
+- Linux: `~/.local/share/snorkeling-dev/waveapp.log`
+- Windows: `%LOCALAPPDATA%\snorkeling-dev\Data\waveapp.log`
+
+Both the NodeJS backend from Electron and the main Go backend will log here.

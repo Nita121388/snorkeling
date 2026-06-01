@@ -59,6 +59,7 @@ export function showBlockContextMenu(
     viewModel: ViewModel,
     nodeModel: NodeModel,
     blockEnv: BlockEnv,
+    currentTabId: string,
     moveContext?: MoveBlockMenuContext
 ) {
     e.preventDefault();
@@ -74,11 +75,17 @@ export function showBlockContextMenu(
         blockMeta["agent:autoresume"] === true ||
         (typeof blockMeta["agent:provider"] === "string" && blockMeta["agent:provider"].trim() !== "") ||
         agentSessionId !== "";
+    const showMinimizedPreviewInTab = () => {
+        const restored = restoreMinimizedBlockToLayout(currentTabId, blockId);
+        if (restored) {
+            setTimeout(() => refocusNode(blockId), 50);
+        }
+    };
     const menu: ContextMenuItem[] = [
         minimizedPreview
             ? {
                   label: "Show in Tab",
-                  click: () => restoreMinimizedBlockToLayout(moveContext?.currentTabId, blockId),
+                  click: showMinimizedPreviewInTab,
               }
             : {
                   label: magnified ? "Un-Magnify Block" : "Magnify Block",
@@ -224,6 +231,7 @@ type HeaderEndIconsProps = {
 
 const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext }: HeaderEndIconsProps) => {
     const blockEnv = useWaveEnv<BlockEnv>();
+    const tabModel = useTabModel();
     const endIconButtons = util.useAtomValueSafe(viewModel?.endIconButtons);
     const magnified = jotai.useAtomValue(nodeModel.isMagnified);
     const ephemeral = jotai.useAtomValue(nodeModel.isEphemeral);
@@ -273,7 +281,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
         elemtype: "iconbutton",
         icon: "cog",
         title: "Settings",
-        click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, moveContext),
+        click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext),
     };
     endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
     if (minimizedPreview) {
@@ -282,7 +290,10 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
             icon: "arrow-up-right-from-square",
             title: "Show in Tab",
             click: () => {
-                restoreMinimizedBlockToLayout(moveContext?.currentTabId, blockId);
+                const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
+                if (restored) {
+                    setTimeout(() => refocusNode(blockId), 50);
+                }
             },
         };
         endIconsElem.push(<IconButton key="restore-minimized" decl={restoreDecl} />);
@@ -545,6 +556,7 @@ const BlockFrame_Header = ({
     moveContext?: MoveBlockMenuContext;
 }) => {
     const waveEnv = useWaveEnv<BlockEnv>();
+    const tabModel = useTabModel();
     const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
     const metaFrameTitle = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:title"));
     const metaFrameIcon = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:icon"));
@@ -581,7 +593,7 @@ const BlockFrame_Header = ({
             data-role="block-header"
             ref={dragHandleRef}
             onContextMenu={(e) =>
-                showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, moveContext)
+                showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext)
             }
         >
             {!useTermHeader && (

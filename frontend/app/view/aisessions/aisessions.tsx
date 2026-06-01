@@ -56,6 +56,8 @@ export class AiSessionsViewModel implements ViewModel {
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
+    sessionsLoadSeq = 0;
+    markRequestSeqByKey = new Map<string, number>();
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
         this.blockId = blockId;
@@ -86,15 +88,21 @@ export class AiSessionsViewModel implements ViewModel {
     }
 
     async loadSessions(refresh = false, sortDescending = false): Promise<void> {
+        const loadSeq = ++this.sessionsLoadSeq;
+        const source = globalStore.get(this.sourceAtom);
+        const query = globalStore.get(this.queryAtom);
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
             const response = await this.service.List({
-                source: globalStore.get(this.sourceAtom),
-                query: globalStore.get(this.queryAtom),
+                source,
+                query,
                 limit: 200,
                 refresh,
             });
+            if (!this.isCurrentSessionsLoad(loadSeq, source, query)) {
+                return;
+            }
             const sessions = response?.sessions ?? [];
             globalStore.set(this.sessionsAtom, sessions);
             const selectedKey = globalStore.get(this.selectedKeyAtom);
@@ -114,10 +122,22 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            globalStore.set(this.errorAtom, getErrorMessage(e));
+            if (this.isCurrentSessionsLoad(loadSeq, source, query)) {
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            }
         } finally {
-            globalStore.set(this.loadingAtom, false);
+            if (this.isCurrentSessionsLoad(loadSeq, source, query)) {
+                globalStore.set(this.loadingAtom, false);
+            }
         }
+    }
+
+    isCurrentSessionsLoad(loadSeq: number, source: SourceFilter, query: string): boolean {
+        return (
+            loadSeq === this.sessionsLoadSeq &&
+            globalStore.get(this.sourceAtom) === source &&
+            globalStore.get(this.queryAtom) === query
+        );
     }
 
     getBoundSessionId(): string {
@@ -187,11 +207,48 @@ export class AiSessionsViewModel implements ViewModel {
 
     async toggleMark(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
-        try {
-            const updated = await this.service.Mark(session.key, !session.marked);
-            this.replaceSession(updated);
-        } catch (e) {
-            globalStore.set(this.errorAtom, getErrorMessage(e));
+        const currentSession = this.getCurrentSession(session.key) ?? session;
+        const nextMarked = !currentSession.marked;
+        const requestSeq = (this.markRequestSeqByKey.get(session.key) ?? 0) + 1;
+        this.markRequestSeqByKey.set(session.key, requestSeq);
+        globalStore.set(this.errorAtom, "");
+        this.setSessionMarked(session.key, nextMarked);
+        Promise.resolve()
+            .then(() => this.service.Mark(session.key, nextMarked))
+            .then((updated) => {
+                if (this.markRequestSeqByKey.get(session.key) !== requestSeq) {
+                    return;
+                }
+                this.markRequestSeqByKey.delete(session.key);
+                this.replaceSession(updated);
+            })
+            .catch((e) => {
+                if (this.markRequestSeqByKey.get(session.key) !== requestSeq) {
+                    return;
+                }
+                this.markRequestSeqByKey.delete(session.key);
+                this.setSessionMarked(session.key, !!currentSession.marked);
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            });
+    }
+
+    getCurrentSession(sessionKey: string): SessionSummary | null {
+        const detail = globalStore.get(this.detailAtom);
+        if (detail?.summary?.key === sessionKey) {
+            return detail.summary;
+        }
+        return globalStore.get(this.sessionsAtom).find((item) => item.key === sessionKey) ?? null;
+    }
+
+    setSessionMarked(sessionKey: string, marked: boolean): void {
+        const sessions = globalStore.get(this.sessionsAtom);
+        globalStore.set(
+            this.sessionsAtom,
+            sessions.map((item) => (item.key === sessionKey ? { ...item, marked } : item))
+        );
+        const detail = globalStore.get(this.detailAtom);
+        if (detail?.summary?.key === sessionKey) {
+            globalStore.set(this.detailAtom, { ...detail, summary: { ...detail.summary, marked } });
         }
     }
 

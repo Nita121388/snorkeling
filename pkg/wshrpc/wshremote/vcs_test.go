@@ -3,6 +3,7 @@ package wshremote
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -293,5 +294,52 @@ func TestFilterAndPaginateCommitsReportsHasMore(t *testing.T) {
 	page, hasMore := filterAndPaginateCommits(commits, 1, 1, nil, nil, "")
 	if len(page) != 1 || page[0].Hash != "2" || !hasMore {
 		t.Fatalf("unexpected page=%#v hasMore=%v", page, hasMore)
+	}
+}
+
+func runGitForTest(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not available: %v", err)
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return string(out)
+}
+
+func TestLoadGitCommitFilesScopesToPath(t *testing.T) {
+	repoPath := t.TempDir()
+	runGitForTest(t, repoPath, "init")
+	runGitForTest(t, repoPath, "config", "user.name", "Test User")
+	runGitForTest(t, repoPath, "config", "user.email", "test@example.com")
+
+	for _, dir := range []string{"docs", "src"} {
+		if err := os.Mkdir(filepath.Join(repoPath, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "docs", "guide.md"), []byte("docs\n"), 0o644); err != nil {
+		t.Fatalf("write docs file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "src", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("write src file: %v", err)
+	}
+	runGitForTest(t, repoPath, "add", ".")
+	runGitForTest(t, repoPath, "commit", "-m", "initial")
+	revision := strings.TrimSpace(runGitForTest(t, repoPath, "rev-parse", "HEAD"))
+
+	files, err := loadGitCommitFiles(context.Background(), repoPath, revision, "docs")
+	if err != nil {
+		t.Fatalf("load scoped git commit files: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 scoped file, got %d (%#v)", len(files), files)
+	}
+	if files[0].Path != "docs/guide.md" || files[0].Code != "A" {
+		t.Fatalf("unexpected scoped file: %#v", files[0])
 	}
 }

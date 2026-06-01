@@ -1378,12 +1378,17 @@ func parseGitCommitFiles(nameStatusOut string) []wshrpc.VcsCommitFileInfo {
 	return files
 }
 
-func loadGitCommitFiles(ctx context.Context, repoPath string, revision string) ([]wshrpc.VcsCommitFileInfo, error) {
+func loadGitCommitFiles(ctx context.Context, repoPath string, revision string, filePath string) ([]wshrpc.VcsCommitFileInfo, error) {
 	trimmedRevision := strings.TrimSpace(revision)
 	if trimmedRevision == "" {
 		return nil, fmt.Errorf("revision is required")
 	}
-	out, err := runVcsCommandRaw(ctx, repoPath, "git", "show", "--name-status", "--pretty=format:", trimmedRevision)
+	args := []string{"show", "--name-status", "--pretty=format:", trimmedRevision}
+	relPath := toRepoRelativePath(repoPath, filePath)
+	if relPath != "" {
+		args = append(args, "--", relPath)
+	}
+	out, err := runVcsCommandRaw(ctx, repoPath, "git", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1414,7 +1419,7 @@ func parseSvnCommitFiles(repoPath string, summarizeOut string) []wshrpc.VcsCommi
 	return files
 }
 
-func loadSvnCommitFiles(ctx context.Context, repoPath string, revision string) ([]wshrpc.VcsCommitFileInfo, error) {
+func loadSvnCommitFiles(ctx context.Context, repoPath string, revision string, filePath string) ([]wshrpc.VcsCommitFileInfo, error) {
 	trimmedRevision := strings.TrimSpace(revision)
 	if strings.HasPrefix(trimmedRevision, "r") {
 		trimmedRevision = strings.TrimPrefix(trimmedRevision, "r")
@@ -1422,7 +1427,12 @@ func loadSvnCommitFiles(ctx context.Context, repoPath string, revision string) (
 	if trimmedRevision == "" {
 		return nil, fmt.Errorf("revision is required")
 	}
-	out, err := runVcsCommandRaw(ctx, repoPath, "svn", "diff", "--summarize", "-c", trimmedRevision)
+	args := []string{"diff", "--summarize", "-c", trimmedRevision}
+	relPath := toRepoRelativePath(repoPath, filePath)
+	if relPath != "" {
+		args = append(args, relPath)
+	}
+	out, err := runVcsCommandRaw(ctx, repoPath, "svn", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1629,12 +1639,13 @@ func (impl *ServerImpl) RemoteVcsCommitFilesCommand(
 	if revision == "" {
 		return nil, fmt.Errorf("revision is required")
 	}
+	filePath := strings.TrimSpace(data.FilePath)
 	var files []wshrpc.VcsCommitFileInfo
 	switch repoType {
 	case "git":
-		files, err = loadGitCommitFiles(ctx, repoPath, revision)
+		files, err = loadGitCommitFiles(ctx, repoPath, revision, filePath)
 	case "svn":
-		files, err = loadSvnCommitFiles(ctx, repoPath, revision)
+		files, err = loadSvnCommitFiles(ctx, repoPath, revision, filePath)
 	}
 	if err != nil {
 		return nil, err

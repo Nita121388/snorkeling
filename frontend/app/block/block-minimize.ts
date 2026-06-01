@@ -105,11 +105,13 @@ export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, 
         return false;
     }
     removeMinimizedBlockId(tabId, blockId);
-    if (layoutModel.getNodeByBlockId(blockId)) {
-        layoutModel.closeEphemeralNodeForBlock(blockId);
+    const existingNode = layoutModel.getNodeByBlockId(blockId);
+    const ephemeralNode = globalStore.get(layoutModel.ephemeralNode);
+    const existingNodeIsEphemeralPreview = existingNode?.id === ephemeralNode?.id;
+    layoutModel.closeEphemeralNodeForBlock(blockId);
+    if (existingNode && !existingNodeIsEphemeralPreview) {
         return true;
     }
-    layoutModel.closeEphemeralNodeForBlock(blockId);
     layoutModel.treeReducer({
         type: LayoutTreeActionType.InsertNode,
         node: newLayoutNode(undefined, undefined, undefined, { blockId }),

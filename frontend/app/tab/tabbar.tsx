@@ -30,6 +30,7 @@ const TabDefaultWidth = 130;
 const TabMinWidth = 100;
 const MacOSTrafficLightsWidth = 74;
 const MacOSTahoeTrafficLightsWidth = 80;
+const ScrollEdgeTolerance = 1;
 
 const OSOptions = {
     overflow: {
@@ -273,6 +274,50 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             setSizeAndPosition();
         }
     }, [reinitVersion]);
+
+    useEffect(() => {
+        const tabBar = tabBarRef.current;
+        if (tabBar == null) {
+            return;
+        }
+
+        const handleWheel = (event: WheelEvent) => {
+            if (!scrollableRef.current || event.ctrlKey || event.metaKey) {
+                return;
+            }
+
+            const absX = Math.abs(event.deltaX);
+            const absY = Math.abs(event.deltaY);
+            if (absY === 0 || absX >= absY) {
+                return;
+            }
+
+            const osInstance = osInstanceRef.current;
+            if (osInstance == null || osInstance.state().destroyed) {
+                return;
+            }
+
+            const { viewport } = osInstance.elements();
+            const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+            if (maxScrollLeft <= 0) {
+                return;
+            }
+
+            const currentScrollLeft = viewport.scrollLeft;
+            const targetScrollLeft = Math.max(0, Math.min(maxScrollLeft, currentScrollLeft + event.deltaY));
+            if (Math.abs(targetScrollLeft - currentScrollLeft) <= ScrollEdgeTolerance) {
+                return;
+            }
+
+            event.preventDefault();
+            viewport.scrollLeft = targetScrollLeft;
+        };
+
+        tabBar.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            tabBar.removeEventListener("wheel", handleWheel);
+        };
+    }, []);
 
     // update layout on resize
     useEffect(() => {

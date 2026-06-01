@@ -5,6 +5,7 @@ import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/blo
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { filterVcsFileStatuses, VcsFileTypeFilter, VcsFileTypeFilterOptions } from "@/app/view/vcs/vcs-filter";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock, openLink } from "@/store/global";
@@ -25,6 +26,11 @@ type RepoSectionKey = "changes" | "untracked" | "remote";
 type RepoSectionState = Record<RepoSectionKey, boolean>;
 type RepoSectionsMap = Record<string, RepoSectionState>;
 type VcsSyncAction = "fetch" | "pull" | "push" | "update";
+type RepoFileFilterState = {
+    search: string;
+    type: VcsFileTypeFilter;
+};
+type RepoFileFiltersMap = Record<string, RepoFileFilterState>;
 type VcsOperationNotice = {
     id: number;
     message: string;
@@ -126,6 +132,13 @@ function makeDefaultSectionState(): RepoSectionState {
         changes: true,
         untracked: true,
         remote: true,
+    };
+}
+
+function makeDefaultFileFilterState(): RepoFileFilterState {
+    return {
+        search: "",
+        type: "all",
     };
 }
 
@@ -535,6 +548,75 @@ function RemoteSection({
     );
 }
 
+function RepoFileFilterBar({
+    filterState,
+    onChange,
+    totalCount,
+    visibleCount,
+}: {
+    filterState: RepoFileFilterState;
+    onChange: (next: RepoFileFilterState) => void;
+    totalCount: number;
+    visibleCount: number;
+}) {
+    const search = filterState.search ?? "";
+    const type = filterState.type ?? "all";
+    const filtersActive = search.trim() !== "" || type !== "all";
+    return (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-white/10 bg-black/20 px-2 py-1.5">
+            <div className="relative min-w-[180px] flex-1">
+                <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted" />
+                <input
+                    className="h-[24px] w-full rounded border border-white/10 bg-black/25 pl-6 pr-7 text-xs text-main outline-none placeholder:text-muted focus:border-accent"
+                    type="search"
+                    value={search}
+                    onChange={(e) => onChange({ ...filterState, search: e.target.value })}
+                    placeholder="Search files"
+                />
+                {search.trim() !== "" && (
+                    <button
+                        className="iconbutton !absolute !right-1 !top-1/2 !h-[18px] !w-[18px] -translate-y-1/2 cursor-pointer"
+                        title="Clear search"
+                        onClick={() => onChange({ ...filterState, search: "" })}
+                    >
+                        <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
+                    </button>
+                )}
+            </div>
+            <label className="flex items-center gap-1.5 text-[11px] text-secondary">
+                <span>Type</span>
+                <select
+                    className="h-[24px] rounded border border-white/10 bg-black/25 px-1.5 text-xs text-main outline-none focus:border-accent"
+                    value={type}
+                    onChange={(e) =>
+                        onChange({
+                            ...filterState,
+                            type: e.target.value as VcsFileTypeFilter,
+                        })
+                    }
+                >
+                    {VcsFileTypeFilterOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <div className="ml-auto shrink-0 text-[11px] text-muted">
+                {filtersActive ? `${visibleCount}/${totalCount} shown` : `${totalCount} files`}
+            </div>
+            {filtersActive && (
+                <button
+                    className="text-[11px] text-secondary hover:underline cursor-pointer"
+                    onClick={() => onChange(makeDefaultFileFilterState())}
+                >
+                    Reset
+                </button>
+            )}
+        </div>
+    );
+}
+
 function RepoPanel({
     repo,
     selectedFiles,
@@ -549,6 +631,8 @@ function RepoPanel({
     onShowFileDiff,
     sectionState,
     setSectionOpen,
+    fileFilterState,
+    setFileFilterState,
     onSyncAction,
     syncRunning,
 }: {
@@ -565,12 +649,17 @@ function RepoPanel({
     onShowFileDiff: (filePath: string) => void;
     sectionState: RepoSectionState;
     setSectionOpen: (section: RepoSectionKey, open: boolean) => void;
+    fileFilterState: RepoFileFilterState;
+    setFileFilterState: (next: RepoFileFilterState) => void;
     onSyncAction: (action: VcsSyncAction) => void;
     syncRunning: boolean;
 }) {
     const statusList = repo.status ?? [];
     const changedList = statusList.filter((status) => !status.untracked);
     const untrackedList = statusList.filter((status) => !!status.untracked);
+    const filteredStatusList = filterVcsFileStatuses(statusList, fileFilterState.search, fileFilterState.type ?? "all");
+    const filteredChangedList = filteredStatusList.filter((status) => !status.untracked);
+    const filteredUntrackedList = filteredStatusList.filter((status) => !!status.untracked);
     const selectedSet = new Set(selectedFiles ?? []);
     const toggleFile = (filePath: string) => {
         if (selectedSet.has(filePath)) {
@@ -605,9 +694,15 @@ function RepoPanel({
         <div className="mt-2 rounded-md p-2 bg-black/25">
             <OperationNotice notice={operationNotice} onDismiss={onDismissNotice} />
             {repo.statuserr && <div className="text-xs text-warning mb-2">Status warning: {repo.statuserr}</div>}
+            <RepoFileFilterBar
+                filterState={fileFilterState}
+                onChange={setFileFilterState}
+                totalCount={statusList.length}
+                visibleCount={filteredStatusList.length}
+            />
             <CollapsibleHeader
                 title="Changes"
-                count={changedList.length}
+                count={filteredChangedList.length}
                 isOpen={sectionState.changes}
                 onToggle={() => setSectionOpen("changes", !sectionState.changes)}
                 noBorder={true}
@@ -615,15 +710,15 @@ function RepoPanel({
                     <>
                         <button
                             className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
-                            onClick={() => selectAllFor(changedList)}
-                            disabled={changedList.length === 0}
+                            onClick={() => selectAllFor(filteredChangedList)}
+                            disabled={filteredChangedList.length === 0}
                         >
                             Select All
                         </button>
                         <button
                             className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
-                            onClick={() => clearAllFor(changedList)}
-                            disabled={changedList.length === 0}
+                            onClick={() => clearAllFor(filteredChangedList)}
+                            disabled={filteredChangedList.length === 0}
                         >
                             Select None
                         </button>
@@ -632,12 +727,14 @@ function RepoPanel({
             />
             {sectionState.changes && (
                 <>
-                    {changedList.length === 0 ? (
-                        <div className="text-xs text-muted mt-1">No changed files.</div>
+                    {filteredChangedList.length === 0 ? (
+                        <div className="text-xs text-muted mt-1">
+                            {changedList.length === 0 ? "No changed files." : "No changed files match the filters."}
+                        </div>
                     ) : (
                         <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
-                                {changedList.map((status, idx) => (
+                                {filteredChangedList.map((status, idx) => (
                                     <FileStatusRow
                                         key={`changed-${status.path}-${idx}`}
                                         status={status}
@@ -654,7 +751,7 @@ function RepoPanel({
             )}
             <CollapsibleHeader
                 title="Untracked"
-                count={untrackedList.length}
+                count={filteredUntrackedList.length}
                 isOpen={sectionState.untracked}
                 onToggle={() => setSectionOpen("untracked", !sectionState.untracked)}
                 noBorder={true}
@@ -662,15 +759,15 @@ function RepoPanel({
                     <>
                         <button
                             className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
-                            onClick={() => selectAllFor(untrackedList)}
-                            disabled={untrackedList.length === 0}
+                            onClick={() => selectAllFor(filteredUntrackedList)}
+                            disabled={filteredUntrackedList.length === 0}
                         >
                             Select All
                         </button>
                         <button
                             className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
-                            onClick={() => clearAllFor(untrackedList)}
-                            disabled={untrackedList.length === 0}
+                            onClick={() => clearAllFor(filteredUntrackedList)}
+                            disabled={filteredUntrackedList.length === 0}
                         >
                             Select None
                         </button>
@@ -679,12 +776,16 @@ function RepoPanel({
             />
             {sectionState.untracked && (
                 <>
-                    {untrackedList.length === 0 ? (
-                        <div className="text-xs text-muted mt-1">No untracked files.</div>
+                    {filteredUntrackedList.length === 0 ? (
+                        <div className="text-xs text-muted mt-1">
+                            {untrackedList.length === 0
+                                ? "No untracked files."
+                                : "No untracked files match the filters."}
+                        </div>
                     ) : (
                         <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
-                                {untrackedList.map((status, idx) => (
+                                {filteredUntrackedList.map((status, idx) => (
                                     <FileStatusRow
                                         key={`untracked-${status.path}-${idx}`}
                                         status={status}
@@ -751,64 +852,26 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const [syncRunningByRepo, setSyncRunningByRepo] = React.useState<RepoBoolMap>({});
     const [operationNoticeByRepo, setOperationNoticeByRepo] = React.useState<RepoNoticeMap>({});
     const [sectionStateByRepo, setSectionStateByRepo] = React.useState<RepoSectionsMap>({});
-    const noticeTimersRef = React.useRef<Record<string, number>>({});
+    const [fileFilterByRepo, setFileFilterByRepo] = React.useState<RepoFileFiltersMap>({});
 
-    const clearNoticeTimer = React.useCallback((repoId: string) => {
-        const timer = noticeTimersRef.current[repoId];
-        if (timer == null) {
-            return;
-        }
-        window.clearTimeout(timer);
-        delete noticeTimersRef.current[repoId];
+    const clearOperationNotice = React.useCallback((repoId: string) => {
+        setOperationNoticeByRepo((prev) => {
+            if (prev[repoId] == null) {
+                return prev;
+            }
+            const next = { ...prev };
+            delete next[repoId];
+            return next;
+        });
     }, []);
 
-    const clearOperationNotice = React.useCallback(
-        (repoId: string) => {
-            clearNoticeTimer(repoId);
-            setOperationNoticeByRepo((prev) => {
-                if (prev[repoId] == null) {
-                    return prev;
-                }
-                const next = { ...prev };
-                delete next[repoId];
-                return next;
-            });
-        },
-        [clearNoticeTimer]
-    );
-
-    const setOperationNotice = React.useCallback(
-        (repoId: string, message: string, isError: boolean) => {
-            clearNoticeTimer(repoId);
-            const notice: VcsOperationNotice = {
-                id: Date.now() + Math.random(),
-                message,
-                isError,
-            };
-            setOperationNoticeByRepo((prev) => ({ ...prev, [repoId]: notice }));
-            if (!isError) {
-                noticeTimersRef.current[repoId] = window.setTimeout(() => {
-                    setOperationNoticeByRepo((prev) => {
-                        if (prev[repoId]?.id !== notice.id) {
-                            return prev;
-                        }
-                        const next = { ...prev };
-                        delete next[repoId];
-                        return next;
-                    });
-                    delete noticeTimersRef.current[repoId];
-                }, 5000);
-            }
-        },
-        [clearNoticeTimer]
-    );
-
-    React.useEffect(() => {
-        return () => {
-            for (const timer of Object.values(noticeTimersRef.current)) {
-                window.clearTimeout(timer);
-            }
+    const setOperationNotice = React.useCallback((repoId: string, message: string, isError: boolean) => {
+        const notice: VcsOperationNotice = {
+            id: Date.now() + Math.random(),
+            message,
+            isError,
         };
+        setOperationNoticeByRepo((prev) => ({ ...prev, [repoId]: notice }));
     }, []);
 
     const route = React.useMemo(() => {
@@ -893,6 +956,15 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     }
                     return next;
                 });
+                setFileFilterByRepo((prev) => {
+                    const next = { ...prev };
+                    for (const repo of repoList) {
+                        if (next[repo.repoid] == null) {
+                            next[repo.repoid] = makeDefaultFileFilterState();
+                        }
+                    }
+                    return next;
+                });
             }
         } catch (e) {
             setRepos([]);
@@ -933,6 +1005,16 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 },
             };
         });
+    };
+
+    const setRepoFileFilterState = (repoId: string, nextFilterState: RepoFileFilterState) => {
+        setFileFilterByRepo((prev) => ({
+            ...prev,
+            [repoId]: {
+                search: nextFilterState.search ?? "",
+                type: nextFilterState.type ?? "all",
+            },
+        }));
     };
 
     const handleCommit = async (repo: VcsRepositoryInfo) => {
@@ -1177,6 +1259,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                         setSectionOpen={(section, open) =>
                                             setRepoSectionOpen(repo.repoid, section, open)
                                         }
+                                        fileFilterState={fileFilterByRepo[repo.repoid] ?? makeDefaultFileFilterState()}
+                                        setFileFilterState={(next) => setRepoFileFilterState(repo.repoid, next)}
                                         onSyncAction={(action) => {
                                             handleSync(repo, action).catch((e) => {
                                                 setError(String(e));

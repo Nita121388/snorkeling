@@ -100,6 +100,18 @@ const Link = ({
     );
 };
 
+function decodeHeadingFragment(fragment: string): string {
+    try {
+        return decodeURIComponent(fragment);
+    } catch {
+        return fragment;
+    }
+}
+
+function getHeadingIdFromHref(idPrefix: string, href: string): string {
+    return idPrefix + decodeHeadingFragment(href.slice(1));
+}
+
 const ScrollTargetTopOffset = 24;
 const ScrollTargetTolerancePx = 3;
 const ProgrammaticScrollIgnoreMs = 120;
@@ -457,7 +469,7 @@ const Markdown = ({
     const lastViewportScrollTopRef = useRef(0);
     const previousTransformedTextRef = useRef<string | null>(null);
     const [initialScrollReadyKey, setInitialScrollReadyKey] = useState<string | null>(null);
-    const [focusedHeading, setFocusedHeading] = useState<string>(null);
+    const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
     const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(() => new Set());
 
     // Ensure uniqueness of ids between MD preview instances.
@@ -554,7 +566,7 @@ const Markdown = ({
     };
 
     const focusHeading = (href: string) => {
-        const headingId = idPrefix + href.slice(1);
+        const headingId = getHeadingIdFromHref(idPrefix, href);
         setCollapsedHeadings((prev) => {
             if (!prev.has(headingId)) {
                 return prev;
@@ -563,13 +575,13 @@ const Markdown = ({
             next.delete(headingId);
             return next;
         });
-        setFocusedHeading(href);
+        setFocusedHeadingId(headingId);
     };
 
     useEffect(() => {
-        if (focusedHeading && contentsOsRef.current && contentsOsRef.current.osInstance()) {
+        if (focusedHeadingId && contentsOsRef.current && contentsOsRef.current.osInstance()) {
             const { viewport } = contentsOsRef.current.osInstance().elements();
-            const heading = document.getElementById(idPrefix + focusedHeading.slice(1));
+            const heading = document.getElementById(focusedHeadingId);
             if (heading) {
                 const headingBoundingRect = heading.getBoundingClientRect();
                 const viewportBoundingRect = viewport.getBoundingClientRect();
@@ -577,7 +589,7 @@ const Markdown = ({
                 viewport.scrollBy({ top: headingTop });
             }
         }
-    }, [focusedHeading]);
+    }, [focusedHeadingId]);
 
     const applyScrollTarget = (trigger: string) => {
         if (scrollTargetLine == null || !contentsOsRef.current?.osInstance()) {

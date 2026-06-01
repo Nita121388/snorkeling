@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
 import { getLiveScrollSourceLineAtom, getLiveScrollSourceStateAtom, type PreviewModel } from "./preview-model";
 
-const LivePreviewDebounceMs = 200;
+const LivePreviewDebounceMs = 2000;
 const LivePreviewSourceModelRetryMs = 100;
 const PreviewUserScrollSuppressMs = 350;
 
