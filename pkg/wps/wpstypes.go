@@ -19,6 +19,7 @@ const (
 	Event_ConnChange          = "connchange"           // type: wshrpc.ConnStatus
 	Event_SysInfo             = "sysinfo"              // type: wshrpc.TimeSeriesData
 	Event_ControllerStatus    = "controllerstatus"     // type: *blockcontroller.BlockControllerRuntimeStatus
+	Event_AgentStatus         = "agentstatus"          // type: *agentstatus.AgentStatus
 	Event_BuilderStatus       = "builderstatus"        // type: wshrpc.BuilderStatusData
 	Event_BuilderOutput       = "builderoutput"        // type: map[string]any
 	Event_WaveObjUpdate       = "waveobj:update"       // type: waveobj.WaveObjUpdate
@@ -41,6 +42,7 @@ var AllEvents []string = []string{
 	Event_ConnChange,
 	Event_SysInfo,
 	Event_ControllerStatus,
+	Event_AgentStatus,
 	Event_BuilderStatus,
 	Event_BuilderOutput,
 	Event_WaveObjUpdate,

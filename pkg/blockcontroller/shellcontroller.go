@@ -705,6 +705,7 @@ func (bc *ShellController) manageRunningShellProcess(
 				bc.ProcExitCode = exitCode
 				return true
 			})
+			releaseAgentStatus(bc.BlockId)
 			log.Printf("[shellproc] shell process wait loop done\n")
 		}()
 		waitErr := shellProc.Cmd.Wait()

@@ -150,6 +150,39 @@ declare global {
         env?: {[key: string]: string};
     };
 
+    // agentstatus.AgentStatus
+    type AgentStatus = {
+        blockId: string;
+        provider?: string;
+        sessionId?: string;
+        state: string;
+        phase: string;
+        source: string;
+        confidence: string;
+        reason?: string;
+        message?: string;
+        toolName?: string;
+        updatedAt: number;
+        activeSince?: number;
+        seq?: number;
+        expiresAt?: number;
+    };
+
+    // agentstatus.AgentStatusReport
+    type AgentStatusReport = {
+        blockId: string;
+        provider?: string;
+        sessionId?: string;
+        source?: string;
+        state: string;
+        phase?: string;
+        message?: string;
+        toolName?: string;
+        seq?: number;
+        ttlMs?: number;
+        reportedAt?: number;
+    };
+
     // wshrpc.AiMessageData
     type AiMessageData = {
         message?: string;
@@ -1436,6 +1469,7 @@ declare global {
         "shell:inputempty"?: boolean;
         "shell:lastcmd"?: string;
         "shell:lastcmdexitcode"?: number;
+        "shell:lastupdated"?: number;
         "builder:layout"?: {[key: string]: number};
         "builder:appid"?: string;
         "builder:env"?: {[key: string]: string};

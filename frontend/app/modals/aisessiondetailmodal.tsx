@@ -114,6 +114,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                         cmd,
                         "cmd:shell": false,
                         "cmd:runonstart": true,
+                        "cmd:jwt": true,
                         "agent:autoresume": true,
                         "agent:provider": session.source,
                         "agent:sessionid": session.id,

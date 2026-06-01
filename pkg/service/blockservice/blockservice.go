@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
+	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
@@ -33,6 +35,74 @@ func (bs *BlockService) SendCommand_Meta() tsgenmeta.MethodMeta {
 
 func (bs *BlockService) GetControllerStatus(ctx context.Context, blockId string) (*blockcontroller.BlockControllerRuntimeStatus, error) {
 	return blockcontroller.GetBlockControllerRuntimeStatus(blockId), nil
+}
+
+func (*BlockService) GetAgentStatus_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "get canonical agent status for a block",
+		ArgNames:   []string{"ctx", "blockId"},
+		ReturnDesc: "agent status",
+	}
+}
+
+func (bs *BlockService) GetAgentStatus(ctx context.Context, blockId string) (*agentstatus.AgentStatus, error) {
+	return agentstatus.Get(blockId), nil
+}
+
+func (*BlockService) ReportAgentStatus_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "report canonical agent status for a block",
+		ArgNames:   []string{"ctx", "report"},
+		ReturnDesc: "agent status",
+	}
+}
+
+func (bs *BlockService) ReportAgentStatus(ctx context.Context, report agentstatus.AgentStatusReport) (*agentstatus.AgentStatus, error) {
+	report, err := agentstatus.SanitizeReport(report, "")
+	if err != nil {
+		return nil, err
+	}
+	status, changed, err := agentstatus.Report(report, "")
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		publishAgentStatus(report.BlockId, status)
+	}
+	return status, nil
+}
+
+func (*BlockService) ReleaseAgentStatus_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "release canonical agent status source for a block",
+		ArgNames:   []string{"ctx", "blockId", "source", "seq"},
+		ReturnDesc: "agent status",
+	}
+}
+
+func (bs *BlockService) ReleaseAgentStatus(ctx context.Context, blockId string, source string, seq int64) (*agentstatus.AgentStatus, error) {
+	status, changed, err := agentstatus.Release(blockId, source, seq)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		publishAgentStatus(blockId, status)
+	}
+	return status, nil
+}
+
+func publishAgentStatus(blockId string, status *agentstatus.AgentStatus) {
+	if blockId == "" && status != nil {
+		blockId = status.BlockId
+	}
+	if blockId == "" {
+		return
+	}
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_AgentStatus,
+		Scopes: []string{waveobj.MakeORef(waveobj.OType_Block, blockId).String()},
+		Data:   status,
+	})
 }
 
 func (*BlockService) SaveTerminalState_Meta() tsgenmeta.MethodMeta {

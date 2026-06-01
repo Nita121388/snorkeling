@@ -1,6 +1,16 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    agentStatusPresentation,
+    aggregateAgentStatuses,
+    aggregateStatusLabel,
+    formatAgentProvider,
+    isInferredAgentStatus,
+    presentAgentStatus,
+} from "@/app/agent-status/agent-status-derive";
+import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
@@ -9,15 +19,19 @@ import { atoms, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
-import { AISessionsServiceType, ObjectService } from "@/app/store/services";
+import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { cn, makeIconClass } from "@/util/util";
+import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SessionOverviewModel } from "./session-overview-model";
 import "./session-overview.scss";
+
+const agentStatusLog = debug("wave:agentstatus");
 
 type OverviewBlock = {
     tabId: string;
@@ -27,6 +41,7 @@ type OverviewBlock = {
     view: string;
     title: string;
     isAgentLike: boolean;
+    agentProvider: string;
     sessionId: string;
 };
 
@@ -58,6 +73,31 @@ type TabGroup = {
     tabName: string;
     blocks: OverviewBlock[];
 };
+
+function commandPreview(command: string | null | undefined): string | null {
+    const normalized = command?.replace(/\s+/g, " ").trim() ?? "";
+    if (!normalized) return null;
+    if (normalized.length <= 80) return normalized;
+    return `${normalized.slice(0, 77)}...`;
+}
+
+function ageMs(timestamp: number, nowMs: number): number | null {
+    if (!timestamp) return null;
+    return Math.max(0, nowMs - timestamp);
+}
+
+function agentStatusDebugKey(status: AgentStatus): string {
+    return [
+        status.state,
+        status.phase,
+        status.source,
+        status.confidence,
+        status.reason ?? "",
+        status.message ?? "",
+        status.toolName ?? "",
+        status.updatedAt,
+    ].join("|");
+}
 
 function normalizeTimeMs(timestamp: number | null | undefined): number {
     if (!timestamp) return 0;
@@ -99,6 +139,23 @@ function isAgentMeta(meta: Record<string, unknown>, view: string): boolean {
     if (typeof meta["agent:provider"] === "string" && meta["agent:provider"].trim() !== "") return true;
     if (meta["agent:autoresume"] === true) return true;
     return resolveAgentSessionIdFromMeta(meta).trim() !== "";
+}
+
+function extractCommandBaseName(cmd: string): string {
+    const trimmed = cmd.trim();
+    if (trimmed.length === 0) return "";
+    const slashNormalized = trimmed.replace(/\\/g, "/");
+    const parts = slashNormalized.split("/");
+    const lastPart = parts[parts.length - 1] ?? "";
+    return lastPart.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "");
+}
+
+function agentProviderFromMeta(meta: Record<string, unknown>, view: string): string {
+    const provider = typeof meta["agent:provider"] === "string" ? meta["agent:provider"].trim() : "";
+    if (provider) return provider;
+    const cmdProvider = typeof meta.cmd === "string" ? extractCommandBaseName(meta.cmd) : "";
+    if (cmdProvider) return cmdProvider;
+    return view === "agent" ? "agent" : "";
 }
 
 function sessionMatchesSummary(sessionId: string, summary: SessionSummary): boolean {
@@ -165,6 +222,7 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
                             view,
                             title: blockTitle(block, view),
                             isAgentLike,
+                            agentProvider: agentProviderFromMeta(meta, view),
                             sessionId,
                         });
                     }
@@ -174,6 +232,127 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
         [workspace?.oid, tabIdsKey]
     );
     return jotai.useAtomValue(overviewAtom);
+}
+
+function useBlockControllerStatuses(blocks: OverviewBlock[]): Record<string, BlockControllerRuntimeStatus | null> {
+    const service = useMemo(() => new BlockServiceType(), []);
+    const blockIds = useMemo(
+        () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
+        [blocks]
+    );
+    const blockIdsKey = blockIds.join("\n");
+    const [statuses, setStatuses] = useState<Record<string, BlockControllerRuntimeStatus | null>>({});
+
+    useEffect(() => {
+        let cancelled = false;
+        setStatuses((current) => {
+            const next: Record<string, BlockControllerRuntimeStatus | null> = {};
+            for (const blockId of blockIds) {
+                next[blockId] = current[blockId] ?? null;
+            }
+            return next;
+        });
+
+        for (const blockId of blockIds) {
+            service
+                .GetControllerStatus(blockId)
+                .then((status) => {
+                    if (cancelled) return;
+                    setStatuses((current) => ({ ...current, [blockId]: status }));
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setStatuses((current) => ({ ...current, [blockId]: null }));
+                });
+        }
+
+        const unsubscribers = blockIds.map((blockId) =>
+            waveEventSubscribeSingle({
+                eventType: "controllerstatus",
+                scope: WOS.makeORef("block", blockId),
+                handler: (event) => {
+                    if (event.data == null) return;
+                    setStatuses((current) => ({ ...current, [blockId]: event.data as BlockControllerRuntimeStatus }));
+                },
+            })
+        );
+
+        return () => {
+            cancelled = true;
+            for (const unsubscribe of unsubscribers) {
+                unsubscribe();
+            }
+        };
+    }, [service, blockIdsKey]);
+
+    return statuses;
+}
+
+function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, AgentStatus | null> {
+    const service = useMemo(() => new BlockServiceType(), []);
+    const blockIds = useMemo(
+        () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
+        [blocks]
+    );
+    const blockIdsKey = blockIds.join("\n");
+    const [statuses, setStatuses] = useState<Record<string, AgentStatus | null>>({});
+
+    useEffect(() => {
+        let cancelled = false;
+        setStatuses((current) => {
+            const next: Record<string, AgentStatus | null> = {};
+            for (const blockId of blockIds) {
+                next[blockId] = current[blockId] ?? null;
+            }
+            return next;
+        });
+
+        if (blockIds.length === 0) {
+            setStatuses({});
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        for (const blockId of blockIds) {
+            service
+                .GetAgentStatus(blockId)
+                .then((status) => {
+                    if (cancelled) return;
+                    setStatuses((current) => ({ ...current, [blockId]: normalizeCanonicalAgentStatus(status) }));
+                })
+                .catch((error) => {
+                    if (cancelled) return;
+                    agentStatusLog("overview canonical status load error", {
+                        blockId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    setStatuses((current) => ({ ...current, [blockId]: null }));
+                });
+        }
+
+        const unsubscribers = blockIds.map((blockId) =>
+            waveEventSubscribeSingle({
+                eventType: "agentstatus",
+                scope: WOS.makeORef("block", blockId),
+                handler: (event) => {
+                    setStatuses((current) => ({
+                        ...current,
+                        [blockId]: normalizeCanonicalAgentStatus(event.data),
+                    }));
+                },
+            })
+        );
+
+        return () => {
+            cancelled = true;
+            for (const unsubscribe of unsubscribers) {
+                unsubscribe();
+            }
+        };
+    }, [service, blockIdsKey]);
+
+    return statuses;
 }
 
 function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<string, DetailState> {
@@ -442,6 +621,55 @@ function SessionOverviewBadgeIcon({ badge, className }: { badge: Badge | null; c
     );
 }
 
+function statusDurationText(status: AgentStatus, now: number): string {
+    if (status.state === "idle" || status.state === "unknown") return "";
+    const start = status.activeSince ?? status.updatedAt;
+    if (!start) return "";
+    return formatUnreadDuration(start, now);
+}
+
+function AgentStatusChip({ status, now }: { status: AgentStatus; now: number }) {
+    if (!shouldShowAgentStatusChip(status)) return null;
+    const presentation = agentStatusPresentation(status);
+    const duration = statusDurationText(status, now);
+    const inferred = isInferredAgentStatus(status);
+    return (
+        <span
+            className={cn(
+                "session-overview-agent-status",
+                `is-${status.state}`,
+                status.phase !== "none" && `phase-${status.phase}`,
+                inferred && "is-inferred"
+            )}
+            title={presentation.title}
+        >
+            <span className="session-overview-agent-status-dot" />
+            <i className={makeIconClass(presentation.icon, false)} />
+            <span className="session-overview-agent-status-label">{presentation.label}</span>
+            {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
+        </span>
+    );
+}
+
+function shouldShowAgentStatusChip(status: AgentStatus): boolean {
+    return status.state !== "idle" && status.state !== "unknown";
+}
+
+function shouldShowAgentAggregate(statuses: AgentStatus[]): boolean {
+    return statuses.some(shouldShowAgentStatusChip);
+}
+
+function AggregateStatusChip({ statuses }: { statuses: AgentStatus[] }) {
+    if (!shouldShowAgentAggregate(statuses)) return null;
+    const aggregate = aggregateAgentStatuses(statuses);
+    return (
+        <span className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`)}>
+            <span className="session-overview-agent-status-dot" />
+            <span className="session-overview-agent-aggregate-label">{aggregateStatusLabel(aggregate)}</span>
+        </span>
+    );
+}
+
 function useNow(open: boolean): number {
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
@@ -625,6 +853,7 @@ function BlockRow({
     viewedAt,
     currentBlockId,
     now,
+    agentStatus,
     onSelectBlock,
     onJumpBlock,
     onOpenSessionDetail,
@@ -638,6 +867,7 @@ function BlockRow({
     viewedAt: number;
     currentBlockId: string | null;
     now: number;
+    agentStatus: AgentStatus | null;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onOpenSessionDetail: (block: OverviewBlock) => void;
@@ -654,7 +884,12 @@ function BlockRow({
 
     return (
         <div
-            className={cn("session-overview-block-row", unread && "has-unread", isCurrent && "is-current")}
+            className={cn(
+                "session-overview-block-row",
+                !block.isAgentLike && "is-plain-block",
+                unread && "has-unread",
+                isCurrent && "is-current"
+            )}
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
@@ -665,7 +900,11 @@ function BlockRow({
                     <span className="session-overview-block-title">{block.title}</span>
                     <span className="session-overview-block-meta">
                         {block.isAgentLike ? "Agent" : blockViewToName(block.view)}
+                        {block.isAgentLike && block.agentProvider
+                            ? ` · ${formatAgentProvider(block.agentProvider)}`
+                            : ""}
                         {block.sessionId ? ` · ${block.sessionId.slice(0, 8)}` : ""}
+                        {agentStatus ? <AgentStatusChip status={agentStatus} now={now} /> : null}
                     </span>
                 </span>
                 <SessionOverviewBadgeIcon badge={badge} className="session-overview-block-badge" />
@@ -686,9 +925,7 @@ function BlockRow({
                             </div>
                         ) : null}
                     </>
-                ) : (
-                    <div className="session-overview-muted">Use the right button to jump to this block.</div>
-                )}
+                ) : null}
             </div>
             <div className="session-overview-block-actions">
                 {block.isAgentLike && block.sessionId ? (
@@ -779,6 +1016,7 @@ function TabGroupSection({
     viewedAt,
     currentBlockId,
     now,
+    agentStatuses,
     onSelectBlock,
     onJumpBlock,
     onOpenSessionDetail,
@@ -792,6 +1030,7 @@ function TabGroupSection({
     viewedAt: Record<string, number>;
     currentBlockId: string | null;
     now: number;
+    agentStatuses: Record<string, AgentStatus>;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onOpenSessionDetail: (block: OverviewBlock) => void;
@@ -800,6 +1039,9 @@ function TabGroupSection({
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
     const tabBadges = jotai.useAtomValue(getTabBadgeAtom(group.tabId));
+    const groupAgentStatuses = group.blocks
+        .map((block) => agentStatuses[block.blockId])
+        .filter((status): status is AgentStatus => status != null);
     return (
         <section key={group.tabId} className="session-overview-tab-group">
             <button
@@ -808,8 +1050,9 @@ function TabGroupSection({
                 onClick={() => setActiveTabAndCloseMenus(group.tabId)}
             >
                 <i className={makeIconClass("table-columns", false)} />
-                <span>{group.tabName}</span>
+                <span className="session-overview-tab-name">{group.tabName}</span>
                 <strong>{group.blocks.length}</strong>
+                <AggregateStatusChip statuses={groupAgentStatuses} />
                 <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
             </button>
             <div className="session-overview-block-list">
@@ -825,6 +1068,7 @@ function TabGroupSection({
                             viewedAt={viewedAt[block.blockId] ?? 0}
                             currentBlockId={currentBlockId}
                             now={now}
+                            agentStatus={agentStatuses[block.blockId] ?? null}
                             onSelectBlock={onSelectBlock}
                             onJumpBlock={onJumpBlock}
                             onOpenSessionDetail={onOpenSessionDetail}
@@ -867,10 +1111,89 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const blocks = useOverviewBlocks(workspace);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
     const details = useSessionDetails(blocks, refreshSeq);
+    const controllerStatuses = useBlockControllerStatuses(blocks);
+    const canonicalAgentStatuses = useCanonicalAgentStatuses(blocks);
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(true);
     const tabGroups = useTabGroups(workspace, blocks);
+    const agentStatuses = useMemo(() => {
+        const next: Record<string, AgentStatus> = {};
+        for (const block of blocks) {
+            if (!block.isAgentLike) continue;
+            const sessionUpdatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
+            next[block.blockId] = presentAgentStatus({
+                blockId: block.blockId,
+                provider: block.agentProvider,
+                sessionId: block.sessionId,
+                canonicalStatus: canonicalAgentStatuses[block.blockId],
+                controllerStatus: controllerStatuses[block.blockId],
+                sessionUpdatedAtMs,
+                viewedAtMs: viewedAt[block.blockId] ?? 0,
+                nowMs: now,
+            });
+        }
+        return next;
+    }, [blocks, canonicalAgentStatuses, controllerStatuses, details, viewedAt, now]);
+    const workspaceAgentStatuses = useMemo(() => Object.values(agentStatuses), [agentStatuses]);
+    const workspaceAgentAggregate = useMemo(
+        () => aggregateAgentStatuses(workspaceAgentStatuses),
+        [workspaceAgentStatuses]
+    );
+    const previousAgentStatusKeys = useRef<Record<string, string>>({});
+    useEffect(() => {
+        if (!agentStatusLog.enabled) {
+            return;
+        }
+        const nextKeys: Record<string, string> = {};
+        for (const block of blocks) {
+            const status = agentStatuses[block.blockId];
+            if (status == null) continue;
+            const key = agentStatusDebugKey(status);
+            nextKeys[block.blockId] = key;
+            if (previousAgentStatusKeys.current[block.blockId] === key) {
+                continue;
+            }
+            const sessionUpdatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
+            const controllerStatus = controllerStatuses[block.blockId];
+            const canonicalStatus = canonicalAgentStatuses[block.blockId];
+            agentStatusLog("overview presented status", {
+                blockId: block.blockId,
+                title: block.title,
+                provider: block.agentProvider || "agent",
+                sessionId: block.sessionId || null,
+                canonical:
+                    canonicalStatus == null
+                        ? null
+                        : {
+                              state: canonicalStatus.state,
+                              phase: canonicalStatus.phase,
+                              source: canonicalStatus.source,
+                              confidence: canonicalStatus.confidence,
+                              reason: canonicalStatus.reason ?? null,
+                              message: commandPreview(canonicalStatus.message),
+                              toolName: canonicalStatus.toolName ?? null,
+                              updatedAgeMs: ageMs(canonicalStatus.updatedAt, now),
+                              seq: canonicalStatus.seq ?? null,
+                          },
+                controllerStatus: controllerStatus?.shellprocstatus ?? null,
+                controllerVersion: controllerStatus?.version ?? null,
+                sessionUpdatedAgeMs: ageMs(sessionUpdatedAtMs, now),
+                viewedAgeMs: ageMs(viewedAt[block.blockId] ?? 0, now),
+                result: {
+                    state: status.state,
+                    phase: status.phase,
+                    source: status.source,
+                    confidence: status.confidence,
+                    reason: status.reason ?? null,
+                    message: commandPreview(status.message),
+                    toolName: status.toolName ?? null,
+                    updatedAgeMs: ageMs(status.updatedAt, now),
+                },
+            });
+        }
+        previousAgentStatusKeys.current = nextKeys;
+    }, [agentStatuses, blocks, canonicalAgentStatuses, controllerStatuses, details, viewedAt, now]);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
@@ -907,6 +1230,9 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
         return block.isAgentLike && updatedAtMs > 0 && updatedAtMs > (viewedAt[block.blockId] ?? 0);
     }).length;
+    const agentSummary = !shouldShowAgentAggregate(workspaceAgentStatuses)
+        ? ""
+        : ` · ${aggregateStatusLabel(workspaceAgentAggregate)}`;
 
     return (
         <>
@@ -915,7 +1241,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                     <div>
                         <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
-                            {blocks.length} blocks · {unreadCount} unread
+                            {blocks.length} blocks · {unreadCount} unread{agentSummary}
                         </div>
                     </div>
                     <div className="session-overview-header-actions">
@@ -944,6 +1270,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 viewedAt={viewedAt}
                                 currentBlockId={highlightedBlockId}
                                 now={now}
+                                agentStatuses={agentStatuses}
                                 onSelectBlock={(nextBlock) => setSelectedBlockId(nextBlock.blockId)}
                                 onJumpBlock={(nextBlock) => {
                                     setSelectedBlockId(nextBlock.blockId);

@@ -18,6 +18,7 @@ import { resolveAgentCommandBinding } from "./agent-session";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
+const agentStatusLog = debug("wave:agentstatus");
 
 const Osc52MaxDecodedSize = 75 * 1024; // max clipboard size for OSC 52 (matches common terminal implementations)
 const Osc52MaxRawLength = 128 * 1024; // includes selector + base64 + whitespace (rough check)
@@ -51,6 +52,13 @@ function normalizeCmd(decodedCmd: string): string {
     normalizedCmd = normalizedCmd.replace(/^env\s+/, "");
     normalizedCmd = normalizedCmd.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*/, "");
     return normalizedCmd;
+}
+
+function commandPreview(command: string | null | undefined): string | null {
+    const normalized = command?.replace(/\s+/g, " ").trim() ?? "";
+    if (!normalized) return null;
+    if (normalized.length <= 80) return normalized;
+    return `${normalized.slice(0, 77)}...`;
 }
 
 function checkCommandForTelemetry(decodedCmd: string) {
@@ -104,6 +112,7 @@ function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
     const meta: MetaType = {
         "agent:provider": binding.provider,
         "agent:autoresume": true,
+        "cmd:jwt": true,
     } as MetaType;
     const metaRecord = meta as Record<string, unknown>;
     if (binding.sessionId !== "") {
@@ -125,8 +134,11 @@ function handleShellIntegrationCommandStart(
     cmd: { command: "C"; data: { cmd64?: string } },
     rtInfo: ObjRTInfo // this is passed by reference and modified inside of this function
 ): void {
+    const now = Date.now();
     rtInfo["shell:state"] = "running-command";
+    rtInfo["shell:lastupdated"] = now;
     globalStore.set(termWrap.shellIntegrationStatusAtom, "running-command");
+    globalStore.set(termWrap.shellIntegrationUpdatedAtAtom, now);
     const connName = globalStore.get(getBlockMetaKeyAtom(blockId, "connection")) ?? "";
     const isRemote = isSshConnName(connName);
     const isWsl = isWslConnName(connName);
@@ -159,6 +171,13 @@ function handleShellIntegrationCommandStart(
         globalStore.set(termWrap.claudeCodeActiveAtom, false);
     }
     rtInfo["shell:lastcmdexitcode"] = null;
+    agentStatusLog("osc16162 command start", {
+        blockId,
+        state: rtInfo["shell:state"],
+        updatedAt: rtInfo["shell:lastupdated"],
+        command: commandPreview(rtInfo["shell:lastcmd"]),
+        claudeCodeActive: globalStore.get(termWrap.claudeCodeActiveAtom),
+    });
 }
 
 // for xterm OSC handlers, we return true always because we "own" the OSC number.
@@ -329,11 +348,19 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
 
     const cmd: Osc16162Command = { command: commandStr, data: parsedData } as Osc16162Command;
     const rtInfo: ObjRTInfo = {};
+    const now = Date.now();
     switch (cmd.command) {
         case "A": {
             rtInfo["shell:state"] = "ready";
+            rtInfo["shell:lastupdated"] = now;
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
+            globalStore.set(termWrap.shellIntegrationUpdatedAtAtom, now);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            agentStatusLog("osc16162 prompt ready", {
+                blockId,
+                state: rtInfo["shell:state"],
+                updatedAt: rtInfo["shell:lastupdated"],
+            });
             const marker = terminal.registerMarker(0);
             if (marker) {
                 termWrap.promptMarkers.push(marker);
@@ -371,12 +398,23 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "D":
+            rtInfo["shell:state"] = "ready";
+            rtInfo["shell:lastupdated"] = now;
+            globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
+            globalStore.set(termWrap.shellIntegrationUpdatedAtAtom, now);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
             } else {
                 rtInfo["shell:lastcmdexitcode"] = null;
             }
+            agentStatusLog("osc16162 command done", {
+                blockId,
+                state: rtInfo["shell:state"],
+                updatedAt: rtInfo["shell:lastupdated"],
+                exitCode: rtInfo["shell:lastcmdexitcode"],
+                lastCommand: commandPreview(globalStore.get(termWrap.lastCommandAtom)),
+            });
             break;
         case "I":
             if (cmd.data.inputempty != null) {
@@ -384,15 +422,34 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             }
             break;
         case "R":
+            rtInfo["shell:state"] = null;
+            rtInfo["shell:lastupdated"] = now;
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
+            globalStore.set(termWrap.shellIntegrationUpdatedAtAtom, now);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             if (terminal.buffer.active.type === "alternate") {
                 terminal.write("\x1b[?1049l");
             }
+            agentStatusLog("osc16162 reset", {
+                blockId,
+                state: rtInfo["shell:state"],
+                updatedAt: rtInfo["shell:lastupdated"],
+            });
             break;
     }
 
     if (Object.keys(rtInfo).length > 0) {
+        agentStatusLog("osc16162 rtinfo write", {
+            blockId,
+            command: cmd.command,
+            rtInfo: {
+                "shell:state": rtInfo["shell:state"],
+                "shell:integration": rtInfo["shell:integration"],
+                "shell:lastupdated": rtInfo["shell:lastupdated"],
+                "shell:lastcmd": commandPreview(rtInfo["shell:lastcmd"]),
+                "shell:lastcmdexitcode": rtInfo["shell:lastcmdexitcode"],
+            },
+        });
         setTimeout(() => {
             fireAndForget(async () => {
                 const rtInfoData: CommandSetRTInfoData = {

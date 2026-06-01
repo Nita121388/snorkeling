@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
@@ -66,6 +67,7 @@ type WshRpcInterface interface {
 	EventUnsubCommand(ctx context.Context, data string) error
 	EventUnsubAllCommand(ctx context.Context) error
 	EventReadHistoryCommand(ctx context.Context, data CommandEventReadHistoryData) ([]*wps.WaveEvent, error)
+	AgentStatusCommand(ctx context.Context, data agentstatus.AgentStatusReport) (*agentstatus.AgentStatus, error)
 
 	FileRestoreBackupCommand(ctx context.Context, data CommandFileRestoreBackupData) error
 	GetTempDirCommand(ctx context.Context, data CommandGetTempDirData) (string, error)

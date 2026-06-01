@@ -1,0 +1,527 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package agentstatus
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	HookTargetAll    = "all"
+	HookTargetCodex  = "codex"
+	HookTargetClaude = "claude"
+
+	hookInstallName     = "snorkeling-agent-status.sh"
+	hookInstallVersion  = 1
+	codexHomeEnvVar     = "CODEX_HOME"
+	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
+	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
+	versionMarker       = "SNORKELING_AGENT_STATUS_INTEGRATION_VERSION="
+)
+
+type HookInstallResult struct {
+	Provider     string
+	HookPath     string
+	ConfigPath   string
+	SettingsPath string
+	HooksPath    string
+}
+
+func InstallHooks(target string) ([]HookInstallResult, error) {
+	switch strings.TrimSpace(strings.ToLower(target)) {
+	case "", HookTargetAll:
+		codex, err := InstallCodexHooks()
+		if err != nil {
+			return nil, err
+		}
+		claude, err := InstallClaudeHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{codex, claude}, nil
+	case HookTargetCodex:
+		result, err := InstallCodexHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{result}, nil
+	case HookTargetClaude:
+		result, err := InstallClaudeHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{result}, nil
+	default:
+		return nil, fmt.Errorf("unsupported agentstatus hook target %q", target)
+	}
+}
+
+func InstallCodexHooks() (HookInstallResult, error) {
+	dir, err := configDirFromEnvOrHome(codexHomeEnvVar, ".codex")
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	if !isDir(dir) {
+		return HookInstallResult{}, fmt.Errorf("codex config directory not found at %s. install Codex first", dir)
+	}
+
+	hookPath := filepath.Join(dir, hookInstallName)
+	if err := writeHookScript(hookPath, HookTargetCodex); err != nil {
+		return HookInstallResult{}, err
+	}
+
+	hooksPath := filepath.Join(dir, "hooks.json")
+	hooksFile, err := readJSONObjectFile(hooksPath)
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	hooks, err := ensureHooksObject(hooksFile, hooksPath)
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	quotedHookPath := shellSingleQuote(hookPath)
+	for _, spec := range []struct {
+		event  string
+		action string
+	}{
+		{"SessionStart", StateIdle},
+		{"UserPromptSubmit", StateWorking},
+		{"PreToolUse", StateWorking},
+		{"PermissionRequest", StateBlocked},
+		{"Stop", StateIdle},
+	} {
+		if err := ensureCommandHook(hooks, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action), 10, ""); err != nil {
+			return HookInstallResult{}, err
+		}
+	}
+	if err := writeJSONFile(hooksPath, hooksFile); err != nil {
+		return HookInstallResult{}, err
+	}
+
+	configPath := filepath.Join(dir, "config.toml")
+	existingConfig, err := readOptionalFile(configPath)
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	newConfig := buildCodexConfigWithHooks(existingConfig)
+	if newConfig != existingConfig {
+		if err := os.WriteFile(configPath, []byte(newConfig), 0o644); err != nil {
+			return HookInstallResult{}, err
+		}
+	}
+
+	return HookInstallResult{
+		Provider:   HookTargetCodex,
+		HookPath:   hookPath,
+		HooksPath:  hooksPath,
+		ConfigPath: configPath,
+	}, nil
+}
+
+func InstallClaudeHooks() (HookInstallResult, error) {
+	dir, err := configDirFromEnvOrHome(claudeConfigEnvVar, ".claude")
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	if !isDir(dir) {
+		return HookInstallResult{}, fmt.Errorf("claude config directory not found at %s. install Claude Code first", dir)
+	}
+
+	hooksDir := filepath.Join(dir, "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		return HookInstallResult{}, err
+	}
+	hookPath := filepath.Join(hooksDir, hookInstallName)
+	if err := writeHookScript(hookPath, HookTargetClaude); err != nil {
+		return HookInstallResult{}, err
+	}
+
+	settingsPath := filepath.Join(dir, "settings.json")
+	settings, err := readJSONObjectFile(settingsPath)
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	hooks, err := ensureHooksObject(settings, settingsPath)
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	quotedHookPath := shellSingleQuote(hookPath)
+	for _, spec := range []struct {
+		event   string
+		action  string
+		matcher string
+	}{
+		{"SessionStart", StateIdle, "*"},
+		{"UserPromptSubmit", StateWorking, "*"},
+		{"PreToolUse", StateWorking, "*"},
+		{"PermissionRequest", StateBlocked, "*"},
+		{"Stop", StateIdle, "*"},
+		{"SessionEnd", StateRelease, "*"},
+	} {
+		if err := ensureCommandHook(hooks, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action), 10, spec.matcher); err != nil {
+			return HookInstallResult{}, err
+		}
+	}
+	if err := writeJSONFile(settingsPath, settings); err != nil {
+		return HookInstallResult{}, err
+	}
+
+	return HookInstallResult{
+		Provider:     HookTargetClaude,
+		HookPath:     hookPath,
+		SettingsPath: settingsPath,
+	}, nil
+}
+
+func writeHookScript(path string, provider string) error {
+	if err := os.WriteFile(path, []byte(agentStatusHookScript(provider)), 0o755); err != nil {
+		return err
+	}
+	return makeExecutable(path)
+}
+
+func agentStatusHookScript(provider string) string {
+	return fmt.Sprintf(`#!/bin/sh
+# installed by Snorkeling
+# managed by Snorkeling; reinstalling the integration overwrites this file.
+# %s%s
+# %s%d
+
+action="${1:-}"
+case "$action" in
+  working|idle|blocked|release|unknown) ;;
+  *) exit 0 ;;
+esac
+
+[ "${WAVETERM:-}" = "1" ] || exit 0
+[ -n "${WAVETERM_BLOCKID:-}" ] || exit 0
+[ -n "${WAVETERM_JWT:-}" ] || exit 0
+
+if [ -n "${WAVETERM_WSHBINDIR:-}" ] && [ -x "${WAVETERM_WSHBINDIR}/wsh" ]; then
+  wsh_bin="${WAVETERM_WSHBINDIR}/wsh"
+elif command -v wsh >/dev/null 2>&1; then
+  wsh_bin="$(command -v wsh)"
+else
+  exit 0
+fi
+
+hook_input_file="$(mktemp "${TMPDIR:-/tmp}/snorkeling-agent-status.XXXXXX")" || exit 0
+trap 'rm -f "$hook_input_file"' EXIT HUP INT TERM
+cat >"$hook_input_file" 2>/dev/null || true
+
+if command -v python3 >/dev/null 2>&1; then
+  SNORKELING_AGENT_ACTION="$action" \
+  SNORKELING_AGENT_PROVIDER="%s" \
+  SNORKELING_HOOK_INPUT_FILE="$hook_input_file" \
+  SNORKELING_WSH_BIN="$wsh_bin" \
+  python3 - <<'PY'
+import json
+import os
+import subprocess
+import time
+
+action = os.environ.get("SNORKELING_AGENT_ACTION", "")
+provider = os.environ.get("SNORKELING_AGENT_PROVIDER", "")
+wsh_bin = os.environ.get("SNORKELING_WSH_BIN", "wsh")
+hook_input_file = os.environ.get("SNORKELING_HOOK_INPUT_FILE", "")
+
+hook_input = {}
+if hook_input_file:
+    try:
+        with open(hook_input_file, encoding="utf-8") as handle:
+            content = handle.read()
+        if content.strip():
+            hook_input = json.loads(content)
+    except Exception:
+        hook_input = {}
+
+hook_event_name = str(hook_input.get("hook_event_name") or "")
+if provider == "claude" and hook_event_name == "SubagentStop":
+    raise SystemExit(0)
+if provider == "claude" and hook_input.get("agent_id") and action in ("idle", "release"):
+    raise SystemExit(0)
+
+tool_name = hook_input.get("tool_name")
+if not isinstance(tool_name, str):
+    tool_name = ""
+tool_name = tool_name.strip()
+
+session_id = hook_input.get("session_id")
+if not isinstance(session_id, str):
+    session_id = ""
+session_id = session_id.strip()
+
+phase = "unknown"
+if action in ("idle", "release"):
+    phase = "none"
+elif action == "blocked":
+    phase = "approval"
+elif action == "working":
+    phase = "tool" if tool_name or hook_event_name == "PreToolUse" else "thinking"
+
+cmd = [
+    wsh_bin,
+    "agentstatus",
+    action,
+    "--provider",
+    provider,
+    "--source",
+    "hook",
+    "--phase",
+    phase,
+    "--seq",
+    str(time.time_ns()),
+]
+if tool_name:
+    cmd.extend(["--tool", tool_name])
+if session_id:
+    cmd.extend(["--session-id", session_id])
+
+try:
+    subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+except Exception:
+    pass
+PY
+else
+  "$wsh_bin" agentstatus "$action" --provider "%s" --source hook >/dev/null 2>&1 || true
+fi
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider)
+}
+
+func configDirFromEnvOrHome(envName string, homeRelative string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+		return expandTilde(value)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, homeRelative), nil
+}
+
+func expandTilde(path string) (string, error) {
+	if path == "~" {
+		return os.UserHomeDir()
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
+	}
+	return path, nil
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func readOptionalFile(path string) (string, error) {
+	barr, err := os.ReadFile(path)
+	if err == nil {
+		return string(barr), nil
+	}
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	return "", err
+}
+
+func readJSONObjectFile(path string) (map[string]any, error) {
+	barr, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(strings.TrimSpace(string(barr))) == 0 {
+		return map[string]any{}, nil
+	}
+	var data map[string]any
+	if err := json.Unmarshal(barr, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", path, err)
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	return data, nil
+}
+
+func writeJSONFile(path string, data map[string]any) error {
+	barr, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	barr = append(barr, '\n')
+	return os.WriteFile(path, barr, 0o644)
+}
+
+func ensureHooksObject(data map[string]any, path string) (map[string]any, error) {
+	rawHooks, found := data["hooks"]
+	if !found {
+		hooks := map[string]any{}
+		data["hooks"] = hooks
+		return hooks, nil
+	}
+	hooks, ok := rawHooks.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("hooks in %s must be a JSON object", path)
+	}
+	return hooks, nil
+}
+
+func ensureCommandHook(hooks map[string]any, event string, command string, timeout int, matcher string) error {
+	entries, err := hookEntries(hooks[event], event)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		entryObj, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		hookList, ok := entryObj["hooks"].([]any)
+		if !ok {
+			continue
+		}
+		for _, hook := range hookList {
+			hookObj, ok := hook.(map[string]any)
+			if !ok {
+				continue
+			}
+			if hookObj["type"] == "command" && hookObj["command"] == command {
+				return nil
+			}
+		}
+	}
+
+	hook := map[string]any{
+		"type":    "command",
+		"command": command,
+		"timeout": float64(timeout),
+	}
+	entry := map[string]any{
+		"hooks": []any{hook},
+	}
+	if matcher != "" {
+		entry["matcher"] = matcher
+	}
+	hooks[event] = append(entries, entry)
+	return nil
+}
+
+func hookEntries(raw any, event string) ([]any, error) {
+	if raw == nil {
+		return []any{}, nil
+	}
+	entries, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("hook entries for %s must be a JSON array", event)
+	}
+	return entries, nil
+}
+
+func buildCodexConfigWithHooks(content string) string {
+	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	if content == "" {
+		lines = nil
+	}
+	trailingNewline := strings.HasSuffix(content, "\n")
+	inTopLevelFeatures := false
+	featuresHeaderIndex := -1
+	hooksIndex := -1
+	var deprecatedIndexes []int
+	for idx, line := range lines {
+		if header, ok := tomlTableHeader(line); ok {
+			inTopLevelFeatures = header == "[features]"
+			if inTopLevelFeatures && featuresHeaderIndex == -1 {
+				featuresHeaderIndex = idx
+			}
+			continue
+		}
+		if !inTopLevelFeatures {
+			continue
+		}
+		if isTOMLKey(line, "codex_hooks") {
+			deprecatedIndexes = append(deprecatedIndexes, idx)
+		} else if isTOMLKey(line, "hooks") {
+			hooksIndex = idx
+		}
+	}
+	if hooksIndex >= 0 {
+		lines[hooksIndex] = "hooks = true"
+	}
+	for idx := len(deprecatedIndexes) - 1; idx >= 0; idx-- {
+		removeIdx := deprecatedIndexes[idx]
+		lines = append(lines[:removeIdx], lines[removeIdx+1:]...)
+	}
+	if hooksIndex == -1 {
+		if featuresHeaderIndex >= 0 {
+			lines = append(lines[:featuresHeaderIndex+1], append([]string{"hooks = true"}, lines[featuresHeaderIndex+1:]...)...)
+			return joinConfigLines(lines, trailingNewline)
+		}
+		result := strings.TrimRight(content, "\n")
+		if result != "" {
+			result += "\n\n"
+		}
+		return result + "[features]\nhooks = true\n"
+	}
+	return joinConfigLines(lines, trailingNewline)
+}
+
+func joinConfigLines(lines []string, trailingNewline bool) string {
+	result := strings.Join(lines, "\n")
+	if trailingNewline || result == "" {
+		result += "\n"
+	}
+	return result
+}
+
+func tomlTableHeader(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "#") || !strings.HasPrefix(trimmed, "[") {
+		return "", false
+	}
+	if strings.HasPrefix(trimmed, "[[") {
+		end := strings.Index(trimmed, "]]")
+		if end < 0 {
+			return "", false
+		}
+		header := trimmed[:end+2]
+		return header, strings.TrimSpace(trimmed[end+2:]) == ""
+	}
+	end := strings.Index(trimmed, "]")
+	if end < 0 {
+		return "", false
+	}
+	header := trimmed[:end+1]
+	return header, strings.TrimSpace(trimmed[end+1:]) == ""
+}
+
+func isTOMLKey(line string, key string) bool {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "#") || !strings.HasPrefix(trimmed, key) {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(trimmed[len(key):]), "=")
+}
+
+func shellSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func makeExecutable(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	return os.Chmod(path, info.Mode()|0o755)
+}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
@@ -107,6 +108,7 @@ func registerController(blockId string, controller Controller) {
 
 	if existingController != nil {
 		existingController.Stop(false, Status_Done, true)
+		releaseAgentStatus(blockId)
 		wstore.DeleteRTInfo(waveobj.MakeORef(waveobj.OType_Block, blockId))
 	}
 }
@@ -143,7 +145,24 @@ func handleBlockCloseEvent(event *wps.WaveEvent) {
 		log.Printf("[blockclose] invalid event data type")
 		return
 	}
+	releaseAgentStatus(blockId)
 	go DestroyBlockController(blockId)
+}
+
+func releaseAgentStatus(blockId string) {
+	status, changed, err := agentstatus.ForceRelease(blockId, agentstatus.SourceHook)
+	if err != nil {
+		log.Printf("error releasing agent status for block %s: %v\n", blockId, err)
+		return
+	}
+	if !changed {
+		return
+	}
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_AgentStatus,
+		Scopes: []string{fmt.Sprintf("block:%s", blockId)},
+		Data:   status,
+	})
 }
 
 // Public API Functions
@@ -488,6 +507,12 @@ func makeSwapToken(ctx context.Context, logCtx context.Context, blockId string, 
 	}
 	for k, v := range envMap {
 		token.Env[k] = v
+	}
+	if provider := strings.TrimSpace(blockMeta.GetString(MetaKey_AgentProvider, "")); provider != "" {
+		token.Env["WAVETERM_AGENT_PROVIDER"] = provider
+	}
+	if sessionId := strings.TrimSpace(blockMeta.GetString(MetaKey_AgentSessionId, "")); sessionId != "" {
+		token.Env["WAVETERM_AGENT_SESSIONID"] = sessionId
 	}
 	token.ScriptText = getCustomInitScript(logCtx, blockMeta, remoteName, shellType)
 	return token

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
@@ -26,6 +28,7 @@ var WaveEventDataTypes = map[string]reflect.Type{
 	wps.Event_ConnChange:          reflect.TypeOf(wshrpc.ConnStatus{}),
 	wps.Event_SysInfo:             reflect.TypeOf(wshrpc.TimeSeriesData{}),
 	wps.Event_ControllerStatus:    reflect.TypeOf((*blockcontroller.BlockControllerRuntimeStatus)(nil)),
+	wps.Event_AgentStatus:         reflect.TypeOf((*agentstatus.AgentStatus)(nil)),
 	wps.Event_BuilderStatus:       reflect.TypeOf(wshrpc.BuilderStatusData{}),
 	wps.Event_BuilderOutput:       reflect.TypeOf(map[string]any{}),
 	wps.Event_WaveObjUpdate:       reflect.TypeOf(waveobj.WaveObjUpdate{}),
@@ -55,6 +58,9 @@ func getWaveEventDataTSType(eventName string, tsTypesMap map[reflect.Type]string
 	if tsType == "" {
 		return "any"
 	}
+	if strings.HasPrefix(tsType, "{[key: string]: ") && strings.HasSuffix(tsType, "}") {
+		tsType = "{ [key: string]: " + strings.TrimSuffix(strings.TrimPrefix(tsType, "{[key: string]: "), "}") + " }"
+	}
 	return tsType
 }
 
@@ -68,10 +74,14 @@ func GenerateWaveEventTypes(tsTypesMap map[reflect.Type]string) string {
 	var buf bytes.Buffer
 	buf.WriteString("// wps.WaveEvent\n")
 	buf.WriteString("type WaveEventName =\n")
-	for _, eventName := range wps.AllEvents {
-		buf.WriteString(fmt.Sprintf("    | %s\n", strconv.Quote(eventName)))
+	for idx, eventName := range wps.AllEvents {
+		suffix := "\n"
+		if idx == len(wps.AllEvents)-1 {
+			suffix = ";\n"
+		}
+		buf.WriteString(fmt.Sprintf("    | %s%s", strconv.Quote(eventName), suffix))
 	}
-	buf.WriteString(";\n\n")
+	buf.WriteString("\n")
 	buf.WriteString("type WaveEvent = {\n")
 	buf.WriteString("    event: WaveEventName;\n")
 	buf.WriteString("    scopes?: string[];\n")
@@ -79,12 +89,9 @@ func GenerateWaveEventTypes(tsTypesMap map[reflect.Type]string) string {
 	buf.WriteString("    persist?: number;\n")
 	buf.WriteString("    data?: unknown;\n")
 	buf.WriteString("} & (\n")
-	for idx, eventName := range wps.AllEvents {
-		if idx > 0 {
-			buf.WriteString(" | \n")
-		}
-		buf.WriteString(fmt.Sprintf("    { event: %s; data?: %s; }", strconv.Quote(eventName), getWaveEventDataTSType(eventName, tsTypesMap)))
+	for _, eventName := range wps.AllEvents {
+		buf.WriteString(fmt.Sprintf("    | { event: %s; data?: %s }\n", strconv.Quote(eventName), getWaveEventDataTSType(eventName, tsTypesMap)))
 	}
-	buf.WriteString("\n);\n")
+	buf.WriteString(");\n")
 	return buf.String()
 }

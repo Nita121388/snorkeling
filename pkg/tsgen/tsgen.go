@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/eventbus"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
@@ -55,6 +56,8 @@ var ExtraTypes = []any{
 	uctypes.RateLimitInfo{},
 	wconfig.AIModeConfigUpdate{},
 	wshrpc.BlockJobStatusData{},
+	agentstatus.AgentStatus{},
+	agentstatus.AgentStatusReport{},
 }
 
 // add extra type unions to generate here

@@ -1,6 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    agentStatusPresentation,
+    formatAgentProvider,
+    isInferredAgentStatus,
+} from "@/app/agent-status/agent-status-derive";
+import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
@@ -48,6 +55,17 @@ import { getBlockingCommand } from "./shellblocking";
 import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
+function normalizeAgentProvider(provider: unknown): string {
+    return typeof provider === "string" && provider.trim() !== "" ? provider.trim() : "agent";
+}
+
+function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
+    if (meta == null) return false;
+    if (typeof meta["agent:sessionid"] === "string" && meta["agent:sessionid"].trim() !== "") return true;
+    if (typeof meta["agent:provider"] === "string" && meta["agent:provider"].trim() !== "") return true;
+    return meta["agent:autoresume"] === true;
+}
+
 export class TermViewModel implements ViewModel {
     viewType: string;
     nodeModel: BlockNodeModel;
@@ -78,6 +96,8 @@ export class TermViewModel implements ViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
     shellProcStatus: jotai.Atom<string>;
     shellProcStatusUnsubFn: () => void;
+    agentStatusAtom: jotai.PrimitiveAtom<AgentStatus | null>;
+    agentStatusUnsubFn: () => void;
     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;
     blockJobStatusVersionTs: number;
     blockJobStatusUnsubFn: () => void;
@@ -176,6 +196,10 @@ export class TermViewModel implements ViewModel {
                         text: cmdCwd,
                         className: "text-muted",
                     });
+                }
+                const agentStatusElem = this.getAgentStatusHeaderElem(get, blockMeta);
+                if (agentStatusElem != null) {
+                    rtn.push(agentStatusElem);
                 }
                 const isRestarting = get(this.isRestarting);
                 if (isRestarting) {
@@ -359,6 +383,21 @@ export class TermViewModel implements ViewModel {
                 this.updateShellProcStatus(event.data);
             },
         });
+        this.agentStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<AgentStatus | null>;
+        services.BlockService.GetAgentStatus(blockId)
+            .then((status) => {
+                globalStore.set(this.agentStatusAtom, normalizeCanonicalAgentStatus(status));
+            })
+            .catch((error) => {
+                console.log("error getting initial agent status", error);
+            });
+        this.agentStatusUnsubFn = waveEventSubscribeSingle({
+            eventType: "agentstatus",
+            scope: WOS.makeORef("block", blockId),
+            handler: (event) => {
+                globalStore.set(this.agentStatusAtom, normalizeCanonicalAgentStatus(event.data));
+            },
+        });
         this.shellProcStatus = jotai.atom((get) => {
             const fullStatus = get(this.shellProcFullStatus);
             return fullStatus?.shellprocstatus ?? "init";
@@ -460,6 +499,32 @@ export class TermViewModel implements ViewModel {
             };
         }
         return null;
+    }
+
+    getAgentStatusHeaderElem(get: jotai.Getter, blockMeta: MetaType | null | undefined): HeaderElem | null {
+        if (!isAgentTerminalMeta(blockMeta)) {
+            return null;
+        }
+        const status = get(this.agentStatusAtom);
+        const provider = formatAgentProvider(status?.provider || normalizeAgentProvider(blockMeta?.["agent:provider"]));
+        if (status == null) {
+            return {
+                elemtype: "text",
+                text: `${provider} · No data`,
+                className: "agent-status-header is-unknown",
+                title: `${provider} agent status: no explicit agent report received yet.`,
+                noGrow: true,
+            };
+        }
+        const presentation = agentStatusPresentation(status);
+        const inferred = isInferredAgentStatus(status) ? " Lower-confidence status presentation." : "";
+        return {
+            elemtype: "text",
+            text: `${provider} · ${presentation.label}`,
+            className: `agent-status-header is-${status.state}${isInferredAgentStatus(status) ? " is-inferred" : ""}`,
+            title: `${provider} agent status: ${presentation.title}. Source: ${status.source}.${inferred}`,
+            noGrow: true,
+        };
     }
 
     getWebGlIconButton(get: jotai.Getter): IconButtonDecl | null {
@@ -605,6 +670,7 @@ export class TermViewModel implements ViewModel {
     dispose() {
         DefaultRouter.unregisterRoute(makeFeBlockRouteId(this.blockId));
         this.shellProcStatusUnsubFn?.();
+        this.agentStatusUnsubFn?.();
         this.blockJobStatusUnsubFn?.();
         this.termBPMUnsubFn?.();
         this.termCursorUnsubFn?.();

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/skratchdot/open-golang/open"
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/chatstore"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
@@ -67,6 +68,40 @@ type WshServer struct{}
 func (*WshServer) WshServerImpl() {}
 
 var WshServerImpl = WshServer{}
+
+func publishAgentStatus(blockId string, status *agentstatus.AgentStatus) {
+	if blockId == "" && status != nil {
+		blockId = status.BlockId
+	}
+	if blockId == "" {
+		return
+	}
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_AgentStatus,
+		Scopes: []string{waveobj.MakeORef(waveobj.OType_Block, blockId).String()},
+		Data:   status,
+	})
+}
+
+func (ws *WshServer) AgentStatusCommand(ctx context.Context, data agentstatus.AgentStatusReport) (*agentstatus.AgentStatus, error) {
+	handler := wshutil.GetRpcResponseHandlerFromContext(ctx)
+	fallbackBlockId := ""
+	if handler != nil {
+		fallbackBlockId = handler.GetRpcContext().BlockId
+	}
+	report, err := agentstatus.SanitizeReport(data, fallbackBlockId)
+	if err != nil {
+		return nil, err
+	}
+	status, changed, err := agentstatus.Report(report, "")
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		publishAgentStatus(report.BlockId, status)
+	}
+	return status, nil
+}
 
 func (ws *WshServer) GetJwtPublicKeyCommand(ctx context.Context) (string, error) {
 	return wavejwt.GetPublicKeyBase64(), nil

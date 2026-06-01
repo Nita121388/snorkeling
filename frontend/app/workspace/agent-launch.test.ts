@@ -276,6 +276,7 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.cmd).toBe("codex");
         expect(blockDef.meta?.["cmd:args"]).toBeUndefined();
         expect(blockDef.meta?.["cmd:env"]).toBeUndefined();
+        expect(blockDef.meta?.["cmd:jwt"]).toBe(true);
         const metaRecord = blockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:autoresume"]).toBe(true);
         expect(metaRecord["agent:provider"]).toBe("codex");
@@ -301,6 +302,7 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.cmd).toBe("claude");
         expect(blockDef.meta?.["cmd:args"]).toEqual(["--dangerously-skip-permissions", "--model", "sonnet-4"]);
         expect(blockDef.meta?.["cmd:env"]).toEqual({ ANTHROPIC_API_KEY: "$ENV:ANTHROPIC_API_KEY" });
+        expect(blockDef.meta?.["cmd:jwt"]).toBe(true);
         const metaRecord = blockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:provider"]).toBe("claude");
         expect(metaRecord["agent:autoresume"]).toBe(true);
@@ -342,6 +344,7 @@ describe("agent launch context", () => {
         const metaRecord = claudeBlockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:provider"]).toBe("claude");
         expect(metaRecord["agent:autoresume"]).toBe(true);
+        expect(metaRecord["cmd:jwt"]).toBe(true);
     });
 
     it("applies an explicit profile to a selected launch target", () => {
@@ -361,5 +364,6 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.["cmd:cwd"]).toBe("/Users/nita/project");
         const metaRecord = blockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:provider"]).toBe("claude");
+        expect(metaRecord["cmd:jwt"]).toBe(true);
     });
 });

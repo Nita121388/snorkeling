@@ -47,6 +47,7 @@ import {
 } from "./termutil";
 
 const dlog = debug("wave:termwrap");
+const agentStatusLog = debug("wave:agentstatus");
 
 const TermFileName = "term";
 const TermCacheFileName = "cache:term:full";
@@ -57,6 +58,13 @@ const MaxRepaintTransactionMs = 2000;
 function isNoControllerFoundError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? "");
     return /no controller found for block/i.test(message);
+}
+
+function commandPreview(command: string | null | undefined): string | null {
+    const normalized = command?.replace(/\s+/g, " ").trim() ?? "";
+    if (!normalized) return null;
+    if (normalized.length <= 80) return normalized;
+    return `${normalized.slice(0, 77)}...`;
 }
 
 // detect webgl support
@@ -106,6 +114,7 @@ export class TermWrap {
     lastUpdated: number;
     promptMarkers: TermTypes.IMarker[] = [];
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
+    shellIntegrationUpdatedAtAtom: jotai.PrimitiveAtom<number>;
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
     nodeModel: BlockNodeModel; // this can be null
@@ -147,6 +156,7 @@ export class TermWrap {
         this.lastUpdated = Date.now();
         this.promptMarkers = [];
         this.shellIntegrationStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
+        this.shellIntegrationUpdatedAtAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
         this.lastCommandAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
@@ -425,18 +435,33 @@ export class TermWrap {
             });
             let shellState: ShellIntegrationStatus = null;
 
-            if (rtInfo && rtInfo["shell:integration"]) {
+            if (rtInfo && (rtInfo["shell:integration"] || rtInfo["shell:state"] != null)) {
                 shellState = rtInfo["shell:state"] as ShellIntegrationStatus;
                 globalStore.set(this.shellIntegrationStatusAtom, shellState || null);
+                globalStore.set(this.shellIntegrationUpdatedAtAtom, rtInfo["shell:lastupdated"] ?? 0);
             } else {
                 globalStore.set(this.shellIntegrationStatusAtom, null);
+                globalStore.set(this.shellIntegrationUpdatedAtAtom, 0);
             }
 
             const lastCmd = rtInfo ? rtInfo["shell:lastcmd"] : null;
             const isCC = shellState === "running-command" && isClaudeCodeCommand(lastCmd);
             globalStore.set(this.lastCommandAtom, lastCmd || null);
             globalStore.set(this.claudeCodeActiveAtom, isCC);
+            agentStatusLog("termwrap initial rtinfo", {
+                blockId: this.blockId,
+                shellIntegration: rtInfo?.["shell:integration"] === true,
+                shellState,
+                shellLastUpdated: rtInfo?.["shell:lastupdated"] ?? null,
+                shellLastCommand: commandPreview(lastCmd),
+                shellLastCommandExitCode: rtInfo?.["shell:lastcmdexitcode"] ?? null,
+                claudeCodeActive: isCC,
+            });
         } catch (e) {
+            agentStatusLog("termwrap initial rtinfo error", {
+                blockId: this.blockId,
+                error: e instanceof Error ? e.message : String(e),
+            });
             console.log("Error loading runtime info:", e);
         }
 

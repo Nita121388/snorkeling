@@ -22,10 +22,10 @@ func TestGenerateWaveEventTypes(t *testing.T) {
 	if !strings.Contains(waveEventTypeDecl, `| "blockclose"`) {
 		t.Fatalf("expected WaveEventName declaration, got:\n%s", waveEventTypeDecl)
 	}
-	if !strings.Contains(waveEventTypeDecl, `{ event: "block:jobstatus"; data?: BlockJobStatusData; }`) {
+	if !strings.Contains(waveEventTypeDecl, `{ event: "block:jobstatus"; data?: BlockJobStatusData }`) {
 		t.Fatalf("expected typed block:jobstatus event, got:\n%s", waveEventTypeDecl)
 	}
-	if !strings.Contains(waveEventTypeDecl, `{ event: "route:up"; data?: null; }`) {
+	if !strings.Contains(waveEventTypeDecl, `{ event: "route:up"; data?: null }`) {
 		t.Fatalf("expected null for known no-data event, got:\n%s", waveEventTypeDecl)
 	}
 	if got := getWaveEventDataTSType("unmapped:event", tsTypesMap); got != "any" {

@@ -85,8 +85,26 @@ export class BlockServiceType {
     CleanupOrphanedBlocks(tabId: string): Promise<void> {
         return callBackendService(this?.waveEnv, "block", "CleanupOrphanedBlocks", Array.from(arguments))
     }
+
+    // get canonical agent status for a block
+    // @returns agent status
+    GetAgentStatus(blockId: string): Promise<AgentStatus> {
+        return callBackendService(this?.waveEnv, "block", "GetAgentStatus", Array.from(arguments))
+    }
     GetControllerStatus(arg2: string): Promise<BlockControllerRuntimeStatus> {
         return callBackendService(this?.waveEnv, "block", "GetControllerStatus", Array.from(arguments))
+    }
+
+    // release canonical agent status source for a block
+    // @returns agent status
+    ReleaseAgentStatus(blockId: string, source: string, seq: number): Promise<AgentStatus> {
+        return callBackendService(this?.waveEnv, "block", "ReleaseAgentStatus", Array.from(arguments))
+    }
+
+    // report canonical agent status for a block
+    // @returns agent status
+    ReportAgentStatus(report: AgentStatusReport): Promise<AgentStatus> {
+        return callBackendService(this?.waveEnv, "block", "ReportAgentStatus", Array.from(arguments))
     }
 
     // save the terminal state to a blockfile

@@ -32,12 +32,14 @@ func setFieldValue(fieldValue reflect.Value, value any) {
 		return
 	}
 
-	if fieldValue.Kind() == reflect.Int {
+	if fieldValue.Kind() >= reflect.Int && fieldValue.Kind() <= reflect.Int64 {
 		switch v := value.(type) {
 		case int:
 			fieldValue.SetInt(int64(v))
 		case int64:
 			fieldValue.SetInt(v)
+		case int32:
+			fieldValue.SetInt(int64(v))
 		case float64:
 			fieldValue.SetInt(int64(v))
 		}

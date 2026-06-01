@@ -539,6 +539,7 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
         cmd,
         "cmd:shell": false,
         "cmd:runonstart": true,
+        "cmd:jwt": true,
         ...contextMeta,
     };
     if (cmdArgs.length > 0) {
