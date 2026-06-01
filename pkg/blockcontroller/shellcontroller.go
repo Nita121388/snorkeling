@@ -877,7 +877,7 @@ func createCmdStrAndOpts(
 			cmdStr = cmdStr + " " + utilfn.ShellQuote(arg, false, -1)
 		}
 	}
-	cmdOpts.ForceJwt = blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false)
+	cmdOpts.ForceJwt = blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false) || agentRunInfo != nil
 	return cmdStr, &cmdOpts, agentRunInfo, nil
 }
 

@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openCommonTextSearch } from "@/app/commontext/commontext-events";
+import { addSelectionToCommonText, getCommonTextItems, openCommonTextManager } from "@/app/commontext/commontext-model";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { fireAndForget } from "@/util/util";
 import { useEffect, useRef, useState } from "react";
@@ -71,6 +73,22 @@ export function makeSelectionQuickActionMenu(
         options?.onHide?.();
     };
 
+    const handleAddCommonText = async (): Promise<void> => {
+        try {
+            await addSelectionToCommonText(text);
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : String(e));
+        }
+        options?.onHide?.();
+    };
+
+    const handleFindCommonText = (): void => {
+        openCommonTextSearch({ query: text.slice(0, 120), mode: "copy" });
+        options?.onHide?.();
+    };
+
+    const commonTextItems = getCommonTextItems();
+
     const menu: ContextMenuItem[] = [
         {
             label: "Copy",
@@ -82,6 +100,25 @@ export function makeSelectionQuickActionMenu(
             label: "Search In Files",
             click: () => {
                 fireAndForget(handleSearchInFiles);
+            },
+        },
+        { type: "separator" },
+        {
+            label: "Add Selection to Common Text",
+            click: () => {
+                fireAndForget(handleAddCommonText);
+            },
+        },
+        {
+            label: "Find Related Common Text",
+            enabled: commonTextItems.length > 0,
+            click: handleFindCommonText,
+        },
+        {
+            label: "Manage Common Text",
+            click: () => {
+                fireAndForget(openCommonTextManager);
+                options?.onHide?.();
             },
         },
     ];

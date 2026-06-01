@@ -68,6 +68,13 @@ type SessionActionState = {
     error: string;
 };
 
+type HookInstallState = {
+    loading: boolean;
+    installing: boolean;
+    status: HookStatus | null;
+    error: string;
+};
+
 type TabGroup = {
     tabId: string;
     tabName: string;
@@ -355,6 +362,61 @@ function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, Agen
     return statuses;
 }
 
+function normalizeAgentProviderName(provider: string): string {
+    return provider.trim().toLowerCase();
+}
+
+function useCodexHookInstallState(hasCodexAgent: boolean) {
+    const service = useMemo(() => new BlockServiceType(), []);
+    const [state, setState] = useState<HookInstallState>({
+        loading: false,
+        installing: false,
+        status: null,
+        error: "",
+    });
+    const refresh = React.useCallback(() => {
+        if (!hasCodexAgent) {
+            setState({ loading: false, installing: false, status: null, error: "" });
+            return;
+        }
+        setState((current) => ({ ...current, loading: true, error: "" }));
+        service
+            .CheckAgentStatusHooks("codex")
+            .then((result) => {
+                const status = result.statuses?.find((entry) => entry.provider === "codex") ?? null;
+                setState((current) => ({ ...current, loading: false, status, error: "" }));
+            })
+            .catch((error) => {
+                setState((current) => ({
+                    ...current,
+                    loading: false,
+                    status: null,
+                    error: error instanceof Error ? error.message : String(error),
+                }));
+            });
+    }, [hasCodexAgent, service]);
+    useEffect(() => {
+        refresh();
+    }, [refresh]);
+    const install = React.useCallback(() => {
+        setState((current) => ({ ...current, installing: true, error: "" }));
+        service
+            .InstallAgentStatusHooks("codex")
+            .then(() => {
+                setState((current) => ({ ...current, installing: false }));
+                refresh();
+            })
+            .catch((error) => {
+                setState((current) => ({
+                    ...current,
+                    installing: false,
+                    error: error instanceof Error ? error.message : String(error),
+                }));
+            });
+    }, [refresh, service]);
+    return { ...state, install };
+}
+
 function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<string, DetailState> {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const sessionIds = useMemo(
@@ -629,7 +691,6 @@ function statusDurationText(status: AgentStatus, now: number): string {
 }
 
 function AgentStatusChip({ status, now }: { status: AgentStatus; now: number }) {
-    if (!shouldShowAgentStatusChip(status)) return null;
     const presentation = agentStatusPresentation(status);
     const duration = statusDurationText(status, now);
     const inferred = isInferredAgentStatus(status);
@@ -643,7 +704,6 @@ function AgentStatusChip({ status, now }: { status: AgentStatus; now: number }) 
             )}
             title={presentation.title}
         >
-            <span className="session-overview-agent-status-dot" />
             <i className={makeIconClass(presentation.icon, false)} />
             <span className="session-overview-agent-status-label">{presentation.label}</span>
             {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
@@ -664,7 +724,6 @@ function AggregateStatusChip({ statuses }: { statuses: AgentStatus[] }) {
     const aggregate = aggregateAgentStatuses(statuses);
     return (
         <span className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`)}>
-            <span className="session-overview-agent-status-dot" />
             <span className="session-overview-agent-aggregate-label">{aggregateStatusLabel(aggregate)}</span>
         </span>
     );
@@ -1117,6 +1176,16 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(true);
     const tabGroups = useTabGroups(workspace, blocks);
+    const hasCodexAgent = useMemo(
+        () => blocks.some((block) => block.isAgentLike && normalizeAgentProviderName(block.agentProvider) === "codex"),
+        [blocks]
+    );
+    const codexHookInstall = useCodexHookInstallState(hasCodexAgent);
+    const showEnableAgentStatus =
+        hasCodexAgent &&
+        !codexHookInstall.loading &&
+        codexHookInstall.status?.supported === true &&
+        codexHookInstall.status?.needsInstall === true;
     const agentStatuses = useMemo(() => {
         const next: Record<string, AgentStatus> = {};
         for (const block of blocks) {
@@ -1242,9 +1311,33 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                         <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
                             {blocks.length} blocks · {unreadCount} unread{agentSummary}
+                            {codexHookInstall.error ? (
+                                <span className="session-overview-hook-error"> · {codexHookInstall.error}</span>
+                            ) : null}
                         </div>
                     </div>
                     <div className="session-overview-header-actions">
+                        {showEnableAgentStatus ? (
+                            <button
+                                type="button"
+                                className="session-overview-enable-agent-status"
+                                onClick={codexHookInstall.install}
+                                disabled={codexHookInstall.installing}
+                                title={
+                                    codexHookInstall.status?.reason
+                                        ? `Install Codex agent status hooks: ${codexHookInstall.status.reason}`
+                                        : "Install Codex agent status hooks"
+                                }
+                            >
+                                <i
+                                    className={makeIconClass(
+                                        codexHookInstall.installing ? "spinner" : "plug-circle-bolt",
+                                        false
+                                    )}
+                                />
+                                <span>{codexHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
+                            </button>
+                        ) : null}
                         <label className="session-overview-limit">
                             <span>Messages</span>
                             <input

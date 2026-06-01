@@ -994,6 +994,20 @@ declare global {
         data64: string;
     };
 
+    // wconfig.CommonTextItemType
+    type CommonTextItemType = {
+        id?: string;
+        title?: string;
+        text?: string;
+        shortcut?: string;
+        tags?: string[];
+        pinned?: boolean;
+        createdat?: number;
+        updatedat?: number;
+        lastusedat?: number;
+        usagecount?: number;
+    };
+
     // wconfig.ConfigError
     type ConfigError = {
         file: string;
@@ -1238,6 +1252,37 @@ declare global {
         configerrors: ConfigError[];
         version: string;
         buildtime: string;
+    };
+
+    // agentstatus.HookInstallResult
+    type HookInstallResult = {
+        Provider: string;
+        HookPath: string;
+        ConfigPath: string;
+        SettingsPath: string;
+        HooksPath: string;
+    };
+
+    // agentstatus.HookStatus
+    type HookStatus = {
+        provider: string;
+        supported: boolean;
+        installed: boolean;
+        current: boolean;
+        needsInstall: boolean;
+        hookPath?: string;
+        configPath?: string;
+        hooksPath?: string;
+        settingsPath?: string;
+        reason?: string;
+        installedVersion?: number;
+        requiredVersion?: number;
+        configHooksEnabled?: boolean;
+    };
+
+    // agentstatus.HookStatusResult
+    type HookStatusResult = {
+        statuses: HookStatus[];
     };
 
     // waveobj.Job
@@ -1715,6 +1760,7 @@ declare global {
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
         "feature:waveappbuilder"?: boolean;
+        "commontext:items"?: CommonTextItemType[];
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};

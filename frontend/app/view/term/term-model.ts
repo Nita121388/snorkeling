@@ -510,7 +510,7 @@ export class TermViewModel implements ViewModel {
         if (status == null) {
             return {
                 elemtype: "text",
-                text: `${provider} · No data`,
+                text: "No data",
                 className: "agent-status-header is-unknown",
                 title: `${provider} agent status: no explicit agent report received yet.`,
                 noGrow: true,
@@ -520,8 +520,8 @@ export class TermViewModel implements ViewModel {
         const inferred = isInferredAgentStatus(status) ? " Lower-confidence status presentation." : "";
         return {
             elemtype: "text",
-            text: `${provider} · ${presentation.label}`,
-            className: `agent-status-header is-${status.state}${isInferredAgentStatus(status) ? " is-inferred" : ""}`,
+            text: presentation.label,
+            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}`,
             title: `${provider} agent status: ${presentation.title}. Source: ${status.source}.${inferred}`,
             noGrow: true,
         };

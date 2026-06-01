@@ -31,6 +31,7 @@ import { useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
+import { CommonTextSearchModal } from "./commontext/commontext-search-modal";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
 import { makeSelectionSearchInFilesMenuItem } from "./element/selection-copy-overlay";
@@ -391,6 +392,7 @@ const AppInner = () => {
                 <Workspace />
             </DndProvider>
             <ClipboardFloatActions />
+            <CommonTextSearchModal />
         </div>
     );
 };

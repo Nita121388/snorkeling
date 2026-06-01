@@ -131,7 +131,7 @@ func TestCreateCmdStrAndOptsSetsCodexSessionLookupRoot(t *testing.T) {
 		MetaKey_AgentAutoResume: true,
 		MetaKey_AgentProvider:   AgentProviderCodex,
 	}
-	_, _, runInfo, err := createCmdStrAndOpts("block:test", meta, "", true, "/Users/tester")
+	_, cmdOpts, runInfo, err := createCmdStrAndOpts("block:test", meta, "", true, "/Users/tester")
 	if err != nil {
 		t.Fatalf("createCmdStrAndOpts returned error: %v", err)
 	}
@@ -140,6 +140,28 @@ func TestCreateCmdStrAndOptsSetsCodexSessionLookupRoot(t *testing.T) {
 	}
 	if runInfo.CodexSessionLookupRoot != filepath.Join(codexHome, "sessions") {
 		t.Fatalf("unexpected lookup root: %q", runInfo.CodexSessionLookupRoot)
+	}
+	if cmdOpts == nil || !cmdOpts.ForceJwt {
+		t.Fatalf("expected agent command opts to force Wave auth environment, got %#v", cmdOpts)
+	}
+}
+
+func TestCreateCmdStrAndOptsForcesJwtForExistingCodexAgentBlock(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "codex",
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderCodex,
+		MetaKey_AgentSessionId:  "persisted-session",
+	}
+	_, cmdOpts, runInfo, err := createCmdStrAndOpts("block:test", meta, "", true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("createCmdStrAndOpts returned error: %v", err)
+	}
+	if runInfo == nil || runInfo.SessionId != "persisted-session" {
+		t.Fatalf("expected persisted codex run info, got %#v", runInfo)
+	}
+	if cmdOpts == nil || !cmdOpts.ForceJwt {
+		t.Fatalf("expected existing agent block to force Wave auth environment, got %#v", cmdOpts)
 	}
 }
 

@@ -267,7 +267,7 @@ func (dsc *DurableShellController) startNewJob(ctx context.Context, blockMeta wa
 		Login:       true,
 		Cwd:         cwd,
 		SwapToken:   swapToken,
-		ForceJwt:    blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false),
+		ForceJwt:    blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false) || blockMeta.GetBool(MetaKey_AgentAutoResume, false),
 	}
 	jobId, err := shellexec.StartRemoteShellJob(ctx, ctx, termSize, cmdStr, cmdOpts, conn, dsc.BlockId)
 	if err != nil {

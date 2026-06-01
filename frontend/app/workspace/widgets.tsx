@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openCommonTextSearch } from "@/app/commontext/commontext-events";
 import { Tooltip } from "@/app/element/tooltip";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -425,6 +426,14 @@ const SettingsFloatingWindow = memo(
                         },
                     };
                     env.createBlock(blockDef, false, true);
+                    onClose();
+                },
+            },
+            {
+                icon: "quote-left",
+                label: "Common Text",
+                onClick: () => {
+                    openCommonTextSearch();
                     onClose();
                 },
             },

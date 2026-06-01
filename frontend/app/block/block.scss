@@ -146,6 +146,10 @@
                             border-color: rgb(from var(--accent-color) r g b / 0.38);
                             color: var(--accent-color);
                             background: rgb(from var(--accent-color) r g b / 0.1);
+
+                            > span {
+                                animation: agent-status-text-shimmer 1.8s ease-in-out infinite;
+                            }
                         }
 
                         &.is-done {
@@ -155,9 +159,10 @@
                         }
 
                         &.is-blocked {
-                            border-color: rgb(245 158 11 / 0.42);
+                            border-color: rgb(245 158 11 / 0.64);
                             color: var(--warning-color, #f59e0b);
                             background: rgb(245 158 11 / 0.12);
+                            animation: agent-status-blocked-border 1.6s ease-in-out infinite;
                         }
 
                         &.is-inferred {
@@ -785,4 +790,26 @@
 
 .minimized-block-delete-button:not(:disabled):hover {
     color: var(--error-color);
+}
+
+@keyframes agent-status-text-shimmer {
+    0%,
+    100% {
+        opacity: 0.72;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes agent-status-blocked-border {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgb(245 158 11 / 0);
+    }
+
+    50% {
+        box-shadow: 0 0 0 2px rgb(245 158 11 / 0.18);
+    }
 }

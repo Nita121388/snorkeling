@@ -21,6 +21,8 @@ const (
 
 	ConfigKey_FeatureWaveAppBuilder          = "feature:waveappbuilder"
 
+	ConfigKey_CommonTextItems                = "commontext:items"
+
 	ConfigKey_AgentClear                     = "agent:*"
 	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"
 	ConfigKey_AgentProfiles                  = "agent:profiles"

@@ -80,6 +80,12 @@ export class BlockServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // check agent status hook installation status
+    // @returns agent status hook installation status
+    CheckAgentStatusHooks(target: string): Promise<HookStatusResult> {
+        return callBackendService(this?.waveEnv, "block", "CheckAgentStatusHooks", Array.from(arguments))
+    }
+
     // queue a layout action to cleanup orphaned blocks in the tab
     // @returns object updates
     CleanupOrphanedBlocks(tabId: string): Promise<void> {
@@ -93,6 +99,12 @@ export class BlockServiceType {
     }
     GetControllerStatus(arg2: string): Promise<BlockControllerRuntimeStatus> {
         return callBackendService(this?.waveEnv, "block", "GetControllerStatus", Array.from(arguments))
+    }
+
+    // install agent status hooks after explicit user consent
+    // @returns agent status hook installation results
+    InstallAgentStatusHooks(target: string): Promise<HookInstallResult[]> {
+        return callBackendService(this?.waveEnv, "block", "InstallAgentStatusHooks", Array.from(arguments))
     }
 
     // release canonical agent status source for a block

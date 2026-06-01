@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -44,6 +45,48 @@ type CommandOptsType struct {
 	ShellOpts   []string                  `json:"shellOpts,omitempty"`
 	SwapToken   *shellutil.TokenSwapEntry `json:"swapToken,omitempty"`
 	ForceJwt    bool                      `json:"forcejwt,omitempty"`
+}
+
+var forcedWaveEnvKeys = []string{
+	wavebase.WaveJwtTokenVarName,
+	"WAVETERM_BLOCKID",
+	"WAVETERM_TABID",
+	"WAVETERM_WORKSPACEID",
+	"WAVETERM_CLIENTID",
+	"WAVETERM_CONN",
+	"WAVETERM_AGENT_PROVIDER",
+	"WAVETERM_AGENT_SESSIONID",
+}
+
+func forcedWaveEnv(cmdOpts CommandOptsType) map[string]string {
+	if !cmdOpts.ForceJwt || cmdOpts.SwapToken == nil {
+		return nil
+	}
+	env := make(map[string]string)
+	for _, key := range forcedWaveEnvKeys {
+		if value := cmdOpts.SwapToken.Env[key]; value != "" {
+			env[key] = value
+		}
+	}
+	return env
+}
+
+func shellEnvPrefix(env map[string]string) string {
+	if len(env) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		if shellutil.IsValidEnvVarName(key) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, shellutil.HardQuote(env[key])))
+	}
+	return strings.Join(parts, " ")
 }
 
 type ShellProc struct {
@@ -290,10 +333,9 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 		conn.Debugf(ctx, "packed swaptoken %s\n", packedToken)
 		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveSwapTokenVarName, packedToken, cmdCombined)
 	}
-	jwtToken := cmdOpts.SwapToken.Env[wavebase.WaveJwtTokenVarName]
-	if jwtToken != "" && cmdOpts.ForceJwt {
-		conn.Debugf(ctx, "adding JWT token to environment\n")
-		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveJwtTokenVarName, jwtToken, cmdCombined)
+	if envPrefix := shellEnvPrefix(forcedWaveEnv(cmdOpts)); envPrefix != "" {
+		conn.Debugf(ctx, "adding forced Wave environment\n")
+		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
 	log.Printf("full combined command: %s", cmdCombined)
 	ecmd := exec.Command("wsl.exe", "~", "-d", client.Name(), "--", "sh", "-c", cmdCombined)
@@ -481,10 +523,9 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveSwapTokenVarName, packedToken, cmdCombined)
 	}
-	jwtToken := cmdOpts.SwapToken.Env[wavebase.WaveJwtTokenVarName]
-	if jwtToken != "" && cmdOpts.ForceJwt {
-		conn.Debugf(logCtx, "adding JWT token to environment\n")
-		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveJwtTokenVarName, jwtToken, cmdCombined)
+	if envPrefix := shellEnvPrefix(forcedWaveEnv(cmdOpts)); envPrefix != "" {
+		conn.Debugf(logCtx, "adding forced Wave environment\n")
+		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
 	shellutil.AddTokenSwapEntry(cmdOpts.SwapToken)
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
@@ -583,11 +624,7 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 			conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 			env[wavebase.WaveSwapTokenVarName] = packedToken
 		}
-		jwtToken := cmdOpts.SwapToken.Env[wavebase.WaveJwtTokenVarName]
-		if jwtToken != "" && cmdOpts.ForceJwt {
-			conn.Debugf(logCtx, "adding JWT token to environment\n")
-			env[wavebase.WaveJwtTokenVarName] = jwtToken
-		}
+		maps.Copy(env, forcedWaveEnv(cmdOpts))
 		shellutil.AddTokenSwapEntry(cmdOpts.SwapToken)
 	}
 
@@ -665,11 +702,7 @@ func StartLocalShellProc(logCtx context.Context, termSize waveobj.TermSize, cmdS
 		blocklogger.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 		shellutil.UpdateCmdEnv(ecmd, map[string]string{wavebase.WaveSwapTokenVarName: packedToken})
 	}
-	jwtToken := cmdOpts.SwapToken.Env[wavebase.WaveJwtTokenVarName]
-	if jwtToken != "" && cmdOpts.ForceJwt {
-		blocklogger.Debugf(logCtx, "adding JWT token to environment\n")
-		shellutil.UpdateCmdEnv(ecmd, map[string]string{wavebase.WaveJwtTokenVarName: jwtToken})
-	}
+	shellutil.UpdateCmdEnv(ecmd, forcedWaveEnv(cmdOpts))
 
 	/*
 	  For Snap installations, we need to correct the XDG environment variables as Snap

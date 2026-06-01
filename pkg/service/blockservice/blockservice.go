@@ -49,6 +49,30 @@ func (bs *BlockService) GetAgentStatus(ctx context.Context, blockId string) (*ag
 	return agentstatus.Get(blockId), nil
 }
 
+func (*BlockService) CheckAgentStatusHooks_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "check agent status hook installation status",
+		ArgNames:   []string{"ctx", "target"},
+		ReturnDesc: "agent status hook installation status",
+	}
+}
+
+func (bs *BlockService) CheckAgentStatusHooks(ctx context.Context, target string) (*agentstatus.HookStatusResult, error) {
+	return agentstatus.CheckHooks(target)
+}
+
+func (*BlockService) InstallAgentStatusHooks_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "install agent status hooks after explicit user consent",
+		ArgNames:   []string{"ctx", "target"},
+		ReturnDesc: "agent status hook installation results",
+	}
+}
+
+func (bs *BlockService) InstallAgentStatusHooks(ctx context.Context, target string) ([]agentstatus.HookInstallResult, error) {
+	return agentstatus.InstallHooks(target)
+}
+
 func (*BlockService) ReportAgentStatus_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "report canonical agent status for a block",

@@ -36,6 +36,9 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	if !strings.Contains(string(script), "wsh_bin") || !strings.Contains(string(script), "--provider") {
 		t.Fatalf("hook script missing expected wsh call:\n%s", string(script))
 	}
+	if strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) {
+		t.Fatalf("hook script should not require legacy WAVETERM=1:\n%s", string(script))
+	}
 	info, err := os.Stat(result.HookPath)
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +65,39 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(config), "hooks = true") || strings.Contains(string(config), "codex_hooks") {
 		t.Fatalf("unexpected config:\n%s", string(config))
+	}
+
+	statusResult, err := CheckHooks(HookTargetCodex)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(statusResult.Statuses) != 1 || !statusResult.Statuses[0].Current || statusResult.Statuses[0].NeedsInstall {
+		t.Fatalf("expected installed codex hook to be current: %+v", statusResult)
+	}
+}
+
+func TestCheckCodexHooksDetectsLegacyScript(t *testing.T) {
+	tmpDir := t.TempDir()
+	codexDir := filepath.Join(tmpDir, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyScript := "# SNORKELING_AGENT_STATUS_INTEGRATION_ID=codex\n# SNORKELING_AGENT_STATUS_INTEGRATION_VERSION=1\n[ \"${WAVETERM:-}\" = \"1\" ] || exit 0\n"
+	if err := os.WriteFile(filepath.Join(codexDir, hookInstallName), []byte(legacyScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(codexHomeEnvVar, codexDir)
+
+	statusResult, err := CheckHooks(HookTargetCodex)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(statusResult.Statuses) != 1 {
+		t.Fatalf("expected one status: %+v", statusResult)
+	}
+	status := statusResult.Statuses[0]
+	if !status.Installed || status.Current || !status.NeedsInstall {
+		t.Fatalf("expected legacy hook to need install: %+v", status)
 	}
 }
 

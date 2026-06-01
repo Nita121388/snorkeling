@@ -32,6 +32,26 @@ type HookInstallResult struct {
 	HooksPath    string
 }
 
+type HookStatus struct {
+	Provider           string `json:"provider"`
+	Supported          bool   `json:"supported"`
+	Installed          bool   `json:"installed"`
+	Current            bool   `json:"current"`
+	NeedsInstall       bool   `json:"needsInstall"`
+	HookPath           string `json:"hookPath,omitempty"`
+	ConfigPath         string `json:"configPath,omitempty"`
+	HooksPath          string `json:"hooksPath,omitempty"`
+	SettingsPath       string `json:"settingsPath,omitempty"`
+	Reason             string `json:"reason,omitempty"`
+	InstalledVersion   int    `json:"installedVersion,omitempty"`
+	RequiredVersion    int    `json:"requiredVersion,omitempty"`
+	ConfigHooksEnabled bool   `json:"configHooksEnabled,omitempty"`
+}
+
+type HookStatusResult struct {
+	Statuses []HookStatus `json:"statuses"`
+}
+
 func InstallHooks(target string) ([]HookInstallResult, error) {
 	switch strings.TrimSpace(strings.ToLower(target)) {
 	case "", HookTargetAll:
@@ -56,6 +76,19 @@ func InstallHooks(target string) ([]HookInstallResult, error) {
 			return nil, err
 		}
 		return []HookInstallResult{result}, nil
+	default:
+		return nil, fmt.Errorf("unsupported agentstatus hook target %q", target)
+	}
+}
+
+func CheckHooks(target string) (*HookStatusResult, error) {
+	switch strings.TrimSpace(strings.ToLower(target)) {
+	case "", HookTargetAll:
+		return &HookStatusResult{Statuses: []HookStatus{checkCodexHooks(), checkClaudeHooks()}}, nil
+	case HookTargetCodex:
+		return &HookStatusResult{Statuses: []HookStatus{checkCodexHooks()}}, nil
+	case HookTargetClaude:
+		return &HookStatusResult{Statuses: []HookStatus{checkClaudeHooks()}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported agentstatus hook target %q", target)
 	}
@@ -123,6 +156,58 @@ func InstallCodexHooks() (HookInstallResult, error) {
 	}, nil
 }
 
+func checkCodexHooks() HookStatus {
+	status := HookStatus{
+		Provider:        HookTargetCodex,
+		RequiredVersion: hookInstallVersion,
+	}
+	dir, err := configDirFromEnvOrHome(codexHomeEnvVar, ".codex")
+	if err != nil {
+		status.Reason = err.Error()
+		status.NeedsInstall = true
+		return status
+	}
+	status.HookPath = filepath.Join(dir, hookInstallName)
+	status.HooksPath = filepath.Join(dir, "hooks.json")
+	status.ConfigPath = filepath.Join(dir, "config.toml")
+	if !isDir(dir) {
+		status.Reason = fmt.Sprintf("codex config directory not found at %s", dir)
+		status.NeedsInstall = true
+		return status
+	}
+	status.Supported = true
+	script, err := os.ReadFile(status.HookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			status.Reason = "hook script not installed"
+		} else {
+			status.Reason = err.Error()
+		}
+		status.NeedsInstall = true
+		return status
+	}
+	status.Installed = true
+	status.InstalledVersion = hookScriptVersion(string(script))
+	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetCodex) &&
+		status.InstalledVersion >= hookInstallVersion &&
+		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`)
+	hooksOk := codexHookCommandsInstalled(status.HooksPath, status.HookPath)
+	status.ConfigHooksEnabled = codexConfigHooksEnabled(status.ConfigPath)
+	status.Current = hookOk && hooksOk && status.ConfigHooksEnabled
+	status.NeedsInstall = !status.Current
+	if !status.Current {
+		switch {
+		case !hookOk:
+			status.Reason = "hook script is missing or outdated"
+		case !hooksOk:
+			status.Reason = "codex hook commands are missing"
+		case !status.ConfigHooksEnabled:
+			status.Reason = "codex hooks feature is disabled"
+		}
+	}
+	return status
+}
+
 func InstallClaudeHooks() (HookInstallResult, error) {
 	dir, err := configDirFromEnvOrHome(claudeConfigEnvVar, ".claude")
 	if err != nil {
@@ -178,6 +263,53 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 	}, nil
 }
 
+func checkClaudeHooks() HookStatus {
+	status := HookStatus{
+		Provider:        HookTargetClaude,
+		RequiredVersion: hookInstallVersion,
+	}
+	dir, err := configDirFromEnvOrHome(claudeConfigEnvVar, ".claude")
+	if err != nil {
+		status.Reason = err.Error()
+		status.NeedsInstall = true
+		return status
+	}
+	status.HookPath = filepath.Join(dir, "hooks", hookInstallName)
+	status.SettingsPath = filepath.Join(dir, "settings.json")
+	if !isDir(dir) {
+		status.Reason = fmt.Sprintf("claude config directory not found at %s", dir)
+		status.NeedsInstall = true
+		return status
+	}
+	status.Supported = true
+	script, err := os.ReadFile(status.HookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			status.Reason = "hook script not installed"
+		} else {
+			status.Reason = err.Error()
+		}
+		status.NeedsInstall = true
+		return status
+	}
+	status.Installed = true
+	status.InstalledVersion = hookScriptVersion(string(script))
+	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetClaude) &&
+		status.InstalledVersion >= hookInstallVersion &&
+		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`)
+	settingsOk := claudeHookCommandsInstalled(status.SettingsPath, status.HookPath)
+	status.Current = hookOk && settingsOk
+	status.NeedsInstall = !status.Current
+	if !status.Current {
+		if !hookOk {
+			status.Reason = "hook script is missing or outdated"
+		} else {
+			status.Reason = "claude hook commands are missing"
+		}
+	}
+	return status
+}
+
 func writeHookScript(path string, provider string) error {
 	if err := os.WriteFile(path, []byte(agentStatusHookScript(provider)), 0o755); err != nil {
 		return err
@@ -198,7 +330,6 @@ case "$action" in
   *) exit 0 ;;
 esac
 
-[ "${WAVETERM:-}" = "1" ] || exit 0
 [ -n "${WAVETERM_BLOCKID:-}" ] || exit 0
 [ -n "${WAVETERM_JWT:-}" ] || exit 0
 
@@ -427,6 +558,116 @@ func hookEntries(raw any, event string) ([]any, error) {
 		return nil, fmt.Errorf("hook entries for %s must be a JSON array", event)
 	}
 	return entries, nil
+}
+
+func hookScriptVersion(script string) int {
+	for _, line := range strings.Split(script, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, versionMarker) {
+			continue
+		}
+		var version int
+		if _, err := fmt.Sscanf(strings.TrimSpace(strings.TrimPrefix(line, versionMarker)), "%d", &version); err == nil {
+			return version
+		}
+	}
+	return 0
+}
+
+func commandHookInstalled(path string, event string, command string) bool {
+	file, err := readJSONObjectFile(path)
+	if err != nil {
+		return false
+	}
+	hooks, err := ensureHooksObject(file, path)
+	if err != nil {
+		return false
+	}
+	entries, err := hookEntries(hooks[event], event)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		entryObj, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		hookList, ok := entryObj["hooks"].([]any)
+		if !ok {
+			continue
+		}
+		for _, hook := range hookList {
+			hookObj, ok := hook.(map[string]any)
+			if !ok {
+				continue
+			}
+			if hookObj["type"] == "command" && hookObj["command"] == command {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
+	quotedHookPath := shellSingleQuote(hookPath)
+	for _, spec := range []struct {
+		event  string
+		action string
+	}{
+		{"SessionStart", StateIdle},
+		{"UserPromptSubmit", StateWorking},
+		{"PreToolUse", StateWorking},
+		{"PermissionRequest", StateBlocked},
+		{"Stop", StateIdle},
+	} {
+		if !commandHookInstalled(hooksPath, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action)) {
+			return false
+		}
+	}
+	return true
+}
+
+func claudeHookCommandsInstalled(settingsPath string, hookPath string) bool {
+	quotedHookPath := shellSingleQuote(hookPath)
+	for _, spec := range []struct {
+		event  string
+		action string
+	}{
+		{"SessionStart", StateIdle},
+		{"UserPromptSubmit", StateWorking},
+		{"PreToolUse", StateWorking},
+		{"PermissionRequest", StateBlocked},
+		{"Stop", StateIdle},
+		{"SessionEnd", StateRelease},
+	} {
+		if !commandHookInstalled(settingsPath, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action)) {
+			return false
+		}
+	}
+	return true
+}
+
+func codexConfigHooksEnabled(path string) bool {
+	content, err := readOptionalFile(path)
+	if err != nil {
+		return false
+	}
+	inTopLevelFeatures := false
+	for _, line := range strings.Split(content, "\n") {
+		if header, ok := tomlTableHeader(line); ok {
+			inTopLevelFeatures = header == "[features]"
+			continue
+		}
+		if !inTopLevelFeatures || !isTOMLKey(line, "hooks") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "hooks"))
+		value = strings.TrimSpace(strings.TrimPrefix(value, "="))
+		return strings.EqualFold(value, "true")
+	}
+	return false
 }
 
 func buildCodexConfigWithHooks(content string) string {

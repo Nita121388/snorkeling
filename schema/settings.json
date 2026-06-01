@@ -30,6 +30,45 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "CommonTextItemType": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "shortcut": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "createdat": {
+          "type": "number"
+        },
+        "updatedat": {
+          "type": "number"
+        },
+        "lastusedat": {
+          "type": "number"
+        },
+        "usagecount": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "SettingsType": {
       "properties": {
         "app:*": {
@@ -79,6 +118,12 @@
         },
         "feature:waveappbuilder": {
           "type": "boolean"
+        },
+        "commontext:items": {
+          "items": {
+            "$ref": "#/$defs/CommonTextItemType"
+          },
+          "type": "array"
         },
         "agent:*": {
           "type": "boolean"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
+import { CommonTextManagerContent } from "@/app/commontext/commontext-manager";
 import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
@@ -64,6 +65,13 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             language: "json",
             docsUrl: "https://docs.waveterm.dev/config",
             hasJsonView: true,
+        },
+        {
+            name: "Common Text",
+            path: "commontext",
+            description: "Reusable snippets",
+            hasJsonView: false,
+            visualComponent: CommonTextManagerContent,
         },
         {
             name: "Connections",
@@ -297,6 +305,18 @@ export class WaveConfigViewModel implements ViewModel {
             globalStore.set(this.isLoadingAtom, false);
             this.checkStorageBackend();
             this.refreshSecrets();
+            return;
+        }
+
+        if (!file.hasJsonView) {
+            globalStore.set(this.selectedFileAtom, file);
+            this.env.rpc.SetMetaCommand(TabRpcClient, {
+                oref: makeORef("block", this.blockId),
+                meta: { file: file.path },
+            });
+            globalStore.set(this.fileContentAtom, "");
+            globalStore.set(this.originalContentAtom, "");
+            globalStore.set(this.isLoadingAtom, false);
             return;
         }
 
