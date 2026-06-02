@@ -197,6 +197,23 @@ func GetDomainSocketName() string {
 	return filepath.Join(GetWaveDataDir(), DomainSocketBaseName)
 }
 
+var mainRpcSocketName string
+
+func SetMainRpcSocketName(sockName string) {
+	baseLock.Lock()
+	defer baseLock.Unlock()
+	mainRpcSocketName = strings.TrimSpace(sockName)
+}
+
+func GetMainRpcSocketName() string {
+	baseLock.Lock()
+	defer baseLock.Unlock()
+	if mainRpcSocketName != "" {
+		return mainRpcSocketName
+	}
+	return GetDomainSocketName()
+}
+
 // returns a Unix-style path for the remote socket (using fmt.Sprintf instead of filepath.Join
 // because this path is for a remote Unix system, not the local OS which might be Windows)
 func GetPersistentRemoteSockName(clientId string) string {

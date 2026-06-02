@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -438,6 +439,13 @@ func MakeUnixListener() (net.Listener, error) {
 	os.Chmod(serverAddr, 0700)
 	log.Printf("Server [unix-domain] listening on %s\n", serverAddr)
 	return rtn, nil
+}
+
+func MakeWshRpcListener() (net.Listener, error) {
+	if runtime.GOOS == "windows" {
+		return MakeTCPListener("wsh-rpc")
+	}
+	return MakeUnixListener()
 }
 
 const schemaPrefix = "/schema/"

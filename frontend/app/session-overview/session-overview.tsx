@@ -203,6 +203,10 @@ function sessionStatKey(stat: SessionFileStat | AISessionsStatResponse | null | 
     return `${stat.missing === true ? 1 : 0}:${stat.mtime ?? 0}:${stat.size ?? 0}`;
 }
 
+function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
+    return block.isAgentLike || block.view === "term";
+}
+
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
@@ -366,6 +370,10 @@ function normalizeAgentProviderName(provider: string): string {
     return provider.trim().toLowerCase();
 }
 
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 function useCodexHookInstallState(hasCodexAgent: boolean) {
     const service = useMemo(() => new BlockServiceType(), []);
     const [state, setState] = useState<HookInstallState>({
@@ -402,16 +410,34 @@ function useCodexHookInstallState(hasCodexAgent: boolean) {
         setState((current) => ({ ...current, installing: true, error: "" }));
         service
             .InstallAgentStatusHooks("codex")
-            .then(() => {
+            .then((results) => {
                 setState((current) => ({ ...current, installing: false }));
+                const codexResult = results.find((entry) => normalizeAgentProviderName(entry.Provider) === "codex");
+                modalsModel.pushModal("MessageModal", {
+                    children: (
+                        <div>
+                            <div>Agent status enabled.</div>
+                            {codexResult?.HooksPath ? <div>Updated hooks: {codexResult.HooksPath}</div> : null}
+                        </div>
+                    ),
+                });
                 refresh();
             })
             .catch((error) => {
+                const errorMessage = getErrorMessage(error);
                 setState((current) => ({
                     ...current,
                     installing: false,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: errorMessage,
                 }));
+                modalsModel.pushModal("MessageModal", {
+                    children: (
+                        <div>
+                            <div>Failed to enable Agent Status.</div>
+                            <div>{errorMessage}</div>
+                        </div>
+                    ),
+                });
             });
     }, [refresh, service]);
     return { ...state, install };
@@ -905,6 +931,102 @@ function MessageSquares({
     );
 }
 
+function CompactBlockIcon({
+    block,
+    currentBlockId,
+    onSelectBlock,
+    onJumpBlock,
+    onDeleteSession,
+    onDeleteBlock,
+}: {
+    block: OverviewBlock;
+    currentBlockId: string | null;
+    onSelectBlock: (block: OverviewBlock) => void;
+    onJumpBlock: (block: OverviewBlock) => void;
+    onDeleteSession: (block: OverviewBlock) => void;
+    onDeleteBlock: (block: OverviewBlock) => void;
+}) {
+    const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
+    const isCurrent = block.blockId === currentBlockId;
+    const viewName = blockViewToName(block.view);
+    const iconClass = makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" });
+
+    return (
+        <div className={cn("session-overview-compact-block", isCurrent && "is-current")}>
+            <button
+                type="button"
+                className="session-overview-compact-button"
+                onClick={() => onSelectBlock(block)}
+                aria-label={`${viewName}: ${block.title}`}
+                title={`${viewName}: ${block.title}`}
+            >
+                <i className={iconClass} />
+                <SessionOverviewBadgeIcon badge={badge} className="session-overview-compact-badge" />
+            </button>
+            <div className="session-overview-compact-popover" role="group" aria-label={`${block.title} actions`}>
+                <div className="session-overview-compact-popover-head">
+                    <span className="session-overview-compact-popover-icon">
+                        <i className={iconClass} />
+                    </span>
+                    <span className="session-overview-compact-popover-text">
+                        <span className="session-overview-compact-title">{block.title}</span>
+                        <span className="session-overview-compact-meta">{viewName}</span>
+                    </span>
+                    <SessionOverviewBadgeIcon badge={badge} className="session-overview-compact-popover-badge" />
+                </div>
+                <div className="session-overview-compact-actions">
+                    <Tooltip
+                        content="Jump to block"
+                        placement="top"
+                        hideOnClick
+                        divClassName="session-overview-block-jump-wrap"
+                    >
+                        <button
+                            type="button"
+                            className="session-overview-block-action-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onJumpBlock(block);
+                            }}
+                            aria-label={`Jump to ${block.title}`}
+                        >
+                            <i className={makeIconClass("location-crosshairs", false)} />
+                        </button>
+                    </Tooltip>
+                    {block.sessionId ? (
+                        <Tooltip content="Delete session file" placement="top" hideOnClick divClassName="inline-flex">
+                            <button
+                                type="button"
+                                className="session-overview-block-action-button danger"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onDeleteSession(block);
+                                }}
+                                aria-label={`Delete session file for ${block.title}`}
+                            >
+                                <i className={makeIconClass("trash", false)} />
+                            </button>
+                        </Tooltip>
+                    ) : null}
+                    <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-action-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteBlock(block);
+                            }}
+                            aria-label={`Delete block ${block.title}`}
+                        >
+                            <i className={makeIconClass("xmark", false)} />
+                        </button>
+                    </Tooltip>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function BlockRow({
     block,
     detailState,
@@ -1118,24 +1240,36 @@ function TabGroupSection({
                 {group.blocks.length === 0 ? (
                     <div className="session-overview-muted">No blocks</div>
                 ) : (
-                    group.blocks.map((block) => (
-                        <BlockRow
-                            key={block.blockId}
-                            block={block}
-                            detailState={details[block.sessionId]}
-                            displayLimit={displayLimit}
-                            viewedAt={viewedAt[block.blockId] ?? 0}
-                            currentBlockId={currentBlockId}
-                            now={now}
-                            agentStatus={agentStatuses[block.blockId] ?? null}
-                            onSelectBlock={onSelectBlock}
-                            onJumpBlock={onJumpBlock}
-                            onOpenSessionDetail={onOpenSessionDetail}
-                            onDeleteSession={onDeleteSession}
-                            onDeleteBlock={onDeleteBlock}
-                            onOpenMessage={onOpenMessage}
-                        />
-                    ))
+                    group.blocks.map((block) =>
+                        shouldShowFullOverviewBlock(block) ? (
+                            <BlockRow
+                                key={block.blockId}
+                                block={block}
+                                detailState={details[block.sessionId]}
+                                displayLimit={displayLimit}
+                                viewedAt={viewedAt[block.blockId] ?? 0}
+                                currentBlockId={currentBlockId}
+                                now={now}
+                                agentStatus={agentStatuses[block.blockId] ?? null}
+                                onSelectBlock={onSelectBlock}
+                                onJumpBlock={onJumpBlock}
+                                onOpenSessionDetail={onOpenSessionDetail}
+                                onDeleteSession={onDeleteSession}
+                                onDeleteBlock={onDeleteBlock}
+                                onOpenMessage={onOpenMessage}
+                            />
+                        ) : (
+                            <CompactBlockIcon
+                                key={block.blockId}
+                                block={block}
+                                currentBlockId={currentBlockId}
+                                onSelectBlock={onSelectBlock}
+                                onJumpBlock={onJumpBlock}
+                                onDeleteSession={onDeleteSession}
+                                onDeleteBlock={onDeleteBlock}
+                            />
+                        )
+                    )
                 )}
             </div>
         </section>

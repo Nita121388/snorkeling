@@ -387,7 +387,7 @@ func createMainWshClient() {
 	wshutil.DefaultRouter.RegisterTrustedLeaf(rpc, wshutil.DefaultRoute)
 	wps.Broker.SetClient(wshutil.DefaultRouter)
 	localInitialEnv := envutil.PruneInitialEnv(envutil.SliceToMap(os.Environ()))
-	sockName := wavebase.GetDomainSocketName()
+	sockName := wavebase.GetMainRpcSocketName()
 	remoteImpl := wshremote.MakeRemoteRpcServerImpl(nil, wshutil.DefaultRouter, wshclient.GetBareRpcClient(), true, localInitialEnv, sockName)
 	localConnWsh := wshutil.MakeWshRpc(wshrpc.RpcContext{Conn: wshrpc.LocalConnName}, remoteImpl, "conn:local")
 	go wshremote.RunSysInfoLoop(localConnWsh, wshrpc.LocalConnName)
@@ -558,6 +558,12 @@ func main() {
 	if err != nil {
 		log.Printf("error fixing up wave zsh history: %v\n", err)
 	}
+	wshListener, err := web.MakeWshRpcListener()
+	if err != nil {
+		log.Printf("error creating wsh rpc listener: %v\n", err)
+		return
+	}
+	wavebase.SetMainRpcSocketName(wshListener.Addr().String())
 	createMainWshClient()
 	sigutil.InstallShutdownSignalHandlers(doShutdown)
 	sigutil.InstallSIGUSR1Handler()
@@ -598,11 +604,6 @@ func main() {
 		return
 	}
 	go web.RunWebSocketServer(wsListener)
-	unixListener, err := web.MakeUnixListener()
-	if err != nil {
-		log.Printf("error creating unix listener: %v\n", err)
-		return
-	}
 	go func() {
 		if BuildTime == "" {
 			BuildTime = "0"
@@ -610,7 +611,7 @@ func main() {
 		// use fmt instead of log here to make sure it goes directly to stderr
 		fmt.Fprintf(os.Stderr, "WAVESRV-ESTART ws:%s web:%s version:%s buildtime:%s\n", wsListener.Addr(), webListener.Addr(), WaveVersion, BuildTime)
 	}()
-	go wshutil.RunWshRpcOverListener(unixListener, nil)
+	go wshutil.RunWshRpcOverListener(wshListener, nil)
 	web.RunWebServer(webListener) // blocking
 	runtime.KeepAlive(waveLock)
 }

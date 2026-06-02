@@ -1,4 +1,7 @@
 .task
+.tools/
+.cache/
+.playwright-mcp/
 frontend/dist
 dist/
 dist-dev/

@@ -593,7 +593,7 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 		}
 	} else if connUnion.ConnType == ConnType_Local {
 		if connUnion.WshEnabled {
-			sockName := wavebase.GetDomainSocketName()
+			sockName := wavebase.GetMainRpcSocketName()
 			rpcContext := wshrpc.RpcContext{
 				ProcRoute: true,
 				SockName:  sockName,

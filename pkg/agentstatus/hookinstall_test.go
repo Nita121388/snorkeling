@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -33,18 +34,24 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(script), "wsh_bin") || !strings.Contains(string(script), "--provider") {
+	expectedScriptToken := "wsh_bin"
+	if runtime.GOOS == "windows" {
+		expectedScriptToken = "$wshBin"
+	}
+	if !strings.Contains(string(script), expectedScriptToken) || !strings.Contains(string(script), "--provider") {
 		t.Fatalf("hook script missing expected wsh call:\n%s", string(script))
 	}
 	if strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) {
 		t.Fatalf("hook script should not require legacy WAVETERM=1:\n%s", string(script))
 	}
-	info, err := os.Stat(result.HookPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&0o111 == 0 {
-		t.Fatalf("expected hook script to be executable, mode=%v", info.Mode())
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(result.HookPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&0o111 == 0 {
+			t.Fatalf("expected hook script to be executable, mode=%v", info.Mode())
+		}
 	}
 
 	var hooksFile map[string]any
@@ -83,7 +90,7 @@ func TestCheckCodexHooksDetectsLegacyScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyScript := "# SNORKELING_AGENT_STATUS_INTEGRATION_ID=codex\n# SNORKELING_AGENT_STATUS_INTEGRATION_VERSION=1\n[ \"${WAVETERM:-}\" = \"1\" ] || exit 0\n"
-	if err := os.WriteFile(filepath.Join(codexDir, hookInstallName), []byte(legacyScript), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(codexDir, hookInstallName()), []byte(legacyScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(codexHomeEnvVar, codexDir)
@@ -98,6 +105,59 @@ func TestCheckCodexHooksDetectsLegacyScript(t *testing.T) {
 	status := statusResult.Statuses[0]
 	if !status.Installed || status.Current || !status.NeedsInstall {
 		t.Fatalf("expected legacy hook to need install: %+v", status)
+	}
+}
+
+func TestInstallCodexHooksPrunesLegacyManagedCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	codexDir := filepath.Join(tmpDir, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(codexHomeEnvVar, codexDir)
+
+	legacyCommand := "bash '" + filepath.Join(codexDir, hookInstallBaseName+".sh") + "' working"
+	existing := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": legacyCommand,
+							"timeout": float64(10),
+						},
+						map[string]any{
+							"type":    "command",
+							"command": "echo keep-me",
+							"timeout": float64(10),
+						},
+					},
+				},
+			},
+		},
+	}
+	hooksBytes, err := json.Marshal(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), hooksBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := InstallCodexHooks()
+	if err != nil {
+		t.Fatalf("InstallCodexHooks returned error: %v", err)
+	}
+
+	if commandHookInstalled(result.HooksPath, "PreToolUse", legacyCommand) {
+		t.Fatalf("legacy managed hook command should be pruned")
+	}
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", "echo keep-me") {
+		t.Fatalf("unmanaged hook command should be preserved")
+	}
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking)) {
+		t.Fatalf("new managed hook command missing")
 	}
 }
 
@@ -117,7 +177,11 @@ func TestInstallClaudeHooksWritesSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(script), "SubagentStop") || !strings.Contains(string(script), "provider == \"claude\"") {
+	claudeGuardToken := `provider == "claude"`
+	if runtime.GOOS == "windows" {
+		claudeGuardToken = `"claude" -and`
+	}
+	if !strings.Contains(string(script), "SubagentStop") || !strings.Contains(string(script), claudeGuardToken) {
 		t.Fatalf("hook script missing Claude-specific guards:\n%s", string(script))
 	}
 

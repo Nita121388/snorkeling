@@ -187,6 +187,21 @@ func tryTcpSocket(sockName string) (net.Conn, error) {
 
 func SetupDomainSocketRpcClient(sockName string, serverImpl ServerImpl, debugName string) (*WshRpc, error) {
 	sockName = wavebase.ExpandHomeDirSafe(sockName)
+	conn, tcpErr := tryTcpSocket(sockName)
+	if tcpErr == nil {
+		rtn, errCh, err := SetupConnRpcClient(conn, serverImpl, debugName)
+		go func() {
+			defer func() {
+				panichandler.PanicHandler("SetupDomainSocketRpcClient:closeConn", recover())
+			}()
+			defer conn.Close()
+			err := <-errCh
+			if err != nil && err != io.EOF {
+				log.Printf("error in domain socket connection: %v\n", err)
+			}
+		}()
+		return rtn, err
+	}
 	resolvedPath, err := filepath.EvalSymlinks(sockName)
 	if err == nil {
 		sockName = resolvedPath
@@ -194,12 +209,9 @@ func SetupDomainSocketRpcClient(sockName string, serverImpl ServerImpl, debugNam
 	if !filepath.IsAbs(sockName) {
 		return nil, fmt.Errorf("socket path must be absolute: %s", sockName)
 	}
-	conn, tcpErr := tryTcpSocket(sockName)
 	var unixErr error
-	if tcpErr != nil {
-		conn, unixErr = net.Dial("unix", sockName)
-	}
-	if tcpErr != nil && unixErr != nil {
+	conn, unixErr = net.Dial("unix", sockName)
+	if unixErr != nil {
 		return nil, fmt.Errorf("failed to connect to tcp or unix domain socket: tcp err:%w: unix socket err: %w", tcpErr, unixErr)
 	}
 	rtn, errCh, err := SetupConnRpcClient(conn, serverImpl, debugName)

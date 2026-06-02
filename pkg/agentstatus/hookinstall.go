@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -16,8 +17,8 @@ const (
 	HookTargetCodex  = "codex"
 	HookTargetClaude = "claude"
 
-	hookInstallName     = "snorkeling-agent-status.sh"
-	hookInstallVersion  = 1
+	hookInstallBaseName = "snorkeling-agent-status"
+	hookInstallVersion  = 2
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -103,7 +104,7 @@ func InstallCodexHooks() (HookInstallResult, error) {
 		return HookInstallResult{}, fmt.Errorf("codex config directory not found at %s. install Codex first", dir)
 	}
 
-	hookPath := filepath.Join(dir, hookInstallName)
+	hookPath := filepath.Join(dir, hookInstallName())
 	if err := writeHookScript(hookPath, HookTargetCodex); err != nil {
 		return HookInstallResult{}, err
 	}
@@ -117,7 +118,7 @@ func InstallCodexHooks() (HookInstallResult, error) {
 	if err != nil {
 		return HookInstallResult{}, err
 	}
-	quotedHookPath := shellSingleQuote(hookPath)
+	pruneManagedCommandHooks(hooks)
 	for _, spec := range []struct {
 		event  string
 		action string
@@ -128,7 +129,7 @@ func InstallCodexHooks() (HookInstallResult, error) {
 		{"PermissionRequest", StateBlocked},
 		{"Stop", StateIdle},
 	} {
-		if err := ensureCommandHook(hooks, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action), 10, ""); err != nil {
+		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action), 10, ""); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -167,7 +168,7 @@ func checkCodexHooks() HookStatus {
 		status.NeedsInstall = true
 		return status
 	}
-	status.HookPath = filepath.Join(dir, hookInstallName)
+	status.HookPath = filepath.Join(dir, hookInstallName())
 	status.HooksPath = filepath.Join(dir, "hooks.json")
 	status.ConfigPath = filepath.Join(dir, "config.toml")
 	if !isDir(dir) {
@@ -221,7 +222,7 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return HookInstallResult{}, err
 	}
-	hookPath := filepath.Join(hooksDir, hookInstallName)
+	hookPath := filepath.Join(hooksDir, hookInstallName())
 	if err := writeHookScript(hookPath, HookTargetClaude); err != nil {
 		return HookInstallResult{}, err
 	}
@@ -235,7 +236,7 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 	if err != nil {
 		return HookInstallResult{}, err
 	}
-	quotedHookPath := shellSingleQuote(hookPath)
+	pruneManagedCommandHooks(hooks)
 	for _, spec := range []struct {
 		event   string
 		action  string
@@ -248,7 +249,7 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 		{"Stop", StateIdle, "*"},
 		{"SessionEnd", StateRelease, "*"},
 	} {
-		if err := ensureCommandHook(hooks, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action), 10, spec.matcher); err != nil {
+		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action), 10, spec.matcher); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -274,7 +275,7 @@ func checkClaudeHooks() HookStatus {
 		status.NeedsInstall = true
 		return status
 	}
-	status.HookPath = filepath.Join(dir, "hooks", hookInstallName)
+	status.HookPath = filepath.Join(dir, "hooks", hookInstallName())
 	status.SettingsPath = filepath.Join(dir, "settings.json")
 	if !isDir(dir) {
 		status.Reason = fmt.Sprintf("claude config directory not found at %s", dir)
@@ -317,7 +318,135 @@ func writeHookScript(path string, provider string) error {
 	return makeExecutable(path)
 }
 
+func hookInstallName() string {
+	if runtime.GOOS == "windows" {
+		return hookInstallBaseName + ".ps1"
+	}
+	return hookInstallBaseName + ".sh"
+}
+
+func hookCommand(path string, action string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s %s", shellDoubleQuote(path), action)
+	}
+	return fmt.Sprintf("bash %s %s", shellSingleQuote(path), action)
+}
+
 func agentStatusHookScript(provider string) string {
+	if runtime.GOOS == "windows" {
+		return agentStatusPowerShellHookScript(provider)
+	}
+	return agentStatusShellHookScript(provider)
+}
+
+func agentStatusPowerShellHookScript(provider string) string {
+	return fmt.Sprintf(`# installed by Snorkeling
+# managed by Snorkeling; reinstalling the integration overwrites this file.
+# %s%s
+# %s%d
+
+param(
+  [string]$Action = ""
+)
+
+try {
+  if ($Action -notin @("working", "idle", "blocked", "release", "unknown")) {
+    exit 0
+  }
+  if ([string]::IsNullOrWhiteSpace($env:WAVETERM_BLOCKID) -or [string]::IsNullOrWhiteSpace($env:WAVETERM_JWT)) {
+    exit 0
+  }
+
+  $wshBin = ""
+  if (-not [string]::IsNullOrWhiteSpace($env:WAVETERM_WSHBINDIR)) {
+    $candidate = Join-Path $env:WAVETERM_WSHBINDIR "wsh.exe"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      $wshBin = $candidate
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($wshBin)) {
+    $cmd = Get-Command "wsh.exe" -ErrorAction SilentlyContinue
+    if ($cmd) {
+      $wshBin = $cmd.Source
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($wshBin)) {
+    exit 0
+  }
+
+  $inputText = [Console]::In.ReadToEnd()
+  $hookInput = $null
+  if (-not [string]::IsNullOrWhiteSpace($inputText)) {
+    try {
+      $hookInput = $inputText | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      $hookInput = $null
+    }
+  }
+
+  $hookEventName = ""
+  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "hook_event_name" -and $null -ne $hookInput.hook_event_name) {
+    $hookEventName = [string]$hookInput.hook_event_name
+  }
+  if ("%s" -eq "claude" -and $hookEventName -eq "SubagentStop") {
+    exit 0
+  }
+  if ("%s" -eq "claude" -and $hookInput -and $hookInput.PSObject.Properties.Name -contains "agent_id" -and $hookInput.agent_id -and $Action -in @("idle", "release")) {
+    exit 0
+  }
+
+  $toolName = ""
+  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "tool_name" -and $hookInput.tool_name -is [string]) {
+    $toolName = $hookInput.tool_name.Trim()
+  }
+
+  $sessionId = ""
+  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "session_id" -and $hookInput.session_id -is [string]) {
+    $sessionId = $hookInput.session_id.Trim()
+  }
+
+  $phase = "unknown"
+  if ($Action -in @("idle", "release")) {
+    $phase = "none"
+  } elseif ($Action -eq "blocked") {
+    $phase = "approval"
+  } elseif ($Action -eq "working") {
+    if ($toolName -or $hookEventName -eq "PreToolUse") {
+      $phase = "tool"
+    } else {
+      $phase = "thinking"
+    }
+  }
+
+  $seq = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() * 1000000
+  $args = @("agentstatus", $Action, "--provider", "%s", "--source", "hook", "--phase", $phase, "--seq", [string]$seq)
+  if ($toolName) {
+    $args += @("--tool", $toolName)
+  }
+  if ($sessionId) {
+    $args += @("--session-id", $sessionId)
+  }
+
+  $stdoutPath = [System.IO.Path]::GetTempFileName()
+  $stderrPath = [System.IO.Path]::GetTempFileName()
+  try {
+    $process = Start-Process -FilePath $wshBin -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    if (-not $process.WaitForExit(2000)) {
+      try {
+        $process.Kill()
+      } catch {
+      }
+    }
+  } finally {
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
+} catch {
+}
+exit 0
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
+}
+
+func agentStatusShellHookScript(provider string) string {
 	return fmt.Sprintf(`#!/bin/sh
 # installed by Snorkeling
 # managed by Snorkeling; reinstalling the integration overwrites this file.
@@ -610,8 +739,56 @@ func commandHookInstalled(path string, event string, command string) bool {
 	return false
 }
 
+func pruneManagedCommandHooks(hooks map[string]any) {
+	for event, rawEntries := range hooks {
+		entries, ok := rawEntries.([]any)
+		if !ok {
+			continue
+		}
+		var keptEntries []any
+		for _, entry := range entries {
+			entryObj, ok := entry.(map[string]any)
+			if !ok {
+				keptEntries = append(keptEntries, entry)
+				continue
+			}
+			hookList, ok := entryObj["hooks"].([]any)
+			if !ok {
+				keptEntries = append(keptEntries, entry)
+				continue
+			}
+			var keptHooks []any
+			for _, hook := range hookList {
+				hookObj, ok := hook.(map[string]any)
+				if !ok {
+					keptHooks = append(keptHooks, hook)
+					continue
+				}
+				if hookObj["type"] == "command" && isManagedHookCommand(fmt.Sprint(hookObj["command"])) {
+					continue
+				}
+				keptHooks = append(keptHooks, hook)
+			}
+			if len(keptHooks) == 0 {
+				continue
+			}
+			entryObj["hooks"] = keptHooks
+			keptEntries = append(keptEntries, entryObj)
+		}
+		if len(keptEntries) == 0 {
+			delete(hooks, event)
+		} else {
+			hooks[event] = keptEntries
+		}
+	}
+}
+
+func isManagedHookCommand(command string) bool {
+	return strings.Contains(command, hookInstallBaseName+".sh") ||
+		strings.Contains(command, hookInstallBaseName+".ps1")
+}
+
 func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
-	quotedHookPath := shellSingleQuote(hookPath)
 	for _, spec := range []struct {
 		event  string
 		action string
@@ -622,7 +799,7 @@ func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
 		{"PermissionRequest", StateBlocked},
 		{"Stop", StateIdle},
 	} {
-		if !commandHookInstalled(hooksPath, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action)) {
+		if !commandHookInstalled(hooksPath, spec.event, hookCommand(hookPath, spec.action)) {
 			return false
 		}
 	}
@@ -630,7 +807,6 @@ func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
 }
 
 func claudeHookCommandsInstalled(settingsPath string, hookPath string) bool {
-	quotedHookPath := shellSingleQuote(hookPath)
 	for _, spec := range []struct {
 		event  string
 		action string
@@ -642,7 +818,7 @@ func claudeHookCommandsInstalled(settingsPath string, hookPath string) bool {
 		{"Stop", StateIdle},
 		{"SessionEnd", StateRelease},
 	} {
-		if !commandHookInstalled(settingsPath, spec.event, fmt.Sprintf("bash %s %s", quotedHookPath, spec.action)) {
+		if !commandHookInstalled(settingsPath, spec.event, hookCommand(hookPath, spec.action)) {
 			return false
 		}
 	}
@@ -757,6 +933,10 @@ func isTOMLKey(line string, key string) bool {
 
 func shellSingleQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func shellDoubleQuote(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
 }
 
 func makeExecutable(path string) error {

@@ -275,12 +275,14 @@
 
 .session-overview-block-list {
     display: flex;
-    flex-direction: column;
+    align-items: flex-start;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
 .session-overview-block-row {
     display: grid;
+    width: 100%;
     grid-template-columns: minmax(150px, 0.78fr) minmax(230px, 1.12fr) minmax(max-content, auto);
     gap: 10px;
     padding: 8px;
@@ -313,6 +315,139 @@
             display: none;
         }
     }
+}
+
+.session-overview-compact-block {
+    position: relative;
+    flex: 0 0 auto;
+
+    &:hover,
+    &:focus-within {
+        z-index: 5;
+    }
+
+    &.is-current {
+        .session-overview-compact-button {
+            border-color: rgb(from var(--accent-color) r g b / 0.58);
+            background: rgb(from var(--accent-color) r g b / 0.12);
+            color: var(--accent-color);
+        }
+    }
+}
+
+.session-overview-compact-button {
+    position: relative;
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: rgb(from var(--main-text-color) r g b / 0.035);
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
+
+    &:hover,
+    &:focus-visible {
+        border-color: rgb(from var(--accent-color) r g b / 0.45);
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+        outline: none;
+    }
+}
+
+.session-overview-compact-badge {
+    position: absolute;
+    right: -4px;
+    top: -4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background: var(--panel-bg-color, var(--main-bg-color));
+    font-size: 10px;
+}
+
+.session-overview-compact-popover {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    z-index: 10;
+    display: none;
+    width: min(260px, calc(100vw - 40px));
+    min-width: 210px;
+    padding: 13px 8px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--modal-bg-color, var(--panel-bg-color, var(--main-bg-color)));
+    box-shadow: 0 12px 36px rgb(0 0 0 / 0.28);
+    background-clip: padding-box;
+}
+
+.session-overview-compact-block:hover .session-overview-compact-popover,
+.session-overview-compact-block:focus-within .session-overview-compact-popover {
+    display: block;
+}
+
+.session-overview-compact-popover-head {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-overview-compact-popover-icon {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: rgb(from var(--main-text-color) r g b / 0.08);
+    color: var(--secondary-text-color);
+}
+
+.session-overview-compact-popover-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.session-overview-compact-title,
+.session-overview-compact-meta {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-compact-title {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.session-overview-compact-meta {
+    margin-top: 2px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.session-overview-compact-popover-badge {
+    flex: 0 0 auto;
+}
+
+.session-overview-compact-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 8px;
 }
 
 .session-overview-block-main {
