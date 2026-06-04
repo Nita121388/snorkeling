@@ -35,6 +35,8 @@ import {
 } from "./preview-live";
 import {
     applyExplorerRootForDirectoryNavigation,
+    PreviewDefaultDirectoryDisplaySettingKey,
+    PreviewDirectoryDisplayMetaKey,
     PreviewDirectoryDisplayMode,
     PreviewExplorerRootMetaKey,
     PreviewOpenTargetDirection,
@@ -56,9 +58,7 @@ const MaxFileSize = 1024 * 1024 * 10; // 10MB
 const MaxCSVSize = 1024 * 1024 * 1; // 1MB
 
 const PreviewOpenTargetMetaKey = "preview:open-target";
-const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
 const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
-const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
 const PreviewSearchLineMetaKey = "preview:searchline";
 const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
 const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();

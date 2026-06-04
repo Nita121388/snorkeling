@@ -14,9 +14,14 @@ import clsx from "clsx";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
+import { openPathInPreview } from "./file-link-navigation";
 import { handleRename, makeDirectoryBackgroundMenuItems, makeDirectoryEntryMenuItems } from "./preview-directory-utils";
 import type { PreviewModel } from "./preview-model";
-import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigation";
+import {
+    PreviewRevealPathMetaKey,
+    PreviewRevealSeqMetaKey,
+    resolveExplorerRootPathForOpenInCurrentBlock,
+} from "./preview-navigation";
 import { openPreviewEntry } from "./preview-open";
 import {
     FileNameSearchSkipDirNames,
@@ -99,6 +104,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const showHiddenFiles = useAtomValue(model.showHiddenFiles);
     const refreshVersion = useAtomValue(model.refreshVersion);
     const currentPath = useAtomValue(model.statFilePath);
+    const blockData = useAtomValue(model.blockAtom);
     const connection = useAtomValue(model.connection);
     const currentDirectoryInfo = useAtomValue(model.statFile);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
@@ -118,6 +124,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
     const [treeExpandingAll, setTreeExpandingAll] = useState(false);
     const treeRef = useRef<TreeViewRef>(null);
+    const lastRevealSeqRef = useRef<number | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
@@ -248,6 +255,27 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             model.directoryKeyDownHandler = null;
         };
     }, [closeSearch, model, searchActive, searchInput, searchQuery, setSearchActive, startDirectNameSearch]);
+
+    useEffect(() => {
+        const revealPath = blockData?.meta?.[PreviewRevealPathMetaKey];
+        const revealSeq = blockData?.meta?.[PreviewRevealSeqMetaKey];
+        if (typeof revealPath !== "string" || revealPath === "" || typeof revealSeq !== "number") {
+            return;
+        }
+        if (lastRevealSeqRef.current === revealSeq) {
+            return;
+        }
+        lastRevealSeqRef.current = revealSeq;
+        setSearchActive(false);
+        fireAndForget(async () => {
+            const revealed = await treeRef.current?.revealId(revealPath);
+            if (!revealed) {
+                window.setTimeout(() => {
+                    fireAndForget(() => treeRef.current?.revealId(revealPath));
+                }, 150);
+            }
+        });
+    }, [blockData?.meta, setSearchActive]);
 
     useEffect(() => {
         const activePaths = new Set(groupedContentResults.map((group) => group.path));
@@ -698,6 +726,14 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         });
     }, [setErrorMsg, treeExpandingAll]);
 
+    const openSearchPath = useCallback(
+        async (path: string, lineNumber?: number) => {
+            setSearchActive(false);
+            await openPathInPreview(path, { connection, lineNumber });
+        },
+        [connection, setSearchActive]
+    );
+
     return (
         <div
             ref={refs.setReference}
@@ -884,12 +920,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                 ? "bg-white/10"
                                                                 : "hover:bg-white/5"
                                                         )}
-                                                        onClick={(event) => {
-                                                            fireAndForget(() =>
-                                                                model.openPathWithTarget(match.path, {
-                                                                    forceNewBlock: event.ctrlKey || event.metaKey,
-                                                                })
-                                                            );
+                                                        onClick={() => {
+                                                            fireAndForget(() => openSearchPath(match.path));
                                                         }}
                                                         onContextMenu={(event) =>
                                                             handleNameSearchResultContextMenu(event, match)
@@ -981,13 +1013,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                         ? "bg-white/10"
                                                                         : "hover:bg-white/5"
                                                                 )}
-                                                                onClick={(event) => {
+                                                                onClick={() => {
                                                                     fireAndForget(() =>
-                                                                        model.openPathWithTarget(match.path, {
-                                                                            lineNumber: match.linenumber,
-                                                                            forceNewBlock:
-                                                                                event.ctrlKey || event.metaKey,
-                                                                        })
+                                                                        openSearchPath(match.path, match.linenumber)
                                                                     );
                                                                 }}
                                                                 onContextMenu={(event) =>

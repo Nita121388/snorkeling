@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    isAbsolutePath,
     isMarkdownPath,
     isSamePath,
     resolvePreviewRootPathForSearch,
@@ -15,6 +16,13 @@ describe("selection search in files", () => {
         expect(isMarkdownPath("/tmp/notes.markdown")).toBe(true);
         expect(isMarkdownPath("/tmp/page.mdx")).toBe(true);
         expect(isMarkdownPath("/tmp/src/index.ts")).toBe(false);
+    });
+
+    it("treats home-relative paths as absolute search targets", () => {
+        expect(isAbsolutePath("~/Primary/obsidians/Obsidian/模型训练仓的处理.md")).toBe(true);
+        expect(isAbsolutePath("/Users/nita/Primary/README.md")).toBe(true);
+        expect(isAbsolutePath("E:/code/tpot/tpot/__init__.py")).toBe(true);
+        expect(isAbsolutePath("docs/README.md")).toBe(false);
     });
 
     it("keeps default root paths when file info is not loaded yet", () => {

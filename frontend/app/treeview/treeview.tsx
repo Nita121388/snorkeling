@@ -87,6 +87,7 @@ export interface TreeViewExpandAllResult {
 
 export interface TreeViewRef {
     scrollToId: (id: string) => void;
+    revealId: (id: string) => Promise<boolean>;
     refresh: (id?: string) => void;
     collapseAll: () => void;
     expandAll: () => Promise<TreeViewExpandAllResult>;
@@ -332,6 +333,43 @@ export function collapseTreeExpandedIds(expandedIds: Set<string>, rootIds: strin
     return changed ? next : expandedIds;
 }
 
+function normalizeTreePath(path: string): string {
+    if (path == null) {
+        return "";
+    }
+    let value = path.replace(/\\/g, "/").replace(/\/+/g, "/");
+    if (/^\/[A-Za-z]:/.test(value)) {
+        value = value.slice(1);
+    }
+    if (value.length > 1 && !/^[A-Za-z]:\/$/.test(value)) {
+        value = value.replace(/\/+$/, "");
+    }
+    return value;
+}
+
+export function getTreeRevealAncestorIds(targetId: string, rootIds: string[]): string[] {
+    const target = normalizeTreePath(targetId);
+    const root = rootIds
+        .map((rootId) => normalizeTreePath(rootId))
+        .filter((rootId) => target === rootId || target.startsWith(rootId.endsWith("/") ? rootId : `${rootId}/`))
+        .sort((left, right) => right.length - left.length)[0];
+    if (root == null) {
+        return [];
+    }
+    const ancestorIds = [root];
+    let current = root;
+    const suffix = target.slice(root.length).replace(/^\/+/, "");
+    if (suffix === "") {
+        return ancestorIds;
+    }
+    const parts = suffix.split("/").filter(Boolean);
+    for (let idx = 0; idx < parts.length - 1; idx++) {
+        current = current.endsWith("/") ? `${current}${parts[idx]}` : `${current}/${parts[idx]}`;
+        ancestorIds.push(current);
+    }
+    return ancestorIds;
+}
+
 export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const {
         rootIds,
@@ -363,6 +401,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const nodesByIdRef = useRef(nodesById);
     const expandedIdsRef = useRef(expandedIds);
+    const idToIndexRef = useRef<Map<string, number>>(new Map());
+    const pendingScrollIdRef = useRef<string | null>(null);
     const loadingIdsRef = useRef<Set<string>>(new Set());
     const lastRefreshKeyRef = useRef(refreshKey);
     const rootIdsKey = rootIds.join("\u0000");
@@ -401,7 +441,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     });
 
     const commitSelection = (id: string) => {
-        const node = nodesById.get(id);
+        const node = nodesByIdRef.current.get(id);
         if (node == null) {
             return;
         }
@@ -410,12 +450,22 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     };
 
     const scrollToId = (id: string) => {
-        const index = idToIndex.get(id);
+        const index = idToIndexRef.current.get(id);
         if (index == null) {
             return;
         }
         virtualizer.scrollToIndex(index, { align: "auto" });
     };
+
+    useEffect(() => {
+        idToIndexRef.current = idToIndex;
+        const pendingScrollId = pendingScrollIdRef.current;
+        if (pendingScrollId == null || !idToIndex.has(pendingScrollId)) {
+            return;
+        }
+        pendingScrollIdRef.current = null;
+        virtualizer.scrollToIndex(idToIndex.get(pendingScrollId), { align: "auto" });
+    }, [idToIndex, virtualizer]);
 
     const updateNodesById = React.useCallback(
         (updater: (prev: Map<string, TreeNodeData>) => Map<string, TreeNodeData>) => {
@@ -564,15 +614,49 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         return { expandedCount, reachedLimit };
     }, [loadChildren, maxExpandAllDepth, maxExpandAllDirectories, rootIdsKey, updateExpandedIds]);
 
+    const revealId = React.useCallback(
+        async (id: string): Promise<boolean> => {
+            const targetId = normalizeTreePath(id);
+            const ancestorIds = getTreeRevealAncestorIds(targetId, rootIds);
+            if (ancestorIds.length === 0) {
+                return false;
+            }
+            for (const ancestorId of ancestorIds) {
+                updateExpandedIds((prev) => {
+                    if (prev.has(ancestorId)) {
+                        return prev;
+                    }
+                    const next = new Set(prev);
+                    next.add(ancestorId);
+                    return next;
+                });
+                const node = nodesByIdRef.current.get(ancestorId);
+                if (node?.isDirectory && (node.childrenStatus ?? "unloaded") === "unloaded") {
+                    await loadChildren(ancestorId);
+                }
+            }
+            const targetNode = nodesByIdRef.current.get(targetId);
+            if (targetNode == null) {
+                return false;
+            }
+            commitSelection(targetId);
+            pendingScrollIdRef.current = targetId;
+            window.setTimeout(() => scrollToId(targetId), 0);
+            return true;
+        },
+        [loadChildren, rootIdsKey, updateExpandedIds]
+    );
+
     useImperativeHandle(
         ref,
         () => ({
             scrollToId,
+            revealId,
             refresh: refreshDirectory,
             collapseAll,
             expandAll,
         }),
-        [collapseAll, expandAll, idToIndex, refreshDirectory, virtualizer]
+        [collapseAll, expandAll, idToIndex, refreshDirectory, revealId, virtualizer]
     );
 
     useEffect(() => {

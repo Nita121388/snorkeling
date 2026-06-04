@@ -3,6 +3,8 @@
 
 import { CopyButton } from "@/app/element/copybutton";
 import { IconButton } from "@/app/element/iconbutton";
+import { getFocusedBlockConnection, openFileLinkInPreview } from "@/app/view/preview/file-link-navigation";
+import { openLink } from "@/store/global";
 import { cn, useAtomValueSafe } from "@/util/util";
 import type { Atom } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -197,6 +199,19 @@ function Collapsible({ title, children, defaultOpen = false }) {
     );
 }
 
+function Link(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+    const onClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        const href = props.href ?? "";
+        event.preventDefault();
+        void openFileLinkInPreview(href, { connection: getFocusedBlockConnection() }).then((opened) => {
+            if (!opened) {
+                openLink(href);
+            }
+        });
+    };
+    return <a {...props} onClick={onClick} className="text-accent hover:underline" />;
+}
+
 interface WaveStreamdownProps {
     text: string;
     parseIncompleteMarkdown?: boolean;
@@ -290,9 +305,7 @@ export const WaveStreamdown = ({
                 );
             },
             summary: () => null, // Don't render summary separately
-            a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-                <a {...props} className="text-accent hover:underline" />
-            ),
+            a: Link,
             strong: (props: React.HTMLAttributes<HTMLElement>) => (
                 <strong {...props} className="font-semibold text-secondary" />
             ),

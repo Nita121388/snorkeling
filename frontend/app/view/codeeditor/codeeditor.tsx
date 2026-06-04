@@ -89,8 +89,11 @@ export function CodeEditor({ blockId, text, language, fileName, readonly, onChan
         opts.wordWrap = wordWrap ? "on" : "off";
         opts.fontSize = fontSize;
         opts.copyWithSyntaxHighlighting = false;
+        opts.folding = true;
+        opts.foldingStrategy = "auto";
+        opts.showFoldingControls = language === "markdown" ? "always" : "mouseover";
         return opts;
-    }, [minimapEnabled, stickyScrollEnabled, wordWrap, fontSize, readonly]);
+    }, [minimapEnabled, stickyScrollEnabled, wordWrap, fontSize, readonly, language]);
 
     return (
         <div className="flex flex-col w-full h-full items-center justify-center">

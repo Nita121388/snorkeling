@@ -5,6 +5,7 @@ import {
     buildVisibleRows,
     collapseTreeExpandedIds,
     getExpandableDirectoryChildIds,
+    getTreeRevealAncestorIds,
     mergeFetchedTreeChildren,
     TreeNodeData,
 } from "@/app/treeview/treeview";
@@ -130,5 +131,23 @@ describe("treeview visible rows", () => {
         ]);
 
         expect(getExpandableDirectoryChildIds(nodes, "root")).toEqual(["a", "z"]);
+    });
+
+    it("builds ancestor ids needed to reveal POSIX and Windows paths", () => {
+        expect(getTreeRevealAncestorIds("/tmp/project/src/index.ts", ["/tmp/project"])).toEqual([
+            "/tmp/project",
+            "/tmp/project/src",
+        ]);
+        expect(getTreeRevealAncestorIds("E:/code/tpot/tpot/__init__.py", ["E:/code/tpot"])).toEqual([
+            "E:/code/tpot",
+            "E:/code/tpot/tpot",
+        ]);
+        expect(getTreeRevealAncestorIds("E:/code/tpot/tpot/__init__.py", ["E:/"])).toEqual([
+            "E:/",
+            "E:/code",
+            "E:/code/tpot",
+            "E:/code/tpot/tpot",
+        ]);
+        expect(getTreeRevealAncestorIds("/other/index.ts", ["/tmp/project"])).toEqual([]);
     });
 });

@@ -4,6 +4,10 @@
 import { isBlank } from "@/util/util";
 
 export const PreviewExplorerRootMetaKey = "preview:explorer-root";
+export const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
+export const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
+export const PreviewRevealPathMetaKey = "preview:revealpath";
+export const PreviewRevealSeqMetaKey = "preview:revealseq";
 
 export type PreviewDirectoryDisplayMode = "list" | "tree";
 export type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";

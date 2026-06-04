@@ -15,7 +15,7 @@ import clsx from "clsx";
 import { Atom } from "jotai";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown, { Components } from "react-markdown";
+import ReactMarkdown, { Components, defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -23,6 +23,7 @@ import rehypeSlug from "rehype-slug";
 import RemarkFlexibleToc, { TocItem } from "remark-flexible-toc";
 import remarkGfm from "remark-gfm";
 import { openLink } from "../store/global";
+import { normalizeLinkedFilePath, openFileLinkInPreview } from "../view/preview/file-link-navigation";
 import { IconButton } from "./iconbutton";
 import "./markdown.scss";
 
@@ -81,16 +82,23 @@ const initializeMermaid = async () => {
 const Link = ({
     focusHeading,
     props,
+    resolveOpts,
 }: {
     props: React.AnchorHTMLAttributes<HTMLAnchorElement>;
     focusHeading: (href: string) => void;
+    resolveOpts?: MarkdownResolveOpts;
 }) => {
     const onClick = (e: React.MouseEvent) => {
+        const href = props.href ?? "";
         e.preventDefault();
-        if (props.href.startsWith("#")) {
-            focusHeading(props.href);
+        if (href.startsWith("#")) {
+            focusHeading(href);
         } else {
-            openLink(props.href);
+            void openFileLinkInPreview(href, { connection: resolveOpts?.connName }).then((opened) => {
+                if (!opened) {
+                    openLink(href);
+                }
+            });
         }
     };
     return (
@@ -99,6 +107,19 @@ const Link = ({
         </a>
     );
 };
+
+const FilePathHrefProtocols = [
+    ...(defaultSchema.protocols?.href ?? []),
+    "file",
+    ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+];
+
+function markdownUrlTransform(value: string): string {
+    if (normalizeLinkedFilePath(value) != null) {
+        return value;
+    }
+    return defaultUrlTransform(value);
+}
 
 function decodeHeadingFragment(fragment: string): string {
     try {
@@ -787,7 +808,9 @@ const Markdown = ({
     };
 
     const markdownComponents: Partial<Components> = {
-        a: (props: React.HTMLAttributes<HTMLAnchorElement>) => <Link props={props} focusHeading={focusHeading} />,
+        a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
+            <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
+        ),
         p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
             <div className="paragraph" {...props} {...sourceLineAttrs(getSourceLine(props))} />
         ),
@@ -919,6 +942,10 @@ const Markdown = ({
                         ],
                         waveblock: [["blockkey"]],
                     },
+                    protocols: {
+                        ...defaultSchema.protocols,
+                        href: FilePathHrefProtocols,
+                    },
                     tagNames: [
                         ...(defaultSchema.tagNames || []),
                         "span",
@@ -962,6 +989,7 @@ const Markdown = ({
                         remarkPlugins={remarkPlugins}
                         rehypePlugins={rehypePlugins}
                         components={markdownComponents}
+                        urlTransform={markdownUrlTransform}
                         className="markdown-render-root"
                     >
                         {transformedText}
@@ -973,6 +1001,7 @@ const Markdown = ({
                         remarkPlugins={remarkPlugins}
                         rehypePlugins={rehypePlugins}
                         components={markdownComponents}
+                        urlTransform={markdownUrlTransform}
                     >
                         {transformedText}
                     </ReactMarkdown>

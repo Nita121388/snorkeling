@@ -4,6 +4,7 @@
 import { getAllBlockComponentModels } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { openPathInPreview } from "@/app/view/preview/file-link-navigation";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { base64ToString } from "@/util/util";
 import type { ParsedFileReference } from "./selection-reference-parser";
@@ -35,13 +36,6 @@ type ResolvePreviewTargetResult =
           status: "notfound";
       };
 
-type OpenPathCapablePreviewModel = PreviewModel & {
-    openPathWithTarget: (
-        newPath: string,
-        options?: { lineNumber?: number; forceNewBlock?: boolean; forceCurrentBlock?: boolean; editMode?: boolean }
-    ) => Promise<void>;
-};
-
 const SearchInFilesMaxTargets = 8;
 const ExactHintLineRadius = 8;
 const FuzzyHintMinScore = 0.42;
@@ -68,13 +62,10 @@ export async function searchSelectionInFiles(reference: ParsedFileReference): Pr
         return;
     }
 
-    const openTarget = findOpenFileTarget(result.target.filePath, result.target.connection, targets);
-    const target = openTarget ?? result.target;
     const lineNumber = await resolveSearchTargetLine(reference, result.target);
-    await (target.model as OpenPathCapablePreviewModel).openPathWithTarget(result.target.filePath, {
+    await openPathInPreview(result.target.filePath, {
+        connection: result.target.connection,
         lineNumber,
-        forceCurrentBlock: openTarget != null,
-        forceNewBlock: openTarget == null,
         editMode: isMarkdownPath(result.target.filePath),
     });
 }
@@ -181,21 +172,6 @@ async function resolvePreviewTarget(
         return { status: "ambiguous", matches: tiedMatches };
     }
     return { status: "resolved", target: tiedMatches[0] ?? bestMatch };
-}
-
-function findOpenFileTarget(
-    filePath: string,
-    connection: string | null,
-    targets: PreviewOpenTarget[]
-): PreviewOpenTarget | null {
-    return (
-        targets.find(
-            (target) =>
-                target.connection === connection &&
-                target.isDirectory !== true &&
-                isSamePath(target.currentPath, filePath)
-        ) ?? null
-    );
 }
 
 function dedupeResolvedMatches(matches: ResolvedPreviewTarget[]): ResolvedPreviewTarget[] {
@@ -368,8 +344,8 @@ function joinPath(rootPath: string, relativePath: string): string {
     return root === "/" ? `/${rel}` : `${root}/${rel}`;
 }
 
-function isAbsolutePath(filePath: string): boolean {
-    return filePath.startsWith("/") || /^[A-Za-z]:\//.test(filePath);
+export function isAbsolutePath(filePath: string): boolean {
+    return filePath.startsWith("/") || filePath.startsWith("~/") || /^[A-Za-z]:\//.test(filePath);
 }
 
 function pathStartsWithRoot(filePath: string, rootPath: string): boolean {

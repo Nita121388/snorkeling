@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as monaco from "monaco-editor";
+import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution";
 import "monaco-editor/esm/vs/language/css/monaco.contribution";
 import "monaco-editor/esm/vs/language/html/monaco.contribution";
 import "monaco-editor/esm/vs/language/json/monaco.contribution";
 import "monaco-editor/esm/vs/language/typescript/monaco.contribution";
 import { configureMonacoYaml } from "monaco-yaml";
 
+import { registerMarkdownFolding } from "@/app/monaco/markdown-folding";
 import { MonacoSchemas } from "@/app/monaco/schemaendpoints";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
@@ -68,6 +70,7 @@ export function loadMonaco() {
         validate: true,
         schemas: [],
     });
+    registerMarkdownFolding(monaco);
     monaco.editor.setTheme("wave-theme-dark");
     // Disable default validation errors for typescript and javascript
     monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
