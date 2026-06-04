@@ -1084,6 +1084,9 @@ declare global {
         error?: string;
         wsherror?: string;
         nowshreason?: string;
+        wsherrorcode?: string;
+        wshinstallstatus?: string;
+        wshinstallmsg?: string;
         wshversion?: string;
         lastactivitybeforestalledtime?: number;
         keepalivesenttime?: number;

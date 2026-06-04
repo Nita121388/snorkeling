@@ -518,6 +518,12 @@
                                 visibility: visible;
                             }
                         }
+
+                        .connstatus-inline-actions {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 6px;
+                        }
                     }
                 }
 

@@ -374,6 +374,20 @@ function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+const SESSION_HISTORY_PENDING_MESSAGE = "Session history is not available yet.";
+const SESSION_HISTORY_PENDING_RETRY_MS = 5_000;
+
+function isSessionNotFoundMessage(message: string, sessionId: string): boolean {
+    const normalized = message.trim().toLowerCase();
+    const normalizedSessionId = sessionId.trim().toLowerCase();
+    if (!normalized.includes("session not found:")) return false;
+    return normalizedSessionId === "" || normalized.includes(`session not found: ${normalizedSessionId}`);
+}
+
+function isSessionHistoryPendingMessage(message: string | undefined): boolean {
+    return message === SESSION_HISTORY_PENDING_MESSAGE;
+}
+
 function useCodexHookInstallState(hasCodexAgent: boolean) {
     const service = useMemo(() => new BlockServiceType(), []);
     const [state, setState] = useState<HookInstallState>({
@@ -495,12 +509,17 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                 })
                 .catch((error) => {
                     if (!mountedRef.current) return;
+                    const errorMessage = getErrorMessage(error);
+                    const historyPending = isSessionNotFoundMessage(errorMessage, sessionId);
+                    if (historyPending) {
+                        requestedRef.current.delete(sessionId);
+                    }
                     setDetails((prev) => ({
                         ...prev,
                         [sessionId]: {
                             loading: false,
                             detail: null,
-                            error: error instanceof Error ? error.message : String(error),
+                            error: historyPending ? SESSION_HISTORY_PENDING_MESSAGE : errorMessage,
                         },
                     }));
                 });
@@ -559,6 +578,10 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                 sessionIds.map(async (sessionId) => {
                     const state = currentDetails[sessionId];
                     if (state?.loading) return;
+                    if (isSessionHistoryPendingMessage(state?.error)) {
+                        loadSessionDetail(sessionId);
+                        return;
+                    }
                     const filePath = state?.detail?.summary?.filePath?.trim();
                     if (!filePath) return;
                     try {
@@ -596,7 +619,7 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                             [sessionId]: {
                                 loading: false,
                                 detail: current[sessionId]?.detail ?? null,
-                                error: error instanceof Error ? error.message : String(error),
+                                error: getErrorMessage(error),
                             },
                         }));
                     }
@@ -653,22 +676,32 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
         [blocks]
     );
     const requestedRef = useRef(new Set<string>());
+    const retryTimersRef = useRef(new Map<string, number>());
     const [summaries, setSummaries] = useState<Record<string, SummaryState>>({});
 
     useEffect(() => {
-        setSummaries((current) => {
-            const next = { ...current };
-            for (const sessionId of sessionIds) {
-                next[sessionId] ??= { loading: true, summary: null, error: "" };
-            }
-            return next;
-        });
         let cancelled = false;
-        for (const sessionId of sessionIds) {
+        const retryTimers = retryTimersRef.current;
+        const clearRetry = (sessionId: string) => {
+            const timer = retryTimers.get(sessionId);
+            if (timer == null) return;
+            window.clearTimeout(timer);
+            retryTimers.delete(sessionId);
+        };
+        const clearStaleRetries = () => {
+            const activeSessionIds = new Set(sessionIds);
+            for (const [sessionId, timer] of retryTimers.entries()) {
+                if (activeSessionIds.has(sessionId)) continue;
+                window.clearTimeout(timer);
+                retryTimers.delete(sessionId);
+            }
+        };
+        const loadSummary = (sessionId: string) => {
             if (requestedRef.current.has(sessionId)) {
-                continue;
+                return;
             }
             requestedRef.current.add(sessionId);
+            clearRetry(sessionId);
             setSummaries((prev) => ({ ...prev, [sessionId]: { loading: true, summary: null, error: "" } }));
             service
                 .Summary({ id: sessionId })
@@ -678,18 +711,47 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
                 })
                 .catch((error) => {
                     if (cancelled) return;
+                    const errorMessage = getErrorMessage(error);
+                    const historyPending = isSessionNotFoundMessage(errorMessage, sessionId);
+                    if (historyPending) {
+                        requestedRef.current.delete(sessionId);
+                    }
                     setSummaries((prev) => ({
                         ...prev,
                         [sessionId]: {
                             loading: false,
                             summary: null,
-                            error: error instanceof Error ? error.message : String(error),
+                            error: historyPending ? SESSION_HISTORY_PENDING_MESSAGE : errorMessage,
                         },
                     }));
+                    if (historyPending && !retryTimers.has(sessionId)) {
+                        const timer = window.setTimeout(() => {
+                            retryTimers.delete(sessionId);
+                            if (cancelled) return;
+                            loadSummary(sessionId);
+                        }, SESSION_HISTORY_PENDING_RETRY_MS);
+                        retryTimers.set(sessionId, timer);
+                    }
                 });
+        };
+
+        clearStaleRetries();
+        setSummaries((current) => {
+            const next = { ...current };
+            for (const sessionId of sessionIds) {
+                next[sessionId] ??= { loading: true, summary: null, error: "" };
+            }
+            return next;
+        });
+        for (const sessionId of sessionIds) {
+            loadSummary(sessionId);
         }
         return () => {
             cancelled = true;
+            for (const timer of retryTimers.values()) {
+                window.clearTimeout(timer);
+            }
+            retryTimers.clear();
         };
     }, [service, sessionIds.join("\n")]);
 
@@ -898,6 +960,9 @@ function MessageSquares({
         return <div className="session-overview-muted">No session id</div>;
     }
     if (detailState?.error) {
+        if (isSessionHistoryPendingMessage(detailState.error)) {
+            return <div className="session-overview-muted">{detailState.error}</div>;
+        }
         return <div className="session-overview-error">{detailState.error}</div>;
     }
     const messages = readableMessages(detailState?.detail);
@@ -1192,6 +1257,7 @@ function BlockRow({
 
 function TabGroupSection({
     group,
+    collapsed,
     details,
     displayLimit,
     viewedAt,
@@ -1200,12 +1266,14 @@ function TabGroupSection({
     agentStatuses,
     onSelectBlock,
     onJumpBlock,
+    onToggleCollapsed,
     onOpenSessionDetail,
     onDeleteSession,
     onDeleteBlock,
     onOpenMessage,
 }: {
     group: TabGroup;
+    collapsed: boolean;
     details: Record<string, DetailState>;
     displayLimit: number;
     viewedAt: Record<string, number>;
@@ -1214,6 +1282,7 @@ function TabGroupSection({
     agentStatuses: Record<string, AgentStatus>;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
+    onToggleCollapsed: () => void;
     onOpenSessionDetail: (block: OverviewBlock) => void;
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
@@ -1224,54 +1293,74 @@ function TabGroupSection({
         .map((block) => agentStatuses[block.blockId])
         .filter((status): status is AgentStatus => status != null);
     return (
-        <section key={group.tabId} className="session-overview-tab-group">
-            <button
-                type="button"
-                className="session-overview-tab-title"
-                onClick={() => setActiveTabAndCloseMenus(group.tabId)}
-            >
-                <i className={makeIconClass("table-columns", false)} />
-                <span className="session-overview-tab-name">{group.tabName}</span>
-                <strong>{group.blocks.length}</strong>
-                <AggregateStatusChip statuses={groupAgentStatuses} />
-                <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
-            </button>
-            <div className="session-overview-block-list">
-                {group.blocks.length === 0 ? (
-                    <div className="session-overview-muted">No blocks</div>
-                ) : (
-                    group.blocks.map((block) =>
-                        shouldShowFullOverviewBlock(block) ? (
-                            <BlockRow
-                                key={block.blockId}
-                                block={block}
-                                detailState={details[block.sessionId]}
-                                displayLimit={displayLimit}
-                                viewedAt={viewedAt[block.blockId] ?? 0}
-                                currentBlockId={currentBlockId}
-                                now={now}
-                                agentStatus={agentStatuses[block.blockId] ?? null}
-                                onSelectBlock={onSelectBlock}
-                                onJumpBlock={onJumpBlock}
-                                onOpenSessionDetail={onOpenSessionDetail}
-                                onDeleteSession={onDeleteSession}
-                                onDeleteBlock={onDeleteBlock}
-                                onOpenMessage={onOpenMessage}
-                            />
-                        ) : (
-                            <CompactBlockIcon
-                                key={block.blockId}
-                                block={block}
-                                currentBlockId={currentBlockId}
-                                onSelectBlock={onSelectBlock}
-                                onJumpBlock={onJumpBlock}
-                                onDeleteSession={onDeleteSession}
-                                onDeleteBlock={onDeleteBlock}
-                            />
-                        )
-                    )
-                )}
+        <section key={group.tabId} className={cn("session-overview-tab-group", collapsed && "is-collapsed")}>
+            <div className="session-overview-tab-title">
+                <button
+                    type="button"
+                    className="session-overview-tab-toggle"
+                    onClick={onToggleCollapsed}
+                    aria-expanded={!collapsed}
+                    aria-label={`${collapsed ? "Expand" : "Collapse"} tab ${group.tabName}`}
+                >
+                    <i
+                        className={cn(
+                            makeIconClass(collapsed ? "chevron-right" : "chevron-down", false),
+                            "session-overview-tab-chevron"
+                        )}
+                    />
+                    <i className={makeIconClass("table-columns", false)} />
+                    <span className="session-overview-tab-name">{group.tabName}</span>
+                    <strong>{group.blocks.length}</strong>
+                    <AggregateStatusChip statuses={groupAgentStatuses} />
+                    <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
+                </button>
+                <button
+                    type="button"
+                    className="session-overview-tab-jump-button"
+                    onClick={() => setActiveTabAndCloseMenus(group.tabId)}
+                    aria-label={`Open tab ${group.tabName}`}
+                >
+                    <i className={makeIconClass("arrow-up-right-from-square", false)} />
+                </button>
             </div>
+            {!collapsed ? (
+                <div className="session-overview-block-list">
+                    {group.blocks.length === 0 ? (
+                        <div className="session-overview-muted">No blocks</div>
+                    ) : (
+                        group.blocks.map((block) =>
+                            shouldShowFullOverviewBlock(block) ? (
+                                <BlockRow
+                                    key={block.blockId}
+                                    block={block}
+                                    detailState={details[block.sessionId]}
+                                    displayLimit={displayLimit}
+                                    viewedAt={viewedAt[block.blockId] ?? 0}
+                                    currentBlockId={currentBlockId}
+                                    now={now}
+                                    agentStatus={agentStatuses[block.blockId] ?? null}
+                                    onSelectBlock={onSelectBlock}
+                                    onJumpBlock={onJumpBlock}
+                                    onOpenSessionDetail={onOpenSessionDetail}
+                                    onDeleteSession={onDeleteSession}
+                                    onDeleteBlock={onDeleteBlock}
+                                    onOpenMessage={onOpenMessage}
+                                />
+                            ) : (
+                                <CompactBlockIcon
+                                    key={block.blockId}
+                                    block={block}
+                                    currentBlockId={currentBlockId}
+                                    onSelectBlock={onSelectBlock}
+                                    onJumpBlock={onJumpBlock}
+                                    onDeleteSession={onDeleteSession}
+                                    onDeleteBlock={onDeleteBlock}
+                                />
+                            )
+                        )
+                    )}
+                </div>
+            ) : null}
         </section>
     );
 }
@@ -1400,6 +1489,34 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
+    const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
+    const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
+    useEffect(() => {
+        setCollapsedTabIds((current) => {
+            const tabIds = new Set(tabGroupsKey ? tabGroupsKey.split("\n") : []);
+            let changed = false;
+            const next: Record<string, boolean> = {};
+            for (const [tabId, collapsed] of Object.entries(current)) {
+                if (!tabIds.has(tabId)) {
+                    changed = true;
+                    continue;
+                }
+                next[tabId] = collapsed;
+            }
+            return changed ? next : current;
+        });
+    }, [tabGroupsKey]);
+    const toggleTabCollapsed = React.useCallback((tabId: string) => {
+        setCollapsedTabIds((current) => {
+            const next = { ...current };
+            if (next[tabId]) {
+                delete next[tabId];
+            } else {
+                next[tabId] = true;
+            }
+            return next;
+        });
+    }, []);
     const currentBlockInOverview = currentBlockId != null && blocks.some((block) => block.blockId === currentBlockId);
     const selectedBlockInOverview =
         selectedBlockId != null && blocks.some((block) => block.blockId === selectedBlockId);
@@ -1492,6 +1609,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                             <TabGroupSection
                                 key={group.tabId}
                                 group={group}
+                                collapsed={collapsedTabIds[group.tabId] === true}
                                 details={details}
                                 displayLimit={displayLimit}
                                 viewedAt={viewedAt}
@@ -1503,6 +1621,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                     setSelectedBlockId(nextBlock.blockId);
                                     overviewModel.jumpToBlock(nextBlock.tabId, nextBlock.blockId);
                                 }}
+                                onToggleCollapsed={() => toggleTabCollapsed(group.tabId)}
                                 onOpenSessionDetail={(nextBlock) => {
                                     if (!nextBlock.sessionId) return;
                                     setSelectedBlockId(nextBlock.blockId);

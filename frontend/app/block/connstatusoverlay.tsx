@@ -43,6 +43,37 @@ function formatElapsedTime(elapsedMs: number): string {
     return "more than a day";
 }
 
+function quotePosixArg(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function quotePowerShellArg(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
+}
+
+function formatWshInstallStatus(status: string): string {
+    switch (status) {
+        case "checking":
+            return "[1/6] Checking remote wsh";
+        case "detecting-platform":
+            return "[2/6] Detecting remote platform";
+        case "finding-binary":
+            return "[3/6] Finding local wsh binary";
+        case "uploading":
+            return "[4/6] Uploading wsh binary";
+        case "verifying":
+            return "[5/6] Verifying remote wsh";
+        case "restarting-server":
+            return "[6/6] Restarting connserver";
+        case "complete":
+            return "wsh install complete";
+        case "failed":
+            return "wsh install failed";
+        default:
+            return "";
+    }
+}
+
 const StalledOverlay = React.memo(
     ({
         connName,
@@ -127,9 +158,15 @@ export const ConnStatusOverlay = React.memo(
         const [overlayRefCallback, _, domRect] = useDimensionsWithCallbackRef(30);
         const width = domRect?.width;
         const [showError, setShowError] = React.useState(false);
-        const wshConfigEnabled =
-            jotai.useAtomValue(waveEnv.getConnConfigKeyAtom(connName, "conn:wshenabled")) ?? true;
+        const wshConfigEnabled = jotai.useAtomValue(waveEnv.getConnConfigKeyAtom(connName, "conn:wshenabled")) ?? true;
         const [showWshError, setShowWshError] = React.useState(false);
+        const [wshRepairStatus, setWshRepairStatus] = React.useState("");
+        const [isRetryingWshInstall, setIsRetryingWshInstall] = React.useState(false);
+        const wshInstallStatus = connStatus.wshinstallstatus ?? "";
+        const wshInstallStatusText = formatWshInstallStatus(wshInstallStatus);
+        const hasWshInstallProgress = wshInstallStatus != "" && wshInstallStatus != "complete";
+        const hasWshRuntimeError = connStatus.status == "connected" && !!connStatus.wsherror;
+        const showWshActions = hasWshRuntimeError || wshInstallStatus == "failed";
 
         React.useEffect(() => {
             if (width) {
@@ -163,6 +200,55 @@ export const ConnStatusOverlay = React.memo(
             }
         }, [connName, waveEnv]);
 
+        const handleRetryWshInstall = React.useCallback(async () => {
+            setIsRetryingWshInstall(true);
+            setWshRepairStatus("Retrying wsh install...");
+            try {
+                await waveEnv.rpc.ConnReinstallWshCommand(
+                    TabRpcClient,
+                    { connname: connName, logblockid: nodeModel.blockId },
+                    { timeout: 180000 }
+                );
+                setWshRepairStatus("wsh installed. Reconnecting...");
+                await waveEnv.rpc.ConnDisconnectCommand(TabRpcClient, connName, { timeout: 10000 });
+                await waveEnv.rpc.ConnConnectCommand(
+                    TabRpcClient,
+                    { host: connName, logblockid: nodeModel.blockId },
+                    { timeout: 180000 }
+                );
+                setWshRepairStatus("wsh install complete.");
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                setWshRepairStatus(`wsh install failed: ${message}`);
+                console.log("error retrying wsh install", connName, e);
+            } finally {
+                setIsRetryingWshInstall(false);
+            }
+        }, [connName, nodeModel.blockId, waveEnv]);
+
+        const handleOpenManualWshInstall = React.useCallback(async () => {
+            const quotedConnName = waveEnv.isWindows() ? quotePowerShellArg(connName) : quotePosixArg(connName);
+            const cmd = waveEnv.isWindows()
+                ? `& "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn reinstall ${quotedConnName}; if ($LASTEXITCODE -eq 0) { & "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn disconnect ${quotedConnName}; & "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn connect ${quotedConnName} }`
+                : `"$WAVETERM_WSHBINDIR/wsh" conn reinstall ${quotedConnName} && "$WAVETERM_WSHBINDIR/wsh" conn disconnect ${quotedConnName} && "$WAVETERM_WSHBINDIR/wsh" conn connect ${quotedConnName}`;
+            try {
+                await waveEnv.createBlock({
+                    meta: {
+                        view: "term",
+                        controller: "cmd",
+                        connection: "local",
+                        cmd,
+                        "cmd:runonstart": true,
+                        "cmd:jwt": true,
+                    },
+                });
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                setWshRepairStatus(`manual installer failed to open: ${message}`);
+                console.log("error opening manual wsh installer", connName, e);
+            }
+        }, [connName, waveEnv]);
+
         const handleRemoveWshError = React.useCallback(async () => {
             try {
                 await waveEnv.rpc.DismissWshFailCommand(TabRpcClient, connName);
@@ -180,6 +266,10 @@ export const ConnStatusOverlay = React.memo(
         if (connStatus.status == "connected") {
             showReconnect = false;
         }
+        if (hasWshInstallProgress && wshInstallStatus != "failed") {
+            statusText = `Installing wsh for "${connName}"...`;
+            showReconnect = false;
+        }
         let reconDisplay = null;
         let reconClassName = "outlined grey";
         if (width && width < 350) {
@@ -192,14 +282,10 @@ export const ConnStatusOverlay = React.memo(
         const showIcon = connStatus.status != "connecting";
 
         React.useEffect(() => {
-            const showWshErrorTemp =
-                connStatus.status == "connected" &&
-                connStatus.wsherror &&
-                connStatus.wsherror != "" &&
-                wshConfigEnabled;
+            const showWshErrorTemp = (hasWshInstallProgress || hasWshRuntimeError) && wshConfigEnabled;
 
-            setShowWshError(showWshErrorTemp);
-        }, [connStatus, wshConfigEnabled]);
+            setShowWshError(!!showWshErrorTemp);
+        }, [hasWshInstallProgress, hasWshRuntimeError, wshConfigEnabled]);
 
         const handleCopy = React.useCallback(
             async (e: React.MouseEvent) => {
@@ -207,13 +293,34 @@ export const ConnStatusOverlay = React.memo(
                 if (showError) {
                     errTexts.push(`error: ${connStatus.error}`);
                 }
-                if (showWshError) {
+                if (connStatus.wsherror) {
                     errTexts.push(`unable to use wsh: ${connStatus.wsherror}`);
+                }
+                if (connStatus.wsherrorcode) {
+                    errTexts.push(`wsh error code: ${connStatus.wsherrorcode}`);
+                }
+                if (connStatus.wshinstallstatus) {
+                    errTexts.push(`wsh install status: ${connStatus.wshinstallstatus}`);
+                }
+                if (connStatus.wshinstallmsg) {
+                    errTexts.push(`wsh install message: ${connStatus.wshinstallmsg}`);
+                }
+                if (wshRepairStatus) {
+                    errTexts.push(`wsh repair status: ${wshRepairStatus}`);
                 }
                 const textToCopy = errTexts.join("\n");
                 await navigator.clipboard.writeText(textToCopy);
             },
-            [showError, showWshError, connStatus.error, connStatus.wsherror]
+            [
+                showError,
+                showWshError,
+                connStatus.error,
+                connStatus.wsherror,
+                connStatus.wsherrorcode,
+                connStatus.wshinstallstatus,
+                connStatus.wshinstallmsg,
+                wshRepairStatus,
+            ]
         );
 
         const showStalled = connStatus.status == "connected" && connStatus.connhealthstatus == "stalled";
@@ -241,10 +348,28 @@ export const ConnStatusOverlay = React.memo(
                                 >
                                     <CopyButton className="copy-button" onClick={handleCopy} title="Copy" />
                                     {showError ? <div>error: {connStatus.error}</div> : null}
-                                    {showWshError ? <div>unable to use wsh: {connStatus.wsherror}</div> : null}
+                                    {connStatus.wsherror ? <div>unable to use wsh: {connStatus.wsherror}</div> : null}
+                                    {wshInstallStatusText ? <div>{wshInstallStatusText}</div> : null}
+                                    {connStatus.wshinstallmsg ? <div>{connStatus.wshinstallmsg}</div> : null}
+                                    {connStatus.wsherrorcode ? <div>error code: {connStatus.wsherrorcode}</div> : null}
+                                    {wshRepairStatus ? <div>{wshRepairStatus}</div> : null}
                                 </OverlayScrollbarsComponent>
                             )}
-                            {showWshError && (
+                            {showWshActions && (
+                                <div className="connstatus-inline-actions">
+                                    <Button
+                                        className={reconClassName}
+                                        disabled={isRetryingWshInstall}
+                                        onClick={handleRetryWshInstall}
+                                    >
+                                        {isRetryingWshInstall ? "Retrying..." : "Retry auto install"}
+                                    </Button>
+                                    <Button className={reconClassName} onClick={handleOpenManualWshInstall}>
+                                        Manual install wsh
+                                    </Button>
+                                </div>
+                            )}
+                            {showWshActions && (
                                 <Button className={reconClassName} onClick={handleDisableWsh}>
                                     always disable wsh
                                 </Button>
@@ -258,7 +383,7 @@ export const ConnStatusOverlay = React.memo(
                             </Button>
                         </div>
                     ) : null}
-                    {showWshError ? (
+                    {showWshActions ? (
                         <div className="connstatus-actions">
                             <Button className={`fa-xmark fa-solid ${reconClassName}`} onClick={handleRemoveWshError} />
                         </div>

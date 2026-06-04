@@ -15,12 +15,16 @@ export function SessionRow({
     onSelect,
     onMark,
     onNoteSave,
+    onResume,
+    resumeDisabled = false,
 }: {
     session: SessionSummary;
     selected: boolean;
     onSelect: () => void;
     onMark: MouseEventHandler<HTMLButtonElement>;
     onNoteSave: (note: string) => Promise<boolean>;
+    onResume: MouseEventHandler<HTMLButtonElement>;
+    resumeDisabled?: boolean;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
@@ -95,6 +99,16 @@ export function SessionRow({
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
+                        <button
+                            type="button"
+                            className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
+                            title="Resume session"
+                            disabled={resumeDisabled}
+                            onClick={onResume}
+                        >
+                            <i className="fa-sharp fa-solid fa-square-terminal" />
+                            <span>Resume</span>
+                        </button>
                         <CopyIconButton
                             text={restoreCommandForSession(session)}
                             label="Copy resume command"

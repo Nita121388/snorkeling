@@ -18,6 +18,7 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
+import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
@@ -1111,6 +1112,12 @@ export class TermViewModel implements ViewModel {
                     label: "View Agent Session Details...",
                     click: () => {
                         modalsModel.pushModal("AISessionDetailModal", { sessionId: agentSessionId });
+                    },
+                },
+                {
+                    label: "Open Session Detail Block",
+                    click: () => {
+                        fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId));
                     },
                 },
                 agentFolderMenuItem,

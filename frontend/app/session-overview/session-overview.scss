@@ -226,21 +226,43 @@
 
 .session-overview-tab-group {
     margin-bottom: 14px;
+
+    &.is-collapsed {
+        margin-bottom: 6px;
+    }
 }
 
 .session-overview-tab-title {
     display: flex;
     width: 100%;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     height: 30px;
-    padding: 0 8px;
     border: 1px solid transparent;
     border-radius: 6px;
     color: var(--main-text-color);
     background: transparent;
-    cursor: pointer;
     font-size: 12px;
+
+    &:hover {
+        border-color: var(--border-color);
+        background: var(--hover-bg-color);
+    }
+}
+
+.session-overview-tab-toggle {
+    display: inline-flex;
+    min-width: 0;
+    height: 100%;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px 0 8px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
     text-align: left;
 
     > .session-overview-tab-name {
@@ -257,9 +279,38 @@
         font-size: 10px;
     }
 
-    &:hover {
+    &:focus-visible {
+        outline: none;
+    }
+}
+
+.session-overview-tab-chevron {
+    width: 10px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.session-overview-tab-jump-button {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    margin-right: 3px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-size: 10px;
+
+    &:hover,
+    &:focus-visible {
         border-color: var(--border-color);
-        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+        background: rgb(from var(--main-text-color) r g b / 0.06);
+        outline: none;
     }
 }
 

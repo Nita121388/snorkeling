@@ -9,7 +9,8 @@ import { createBlock, createBlockSplitHorizontally } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClaudeLogo, IconButton, OpenAILogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { SessionDetailPane } from "./session-detail";
@@ -347,6 +348,34 @@ function findSessionById(sessions: SessionSummary[], sessionId: string): Session
     return sessions.find((session) => session.key === trimmedSessionId || session.id === trimmedSessionId) ?? null;
 }
 
+const SessionListWidthStorageKey = "aisessions.sessionListWidth";
+const DefaultSessionListWidth = 320;
+const MinSessionListWidth = 240;
+const MaxSessionListWidth = 520;
+const CollapsedSessionListWidth = 44;
+
+function clampSessionListWidth(width: number): number {
+    if (!Number.isFinite(width)) return DefaultSessionListWidth;
+    return Math.max(MinSessionListWidth, Math.min(MaxSessionListWidth, Math.round(width)));
+}
+
+function readSessionListWidth(): number {
+    if (typeof window === "undefined") return DefaultSessionListWidth;
+    const storedWidth = window.localStorage.getItem(SessionListWidthStorageKey);
+    if (storedWidth == null) return DefaultSessionListWidth;
+    return clampSessionListWidth(Number(storedWidth));
+}
+
+function writeSessionListWidth(width: number): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SessionListWidthStorageKey, String(clampSessionListWidth(width)));
+}
+
+function readDefaultSessionListCollapsed(model: AiSessionsViewModel): boolean {
+    const blockData = globalStore.get(model.blockAtom);
+    return blockData?.meta?.["aisessions:sessionlistcollapsed"] === true;
+}
+
 function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
@@ -360,8 +389,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
-    const [sessionListCollapsed, setSessionListCollapsed] = useState(false);
+    const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
+    const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [markedOnly, setMarkedOnly] = useState(false);
+    const resizeCleanupRef = useRef<(() => void) | null>(null);
     const visibleSessions = useMemo(() => {
         const filteredSessions = markedOnly ? sessions.filter((session) => session.marked) : sessions;
         return sortSessionsByTime(filteredSessions, sortDescending);
@@ -427,6 +458,51 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         [model]
     );
 
+    useEffect(() => {
+        return () => {
+            resizeCleanupRef.current?.();
+        };
+    }, []);
+
+    const startSessionListResize = useCallback(
+        (event: ReactMouseEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            resizeCleanupRef.current?.();
+            const startX = event.clientX;
+            const startWidth = sessionListWidth;
+            const originalCursor = document.body.style.cursor;
+            const originalUserSelect = document.body.style.userSelect;
+            const handleMouseMove = (moveEvent: MouseEvent) => {
+                const nextWidth = clampSessionListWidth(startWidth + moveEvent.clientX - startX);
+                setSessionListWidth(nextWidth);
+            };
+            const handleMouseUp = (upEvent: MouseEvent) => {
+                const nextWidth = clampSessionListWidth(startWidth + upEvent.clientX - startX);
+                setSessionListWidth(nextWidth);
+                writeSessionListWidth(nextWidth);
+                resizeCleanupRef.current?.();
+            };
+            const cleanup = () => {
+                window.removeEventListener("mousemove", handleMouseMove);
+                window.removeEventListener("mouseup", handleMouseUp);
+                document.body.style.cursor = originalCursor;
+                document.body.style.userSelect = originalUserSelect;
+                resizeCleanupRef.current = null;
+            };
+            resizeCleanupRef.current = cleanup;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+            window.addEventListener("mousemove", handleMouseMove);
+            window.addEventListener("mouseup", handleMouseUp);
+        },
+        [sessionListWidth]
+    );
+
+    const gridTemplateColumns = sessionListCollapsed
+        ? `${CollapsedSessionListWidth}px minmax(0,1fr)`
+        : `${sessionListWidth}px minmax(0,1fr)`;
+
     return (
         <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
             {error ? (
@@ -434,13 +510,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     {error}
                 </div>
             ) : null}
-            <div
-                className={cn(
-                    "grid min-h-0 flex-1",
-                    sessionListCollapsed ? "grid-cols-[44px_minmax(0,1fr)]" : "grid-cols-[320px_minmax(0,1fr)]"
-                )}
-            >
-                <div className="flex min-h-0 flex-col border-r border-border">
+            <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
+                <div className="relative flex min-h-0 flex-col border-r border-border">
                     {sessionListCollapsed ? (
                         <div className="flex h-full min-h-0 flex-col items-center gap-2 py-3">
                             <IconButton
@@ -565,12 +636,26 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 model.toggleMark(session);
                                             }}
                                             onNoteSave={(note) => model.updateNote(session, note)}
+                                            onResume={(e) => {
+                                                e.stopPropagation();
+                                                void model.restoreSession(session);
+                                            }}
+                                            resumeDisabled={restoring}
                                         />
                                     ))
                                 )}
                             </div>
                         </>
                     )}
+                    {!sessionListCollapsed ? (
+                        <div
+                            role="separator"
+                            aria-label="Resize sessions list"
+                            aria-orientation="vertical"
+                            className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize bg-transparent transition-colors hover:bg-accent/20"
+                            onMouseDown={startSessionListResize}
+                        />
+                    ) : null}
                 </div>
                 <SessionDetailPane
                     model={model}

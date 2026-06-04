@@ -62,6 +62,17 @@ const (
 )
 
 const (
+	WshInstallStatus_Checking           = "checking"
+	WshInstallStatus_DetectingPlatform  = "detecting-platform"
+	WshInstallStatus_FindingBinary      = "finding-binary"
+	WshInstallStatus_Uploading          = "uploading"
+	WshInstallStatus_Verifying          = "verifying"
+	WshInstallStatus_RestartingServer   = "restarting-server"
+	WshInstallStatus_Complete           = "complete"
+	WshInstallStatus_Failed             = "failed"
+)
+
+const (
 	ConnHealthStatus_Good     = "good"
 	ConnHealthStatus_Degraded = "degraded"
 	ConnHealthStatus_Stalled  = "stalled"
@@ -88,6 +99,9 @@ type SSHConn struct {
 	Error              string
 	WshError           string
 	NoWshReason        string
+	WshErrorCode       string
+	WshInstallStatus   string
+	WshInstallMsg      string
 	WshVersion         string
 	LastConnectTime    int64
 	ActiveConnNum      int
@@ -152,6 +166,9 @@ func (conn *SSHConn) DeriveConnStatus() wshrpc.ConnStatus {
 		WshEnabled:                    conn.WshEnabled.Load(),
 		WshError:                      conn.WshError,
 		NoWshReason:                   conn.NoWshReason,
+		WshErrorCode:                  conn.WshErrorCode,
+		WshInstallStatus:              conn.WshInstallStatus,
+		WshInstallMsg:                 conn.WshInstallMsg,
 		WshVersion:                    conn.WshVersion,
 		ConnHealthStatus:              conn.ConnHealthStatus,
 		LastActivityBeforeStalledTime: lastActivityBeforeStalledTime,
@@ -179,6 +196,21 @@ func (conn *SSHConn) FireConnChangeEvent() {
 	}
 	log.Printf("sending event: %+#v", event)
 	wps.Broker.Publish(event)
+}
+
+func (conn *SSHConn) updateWshInstallState(status string, msg string, errorCode string, fireEvent bool) {
+	conn.WithLock(func() {
+		conn.WshInstallStatus = status
+		conn.WshInstallMsg = msg
+		conn.WshErrorCode = errorCode
+	})
+	if fireEvent {
+		conn.FireConnChangeEvent()
+	}
+}
+
+func (conn *SSHConn) clearWshInstallState() {
+	conn.updateWshInstallState("", "", "", false)
 }
 
 func (conn *SSHConn) Close() error {
@@ -603,14 +635,17 @@ Would you like to install them?
 func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, remoteInfo *wshrpc.RemoteInfo) error {
 	conn.Infof(ctx, "attempting to update wsh for connection %s (os:%s arch:%s version:%s)\n",
 		conn.GetName(), remoteInfo.ClientOs, remoteInfo.ClientArch, remoteInfo.ClientVersion)
+	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
 	client := conn.GetClient()
 	if client == nil {
 		return fmt.Errorf("cannot update wsh: ssh client is not connected")
 	}
 	err := remote.CpWshToRemote(ctx, client, remoteInfo.ClientOs, remoteInfo.ClientArch)
 	if err != nil {
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return fmt.Errorf("error installing wsh to remote: %w", err)
 	}
+	conn.updateWshInstallState(WshInstallStatus_Complete, "wsh update complete", "", true)
 	conn.Infof(ctx, "successfully updated wsh on %s\n", conn.GetName())
 	return nil
 
@@ -671,20 +706,31 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 	var clientOs, clientArch string
 	var err error
 	if osArchStr != "" {
+		conn.updateWshInstallState(WshInstallStatus_DetectingPlatform, fmt.Sprintf("Using detected remote platform: %s", osArchStr), "", true)
 		clientOs, clientArch, err = remote.GetClientPlatformFromOsArchStr(ctx, osArchStr)
 	} else {
+		conn.updateWshInstallState(WshInstallStatus_DetectingPlatform, "Detecting remote platform", "", true)
 		clientOs, clientArch, err = remote.GetClientPlatform(ctx, genconn.MakeSSHShellClient(client))
 	}
 	if err != nil {
 		conn.Infof(ctx, "ERROR detecting client platform: %v\n", err)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return fmt.Errorf("error detecting client platform: %w", err)
 	}
 	conn.Infof(ctx, "detected remote platform os:%s arch:%s\n", clientOs, clientArch)
+	conn.updateWshInstallState(WshInstallStatus_FindingBinary, fmt.Sprintf("Finding local wsh binary for %s/%s", clientOs, clientArch), "", true)
+	if _, err := shellutil.GetLocalWshBinaryPath(wavebase.WaveVersion, clientOs, clientArch); err != nil {
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
+		return err
+	}
+	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
 	err = remote.CpWshToRemote(ctx, client, clientOs, clientArch)
 	if err != nil {
 		conn.Infof(ctx, "ERROR copying wsh binary to remote: %v\n", err)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return fmt.Errorf("error copying wsh binary to remote: %w", err)
 	}
+	conn.updateWshInstallState(WshInstallStatus_Verifying, "Verifying remote wsh version", "", true)
 	conn.Infof(ctx, "successfully installed wsh\n")
 	return nil
 }
@@ -738,6 +784,11 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 		} else {
 			conn.Status = Status_Connecting
 			conn.Error = ""
+			conn.WshError = ""
+			conn.NoWshReason = ""
+			conn.WshErrorCode = ""
+			conn.WshInstallStatus = ""
+			conn.WshInstallMsg = ""
 			connectAllowed = true
 		}
 	})
@@ -774,6 +825,8 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 		conn.WithLock(func() {
 			conn.Status = Status_Connected
 			conn.LastConnectTime = time.Now().UnixMilli()
+			conn.WshInstallStatus = ""
+			conn.WshInstallMsg = ""
 			if conn.ActiveConnNum == 0 {
 				conn.ActiveConnNum = int(activeConnCounter.Add(1))
 			}
@@ -864,12 +917,37 @@ type WshCheckResult struct {
 	WshError      error
 }
 
+func diagnoseWshInstallError(err error) string {
+	if err == nil {
+		return ""
+	}
+	errStr := strings.ToLower(err.Error())
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(errStr, "deadline exceeded") || strings.Contains(errStr, "timeout") {
+		return "Timed out while installing wsh. Use Manual install wsh if the network is slow."
+	}
+	if strings.Contains(errStr, "permission denied") {
+		return "Permission denied while installing wsh. Check the remote user and ~/.snorkeling/bin permissions."
+	}
+	if strings.Contains(errStr, "no such file") || strings.Contains(errStr, "cannot open local file") {
+		return "Could not find the matching local wsh binary for this remote platform."
+	}
+	if strings.Contains(errStr, "size mismatch") {
+		return "Uploaded wsh binary size did not match. Retry the install."
+	}
+	if strings.Contains(errStr, "unsupported") || strings.Contains(errStr, "bad cpu type") || strings.Contains(errStr, "exec format") {
+		return "The remote platform or CPU architecture is not supported by the selected wsh binary."
+	}
+	return err.Error()
+}
+
 // returns (wsh-enabled, clientVersion, text-reason, wshError)
 func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string) WshCheckResult {
 	conn.Infof(ctx, "running tryEnableWsh...\n")
+	conn.updateWshInstallState(WshInstallStatus_Checking, "Checking remote wsh", "", true)
 	enableWsh, askBeforeInstall := conn.getConnWshSettings()
 	conn.Infof(ctx, "wsh settings enable:%v ask:%v\n", enableWsh, askBeforeInstall)
 	if !enableWsh {
+		conn.clearWshInstallState()
 		return WshCheckResult{NoWshReason: "conn:wshenabled set to false", NoWshCode: NoWshCode_Disabled}
 	}
 	if askBeforeInstall {
@@ -886,12 +964,14 @@ func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string)
 	if err != nil {
 		conn.Infof(ctx, "ERROR opening domain socket listener: %v\n", err)
 		err = fmt.Errorf("error opening domain socket listener: %w", err)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_DomainSocketError, true)
 		return WshCheckResult{NoWshReason: "error opening domain socket", NoWshCode: NoWshCode_DomainSocketError, WshError: err}
 	}
 	needsInstall, clientVersion, osArchStr, err := conn.StartConnServer(ctx, false, true)
 	if err != nil {
 		conn.Infof(ctx, "ERROR starting conn server: %v\n", err)
 		err = fmt.Errorf("error starting conn server: %w", err)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_ConnServerStartError, true)
 		return WshCheckResult{NoWshReason: "error starting connserver", NoWshCode: NoWshCode_ConnServerStartError, WshError: err}
 	}
 	if needsInstall {
@@ -900,21 +980,27 @@ func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string)
 		if err != nil {
 			conn.Infof(ctx, "ERROR installing wsh: %v\n", err)
 			err = fmt.Errorf("error installing wsh: %w", err)
+			conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 			return WshCheckResult{NoWshReason: "error installing wsh/connserver", NoWshCode: NoWshCode_InstallError, WshError: err}
 		}
+		conn.updateWshInstallState(WshInstallStatus_RestartingServer, "Restarting remote connserver", "", true)
 		needsInstall, clientVersion, _, err = conn.StartConnServer(ctx, true, true)
 		if err != nil {
 			conn.Infof(ctx, "ERROR starting conn server (after install): %v\n", err)
 			err = fmt.Errorf("error starting conn server (after install): %w", err)
+			conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_PostInstallStartError, true)
 			return WshCheckResult{NoWshReason: "error starting connserver", NoWshCode: NoWshCode_PostInstallStartError, WshError: err}
 		}
 		if needsInstall {
 			conn.Infof(ctx, "conn server not installed correctly (after install)\n")
 			err = fmt.Errorf("conn server not installed correctly (after install)")
+			conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallVerifyError, true)
 			return WshCheckResult{NoWshReason: "connserver not installed properly", NoWshCode: NoWshCode_InstallVerifyError, WshError: err}
 		}
+		conn.updateWshInstallState(WshInstallStatus_Complete, "wsh installed and connserver started", "", true)
 		return WshCheckResult{WshEnabled: true, ClientVersion: clientVersion}
 	} else {
+		conn.clearWshInstallState()
 		return WshCheckResult{WshEnabled: true, ClientVersion: clientVersion}
 	}
 }
@@ -933,7 +1019,12 @@ func (conn *SSHConn) persistWshInstalled(ctx context.Context, result WshCheckRes
 	conn.SetWshError(result.WshError)
 	conn.WithLock(func() {
 		conn.NoWshReason = result.NoWshReason
+		conn.WshErrorCode = result.NoWshCode
 		conn.WshVersion = result.ClientVersion
+		if result.WshEnabled && conn.WshInstallStatus != WshInstallStatus_Complete {
+			conn.WshInstallStatus = ""
+			conn.WshInstallMsg = ""
+		}
 	})
 	connConfig, ok := conn.getConnectionConfig()
 	if ok && connConfig.ConnWshEnabled != nil {

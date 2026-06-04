@@ -435,6 +435,9 @@ type ConnStatus struct {
 	Error                         string `json:"error,omitempty"`
 	WshError                      string `json:"wsherror,omitempty"`
 	NoWshReason                   string `json:"nowshreason,omitempty"`
+	WshErrorCode                  string `json:"wsherrorcode,omitempty"`
+	WshInstallStatus              string `json:"wshinstallstatus,omitempty"`
+	WshInstallMsg                 string `json:"wshinstallmsg,omitempty"`
 	WshVersion                    string `json:"wshversion,omitempty"`
 	LastActivityBeforeStalledTime int64  `json:"lastactivitybeforestalledtime,omitempty"`
 	KeepAliveSentTime             int64  `json:"keepalivesenttime,omitempty"`
