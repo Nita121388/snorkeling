@@ -11,11 +11,13 @@ import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./common
 import { copyCommonText, getCurrentEditableElement, insertOrCopyCommonText } from "./commontext-insert";
 import {
     getCommonTextItemsFromSettings,
+    getCommonTextTagSummaries,
     openCommonTextManager,
     recordCommonTextUse,
     searchCommonTextItems,
     type CommonTextItem,
 } from "./commontext-model";
+import { CommonTextTagChip, CommonTextTagList } from "./commontext-tags";
 
 type SearchState = Required<Pick<CommonTextSearchDetail, "mode">> & {
     open: boolean;
@@ -38,10 +40,15 @@ const CommonTextSearchModal = memo(() => {
         insertTarget: null,
     });
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [status, setStatus] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const results = useMemo(() => searchCommonTextItems(items, state.query, 60), [items, state.query]);
+    const tagSummaries = useMemo(() => getCommonTextTagSummaries(items), [items]);
+    const results = useMemo(
+        () => searchCommonTextItems(items, state.query, 60, selectedTags),
+        [items, selectedTags, state.query]
+    );
     const hasInsertTarget = state.insertTarget != null;
 
     useEffect(() => {
@@ -56,6 +63,7 @@ const CommonTextSearchModal = memo(() => {
                 insertTarget: getCurrentEditableElement(),
             });
             setSelectedIndex(0);
+            setSelectedTags([]);
             setStatus("");
             requestAnimationFrame(() => inputRef.current?.focus());
         };
@@ -119,6 +127,15 @@ const CommonTextSearchModal = memo(() => {
         fireAndForget(openCommonTextManager);
     };
 
+    const toggleTag = (tag: string) => {
+        setSelectedTags((cur) =>
+            cur.some((selectedTag) => selectedTag.toLowerCase() === tag.toLowerCase())
+                ? cur.filter((selectedTag) => selectedTag.toLowerCase() !== tag.toLowerCase())
+                : [...cur, tag]
+        );
+        setSelectedIndex(0);
+    };
+
     return (
         <Modal
             className="w-[min(760px,calc(100vw-32px))] max-h-[min(720px,calc(100vh-32px))] pt-8 pb-4"
@@ -158,6 +175,21 @@ const CommonTextSearchModal = memo(() => {
                         <i className="fa-regular fa-magnifying-glass" />
                     </InputRightElement>
                 </InputGroup>
+                {tagSummaries.length > 0 && (
+                    <div className="max-h-20 overflow-y-auto flex flex-wrap gap-1.5">
+                        {tagSummaries.map((tagSummary) => (
+                            <CommonTextTagChip
+                                key={tagSummary.tag}
+                                tag={tagSummary.tag}
+                                count={tagSummary.count}
+                                selected={selectedTags.some(
+                                    (selectedTag) => selectedTag.toLowerCase() === tagSummary.tag.toLowerCase()
+                                )}
+                                onClick={() => toggleTag(tagSummary.tag)}
+                            />
+                        ))}
+                    </div>
+                )}
                 {status && <div className="text-xs text-accent">{status}</div>}
                 <div className="min-h-0 flex-1 overflow-y-auto border border-border rounded">
                     {results.length === 0 ? (
@@ -195,6 +227,16 @@ const CommonTextSearchModal = memo(() => {
                                         <div className="text-xs text-secondary truncate mt-0.5">
                                             {makePreview(item.text)}
                                         </div>
+                                        {(item.tags?.length ?? 0) > 0 && (
+                                            <div className="mt-1">
+                                                <CommonTextTagList
+                                                    tags={item.tags}
+                                                    maxVisible={4}
+                                                    selectedTags={selectedTags}
+                                                    compact
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <button
                                         type="button"

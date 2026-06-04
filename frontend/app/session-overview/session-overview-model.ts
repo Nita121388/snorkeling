@@ -25,6 +25,8 @@ export class SessionOverviewModel {
     });
     displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
     blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
+    hideUnopenedTabsAtom = jotai.atom(readBoolean(HideUnopenedTabsStorageKey)) as jotai.PrimitiveAtom<boolean>;
+    agentsOnlyAtom = jotai.atom(readBoolean(AgentsOnlyStorageKey)) as jotai.PrimitiveAtom<boolean>;
 
     private constructor() {}
 
@@ -65,6 +67,16 @@ export class SessionOverviewModel {
         if (typeof window !== "undefined") {
             window.localStorage.setItem(DisplayLimitStorageKey, String(normalized));
         }
+    }
+
+    setHideUnopenedTabs(value: boolean): void {
+        globalStore.set(this.hideUnopenedTabsAtom, value);
+        writeBoolean(HideUnopenedTabsStorageKey, value);
+    }
+
+    setAgentsOnly(value: boolean): void {
+        globalStore.set(this.agentsOnlyAtom, value);
+        writeBoolean(AgentsOnlyStorageKey, value);
     }
 
     markBlockViewed(blockId: string, viewedAt = Date.now()): void {
@@ -176,6 +188,8 @@ async function findSessionOverviewBlockIdInTab(tabId: string): Promise<string> {
 
 const DisplayLimitStorageKey = "snorkeling:session-overview:display-limit";
 const ViewedAtStorageKey = "snorkeling:session-overview:block-viewed-at";
+const HideUnopenedTabsStorageKey = "snorkeling:session-overview:hide-unopened-tabs";
+const AgentsOnlyStorageKey = "snorkeling:session-overview:agents-only";
 const DefaultDisplayLimit = 20;
 const MinDisplayLimit = 5;
 const MaxDisplayLimit = 100;
@@ -189,6 +203,16 @@ function readDisplayLimit(): number {
     if (typeof window === "undefined") return DefaultDisplayLimit;
     const raw = window.localStorage.getItem(DisplayLimitStorageKey);
     return normalizeDisplayLimit(Number(raw));
+}
+
+function readBoolean(key: string): boolean {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(key) === "true";
+}
+
+function writeBoolean(key: string, value: boolean): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(key, String(value));
 }
 
 function readViewedAt(): Record<string, number> {

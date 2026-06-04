@@ -11,9 +11,12 @@ import {
     type CommonTextItem,
     deleteCommonTextItem,
     getCommonTextItemsFromSettings,
+    getCommonTextTagSummaries,
+    normalizeCommonTextTags,
     searchCommonTextItems,
     upsertCommonTextItem,
 } from "./commontext-model";
+import { CommonTextTagChip, CommonTextTagList } from "./commontext-tags";
 
 type EditingState = {
     id?: string;
@@ -60,6 +63,8 @@ const CommonTextManagerContent = memo(() => {
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
     const filteredItems = useMemo(() => searchCommonTextItems(items, query, 500), [items, query]);
+    const tagSummaries = useMemo(() => getCommonTextTagSummaries(items), [items]);
+    const editingTags = useMemo(() => normalizeCommonTextTags(editing.tags), [editing.tags]);
     const selectedId = editing.id;
     const canSave = editing.text.trim() !== "";
 
@@ -109,6 +114,17 @@ const CommonTextManagerContent = memo(() => {
         }
         await copyCommonText(editing.text);
         setMessage("Copied");
+    };
+
+    const toggleEditingTag = (tag: string) => {
+        setEditing((cur) => {
+            const currentTags = normalizeCommonTextTags(cur.tags);
+            const hasTag = currentTags.some((currentTag) => currentTag.toLowerCase() === tag.toLowerCase());
+            const nextTags = hasTag
+                ? currentTags.filter((currentTag) => currentTag.toLowerCase() !== tag.toLowerCase())
+                : [...currentTags, tag];
+            return { ...cur, tags: nextTags.join(", ") };
+        });
     };
 
     return (
@@ -166,6 +182,11 @@ const CommonTextManagerContent = memo(() => {
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate font-medium">{item.title}</div>
+                                            {(item.tags?.length ?? 0) > 0 && (
+                                                <div className="mt-1">
+                                                    <CommonTextTagList tags={item.tags} maxVisible={3} compact />
+                                                </div>
+                                            )}
                                             <div className="truncate text-xs text-secondary">
                                                 {item.text.replace(/\s+/g, " ")}
                                             </div>
@@ -216,6 +237,11 @@ const CommonTextManagerContent = memo(() => {
                                     onChange={(e) => setEditing((cur) => ({ ...cur, tags: e.target.value }))}
                                     placeholder="email, support"
                                 />
+                                {editingTags.length > 0 && (
+                                    <div className="mt-1">
+                                        <CommonTextTagList tags={editingTags} />
+                                    </div>
+                                )}
                             </label>
                             <label className="flex h-9 items-center gap-2 text-sm text-secondary">
                                 <input
@@ -226,6 +252,24 @@ const CommonTextManagerContent = memo(() => {
                                 Pinned
                             </label>
                         </div>
+                        {tagSummaries.length > 0 && (
+                            <div className="flex flex-col gap-2 rounded border border-border bg-background/40 p-3">
+                                <div className="text-xs font-medium uppercase text-secondary">All tags</div>
+                                <div className="max-h-24 overflow-y-auto flex flex-wrap gap-1.5">
+                                    {tagSummaries.map((tagSummary) => (
+                                        <CommonTextTagChip
+                                            key={tagSummary.tag}
+                                            tag={tagSummary.tag}
+                                            count={tagSummary.count}
+                                            selected={editingTags.some(
+                                                (tag) => tag.toLowerCase() === tagSummary.tag.toLowerCase()
+                                            )}
+                                            onClick={() => toggleEditingTag(tagSummary.tag)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <div className="min-h-5 text-sm">
                             {error ? (
                                 <span className="text-error">{error}</span>

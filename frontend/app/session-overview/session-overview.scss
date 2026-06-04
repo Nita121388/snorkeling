@@ -136,6 +136,49 @@
     gap: 8px;
 }
 
+.session-overview-filter-group {
+    display: inline-flex;
+    height: 24px;
+    align-items: center;
+    gap: 3px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgb(from var(--main-text-color) r g b / 0.035);
+}
+
+.session-overview-filter-button {
+    display: inline-flex;
+    height: 18px;
+    align-items: center;
+    gap: 5px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0 6px;
+    white-space: nowrap;
+
+    &:hover {
+        color: var(--main-text-color);
+        background: var(--hover-bg-color);
+    }
+
+    &.is-active {
+        color: var(--accent-color);
+        background: rgb(from var(--accent-color) r g b / 0.12);
+    }
+
+    > i {
+        width: 11px;
+        text-align: center;
+    }
+}
+
 .session-overview-enable-agent-status {
     display: inline-flex;
     height: 24px;

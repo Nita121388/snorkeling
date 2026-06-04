@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
+import { openCommonTextSearch } from "@/app/commontext/commontext-events";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { FocusManager } from "@/app/store/focusManager";
 import {
@@ -737,6 +738,10 @@ function registerGlobalKeys() {
     });
     globalKeyMap.set("Cmd:Shift:o", () => {
         void SessionOverviewModel.getInstance().open();
+        return true;
+    });
+    globalKeyMap.set("Ctrl:Shift:Space", () => {
+        openCommonTextSearch();
         return true;
     });
     const allKeys = Array.from(globalKeyMap.keys());

@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 2
+	hookInstallVersion  = 3
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -119,17 +119,8 @@ func InstallCodexHooks() (HookInstallResult, error) {
 		return HookInstallResult{}, err
 	}
 	pruneManagedCommandHooks(hooks)
-	for _, spec := range []struct {
-		event  string
-		action string
-	}{
-		{"SessionStart", StateIdle},
-		{"UserPromptSubmit", StateWorking},
-		{"PreToolUse", StateWorking},
-		{"PermissionRequest", StateBlocked},
-		{"Stop", StateIdle},
-	} {
-		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action), 10, ""); err != nil {
+	for _, spec := range codexHookSpecs() {
+		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action, spec.phase), 10, ""); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -237,19 +228,8 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 		return HookInstallResult{}, err
 	}
 	pruneManagedCommandHooks(hooks)
-	for _, spec := range []struct {
-		event   string
-		action  string
-		matcher string
-	}{
-		{"SessionStart", StateIdle, "*"},
-		{"UserPromptSubmit", StateWorking, "*"},
-		{"PreToolUse", StateWorking, "*"},
-		{"PermissionRequest", StateBlocked, "*"},
-		{"Stop", StateIdle, "*"},
-		{"SessionEnd", StateRelease, "*"},
-	} {
-		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action), 10, spec.matcher); err != nil {
+	for _, spec := range claudeHookSpecs() {
+		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action, spec.phase), 10, spec.matcher); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -325,9 +305,37 @@ func hookInstallName() string {
 	return hookInstallBaseName + ".sh"
 }
 
-func hookCommand(path string, action string) string {
+type agentStatusHookSpec struct {
+	event   string
+	action  string
+	phase   string
+	matcher string
+}
+
+func codexHookSpecs() []agentStatusHookSpec {
+	return []agentStatusHookSpec{
+		{"SessionStart", StateIdle, PhaseNone, ""},
+		{"UserPromptSubmit", StateWorking, PhaseThinking, ""},
+		{"PreToolUse", StateWorking, PhaseTool, ""},
+		{"PermissionRequest", StateBlocked, PhaseApproval, ""},
+		{"Stop", StateIdle, PhaseNone, ""},
+	}
+}
+
+func claudeHookSpecs() []agentStatusHookSpec {
+	return []agentStatusHookSpec{
+		{"SessionStart", StateIdle, PhaseNone, "*"},
+		{"UserPromptSubmit", StateWorking, PhaseThinking, "*"},
+		{"PreToolUse", StateWorking, PhaseTool, "*"},
+		{"PermissionRequest", StateBlocked, PhaseApproval, "*"},
+		{"Stop", StateIdle, PhaseNone, "*"},
+		{"SessionEnd", StateRelease, PhaseNone, "*"},
+	}
+}
+
+func hookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s %s", shellDoubleQuote(path), action)
+		return fmt.Sprintf("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s %s %s", shellDoubleQuote(path), action, phase)
 	}
 	return fmt.Sprintf("bash %s %s", shellSingleQuote(path), action)
 }
@@ -346,7 +354,8 @@ func agentStatusPowerShellHookScript(provider string) string {
 # %s%d
 
 param(
-  [string]$Action = ""
+  [string]$Action = "",
+  [string]$Phase = ""
 )
 
 try {
@@ -374,58 +383,21 @@ try {
     exit 0
   }
 
-  $inputText = [Console]::In.ReadToEnd()
-  $hookInput = $null
-  if (-not [string]::IsNullOrWhiteSpace($inputText)) {
-    try {
-      $hookInput = $inputText | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-      $hookInput = $null
-    }
-  }
-
-  $hookEventName = ""
-  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "hook_event_name" -and $null -ne $hookInput.hook_event_name) {
-    $hookEventName = [string]$hookInput.hook_event_name
-  }
-  if ("%s" -eq "claude" -and $hookEventName -eq "SubagentStop") {
-    exit 0
-  }
-  if ("%s" -eq "claude" -and $hookInput -and $hookInput.PSObject.Properties.Name -contains "agent_id" -and $hookInput.agent_id -and $Action -in @("idle", "release")) {
-    exit 0
-  }
-
-  $toolName = ""
-  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "tool_name" -and $hookInput.tool_name -is [string]) {
-    $toolName = $hookInput.tool_name.Trim()
-  }
-
-  $sessionId = ""
-  if ($hookInput -and $hookInput.PSObject.Properties.Name -contains "session_id" -and $hookInput.session_id -is [string]) {
-    $sessionId = $hookInput.session_id.Trim()
-  }
-
-  $phase = "unknown"
-  if ($Action -in @("idle", "release")) {
-    $phase = "none"
-  } elseif ($Action -eq "blocked") {
-    $phase = "approval"
-  } elseif ($Action -eq "working") {
-    if ($toolName -or $hookEventName -eq "PreToolUse") {
-      $phase = "tool"
-    } else {
+  $phase = $Phase.Trim().ToLowerInvariant()
+  if ($phase -notin @("thinking", "tool", "shell-command", "approval", "none", "unknown")) {
+    if ($Action -in @("idle", "release")) {
+      $phase = "none"
+    } elseif ($Action -eq "blocked") {
+      $phase = "approval"
+    } elseif ($Action -eq "working") {
       $phase = "thinking"
+    } else {
+      $phase = "unknown"
     }
   }
 
   $seq = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() * 1000000
   $args = @("agentstatus", $Action, "--provider", "%s", "--source", "hook", "--phase", $phase, "--seq", [string]$seq)
-  if ($toolName) {
-    $args += @("--tool", $toolName)
-  }
-  if ($sessionId) {
-    $args += @("--session-id", $sessionId)
-  }
 
   $stdoutPath = [System.IO.Path]::GetTempFileName()
   $stderrPath = [System.IO.Path]::GetTempFileName()
@@ -789,17 +761,8 @@ func isManagedHookCommand(command string) bool {
 }
 
 func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
-	for _, spec := range []struct {
-		event  string
-		action string
-	}{
-		{"SessionStart", StateIdle},
-		{"UserPromptSubmit", StateWorking},
-		{"PreToolUse", StateWorking},
-		{"PermissionRequest", StateBlocked},
-		{"Stop", StateIdle},
-	} {
-		if !commandHookInstalled(hooksPath, spec.event, hookCommand(hookPath, spec.action)) {
+	for _, spec := range codexHookSpecs() {
+		if !commandHookInstalled(hooksPath, spec.event, hookCommand(hookPath, spec.action, spec.phase)) {
 			return false
 		}
 	}
@@ -807,18 +770,8 @@ func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
 }
 
 func claudeHookCommandsInstalled(settingsPath string, hookPath string) bool {
-	for _, spec := range []struct {
-		event  string
-		action string
-	}{
-		{"SessionStart", StateIdle},
-		{"UserPromptSubmit", StateWorking},
-		{"PreToolUse", StateWorking},
-		{"PermissionRequest", StateBlocked},
-		{"Stop", StateIdle},
-		{"SessionEnd", StateRelease},
-	} {
-		if !commandHookInstalled(settingsPath, spec.event, hookCommand(hookPath, spec.action)) {
+	for _, spec := range claudeHookSpecs() {
+		if !commandHookInstalled(settingsPath, spec.event, hookCommand(hookPath, spec.action, spec.phase)) {
 			return false
 		}
 	}

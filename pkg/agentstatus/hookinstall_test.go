@@ -41,6 +41,9 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	if !strings.Contains(string(script), expectedScriptToken) || !strings.Contains(string(script), "--provider") {
 		t.Fatalf("hook script missing expected wsh call:\n%s", string(script))
 	}
+	if runtime.GOOS == "windows" && strings.Contains(string(script), "ReadToEnd") {
+		t.Fatalf("windows hook script must not block while reading stdin:\n%s", string(script))
+	}
 	if strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) {
 		t.Fatalf("hook script should not require legacy WAVETERM=1:\n%s", string(script))
 	}
@@ -65,6 +68,9 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	hooks := hooksFile["hooks"].(map[string]any)
 	if _, ok := hooks["PreToolUse"].([]any); !ok {
 		t.Fatalf("expected PreToolUse hook in %#v", hooks)
+	}
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking, PhaseTool)) {
+		t.Fatalf("expected PreToolUse hook command to include tool phase")
 	}
 	config, err := os.ReadFile(result.ConfigPath)
 	if err != nil {
@@ -105,6 +111,34 @@ func TestCheckCodexHooksDetectsLegacyScript(t *testing.T) {
 	status := statusResult.Statuses[0]
 	if !status.Installed || status.Current || !status.NeedsInstall {
 		t.Fatalf("expected legacy hook to need install: %+v", status)
+	}
+}
+
+func TestCheckCodexHooksDetectsVersionTwoScript(t *testing.T) {
+	tmpDir := t.TempDir()
+	codexDir := filepath.Join(tmpDir, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyScript := "# SNORKELING_AGENT_STATUS_INTEGRATION_ID=codex\n# SNORKELING_AGENT_STATUS_INTEGRATION_VERSION=2\n$inputText = [Console]::In.ReadToEnd()\n"
+	if err := os.WriteFile(filepath.Join(codexDir, hookInstallName()), []byte(legacyScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(codexHomeEnvVar, codexDir)
+
+	statusResult, err := CheckHooks(HookTargetCodex)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(statusResult.Statuses) != 1 {
+		t.Fatalf("expected one status: %+v", statusResult)
+	}
+	status := statusResult.Statuses[0]
+	if !status.Installed || status.Current || !status.NeedsInstall {
+		t.Fatalf("expected version 2 hook to need install: %+v", status)
+	}
+	if status.InstalledVersion != 2 || status.RequiredVersion != hookInstallVersion {
+		t.Fatalf("unexpected hook versions: %+v", status)
 	}
 }
 
@@ -156,7 +190,7 @@ func TestInstallCodexHooksPrunesLegacyManagedCommands(t *testing.T) {
 	if !commandHookInstalled(result.HooksPath, "PreToolUse", "echo keep-me") {
 		t.Fatalf("unmanaged hook command should be preserved")
 	}
-	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking)) {
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking, PhaseTool)) {
 		t.Fatalf("new managed hook command missing")
 	}
 }

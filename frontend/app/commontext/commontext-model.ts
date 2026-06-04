@@ -28,6 +28,11 @@ export type CommonTextDraft = {
     pinned?: boolean;
 };
 
+export type CommonTextTagSummary = {
+    tag: string;
+    count: number;
+};
+
 export function normalizeCommonTextTitle(title: string, text: string): string {
     const normalizedTitle = title.trim();
     if (normalizedTitle !== "") {
@@ -41,12 +46,15 @@ export function normalizeCommonTextTitle(title: string, text: string): string {
     return fallback.length > 48 ? `${fallback.slice(0, 45)}...` : fallback;
 }
 
-export function normalizeCommonTextTags(tags: string[] | string | undefined): string[] {
-    const rawTags = Array.isArray(tags) ? tags : (tags ?? "").split(",");
+export function normalizeCommonTextTags(tags: unknown): string[] {
+    const rawTags: unknown[] = Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",") : [];
     const seen = new Set<string>();
     const rtn: string[] = [];
-    for (const tag of rawTags) {
-        const normalized = tag.trim();
+    for (const rawTag of rawTags) {
+        if (typeof rawTag !== "string") {
+            continue;
+        }
+        const normalized = rawTag.trim();
         if (normalized === "") {
             continue;
         }
@@ -135,15 +143,55 @@ export function sortCommonTextItems(items: CommonTextItem[]): CommonTextItem[] {
     });
 }
 
+export function getCommonTextTagSummaries(items: CommonTextItem[]): CommonTextTagSummary[] {
+    const tagCounts = new Map<string, CommonTextTagSummary>();
+    for (const item of items) {
+        for (const normalizedTag of normalizeCommonTextTags(item.tags)) {
+            const lower = normalizedTag.toLowerCase();
+            const existing = tagCounts.get(lower);
+            if (existing == null) {
+                tagCounts.set(lower, { tag: normalizedTag, count: 1 });
+            } else {
+                existing.count += 1;
+            }
+        }
+    }
+    return Array.from(tagCounts.values()).sort((a, b) => {
+        if (a.count !== b.count) {
+            return b.count - a.count;
+        }
+        return a.tag.localeCompare(b.tag);
+    });
+}
+
+export function filterCommonTextItemsByTags(items: CommonTextItem[], selectedTags: string[]): CommonTextItem[] {
+    const normalizedSelectedTags = normalizeCommonTextTags(selectedTags).map((tag) => tag.toLowerCase());
+    if (normalizedSelectedTags.length === 0) {
+        return items;
+    }
+    return items.filter((item) => {
+        const itemTagSet = new Set(normalizeCommonTextTags(item.tags).map((tag) => tag.toLowerCase()));
+        return normalizedSelectedTags.every((tag) => itemTagSet.has(tag));
+    });
+}
+
 function matchesToken(item: CommonTextItem, token: string): boolean {
     const target = [item.title, item.text, item.shortcut ?? "", ...(item.tags ?? [])].join("\n").toLowerCase();
     return target.includes(token.toLowerCase());
 }
 
-export function searchCommonTextItems(items: CommonTextItem[], query: string, limit = 40): CommonTextItem[] {
+export function searchCommonTextItems(
+    items: CommonTextItem[],
+    query: string,
+    limit = 40,
+    selectedTags: string[] = []
+): CommonTextItem[] {
     const tokens = query.trim().split(/\s+/).filter(Boolean);
+    const tagFilteredItems = filterCommonTextItemsByTags(items, selectedTags);
     const filtered =
-        tokens.length === 0 ? items : items.filter((item) => tokens.every((token) => matchesToken(item, token)));
+        tokens.length === 0
+            ? tagFilteredItems
+            : tagFilteredItems.filter((item) => tokens.every((token) => matchesToken(item, token)));
     return sortCommonTextItems(filtered).slice(0, limit);
 }
 

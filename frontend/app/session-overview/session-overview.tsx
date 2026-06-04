@@ -21,6 +21,7 @@ import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
+import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
 import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getLayoutModelForTabById } from "@/layout/index";
@@ -1388,8 +1389,12 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
 function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewModel>) {
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
+    const activeTabId = jotai.useAtomValue(atoms.staticTabId);
     const displayLimit = jotai.useAtomValue(overviewModel.displayLimitAtom);
     const viewedAt = jotai.useAtomValue(overviewModel.blockViewedAtAtom);
+    const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
+    const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
+    const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
     const details = useSessionDetails(blocks, refreshSeq);
@@ -1399,6 +1404,22 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(true);
     const tabGroups = useTabGroups(workspace, blocks);
+    const displayedTabGroups = useMemo(
+        () =>
+            tabGroups
+                .map((group) => ({
+                    ...group,
+                    blocks: agentsOnly ? group.blocks.filter((block) => block.isAgentLike) : group.blocks,
+                }))
+                .filter((group) => {
+                    if (hideUnopenedTabs && group.tabId !== activeTabId) {
+                        return wasTabOpenedThisLaunch(openedThisLaunchTabIds, group.tabId);
+                    }
+                    return true;
+                })
+                .filter((group) => group.blocks.length > 0),
+        [activeTabId, agentsOnly, hideUnopenedTabs, openedThisLaunchTabIds, tabGroups]
+    );
     const hasCodexAgent = useMemo(
         () => blocks.some((block) => block.isAgentLike && normalizeAgentProviderName(block.agentProvider) === "codex"),
         [blocks]
@@ -1546,10 +1567,17 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         );
     }, [focusedOverviewBlock?.blockId, focusedOverviewBlockUpdatedAt, overviewModel]);
 
+    const displayedBlockCount = useMemo(
+        () => displayedTabGroups.reduce((count, group) => count + group.blocks.length, 0),
+        [displayedTabGroups]
+    );
     const unreadCount = blocks.filter((block) => {
         const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
         return block.isAgentLike && updatedAtMs > 0 && updatedAtMs > (viewedAt[block.blockId] ?? 0);
     }).length;
+    const emptyMessage = agentsOnly
+        ? "No agent blocks match the current filters."
+        : "No tabs match the current filters.";
     const agentSummary = !shouldShowAgentAggregate(workspaceAgentStatuses)
         ? ""
         : ` · ${aggregateStatusLabel(workspaceAgentAggregate)}`;
@@ -1561,7 +1589,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                     <div>
                         <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
-                            {blocks.length} blocks · {unreadCount} unread{agentSummary}
+                            {displayedBlockCount} of {blocks.length} blocks · {unreadCount} unread{agentSummary}
                             {codexHookInstall.error ? (
                                 <span className="session-overview-hook-error"> · {codexHookInstall.error}</span>
                             ) : null}
@@ -1589,6 +1617,28 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 <span>{codexHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
                             </button>
                         ) : null}
+                        <div className="session-overview-filter-group" aria-label="Overview filters">
+                            <button
+                                type="button"
+                                className={cn("session-overview-filter-button", hideUnopenedTabs && "is-active")}
+                                onClick={() => overviewModel.setHideUnopenedTabs(!hideUnopenedTabs)}
+                                aria-pressed={hideUnopenedTabs}
+                                title="Hide tabs not opened this launch"
+                            >
+                                <i className={makeIconClass("eye-slash", false)} />
+                                <span>Opened Tabs</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={cn("session-overview-filter-button", agentsOnly && "is-active")}
+                                onClick={() => overviewModel.setAgentsOnly(!agentsOnly)}
+                                aria-pressed={agentsOnly}
+                                title="Show only agent and agent terminal blocks"
+                            >
+                                <i className={makeIconClass("robot", false)} />
+                                <span>Agents</span>
+                            </button>
+                        </div>
                         <label className="session-overview-limit">
                             <span>Messages</span>
                             <input
@@ -1602,10 +1652,12 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                     </div>
                 </div>
                 <div className="session-overview-body">
-                    {tabGroups.length === 0 ? (
-                        <div className="session-overview-empty">No tabs in this workspace.</div>
+                    {displayedTabGroups.length === 0 ? (
+                        <div className="session-overview-empty">
+                            {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}
+                        </div>
                     ) : (
-                        tabGroups.map((group) => (
+                        displayedTabGroups.map((group) => (
                             <TabGroupSection
                                 key={group.tabId}
                                 group={group}
