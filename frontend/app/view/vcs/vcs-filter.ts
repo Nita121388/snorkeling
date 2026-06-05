@@ -26,6 +26,26 @@ function normalizeVcsStatusCode(status: VcsFileStatus): string {
     return (status?.code ?? "").trim().toUpperCase();
 }
 
+function normalizeExtensionFilters(extensionFilter: string): string[] {
+    return (extensionFilter ?? "")
+        .toLowerCase()
+        .split(/[,\s;]+/)
+        .map((extension) => extension.trim())
+        .filter((extension) => extension !== "")
+        .map((extension) => (extension.startsWith(".") ? extension : `.${extension}`))
+        .filter((extension) => extension.length > 1);
+}
+
+export function vcsFileStatusMatchesExtension(status: VcsFileStatus, extensionFilter: string): boolean {
+    const extensions = normalizeExtensionFilters(extensionFilter);
+    if (extensions.length === 0) {
+        return true;
+    }
+    const path = (status?.path ?? "").replace(/\\/g, "/").toLowerCase();
+    const fileName = path.split("/").filter(Boolean).pop() ?? path;
+    return extensions.some((extension) => fileName.endsWith(extension));
+}
+
 export function vcsFileStatusMatchesType(status: VcsFileStatus, typeFilter: VcsFileTypeFilter): boolean {
     if (typeFilter === "all") {
         return true;
@@ -54,11 +74,15 @@ export function vcsFileStatusMatchesType(status: VcsFileStatus, typeFilter: VcsF
 export function filterVcsFileStatuses(
     statuses: VcsFileStatus[],
     search: string,
-    typeFilter: VcsFileTypeFilter
+    typeFilter: VcsFileTypeFilter,
+    extensionFilter: string = ""
 ): VcsFileStatus[] {
     const searchText = (search ?? "").trim().toLowerCase();
     return (statuses ?? []).filter((status) => {
         if (!vcsFileStatusMatchesType(status, typeFilter)) {
+            return false;
+        }
+        if (!vcsFileStatusMatchesExtension(status, extensionFilter)) {
             return false;
         }
         if (searchText === "") {

@@ -46,7 +46,8 @@ This `WidgetConfigType` is shared between all types of widgets. That is to say, 
 | "label"         | (optional) A string representing the label that appears underneath the widget. It will also act as a tooltip on hover if the `"description"` key isn't filled out. It is null by default.                                                                                                  |
 | "description"   | (optional) A description of what the widget does. If it is specified, this serves as a tooltip on hover. It is null by default.                                                                                                                                                            |
 | "magnified"     | (optional) A boolean indicating whether or not the widget should launch magnfied. It is false by default.                                                                                                                                                                                  |
-| "blockdef"      | This is where the the non-visual portion of the widget is defined. Note that all further definition takes place inside a meta object inside this one.                                                                                                                                      |
+| "action"        | (optional) Runs a built-in frontend action instead of creating a block. Currently supports `"commontext:search"` to open Common Text search.                                                                                                                                               |
+| "blockdef"      | Defines the block created by the widget. Note that all further definition takes place inside a meta object inside this one. Required for widgets that do not use `"action"`.                                                                                                               |
 
 <a name="font-awesome-icons" />
 :::info
@@ -109,7 +110,7 @@ The `WidgetConfigType` takes the usual options common to all widgets. The `MetaT
 | "cmd:env"              | (optional) A key-value object represting environment variables to be run with the command. Defaults to an empty object.                                                                                                                                                            |
 | "cmd:cwd"              | (optional) A string representing the current working directory to be run with the command. Currently only works locally. Defaults to the home directory.                                                                                                                           |
 | "cmd:nowsh"            | (optional) A boolean that will turn off wsh integration for the command. Defaults to false.                                                                                                                                                                                        |
-| "cmd:jwt"              | (optional) A boolean that forces adding JWT token to the environment. Required for running waveapps as widgets (both local and remote). Defaults to false.                                                                                                                        |
+| "cmd:jwt"              | (optional) A boolean that forces adding JWT token to the environment. Required for running waveapps as widgets (both local and remote). Defaults to false.                                                                                                                         |
 | "term:localshellpath"  | (optional) Sets the shell used for running your widget command. Only works locally. If left blank, wave will determine your system default instead.                                                                                                                                |
 | "term:localshellopts"  | (optional) Sets the shell options meant to be used with `"term:localshellpath"`. This is useful if you are using a nonstandard shell and need to provide a specific option that we do not cover. Only works locally. Defaults to an empty string.                                  |
 | "cmd:initscript"       | (optional) for "shell" controller only. an init script to run before starting the shell (can be an inline script or an absolute local file path)                                                                                                                                   |
@@ -415,11 +416,13 @@ This adds an icon to the widget bar that you can press to launch All CPU plots b
 
 ## Overriding Default Widgets
 
-Wave ships with 6 default widgets in the widgets bar (terminal, agent, files, web, sysinfo, and processes). You can modify or remove these by overriding their config in widgets.json. The names of the 6 widgets, in order, are:
+Wave ships with default widgets in the widgets bar (terminal, agent, files, sessions, Common Text, web, sysinfo, and processes). You can modify or remove these by overriding their config in widgets.json. The names of the default widgets, in order, are:
 
 - `defwidget@terminal`
 - `defwidget@agent`
 - `defwidget@files`
+- `defwidget@sessions`
+- `defwidget@commontext`
 - `defwidget@web`
 - `defwidget@sysinfo`
 - `defwidget@processviewer`

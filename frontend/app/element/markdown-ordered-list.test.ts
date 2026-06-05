@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    getMarkdownOrderedListFoldingRanges,
     getOrderedListMoveState,
     getOrderedListSwapPreview,
     isMarkdownOrderedListPath,
@@ -27,6 +28,48 @@ describe("markdown ordered list helpers", () => {
             canMoveUp: false,
             canMoveDown: true,
         });
+    });
+
+    it("folds child content into the previous ordered list item", () => {
+        const text = [
+            "1. First",
+            "   child detail",
+            "   - child bullet",
+            "   1. child ordered",
+            "2. Second",
+            "3. Third",
+            "   third detail",
+        ].join("\n");
+
+        expect(getMarkdownOrderedListFoldingRanges(text)).toEqual([
+            { startLineNumber: 1, endLineNumber: 4 },
+            { startLineNumber: 6, endLineNumber: 7 },
+        ]);
+    });
+
+    it("does not fold single-line ordered list items", () => {
+        const text = ["1. First", "2. Second"].join("\n");
+
+        expect(getMarkdownOrderedListFoldingRanges(text)).toEqual([]);
+    });
+
+    it("ignores ordered list markers inside fenced code blocks", () => {
+        const text = [
+            "1. First",
+            "   first detail",
+            "```md",
+            "1. Not a real item",
+            "```",
+            "2. Second",
+            "~~~",
+            "3. Still not a real item",
+            "~~~",
+        ].join("\n");
+
+        expect(getMarkdownOrderedListFoldingRanges(text)).toEqual([
+            { startLineNumber: 1, endLineNumber: 5 },
+            { startLineNumber: 6, endLineNumber: 9 },
+        ]);
     });
 
     it("previews the two list items that will be swapped", () => {

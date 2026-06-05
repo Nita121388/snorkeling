@@ -212,15 +212,18 @@
         "magnified": {
           "type": "boolean"
         },
+        "action": {
+          "type": "string",
+          "enum": [
+            "commontext:search"
+          ]
+        },
         "blockdef": {
           "$ref": "#/$defs/BlockDef"
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "blockdef"
-      ]
+      "type": "object"
     }
   },
   "additionalProperties": {

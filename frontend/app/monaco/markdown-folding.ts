@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type * as MonacoTypes from "monaco-editor";
+import { getMarkdownOrderedListFoldingRanges } from "@/app/element/markdown-ordered-list";
 
 type MarkdownHeading = {
     lineNumber: number;
@@ -19,6 +20,7 @@ export type MarkdownFoldingRange = {
 };
 
 let markdownFoldingRegistered = false;
+const MarkdownFilePattern = /\.md$/i;
 
 function getFenceStart(line: string): MarkdownFence | null {
     const match = line.match(/^ {0,3}(`{3,}|~{3,})/);
@@ -78,6 +80,18 @@ export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRa
     });
 }
 
+export function getMarkdownFoldingRanges(text: string, filePath?: string | null): MarkdownFoldingRange[] {
+    const headingRanges = getMarkdownHeadingFoldingRanges(text);
+    if (!MarkdownFilePattern.test(filePath ?? "")) {
+        return headingRanges;
+    }
+    const orderedListRanges = getMarkdownOrderedListFoldingRanges(text).map((range) => ({
+        start: range.startLineNumber,
+        end: range.endLineNumber,
+    }));
+    return [...headingRanges, ...orderedListRanges];
+}
+
 export function registerMarkdownFolding(monacoApi: typeof MonacoTypes): void {
     if (markdownFoldingRegistered) {
         return;
@@ -86,7 +100,7 @@ export function registerMarkdownFolding(monacoApi: typeof MonacoTypes): void {
 
     monacoApi.languages.registerFoldingRangeProvider("markdown", {
         provideFoldingRanges(model: MonacoTypes.editor.ITextModel): MonacoTypes.languages.FoldingRange[] {
-            return getMarkdownHeadingFoldingRanges(model.getValue()).map((range) => ({
+            return getMarkdownFoldingRanges(model.getValue(), model.uri.path).map((range) => ({
                 ...range,
                 kind: monacoApi.languages.FoldingRangeKind.Region,
             }));

@@ -13,6 +13,7 @@ import {
     DefaultAgentWidgetId,
     getCurrentTabAgentLaunchTargets,
 } from "@/app/workspace/agent-launch";
+import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
@@ -562,9 +563,18 @@ const Widgets = memo(() => {
 
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
+            if (runWidgetAction(widget.action)) {
+                closeAgentTargetSelector();
+                return;
+            }
+
             if (widgetId !== DefaultAgentWidgetId) {
                 closeAgentTargetSelector();
                 const blockDef = widget.blockdef;
+                if (blockDef == null) {
+                    console.warn(`Widget ${widgetId} has no blockdef`);
+                    return;
+                }
                 env.createBlock(blockDef, widget.magnified);
                 return;
             }

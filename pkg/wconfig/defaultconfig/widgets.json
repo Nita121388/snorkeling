@@ -45,6 +45,13 @@
             }
         }
     },
+    "defwidget@commontext": {
+        "display:order": -1.5,
+        "icon": "quote-left",
+        "label": "text",
+        "description": "Search common text",
+        "action": "commontext:search"
+    },
     "defwidget@web": {
         "display:order": -1,
         "icon": "globe",

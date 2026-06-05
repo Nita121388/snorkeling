@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { filterVcsFileStatuses, vcsFileStatusMatchesType } from "./vcs-filter";
+import { filterVcsFileStatuses, vcsFileStatusMatchesExtension, vcsFileStatusMatchesType } from "./vcs-filter";
 
 function makeStatus(path: string, code: string, extras?: Partial<VcsFileStatus>): VcsFileStatus {
     return {
@@ -41,6 +41,28 @@ describe("VCS file filters", () => {
         expect(vcsFileStatusMatchesType(makeStatus("src/app.ts", "D"), "deleted")).toBe(true);
         expect(vcsFileStatusMatchesType(makeStatus("src/app.ts", "R"), "renamed")).toBe(true);
         expect(vcsFileStatusMatchesType(makeStatus("src/app.ts", "?", { untracked: true }), "untracked")).toBe(true);
+    });
+
+    it("filters by file extension", () => {
+        const statuses = [
+            makeStatus("frontend/app/view/vcs/vcs.tsx", "M"),
+            makeStatus("frontend/app/view/vcs/vcs-filter.test.ts", "M"),
+            makeStatus("frontend/app/view/vcs/vcs.scss", "A"),
+            makeStatus("README.md", "D"),
+            makeStatus("Makefile", "M"),
+        ];
+
+        expect(filterVcsFileStatuses(statuses, "", "all", "tsx").map((status) => status.path)).toEqual([
+            "frontend/app/view/vcs/vcs.tsx",
+        ]);
+        expect(filterVcsFileStatuses(statuses, "", "all", ".ts, .scss").map((status) => status.path)).toEqual([
+            "frontend/app/view/vcs/vcs-filter.test.ts",
+            "frontend/app/view/vcs/vcs.scss",
+        ]);
+        expect(filterVcsFileStatuses(statuses, "frontend", "all", "scss").map((status) => status.path)).toEqual([
+            "frontend/app/view/vcs/vcs.scss",
+        ]);
+        expect(vcsFileStatusMatchesExtension(makeStatus("Makefile", "M"), "md")).toBe(false);
     });
 
     it("separates staged, unstaged, and untracked files", () => {

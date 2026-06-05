@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { getMarkdownHeadingFoldingRanges } from "./markdown-folding";
+import { getMarkdownFoldingRanges, getMarkdownHeadingFoldingRanges } from "./markdown-folding";
 
 describe("markdown heading folding", () => {
     it("folds headings until the next same-or-higher heading", () => {
@@ -58,5 +58,21 @@ describe("markdown heading folding", () => {
             { start: 6, end: 10 },
             { start: 11, end: 12 },
         ]);
+    });
+
+    it("adds ordered list folding ranges for md files", () => {
+        const text = ["# Real", "1. First", "   detail", "2. Second"].join("\n");
+
+        expect(getMarkdownFoldingRanges(text, "/tmp/notes.md")).toEqual([
+            { start: 1, end: 4 },
+            { start: 2, end: 3 },
+        ]);
+    });
+
+    it("does not add ordered list folding ranges for markdown-like non-md files", () => {
+        const text = ["# Real", "1. First", "   detail", "2. Second"].join("\n");
+
+        expect(getMarkdownFoldingRanges(text, "/tmp/notes.markdown")).toEqual([{ start: 1, end: 4 }]);
+        expect(getMarkdownFoldingRanges(text, "/tmp/notes.mdx")).toEqual([{ start: 1, end: 4 }]);
     });
 });

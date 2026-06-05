@@ -5,6 +5,7 @@ import logoUrl from "@/app/asset/logo.svg?url";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { atoms, globalStore, replaceBlock } from "@/app/store/global";
 import type { TabModel } from "@/app/store/tab-model";
+import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { checkKeyPressed, keydownWrapper } from "@/util/keyutil";
 import { isBlank, makeIconClass } from "@/util/util";
 import clsx from "clsx";
@@ -129,6 +130,13 @@ export class LauncherViewModel implements ViewModel {
     }
 
     async handleWidgetSelect(widget: WidgetConfigType) {
+        if (runWidgetAction(widget.action)) {
+            return;
+        }
+        if (widget.blockdef == null) {
+            console.warn(`Widget ${widget.label ?? "(unlabeled)"} has no blockdef`);
+            return;
+        }
         try {
             await replaceBlock(this.blockId, widget.blockdef, true);
         } catch (error) {

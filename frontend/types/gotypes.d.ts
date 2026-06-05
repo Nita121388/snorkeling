@@ -2591,7 +2591,8 @@ declare global {
         description?: string;
         workspaces?: string[];
         magnified?: boolean;
-        blockdef: BlockDef;
+        action?: string;
+        blockdef?: BlockDef;
     };
 
     // waveobj.WinSize

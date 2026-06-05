@@ -36,13 +36,22 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	}
 	expectedScriptToken := "wsh_bin"
 	if runtime.GOOS == "windows" {
-		expectedScriptToken = "$wshBin"
+		expectedScriptToken = "WSH_BIN"
 	}
 	if !strings.Contains(string(script), expectedScriptToken) || !strings.Contains(string(script), "--provider") {
 		t.Fatalf("hook script missing expected wsh call:\n%s", string(script))
 	}
 	if runtime.GOOS == "windows" && strings.Contains(string(script), "ReadToEnd") {
 		t.Fatalf("windows hook script must not block while reading stdin:\n%s", string(script))
+	}
+	if runtime.GOOS == "windows" && strings.Contains(string(script), "powershell.exe") {
+		t.Fatalf("windows hook command must not require PowerShell startup:\n%s", string(script))
+	}
+	if runtime.GOOS == "windows" && strings.Contains(string(script), "Get-Command") {
+		t.Fatalf("windows hook script must not scan PATH while resolving wsh:\n%s", string(script))
+	}
+	if strings.Contains(string(script), "%!(EXTRA") {
+		t.Fatalf("hook script contains fmt residue:\n%s", string(script))
 	}
 	if strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) {
 		t.Fatalf("hook script should not require legacy WAVETERM=1:\n%s", string(script))
@@ -71,6 +80,9 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	}
 	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking, PhaseTool)) {
 		t.Fatalf("expected PreToolUse hook command to include tool phase")
+	}
+	if runtime.GOOS == "windows" && strings.Contains(hookCommand(result.HookPath, StateWorking, PhaseTool), "powershell.exe") {
+		t.Fatalf("windows hook command must not use PowerShell")
 	}
 	config, err := os.ReadFile(result.ConfigPath)
 	if err != nil {
@@ -213,9 +225,12 @@ func TestInstallClaudeHooksWritesSettings(t *testing.T) {
 	}
 	claudeGuardToken := `provider == "claude"`
 	if runtime.GOOS == "windows" {
-		claudeGuardToken = `"claude" -and`
+		claudeGuardToken = `--provider "claude"`
 	}
-	if !strings.Contains(string(script), "SubagentStop") || !strings.Contains(string(script), claudeGuardToken) {
+	if runtime.GOOS != "windows" && !strings.Contains(string(script), "SubagentStop") {
+		t.Fatalf("hook script missing Claude-specific guards:\n%s", string(script))
+	}
+	if !strings.Contains(string(script), claudeGuardToken) {
 		t.Fatalf("hook script missing Claude-specific guards:\n%s", string(script))
 	}
 

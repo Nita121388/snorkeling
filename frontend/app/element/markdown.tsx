@@ -14,7 +14,18 @@ import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { Atom } from "jotai";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+    Children,
+    cloneElement,
+    createContext,
+    isValidElement,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import ReactMarkdown, { Components, defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
@@ -161,6 +172,83 @@ function sourceLineAttrs(sourceLine?: number): Record<string, number> {
     return sourceLine == null ? {} : { "data-source-line": sourceLine };
 }
 
+const OrderedListContext = createContext(false);
+
+function getTextContent(children: React.ReactNode): string {
+    if (typeof children === "string" || typeof children === "number") {
+        return String(children);
+    }
+    if (Array.isArray(children)) {
+        return children.map(getTextContent).join("");
+    }
+    if (isValidElement(children)) {
+        return getTextContent((children.props as { children?: React.ReactNode }).children);
+    }
+    return "";
+}
+
+function isLineBreakNode(node: React.ReactNode): boolean {
+    return isValidElement(node) && node.type === "br";
+}
+
+function cloneWithChildren(element: React.ReactElement, children: React.ReactNode[]): React.ReactElement {
+    return cloneElement(
+        element as React.ReactElement<{ children?: React.ReactNode }>,
+        undefined,
+        children.length === 1 ? children[0] : children
+    );
+}
+
+function splitChildrenAtFirstBreak(children: React.ReactNode): {
+    before: React.ReactNode[];
+    after: React.ReactNode[];
+} | null {
+    const childArray = Children.toArray(children);
+    const breakIndex = childArray.findIndex(isLineBreakNode);
+    if (breakIndex < 0) {
+        return null;
+    }
+    return {
+        before: childArray.slice(0, breakIndex),
+        after: childArray.slice(breakIndex + 1),
+    };
+}
+
+function splitOrderedListItemChildren(children: React.ReactNode): {
+    summaryChildren: React.ReactNode[];
+    bodyChildren: React.ReactNode[];
+} {
+    const childArray = Children.toArray(children);
+    if (childArray.length === 0) {
+        return { summaryChildren: [], bodyChildren: [] };
+    }
+
+    const firstChild = childArray[0];
+    if (isValidElement(firstChild)) {
+        const firstChildProps = firstChild.props as { children?: React.ReactNode };
+        const split = splitChildrenAtFirstBreak(firstChildProps.children);
+        if (split != null && split.after.some((child) => getTextContent(child).trim().length > 0)) {
+            return {
+                summaryChildren: [cloneWithChildren(firstChild, split.before)],
+                bodyChildren: [cloneWithChildren(firstChild, split.after), ...childArray.slice(1)],
+            };
+        }
+    }
+
+    return {
+        summaryChildren: [firstChild],
+        bodyChildren: childArray.slice(1),
+    };
+}
+
+function getOrderedListItemId(props: React.LiHTMLAttributes<HTMLLIElement>): string {
+    const sourceLine = getSourceLine(props);
+    if (sourceLine != null) {
+        return String(sourceLine);
+    }
+    return getTextContent(props.children);
+}
+
 type HeadingProps = {
     props: React.HTMLAttributes<HTMLHeadingElement>;
     hnum: number;
@@ -197,6 +285,83 @@ const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) 
             <span className="heading-title">{props.children}</span>
         </div>
     );
+};
+
+const MarkdownOrderedList = ({
+    props,
+    collapsible,
+}: {
+    props: React.OlHTMLAttributes<HTMLOListElement>;
+    collapsible: boolean;
+}) => (
+    <OrderedListContext.Provider value={collapsible}>
+        <ol {...props} {...sourceLineAttrs(getSourceLine(props))} />
+    </OrderedListContext.Provider>
+);
+
+const MarkdownUnorderedList = (props: React.HTMLAttributes<HTMLUListElement>) => (
+    <OrderedListContext.Provider value={false}>
+        <ul {...props} {...sourceLineAttrs(getSourceLine(props))} />
+    </OrderedListContext.Provider>
+);
+
+const CollapsibleOrderedListItem = ({
+    props,
+    collapsed,
+    onToggle,
+}: {
+    props: React.LiHTMLAttributes<HTMLLIElement>;
+    collapsed: boolean;
+    onToggle: (itemId: string) => void;
+}) => {
+    const sourceLine = getSourceLine(props);
+    const itemId = getOrderedListItemId(props);
+    const { summaryChildren, bodyChildren } = splitOrderedListItemChildren(props.children);
+    const canCollapse = bodyChildren.length > 0 && itemId.length > 0;
+    if (!canCollapse) {
+        return <li {...props} {...sourceLineAttrs(sourceLine)} />;
+    }
+    return (
+        <li
+            {...props}
+            {...sourceLineAttrs(sourceLine)}
+            className={clsx(props.className, "ordered-list-collapsible", { collapsed })}
+        >
+            <div className="ordered-list-summary-row">
+                <button
+                    type="button"
+                    className="ordered-list-collapse-button"
+                    title={collapsed ? "Expand list item" : "Collapse list item"}
+                    aria-label={collapsed ? "Expand list item" : "Collapse list item"}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onToggle(itemId);
+                    }}
+                >
+                    <i className={clsx("fa-sharp fa-solid", collapsed ? "fa-chevron-right" : "fa-chevron-down")} />
+                </button>
+                <div className="ordered-list-summary-content">{summaryChildren}</div>
+            </div>
+            {collapsed ? null : <div className="ordered-list-collapse-body">{bodyChildren}</div>}
+        </li>
+    );
+};
+
+const MarkdownListItem = ({
+    props,
+    collapsed,
+    onToggle,
+}: {
+    props: React.LiHTMLAttributes<HTMLLIElement>;
+    collapsed: boolean;
+    onToggle: (itemId: string) => void;
+}) => {
+    const orderedListCollapsible = useContext(OrderedListContext);
+    if (orderedListCollapsible) {
+        return <CollapsibleOrderedListItem props={props} collapsed={collapsed} onToggle={onToggle} />;
+    }
+    return <li {...props} {...sourceLineAttrs(getSourceLine(props))} />;
 };
 
 const MarkdownTable = (props: React.HTMLAttributes<HTMLTableElement>) => (
@@ -449,6 +614,7 @@ type MarkdownProps = {
     hideUntilInitialScroll?: boolean;
     onInitialScrollReady?: () => void;
     onUserScrollSourceLine?: (line: number) => void;
+    collapsibleOrderedLists?: boolean;
 };
 
 type MarkdownScrollSourceState = {
@@ -477,6 +643,7 @@ const Markdown = ({
     hideUntilInitialScroll = false,
     onInitialScrollReady,
     onUserScrollSourceLine,
+    collapsibleOrderedLists = false,
     scrollable = true,
     rehype = true,
     onClickExecute,
@@ -492,6 +659,7 @@ const Markdown = ({
     const [initialScrollReadyKey, setInitialScrollReadyKey] = useState<string | null>(null);
     const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
     const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(() => new Set());
+    const [collapsedOrderedListItems, setCollapsedOrderedListItems] = useState<Set<string>>(() => new Set());
 
     // Ensure uniqueness of ids between MD preview instances.
     const [idPrefix] = useState<string>(crypto.randomUUID());
@@ -581,6 +749,18 @@ const Markdown = ({
                 next.delete(headingId);
             } else {
                 next.add(headingId);
+            }
+            return next;
+        });
+    };
+
+    const toggleOrderedListItemCollapse = (itemId: string) => {
+        setCollapsedOrderedListItems((prev) => {
+            const next = new Set(prev);
+            if (next.has(itemId)) {
+                next.delete(itemId);
+            } else {
+                next.add(itemId);
             }
             return next;
         });
@@ -863,8 +1043,16 @@ const Markdown = ({
             />
         ),
         table: MarkdownTable,
+        ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
+            <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
+        ),
+        ul: MarkdownUnorderedList,
         li: (props: React.HTMLAttributes<HTMLLIElement>) => (
-            <li {...props} {...sourceLineAttrs(getSourceLine(props))} />
+            <MarkdownListItem
+                props={props}
+                collapsed={collapsedOrderedListItems.has(getOrderedListItemId(props))}
+                onToggle={toggleOrderedListItemCollapse}
+            />
         ),
         img: (props: React.HTMLAttributes<HTMLImageElement>) => <MarkdownImg props={props} resolveOpts={resolveOpts} />,
         source: (props: React.HTMLAttributes<HTMLSourceElement>) => (

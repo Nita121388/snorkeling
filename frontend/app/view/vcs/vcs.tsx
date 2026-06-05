@@ -29,6 +29,7 @@ type VcsSyncAction = "fetch" | "pull" | "push" | "update";
 type RepoFileFilterState = {
     search: string;
     type: VcsFileTypeFilter;
+    extension: string;
 };
 type RepoFileFiltersMap = Record<string, RepoFileFilterState>;
 type VcsOperationNotice = {
@@ -139,6 +140,7 @@ function makeDefaultFileFilterState(): RepoFileFilterState {
     return {
         search: "",
         type: "all",
+        extension: "",
     };
 }
 
@@ -561,13 +563,17 @@ function RepoFileFilterBar({
 }) {
     const search = filterState.search ?? "";
     const type = filterState.type ?? "all";
-    const filtersActive = search.trim() !== "" || type !== "all";
+    const extension = filterState.extension ?? "";
+    const filtersActive = search.trim() !== "" || type !== "all" || extension.trim() !== "";
+    const controlClassName =
+        "h-[24px] rounded border border-white/15 bg-[#1f211f] text-xs text-foreground outline-none " +
+        "placeholder:text-muted focus:border-accent [color-scheme:dark]";
     return (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-white/10 bg-black/20 px-2 py-1.5">
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-white/10 bg-[#141514] px-2 py-1.5">
             <div className="relative min-w-[180px] flex-1">
                 <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted" />
                 <input
-                    className="h-[24px] w-full rounded border border-white/10 bg-black/25 pl-6 pr-7 text-xs text-main outline-none placeholder:text-muted focus:border-accent"
+                    className={`${controlClassName} w-full pl-6 pr-7`}
                     type="search"
                     value={search}
                     onChange={(e) => onChange({ ...filterState, search: e.target.value })}
@@ -583,10 +589,29 @@ function RepoFileFilterBar({
                     </button>
                 )}
             </div>
+            <div className="relative w-[118px] shrink-0">
+                <input
+                    className={`${controlClassName} w-full px-2 pr-7`}
+                    type="search"
+                    value={extension}
+                    onChange={(e) => onChange({ ...filterState, extension: e.target.value })}
+                    placeholder="Ext .ts"
+                    title="Filter by file extension, e.g. .ts or .tsx,.scss"
+                />
+                {extension.trim() !== "" && (
+                    <button
+                        className="iconbutton !absolute !right-1 !top-1/2 !h-[18px] !w-[18px] -translate-y-1/2 cursor-pointer"
+                        title="Clear extension"
+                        onClick={() => onChange({ ...filterState, extension: "" })}
+                    >
+                        <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
+                    </button>
+                )}
+            </div>
             <label className="flex items-center gap-1.5 text-[11px] text-secondary">
                 <span>Type</span>
                 <select
-                    className="h-[24px] rounded border border-white/10 bg-black/25 px-1.5 text-xs text-main outline-none focus:border-accent"
+                    className={`${controlClassName} px-1.5`}
                     value={type}
                     onChange={(e) =>
                         onChange({
@@ -596,7 +621,12 @@ function RepoFileFilterBar({
                     }
                 >
                     {VcsFileTypeFilterOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
+                        <option
+                            key={option.value}
+                            value={option.value}
+                            className="bg-[#1f211f] text-foreground"
+                            style={{ backgroundColor: "#1f211f", color: "#f7f7f7" }}
+                        >
                             {option.label}
                         </option>
                     ))}
@@ -657,7 +687,12 @@ function RepoPanel({
     const statusList = repo.status ?? [];
     const changedList = statusList.filter((status) => !status.untracked);
     const untrackedList = statusList.filter((status) => !!status.untracked);
-    const filteredStatusList = filterVcsFileStatuses(statusList, fileFilterState.search, fileFilterState.type ?? "all");
+    const filteredStatusList = filterVcsFileStatuses(
+        statusList,
+        fileFilterState.search,
+        fileFilterState.type ?? "all",
+        fileFilterState.extension
+    );
     const filteredChangedList = filteredStatusList.filter((status) => !status.untracked);
     const filteredUntrackedList = filteredStatusList.filter((status) => !!status.untracked);
     const selectedSet = new Set(selectedFiles ?? []);
@@ -1013,6 +1048,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             [repoId]: {
                 search: nextFilterState.search ?? "",
                 type: nextFilterState.type ?? "all",
+                extension: nextFilterState.extension ?? "",
             },
         }));
     };

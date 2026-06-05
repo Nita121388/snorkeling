@@ -52,11 +52,17 @@ func launchRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if tabId == "" {
 		return fmt.Errorf("no WAVETERM_TABID env var set")
 	}
+	if widget.BlockDef == nil {
+		if widget.Action != "" {
+			return fmt.Errorf("widget %q uses action %q, which cannot be launched from wsh launch", widgetId, widget.Action)
+		}
+		return fmt.Errorf("widget %q has no blockdef", widgetId)
+	}
 
 	// Create block data from widget config
 	createBlockData := wshrpc.CommandCreateBlockData{
 		TabId:     tabId,
-		BlockDef:  &widget.BlockDef,
+		BlockDef:  widget.BlockDef,
 		Magnified: magnifyBlock || widget.Magnified,
 		Focused:   true,
 	}

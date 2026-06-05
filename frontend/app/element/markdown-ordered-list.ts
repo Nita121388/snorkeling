@@ -21,6 +21,15 @@ type OrderedListBlock = {
     items: OrderedListItem[];
 };
 
+type MarkdownFence = {
+    marker: "`" | "~";
+    length: number;
+};
+
+type MarkdownParseOptions = {
+    ignoredLineIndexes?: Set<number>;
+};
+
 export type OrderedListMoveState = {
     itemStartLineNumber: number;
     itemEndLineNumber: number;
@@ -69,6 +78,24 @@ export function getOrderedListMoveState(text: string, lineNumber: number): Order
         canMoveUp: itemIndex > 0,
         canMoveDown: itemIndex >= 0 && itemIndex < block.items.length - 1,
     };
+}
+
+export function getMarkdownOrderedListFoldingRanges(text: string): OrderedListLineRange[] {
+    const { lines } = splitTextLines(text);
+    const ignoredLineIndexes = getMarkdownFenceLineIndexes(lines);
+    const ranges: OrderedListLineRange[] = [];
+    lines.forEach((line, lineIndex) => {
+        const marker = parseOrderedListMarker(line, lineIndex, { ignoredLineIndexes });
+        if (marker == null) {
+            return;
+        }
+        const item = makeOrderedListItem(lines, marker, { ignoredLineIndexes });
+        if (item.endLineIndex <= item.startLineIndex) {
+            return;
+        }
+        ranges.push(makeLineRange(item));
+    });
+    return ranges;
 }
 
 export function moveOrderedListItem(
@@ -184,7 +211,14 @@ function lineNumberToIndex(lineNumber: number): number {
     return Math.max(0, Math.trunc(lineNumber) - 1);
 }
 
-function parseOrderedListMarker(line: string, lineIndex: number): OrderedListMarker | null {
+function parseOrderedListMarker(
+    line: string,
+    lineIndex: number,
+    options?: MarkdownParseOptions
+): OrderedListMarker | null {
+    if (options?.ignoredLineIndexes?.has(lineIndex)) {
+        return null;
+    }
     const match = line.match(OrderedListMarkerPattern);
     if (!match) return null;
     return {
@@ -203,7 +237,10 @@ function makeLineRange(item: OrderedListItem): OrderedListLineRange {
     };
 }
 
-function isHardBoundaryLine(line: string, indent: number): boolean {
+function isHardBoundaryLine(line: string, indent: number, lineIndex?: number, options?: MarkdownParseOptions): boolean {
+    if (lineIndex != null && options?.ignoredLineIndexes?.has(lineIndex)) {
+        return false;
+    }
     const leadingWhitespace = line.match(/^\s*/)?.[0].length ?? 0;
     if (leadingWhitespace > indent) return false;
     return /^#{1,6}\s+/.test(line.trimStart());
@@ -222,14 +259,14 @@ function findOrderedListItemAtLine(lines: string[], lineIndex: number): OrderedL
     return null;
 }
 
-function makeOrderedListItem(lines: string[], marker: OrderedListMarker): OrderedListItem {
+function makeOrderedListItem(lines: string[], marker: OrderedListMarker, options?: MarkdownParseOptions): OrderedListItem {
     let endLineIndex = lines.length - 1;
     for (let idx = marker.lineIndex + 1; idx < lines.length; idx++) {
-        if (isHardBoundaryLine(lines[idx], marker.indent)) {
+        if (isHardBoundaryLine(lines[idx], marker.indent, idx, options)) {
             endLineIndex = idx - 1;
             break;
         }
-        const nextMarker = parseOrderedListMarker(lines[idx], idx);
+        const nextMarker = parseOrderedListMarker(lines[idx], idx, options);
         if (nextMarker != null && nextMarker.indent <= marker.indent) {
             endLineIndex = idx - 1;
             break;
@@ -317,4 +354,43 @@ function renumberOrderedListsInLines(lines: string[], startLineIndex: number, en
 
 function replaceOrderedListMarkerNumber(line: string, marker: OrderedListMarker, nextNumber: number): string {
     return line.replace(OrderedListMarkerPattern, `${" ".repeat(marker.indent)}${nextNumber}${marker.delimiter}$4`);
+}
+
+function getMarkdownFenceLineIndexes(lines: string[]): Set<number> {
+    const ignoredLineIndexes = new Set<number>();
+    let fence: MarkdownFence | null = null;
+    lines.forEach((line, lineIndex) => {
+        if (fence) {
+            ignoredLineIndexes.add(lineIndex);
+            if (isFenceEnd(line, fence)) {
+                fence = null;
+            }
+            return;
+        }
+
+        const fenceStart = getFenceStart(line);
+        if (fenceStart) {
+            ignoredLineIndexes.add(lineIndex);
+            fence = fenceStart;
+        }
+    });
+    return ignoredLineIndexes;
+}
+
+function getFenceStart(line: string): MarkdownFence | null {
+    const match = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (!match) {
+        return null;
+    }
+    const fence = match[1];
+    return {
+        marker: fence[0] as "`" | "~",
+        length: fence.length,
+    };
+}
+
+function isFenceEnd(line: string, fence: MarkdownFence): boolean {
+    const escapedMarker = fence.marker === "`" ? "`" : "~";
+    const pattern = new RegExp(`^ {0,3}${escapedMarker}{${fence.length},}[ \\t]*$`);
+    return pattern.test(line);
 }

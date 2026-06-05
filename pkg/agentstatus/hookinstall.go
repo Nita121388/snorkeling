@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 3
+	hookInstallVersion  = 5
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -300,7 +300,7 @@ func writeHookScript(path string, provider string) error {
 
 func hookInstallName() string {
 	if runtime.GOOS == "windows" {
-		return hookInstallBaseName + ".ps1"
+		return hookInstallBaseName + ".cmd"
 	}
 	return hookInstallBaseName + ".sh"
 }
@@ -335,87 +335,55 @@ func claudeHookSpecs() []agentStatusHookSpec {
 
 func hookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s %s %s", shellDoubleQuote(path), action, phase)
+		return fmt.Sprintf(`cmd.exe /d /q /c ""%s" %s %s"`, path, action, phase)
 	}
 	return fmt.Sprintf("bash %s %s", shellSingleQuote(path), action)
 }
 
 func agentStatusHookScript(provider string) string {
 	if runtime.GOOS == "windows" {
-		return agentStatusPowerShellHookScript(provider)
+		return agentStatusBatchHookScript(provider)
 	}
 	return agentStatusShellHookScript(provider)
 }
 
-func agentStatusPowerShellHookScript(provider string) string {
-	return fmt.Sprintf(`# installed by Snorkeling
-# managed by Snorkeling; reinstalling the integration overwrites this file.
-# %s%s
-# %s%d
+func agentStatusBatchHookScript(provider string) string {
+	return fmt.Sprintf(`@echo off
+rem installed by Snorkeling
+rem managed by Snorkeling; reinstalling the integration overwrites this file.
+rem %s%s
+rem %s%d
 
-param(
-  [string]$Action = "",
-  [string]$Phase = ""
-)
+setlocal
+set "ACTION=%%~1"
+set "PHASE=%%~2"
 
-try {
-  if ($Action -notin @("working", "idle", "blocked", "release", "unknown")) {
-    exit 0
-  }
-  if ([string]::IsNullOrWhiteSpace($env:WAVETERM_BLOCKID) -or [string]::IsNullOrWhiteSpace($env:WAVETERM_JWT)) {
-    exit 0
-  }
+if "%%ACTION%%"=="" exit /b 0
+if not "%%ACTION%%"=="working" if not "%%ACTION%%"=="idle" if not "%%ACTION%%"=="blocked" if not "%%ACTION%%"=="release" if not "%%ACTION%%"=="unknown" exit /b 0
+if "%%WAVETERM_BLOCKID%%"=="" exit /b 0
+if "%%WAVETERM_JWT%%"=="" exit /b 0
+if "%%WAVETERM_WSHBINDIR%%"=="" exit /b 0
 
-  $wshBin = ""
-  if (-not [string]::IsNullOrWhiteSpace($env:WAVETERM_WSHBINDIR)) {
-    $candidate = Join-Path $env:WAVETERM_WSHBINDIR "wsh.exe"
-    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-      $wshBin = $candidate
-    }
-  }
-  if ([string]::IsNullOrWhiteSpace($wshBin)) {
-    $cmd = Get-Command "wsh.exe" -ErrorAction SilentlyContinue
-    if ($cmd) {
-      $wshBin = $cmd.Source
-    }
-  }
-  if ([string]::IsNullOrWhiteSpace($wshBin)) {
-    exit 0
-  }
+set "WSH_BIN=%%WAVETERM_WSHBINDIR%%\wsh.exe"
+if not exist "%%WSH_BIN%%" exit /b 0
 
-  $phase = $Phase.Trim().ToLowerInvariant()
-  if ($phase -notin @("thinking", "tool", "shell-command", "approval", "none", "unknown")) {
-    if ($Action -in @("idle", "release")) {
-      $phase = "none"
-    } elseif ($Action -eq "blocked") {
-      $phase = "approval"
-    } elseif ($Action -eq "working") {
-      $phase = "thinking"
-    } else {
-      $phase = "unknown"
-    }
-  }
+if "%%PHASE%%"=="thinking" goto report
+if "%%PHASE%%"=="tool" goto report
+if "%%PHASE%%"=="shell-command" goto report
+if "%%PHASE%%"=="approval" goto report
+if "%%PHASE%%"=="none" goto report
+if "%%PHASE%%"=="unknown" goto report
 
-  $seq = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() * 1000000
-  $args = @("agentstatus", $Action, "--provider", "%s", "--source", "hook", "--phase", $phase, "--seq", [string]$seq)
+if "%%ACTION%%"=="idle" set "PHASE=none"
+if "%%ACTION%%"=="release" set "PHASE=none"
+if "%%ACTION%%"=="blocked" set "PHASE=approval"
+if "%%ACTION%%"=="working" set "PHASE=thinking"
+if "%%ACTION%%"=="unknown" set "PHASE=unknown"
 
-  $stdoutPath = [System.IO.Path]::GetTempFileName()
-  $stderrPath = [System.IO.Path]::GetTempFileName()
-  try {
-    $process = Start-Process -FilePath $wshBin -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-    if (-not $process.WaitForExit(2000)) {
-      try {
-        $process.Kill()
-      } catch {
-      }
-    }
-  } finally {
-    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
-  }
-} catch {
-}
-exit 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
+:report
+start "" /b "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" >nul 2>nul
+exit /b 0
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {
@@ -757,7 +725,8 @@ func pruneManagedCommandHooks(hooks map[string]any) {
 
 func isManagedHookCommand(command string) bool {
 	return strings.Contains(command, hookInstallBaseName+".sh") ||
-		strings.Contains(command, hookInstallBaseName+".ps1")
+		strings.Contains(command, hookInstallBaseName+".ps1") ||
+		strings.Contains(command, hookInstallBaseName+".cmd")
 }
 
 func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {

@@ -104,6 +104,66 @@
             display: none !important;
         }
 
+        li.ordered-list-collapsible {
+            &::marker {
+                color: var(--main-text-color);
+            }
+
+            .ordered-list-summary-row {
+                display: flex;
+                align-items: baseline;
+                gap: 0.286em;
+                min-width: 0;
+            }
+
+            .ordered-list-collapse-button {
+                width: 1.286em;
+                height: 1.286em;
+                flex: 0 0 1.286em;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--secondary-text-color);
+                cursor: pointer;
+                opacity: 0;
+                font-size: 0.65em;
+                line-height: 1;
+                margin-left: -1.571em;
+            }
+
+            .ordered-list-summary-content {
+                min-width: 0;
+            }
+
+            .ordered-list-summary-content > :first-child {
+                margin-top: 0;
+            }
+
+            .ordered-list-summary-content > :last-child {
+                margin-bottom: 0 !important;
+            }
+
+            .ordered-list-collapse-body > :first-child {
+                margin-top: 0;
+            }
+
+            &:hover .ordered-list-collapse-button,
+            &.collapsed .ordered-list-collapse-button,
+            .ordered-list-collapse-button:focus-visible {
+                opacity: 1;
+            }
+
+            .ordered-list-collapse-button:hover,
+            .ordered-list-collapse-button:focus-visible {
+                background-color: var(--highlight-bg-color);
+                color: var(--main-text-color);
+                outline: none;
+            }
+        }
+
         .paragraph {
             margin-top: 0;
             margin-bottom: 10px;

@@ -22,7 +22,11 @@ import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
-import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
+import {
+    AiSessionNoteUpdatedEvent,
+    dispatchAISessionNoteUpdated,
+    isAISessionNoteUpdatedEvent,
+} from "@/app/view/aisessions/session-note-events";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { cn, makeIconClass } from "@/util/util";
@@ -76,11 +80,15 @@ type HookInstallState = {
     error: string;
 };
 
+type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+
 type TabGroup = {
     tabId: string;
     tabName: string;
     blocks: OverviewBlock[];
 };
+
+const SessionOverviewNoteAutoSaveDelayMs = 3000;
 
 function commandPreview(command: string | null | undefined): string | null {
     const normalized = command?.replace(/\s+/g, " ").trim() ?? "";
@@ -169,11 +177,6 @@ function agentProviderFromMeta(meta: Record<string, unknown>, view: string): str
 function sessionMatchesSummary(sessionId: string, summary: SessionSummary): boolean {
     const trimmed = sessionId.trim();
     return trimmed !== "" && (summary.key === trimmed || summary.id === trimmed);
-}
-
-function openSessionNote(sessionId: string): void {
-    if (!sessionId) return;
-    modalsModel.pushModal("AISessionNoteModal", { sessionId });
 }
 
 function openSessionDetail(sessionId: string): void {
@@ -377,6 +380,8 @@ function getErrorMessage(error: unknown): string {
 
 const SESSION_HISTORY_PENDING_MESSAGE = "Session history is not available yet.";
 const SESSION_HISTORY_PENDING_RETRY_MS = 5_000;
+const SESSION_TRANSIENT_FETCH_PENDING_MESSAGE = "Session connection is retrying.";
+const SESSION_TRANSIENT_FETCH_RETRY_MS = 2_000;
 
 function isSessionNotFoundMessage(message: string, sessionId: string): boolean {
     const normalized = message.trim().toLowerCase();
@@ -387,6 +392,21 @@ function isSessionNotFoundMessage(message: string, sessionId: string): boolean {
 
 function isSessionHistoryPendingMessage(message: string | undefined): boolean {
     return message === SESSION_HISTORY_PENDING_MESSAGE;
+}
+
+function isSessionTransientFetchPendingMessage(message: string | undefined): boolean {
+    return message === SESSION_TRANSIENT_FETCH_PENDING_MESSAGE;
+}
+
+function isTransientFetchErrorMessage(message: string | undefined): boolean {
+    const normalized = message?.trim().toLowerCase() ?? "";
+    if (!normalized) return false;
+    return (
+        normalized.includes("failed to fetch") ||
+        normalized.includes("networkerror") ||
+        normalized.includes("load failed") ||
+        normalized.includes("fetch failed")
+    );
 }
 
 function useCodexHookInstallState(hasCodexAgent: boolean) {
@@ -470,12 +490,18 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
     const fileStatsRef = useRef<Record<string, SessionFileStat>>({});
     const quietPollCountRef = useRef(0);
     const mountedRef = useRef(true);
+    const retryTimersRef = useRef(new Map<string, number>());
     const [details, setDetails] = useState<Record<string, DetailState>>({});
 
     const loadSessionDetail = React.useCallback(
         (sessionId: string, forceRefresh = false): void => {
             if (!forceRefresh && requestedRef.current.has(sessionId)) {
                 return;
+            }
+            const retryTimer = retryTimersRef.current.get(sessionId);
+            if (retryTimer != null) {
+                window.clearTimeout(retryTimer);
+                retryTimersRef.current.delete(sessionId);
             }
             requestedRef.current.add(sessionId);
             setDetails((prev) => ({
@@ -512,17 +538,32 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                     if (!mountedRef.current) return;
                     const errorMessage = getErrorMessage(error);
                     const historyPending = isSessionNotFoundMessage(errorMessage, sessionId);
-                    if (historyPending) {
+                    const transientFetchError = isTransientFetchErrorMessage(errorMessage);
+                    if (historyPending || transientFetchError) {
                         requestedRef.current.delete(sessionId);
                     }
                     setDetails((prev) => ({
                         ...prev,
                         [sessionId]: {
                             loading: false,
-                            detail: null,
-                            error: historyPending ? SESSION_HISTORY_PENDING_MESSAGE : errorMessage,
+                            detail: prev[sessionId]?.detail ?? null,
+                            error: historyPending
+                                ? SESSION_HISTORY_PENDING_MESSAGE
+                                : transientFetchError && prev[sessionId]?.detail != null
+                                  ? ""
+                                  : transientFetchError
+                                    ? SESSION_TRANSIENT_FETCH_PENDING_MESSAGE
+                                    : errorMessage,
                         },
                     }));
+                    if (transientFetchError && !retryTimersRef.current.has(sessionId)) {
+                        const timer = window.setTimeout(() => {
+                            retryTimersRef.current.delete(sessionId);
+                            if (!mountedRef.current) return;
+                            loadSessionDetail(sessionId, forceRefresh);
+                        }, SESSION_TRANSIENT_FETCH_RETRY_MS);
+                        retryTimersRef.current.set(sessionId, timer);
+                    }
                 });
         },
         [service]
@@ -532,6 +573,10 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
         mountedRef.current = true;
         return () => {
             mountedRef.current = false;
+            for (const timer of retryTimersRef.current.values()) {
+                window.clearTimeout(timer);
+            }
+            retryTimersRef.current.clear();
         };
     }, []);
 
@@ -542,6 +587,12 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
     useEffect(() => {
         const forceRefresh = refreshSeq !== lastRefreshSeqRef.current;
         lastRefreshSeqRef.current = refreshSeq;
+        const activeSessionIds = new Set(sessionIds);
+        for (const [sessionId, retryTimer] of retryTimersRef.current.entries()) {
+            if (activeSessionIds.has(sessionId)) continue;
+            window.clearTimeout(retryTimer);
+            retryTimersRef.current.delete(sessionId);
+        }
         setDetails((current) => {
             const next = { ...current };
             for (const sessionId of sessionIds) {
@@ -579,7 +630,10 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                 sessionIds.map(async (sessionId) => {
                     const state = currentDetails[sessionId];
                     if (state?.loading) return;
-                    if (isSessionHistoryPendingMessage(state?.error)) {
+                    if (
+                        isSessionHistoryPendingMessage(state?.error) ||
+                        isSessionTransientFetchPendingMessage(state?.error)
+                    ) {
                         loadSessionDetail(sessionId);
                         return;
                     }
@@ -594,6 +648,16 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                             size: stat.size ?? 0,
                             missing: stat.missing === true,
                         };
+                        if (isSessionTransientFetchPendingMessage(currentDetails[sessionId]?.error)) {
+                            setDetails((current) => ({
+                                ...current,
+                                [sessionId]: {
+                                    loading: false,
+                                    detail: current[sessionId]?.detail ?? null,
+                                    error: "",
+                                },
+                            }));
+                        }
                         if (prev == null) {
                             return;
                         }
@@ -615,12 +679,19 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                         loadSessionDetail(sessionId, true);
                     } catch (error) {
                         if (cancelled) return;
+                        const errorMessage = getErrorMessage(error);
+                        const currentDetail = currentDetails[sessionId]?.detail ?? null;
+                        if (isTransientFetchErrorMessage(errorMessage) && currentDetail != null) {
+                            return;
+                        }
                         setDetails((current) => ({
                             ...current,
                             [sessionId]: {
                                 loading: false,
                                 detail: current[sessionId]?.detail ?? null,
-                                error: getErrorMessage(error),
+                                error: isTransientFetchErrorMessage(errorMessage)
+                                    ? SESSION_TRANSIENT_FETCH_PENDING_MESSAGE
+                                    : errorMessage,
                             },
                         }));
                     }
@@ -755,6 +826,30 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
             retryTimers.clear();
         };
     }, [service, sessionIds.join("\n")]);
+
+    useEffect(() => {
+        const handleNoteUpdated = (event: Event) => {
+            if (!isAISessionNoteUpdatedEvent(event)) return;
+            const updated = event.detail.summary;
+            setSummaries((current) => {
+                let changed = false;
+                const next = { ...current };
+                for (const [sessionId, state] of Object.entries(current)) {
+                    if (state.summary == null || !sessionMatchesSummary(sessionId, updated)) {
+                        continue;
+                    }
+                    changed = true;
+                    next[sessionId] = {
+                        ...state,
+                        summary: { ...state.summary, ...updated },
+                    };
+                }
+                return changed ? next : current;
+            });
+        };
+        window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+        return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+    }, []);
 
     return summaries;
 }
@@ -895,11 +990,13 @@ function MessageDialog({
     block,
     onClose,
     onJump,
+    onEditSessionNote,
 }: {
     message: Message | null;
     block: OverviewBlock | null;
     onClose: () => void;
     onJump: () => void;
+    onEditSessionNote: (block: OverviewBlock) => void;
 }) {
     if (message == null || block == null) return null;
     return (
@@ -925,7 +1022,7 @@ function MessageDialog({
                     {block.sessionId ? (
                         <button
                             type="button"
-                            onClick={() => openSessionNote(block.sessionId)}
+                            onClick={() => onEditSessionNote(block)}
                             aria-label="Edit session note"
                             title="Edit session note"
                         >
@@ -964,6 +1061,9 @@ function MessageSquares({
         if (isSessionHistoryPendingMessage(detailState.error)) {
             return <div className="session-overview-muted">{detailState.error}</div>;
         }
+        if (isSessionTransientFetchPendingMessage(detailState.error)) {
+            return <div className="session-overview-muted">Loading session...</div>;
+        }
         return <div className="session-overview-error">{detailState.error}</div>;
     }
     const messages = readableMessages(detailState?.detail);
@@ -993,6 +1093,255 @@ function MessageSquares({
             {detailState?.loading ? (
                 <i className={cn(makeIconClass("spinner", false), "session-overview-loading-icon")} />
             ) : null}
+        </div>
+    );
+}
+
+function OverviewSessionNoteEditor({
+    block,
+    initialSummary,
+    onClose,
+}: {
+    block: OverviewBlock;
+    initialSummary: SessionSummary | null | undefined;
+    onClose: () => void;
+}) {
+    const service = useMemo(() => new AISessionsServiceType(), []);
+    const hydratedSummary =
+        initialSummary != null && sessionMatchesSummary(block.sessionId, initialSummary) ? initialSummary : null;
+    const initialNote = hydratedSummary?.note ?? "";
+    const [summary, setSummary] = useState<SessionSummary | null>(hydratedSummary);
+    const [noteDraft, setNoteDraft] = useState(initialNote);
+    const [loading, setLoading] = useState(hydratedSummary == null);
+    const [error, setError] = useState("");
+    const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("idle");
+    const inputRef = useRef<HTMLTextAreaElement | null>(null);
+    const focusedRef = useRef(false);
+    const latestDraftRef = useRef(initialNote);
+    const summaryRef = useRef<SessionSummary | null>(hydratedSummary);
+    const saveSeqRef = useRef(0);
+
+    const applySummary = React.useCallback((nextSummary: SessionSummary) => {
+        const currentSummary = summaryRef.current;
+        const currentNote = currentSummary?.note ?? "";
+        const shouldUpdateDraft = currentSummary == null || latestDraftRef.current.trim() === currentNote;
+        summaryRef.current = nextSummary;
+        setSummary(nextSummary);
+        setLoading(false);
+        if (shouldUpdateDraft) {
+            const nextNote = nextSummary.note ?? "";
+            latestDraftRef.current = nextNote;
+            setNoteDraft(nextNote);
+        }
+    }, []);
+
+    useEffect(() => {
+        summaryRef.current = hydratedSummary;
+        setSummary(hydratedSummary);
+        const nextNote = hydratedSummary?.note ?? "";
+        latestDraftRef.current = nextNote;
+        setNoteDraft(nextNote);
+        setLoading(hydratedSummary == null);
+        setError("");
+        setSaveStatus("idle");
+        focusedRef.current = false;
+    }, [block.sessionId]);
+
+    useEffect(() => {
+        if (hydratedSummary == null) return;
+        applySummary(hydratedSummary);
+    }, [applySummary, hydratedSummary?.key, hydratedSummary?.id, hydratedSummary?.note, hydratedSummary?.updatedAt]);
+
+    useEffect(() => {
+        if (!block.sessionId || hydratedSummary != null) return;
+        let cancelled = false;
+        setLoading(true);
+        setError("");
+        service
+            .Summary({ id: block.sessionId })
+            .then((nextSummary) => {
+                if (cancelled) return;
+                applySummary(nextSummary);
+            })
+            .catch((nextError) => {
+                if (cancelled) return;
+                setLoading(false);
+                setError(getErrorMessage(nextError));
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [applySummary, block.sessionId, hydratedSummary != null, service]);
+
+    useEffect(() => {
+        if (saveStatus !== "saved" && saveStatus !== "error") return;
+        const handle = window.setTimeout(() => setSaveStatus("idle"), saveStatus === "saved" ? 1200 : 1800);
+        return () => window.clearTimeout(handle);
+    }, [saveStatus]);
+
+    useEffect(() => {
+        return () => {
+            saveSeqRef.current++;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!block.sessionId) return;
+        const handleNoteUpdated = (event: Event) => {
+            if (!isAISessionNoteUpdatedEvent(event)) return;
+            if (!sessionMatchesSummary(block.sessionId, event.detail.summary)) return;
+            applySummary(event.detail.summary);
+        };
+        window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+        return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+    }, [applySummary, block.sessionId]);
+
+    const saveNote = React.useCallback(
+        async (nextNote: string): Promise<boolean> => {
+            const currentSummary = summaryRef.current;
+            if (currentSummary == null) return false;
+            const trimmedNote = nextNote.trim();
+            if (trimmedNote === (currentSummary.note ?? "")) {
+                setError("");
+                return true;
+            }
+            saveSeqRef.current++;
+            const saveSeq = saveSeqRef.current;
+            setSaveStatus("saving");
+            setError("");
+            try {
+                const updated = await service.Note(currentSummary.key, trimmedNote);
+                if (saveSeq !== saveSeqRef.current) return false;
+                summaryRef.current = updated;
+                setSummary(updated);
+                const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
+                if (currentDraftSaved) {
+                    const savedNote = updated.note ?? "";
+                    latestDraftRef.current = savedNote;
+                    setNoteDraft(savedNote);
+                }
+                setSaveStatus(currentDraftSaved ? "saved" : "idle");
+                dispatchAISessionNoteUpdated(updated);
+                return currentDraftSaved;
+            } catch (nextError) {
+                if (saveSeq === saveSeqRef.current) {
+                    setSaveStatus("error");
+                    setError(getErrorMessage(nextError));
+                }
+                return false;
+            }
+        },
+        [service]
+    );
+
+    const noteUnchanged = summary == null || noteDraft.trim() === (summary.note ?? "");
+    const saving = saveStatus === "saving";
+
+    useEffect(() => {
+        if (summary == null || noteUnchanged || saving) return;
+        const handle = window.setTimeout(() => void saveNote(noteDraft), SessionOverviewNoteAutoSaveDelayMs);
+        return () => window.clearTimeout(handle);
+    }, [noteDraft, noteUnchanged, saveNote, saving, summary]);
+
+    useEffect(() => {
+        if (loading || summary == null || focusedRef.current) return;
+        focusedRef.current = true;
+        window.setTimeout(() => {
+            inputRef.current?.focus();
+            inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
+        }, 0);
+    }, [loading, noteDraft.length, summary]);
+
+    const closeEditor = React.useCallback(() => {
+        if (saving) return;
+        if (!noteUnchanged) {
+            void saveNote(noteDraft).then((saved) => {
+                if (saved) onClose();
+            });
+            return;
+        }
+        onClose();
+    }, [noteDraft, noteUnchanged, onClose, saveNote, saving]);
+
+    const title = summary?.title || summary?.id || block.title;
+    const statusText =
+        saveStatus === "saving"
+            ? "Saving..."
+            : saveStatus === "saved"
+              ? "Saved"
+              : saveStatus === "error"
+                ? "Save failed"
+                : !noteUnchanged
+                  ? "Unsaved changes"
+                  : "";
+
+    return (
+        <div className="session-overview-note-editor" onClick={(event) => event.stopPropagation()}>
+            <div className="session-overview-note-editor-head">
+                <div className="session-overview-note-editor-title">
+                    <i className={makeIconClass("tag", false)} />
+                    <span>{title}</span>
+                </div>
+                <button
+                    type="button"
+                    className="session-overview-note-editor-close"
+                    disabled={saving}
+                    onClick={closeEditor}
+                    aria-label={`Close session note editor for ${block.title}`}
+                >
+                    <i className={makeIconClass("xmark", false)} />
+                </button>
+            </div>
+            {loading && summary == null ? (
+                <div className="session-overview-note-editor-loading">
+                    <i className={makeIconClass("spinner", false)} />
+                    <span>Loading note...</span>
+                </div>
+            ) : summary == null ? (
+                <div className="session-overview-note-editor-error">{error || "Session not found."}</div>
+            ) : (
+                <>
+                    {error ? <div className="session-overview-note-editor-error">{error}</div> : null}
+                    <textarea
+                        ref={inputRef}
+                        className="session-overview-note-editor-input"
+                        placeholder="Add a note"
+                        value={noteDraft}
+                        spellCheck={false}
+                        onChange={(event) => {
+                            latestDraftRef.current = event.target.value;
+                            setNoteDraft(event.target.value);
+                            setError("");
+                            if (saveStatus !== "saving") {
+                                setSaveStatus("idle");
+                            }
+                        }}
+                        onBlur={() => {
+                            if (!noteUnchanged && !saving) {
+                                void saveNote(noteDraft);
+                            }
+                        }}
+                        onKeyDown={(event) => {
+                            event.stopPropagation();
+                            if (event.key === "Escape") {
+                                closeEditor();
+                            }
+                        }}
+                    />
+                    <div className="session-overview-note-editor-footer">
+                        <span
+                            className={cn(
+                                "session-overview-note-editor-status",
+                                saveStatus === "saved" && "is-saved",
+                                saveStatus === "error" && "is-error"
+                            )}
+                            aria-live="polite"
+                        >
+                            {statusText}
+                        </span>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
@@ -1096,6 +1445,8 @@ function CompactBlockIcon({
 function BlockRow({
     block,
     detailState,
+    noteSummary,
+    noteEditorOpen,
     displayLimit,
     viewedAt,
     currentBlockId,
@@ -1103,6 +1454,8 @@ function BlockRow({
     agentStatus,
     onSelectBlock,
     onJumpBlock,
+    onToggleSessionNote,
+    onCloseSessionNote,
     onOpenSessionDetail,
     onDeleteSession,
     onDeleteBlock,
@@ -1110,6 +1463,8 @@ function BlockRow({
 }: {
     block: OverviewBlock;
     detailState: DetailState | undefined;
+    noteSummary: SessionSummary | null | undefined;
+    noteEditorOpen: boolean;
     displayLimit: number;
     viewedAt: number;
     currentBlockId: string | null;
@@ -1117,6 +1472,8 @@ function BlockRow({
     agentStatus: AgentStatus | null;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
+    onToggleSessionNote: (block: OverviewBlock) => void;
+    onCloseSessionNote: () => void;
     onOpenSessionDetail: (block: OverviewBlock) => void;
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
@@ -1135,7 +1492,8 @@ function BlockRow({
                 "session-overview-block-row",
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
-                isCurrent && "is-current"
+                isCurrent && "is-current",
+                noteEditorOpen && "is-note-editing"
             )}
             onClick={() => onSelectBlock(block)}
         >
@@ -1179,11 +1537,15 @@ function BlockRow({
                     <Tooltip content="Edit session note" placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
-                            className="session-overview-block-action-button"
+                            className={cn(
+                                "session-overview-block-action-button",
+                                (noteEditorOpen || noteSummary?.note) && "is-active"
+                            )}
                             onClick={(event) => {
                                 event.stopPropagation();
-                                openSessionNote(block.sessionId);
+                                onToggleSessionNote(block);
                             }}
+                            aria-expanded={noteEditorOpen}
                             aria-label={`Edit session note for ${block.title}`}
                         >
                             <i className={makeIconClass("tag", false)} />
@@ -1252,6 +1614,9 @@ function BlockRow({
                     </button>
                 </Tooltip>
             </div>
+            {noteEditorOpen ? (
+                <OverviewSessionNoteEditor block={block} initialSummary={noteSummary} onClose={onCloseSessionNote} />
+            ) : null}
         </div>
     );
 }
@@ -1260,6 +1625,7 @@ function TabGroupSection({
     group,
     collapsed,
     details,
+    openNoteBlockId,
     displayLimit,
     viewedAt,
     currentBlockId,
@@ -1267,6 +1633,8 @@ function TabGroupSection({
     agentStatuses,
     onSelectBlock,
     onJumpBlock,
+    onToggleSessionNote,
+    onCloseSessionNote,
     onToggleCollapsed,
     onOpenSessionDetail,
     onDeleteSession,
@@ -1276,6 +1644,7 @@ function TabGroupSection({
     group: TabGroup;
     collapsed: boolean;
     details: Record<string, DetailState>;
+    openNoteBlockId: string | null;
     displayLimit: number;
     viewedAt: Record<string, number>;
     currentBlockId: string | null;
@@ -1283,6 +1652,8 @@ function TabGroupSection({
     agentStatuses: Record<string, AgentStatus>;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
+    onToggleSessionNote: (block: OverviewBlock) => void;
+    onCloseSessionNote: () => void;
     onToggleCollapsed: () => void;
     onOpenSessionDetail: (block: OverviewBlock) => void;
     onDeleteSession: (block: OverviewBlock) => void;
@@ -1335,6 +1706,8 @@ function TabGroupSection({
                                     key={block.blockId}
                                     block={block}
                                     detailState={details[block.sessionId]}
+                                    noteSummary={details[block.sessionId]?.detail?.summary ?? null}
+                                    noteEditorOpen={openNoteBlockId === block.blockId}
                                     displayLimit={displayLimit}
                                     viewedAt={viewedAt[block.blockId] ?? 0}
                                     currentBlockId={currentBlockId}
@@ -1342,6 +1715,8 @@ function TabGroupSection({
                                     agentStatus={agentStatuses[block.blockId] ?? null}
                                     onSelectBlock={onSelectBlock}
                                     onJumpBlock={onJumpBlock}
+                                    onToggleSessionNote={onToggleSessionNote}
+                                    onCloseSessionNote={onCloseSessionNote}
                                     onOpenSessionDetail={onOpenSessionDetail}
                                     onDeleteSession={onDeleteSession}
                                     onDeleteBlock={onDeleteBlock}
@@ -1509,6 +1884,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     }, [agentStatuses, blocks, canonicalAgentStatuses, controllerStatuses, details, viewedAt, now]);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+    const [openNoteBlockId, setOpenNoteBlockId] = useState<string | null>(null);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
     const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
@@ -1541,6 +1917,21 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const currentBlockInOverview = currentBlockId != null && blocks.some((block) => block.blockId === currentBlockId);
     const selectedBlockInOverview =
         selectedBlockId != null && blocks.some((block) => block.blockId === selectedBlockId);
+    useEffect(() => {
+        if (openNoteBlockId == null) return;
+        if (blocks.some((block) => block.blockId === openNoteBlockId)) return;
+        setOpenNoteBlockId(null);
+    }, [blocks, openNoteBlockId]);
+    const openSessionNoteInline = React.useCallback((nextBlock: OverviewBlock) => {
+        if (!nextBlock.sessionId) return;
+        setSelectedBlockId(nextBlock.blockId);
+        setOpenNoteBlockId(nextBlock.blockId);
+    }, []);
+    const toggleSessionNoteInline = React.useCallback((nextBlock: OverviewBlock) => {
+        if (!nextBlock.sessionId) return;
+        setSelectedBlockId(nextBlock.blockId);
+        setOpenNoteBlockId((current) => (current === nextBlock.blockId ? null : nextBlock.blockId));
+    }, []);
     const highlightedBlockId = selectedBlockInOverview
         ? selectedBlockId
         : currentBlockInOverview
@@ -1663,6 +2054,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 group={group}
                                 collapsed={collapsedTabIds[group.tabId] === true}
                                 details={details}
+                                openNoteBlockId={openNoteBlockId}
                                 displayLimit={displayLimit}
                                 viewedAt={viewedAt}
                                 currentBlockId={highlightedBlockId}
@@ -1673,6 +2065,8 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                     setSelectedBlockId(nextBlock.blockId);
                                     overviewModel.jumpToBlock(nextBlock.tabId, nextBlock.blockId);
                                 }}
+                                onToggleSessionNote={toggleSessionNoteInline}
+                                onCloseSessionNote={() => setOpenNoteBlockId(null)}
                                 onToggleCollapsed={() => toggleTabCollapsed(group.tabId)}
                                 onOpenSessionDetail={(nextBlock) => {
                                     if (!nextBlock.sessionId) return;
@@ -1755,6 +2149,10 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                         overviewModel.jumpToBlock(selected.block.tabId, selected.block.blockId);
                         setSelected(null);
                     }
+                }}
+                onEditSessionNote={(nextBlock) => {
+                    openSessionNoteInline(nextBlock);
+                    setSelected(null);
                 }}
             />
         </>

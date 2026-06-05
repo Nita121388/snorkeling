@@ -349,7 +349,8 @@ type WidgetConfigType struct {
 	Description   string           `json:"description,omitempty"`
 	Workspaces    []string         `json:"workspaces,omitempty"`
 	Magnified     bool             `json:"magnified,omitempty"`
-	BlockDef      waveobj.BlockDef `json:"blockdef"`
+	Action        string           `json:"action,omitempty" jsonschema:"enum=commontext:search"`
+	BlockDef      *waveobj.BlockDef `json:"blockdef,omitempty"`
 }
 
 type BackgroundConfigType struct {

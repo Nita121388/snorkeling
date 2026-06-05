@@ -13,6 +13,7 @@ import { getLiveScrollSourceLineAtom, getLiveScrollSourceStateAtom, type Preview
 const LivePreviewDebounceMs = 2000;
 const LivePreviewSourceModelRetryMs = 100;
 const PreviewUserScrollSuppressMs = 350;
+const MarkdownFilePattern = /\.md$/i;
 
 type LivePreviewBuffer = {
     id: number;
@@ -36,6 +37,7 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
     const searchTargetLine = useAtomValue(model.searchTargetLine);
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
+    const collapsibleOrderedLists = MarkdownFilePattern.test(fileInfo.path ?? fileInfo.name ?? "");
     const resolveOpts: MarkdownResolveOpts = useMemo<MarkdownResolveOpts>(() => {
         return {
             connName: connName,
@@ -51,6 +53,7 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 fontSizeOverride={fontSizeOverride}
                 fixedFontSizeOverride={fixedFontSizeOverride}
                 scrollTargetLine={searchTargetLine}
+                collapsibleOrderedLists={collapsibleOrderedLists}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>
@@ -107,6 +110,7 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
     const scrollSourceState = useAtomValue(scrollSourceStateAtom);
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
+    const collapsibleOrderedLists = MarkdownFilePattern.test(sourcePath ?? "");
     const previewScrollLineRef = useRef<number | null>(null);
     const previewUserScrollUntilRef = useRef(0);
     const lastSourceTextRef = useRef("");
@@ -261,6 +265,7 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
                                 isVisibleBuffer ? undefined : () => handleBufferInitialScrollReady(buffer.id)
                             }
                             onUserScrollSourceLine={isVisibleBuffer ? handlePreviewUserScrollSourceLine : undefined}
+                            collapsibleOrderedLists={collapsibleOrderedLists}
                             contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
                         />
                     </div>

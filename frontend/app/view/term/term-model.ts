@@ -1109,13 +1109,7 @@ export class TermViewModel implements ViewModel {
                     },
                 },
                 {
-                    label: "View Agent Session Details...",
-                    click: () => {
-                        modalsModel.pushModal("AISessionDetailModal", { sessionId: agentSessionId });
-                    },
-                },
-                {
-                    label: "Open Session Detail Block",
+                    label: "Open Session Detail",
                     click: () => {
                         fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId));
                     },
