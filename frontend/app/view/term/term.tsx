@@ -236,6 +236,78 @@ function agentSessionConnection(blockData: Block | null): string | undefined {
     return typeof connection === "string" && connection.trim() !== "" ? connection.trim() : undefined;
 }
 
+type TermSessionTopBarMode = "expanded" | "collapsed" | "pinned-panel" | "pinned-sticky";
+
+const TermSessionTopBar = React.memo(
+    ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+        const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+        const [mode, setMode] = React.useState<TermSessionTopBarMode>("expanded");
+        const isCollapsed = mode === "collapsed";
+
+        if (sessionId === "") {
+            return null;
+        }
+
+        const toggleCollapsed = () => {
+            setMode((current) => (current === "collapsed" ? "expanded" : "collapsed"));
+        };
+        const togglePanelPin = () => {
+            setMode((current) => (current === "pinned-panel" ? "expanded" : "pinned-panel"));
+        };
+        const toggleStickyPin = () => {
+            setMode((current) => (current === "pinned-sticky" ? "expanded" : "pinned-sticky"));
+        };
+
+        return (
+            <div
+                className={clsx("term-session-topbar", `mode-${mode}`, isCollapsed && "is-collapsed")}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="term-session-topbar-content">
+                    <div className="term-session-topbar-main">
+                        <TermSessionUserOutlineOverlay blockData={blockData} dimmed={dimmed} termWrap={termWrap} />
+                        <TermSessionNoteEditor blockData={blockData} termWrap={termWrap} />
+                    </div>
+                    <div className="term-session-topbar-actions">
+                        <button
+                            type="button"
+                            className={clsx("term-session-topbar-action", mode === "pinned-panel" && "is-active")}
+                            aria-label="Pin session header as panel"
+                            aria-pressed={mode === "pinned-panel"}
+                            title="Pin as panel"
+                            onClick={togglePanelPin}
+                        >
+                            <i className="fa-sharp fa-solid fa-thumbtack" />
+                        </button>
+                        <button
+                            type="button"
+                            className={clsx("term-session-topbar-action", mode === "pinned-sticky" && "is-active")}
+                            aria-label="Pin session header as transparent sticky"
+                            aria-pressed={mode === "pinned-sticky"}
+                            title="Pin as transparent sticky"
+                            onClick={toggleStickyPin}
+                        >
+                            <i className="fa-sharp fa-solid fa-note-sticky" />
+                        </button>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    className="term-session-topbar-handle"
+                    aria-label={isCollapsed ? "Expand session header" : "Collapse session header"}
+                    title={isCollapsed ? "Expand session header" : "Collapse session header"}
+                    onClick={toggleCollapsed}
+                >
+                    <i className={clsx("fa-sharp fa-solid", isCollapsed ? "fa-chevron-down" : "fa-chevron-up")} />
+                </button>
+            </div>
+        );
+    }
+);
+
+TermSessionTopBar.displayName = "TermSessionTopBar";
+
 const TermSessionUserOutlineOverlay = React.memo(
     ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
@@ -965,13 +1037,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
-            <TermVDomNode key="vdom" blockId={blockId} model={model} />
-            <TermSessionUserOutlineOverlay
+            <TermSessionTopBar
                 blockData={blockData ?? null}
                 dimmed={selectionCopyOverlay != null || searchIsOpen}
                 termWrap={termWrapInst}
             />
-            <TermSessionNoteEditor blockData={blockData ?? null} termWrap={termWrapInst} />
+            <TermVDomNode key="vdom" blockId={blockId} model={model} />
             <div
                 key="connect-elem"
                 className="term-connectelem"
