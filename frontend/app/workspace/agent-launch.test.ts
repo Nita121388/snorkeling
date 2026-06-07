@@ -4,9 +4,11 @@
 import { describe, expect, it } from "vitest";
 import {
     collectAgentLaunchTargetsInTab,
+    collectTerminalLaunchTargetsInTab,
     createAgentBlockDefForProfile,
     createAgentBlockDefForTarget,
     createDefaultAgentBlockDef,
+    createTerminalBlockDefForTarget,
     extractTerminalContextMeta,
     resolveWorkspaceAgentContextMeta,
 } from "./agent-launch";
@@ -214,7 +216,7 @@ describe("agent launch context", () => {
         });
     });
 
-    it("auto-matches Files and terminal context when connection/path are consistent", () => {
+    it("keeps one target when Files and terminal context share a directory", () => {
         const tab = makeTab(["block:term", "block:preview"]);
         const blockMap: Record<string, Block> = {
             "block:term": makeBlock("block:term", {
@@ -233,11 +235,53 @@ describe("agent launch context", () => {
 
         expect(targets).toHaveLength(1);
         expect(targets[0]).toMatchObject({
-            blockId: "block:term",
-            source: "terminal",
+            blockId: "block:preview",
+            source: "files",
             connection: "ssh://host-a",
             cwd: "/srv/repo",
         });
+    });
+
+    it("shows both Files and Agent directories when they differ", () => {
+        const tab = makeTab(["block:preview", "block:agent"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects",
+            }),
+            "block:agent": makeBlock("block:agent", {
+                view: "term",
+                controller: "cmd",
+                cmd: "codex",
+                "cmd:cwd": "/Users/nita/Primary/obsidians/Obsidian",
+                "agent:autoresume": true,
+                "agent:provider": "codex",
+            }),
+        };
+
+        const agentTargets = collectAgentLaunchTargetsInTab(
+            tab,
+            (blockId: string) => blockMap[blockId],
+            "block:preview"
+        );
+        const terminalTargets = collectTerminalLaunchTargetsInTab(
+            tab,
+            (blockId: string) => blockMap[blockId],
+            "block:preview"
+        );
+
+        expect(agentTargets).toHaveLength(2);
+        expect(agentTargets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects",
+        });
+        expect(agentTargets[1]).toMatchObject({
+            blockId: "block:agent",
+            source: "agent",
+            cwd: "/Users/nita/Primary/obsidians/Obsidian",
+        });
+        expect(terminalTargets).toEqual(agentTargets);
     });
 
     it("requires selection when Files and terminal contexts do not match", () => {
@@ -365,5 +409,51 @@ describe("agent launch context", () => {
         const metaRecord = blockDef.meta as Record<string, unknown>;
         expect(metaRecord["agent:provider"]).toBe("claude");
         expect(metaRecord["cmd:jwt"]).toBe(true);
+    });
+
+    it("builds a terminal block for a selected launch target", () => {
+        const target = {
+            blockId: "block:term",
+            connection: "ssh://server-a",
+            cwd: "/srv/app",
+            filePath: null,
+            source: "terminal",
+            isLocal: false,
+            label: "ssh://server-a",
+            detail: "/srv/app • block block:ter",
+        } as const;
+
+        const blockDef = createTerminalBlockDefForTarget(target);
+        expect(blockDef.meta).toMatchObject({
+            view: "term",
+            controller: "shell",
+            connection: "ssh://server-a",
+            "cmd:cwd": "/srv/app",
+        });
+    });
+
+    it("clears inherited connection when building a local terminal target", () => {
+        const target = {
+            blockId: "block:term",
+            connection: null,
+            cwd: "/Users/nita/project",
+            filePath: null,
+            source: "terminal",
+            isLocal: true,
+            label: "local",
+            detail: "/Users/nita/project • block block:ter",
+        } as const;
+        const baseBlockDef = {
+            meta: {
+                view: "term",
+                controller: "shell",
+                connection: "ssh://old-server",
+                "cmd:cwd": "/old",
+            },
+        } as BlockDef;
+
+        const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+        expect(blockDef.meta?.connection).toBeUndefined();
+        expect(blockDef.meta?.["cmd:cwd"]).toBe("/Users/nita/project");
     });
 });

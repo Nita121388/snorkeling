@@ -1821,6 +1821,7 @@ declare global {
         "autoupdate:channel"?: string;
         "markdown:fontsize"?: number;
         "markdown:fixedfontsize"?: number;
+        "note:dir"?: string;
         "preview:showhiddenfiles"?: boolean;
         "preview:defaultsort"?: string;
         "preview:defaultdirectorydisplay"?: string;

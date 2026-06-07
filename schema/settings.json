@@ -306,6 +306,9 @@
         "markdown:fixedfontsize": {
           "type": "number"
         },
+        "note:dir": {
+          "type": "string"
+        },
         "preview:showhiddenfiles": {
           "type": "boolean"
         },

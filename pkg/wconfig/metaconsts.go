@@ -88,6 +88,8 @@ const (
 	ConfigKey_MarkdownFontSize               = "markdown:fontsize"
 	ConfigKey_MarkdownFixedFontSize          = "markdown:fixedfontsize"
 
+	ConfigKey_NoteDir                        = "note:dir"
+
 	ConfigKey_PreviewShowHiddenFiles         = "preview:showhiddenfiles"
 	ConfigKey_PreviewDefaultSort             = "preview:defaultsort"
 	ConfigKey_PreviewDefaultDirectoryDisplay = "preview:defaultdirectorydisplay"
@@ -140,4 +142,3 @@ const (
 	ConfigKey_TsunamiSdkVersion              = "tsunami:sdkversion"
 	ConfigKey_TsunamiGoPath                  = "tsunami:gopath"
 )
-

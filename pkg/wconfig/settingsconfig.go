@@ -160,6 +160,8 @@ type SettingsType struct {
 	MarkdownFontSize      float64 `json:"markdown:fontsize,omitempty"`
 	MarkdownFixedFontSize float64 `json:"markdown:fixedfontsize,omitempty"`
 
+	NoteDir string `json:"note:dir,omitempty"`
+
 	PreviewShowHiddenFiles         *bool  `json:"preview:showhiddenfiles,omitempty"`
 	PreviewDefaultSort             string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
 	PreviewDefaultDirectoryDisplay string `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`

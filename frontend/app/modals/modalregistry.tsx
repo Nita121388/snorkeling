@@ -10,6 +10,7 @@ import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
+import { NoteDirectoryModal } from "./notedirectorymodal";
 import { UserInputModal } from "./userinputmodal";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
@@ -21,6 +22,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [MessageModal.displayName || "MessageModal"]: MessageModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
+    [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,
     [RenameFileModal.displayName || "RenameFileModal"]: RenameFileModal,
     [DeleteFileModal.displayName || "DeleteFileModal"]: DeleteFileModal,

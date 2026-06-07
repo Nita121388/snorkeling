@@ -123,6 +123,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [collapsedSearchPaths, setCollapsedSearchPaths] = useState<Set<string>>(() => new Set());
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
     const [treeExpandingAll, setTreeExpandingAll] = useState(false);
+    const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
     const treeRef = useRef<TreeViewRef>(null);
     const lastRevealSeqRef = useRef<number | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -211,6 +212,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     useEffect(() => {
         searchActiveRef.current = searchActive;
     }, [searchActive]);
+
+    useEffect(() => {
+        setSelectedTreeNode(null);
+    }, [connection, rootPath]);
 
     useEffect(() => {
         if (!searchActive) {
@@ -386,6 +391,30 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             });
         },
         [model, setErrorMsg]
+    );
+
+    const getCreateTargetDirectory = useCallback(() => {
+        if (selectedTreeNode == null) {
+            return rootPath;
+        }
+        const finfo = treeNodeToFileInfo(selectedTreeNode);
+        return finfo.isdir ? finfo.path : (finfo.dir ?? rootPath);
+    }, [rootPath, selectedTreeNode]);
+
+    const createFileInSelectedDirectory = useCallback(() => {
+        openCreateFile(getCreateTargetDirectory());
+    }, [getCreateTargetDirectory, openCreateFile]);
+
+    const createDirectoryInSelectedDirectory = useCallback(() => {
+        openCreateDirectory(getCreateTargetDirectory());
+    }, [getCreateTargetDirectory, openCreateDirectory]);
+
+    const renameSelectedTreeNode = useCallback(
+        (_id: string, node: TreeNodeData) => {
+            const finfo = treeNodeToFileInfo(node);
+            openRename(finfo.path, finfo.isdir);
+        },
+        [openRename]
     );
 
     const handleTreeNodeContextMenu = useCallback(
@@ -763,6 +792,28 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 {!searchActive && (
                     <div className="ml-auto flex items-center gap-1">
                         <button
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                            title="New File"
+                            aria-label="New File"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                createFileInSelectedDirectory();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-file-plus text-[11px]" />
+                        </button>
+                        <button
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                            title="New Folder"
+                            aria-label="New Folder"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                createDirectoryInSelectedDirectory();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-folder-plus text-[11px]" />
+                        </button>
+                        <button
                             className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
                             title="Collapse All"
                             aria-label="Collapse All"
@@ -815,6 +866,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 })
                             );
                         }}
+                        onSelectionChange={(_id, node) => setSelectedTreeNode(node)}
+                        onRenameSelected={renameSelectedTreeNode}
                         onNodeContextMenu={handleTreeNodeContextMenu}
                         onBackgroundContextMenu={handleTreeBackgroundContextMenu}
                     />

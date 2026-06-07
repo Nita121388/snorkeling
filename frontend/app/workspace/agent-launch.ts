@@ -1,5 +1,6 @@
 import { atoms, getFocusedBlockId, globalStore } from "@/app/store/global";
 import * as WOS from "@/app/store/wos";
+import { PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { isBlank } from "@/util/util";
 
 const DefaultAgentCommand = "codex";
@@ -9,6 +10,7 @@ const AgentAutoResumeMetaKey = "agent:autoresume";
 const AgentProviderMetaKey = "agent:provider";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
+export const DefaultTerminalWidgetId = "defwidget@terminal";
 
 export type AgentLaunchContext = {
     connection?: string | null;
@@ -45,7 +47,7 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
     },
 };
 
-type AgentLaunchSource = "terminal" | "files";
+type AgentLaunchSource = "terminal" | "files" | "agent";
 
 export type AgentLaunchTarget = {
     blockId: string;
@@ -233,6 +235,7 @@ function makeTerminalLaunchTarget(blockId: string, block: Block): AgentLaunchTar
     }
     const connection = normalizeConnection(block.meta?.connection);
     const cwd = normalizePath(block.meta?.["cmd:cwd"]);
+    const source = block.meta?.[AgentAutoResumeMetaKey] === true ? "agent" : "terminal";
     const shortBlockId = (block.oid ?? blockId).slice(0, 8);
     const isLocal = connection == null;
     const label = isLocal ? "local" : connection;
@@ -242,7 +245,7 @@ function makeTerminalLaunchTarget(blockId: string, block: Block): AgentLaunchTar
         connection,
         cwd,
         filePath: null,
-        source: "terminal",
+        source,
         isLocal,
         label,
         detail,
@@ -254,8 +257,11 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
         return null;
     }
     const connection = normalizeConnection(block.meta?.connection);
-    const filePath = normalizePath(block.meta?.file);
-    const cwd = filePath == null ? null : resolvePreviewLaunchPath(filePath, block.meta?.edit === true);
+    const metaFilePath = normalizePath(block.meta?.file);
+    const explorerRootPath = normalizePath((block.meta as Record<string, unknown>)?.[PreviewExplorerRootMetaKey]);
+    const filePath = explorerRootPath ?? metaFilePath;
+    const launchPath = filePath;
+    const cwd = launchPath == null ? null : resolvePreviewLaunchPath(launchPath, block.meta?.edit === true);
     if (connection == null && cwd == null && filePath == null) {
         return null;
     }
@@ -296,20 +302,6 @@ function getLaunchTargetPathCandidates(target: AgentLaunchTarget): string[] {
     return Array.from(uniquePaths);
 }
 
-function targetsShareLaunchContext(targetA: AgentLaunchTarget, targetB: AgentLaunchTarget): boolean {
-    const connectionA = normalizeConnection(targetA.connection);
-    const connectionB = normalizeConnection(targetB.connection);
-    if (connectionA !== connectionB) {
-        return false;
-    }
-    const pathsA = getLaunchTargetPathCandidates(targetA);
-    const pathsB = getLaunchTargetPathCandidates(targetB);
-    if (pathsA.length === 0 || pathsB.length === 0) {
-        return false;
-    }
-    return pathsA.some((path) => pathsB.includes(path));
-}
-
 function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
     if (target == null || target.source !== "files") {
         return false;
@@ -321,7 +313,19 @@ function makeLaunchTargetDedupKey(target: AgentLaunchTarget): string {
     const connection = normalizeConnection(target.connection) ?? "local";
     const pathCandidates = getLaunchTargetPathCandidates(target);
     const primaryPath = pathCandidates[0] ?? "";
-    return `${target.source}|${connection}|${primaryPath}`;
+    return `${connection}|${primaryPath}`;
+}
+
+function dedupeLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
+    const dedupedTargets = new Map<string, AgentLaunchTarget>();
+    for (const target of targets) {
+        const dedupeKey = makeLaunchTargetDedupKey(target);
+        if (dedupedTargets.has(dedupeKey)) {
+            continue;
+        }
+        dedupedTargets.set(dedupeKey, target);
+    }
+    return Array.from(dedupedTargets.values());
 }
 
 function resolvePreferredFilesLaunchTargets(
@@ -412,6 +416,22 @@ export function collectAgentLaunchTargetsInTab(
     getBlockById?: (blockId: string) => Block | null | undefined,
     focusedBlockId?: string | null
 ): AgentLaunchTarget[] {
+    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId);
+}
+
+export function collectTerminalLaunchTargetsInTab(
+    tab: Tab | null | undefined,
+    getBlockById?: (blockId: string) => Block | null | undefined,
+    focusedBlockId?: string | null
+): AgentLaunchTarget[] {
+    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId);
+}
+
+function collectLaunchTargetsInTab(
+    tab: Tab | null | undefined,
+    getBlockById?: (blockId: string) => Block | null | undefined,
+    focusedBlockId?: string | null
+): AgentLaunchTarget[] {
     if (tab == null || getBlockById == null) {
         return [];
     }
@@ -440,14 +460,7 @@ export function collectAgentLaunchTargetsInTab(
         return filesTargets;
     }
 
-    const matchedTerminalTarget = terminalTargets.find((terminalTarget) =>
-        filesTargets.some((filesTarget) => targetsShareLaunchContext(terminalTarget, filesTarget))
-    );
-    if (matchedTerminalTarget != null) {
-        return [matchedTerminalTarget];
-    }
-
-    return [...filesTargets, ...terminalTargets];
+    return dedupeLaunchTargets([...filesTargets, ...terminalTargets]);
 }
 
 export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
@@ -458,6 +471,20 @@ export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
     const tabData = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", staticTabId)));
     const focusedBlockId = getFocusedBlockId();
     return collectAgentLaunchTargetsInTab(
+        tabData,
+        (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
+        focusedBlockId
+    );
+}
+
+export function getCurrentTabTerminalLaunchTargets(): AgentLaunchTarget[] {
+    const staticTabId = globalStore.get(atoms.staticTabId);
+    if (isBlank(staticTabId)) {
+        return [];
+    }
+    const tabData = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", staticTabId)));
+    const focusedBlockId = getFocusedBlockId();
+    return collectTerminalLaunchTargetsInTab(
         tabData,
         (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
         focusedBlockId
@@ -502,6 +529,36 @@ function resolveContextMeta(context?: AgentLaunchContext): AgentContextMeta {
     }
 
     return meta;
+}
+
+function mergeContextMeta(baseMeta: MetaType, context?: AgentLaunchContext): MetaType {
+    const meta: MetaType = {
+        ...baseMeta,
+        ...resolveContextMeta(context),
+    };
+
+    if (context?.connection !== undefined && (typeof context.connection !== "string" || isBlank(context.connection))) {
+        delete meta.connection;
+    }
+    if (context?.cwd !== undefined && (typeof context.cwd !== "string" || isBlank(context.cwd))) {
+        delete meta["cmd:cwd"];
+    }
+
+    return meta;
+}
+
+export function createTerminalBlockDef(context?: AgentLaunchContext, baseBlockDef?: BlockDef): BlockDef {
+    const baseMeta = baseBlockDef?.meta ?? {};
+    const blockMeta: MetaType = {
+        view: "term",
+        controller: "shell",
+        ...mergeContextMeta(baseMeta, context),
+    };
+
+    return {
+        ...baseBlockDef,
+        meta: blockMeta,
+    };
 }
 
 export function createDefaultAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext): BlockDef {
@@ -571,4 +628,15 @@ export function createAgentBlockDefForTarget(
         return createDefaultAgentBlockDef(settings, context);
     }
     return createAgentBlockDefForProfile(profileName!, settings, context);
+}
+
+export function createTerminalBlockDefForTarget(target: AgentLaunchTarget, baseBlockDef?: BlockDef): BlockDef {
+    return createTerminalBlockDef(
+        {
+            connection: target.connection,
+            cwd: target.cwd,
+            inheritWorkspaceContext: false,
+        },
+        baseBlockDef
+    );
 }

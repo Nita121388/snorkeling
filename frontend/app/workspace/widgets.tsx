@@ -10,8 +10,11 @@ import {
     createAgentBlockDefForProfile,
     createAgentBlockDefForTarget,
     createDefaultAgentBlockDef,
+    createTerminalBlockDefForTarget,
     DefaultAgentWidgetId,
+    DefaultTerminalWidgetId,
     getCurrentTabAgentLaunchTargets,
+    getCurrentTabTerminalLaunchTargets,
 } from "@/app/workspace/agent-launch";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
@@ -279,6 +282,16 @@ type AgentTargetFloatingWindowProps = {
     profileLabel?: string;
 };
 
+type TerminalTargetFloatingWindowProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    referenceElement: HTMLElement;
+    targets: AgentLaunchTarget[];
+    magnified?: boolean;
+    env: WidgetsEnv;
+    baseBlockDef?: BlockDef;
+};
+
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && !isBlank(error.message)) {
         return error.message;
@@ -295,6 +308,17 @@ const AgentWidgetProfiles: AgentWidgetProfile[] = [
     { name: "codex", label: "Codex" },
     { name: "claude", label: "Claude Code" },
 ];
+
+function launchTargetSourceLabel(target: AgentLaunchTarget): string {
+    switch (target.source) {
+        case "files":
+            return "Files";
+        case "agent":
+            return "Agent";
+        default:
+            return "Terminal";
+    }
+}
 
 const AgentTargetFloatingWindow = memo(
     ({
@@ -356,7 +380,78 @@ const AgentTargetFloatingWindow = memo(
                                 }}
                             >
                                 <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                    {target.source === "files" ? "Files" : "Terminal"}
+                                    {launchTargetSourceLabel(target)}
+                                </div>
+                                <div className="text-sm text-foreground">{target.label}</div>
+                                <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </FloatingPortal>
+        );
+    }
+);
+
+const TerminalTargetFloatingWindow = memo(
+    ({
+        isOpen,
+        onClose,
+        referenceElement,
+        targets,
+        magnified,
+        env,
+        baseBlockDef,
+    }: TerminalTargetFloatingWindowProps) => {
+        const { refs, floatingStyles, context } = useFloating({
+            open: isOpen,
+            onOpenChange: onClose,
+            placement: "left-start",
+            middleware: [offset(-2), shift({ padding: 12 })],
+            whileElementsMounted: autoUpdate,
+            elements: {
+                reference: referenceElement,
+            },
+        });
+        const dismiss = useDismiss(context);
+        const { getFloatingProps } = useInteractions([dismiss]);
+
+        if (!isOpen) {
+            return null;
+        }
+
+        return (
+            <FloatingPortal>
+                <div
+                    ref={refs.setFloating}
+                    style={floatingStyles}
+                    {...getFloatingProps()}
+                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                >
+                    <div className="px-2 py-1 text-xs text-secondary">Select context for Terminal</div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                        {targets.map((target) => (
+                            <button
+                                key={target.blockId}
+                                type="button"
+                                className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
+                                onClick={() => {
+                                    fireAndForget(async () => {
+                                        const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+                                        try {
+                                            await env.createBlock(blockDef, magnified);
+                                            onClose();
+                                        } catch (error) {
+                                            console.error("Failed to launch terminal for selected target:", error);
+                                            modalsModel.pushModal("MessageModal", {
+                                                children: `Failed to launch Terminal: ${getErrorMessage(error)}`,
+                                            });
+                                        }
+                                    });
+                                }}
+                            >
+                                <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
+                                    {launchTargetSourceLabel(target)}
                                 </div>
                                 <div className="text-sm text-foreground">{target.label}</div>
                                 <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
@@ -518,6 +613,11 @@ const Widgets = memo(() => {
     const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
     const [agentProfileName, setAgentProfileName] = useState<string | undefined>(undefined);
     const [agentProfileLabel, setAgentProfileLabel] = useState<string | undefined>(undefined);
+    const [isTerminalTargetOpen, setIsTerminalTargetOpen] = useState(false);
+    const [terminalTargets, setTerminalTargets] = useState<AgentLaunchTarget[]>([]);
+    const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
+    const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
+    const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
 
     const closeAgentTargetSelector = useCallback(() => {
         setIsAgentTargetOpen(false);
@@ -525,6 +625,13 @@ const Widgets = memo(() => {
         setAgentTargets([]);
         setAgentProfileName(undefined);
         setAgentProfileLabel(undefined);
+    }, []);
+
+    const closeTerminalTargetSelector = useCallback(() => {
+        setIsTerminalTargetOpen(false);
+        setTerminalReferenceElement(null);
+        setTerminalTargets([]);
+        setTerminalBaseBlockDef(undefined);
     }, []);
 
     const launchAgentForProfile = useCallback(
@@ -561,15 +668,58 @@ const Widgets = memo(() => {
         [closeAgentTargetSelector, env, fullConfig?.settings]
     );
 
+    const launchTerminalWidget = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            const blockDef = widget.blockdef;
+            if (blockDef == null) {
+                console.warn("Terminal widget has no blockdef");
+                return;
+            }
+
+            closeAgentTargetSelector();
+            const launchTargets = getCurrentTabTerminalLaunchTargets();
+            if (launchTargets.length > 1) {
+                setTerminalTargets(launchTargets);
+                setTerminalWidgetMagnified(Boolean(widget.magnified));
+                setTerminalReferenceElement(referenceElement);
+                setTerminalBaseBlockDef(blockDef);
+                setIsTerminalTargetOpen(true);
+                return;
+            }
+
+            closeTerminalTargetSelector();
+            const terminalBlockDef =
+                launchTargets.length === 1 ? createTerminalBlockDefForTarget(launchTargets[0], blockDef) : blockDef;
+            fireAndForget(async () => {
+                try {
+                    await env.createBlock(terminalBlockDef, widget.magnified);
+                } catch (error) {
+                    console.error("Failed to launch terminal:", error);
+                    modalsModel.pushModal("MessageModal", {
+                        children: `Failed to launch Terminal: ${getErrorMessage(error)}`,
+                    });
+                }
+            });
+        },
+        [closeAgentTargetSelector, closeTerminalTargetSelector, env]
+    );
+
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
             if (runWidgetAction(widget.action)) {
                 closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                return;
+            }
+
+            if (widgetId === DefaultTerminalWidgetId) {
+                launchTerminalWidget(widget, e.currentTarget);
                 return;
             }
 
             if (widgetId !== DefaultAgentWidgetId) {
                 closeAgentTargetSelector();
+                closeTerminalTargetSelector();
                 const blockDef = widget.blockdef;
                 if (blockDef == null) {
                     console.warn(`Widget ${widgetId} has no blockdef`);
@@ -579,9 +729,10 @@ const Widgets = memo(() => {
                 return;
             }
 
+            closeTerminalTargetSelector();
             launchAgentForProfile(widget, e.currentTarget);
         },
-        [closeAgentTargetSelector, env, launchAgentForProfile]
+        [closeAgentTargetSelector, closeTerminalTargetSelector, env, launchAgentForProfile, launchTerminalWidget]
     );
 
     const handleWidgetContextMenu = useCallback(
@@ -592,6 +743,7 @@ const Widgets = memo(() => {
             e.preventDefault();
             e.stopPropagation();
             closeAgentTargetSelector();
+            closeTerminalTargetSelector();
             const referenceElement = e.currentTarget;
             const menu: ContextMenuItem[] = AgentWidgetProfiles.map((profile) => ({
                 label: profile.label,
@@ -599,7 +751,7 @@ const Widgets = memo(() => {
             }));
             env.showContextMenu(menu, e);
         },
-        [closeAgentTargetSelector, env, launchAgentForProfile]
+        [closeAgentTargetSelector, closeTerminalTargetSelector, env, launchAgentForProfile]
     );
 
     const checkModeNeeded = useCallback(() => {
@@ -821,6 +973,17 @@ const Widgets = memo(() => {
                     env={env}
                     profileName={agentProfileName}
                     profileLabel={agentProfileLabel}
+                />
+            )}
+            {terminalReferenceElement != null && (
+                <TerminalTargetFloatingWindow
+                    isOpen={isTerminalTargetOpen}
+                    onClose={closeTerminalTargetSelector}
+                    referenceElement={terminalReferenceElement}
+                    targets={terminalTargets}
+                    magnified={terminalWidgetMagnified}
+                    env={env}
+                    baseBlockDef={terminalBaseBlockDef}
                 />
             )}
 

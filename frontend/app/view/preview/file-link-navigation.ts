@@ -20,6 +20,8 @@ import {
 
 type FileLinkOpenOptions = {
     connection?: string | null;
+    baseDir?: string | null;
+    openDirectoryIndex?: boolean;
     lineNumber?: number | null;
     editMode?: boolean;
 };
@@ -52,7 +54,77 @@ function stripQueryAndHash(value: string): string {
     return value.slice(0, Math.min(...cutIdxs));
 }
 
-export function normalizeLinkedFilePath(href: string): string | null {
+function cleanPathSegments(path: string): string {
+    let value = path.replace(/\\/g, "/");
+    let prefix = "";
+
+    const drivePrefix = value.match(/^([A-Za-z]:)(?:\/|$)/);
+    if (drivePrefix != null) {
+        prefix = `${drivePrefix[1]}/`;
+        value = value.slice(drivePrefix[0].length);
+    } else if (value === "~") {
+        return "~";
+    } else if (value.startsWith("~/")) {
+        prefix = "~/";
+        value = value.slice(2);
+    } else if (value.startsWith("//")) {
+        prefix = "//";
+        value = value.slice(2);
+    } else if (value.startsWith("/")) {
+        prefix = "/";
+        value = value.replace(/^\/+/, "");
+    }
+
+    const parts: string[] = [];
+    for (const part of value.split("/")) {
+        if (part === "" || part === ".") {
+            continue;
+        }
+        if (part === "..") {
+            if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+                parts.pop();
+            } else if (prefix === "") {
+                parts.push(part);
+            }
+            continue;
+        }
+        parts.push(part);
+    }
+
+    const joined = parts.join("/");
+    if (prefix === "") {
+        return joined;
+    }
+    if (prefix === "~/" && joined === "") {
+        return "~";
+    }
+    return `${prefix}${joined}`;
+}
+
+function resolveRelativeLinkedFilePath(relativePath: string, baseDir?: string | null): string | null {
+    if (typeof baseDir !== "string" || baseDir.trim() === "") {
+        return null;
+    }
+    const normalizedBaseDir = cleanPathSegments(baseDir.trim());
+    if (normalizedBaseDir === "") {
+        return null;
+    }
+    const normalizedRelativePath = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+    if (normalizedRelativePath === "") {
+        return normalizedBaseDir;
+    }
+    const separator = normalizedBaseDir === "/" || normalizedBaseDir.endsWith("/") ? "" : "/";
+    return cleanPathSegments(`${normalizedBaseDir}${separator}${normalizedRelativePath}`);
+}
+
+function joinLinkedPath(basePath: string, relativePath: string): string {
+    const normalizedBasePath = cleanPathSegments(basePath.trim());
+    const normalizedRelativePath = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+    const separator = normalizedBasePath === "/" || normalizedBasePath.endsWith("/") ? "" : "/";
+    return cleanPathSegments(`${normalizedBasePath}${separator}${normalizedRelativePath}`);
+}
+
+export function normalizeLinkedFilePath(href: string, options?: Pick<FileLinkOpenOptions, "baseDir">): string | null {
     if (typeof href !== "string") {
         return null;
     }
@@ -93,7 +165,7 @@ export function normalizeLinkedFilePath(href: string): string | null {
     if (ExternalSchemeRe.test(value)) {
         return null;
     }
-    return null;
+    return resolveRelativeLinkedFilePath(value, options?.baseDir);
 }
 
 function normalizePathForCompare(path: unknown): string {
@@ -128,28 +200,6 @@ export function isPathWithinRoot(targetPath: string, rootPath: string): boolean 
     return target.startsWith(rootWithSlash);
 }
 
-function getFallbackDir(path: string): string {
-    const normalized = normalizePathForCompare(path);
-    if (normalized === "" || normalized === "/" || /^[A-Za-z]:$/.test(normalized)) {
-        return normalized;
-    }
-    const idx = normalized.lastIndexOf("/");
-    if (idx <= 0) {
-        return normalized;
-    }
-    if (idx === 2 && WindowsAbsolutePathRe.test(normalized)) {
-        return normalized.slice(0, idx + 1);
-    }
-    return normalized.slice(0, idx);
-}
-
-function getFileInfoDir(fileInfo: FileInfo, fallbackPath: string): string {
-    if (fileInfo?.isdir || fileInfo?.mimetype === "directory") {
-        return fileInfo.path ?? fallbackPath;
-    }
-    return fileInfo?.dir || getFallbackDir(fileInfo?.path ?? fallbackPath);
-}
-
 function getCurrentSettingsDirectoryDisplayDefault(): any {
     return globalStore.get(atoms.settingsAtom)?.[PreviewDefaultDirectoryDisplaySettingKey];
 }
@@ -168,6 +218,21 @@ async function statPath(path: string, connection: string | null | undefined): Pr
             path: formatRemoteUri(path, connection ?? "local"),
         },
     });
+}
+
+async function findDirectoryIndexPath(path: string, connection: string | null | undefined): Promise<string | null> {
+    for (const fileName of ["README.md", "index.md"]) {
+        const candidatePath = joinLinkedPath(path, fileName);
+        try {
+            const fileInfo = await statPath(candidatePath, connection);
+            if (!fileInfo?.isdir && fileInfo?.mimetype !== "directory" && !fileInfo?.notfound) {
+                return fileInfo?.path || candidatePath;
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
 }
 
 async function findTreeFilesBlock(targetPath: string, connection: string): Promise<PreviewTreeBlock | null> {
@@ -266,7 +331,7 @@ export function getFocusedBlockConnection(): string | null {
 }
 
 export async function openFileLinkInPreview(href: string, options?: FileLinkOpenOptions): Promise<boolean> {
-    const linkedPath = normalizeLinkedFilePath(href);
+    const linkedPath = normalizeLinkedFilePath(href, { baseDir: options?.baseDir });
     if (linkedPath == null) {
         return false;
     }
@@ -285,6 +350,13 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
     }
     const targetPath = fileInfo?.path || path;
     const targetIsDir = !!fileInfo?.isdir || fileInfo?.mimetype === "directory";
+    if (targetIsDir && options?.openDirectoryIndex) {
+        const indexPath = await findDirectoryIndexPath(targetPath, connection);
+        if (indexPath != null) {
+            await openPathInPreview(indexPath, { ...options, openDirectoryIndex: false });
+            return;
+        }
+    }
     const treeBlock = await findTreeFilesBlock(targetPath, connection);
     if (treeBlock != null) {
         await requestTreeReveal(treeBlock.blockId, treeBlock.block, targetPath);

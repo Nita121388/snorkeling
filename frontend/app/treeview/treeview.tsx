@@ -76,6 +76,7 @@ export interface TreeViewProps {
     expandDirectoriesOnSingleClick?: boolean;
     onOpenFile?: (id: string, node: TreeNodeData, event: MouseEvent<HTMLDivElement>) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
+    onRenameSelected?: (id: string, node: TreeNodeData) => void;
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
@@ -392,6 +393,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         expandDirectoriesOnSingleClick = false,
         onOpenFile,
         onSelectionChange,
+        onRenameSelected,
         onNodeContextMenu,
         onBackgroundContextMenu,
     } = props;
@@ -750,6 +752,12 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         }
         const node = selectedId ? nodesById.get(selectedId) : null;
         if (node == null) {
+            return;
+        }
+        if (event.key === "F2") {
+            event.preventDefault();
+            event.stopPropagation();
+            onRenameSelected?.(node.id, node);
             return;
         }
         if (event.key === "ArrowLeft") {

@@ -241,33 +241,46 @@ type TermSessionTopBarMode = "expanded" | "collapsed" | "pinned-panel" | "pinned
 const TermSessionTopBar = React.memo(
     ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
-        const [mode, setMode] = React.useState<TermSessionTopBarMode>("expanded");
+        const [mode, setMode] = React.useState<TermSessionTopBarMode>("pinned-sticky");
+        const [isCollapsedRevealed, setIsCollapsedRevealed] = React.useState(false);
         const isCollapsed = mode === "collapsed";
 
         if (sessionId === "") {
             return null;
         }
 
-        const toggleCollapsed = () => {
+        const toggleCollapsed = (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.currentTarget.blur();
+            setIsCollapsedRevealed(false);
             setMode((current) => (current === "collapsed" ? "expanded" : "collapsed"));
         };
-        const togglePanelPin = () => {
+        const togglePanelPin = (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.currentTarget.blur();
+            setIsCollapsedRevealed(false);
             setMode((current) => (current === "pinned-panel" ? "expanded" : "pinned-panel"));
         };
-        const toggleStickyPin = () => {
+        const toggleStickyPin = (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.currentTarget.blur();
+            setIsCollapsedRevealed(false);
             setMode((current) => (current === "pinned-sticky" ? "expanded" : "pinned-sticky"));
         };
 
         return (
             <div
-                className={clsx("term-session-topbar", `mode-${mode}`, isCollapsed && "is-collapsed")}
+                className={clsx(
+                    "term-session-topbar",
+                    `mode-${mode}`,
+                    isCollapsed && "is-collapsed",
+                    isCollapsed && isCollapsedRevealed && "is-revealed"
+                )}
+                onMouseLeave={() => setIsCollapsedRevealed(false)}
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
             >
                 <div className="term-session-topbar-content">
                     <div className="term-session-topbar-main">
-                        <TermSessionUserOutlineOverlay blockData={blockData} dimmed={dimmed} termWrap={termWrap} />
                         <TermSessionNoteEditor blockData={blockData} termWrap={termWrap} />
+                        <TermSessionUserOutlineOverlay blockData={blockData} dimmed={dimmed} termWrap={termWrap} />
                     </div>
                     <div className="term-session-topbar-actions">
                         <button
@@ -297,9 +310,19 @@ const TermSessionTopBar = React.memo(
                     className="term-session-topbar-handle"
                     aria-label={isCollapsed ? "Expand session header" : "Collapse session header"}
                     title={isCollapsed ? "Expand session header" : "Collapse session header"}
+                    onMouseEnter={() => {
+                        if (isCollapsed) {
+                            setIsCollapsedRevealed(true);
+                        }
+                    }}
+                    onMouseMove={() => {
+                        if (isCollapsed) {
+                            setIsCollapsedRevealed(true);
+                        }
+                    }}
                     onClick={toggleCollapsed}
                 >
-                    <i className={clsx("fa-sharp fa-solid", isCollapsed ? "fa-chevron-down" : "fa-chevron-up")} />
+                    <i className={clsx("fa-sharp fa-solid", isCollapsed ? "fa-chevron-right" : "fa-chevron-left")} />
                 </button>
             </div>
         );
@@ -327,7 +350,7 @@ const TermSessionUserOutlineOverlay = React.memo(
         }, []);
 
         const loadOutline = React.useCallback(
-            (refresh = false, silent = false) => {
+            (refresh = false, showLoading = true) => {
                 requestSeqRef.current++;
                 const requestSeq = requestSeqRef.current;
                 if (sessionId === "") {
@@ -336,7 +359,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                     setLoading(false);
                     return;
                 }
-                if (!silent) {
+                if (showLoading) {
                     setLoading(true);
                 }
                 setError("");
@@ -402,7 +425,7 @@ const TermSessionUserOutlineOverlay = React.memo(
 
         const userMessages = userOutlineMessages(outline);
         const userMessageCount = outline?.userMessageCount ?? userMessages.length;
-        if (!isOpen && userMessages.length === 0) {
+        if (!isOpen && userMessages.length === 0 && !loading) {
             return null;
         }
 
@@ -430,6 +453,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                     dimmed && !isOpen && "is-dimmed"
                 )}
                 title={isOpen ? title : latestMessage ? outlinePreviewText(latestMessage.text, 220) : title}
+                aria-busy={loading}
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
             >
@@ -455,7 +479,10 @@ const TermSessionUserOutlineOverlay = React.memo(
                         </span>
                     ) : null}
                     {loading ? (
-                        <i className="fa-sharp fa-solid fa-spinner ml-auto shrink-0 animate-spin text-[10px]" />
+                        <i
+                            className="fa-sharp fa-solid fa-spinner ml-auto shrink-0 animate-spin text-[10px]"
+                            aria-hidden="true"
+                        />
                     ) : null}
                 </button>
                 {isOpen ? (

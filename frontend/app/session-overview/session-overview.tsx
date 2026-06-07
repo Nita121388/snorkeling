@@ -13,6 +13,7 @@ import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-s
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
+import { DefaultNoteDirectory, normalizeNoteDirectory, NoteDirectorySettingKey } from "@/app/modals/notedirectorymodal";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
 import { FocusManager } from "@/app/store/focusManager";
 import { atoms, setActiveTab, WOS } from "@/app/store/global";
@@ -27,7 +28,13 @@ import {
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
+import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
+import {
+    makeCurrentTabBlockKindOpenAtom,
+    SnorkelingBlockKindNote,
+    toggleCurrentTabBlockByKind,
+} from "@/app/workspace/toggle-block";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { cn, makeIconClass } from "@/util/util";
 import debug from "debug";
@@ -37,6 +44,7 @@ import { SessionOverviewModel } from "./session-overview-model";
 import "./session-overview.scss";
 
 const agentStatusLog = debug("wave:agentstatus");
+const NoteBlockOpenAtom = makeCurrentTabBlockKindOpenAtom(SnorkelingBlockKindNote);
 
 type OverviewBlock = {
     tabId: string;
@@ -71,6 +79,16 @@ type SummaryState = {
 type SessionActionState = {
     deletingSessionId: string;
     error: string;
+};
+
+type OverviewSessionNoteEditorHandle = {
+    saveBeforeSwitch: () => Promise<boolean>;
+};
+
+type OverviewSessionNoteEditorProps = {
+    block: OverviewBlock;
+    initialSummary: SessionSummary | null | undefined;
+    onClose: () => void;
 };
 
 type HookInstallState = {
@@ -985,6 +1003,78 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
     );
 }
 
+function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
+    const settings = jotai.useAtomValue(atoms.settingsAtom);
+    const open = jotai.useAtomValue(NoteBlockOpenAtom);
+    const noteDir = normalizeNoteDirectory(settings?.[NoteDirectorySettingKey] ?? DefaultNoteDirectory);
+
+    const openNoteDirectorySettings = React.useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            modalsModel.pushModal("NoteDirectoryModal", { initialDir: noteDir });
+        },
+        [noteDir]
+    );
+
+    const toggleNoteBlock = React.useCallback(() => {
+        const meta = {
+            view: "preview",
+            file: noteDir,
+            [PreviewExplorerRootMetaKey]: noteDir,
+            [PreviewDirectoryDisplayMetaKey]: "tree",
+            "frame:title": "Note",
+            icon: "note-sticky",
+        } as MetaType;
+        void toggleCurrentTabBlockByKind({
+            kind: SnorkelingBlockKindNote,
+            blockDef: { meta },
+        });
+    }, [noteDir]);
+
+    const icon = <i className={makeIconClass("note-sticky", false)} />;
+    if (vertical) {
+        return (
+            <Tooltip
+                content="Open Note / Right-click to set directory"
+                placement="right"
+                hideOnClick
+                divClassName="flex"
+                divOnContextMenu={openNoteDirectorySettings}
+            >
+                <button
+                    type="button"
+                    className={cn("session-overview-vbutton", open && "is-open")}
+                    onClick={toggleNoteBlock}
+                    aria-label="Open Note"
+                >
+                    {icon}
+                    <span>Note</span>
+                </button>
+            </Tooltip>
+        );
+    }
+    return (
+        <Tooltip
+            content="Open Note / Right-click to set directory"
+            placement="bottom"
+            hideOnClick
+            divClassName="flex"
+            divOnContextMenu={openNoteDirectorySettings}
+        >
+            <button
+                type="button"
+                className={cn("session-overview-tabbutton", open && "is-open")}
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                onClick={toggleNoteBlock}
+                aria-label="Open Note"
+            >
+                {icon}
+            </button>
+        </Tooltip>
+    );
+}
+
 function MessageDialog({
     message,
     block,
@@ -1097,254 +1187,282 @@ function MessageSquares({
     );
 }
 
-function OverviewSessionNoteEditor({
-    block,
-    initialSummary,
-    onClose,
-}: {
-    block: OverviewBlock;
-    initialSummary: SessionSummary | null | undefined;
-    onClose: () => void;
-}) {
-    const service = useMemo(() => new AISessionsServiceType(), []);
-    const hydratedSummary =
-        initialSummary != null && sessionMatchesSummary(block.sessionId, initialSummary) ? initialSummary : null;
-    const initialNote = hydratedSummary?.note ?? "";
-    const [summary, setSummary] = useState<SessionSummary | null>(hydratedSummary);
-    const [noteDraft, setNoteDraft] = useState(initialNote);
-    const [loading, setLoading] = useState(hydratedSummary == null);
-    const [error, setError] = useState("");
-    const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("idle");
-    const inputRef = useRef<HTMLTextAreaElement | null>(null);
-    const focusedRef = useRef(false);
-    const latestDraftRef = useRef(initialNote);
-    const summaryRef = useRef<SessionSummary | null>(hydratedSummary);
-    const saveSeqRef = useRef(0);
+const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHandle, OverviewSessionNoteEditorProps>(
+    function OverviewSessionNoteEditor({ block, initialSummary, onClose }, ref) {
+        const service = useMemo(() => new AISessionsServiceType(), []);
+        const hydratedSummary =
+            initialSummary != null && sessionMatchesSummary(block.sessionId, initialSummary) ? initialSummary : null;
+        const initialNote = hydratedSummary?.note ?? "";
+        const [summary, setSummary] = useState<SessionSummary | null>(hydratedSummary);
+        const [noteDraft, setNoteDraft] = useState(initialNote);
+        const [loading, setLoading] = useState(hydratedSummary == null);
+        const [error, setError] = useState("");
+        const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("idle");
+        const inputRef = useRef<HTMLTextAreaElement | null>(null);
+        const focusedRef = useRef(false);
+        const latestDraftRef = useRef(initialNote);
+        const summaryRef = useRef<SessionSummary | null>(hydratedSummary);
+        const pendingSaveRef = useRef<Promise<boolean> | null>(null);
+        const saveSeqRef = useRef(0);
 
-    const applySummary = React.useCallback((nextSummary: SessionSummary) => {
-        const currentSummary = summaryRef.current;
-        const currentNote = currentSummary?.note ?? "";
-        const shouldUpdateDraft = currentSummary == null || latestDraftRef.current.trim() === currentNote;
-        summaryRef.current = nextSummary;
-        setSummary(nextSummary);
-        setLoading(false);
-        if (shouldUpdateDraft) {
-            const nextNote = nextSummary.note ?? "";
+        const applySummary = React.useCallback((nextSummary: SessionSummary) => {
+            const currentSummary = summaryRef.current;
+            const currentNote = currentSummary?.note ?? "";
+            const shouldUpdateDraft = currentSummary == null || latestDraftRef.current.trim() === currentNote;
+            summaryRef.current = nextSummary;
+            setSummary(nextSummary);
+            setLoading(false);
+            if (shouldUpdateDraft) {
+                const nextNote = nextSummary.note ?? "";
+                latestDraftRef.current = nextNote;
+                setNoteDraft(nextNote);
+            }
+        }, []);
+
+        useEffect(() => {
+            summaryRef.current = hydratedSummary;
+            setSummary(hydratedSummary);
+            const nextNote = hydratedSummary?.note ?? "";
             latestDraftRef.current = nextNote;
             setNoteDraft(nextNote);
-        }
-    }, []);
-
-    useEffect(() => {
-        summaryRef.current = hydratedSummary;
-        setSummary(hydratedSummary);
-        const nextNote = hydratedSummary?.note ?? "";
-        latestDraftRef.current = nextNote;
-        setNoteDraft(nextNote);
-        setLoading(hydratedSummary == null);
-        setError("");
-        setSaveStatus("idle");
-        focusedRef.current = false;
-    }, [block.sessionId]);
-
-    useEffect(() => {
-        if (hydratedSummary == null) return;
-        applySummary(hydratedSummary);
-    }, [applySummary, hydratedSummary?.key, hydratedSummary?.id, hydratedSummary?.note, hydratedSummary?.updatedAt]);
-
-    useEffect(() => {
-        if (!block.sessionId || hydratedSummary != null) return;
-        let cancelled = false;
-        setLoading(true);
-        setError("");
-        service
-            .Summary({ id: block.sessionId })
-            .then((nextSummary) => {
-                if (cancelled) return;
-                applySummary(nextSummary);
-            })
-            .catch((nextError) => {
-                if (cancelled) return;
-                setLoading(false);
-                setError(getErrorMessage(nextError));
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [applySummary, block.sessionId, hydratedSummary != null, service]);
-
-    useEffect(() => {
-        if (saveStatus !== "saved" && saveStatus !== "error") return;
-        const handle = window.setTimeout(() => setSaveStatus("idle"), saveStatus === "saved" ? 1200 : 1800);
-        return () => window.clearTimeout(handle);
-    }, [saveStatus]);
-
-    useEffect(() => {
-        return () => {
-            saveSeqRef.current++;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!block.sessionId) return;
-        const handleNoteUpdated = (event: Event) => {
-            if (!isAISessionNoteUpdatedEvent(event)) return;
-            if (!sessionMatchesSummary(block.sessionId, event.detail.summary)) return;
-            applySummary(event.detail.summary);
-        };
-        window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
-        return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
-    }, [applySummary, block.sessionId]);
-
-    const saveNote = React.useCallback(
-        async (nextNote: string): Promise<boolean> => {
-            const currentSummary = summaryRef.current;
-            if (currentSummary == null) return false;
-            const trimmedNote = nextNote.trim();
-            if (trimmedNote === (currentSummary.note ?? "")) {
-                setError("");
-                return true;
-            }
-            saveSeqRef.current++;
-            const saveSeq = saveSeqRef.current;
-            setSaveStatus("saving");
+            setLoading(hydratedSummary == null);
             setError("");
-            try {
-                const updated = await service.Note(currentSummary.key, trimmedNote);
-                if (saveSeq !== saveSeqRef.current) return false;
-                summaryRef.current = updated;
-                setSummary(updated);
-                const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
-                if (currentDraftSaved) {
-                    const savedNote = updated.note ?? "";
-                    latestDraftRef.current = savedNote;
-                    setNoteDraft(savedNote);
-                }
-                setSaveStatus(currentDraftSaved ? "saved" : "idle");
-                dispatchAISessionNoteUpdated(updated);
-                return currentDraftSaved;
-            } catch (nextError) {
-                if (saveSeq === saveSeqRef.current) {
-                    setSaveStatus("error");
+            setSaveStatus("idle");
+            focusedRef.current = false;
+        }, [block.sessionId]);
+
+        useEffect(() => {
+            if (hydratedSummary == null) return;
+            applySummary(hydratedSummary);
+        }, [
+            applySummary,
+            hydratedSummary?.key,
+            hydratedSummary?.id,
+            hydratedSummary?.note,
+            hydratedSummary?.updatedAt,
+        ]);
+
+        useEffect(() => {
+            if (!block.sessionId || hydratedSummary != null) return;
+            let cancelled = false;
+            setLoading(true);
+            setError("");
+            service
+                .Summary({ id: block.sessionId })
+                .then((nextSummary) => {
+                    if (cancelled) return;
+                    applySummary(nextSummary);
+                })
+                .catch((nextError) => {
+                    if (cancelled) return;
+                    setLoading(false);
                     setError(getErrorMessage(nextError));
+                });
+            return () => {
+                cancelled = true;
+            };
+        }, [applySummary, block.sessionId, hydratedSummary != null, service]);
+
+        useEffect(() => {
+            if (saveStatus !== "saved" && saveStatus !== "error") return;
+            const handle = window.setTimeout(() => setSaveStatus("idle"), saveStatus === "saved" ? 1200 : 1800);
+            return () => window.clearTimeout(handle);
+        }, [saveStatus]);
+
+        useEffect(() => {
+            return () => {
+                saveSeqRef.current++;
+            };
+        }, []);
+
+        useEffect(() => {
+            if (!block.sessionId) return;
+            const handleNoteUpdated = (event: Event) => {
+                if (!isAISessionNoteUpdatedEvent(event)) return;
+                if (!sessionMatchesSummary(block.sessionId, event.detail.summary)) return;
+                applySummary(event.detail.summary);
+            };
+            window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+            return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+        }, [applySummary, block.sessionId]);
+
+        const saveNote = React.useCallback(
+            async (nextNote: string): Promise<boolean> => {
+                const currentSummary = summaryRef.current;
+                if (currentSummary == null) return false;
+                const trimmedNote = nextNote.trim();
+                if (trimmedNote === (currentSummary.note ?? "")) {
+                    setError("");
+                    return true;
                 }
-                return false;
+                saveSeqRef.current++;
+                const saveSeq = saveSeqRef.current;
+                setSaveStatus("saving");
+                setError("");
+                const savePromise = service
+                    .Note(currentSummary.key, trimmedNote)
+                    .then((updated) => {
+                        if (saveSeq !== saveSeqRef.current) return false;
+                        summaryRef.current = updated;
+                        setSummary(updated);
+                        const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
+                        if (currentDraftSaved) {
+                            const savedNote = updated.note ?? "";
+                            latestDraftRef.current = savedNote;
+                            setNoteDraft(savedNote);
+                        }
+                        setSaveStatus(currentDraftSaved ? "saved" : "idle");
+                        dispatchAISessionNoteUpdated(updated);
+                        return currentDraftSaved;
+                    })
+                    .catch((nextError) => {
+                        if (saveSeq === saveSeqRef.current) {
+                            setSaveStatus("error");
+                            setError(getErrorMessage(nextError));
+                        }
+                        return false;
+                    })
+                    .finally(() => {
+                        if (saveSeq === saveSeqRef.current) {
+                            pendingSaveRef.current = null;
+                        }
+                    });
+                pendingSaveRef.current = savePromise;
+                return savePromise;
+            },
+            [service]
+        );
+
+        const saveBeforeSwitch = React.useCallback((): Promise<boolean> => {
+            const pendingSave = pendingSaveRef.current;
+            if (pendingSave != null) {
+                return pendingSave;
             }
-        },
-        [service]
-    );
+            const currentSummary = summaryRef.current;
+            if (currentSummary == null) {
+                return Promise.resolve(true);
+            }
+            const latestDraft = latestDraftRef.current;
+            if (latestDraft.trim() === (currentSummary.note ?? "")) {
+                setError("");
+                return Promise.resolve(true);
+            }
+            return saveNote(latestDraft);
+        }, [saveNote]);
 
-    const noteUnchanged = summary == null || noteDraft.trim() === (summary.note ?? "");
-    const saving = saveStatus === "saving";
+        React.useImperativeHandle(
+            ref,
+            () => ({
+                saveBeforeSwitch,
+            }),
+            [saveBeforeSwitch]
+        );
 
-    useEffect(() => {
-        if (summary == null || noteUnchanged || saving) return;
-        const handle = window.setTimeout(() => void saveNote(noteDraft), SessionOverviewNoteAutoSaveDelayMs);
-        return () => window.clearTimeout(handle);
-    }, [noteDraft, noteUnchanged, saveNote, saving, summary]);
+        const noteUnchanged = summary == null || noteDraft.trim() === (summary.note ?? "");
+        const saving = saveStatus === "saving";
 
-    useEffect(() => {
-        if (loading || summary == null || focusedRef.current) return;
-        focusedRef.current = true;
-        window.setTimeout(() => {
-            inputRef.current?.focus();
-            inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
-        }, 0);
-    }, [loading, noteDraft.length, summary]);
+        useEffect(() => {
+            if (summary == null || noteUnchanged || saving) return;
+            const handle = window.setTimeout(() => void saveNote(noteDraft), SessionOverviewNoteAutoSaveDelayMs);
+            return () => window.clearTimeout(handle);
+        }, [noteDraft, noteUnchanged, saveNote, saving, summary]);
 
-    const closeEditor = React.useCallback(() => {
-        if (saving) return;
-        if (!noteUnchanged) {
-            void saveNote(noteDraft).then((saved) => {
-                if (saved) onClose();
-            });
-            return;
-        }
-        onClose();
-    }, [noteDraft, noteUnchanged, onClose, saveNote, saving]);
+        useEffect(() => {
+            if (loading || summary == null || focusedRef.current) return;
+            focusedRef.current = true;
+            window.setTimeout(() => {
+                inputRef.current?.focus();
+                inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
+            }, 0);
+        }, [loading, noteDraft.length, summary]);
 
-    const title = summary?.title || summary?.id || block.title;
-    const statusText =
-        saveStatus === "saving"
-            ? "Saving..."
-            : saveStatus === "saved"
-              ? "Saved"
-              : saveStatus === "error"
-                ? "Save failed"
-                : !noteUnchanged
-                  ? "Unsaved changes"
-                  : "";
+        const closeEditor = React.useCallback(() => {
+            if (saving) return;
+            if (!noteUnchanged) {
+                void saveNote(noteDraft).then((saved) => {
+                    if (saved) onClose();
+                });
+                return;
+            }
+            onClose();
+        }, [noteDraft, noteUnchanged, onClose, saveNote, saving]);
 
-    return (
-        <div className="session-overview-note-editor" onClick={(event) => event.stopPropagation()}>
-            <div className="session-overview-note-editor-head">
-                <div className="session-overview-note-editor-title">
-                    <i className={makeIconClass("tag", false)} />
-                    <span>{title}</span>
-                </div>
-                <button
-                    type="button"
-                    className="session-overview-note-editor-close"
-                    disabled={saving}
-                    onClick={closeEditor}
-                    aria-label={`Close session note editor for ${block.title}`}
-                >
-                    <i className={makeIconClass("xmark", false)} />
-                </button>
-            </div>
-            {loading && summary == null ? (
-                <div className="session-overview-note-editor-loading">
-                    <i className={makeIconClass("spinner", false)} />
-                    <span>Loading note...</span>
-                </div>
-            ) : summary == null ? (
-                <div className="session-overview-note-editor-error">{error || "Session not found."}</div>
-            ) : (
-                <>
-                    {error ? <div className="session-overview-note-editor-error">{error}</div> : null}
-                    <textarea
-                        ref={inputRef}
-                        className="session-overview-note-editor-input"
-                        placeholder="Add a note"
-                        value={noteDraft}
-                        spellCheck={false}
-                        onChange={(event) => {
-                            latestDraftRef.current = event.target.value;
-                            setNoteDraft(event.target.value);
-                            setError("");
-                            if (saveStatus !== "saving") {
-                                setSaveStatus("idle");
-                            }
-                        }}
-                        onBlur={() => {
-                            if (!noteUnchanged && !saving) {
-                                void saveNote(noteDraft);
-                            }
-                        }}
-                        onKeyDown={(event) => {
-                            event.stopPropagation();
-                            if (event.key === "Escape") {
-                                closeEditor();
-                            }
-                        }}
-                    />
-                    <div className="session-overview-note-editor-footer">
-                        <span
-                            className={cn(
-                                "session-overview-note-editor-status",
-                                saveStatus === "saved" && "is-saved",
-                                saveStatus === "error" && "is-error"
-                            )}
-                            aria-live="polite"
-                        >
-                            {statusText}
-                        </span>
+        const title = summary?.title || summary?.id || block.title;
+        const statusText =
+            saveStatus === "saving"
+                ? "Saving..."
+                : saveStatus === "saved"
+                  ? "Saved"
+                  : saveStatus === "error"
+                    ? "Save failed"
+                    : !noteUnchanged
+                      ? "Unsaved changes"
+                      : "";
+
+        return (
+            <div className="session-overview-note-editor" onClick={(event) => event.stopPropagation()}>
+                <div className="session-overview-note-editor-head">
+                    <div className="session-overview-note-editor-title">
+                        <i className={makeIconClass("tag", false)} />
+                        <span>{title}</span>
                     </div>
-                </>
-            )}
-        </div>
-    );
-}
+                </div>
+                {loading && summary == null ? (
+                    <div className="session-overview-note-editor-loading">
+                        <i className={makeIconClass("spinner", false)} />
+                        <span>Loading note...</span>
+                    </div>
+                ) : summary == null ? (
+                    <div className="session-overview-note-editor-error">{error || "Session not found."}</div>
+                ) : (
+                    <>
+                        {error ? <div className="session-overview-note-editor-error">{error}</div> : null}
+                        <textarea
+                            ref={inputRef}
+                            className="session-overview-note-editor-input"
+                            placeholder="Add a note"
+                            value={noteDraft}
+                            spellCheck={false}
+                            onChange={(event) => {
+                                latestDraftRef.current = event.target.value;
+                                setNoteDraft(event.target.value);
+                                setError("");
+                                if (saveStatus !== "saving") {
+                                    setSaveStatus("idle");
+                                }
+                            }}
+                            onBlur={() => {
+                                if (!noteUnchanged && !saving) {
+                                    void saveNote(noteDraft);
+                                }
+                            }}
+                            onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Escape") {
+                                    closeEditor();
+                                }
+                            }}
+                        />
+                        <div className="session-overview-note-editor-footer">
+                            <span
+                                className={cn(
+                                    "session-overview-note-editor-status",
+                                    saveStatus === "saved" && "is-saved",
+                                    saveStatus === "error" && "is-error"
+                                )}
+                                aria-live="polite"
+                            >
+                                {statusText}
+                            </span>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    }
+);
+
+OverviewSessionNoteEditor.displayName = "OverviewSessionNoteEditor";
 
 function CompactBlockIcon({
     block,
@@ -1447,6 +1565,7 @@ function BlockRow({
     detailState,
     noteSummary,
     noteEditorOpen,
+    noteEditorRef,
     displayLimit,
     viewedAt,
     currentBlockId,
@@ -1465,6 +1584,7 @@ function BlockRow({
     detailState: DetailState | undefined;
     noteSummary: SessionSummary | null | undefined;
     noteEditorOpen: boolean;
+    noteEditorRef: React.Ref<OverviewSessionNoteEditorHandle>;
     displayLimit: number;
     viewedAt: number;
     currentBlockId: string | null;
@@ -1615,7 +1735,12 @@ function BlockRow({
                 </Tooltip>
             </div>
             {noteEditorOpen ? (
-                <OverviewSessionNoteEditor block={block} initialSummary={noteSummary} onClose={onCloseSessionNote} />
+                <OverviewSessionNoteEditor
+                    ref={noteEditorRef}
+                    block={block}
+                    initialSummary={noteSummary}
+                    onClose={onCloseSessionNote}
+                />
             ) : null}
         </div>
     );
@@ -1626,6 +1751,7 @@ function TabGroupSection({
     collapsed,
     details,
     openNoteBlockId,
+    noteEditorRef,
     displayLimit,
     viewedAt,
     currentBlockId,
@@ -1645,6 +1771,7 @@ function TabGroupSection({
     collapsed: boolean;
     details: Record<string, DetailState>;
     openNoteBlockId: string | null;
+    noteEditorRef: React.Ref<OverviewSessionNoteEditorHandle>;
     displayLimit: number;
     viewedAt: Record<string, number>;
     currentBlockId: string | null;
@@ -1708,6 +1835,7 @@ function TabGroupSection({
                                     detailState={details[block.sessionId]}
                                     noteSummary={details[block.sessionId]?.detail?.summary ?? null}
                                     noteEditorOpen={openNoteBlockId === block.blockId}
+                                    noteEditorRef={noteEditorRef}
                                     displayLimit={displayLimit}
                                     viewedAt={viewedAt[block.blockId] ?? 0}
                                     currentBlockId={currentBlockId}
@@ -1885,6 +2013,8 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [openNoteBlockId, setOpenNoteBlockId] = useState<string | null>(null);
+    const noteEditorRef = useRef<OverviewSessionNoteEditorHandle | null>(null);
+    const noteSwitchSeqRef = useRef(0);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
     const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
@@ -1922,16 +2052,41 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         if (blocks.some((block) => block.blockId === openNoteBlockId)) return;
         setOpenNoteBlockId(null);
     }, [blocks, openNoteBlockId]);
-    const openSessionNoteInline = React.useCallback((nextBlock: OverviewBlock) => {
-        if (!nextBlock.sessionId) return;
-        setSelectedBlockId(nextBlock.blockId);
-        setOpenNoteBlockId(nextBlock.blockId);
+    const changeOpenSessionNote = React.useCallback((nextBlockId: string | null) => {
+        const switchSeq = ++noteSwitchSeqRef.current;
+        const currentEditor = noteEditorRef.current;
+        if (currentEditor == null) {
+            setOpenNoteBlockId(nextBlockId);
+            return;
+        }
+        void currentEditor.saveBeforeSwitch().then((saved) => {
+            if (!saved || switchSeq !== noteSwitchSeqRef.current) return;
+            setOpenNoteBlockId(nextBlockId);
+        });
     }, []);
-    const toggleSessionNoteInline = React.useCallback((nextBlock: OverviewBlock) => {
-        if (!nextBlock.sessionId) return;
-        setSelectedBlockId(nextBlock.blockId);
-        setOpenNoteBlockId((current) => (current === nextBlock.blockId ? null : nextBlock.blockId));
-    }, []);
+    const closeSessionNoteInline = React.useCallback(() => {
+        changeOpenSessionNote(null);
+    }, [changeOpenSessionNote]);
+    const openSessionNoteInline = React.useCallback(
+        (nextBlock: OverviewBlock) => {
+            if (!nextBlock.sessionId) return;
+            setSelectedBlockId(nextBlock.blockId);
+            changeOpenSessionNote(nextBlock.blockId);
+        },
+        [changeOpenSessionNote]
+    );
+    const toggleSessionNoteInline = React.useCallback(
+        (nextBlock: OverviewBlock) => {
+            if (!nextBlock.sessionId) return;
+            setSelectedBlockId(nextBlock.blockId);
+            if (openNoteBlockId === nextBlock.blockId) {
+                closeSessionNoteInline();
+                return;
+            }
+            changeOpenSessionNote(nextBlock.blockId);
+        },
+        [changeOpenSessionNote, closeSessionNoteInline, openNoteBlockId]
+    );
     const highlightedBlockId = selectedBlockInOverview
         ? selectedBlockId
         : currentBlockInOverview
@@ -2055,6 +2210,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 collapsed={collapsedTabIds[group.tabId] === true}
                                 details={details}
                                 openNoteBlockId={openNoteBlockId}
+                                noteEditorRef={noteEditorRef}
                                 displayLimit={displayLimit}
                                 viewedAt={viewedAt}
                                 currentBlockId={highlightedBlockId}
@@ -2066,7 +2222,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                     overviewModel.jumpToBlock(nextBlock.tabId, nextBlock.blockId);
                                 }}
                                 onToggleSessionNote={toggleSessionNoteInline}
-                                onCloseSessionNote={() => setOpenNoteBlockId(null)}
+                                onCloseSessionNote={closeSessionNoteInline}
                                 onToggleCollapsed={() => toggleTabCollapsed(group.tabId)}
                                 onOpenSessionDetail={(nextBlock) => {
                                     if (!nextBlock.sessionId) return;
@@ -2191,4 +2347,4 @@ export class SessionOverviewViewModel implements ViewModel {
     }
 }
 
-export { SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };
+export { NoteButtonBase as NoteButton, SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };

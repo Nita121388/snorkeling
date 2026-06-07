@@ -24,6 +24,20 @@ describe("file link navigation helpers", () => {
         expect(normalizeLinkedFilePath("docs/readme.md")).toBeNull();
     });
 
+    it("resolves relative markdown links against the current file directory", () => {
+        expect(
+            normalizeLinkedFilePath("docs/dl/README.md", {
+                baseDir: "/Users/nita/Primary/projects/ai_learning/ai_interview_note",
+            })
+        ).toBe("/Users/nita/Primary/projects/ai_learning/ai_interview_note/docs/dl/README.md");
+        expect(normalizeLinkedFilePath("../README.md#overview", { baseDir: "/tmp/project/docs" })).toBe(
+            "/tmp/project/README.md"
+        );
+        expect(normalizeLinkedFilePath(".\\guide\\intro.md", { baseDir: "E:/code/project/docs" })).toBe(
+            "E:/code/project/docs/guide/intro.md"
+        );
+    });
+
     it("checks whether a target path is under a tree root", () => {
         expect(isPathWithinRoot("E:/code/tpot/tpot/__init__.py", "E:/code/tpot")).toBe(true);
         expect(isPathWithinRoot("E:/code/tpot/tpot/__init__.py", "E:/")).toBe(true);

@@ -105,7 +105,11 @@ const Link = ({
         if (href.startsWith("#")) {
             focusHeading(href);
         } else {
-            void openFileLinkInPreview(href, { connection: resolveOpts?.connName }).then((opened) => {
+            void openFileLinkInPreview(href, {
+                connection: resolveOpts?.connName,
+                baseDir: resolveOpts?.baseDir,
+                openDirectoryIndex: true,
+            }).then((opened) => {
                 if (!opened) {
                     openLink(href);
                 }
