@@ -18,7 +18,28 @@ type ToggleCurrentTabBlockOptions = {
     magnified?: boolean;
 };
 
+type FixedLeftBlockEntry = {
+    blockId: string;
+    kind: string | null;
+};
+
+type FixedLeftBlockInsertionAnchor = {
+    blockId: string;
+    position: "before" | "after";
+};
+
 const DefaultRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+const FixedLeftBlockKindOrder: Record<string, number> = {
+    [SnorkelingBlockKindOverview]: 0,
+    [SnorkelingBlockKindNote]: 1,
+};
+
+function fixedLeftBlockOrder(kind: string | null | undefined): number | null {
+    if (kind == null) {
+        return null;
+    }
+    return FixedLeftBlockKindOrder[kind] ?? null;
+}
 
 function getCurrentTab(): Tab | null {
     const tabId = globalStore.get(atoms.staticTabId);
@@ -76,12 +97,56 @@ async function closeCurrentTabBlock(blockId: string): Promise<void> {
     await ObjectService.DeleteBlock(blockId);
 }
 
-function insertBlockAtLeft(blockId: string, magnified: boolean): void {
-    const layoutModel = getLayoutModelForStaticTab();
-    if (layoutModel == null) {
-        return;
+export function resolveFixedLeftBlockInsertionAnchor(
+    kind: string,
+    orderedBlocks: FixedLeftBlockEntry[]
+): FixedLeftBlockInsertionAnchor | null {
+    const order = fixedLeftBlockOrder(kind);
+    if (order == null || orderedBlocks.length === 0) {
+        return null;
     }
-    const newNode = newLayoutNode(undefined, undefined, undefined, { blockId });
+
+    const firstNonFixedIndex = orderedBlocks.findIndex((block) => fixedLeftBlockOrder(block.kind) == null);
+    const fixedGroup = firstNonFixedIndex === -1 ? orderedBlocks : orderedBlocks.slice(0, firstNonFixedIndex);
+    let previousFixedBlock: FixedLeftBlockInsertionAnchor | null = null;
+    for (const block of fixedGroup) {
+        const blockOrder = fixedLeftBlockOrder(block.kind);
+        if (blockOrder == null) {
+            continue;
+        }
+        if (blockOrder > order) {
+            return { blockId: block.blockId, position: "before" };
+        }
+        if (blockOrder < order) {
+            previousFixedBlock = { blockId: block.blockId, position: "after" };
+        }
+    }
+
+    return previousFixedBlock ?? { blockId: orderedBlocks[0].blockId, position: "before" };
+}
+
+function getBlockKind(blockId: string): string | null {
+    const kind = getBlock(blockId)?.meta?.[SnorkelingBlockKindMetaKey];
+    return typeof kind === "string" ? kind : null;
+}
+
+function getOrderedLayoutBlocks(
+    layoutModel: NonNullable<ReturnType<typeof getLayoutModelForStaticTab>>
+): FixedLeftBlockEntry[] {
+    return (layoutModel.getter(layoutModel.leafOrder) ?? [])
+        .map((leaf) => leaf.blockid)
+        .filter((blockId): blockId is string => !isBlank(blockId))
+        .map((blockId) => ({
+            blockId,
+            kind: getBlockKind(blockId),
+        }));
+}
+
+function insertBlockAtDefaultLeft(
+    layoutModel: NonNullable<ReturnType<typeof getLayoutModelForStaticTab>>,
+    newNode: ReturnType<typeof newLayoutNode>,
+    magnified: boolean
+): void {
     const firstBlockId = layoutModel?.getFirstBlockId();
     const firstNode = firstBlockId == null ? null : layoutModel.getNodeByBlockId(firstBlockId);
     if (firstNode == null) {
@@ -92,12 +157,36 @@ function insertBlockAtLeft(blockId: string, magnified: boolean): void {
             focused: true,
         };
         layoutModel.treeReducer(insertAction);
+        return;
+    }
+
+    const splitAction: LayoutTreeSplitHorizontalAction = {
+        type: LayoutTreeActionType.SplitHorizontal,
+        targetNodeId: firstNode.id,
+        newNode,
+        position: "before",
+        focused: true,
+    };
+    layoutModel.treeReducer(splitAction);
+}
+
+function insertBlockAtFixedLeftOrder(kind: string, blockId: string, magnified: boolean): void {
+    const layoutModel = getLayoutModelForStaticTab();
+    if (layoutModel == null) {
+        return;
+    }
+    const newNode = newLayoutNode(undefined, undefined, undefined, { blockId });
+
+    const anchor = resolveFixedLeftBlockInsertionAnchor(kind, getOrderedLayoutBlocks(layoutModel));
+    const anchorNode = anchor == null ? null : layoutModel.getNodeByBlockId(anchor.blockId);
+    if (anchorNode == null) {
+        insertBlockAtDefaultLeft(layoutModel, newNode, magnified);
     } else {
         const splitAction: LayoutTreeSplitHorizontalAction = {
             type: LayoutTreeActionType.SplitHorizontal,
-            targetNodeId: firstNode.id,
+            targetNodeId: anchorNode.id,
             newNode,
-            position: "before",
+            position: anchor.position,
             focused: true,
         };
         layoutModel.treeReducer(splitAction);
@@ -124,7 +213,7 @@ export async function toggleCurrentTabBlockByKind({
         [SnorkelingBlockKindMetaKey]: kind,
     } as MetaType;
     const blockId = await ObjectService.CreateBlock({ ...blockDef, meta }, DefaultRuntimeOpts);
-    insertBlockAtLeft(blockId, magnified);
+    insertBlockAtFixedLeftOrder(kind, blockId, magnified);
     return blockId;
 }
 
