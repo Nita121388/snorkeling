@@ -315,6 +315,8 @@ function launchTargetSourceLabel(target: AgentLaunchTarget): string {
             return "Files";
         case "agent":
             return "Agent";
+        case "home":
+            return "Home";
         default:
             return "Terminal";
     }

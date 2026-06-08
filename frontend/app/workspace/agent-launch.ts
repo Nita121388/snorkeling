@@ -8,6 +8,8 @@ const DefaultAgentProfile = "codex";
 const DefaultModelFlag = "--model";
 const AgentAutoResumeMetaKey = "agent:autoresume";
 const AgentProviderMetaKey = "agent:provider";
+const DefaultHomeLaunchTargetBlockId = "launch-target:home";
+const DefaultHomeLaunchTargetCwd = "~";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
 export const DefaultTerminalWidgetId = "defwidget@terminal";
@@ -47,7 +49,7 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
     },
 };
 
-type AgentLaunchSource = "terminal" | "files" | "agent";
+type AgentLaunchSource = "terminal" | "files" | "agent" | "home";
 
 export type AgentLaunchTarget = {
     blockId: string;
@@ -283,6 +285,19 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     };
 }
 
+function makeDefaultHomeLaunchTarget(): AgentLaunchTarget {
+    return {
+        blockId: DefaultHomeLaunchTargetBlockId,
+        connection: null,
+        cwd: DefaultHomeLaunchTargetCwd,
+        filePath: null,
+        source: "home",
+        isLocal: true,
+        label: "local",
+        detail: DefaultHomeLaunchTargetCwd,
+    };
+}
+
 function getLaunchTargetPathCandidates(target: AgentLaunchTarget): string[] {
     const uniquePaths = new Set<string>();
     const addPath = (path: string | null | undefined) => {
@@ -326,6 +341,10 @@ function dedupeLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] 
         dedupedTargets.set(dedupeKey, target);
     }
     return Array.from(dedupedTargets.values());
+}
+
+function appendDefaultHomeLaunchTarget(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
+    return dedupeLaunchTargets([...targets, makeDefaultHomeLaunchTarget()]);
 }
 
 function resolvePreferredFilesLaunchTargets(
@@ -453,14 +472,15 @@ function collectLaunchTargetsInTab(
     }
 
     const filesTargets = resolvePreferredFilesLaunchTargets(tab, getBlockById, focusedBlockId);
+    let launchTargets: AgentLaunchTarget[];
     if (filesTargets.length === 0) {
-        return terminalTargets;
+        launchTargets = terminalTargets;
+    } else if (terminalTargets.length === 0) {
+        launchTargets = filesTargets;
+    } else {
+        launchTargets = dedupeLaunchTargets([...filesTargets, ...terminalTargets]);
     }
-    if (terminalTargets.length === 0) {
-        return filesTargets;
-    }
-
-    return dedupeLaunchTargets([...filesTargets, ...terminalTargets]);
+    return appendDefaultHomeLaunchTarget(launchTargets);
 }
 
 export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {

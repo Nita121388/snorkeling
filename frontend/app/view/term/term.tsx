@@ -894,6 +894,17 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
+        const fontFamily = termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+        const useWebGl = !termSettings?.["term:disablewebgl"];
+        console.log("[termwrap-lifecycle-debug] create", {
+            blockId,
+            nodeId: model.nodeModel.nodeId,
+            tabId: tabModel.tabId,
+            termFontSize,
+            fontFamily,
+            scrollback: termScrollback,
+            useWebGl,
+        });
         const termWrap = new TermWrap(
             tabModel.tabId,
             blockId,
@@ -901,7 +912,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             {
                 theme: termTheme,
                 fontSize: termFontSize,
-                fontFamily: termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack",
+                fontFamily,
                 drawBoldTextInBrightColors: false,
                 fontWeight: "normal",
                 fontWeightBold: "bold",
@@ -916,7 +927,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             },
             {
                 keydownHandler: model.handleTerminalKeydown.bind(model),
-                useWebGl: !termSettings?.["term:disablewebgl"],
+                useWebGl,
                 sendDataHandler: model.sendDataToController.bind(model),
                 nodeModel: model.nodeModel,
             }
@@ -958,6 +969,11 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             }, 10);
         }
         return () => {
+            console.log("[termwrap-lifecycle-debug] dispose", {
+                blockId,
+                nodeId: model.nodeModel.nodeId,
+                tabId: tabModel.tabId,
+            });
             termWrap.onSelectionTextChange = null;
             termWrap.dispose();
             rszObs.disconnect();

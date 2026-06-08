@@ -12,6 +12,7 @@ import {
     extractTerminalContextMeta,
     resolveWorkspaceAgentContextMeta,
 } from "./agent-launch";
+import type { AgentLaunchTarget } from "./agent-launch";
 
 function makeBlock(blockId: string, meta?: Record<string, unknown>): Block {
     return {
@@ -32,6 +33,19 @@ function makeTab(blockids: string[], meta?: Record<string, unknown>): Tab {
         blockids,
         meta: (meta ?? {}) as MetaType,
     } as Tab;
+}
+
+function expectHomeLaunchTarget(target: AgentLaunchTarget | undefined) {
+    expect(target).toMatchObject({
+        blockId: "launch-target:home",
+        connection: null,
+        cwd: "~",
+        filePath: null,
+        source: "home",
+        isLocal: true,
+        label: "local",
+        detail: "~",
+    });
 }
 
 describe("agent launch context", () => {
@@ -118,7 +132,7 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId]);
 
-        expect(targets).toHaveLength(2);
+        expect(targets).toHaveLength(3);
         expect(targets[0]).toMatchObject({
             blockId: "block:term-local",
             connection: null,
@@ -135,6 +149,7 @@ describe("agent launch context", () => {
             isLocal: false,
             label: "ssh://server-a",
         });
+        expectHomeLaunchTarget(targets[2]);
     });
 
     it("adds focused Files target when no terminal target exists", () => {
@@ -149,7 +164,7 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
 
-        expect(targets).toHaveLength(1);
+        expect(targets).toHaveLength(2);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview",
             connection: "ssh://host-a",
@@ -158,6 +173,7 @@ describe("agent launch context", () => {
             isLocal: false,
             label: "ssh://host-a",
         });
+        expectHomeLaunchTarget(targets[1]);
     });
 
     it("falls back to Files targets in latest-first order when focused block is unavailable", () => {
@@ -175,7 +191,7 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null);
 
-        expect(targets).toHaveLength(2);
+        expect(targets).toHaveLength(3);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview-new",
             source: "files",
@@ -186,6 +202,7 @@ describe("agent launch context", () => {
             source: "files",
             cwd: "/Users/nita/Primary",
         });
+        expectHomeLaunchTarget(targets[2]);
     });
 
     it("includes multiple Files targets when multiple previews are present", () => {
@@ -203,7 +220,7 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview-a");
 
-        expect(targets).toHaveLength(2);
+        expect(targets).toHaveLength(3);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview-a",
             source: "files",
@@ -214,6 +231,7 @@ describe("agent launch context", () => {
             source: "files",
             cwd: "/Users/nita/Primary/obsidians/Obsidian",
         });
+        expectHomeLaunchTarget(targets[2]);
     });
 
     it("keeps one target when Files and terminal context share a directory", () => {
@@ -233,13 +251,14 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
 
-        expect(targets).toHaveLength(1);
+        expect(targets).toHaveLength(2);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview",
             source: "files",
             connection: "ssh://host-a",
             cwd: "/srv/repo",
         });
+        expectHomeLaunchTarget(targets[1]);
     });
 
     it("shows both Files and Agent directories when they differ", () => {
@@ -270,7 +289,7 @@ describe("agent launch context", () => {
             "block:preview"
         );
 
-        expect(agentTargets).toHaveLength(2);
+        expect(agentTargets).toHaveLength(3);
         expect(agentTargets[0]).toMatchObject({
             blockId: "block:preview",
             source: "files",
@@ -281,6 +300,7 @@ describe("agent launch context", () => {
             source: "agent",
             cwd: "/Users/nita/Primary/obsidians/Obsidian",
         });
+        expectHomeLaunchTarget(agentTargets[2]);
         expect(terminalTargets).toEqual(agentTargets);
     });
 
@@ -301,7 +321,7 @@ describe("agent launch context", () => {
 
         const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
 
-        expect(targets).toHaveLength(2);
+        expect(targets).toHaveLength(3);
         expect(targets[0]).toMatchObject({
             blockId: "block:preview",
             source: "files",
@@ -312,6 +332,34 @@ describe("agent launch context", () => {
             source: "terminal",
             connection: "ssh://host-a",
             cwd: "/srv/repo-a",
+        });
+        expectHomeLaunchTarget(targets[2]);
+    });
+
+    it("adds the user's home directory as the default launch target", () => {
+        const tab = makeTab([]);
+
+        const agentTargets = collectAgentLaunchTargetsInTab(tab, () => null);
+        const terminalTargets = collectTerminalLaunchTargetsInTab(tab, () => null);
+
+        expect(agentTargets).toHaveLength(1);
+        expectHomeLaunchTarget(agentTargets[0]);
+        expect(terminalTargets).toEqual(agentTargets);
+    });
+
+    it("does not duplicate the home target when terminal context is already home", () => {
+        const tab = makeTab(["block:term-home"]);
+        const blockMap: Record<string, Block> = {
+            "block:term-home": makeBlock("block:term-home", { view: "term", "cmd:cwd": "~" }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId]);
+
+        expect(targets).toHaveLength(1);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:term-home",
+            source: "terminal",
+            cwd: "~",
         });
     });
 
@@ -455,5 +503,17 @@ describe("agent launch context", () => {
         const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
         expect(blockDef.meta?.connection).toBeUndefined();
         expect(blockDef.meta?.["cmd:cwd"]).toBe("/Users/nita/project");
+    });
+
+    it("builds agent and terminal blocks for the default home launch target", () => {
+        const tab = makeTab([]);
+        const [target] = collectAgentLaunchTargetsInTab(tab, () => null);
+
+        const agentBlockDef = createAgentBlockDefForTarget(undefined, target);
+        const terminalBlockDef = createTerminalBlockDefForTarget(target);
+
+        expect(agentBlockDef.meta?.["cmd:cwd"]).toBe("~");
+        expect(terminalBlockDef.meta?.["cmd:cwd"]).toBe("~");
+        expect(terminalBlockDef.meta?.connection).toBeUndefined();
     });
 });

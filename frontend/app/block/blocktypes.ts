@@ -6,6 +6,7 @@ import { Atom } from "jotai";
 
 export interface BlockNodeModel {
     blockId: string;
+    nodeId?: string;
     isFocused: Atom<boolean>;
     isMagnified: Atom<boolean>;
     onClose: () => void;

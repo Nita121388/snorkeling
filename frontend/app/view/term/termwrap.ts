@@ -565,7 +565,12 @@ export class TermWrap {
                     fileTermSize != null &&
                     (fileTermSize.rows != curTermSize.rows || fileTermSize.cols != curTermSize.cols)
                 ) {
-                    console.log("terminal restore size mismatch, temp resize", fileTermSize, curTermSize);
+                    console.log("[termwrap] restore size mismatch, temp resize", {
+                        blockId: this.blockId,
+                        nodeId: this.nodeModel?.nodeId,
+                        fileTermSize,
+                        curTermSize,
+                    });
                     this.terminal.resize(fileTermSize.cols, fileTermSize.rows);
                     didResize = true;
                 }
@@ -576,9 +581,19 @@ export class TermWrap {
             }
         }
         const { data: mainData, fileInfo: mainFile } = await fetchWaveFile(zoneId, TermFileName, ptyOffset);
-        console.log(
-            `terminal loaded cachefile:${cacheData?.byteLength ?? 0} main:${mainData?.byteLength ?? 0} bytes, ${Date.now() - startTs}ms`
-        );
+        console.log("[termwrap] terminal loaded", {
+            blockId: this.blockId,
+            nodeId: this.nodeModel?.nodeId,
+            zoneId,
+            cacheBytes: cacheData?.byteLength ?? 0,
+            mainBytes: mainData?.byteLength ?? 0,
+            ptyOffset,
+            elapsedMs: Date.now() - startTs,
+            termSize: {
+                rows: this.terminal.rows,
+                cols: this.terminal.cols,
+            },
+        });
         if (mainFile != null) {
             await this.doTerminalWrite(mainData, null);
         }
@@ -604,12 +619,17 @@ export class TermWrap {
         this.fitAddon.fit();
         if (oldRows !== this.terminal.rows || oldCols !== this.terminal.cols) {
             const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
-            console.log(
-                "[termwrap] resize",
-                `${oldRows}x${oldCols}`,
-                "->",
-                `${this.terminal.rows}x${this.terminal.cols}`
-            );
+            console.log("[termwrap] resize", {
+                blockId: this.blockId,
+                nodeId: this.nodeModel?.nodeId,
+                oldSize: {
+                    rows: oldRows,
+                    cols: oldCols,
+                },
+                newSize: termSize,
+                hasResized: this.hasResized,
+                renderer: this.getTermRenderer(),
+            });
             void RpcApi.ControllerInputCommand(TabRpcClient, { blockid: this.blockId, termsize: termSize }).catch(
                 (error) => {
                     if (isNoControllerFoundError(error)) {
@@ -633,7 +653,13 @@ export class TermWrap {
         }
         const serializedOutput = this.serializeAddon.serialize();
         const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
-        console.log("idle timeout term", this.dataBytesProcessed, serializedOutput.length, termSize);
+        console.log("[termwrap] idle save terminal state", {
+            blockId: this.blockId,
+            nodeId: this.nodeModel?.nodeId,
+            dataBytesProcessed: this.dataBytesProcessed,
+            serializedBytes: serializedOutput.length,
+            termSize,
+        });
         fireAndForget(() =>
             services.BlockService.SaveTerminalState(this.blockId, serializedOutput, "full", this.ptyOffset, termSize)
         );
