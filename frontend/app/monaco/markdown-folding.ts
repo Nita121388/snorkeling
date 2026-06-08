@@ -1,12 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type * as MonacoTypes from "monaco-editor";
 import { getMarkdownOrderedListFoldingRanges } from "@/app/element/markdown-ordered-list";
+import type * as MonacoTypes from "monaco-editor";
 
-type MarkdownHeading = {
+export type MarkdownHeading = {
     lineNumber: number;
     level: number;
+    text: string;
 };
 
 type MarkdownFence = {
@@ -40,12 +41,19 @@ function isFenceEnd(line: string, fence: MarkdownFence): boolean {
     return pattern.test(line);
 }
 
-function getHeadingLevel(line: string): number | null {
-    const match = line.match(/^ {0,3}(#{1,6})(?:[ \t]|$)/);
-    return match ? match[1].length : null;
+function parseHeading(line: string): Pick<MarkdownHeading, "level" | "text"> | null {
+    const match = line.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*?)|[ \t]*)$/);
+    if (!match) {
+        return null;
+    }
+    const text = (match[2] ?? "").replace(/[ \t]+#+[ \t]*$/, "").trim();
+    return {
+        level: match[1].length,
+        text,
+    };
 }
 
-export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRange[] {
+export function getMarkdownHeadings(text: string): MarkdownHeading[] {
     const lines = text.split(/\r\n|\r|\n/);
     const headings: MarkdownHeading[] = [];
     let fence: MarkdownFence | null = null;
@@ -64,11 +72,18 @@ export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRa
             return;
         }
 
-        const level = getHeadingLevel(line);
-        if (level != null) {
-            headings.push({ lineNumber: index + 1, level });
+        const heading = parseHeading(line);
+        if (heading != null) {
+            headings.push({ lineNumber: index + 1, ...heading });
         }
     });
+
+    return headings;
+}
+
+export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRange[] {
+    const lines = text.split(/\r\n|\r|\n/);
+    const headings = getMarkdownHeadings(text);
 
     return headings.flatMap((heading, index) => {
         const nextHeading = headings.slice(index + 1).find((candidate) => candidate.level <= heading.level);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { getMarkdownFoldingRanges, getMarkdownHeadingFoldingRanges } from "./markdown-folding";
+import { getMarkdownFoldingRanges, getMarkdownHeadingFoldingRanges, getMarkdownHeadings } from "./markdown-folding";
 
 describe("markdown heading folding", () => {
     it("folds headings until the next same-or-higher heading", () => {
@@ -57,6 +57,27 @@ describe("markdown heading folding", () => {
             { start: 1, end: 10 },
             { start: 6, end: 10 },
             { start: 11, end: 12 },
+        ]);
+    });
+
+    it("returns markdown headings for editor outline", () => {
+        const text = [
+            "# Title",
+            "intro",
+            "## Setup ##",
+            "```md",
+            "# Not a heading",
+            "```",
+            "### Details",
+            "#Next is text",
+            "####",
+        ].join("\n");
+
+        expect(getMarkdownHeadings(text)).toEqual([
+            { lineNumber: 1, level: 1, text: "Title" },
+            { lineNumber: 3, level: 2, text: "Setup" },
+            { lineNumber: 7, level: 3, text: "Details" },
+            { lineNumber: 9, level: 4, text: "" },
         ]);
     });
 
