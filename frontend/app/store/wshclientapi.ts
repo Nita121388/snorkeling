@@ -132,6 +132,12 @@ export class RpcApiType {
         return client.wshRpcCall("connlist", null, opts);
     }
 
+    // command "connpreparemanualwshinstall" [call]
+    ConnPrepareManualWshInstallCommand(client: WshClient, data: ConnExtData, opts?: RpcOpts): Promise<CommandManualWshInstallData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connpreparemanualwshinstall", data, opts);
+        return client.wshRpcCall("connpreparemanualwshinstall", data, opts);
+    }
+
     // command "connreinstallwsh" [call]
     ConnReinstallWshCommand(client: WshClient, data: ConnExtData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connreinstallwsh", data, opts);

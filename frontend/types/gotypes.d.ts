@@ -603,6 +603,18 @@ declare global {
         draftappid: string;
     };
 
+    // wshrpc.CommandManualWshInstallData
+    type CommandManualWshInstallData = {
+        connname: string;
+        clientos: string;
+        clientarch: string;
+        localwshpath: string;
+        remotetemppath: string;
+        remotewshpath: string;
+        remotesshtarget: string;
+        cmd: string;
+    };
+
     // wshrpc.CommandMessageData
     type CommandMessageData = {
         message: string;

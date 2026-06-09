@@ -132,6 +132,12 @@ func ConnListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]string, error) 
 	return resp, err
 }
 
+// command "connpreparemanualwshinstall", wshserver.ConnPrepareManualWshInstallCommand
+func ConnPrepareManualWshInstallCommand(w *wshutil.WshRpc, data wshrpc.ConnExtData, opts *wshrpc.RpcOpts) (wshrpc.CommandManualWshInstallData, error) {
+	resp, err := sendRpcRequestCallHelper[wshrpc.CommandManualWshInstallData](w, "connpreparemanualwshinstall", data, opts)
+	return resp, err
+}
+
 // command "connreinstallwsh", wshserver.ConnReinstallWshCommand
 func ConnReinstallWshCommand(w *wshutil.WshRpc, data wshrpc.ConnExtData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "connreinstallwsh", data, opts)
