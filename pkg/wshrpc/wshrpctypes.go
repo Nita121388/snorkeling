@@ -105,6 +105,7 @@ type WshRpcInterface interface {
 	WslStatusCommand(ctx context.Context) ([]ConnStatus, error)
 	ConnEnsureCommand(ctx context.Context, data ConnExtData) error
 	ConnReinstallWshCommand(ctx context.Context, data ConnExtData) error
+	ConnPrepareManualWshInstallCommand(ctx context.Context, data ConnExtData) (CommandManualWshInstallData, error)
 	ConnConnectCommand(ctx context.Context, connRequest ConnRequest) error
 	ConnDisconnectCommand(ctx context.Context, connName string) error
 	ConnListCommand(ctx context.Context) ([]string, error)
@@ -620,6 +621,17 @@ type ActivityUpdate struct {
 type ConnExtData struct {
 	ConnName   string `json:"connname"`
 	LogBlockId string `json:"logblockid,omitempty"`
+}
+
+type CommandManualWshInstallData struct {
+	ConnName        string `json:"connname"`
+	ClientOs        string `json:"clientos"`
+	ClientArch      string `json:"clientarch"`
+	LocalWshPath    string `json:"localwshpath"`
+	RemoteTempPath  string `json:"remotetemppath"`
+	RemoteWshPath   string `json:"remotewshpath"`
+	RemoteSshTarget string `json:"remotesshtarget"`
+	Cmd             string `json:"cmd"`
 }
 
 type CommandConnServerInitData struct {

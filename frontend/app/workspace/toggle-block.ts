@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { atoms, globalStore, refocusNode, WOS } from "@/app/store/global";
+import { atoms, getBlockComponentModel, globalStore, refocusNode, WOS } from "@/app/store/global";
 import { ObjectService } from "@/app/store/services";
 import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import type { LayoutTreeInsertNodeAction, LayoutTreeSplitHorizontalAction } from "@/layout/lib/types";
@@ -84,7 +84,11 @@ export function makeCurrentTabBlockKindOpenAtom(kind: string): Atom<boolean> {
     });
 }
 
-async function closeCurrentTabBlock(blockId: string): Promise<void> {
+async function closeCurrentTabBlock(blockId: string): Promise<boolean> {
+    const viewModel = getBlockComponentModel(blockId)?.viewModel;
+    if (viewModel?.viewType === "preview" && viewModel.confirmClose && !(await viewModel.confirmClose())) {
+        return false;
+    }
     const layoutModel = getLayoutModelForStaticTab();
     const node = layoutModel?.getNodeByBlockId(blockId);
     if (node != null) {
@@ -92,9 +96,10 @@ async function closeCurrentTabBlock(blockId: string): Promise<void> {
         if (layoutModel.onNodeDelete == null) {
             await ObjectService.DeleteBlock(blockId);
         }
-        return;
+        return true;
     }
     await ObjectService.DeleteBlock(blockId);
+    return true;
 }
 
 export function resolveFixedLeftBlockInsertionAnchor(
@@ -205,8 +210,8 @@ export async function toggleCurrentTabBlockByKind({
     }
     const existingBlockId = findCurrentTabBlockByKind(kind);
     if (existingBlockId != null) {
-        await closeCurrentTabBlock(existingBlockId);
-        return null;
+        const didClose = await closeCurrentTabBlock(existingBlockId);
+        return didClose ? null : existingBlockId;
     }
     const meta = {
         ...(blockDef.meta ?? {}),

@@ -5,7 +5,7 @@ import * as jotai from "jotai";
 import { globalStore } from "./jotaiStore";
 
 class ModalsModel {
-    modalsAtom: jotai.PrimitiveAtom<Array<{ displayName: string; props?: any }>>;
+    modalsAtom: jotai.PrimitiveAtom<Array<{ displayName: string; props?: any; onCancel?: () => void }>>;
     newInstallOnboardingOpen: jotai.PrimitiveAtom<boolean>;
     upgradeOnboardingOpen: jotai.PrimitiveAtom<boolean>;
 
@@ -15,9 +15,9 @@ class ModalsModel {
         this.modalsAtom = jotai.atom([]);
     }
 
-    pushModal = (displayName: string, props?: any) => {
+    pushModal = (displayName: string, props?: any, onCancel?: () => void) => {
         const modals = globalStore.get(this.modalsAtom);
-        globalStore.set(this.modalsAtom, [...modals, { displayName, props }]);
+        globalStore.set(this.modalsAtom, [...modals, { displayName, props, onCancel }]);
     };
 
     popModal = (callback?: () => void) => {
@@ -32,6 +32,21 @@ class ModalsModel {
     hasOpenModals(): boolean {
         const modals = globalStore.get(this.modalsAtom);
         return modals.length > 0;
+    }
+
+    cancelTopModal(): boolean {
+        const modals = globalStore.get(this.modalsAtom);
+        const topModal = modals[modals.length - 1];
+        if (topModal == null) {
+            return false;
+        }
+        if (topModal.onCancel) {
+            topModal.onCancel();
+            this.popModal();
+            return true;
+        }
+        this.popModal();
+        return true;
     }
 
     isModalOpen(displayName: string): boolean {

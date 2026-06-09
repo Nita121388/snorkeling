@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
+import type { UnsavedFileModalChoice } from "@/app/modals/unsavedfilemodal";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
@@ -1376,6 +1378,47 @@ export class PreviewModel implements ViewModel {
             };
             globalStore.set(this.errorMsgAtom, errorStatus);
         }
+    }
+
+    hasUnsavedChanges(): boolean {
+        return globalStore.get(this.newFileContent) != null;
+    }
+
+    private async promptUnsavedFileChoice(filePath: string): Promise<UnsavedFileModalChoice> {
+        return await new Promise<UnsavedFileModalChoice>((resolve) => {
+            modalsModel.pushModal(
+                "UnsavedFileModal",
+                {
+                    fileName: filePath || "this file",
+                    onResolve: resolve,
+                },
+                () => resolve("cancel")
+            );
+        });
+    }
+
+    private async getUnsavedFileLabel(): Promise<string> {
+        try {
+            return (await globalStore.get(this.statFilePath)) || globalStore.get(this.metaFilePath) || "this file";
+        } catch (_e) {
+            return globalStore.get(this.metaFilePath) || "this file";
+        }
+    }
+
+    async confirmClose(): Promise<boolean> {
+        if (!this.hasUnsavedChanges()) {
+            return true;
+        }
+        const filePath = await this.getUnsavedFileLabel();
+        const choice = await this.promptUnsavedFileChoice(filePath);
+        if (choice === "cancel") {
+            return false;
+        }
+        if (choice === "discard") {
+            return true;
+        }
+        await this.handleFileSave();
+        return !this.hasUnsavedChanges();
     }
 
     async handleFileRevert() {

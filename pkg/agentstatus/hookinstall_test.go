@@ -50,6 +50,9 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	if runtime.GOOS == "windows" && strings.Contains(string(script), "Get-Command") {
 		t.Fatalf("windows hook script must not scan PATH while resolving wsh:\n%s", string(script))
 	}
+	if runtime.GOOS == "windows" && strings.Contains(string(script), `start "" /b`) {
+		t.Fatalf("windows hook script must not background wsh with start /b:\n%s", string(script))
+	}
 	if strings.Contains(string(script), "%!(EXTRA") {
 		t.Fatalf("hook script contains fmt residue:\n%s", string(script))
 	}

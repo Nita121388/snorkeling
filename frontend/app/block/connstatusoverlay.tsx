@@ -43,14 +43,6 @@ function formatElapsedTime(elapsedMs: number): string {
     return "more than a day";
 }
 
-function quotePosixArg(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function quotePowerShellArg(value: string): string {
-    return `'${value.replace(/'/g, "''")}'`;
-}
-
 function formatWshInstallStatus(status: string): string {
     switch (status) {
         case "checking":
@@ -227,17 +219,18 @@ export const ConnStatusOverlay = React.memo(
         }, [connName, nodeModel.blockId, waveEnv]);
 
         const handleOpenManualWshInstall = React.useCallback(async () => {
-            const quotedConnName = waveEnv.isWindows() ? quotePowerShellArg(connName) : quotePosixArg(connName);
-            const cmd = waveEnv.isWindows()
-                ? `& "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn reinstall ${quotedConnName}; if ($LASTEXITCODE -eq 0) { & "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn disconnect ${quotedConnName}; & "$env:WAVETERM_WSHBINDIR\\wsh.exe" conn connect ${quotedConnName} }`
-                : `"$WAVETERM_WSHBINDIR/wsh" conn reinstall ${quotedConnName} && "$WAVETERM_WSHBINDIR/wsh" conn disconnect ${quotedConnName} && "$WAVETERM_WSHBINDIR/wsh" conn connect ${quotedConnName}`;
             try {
+                const installData = (await TabRpcClient.wshRpcCall(
+                    "connpreparemanualwshinstall",
+                    { connname: connName, logblockid: nodeModel.blockId },
+                    { timeout: 30000 }
+                )) as { cmd: string };
                 await waveEnv.createBlock({
                     meta: {
                         view: "term",
                         controller: "cmd",
                         connection: "local",
-                        cmd,
+                        cmd: installData.cmd,
                         "cmd:runonstart": true,
                         "cmd:jwt": true,
                     },
@@ -247,7 +240,7 @@ export const ConnStatusOverlay = React.memo(
                 setWshRepairStatus(`manual installer failed to open: ${message}`);
                 console.log("error opening manual wsh installer", connName, e);
             }
-        }, [connName, waveEnv]);
+        }, [connName, nodeModel.blockId, waveEnv]);
 
         const handleRemoveWshError = React.useCallback(async () => {
             try {

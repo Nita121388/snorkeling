@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 5
+	hookInstallVersion  = 6
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -182,7 +182,8 @@ func checkCodexHooks() HookStatus {
 	status.InstalledVersion = hookScriptVersion(string(script))
 	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetCodex) &&
 		status.InstalledVersion >= hookInstallVersion &&
-		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`)
+		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) &&
+		!strings.Contains(string(script), `start "" /b`)
 	hooksOk := codexHookCommandsInstalled(status.HooksPath, status.HookPath)
 	status.ConfigHooksEnabled = codexConfigHooksEnabled(status.ConfigPath)
 	status.Current = hookOk && hooksOk && status.ConfigHooksEnabled
@@ -277,7 +278,8 @@ func checkClaudeHooks() HookStatus {
 	status.InstalledVersion = hookScriptVersion(string(script))
 	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetClaude) &&
 		status.InstalledVersion >= hookInstallVersion &&
-		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`)
+		!strings.Contains(string(script), `[ "${WAVETERM:-}" = "1" ]`) &&
+		!strings.Contains(string(script), `start "" /b`)
 	settingsOk := claudeHookCommandsInstalled(status.SettingsPath, status.HookPath)
 	status.Current = hookOk && settingsOk
 	status.NeedsInstall = !status.Current
@@ -381,7 +383,7 @@ if "%%ACTION%%"=="working" set "PHASE=thinking"
 if "%%ACTION%%"=="unknown" set "PHASE=unknown"
 
 :report
-start "" /b "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" >nul 2>nul
+"%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" <nul >nul 2>nul
 exit /b 0
 `, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider)
 }

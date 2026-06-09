@@ -928,8 +928,11 @@ func diagnoseWshInstallError(err error) string {
 	if strings.Contains(errStr, "permission denied") {
 		return "Permission denied while installing wsh. Check the remote user and ~/.snorkeling/bin permissions."
 	}
-	if strings.Contains(errStr, "no such file") || strings.Contains(errStr, "cannot open local file") {
+	if strings.Contains(errStr, "cannot open local file") {
 		return "Could not find the matching local wsh binary for this remote platform."
+	}
+	if strings.Contains(errStr, "no such file") || strings.Contains(errStr, "not found") {
+		return "Remote temp file was missing or the upload was interrupted. Retry the install."
 	}
 	if strings.Contains(errStr, "size mismatch") {
 		return "Uploaded wsh binary size did not match. Retry the install."

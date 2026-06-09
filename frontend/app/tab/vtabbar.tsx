@@ -8,6 +8,7 @@ import {
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
@@ -408,7 +409,14 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                                 markTabOpened(tabId);
                                 env.electron.setActiveTab(tabId);
                             }}
-                            onClose={() => fireAndForget(() => env.electron.closeTab(workspace.oid, tabId, false))}
+                            onClose={() =>
+                                fireAndForget(async () => {
+                                    if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                                        return;
+                                    }
+                                    await env.electron.closeTab(workspace.oid, tabId, false);
+                                })
+                            }
                             onRename={(newName) =>
                                 fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
                             }

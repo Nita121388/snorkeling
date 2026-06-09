@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -91,7 +92,6 @@ func GetClientPlatformFromOsArchStr(ctx context.Context, osArchStr string) (stri
 
 var installTemplateRawDefault = strings.TrimSpace(`
 mkdir -p {{.installDir}} || exit 1;
-rm -f {{.tempPath}} || exit 1;
 cat > {{.tempPath}} || { status=$?; rm -f {{.tempPath}}; exit $status; };
 actual_size=$(wc -c < {{.tempPath}} | tr -d '[:space:]') || { rm -f {{.tempPath}}; exit 1; };
 if [ "$actual_size" != "{{.expectedSize}}" ]; then
@@ -125,9 +125,10 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 	if inputInfo.Size() <= 0 {
 		return fmt.Errorf("local wsh binary %s is empty", wshLocalPath)
 	}
+	remoteTempPath := fmt.Sprintf("%s.%d.%d.temp", wavebase.RemoteFullWshBinPath, time.Now().UnixNano(), rand.Int63())
 	installWords := map[string]string{
 		"installDir":   filepath.ToSlash(filepath.Dir(wavebase.RemoteFullWshBinPath)),
-		"tempPath":     wavebase.RemoteFullWshBinPath + ".temp",
+		"tempPath":     remoteTempPath,
 		"installPath":  wavebase.RemoteFullWshBinPath,
 		"expectedSize": fmt.Sprintf("%d", inputInfo.Size()),
 	}

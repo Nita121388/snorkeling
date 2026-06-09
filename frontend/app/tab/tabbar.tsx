@@ -7,6 +7,7 @@ import {
     filterSessionOverviewTabIds,
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
+import { confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -601,17 +602,16 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
     const handleCloseTab = (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null, tabId: string) => {
         event?.stopPropagation();
-        env.electron
-            .closeTab(workspace.oid, tabId, confirmClose)
-            .then((didClose) => {
-                if (didClose) {
-                    tabsWrapperRef.current?.style.setProperty("--tabs-wrapper-transition", "width 0.3s ease");
-                    deleteLayoutModelForTab(tabId);
-                }
-            })
-            .catch((e) => {
-                console.log("error closing tab", e);
-            });
+        fireAndForget(async () => {
+            if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                return;
+            }
+            const didClose = await env.electron.closeTab(workspace.oid, tabId, confirmClose);
+            if (didClose) {
+                tabsWrapperRef.current?.style.setProperty("--tabs-wrapper-transition", "width 0.3s ease");
+                deleteLayoutModelForTab(tabId);
+            }
+        });
     };
 
     const handleTabLoaded = useCallback((tabId: string) => {

@@ -36,7 +36,7 @@ import {
     toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
 import { getLayoutModelForTabById } from "@/layout/index";
-import { cn, makeIconClass } from "@/util/util";
+import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -205,7 +205,7 @@ function openSessionDetail(sessionId: string): void {
 async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
     const staticTabId = globalStore.get(atoms.staticTabId);
     if (block.tabId === staticTabId) {
-        uxCloseBlock(block.blockId);
+        await uxCloseBlock(block.blockId);
         return;
     }
 
@@ -2247,7 +2247,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                             setSelected((current) =>
                                                 current?.block.sessionId === nextBlock.sessionId ? null : current
                                             );
-                                            uxCloseBlock(nextBlock.blockId);
+                                            fireAndForget(() => uxCloseBlock(nextBlock.blockId));
                                             model.refresh();
                                         })
                                         .catch((error) => {

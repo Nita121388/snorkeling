@@ -7,6 +7,7 @@ import { SessionOverviewModel } from "@/app/session-overview/session-overview-mo
 import { FocusManager } from "@/app/store/focusManager";
 import {
     atoms,
+    confirmCurrentTabClose,
     createBlock,
     createBlockSplitHorizontally,
     createBlockSplitVertically,
@@ -130,7 +131,18 @@ function getStaticTabBlockCount(): number {
     return tabData?.blockids?.length ?? 0;
 }
 
-function simpleCloseStaticTab() {
+async function confirmBlockClose(blockId: string): Promise<boolean> {
+    const viewModel = getBlockComponentModel(blockId)?.viewModel;
+    if (viewModel?.viewType !== "preview" || viewModel.confirmClose == null) {
+        return true;
+    }
+    return await viewModel.confirmClose();
+}
+
+async function simpleCloseStaticTab() {
+    if (!(await confirmCurrentTabClose())) {
+        return;
+    }
     const workspaceId = globalStore.get(atoms.workspaceId);
     const tabId = globalStore.get(atoms.staticTabId);
     const confirmClose = globalStore.get(getSettingsKeyAtom("tab:confirmclose")) ?? false;
@@ -146,7 +158,10 @@ function simpleCloseStaticTab() {
         });
 }
 
-function uxCloseBlock(blockId: string) {
+async function uxCloseBlock(blockId: string) {
+    if (!(await confirmBlockClose(blockId))) {
+        return;
+    }
     const workspaceLayoutModel = WorkspaceLayoutModel.getInstance();
     const isAIPanelOpen = workspaceLayoutModel.getAIPanelVisible();
     if (isAIPanelOpen && getStaticTabBlockCount() === 1) {
@@ -166,7 +181,7 @@ function uxCloseBlock(blockId: string) {
     const layoutModel = getLayoutModelForStaticTab();
     const node = layoutModel.getNodeByBlockId(blockId);
     if (node) {
-        fireAndForget(() => layoutModel.closeNode(node.id));
+        await layoutModel.closeNode(node.id);
 
         if (isAIFileDiff && isAIPanelOpen) {
             setTimeout(() => WaveAIModel.getInstance().focusInput(), 50);
@@ -174,7 +189,7 @@ function uxCloseBlock(blockId: string) {
     }
 }
 
-function genericClose() {
+async function genericClose() {
     const focusType = FocusManager.getInstance().getFocusType();
     if (focusType === "waveai") {
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(false);
@@ -190,6 +205,10 @@ function genericClose() {
             const layoutModel = getLayoutModelForStaticTab();
             const focusedNode = globalStore.get(layoutModel.focusedNode);
             if (focusedNode) {
+                const focusedBlockId = focusedNode.data.blockId;
+                if (focusedBlockId != null && !(await confirmBlockClose(focusedBlockId))) {
+                    return;
+                }
                 replaceBlock(focusedNode.data.blockId, { meta: { view: "launcher" } }, false);
                 setTimeout(() => WaveAIModel.getInstance().focusInput(), 50);
                 return;
@@ -198,18 +217,21 @@ function genericClose() {
     }
     const blockCount = getStaticTabBlockCount();
     if (blockCount === 0) {
-        simpleCloseStaticTab();
+        await simpleCloseStaticTab();
         return;
     }
 
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
     const blockId = focusedNode?.data?.blockId;
+    if (blockId != null && !(await confirmBlockClose(blockId))) {
+        return;
+    }
     const blockAtom = blockId ? WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)) : null;
     const blockData = blockAtom ? globalStore.get(blockAtom) : null;
     const isAIFileDiff = blockData?.meta?.view === "aifilediff";
 
-    fireAndForget(layoutModel.closeFocusedNode.bind(layoutModel));
+    await layoutModel.closeFocusedNode();
 
     if (isAIFileDiff && isAIPanelOpen) {
         setTimeout(() => WaveAIModel.getInstance().focusInput(), 50);
@@ -534,11 +556,11 @@ function registerGlobalKeys() {
         return true;
     });
     globalKeyMap.set("Cmd:w", () => {
-        genericClose();
+        fireAndForget(genericClose);
         return true;
     });
     globalKeyMap.set("Cmd:Shift:w", () => {
-        simpleCloseStaticTab();
+        fireAndForget(simpleCloseStaticTab);
         return true;
     });
     globalKeyMap.set("Cmd:m", () => {
@@ -722,10 +744,7 @@ function registerGlobalKeys() {
     }
     globalKeyMap.set("Cmd:f", activateSearch);
     globalKeyMap.set("Escape", () => {
-        if (modalsModel.hasOpenModals()) {
-            modalsModel.popModal();
-            return true;
-        }
+        if (modalsModel.cancelTopModal()) return true;
         if (deactivateSearch()) {
             return true;
         }

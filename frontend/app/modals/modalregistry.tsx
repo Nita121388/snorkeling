@@ -11,6 +11,7 @@ import { AboutModal } from "./about";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
+import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
@@ -23,6 +24,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
     [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,
+    [UnsavedFileModal.displayName || "UnsavedFileModal"]: UnsavedFileModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,
     [RenameFileModal.displayName || "RenameFileModal"]: RenameFileModal,
     [DeleteFileModal.displayName || "DeleteFileModal"]: DeleteFileModal,

@@ -373,6 +373,9 @@ declare global {
         // Handles keydown events within the block.
         keyDownHandler?: (e: WaveKeyboardEvent) => boolean;
 
+        // Return false to cancel closing when a view has pending user state.
+        confirmClose?: () => Promise<boolean>;
+
         // Cleans up resources when the block is disposed.
         dispose?: () => void;
     }

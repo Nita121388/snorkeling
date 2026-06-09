@@ -105,6 +105,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 16px;
     padding: 12px 14px;
     border-bottom: 1px solid var(--border-color);
@@ -132,7 +133,10 @@
 
 .session-overview-header-actions {
     display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
 }
 
@@ -1081,6 +1085,15 @@
 }
 
 @container (max-width: 620px) {
+    .session-overview-header {
+        align-items: flex-start;
+    }
+
+    .session-overview-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
     .session-overview-block-row {
         grid-template-columns: 1fr auto;
     }

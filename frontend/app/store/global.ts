@@ -722,6 +722,21 @@ function setActiveTab(tabId: string) {
     getApi().setActiveTab(tabId);
 }
 
+async function confirmCurrentTabClose(): Promise<boolean> {
+    const tabId = globalStore.get(atoms.staticTabId);
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    for (const blockId of tab?.blockids ?? []) {
+        const viewModel = getBlockComponentModel(blockId)?.viewModel;
+        if (viewModel?.viewType !== "preview") {
+            continue;
+        }
+        if (viewModel.confirmClose && !(await viewModel.confirmClose())) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function recordTEvent(event: string, props?: TEventProps) {
     if (isPreviewWindow()) return;
     if (props == null) {
@@ -737,6 +752,7 @@ export {
     createBlockSplitVertically,
     createTab,
     fetchWaveFile,
+    confirmCurrentTabClose,
     getAllBlockComponentModels,
     getApi,
     getBlockComponentModel,

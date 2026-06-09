@@ -129,7 +129,7 @@ export function showBlockContextMenu(
         { type: "separator" },
         {
             label: minimizedPreview ? "Close Preview" : "Close Block",
-            click: () => (minimizedPreview ? nodeModel.onClose() : uxCloseBlock(blockId)),
+            click: () => (minimizedPreview ? nodeModel.onClose() : util.fireAndForget(() => uxCloseBlock(blockId))),
         }
     );
     blockEnv.showContextMenu(menu, e);
@@ -334,7 +334,8 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
         elemtype: "iconbutton",
         icon: "xmark-large",
         title: minimizedPreview ? "Close Preview" : "Close",
-        click: () => (minimizedPreview ? nodeModel.onClose() : uxCloseBlock(nodeModel.blockId)),
+        click: () =>
+            minimizedPreview ? nodeModel.onClose() : util.fireAndForget(() => uxCloseBlock(nodeModel.blockId)),
     };
     endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close" />);
 
