@@ -42,7 +42,7 @@ import debug from "debug";
 import { useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import * as monaco from "monaco-editor";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
 import "./preview-edit.scss";
 
@@ -344,6 +344,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const markdownMoveActionsEnabledRef = useRef(false);
     const markdownListActionsEnabledRef = useRef(false);
     const markdownHeadingActionsEnabledRef = useRef(false);
+    const previousFileEditKeyRef = useRef<string | null>(null);
     const moveCurrentMarkdownBlockRef = useRef<(direction: "up" | "down") => void>(() => {});
     const renumberSelectedOrderedListRef = useRef<() => void>(() => {});
     const refreshMarkdownMoveStateRef = useRef<() => void>(() => {});
@@ -354,7 +355,11 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const markdownHeadingActionsEnabled = isMarkdownHeadingSectionPath(fileName) && !fileInfo?.readonly;
     const markdownMoveActionsEnabled = markdownListActionsEnabled || markdownHeadingActionsEnabled;
 
-    useEffect(() => model.registerFileEditKey(fileEditKey), [fileEditKey, model]);
+    useLayoutEffect(() => {
+        model.migrateFileEditKey(previousFileEditKeyRef.current, fileEditKey);
+        previousFileEditKeyRef.current = fileEditKey;
+        return model.registerFileEditKey(fileEditKey);
+    }, [fileEditKey, model]);
 
     const searchProps = useSearch({
         anchorRef: editorContainerRef,

@@ -24,7 +24,7 @@ import { addOpenMenuItems } from "@/util/previewutil";
 import { base64ToString, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
-import { Atom, atom, Getter, PrimitiveAtom, Setter, WritableAtom } from "jotai";
+import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
 import { loadable } from "jotai/utils";
 import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
@@ -45,6 +45,15 @@ import {
     resolvePreviewDirectoryDisplayMode,
     resolvePreviewOpenTargetDirection,
 } from "./preview-navigation";
+import {
+    discardPreviewSharedDraftIfUnshared,
+    getOrCreatePreviewSharedDraftRecord,
+    getPreviewSharedDraftRecord,
+    makePreviewDraftKey,
+    migratePreviewSharedDraftRecord,
+    previewSharedDraftRecordsVersion,
+    registerPreviewSharedDraftEditor,
+} from "./preview-shared-draft";
 import type { PreviewEnv } from "./previewenv";
 
 // TODO drive this using config
@@ -64,7 +73,6 @@ const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
 const PreviewSearchLineMetaKey = "preview:searchline";
 const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
 const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();
-const previewFileEditRecordsVersion = atom(0);
 
 export type LiveScrollSourceState = {
     sequence: number;
@@ -266,75 +274,6 @@ function normalizeSearchTargetLine(val: any): number | null {
 
 function normalizePath(filePath: string): string {
     return (filePath ?? "").replace(/\\/g, "/").replace(/\/+/g, "/");
-}
-
-type PreviewFileEditState = {
-    draftContent: string | null;
-    savedContent: string | null;
-    revision: number;
-};
-
-type PreviewFileEditRecord = {
-    stateAtom: PrimitiveAtom<PreviewFileEditState>;
-    editorRefs: Set<string>;
-};
-
-const previewFileEditRecords = new Map<string, PreviewFileEditRecord>();
-
-function makePreviewFileEditKey(connection: string, filePath: string): string | null {
-    if (isBlank(filePath)) {
-        return null;
-    }
-    return formatRemoteUri(normalizePath(filePath), connection ?? "local");
-}
-
-function bumpPreviewFileEditRecordsVersion(set?: Setter): void {
-    if (set != null) {
-        set(previewFileEditRecordsVersion, (version) => version + 1);
-        return;
-    }
-    globalStore.set(previewFileEditRecordsVersion, (version) => version + 1);
-}
-
-function getPreviewFileEditRecord(fileKey: string | null): PreviewFileEditRecord | null {
-    if (isBlank(fileKey)) {
-        return null;
-    }
-    return previewFileEditRecords.get(fileKey) ?? null;
-}
-
-function getOrCreatePreviewFileEditRecord(fileKey: string | null, set?: Setter): PreviewFileEditRecord | null {
-    if (isBlank(fileKey)) {
-        return null;
-    }
-    const existingRecord = previewFileEditRecords.get(fileKey);
-    if (existingRecord != null) {
-        return existingRecord;
-    }
-    const newRecord: PreviewFileEditRecord = {
-        stateAtom: atom<PreviewFileEditState>({
-            draftContent: null,
-            savedContent: null,
-            revision: 0,
-        }) as PrimitiveAtom<PreviewFileEditState>,
-        editorRefs: new Set<string>(),
-    };
-    previewFileEditRecords.set(fileKey, newRecord);
-    bumpPreviewFileEditRecordsVersion(set);
-    return newRecord;
-}
-
-function cleanupPreviewFileEditRecordIfUnused(fileKey: string | null): void {
-    const record = getPreviewFileEditRecord(fileKey);
-    if (record == null || record.editorRefs.size > 0) {
-        return;
-    }
-    const state = globalStore.get(record.stateAtom);
-    if (state.draftContent != null) {
-        return;
-    }
-    previewFileEditRecords.delete(fileKey);
-    bumpPreviewFileEditRecordsVersion();
 }
 
 export class PreviewModel implements ViewModel {
@@ -856,21 +795,19 @@ export class PreviewModel implements ViewModel {
         });
         this.fileMimeTypeLoadable = loadable(this.fileMimeType);
         this.fileEditKey = atom((get) => {
-            const fileInfo = jotaiLoadableValue(get(this.loadableFileInfo), null);
-            const filePath = fileInfo?.path ?? get(this.metaFilePath);
-            return makePreviewFileEditKey(get(this.connectionImmediate), filePath);
+            return makePreviewDraftKey(get(this.connectionImmediate), get(this.metaFilePath));
         });
         this.newFileContent = atom(
             (get) => {
-                get(previewFileEditRecordsVersion);
-                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                get(previewSharedDraftRecordsVersion);
+                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
                 if (record == null) {
                     return null;
                 }
                 return get(record.stateAtom).draftContent;
             },
             (get, set, update: string | null) => {
-                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
                 if (record == null) {
                     return;
                 }
@@ -914,15 +851,15 @@ export class PreviewModel implements ViewModel {
 
         this.fileContentSaved = atom(
             (get) => {
-                get(previewFileEditRecordsVersion);
-                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                get(previewSharedDraftRecordsVersion);
+                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
                 if (record == null) {
                     return null;
                 }
                 return get(record.stateAtom).savedContent;
             },
             (get, set, update: string | null) => {
-                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
                 if (record == null) {
                     return;
                 }
@@ -939,8 +876,8 @@ export class PreviewModel implements ViewModel {
         );
         const fileContentAtom = atom(
             async (get) => {
-                get(previewFileEditRecordsVersion);
-                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                get(previewSharedDraftRecordsVersion);
+                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
                 if (record != null) {
                     const state = get(record.stateAtom);
                     if (state.draftContent != null) {
@@ -954,7 +891,7 @@ export class PreviewModel implements ViewModel {
                 return base64ToString(fullFile?.data64);
             },
             (get, set, update: string) => {
-                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
                 if (record == null) {
                     return;
                 }
@@ -1115,38 +1052,12 @@ export class PreviewModel implements ViewModel {
     }
 
     registerFileEditKey(fileKey: string | null): () => void {
-        const record = getOrCreatePreviewFileEditRecord(fileKey);
-        if (record == null) {
-            return () => {};
-        }
         const editorRef = `${this.blockId}:${Date.now()}:${Math.random()}`;
-        record.editorRefs.add(editorRef);
-        return () => {
-            const currentRecord = getPreviewFileEditRecord(fileKey);
-            if (currentRecord == null) {
-                return;
-            }
-            currentRecord.editorRefs.delete(editorRef);
-            cleanupPreviewFileEditRecordIfUnused(fileKey);
-        };
+        return registerPreviewSharedDraftEditor(fileKey, editorRef);
     }
 
-    private discardFileDraftIfUnshared(fileKey: string | null): void {
-        const record = getPreviewFileEditRecord(fileKey);
-        if (record == null || record.editorRefs.size > 1) {
-            return;
-        }
-        globalStore.set(record.stateAtom, (prev) => {
-            if (prev.draftContent == null) {
-                return prev;
-            }
-            return {
-                ...prev,
-                draftContent: null,
-                revision: prev.revision + 1,
-            };
-        });
-        cleanupPreviewFileEditRecordIfUnused(fileKey);
+    migrateFileEditKey(previousFileKey: string | null, nextFileKey: string | null): void {
+        migratePreviewSharedDraftRecord(previousFileKey, nextFileKey);
     }
 
     private async readCurrentFileContentFromDisk(filePath: string): Promise<string> {
@@ -1184,7 +1095,7 @@ export class PreviewModel implements ViewModel {
         }
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta as MetaType);
-        this.discardFileDraftIfUnshared(oldFileKey);
+        discardPreviewSharedDraftIfUnshared(oldFileKey);
     }
 
     private makeOpenTargetMenuItems(currentDirection: PreviewOpenTargetDirection): MenuItem[] {
@@ -1540,7 +1451,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         const fileKey = globalStore.get(this.fileEditKey);
-        const record = getPreviewFileEditRecord(fileKey);
+        const record = getPreviewSharedDraftRecord(fileKey);
         const stateBeforeSave = record == null ? null : globalStore.get(record.stateAtom);
         const newFileContent = stateBeforeSave?.draftContent;
         if (record == null || newFileContent == null) {
@@ -1613,7 +1524,7 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         if (choice === "discard") {
-            this.discardFileDraftIfUnshared(globalStore.get(this.fileEditKey));
+            discardPreviewSharedDraftIfUnshared(globalStore.get(this.fileEditKey));
             return true;
         }
         await this.handleFileSave();
@@ -1627,7 +1538,7 @@ export class PreviewModel implements ViewModel {
         }
         try {
             const fileContent = await this.readCurrentFileContentFromDisk(filePath);
-            const record = getOrCreatePreviewFileEditRecord(globalStore.get(this.fileEditKey));
+            const record = getOrCreatePreviewSharedDraftRecord(globalStore.get(this.fileEditKey));
             if (record != null) {
                 globalStore.set(record.stateAtom, (prev) => ({
                     ...prev,
@@ -1708,7 +1619,7 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
-        const record = getPreviewFileEditRecord(globalStore.get(this.fileEditKey));
+        const record = getPreviewSharedDraftRecord(globalStore.get(this.fileEditKey));
         if (record != null) {
             globalStore.set(record.stateAtom, (prev) => {
                 if (prev.savedContent == null) {
