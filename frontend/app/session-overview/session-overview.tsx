@@ -944,7 +944,7 @@ function useNow(open: boolean): number {
 function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean }) {
     const model = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
-    const open = jotai.useAtomValue(model.isOpenAtom);
+    const focused = jotai.useAtomValue(model.isFocusedAtom);
     const blocks = useOverviewBlocks(workspace);
     const summaries = useSessionSummaries(blocks);
     const viewedAt = jotai.useAtomValue(model.blockViewedAtAtom);
@@ -959,7 +959,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         0,
         ...unreadBlocks.map((block) => normalizeTimeMs(summaries[block.sessionId]?.summary?.updatedAt))
     );
-    const icon = <i className={cn(makeIconClass("list-tree", false), unreadBlocks.length > 0 && "text-accent")} />;
+    const icon = <i className={makeIconClass("list-tree", false)} />;
     const badge =
         unreadBlocks.length > 0 ? (
             <span className="session-overview-entry-badge">
@@ -972,11 +972,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
             <Tooltip content="Open Overview" placement="right" hideOnClick divClassName="flex">
                 <button
                     type="button"
-                    className={cn(
-                        "session-overview-vbutton",
-                        open && "is-open",
-                        unreadBlocks.length > 0 && "has-unread"
-                    )}
+                    className={cn("session-overview-vbutton", focused && "is-open")}
                     onClick={() => void model.open()}
                     aria-label="Open Overview"
                 >
@@ -991,7 +987,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         <Tooltip content="Open Overview" placement="bottom" hideOnClick divClassName="flex">
             <button
                 type="button"
-                className={cn("session-overview-tabbutton", open && "is-open", unreadBlocks.length > 0 && "has-unread")}
+                className={cn("session-overview-tabbutton", focused && "is-open")}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={() => void model.open()}
                 aria-label="Open Overview"

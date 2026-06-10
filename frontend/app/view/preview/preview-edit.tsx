@@ -322,6 +322,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const fileContent = useAtomValue(model.fileContent);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
+    const fileEditKey = useAtomValue(model.fileEditKey);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
     const [selectionCopyOverlay, setSelectionCopyOverlay] = useState<SelectionCopyOverlayState | null>(null);
     const [markdownMoveControls, setMarkdownMoveControls] = useState<{
@@ -352,6 +353,9 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const markdownListActionsEnabled = isMarkdownOrderedListPath(fileName) && !fileInfo?.readonly;
     const markdownHeadingActionsEnabled = isMarkdownHeadingSectionPath(fileName) && !fileInfo?.readonly;
     const markdownMoveActionsEnabled = markdownListActionsEnabled || markdownHeadingActionsEnabled;
+
+    useEffect(() => model.registerFileEditKey(fileEditKey), [fileEditKey, model]);
+
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
         viewModel: model,

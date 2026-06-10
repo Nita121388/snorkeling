@@ -18,6 +18,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/authkey"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
+	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/filebackup"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
@@ -525,6 +526,8 @@ func main() {
 		log.Printf("error initializing wstore: %v\n", err)
 		return
 	}
+	wconfig.RegisterFullConfigHydrator(commontextstore.HydrateFullConfig)
+	commontextstore.MigrateCommonTextItems()
 	panichandler.PanicTelemetryHandler = panicTelemetryHandler
 	go func() {
 		defer func() {

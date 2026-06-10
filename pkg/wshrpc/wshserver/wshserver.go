@@ -29,6 +29,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/buildercontroller"
+	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/filebackup"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/genconn"
@@ -606,6 +607,16 @@ func (ws *WshServer) EventReadHistoryCommand(ctx context.Context, data wshrpc.Co
 }
 
 func (ws *WshServer) SetConfigCommand(ctx context.Context, data wshrpc.MetaSettingsType) error {
+	commonTextUpdated, err := commontextstore.SaveFromConfigMap(data.MetaMapType)
+	if err != nil {
+		return err
+	}
+	if len(data.MetaMapType) == 0 {
+		if commonTextUpdated {
+			wconfig.BroadcastConfigUpdate()
+		}
+		return nil
+	}
 	return wconfig.SetBaseConfigValue(data.MetaMapType)
 }
 

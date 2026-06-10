@@ -24,7 +24,7 @@ import { addOpenMenuItems } from "@/util/previewutil";
 import { base64ToString, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
-import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
+import { Atom, atom, Getter, PrimitiveAtom, Setter, WritableAtom } from "jotai";
 import { loadable } from "jotai/utils";
 import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
@@ -64,6 +64,7 @@ const PreviewDefaultOpenTargetSettingKey = "preview:defaultopentarget";
 const PreviewSearchLineMetaKey = "preview:searchline";
 const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
 const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();
+const previewFileEditRecordsVersion = atom(0);
 
 export type LiveScrollSourceState = {
     sequence: number;
@@ -267,6 +268,75 @@ function normalizePath(filePath: string): string {
     return (filePath ?? "").replace(/\\/g, "/").replace(/\/+/g, "/");
 }
 
+type PreviewFileEditState = {
+    draftContent: string | null;
+    savedContent: string | null;
+    revision: number;
+};
+
+type PreviewFileEditRecord = {
+    stateAtom: PrimitiveAtom<PreviewFileEditState>;
+    editorRefs: Set<string>;
+};
+
+const previewFileEditRecords = new Map<string, PreviewFileEditRecord>();
+
+function makePreviewFileEditKey(connection: string, filePath: string): string | null {
+    if (isBlank(filePath)) {
+        return null;
+    }
+    return formatRemoteUri(normalizePath(filePath), connection ?? "local");
+}
+
+function bumpPreviewFileEditRecordsVersion(set?: Setter): void {
+    if (set != null) {
+        set(previewFileEditRecordsVersion, (version) => version + 1);
+        return;
+    }
+    globalStore.set(previewFileEditRecordsVersion, (version) => version + 1);
+}
+
+function getPreviewFileEditRecord(fileKey: string | null): PreviewFileEditRecord | null {
+    if (isBlank(fileKey)) {
+        return null;
+    }
+    return previewFileEditRecords.get(fileKey) ?? null;
+}
+
+function getOrCreatePreviewFileEditRecord(fileKey: string | null, set?: Setter): PreviewFileEditRecord | null {
+    if (isBlank(fileKey)) {
+        return null;
+    }
+    const existingRecord = previewFileEditRecords.get(fileKey);
+    if (existingRecord != null) {
+        return existingRecord;
+    }
+    const newRecord: PreviewFileEditRecord = {
+        stateAtom: atom<PreviewFileEditState>({
+            draftContent: null,
+            savedContent: null,
+            revision: 0,
+        }) as PrimitiveAtom<PreviewFileEditState>,
+        editorRefs: new Set<string>(),
+    };
+    previewFileEditRecords.set(fileKey, newRecord);
+    bumpPreviewFileEditRecordsVersion(set);
+    return newRecord;
+}
+
+function cleanupPreviewFileEditRecordIfUnused(fileKey: string | null): void {
+    const record = getPreviewFileEditRecord(fileKey);
+    if (record == null || record.editorRefs.size > 0) {
+        return;
+    }
+    const state = globalStore.get(record.stateAtom);
+    if (state.draftContent != null) {
+        return;
+    }
+    previewFileEditRecords.delete(fileKey);
+    bumpPreviewFileEditRecordsVersion();
+}
+
 export class PreviewModel implements ViewModel {
     viewType: string;
     blockId: string;
@@ -298,9 +368,10 @@ export class PreviewModel implements ViewModel {
     fullFile: Atom<Promise<FileData>>;
     fileMimeType: Atom<Promise<string>>;
     fileMimeTypeLoadable: Atom<Loadable<string>>;
-    fileContentSaved: PrimitiveAtom<string | null>;
+    fileEditKey: Atom<string | null>;
+    fileContentSaved: WritableAtom<string | null, [string | null], void>;
     fileContent: WritableAtom<Promise<string>, [string], void>;
-    newFileContent: PrimitiveAtom<string | null>;
+    newFileContent: WritableAtom<string | null, [string | null], void>;
     connectionError: PrimitiveAtom<string>;
     errorMsgAtom: PrimitiveAtom<ErrorMsg>;
     copyPathStatus: PrimitiveAtom<CopyPathStatus>;
@@ -778,12 +849,44 @@ export class PreviewModel implements ViewModel {
                 globalStore.set(this.errorMsgAtom, errorStatus);
             }
         });
+        this.loadableFileInfo = loadable(this.statFile);
         this.fileMimeType = atom<Promise<string>>(async (get) => {
             const fileInfo = await get(this.statFile);
             return fileInfo?.mimetype;
         });
         this.fileMimeTypeLoadable = loadable(this.fileMimeType);
-        this.newFileContent = atom(null) as PrimitiveAtom<string | null>;
+        this.fileEditKey = atom((get) => {
+            const fileInfo = jotaiLoadableValue(get(this.loadableFileInfo), null);
+            const filePath = fileInfo?.path ?? get(this.metaFilePath);
+            return makePreviewFileEditKey(get(this.connectionImmediate), filePath);
+        });
+        this.newFileContent = atom(
+            (get) => {
+                get(previewFileEditRecordsVersion);
+                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                if (record == null) {
+                    return null;
+                }
+                return get(record.stateAtom).draftContent;
+            },
+            (get, set, update: string | null) => {
+                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                if (record == null) {
+                    return;
+                }
+                set(record.stateAtom, (prev) => {
+                    const draftContent = update === prev.savedContent ? null : update;
+                    if (prev.draftContent === draftContent) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        draftContent,
+                        revision: prev.revision + 1,
+                    };
+                });
+            }
+        );
         this.goParentDirectory = this.goParentDirectory.bind(this);
 
         const fullFileAtom = atom<Promise<FileData>>(async (get) => {
@@ -809,22 +912,61 @@ export class PreviewModel implements ViewModel {
             }
         });
 
-        this.fileContentSaved = atom(null) as PrimitiveAtom<string | null>;
+        this.fileContentSaved = atom(
+            (get) => {
+                get(previewFileEditRecordsVersion);
+                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                if (record == null) {
+                    return null;
+                }
+                return get(record.stateAtom).savedContent;
+            },
+            (get, set, update: string | null) => {
+                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                if (record == null) {
+                    return;
+                }
+                set(record.stateAtom, (prev) => {
+                    if (prev.savedContent === update) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        savedContent: update,
+                    };
+                });
+            }
+        );
         const fileContentAtom = atom(
             async (get) => {
-                const newContent = get(this.newFileContent);
-                if (newContent != null) {
-                    return newContent;
-                }
-                const savedContent = get(this.fileContentSaved);
-                if (savedContent != null) {
-                    return savedContent;
+                get(previewFileEditRecordsVersion);
+                const record = getPreviewFileEditRecord(get(this.fileEditKey));
+                if (record != null) {
+                    const state = get(record.stateAtom);
+                    if (state.draftContent != null) {
+                        return state.draftContent;
+                    }
+                    if (state.savedContent != null) {
+                        return state.savedContent;
+                    }
                 }
                 const fullFile = await get(fullFileAtom);
                 return base64ToString(fullFile?.data64);
             },
-            (_, set, update: string) => {
-                set(this.fileContentSaved, update);
+            (get, set, update: string) => {
+                const record = getOrCreatePreviewFileEditRecord(get(this.fileEditKey), set);
+                if (record == null) {
+                    return;
+                }
+                set(record.stateAtom, (prev) => {
+                    if (prev.savedContent === update) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        savedContent: update,
+                    };
+                });
             }
         );
 
@@ -863,7 +1005,6 @@ export class PreviewModel implements ViewModel {
         });
         this.loadableSpecializedView = loadable(this.specializedView);
         this.canPreview = atom(false);
-        this.loadableFileInfo = loadable(this.statFile);
         this.connStatus = atom((get) => {
             const blockData = get(this.blockAtom);
             const connName = blockData?.meta?.connection;
@@ -973,6 +1114,50 @@ export class PreviewModel implements ViewModel {
         this.updateOpenFileModalAndError(!modalOpen);
     }
 
+    registerFileEditKey(fileKey: string | null): () => void {
+        const record = getOrCreatePreviewFileEditRecord(fileKey);
+        if (record == null) {
+            return () => {};
+        }
+        const editorRef = `${this.blockId}:${Date.now()}:${Math.random()}`;
+        record.editorRefs.add(editorRef);
+        return () => {
+            const currentRecord = getPreviewFileEditRecord(fileKey);
+            if (currentRecord == null) {
+                return;
+            }
+            currentRecord.editorRefs.delete(editorRef);
+            cleanupPreviewFileEditRecordIfUnused(fileKey);
+        };
+    }
+
+    private discardFileDraftIfUnshared(fileKey: string | null): void {
+        const record = getPreviewFileEditRecord(fileKey);
+        if (record == null || record.editorRefs.size > 1) {
+            return;
+        }
+        globalStore.set(record.stateAtom, (prev) => {
+            if (prev.draftContent == null) {
+                return prev;
+            }
+            return {
+                ...prev,
+                draftContent: null,
+                revision: prev.revision + 1,
+            };
+        });
+        cleanupPreviewFileEditRecordIfUnused(fileKey);
+    }
+
+    private async readCurrentFileContentFromDisk(filePath: string): Promise<string> {
+        const file = await this.env.rpc.FileReadCommand(TabRpcClient, {
+            info: {
+                path: await this.formatRemoteUri(filePath, globalStore.get),
+            },
+        });
+        return base64ToString(file?.data64) ?? "";
+    }
+
     private applyOpenPathOptions(meta: MetaType, options?: PreviewOpenPathOptions): MetaType {
         const nextMeta: Record<string, any> = { ...meta };
         nextMeta[PreviewSearchLineMetaKey] = normalizeSearchTargetLine(options?.lineNumber);
@@ -987,6 +1172,7 @@ export class PreviewModel implements ViewModel {
         if (fileName == null) {
             fileName = "";
         }
+        const oldFileKey = globalStore.get(this.fileEditKey);
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
         const updateMeta = applyExplorerRootForDirectoryNavigation(
             this.applyOpenPathOptions(goHistory("file", fileName, newPath, blockMeta), options) as Record<string, any>,
@@ -998,10 +1184,7 @@ export class PreviewModel implements ViewModel {
         }
         const blockOref = WOS.makeORef("block", this.blockId);
         await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta as MetaType);
-
-        // Clear the saved file buffers
-        globalStore.set(this.fileContentSaved, null);
-        globalStore.set(this.newFileContent, null);
+        this.discardFileDraftIfUnshared(oldFileKey);
     }
 
     private makeOpenTargetMenuItems(currentDirection: PreviewOpenTargetDirection): MenuItem[] {
@@ -1356,11 +1539,15 @@ export class PreviewModel implements ViewModel {
         if (filePath == null) {
             return;
         }
-        const newFileContent = globalStore.get(this.newFileContent);
-        if (newFileContent == null) {
+        const fileKey = globalStore.get(this.fileEditKey);
+        const record = getPreviewFileEditRecord(fileKey);
+        const stateBeforeSave = record == null ? null : globalStore.get(record.stateAtom);
+        const newFileContent = stateBeforeSave?.draftContent;
+        if (record == null || newFileContent == null) {
             console.log("not saving file, newFileContent is null");
             return;
         }
+        const savingRevision = stateBeforeSave.revision;
         try {
             await this.env.rpc.FileWriteCommand(TabRpcClient, {
                 info: {
@@ -1368,8 +1555,19 @@ export class PreviewModel implements ViewModel {
                 },
                 data64: stringToBase64(newFileContent),
             });
-            globalStore.set(this.fileContent, newFileContent);
-            globalStore.set(this.newFileContent, null);
+            globalStore.set(record.stateAtom, (prev) => {
+                if (prev.revision === savingRevision && prev.draftContent === newFileContent) {
+                    return {
+                        ...prev,
+                        draftContent: null,
+                        savedContent: newFileContent,
+                    };
+                }
+                return {
+                    ...prev,
+                    savedContent: newFileContent,
+                };
+            });
             console.log("saved file", filePath);
         } catch (e) {
             const errorStatus: ErrorMsg = {
@@ -1415,6 +1613,7 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         if (choice === "discard") {
+            this.discardFileDraftIfUnshared(globalStore.get(this.fileEditKey));
             return true;
         }
         await this.handleFileSave();
@@ -1422,9 +1621,29 @@ export class PreviewModel implements ViewModel {
     }
 
     async handleFileRevert() {
-        const fileContent = await globalStore.get(this.fileContent);
-        this.monacoRef.current?.setValue(fileContent);
-        globalStore.set(this.newFileContent, null);
+        const filePath = await globalStore.get(this.statFilePath);
+        if (filePath == null) {
+            return;
+        }
+        try {
+            const fileContent = await this.readCurrentFileContentFromDisk(filePath);
+            const record = getOrCreatePreviewFileEditRecord(globalStore.get(this.fileEditKey));
+            if (record != null) {
+                globalStore.set(record.stateAtom, (prev) => ({
+                    ...prev,
+                    draftContent: null,
+                    savedContent: fileContent,
+                    revision: prev.revision + 1,
+                }));
+            }
+            this.monacoRef.current?.setValue(fileContent);
+        } catch (e) {
+            const errorStatus: ErrorMsg = {
+                status: "File Read Failed",
+                text: `${e}`,
+            };
+            globalStore.set(this.errorMsgAtom, errorStatus);
+        }
     }
 
     async handleOpenFile(filePath: string) {
@@ -1489,7 +1708,18 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
-        globalStore.set(this.fileContentSaved, null);
+        const record = getPreviewFileEditRecord(globalStore.get(this.fileEditKey));
+        if (record != null) {
+            globalStore.set(record.stateAtom, (prev) => {
+                if (prev.savedContent == null) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    savedContent: null,
+                };
+            });
+        }
         globalStore.set(this.refreshVersion, (v) => v + 1);
     }
 

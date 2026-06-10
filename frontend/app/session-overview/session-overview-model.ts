@@ -8,6 +8,7 @@ import {
     SnorkelingBlockKindOverview,
     toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
+import { getLayoutModelForStaticTab } from "@/layout/index";
 import * as jotai from "jotai";
 
 const SessionOverviewView = "sessionoverview";
@@ -30,6 +31,17 @@ export class SessionOverviewModel {
             }
         }
         return false;
+    });
+    isFocusedAtom = jotai.atom((get) => {
+        const tabId = get(atoms.staticTabId);
+        if (!tabId) return false;
+        const layoutModel = getLayoutModelForStaticTab();
+        if (layoutModel?.focusedNode == null) return false;
+        const focusedNode = get(layoutModel.focusedNode);
+        const focusedBlockId = focusedNode?.data?.blockId;
+        if (typeof focusedBlockId !== "string") return false;
+        const focusedBlock = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", focusedBlockId)));
+        return focusedBlock?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview;
     });
     displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
     blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;

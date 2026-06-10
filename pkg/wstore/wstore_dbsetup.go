@@ -25,6 +25,10 @@ type TxWrap = txwrap.TxWrap
 
 var globalDB *sqlx.DB
 
+func IsInitialized() bool {
+	return globalDB != nil
+}
+
 func InitWStore() error {
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()

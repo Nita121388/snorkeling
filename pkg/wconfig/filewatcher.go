@@ -171,3 +171,16 @@ func (w *Watcher) handleSettingsFileEvent(_ fsnotify.Event, _ string) {
 	w.fullConfig = fullConfig
 	w.broadcast(WatcherUpdate{FullConfig: w.fullConfig})
 }
+
+func BroadcastConfigUpdate() {
+	if instance == nil {
+		return
+	}
+	instance.mutex.Lock()
+	defer instance.mutex.Unlock()
+	if !instance.initialized {
+		return
+	}
+	instance.fullConfig = ReadFullConfig()
+	instance.broadcast(WatcherUpdate{FullConfig: instance.fullConfig})
+}

@@ -40,10 +40,6 @@
     &.is-open {
         color: var(--accent-color);
     }
-
-    &.has-unread {
-        color: var(--accent-color);
-    }
 }
 
 .session-overview-vbutton {
@@ -65,10 +61,6 @@
     &.is-open {
         color: var(--main-text-color);
         background: var(--hover-bg-color);
-    }
-
-    &.has-unread {
-        color: var(--accent-color);
     }
 }
 
