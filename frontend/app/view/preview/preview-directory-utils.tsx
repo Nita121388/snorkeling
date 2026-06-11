@@ -21,6 +21,7 @@ import {
 } from "./preview-file-clipboard";
 import { type PreviewModel } from "./preview-model";
 import { makeRelativePathForCopy } from "./preview-paths";
+import { isWindowsDrivesPath } from "./preview-windows-drives";
 
 export const recursiveError = "recursive flag must be set for directory operations";
 export const overwriteError = "set overwrite flag to delete the existing file";
@@ -555,6 +556,7 @@ export async function makeDirectoryEntryMenuItems(
     const pasteableItems = getPasteableItems(clipboard);
     const unsupportedPasteItems = getUnsupportedPasteItems(clipboard);
     const pasteDestPath = getDirectoryEntryPasteDestPath(finfo);
+    const isWindowsDriveEntry = isWindowsDrivesPath(finfo.dir);
     const menu: ContextMenuItem[] = [
         {
             label: "New File",
@@ -564,10 +566,14 @@ export async function makeDirectoryEntryMenuItems(
             label: "New Folder",
             click: actions.newDirectory,
         },
-        {
+    ];
+    if (!isWindowsDriveEntry) {
+        menu.push({
             label: "Rename",
             click: actions.rename,
-        },
+        });
+    }
+    menu.push(
         {
             type: "separator",
         },
@@ -581,8 +587,8 @@ export async function makeDirectoryEntryMenuItems(
             label: makeDirectoryEntryPasteLabel(clipboard, finfo),
             enabled: !isBlank(pasteDestPath) && (pasteableItems.length > 0 || unsupportedPasteItems.length > 0),
             click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg)),
-        },
-    ];
+        }
+    );
     const vcsMenuItems = await makeDirectoryVcsMenuItems(
         model,
         conn,
@@ -628,13 +634,17 @@ export async function makeDirectoryEntryMenuItems(
             label: "Default Settings",
             submenu: makeDirectoryDefaultMenuItems(model),
         },
-        {
-            type: "separator",
-        },
-        {
-            label: "Delete",
-            click: () => handleFileDelete(model, finfo.path, false, setErrorMsg),
-        }
+        ...(isWindowsDriveEntry
+            ? []
+            : [
+                  {
+                      type: "separator",
+                  } satisfies ContextMenuItem,
+                  {
+                      label: "Delete",
+                      click: () => handleFileDelete(model, finfo.path, false, setErrorMsg),
+                  } satisfies ContextMenuItem,
+              ])
     );
     return menu;
 }
@@ -650,28 +660,35 @@ export async function makeDirectoryBackgroundMenuItems(
     const clipboard = options.clipboard ?? getPreviewFileClipboard();
     const pasteableItems = getPasteableItems(clipboard);
     const unsupportedPasteItems = getUnsupportedPasteItems(clipboard);
-    const menu: ContextMenuItem[] = [
-        {
-            label: "New File",
-            click: actions.newFile,
-        },
-        {
-            label: "New Folder",
-            click: actions.newDirectory,
-        },
-        {
-            type: "separator",
-        },
-        {
-            label: makePasteLabel(clipboard),
-            enabled: pasteableItems.length > 0 || unsupportedPasteItems.length > 0,
-            click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg)),
-        },
-    ];
-    const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
-    if (vcsMenuItems.length > 0) {
-        menu.push({ type: "separator" }, ...vcsMenuItems);
+    const supportsFileCreation = finfo?.supportsmkdir !== false && !isWindowsDrivesPath(finfo?.path);
+    const menu: ContextMenuItem[] = [];
+    if (supportsFileCreation) {
+        menu.push(
+            {
+                label: "New File",
+                click: actions.newFile,
+            },
+            {
+                label: "New Folder",
+                click: actions.newDirectory,
+            },
+            {
+                type: "separator",
+            },
+            {
+                label: makePasteLabel(clipboard),
+                enabled: pasteableItems.length > 0 || unsupportedPasteItems.length > 0,
+                click: () =>
+                    fireAndForget(() => pastePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg)),
+            }
+        );
     }
-    addOpenMenuItems(menu, conn, finfo);
+    if (!isWindowsDrivesPath(finfo?.path)) {
+        const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
+        if (vcsMenuItems.length > 0) {
+            menu.push({ type: "separator" }, ...vcsMenuItems);
+        }
+        addOpenMenuItems(menu, conn, finfo);
+    }
     return menu;
 }

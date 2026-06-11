@@ -46,6 +46,7 @@ import { copyPreviewFileItems, getPreviewFileClipboard, pastePreviewFileItems } 
 import { type PreviewModel } from "./preview-model";
 import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigation";
 import { openPreviewEntry } from "./preview-open";
+import { isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
 
 const PageJumpSize = 20;
@@ -615,6 +616,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     const blockData = useAtomValue(model.blockAtom);
     const finfo = useAtomValue(model.statFile);
     const dirPath = finfo?.path;
+    const supportsFileCreation = finfo?.supportsmkdir !== false && !isWindowsDrivesPath(dirPath);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const blockMoveMenuItems = useBlockMoveMenuItems();
 
@@ -697,7 +699,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 return true;
             }
             if (checkKeyPressed(waveEvent, "Cmd:v") || checkKeyPressed(waveEvent, "Ctrl:v")) {
-                if (dirPath == null || dirPath === "") {
+                if (dirPath == null || dirPath === "" || !supportsFileCreation) {
                     return true;
                 }
                 fireAndForget(() =>
@@ -785,7 +787,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
         return () => {
             model.directoryKeyDownHandler = null;
         };
-    }, [conn, dirPath, filteredData, model, selectedPath, selectedPaths, setErrorMsg, searchText]);
+    }, [conn, dirPath, filteredData, model, selectedPath, selectedPaths, setErrorMsg, searchText, supportsFileCreation]);
 
     useEffect(() => {
         if (filteredData.length != 0 && focusIndex > filteredData.length - 1) {
@@ -889,6 +891,9 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     const { getReferenceProps, getFloatingProps } = useInteractions([dismiss]);
 
     const newFile = useCallback(() => {
+        if (!supportsFileCreation) {
+            return;
+        }
         setEntryManagerProps({
             entryManagerType: EntryManagerType.NewFile,
             onSave: (newName: string) => {
@@ -908,8 +913,11 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 setEntryManagerProps(undefined);
             },
         });
-    }, [dirPath, env.rpc, model]);
+    }, [dirPath, env.rpc, model, supportsFileCreation]);
     const newDirectory = useCallback(() => {
+        if (!supportsFileCreation) {
+            return;
+        }
         setEntryManagerProps({
             entryManagerType: EntryManagerType.NewDirectory,
             onSave: (newName: string) => {
@@ -925,7 +933,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 setEntryManagerProps(undefined);
             },
         });
-    }, [dirPath, env.rpc, model]);
+    }, [dirPath, env.rpc, model, supportsFileCreation]);
 
     const handleFileContextMenu = useCallback(
         async (e: any) => {

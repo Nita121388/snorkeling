@@ -31,6 +31,7 @@ import {
     shouldFallbackFileNameSearch,
     sortFileNameMatches,
 } from "./preview-search";
+import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
 
 const TreeFetchLimit = 1024;
@@ -129,13 +130,14 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
+    const supportsFileCreation = currentDirectoryInfo?.supportsmkdir !== false && !isWindowsDrivesPath(rootPath);
 
     const initialNodes = useMemo(
         () => ({
             [rootPath]: {
                 id: rootPath,
                 path: rootPath,
-                label: normalizeRootLabel(rootPath),
+                label: normalizeRootLabel(getPreviewDisplayPath(rootPath)),
                 isDirectory: true,
                 iconColor: directoryIconColor,
                 childrenStatus: "unloaded" as const,
@@ -402,12 +404,18 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     }, [rootPath, selectedTreeNode]);
 
     const createFileInSelectedDirectory = useCallback(() => {
+        if (!supportsFileCreation) {
+            return;
+        }
         openCreateFile(getCreateTargetDirectory());
-    }, [getCreateTargetDirectory, openCreateFile]);
+    }, [getCreateTargetDirectory, openCreateFile, supportsFileCreation]);
 
     const createDirectoryInSelectedDirectory = useCallback(() => {
+        if (!supportsFileCreation) {
+            return;
+        }
         openCreateDirectory(getCreateTargetDirectory());
-    }, [getCreateTargetDirectory, openCreateDirectory]);
+    }, [getCreateTargetDirectory, openCreateDirectory, supportsFileCreation]);
 
     const renameSelectedTreeNode = useCallback(
         (_id: string, node: TreeNodeData) => {
@@ -791,28 +799,32 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 </button>
                 {!searchActive && (
                     <div className="ml-auto flex items-center gap-1">
-                        <button
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
-                            title="New File"
-                            aria-label="New File"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                createFileInSelectedDirectory();
-                            }}
-                        >
-                            <i className="fa-sharp fa-solid fa-file-plus text-[11px]" />
-                        </button>
-                        <button
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
-                            title="New Folder"
-                            aria-label="New Folder"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                createDirectoryInSelectedDirectory();
-                            }}
-                        >
-                            <i className="fa-sharp fa-solid fa-folder-plus text-[11px]" />
-                        </button>
+                        {supportsFileCreation && (
+                            <>
+                                <button
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                                    title="New File"
+                                    aria-label="New File"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        createFileInSelectedDirectory();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-file-plus text-[11px]" />
+                                </button>
+                                <button
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                                    title="New Folder"
+                                    aria-label="New Folder"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        createDirectoryInSelectedDirectory();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-folder-plus text-[11px]" />
+                                </button>
+                            </>
+                        )}
                         <button
                             className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
                             title="Collapse All"

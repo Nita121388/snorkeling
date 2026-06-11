@@ -212,6 +212,12 @@ func (impl *ServerImpl) RemoteListEntriesCommand(ctx context.Context, data wshrp
 			ch <- wshutil.RespErr[wshrpc.CommandRemoteListEntriesRtnData](err)
 			return
 		}
+		if isWindowsDrivesPath(path) {
+			ch <- wshrpc.RespOrErrorUnion[wshrpc.CommandRemoteListEntriesRtnData]{
+				Response: wshrpc.CommandRemoteListEntriesRtnData{FileInfo: listWindowsDriveEntries()},
+			}
+			return
+		}
 		if data.Opts == nil {
 			data.Opts = &wshrpc.FileListOpts{}
 		}
@@ -280,8 +286,9 @@ func (impl *ServerImpl) RemoteListEntriesCommand(ctx context.Context, data wshrp
 
 func statToFileInfo(fullPath string, finfo fs.FileInfo, extended bool) *wshrpc.FileInfo {
 	mimeType := fileutil.DetectMimeType(fullPath, finfo, extended)
+	path := filepath.ToSlash(wavebase.ReplaceHomeDir(fullPath))
 	rtn := &wshrpc.FileInfo{
-		Path:          wavebase.ReplaceHomeDir(fullPath),
+		Path:          path,
 		Dir:           computeDirPart(fullPath),
 		Name:          finfo.Name(),
 		Size:          finfo.Size(),
@@ -328,14 +335,23 @@ func checkIsReadOnly(path string, fileInfo fs.FileInfo, exists bool) bool {
 func computeDirPart(path string) string {
 	path = filepath.Clean(wavebase.ExpandHomeDirSafe(path))
 	path = filepath.ToSlash(path)
+	if isWindowsDrivesPath(path) {
+		return WindowsDrivesPath
+	}
+	if isWindowsDriveRootPath(path) {
+		return WindowsDrivesPath
+	}
 	if path == "/" {
 		return "/"
 	}
-	return filepath.Dir(path)
+	return windowsDriveRootDir(path)
 }
 
 func (*ServerImpl) fileInfoInternal(path string, extended bool) (*wshrpc.FileInfo, error) {
 	cleanedPath := filepath.Clean(wavebase.ExpandHomeDirSafe(path))
+	if isWindowsDrivesPath(cleanedPath) {
+		return makeWindowsDrivesFileInfo(), nil
+	}
 	finfo, err := os.Stat(cleanedPath)
 	if os.IsNotExist(err) {
 		return &wshrpc.FileInfo{

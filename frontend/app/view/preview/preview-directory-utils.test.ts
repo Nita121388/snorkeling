@@ -16,6 +16,11 @@ function makeRepo(repotype: string): VcsRepositoryInfo {
 async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], repositoryError?: Error) {
     vi.resetModules();
     const createBlock = vi.fn(async () => "block-id");
+    const addOpenMenuItems = vi.fn((menu: ContextMenuItem[], _conn: string, _finfo: FileInfo) => {
+        menu.push({ label: "Open Terminal Here" });
+        menu.push({ label: "Run Agent Here" });
+        return menu;
+    });
     const remoteVcsRepositories = vi.fn(async () => {
         if (repositoryError != null) {
             throw repositoryError;
@@ -32,7 +37,7 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
         TabRpcClient: {},
     }));
     vi.doMock("@/util/previewutil", () => ({
-        addOpenMenuItems: vi.fn(),
+        addOpenMenuItems,
     }));
 
     const utils = await import("./preview-directory-utils");
@@ -53,6 +58,7 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
     return {
         ...utils,
         createBlock,
+        addOpenMenuItems,
         model,
         remoteVcsRepositories,
         remoteVcsSync,
@@ -600,5 +606,62 @@ describe("directory VCS context menus", () => {
         await Promise.resolve();
 
         expect(writeText).toHaveBeenCalledWith("/repo/package.json");
+    });
+
+    it("keeps open actions for Windows drive entries but hides rename and delete", async () => {
+        const { makeDirectoryEntryMenuItems, addOpenMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            {
+                path: "D:/",
+                dir: "/__wave_windows_drives__",
+                name: "D:",
+                isdir: true,
+                mimetype: "directory",
+            } as FileInfo,
+            "local",
+            vi.fn(),
+            {
+                newFile: vi.fn(),
+                newDirectory: vi.fn(),
+                rename: vi.fn(),
+            }
+        );
+
+        const menuLabels = labels(menu);
+        expect(menuLabels).toContain("New File");
+        expect(menuLabels).toContain("New Folder");
+        expect(menuLabels).toContain("Paste Into Folder");
+        expect(menuLabels).not.toContain("Rename");
+        expect(menuLabels).not.toContain("Delete");
+        expect(menuLabels).toContain("Open Terminal Here");
+        expect(menuLabels).toContain("Run Agent Here");
+        expect(addOpenMenuItems).toHaveBeenCalledWith(expect.any(Array), "local", expect.objectContaining({ path: "D:/" }), {
+            openInCurrentBlock: undefined,
+        });
+    });
+
+    it("hides real directory actions on the virtual Windows drives root", async () => {
+        const { makeDirectoryBackgroundMenuItems, addOpenMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryBackgroundMenuItems(
+            model as any,
+            "local",
+            {
+                path: "/__wave_windows_drives__",
+                dir: "/__wave_windows_drives__",
+                name: "This PC",
+                isdir: true,
+                mimetype: "directory",
+                supportsmkdir: false,
+            } as FileInfo,
+            vi.fn(),
+            {
+                newFile: vi.fn(),
+                newDirectory: vi.fn(),
+            }
+        );
+
+        expect(labels(menu)).toEqual([]);
+        expect(addOpenMenuItems).not.toHaveBeenCalled();
     });
 });

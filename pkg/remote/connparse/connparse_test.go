@@ -68,6 +68,18 @@ func TestParseURI_WSHWithScheme(t *testing.T) {
 	}
 }
 
+func TestParseURI_WSHWindowsDrivesVirtualPath(t *testing.T) {
+	t.Parallel()
+
+	c, err := connparse.ParseURI("wsh://local//__wave_windows_drives__")
+	if err != nil {
+		t.Fatalf("failed to parse URI: %v", err)
+	}
+	if c.Path != "/__wave_windows_drives__" {
+		t.Fatalf("expected virtual drives path, got %q", c.Path)
+	}
+}
+
 func TestParseURI_WSHRemoteShorthand(t *testing.T) {
 	t.Parallel()
 

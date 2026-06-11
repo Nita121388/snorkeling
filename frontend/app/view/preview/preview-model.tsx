@@ -58,6 +58,7 @@ import {
     summarizePreviewDraftContent,
     summarizePreviewSharedDraftRecord,
 } from "./preview-shared-draft";
+import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
 
 // TODO drive this using config
@@ -526,6 +527,7 @@ export class PreviewModel implements ViewModel {
                     headerPath = `~ (${loadableFileInfo.data?.dir + "/" + loadableFileInfo.data?.name})`;
                 }
             }
+            headerPath = getPreviewDisplayPath(headerPath);
             if (!isBlank(headerPath) && headerPath != "/" && headerPath.endsWith("/")) {
                 headerPath = headerPath.slice(0, -1);
             }
@@ -675,7 +677,7 @@ export class PreviewModel implements ViewModel {
             }
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const metaPath = get(this.metaFilePath);
-            if (mimeType == "directory" && metaPath == "/") {
+            if (mimeType == "directory" && (metaPath == "/" || isWindowsDrivesPath(metaPath))) {
                 return null;
             }
             return {
