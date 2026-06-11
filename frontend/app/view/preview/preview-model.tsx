@@ -51,8 +51,12 @@ import {
     getPreviewSharedDraftRecord,
     makePreviewDraftKey,
     migratePreviewSharedDraftRecord,
+    previewSharedDraftDebugLog,
     previewSharedDraftRecordsVersion,
+    publishPreviewSharedDraftToStorage,
     registerPreviewSharedDraftEditor,
+    summarizePreviewDraftContent,
+    summarizePreviewSharedDraftRecord,
 } from "./preview-shared-draft";
 import type { PreviewEnv } from "./previewenv";
 
@@ -795,27 +799,80 @@ export class PreviewModel implements ViewModel {
         });
         this.fileMimeTypeLoadable = loadable(this.fileMimeType);
         this.fileEditKey = atom((get) => {
-            return makePreviewDraftKey(get(this.connectionImmediate), get(this.metaFilePath));
+            const connection = get(this.connectionImmediate);
+            const metaFilePath = get(this.metaFilePath);
+            const fileKey = makePreviewDraftKey(connection, metaFilePath);
+            previewSharedDraftDebugLog("model:file-key", {
+                blockId: this.blockId,
+                connection,
+                metaFilePath,
+                fileKey,
+            });
+            return fileKey;
         });
         this.newFileContent = atom(
             (get) => {
                 get(previewSharedDraftRecordsVersion);
-                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
+                const fileKey = get(this.fileEditKey);
+                const record = getPreviewSharedDraftRecord(fileKey);
                 if (record == null) {
+                    previewSharedDraftDebugLog("model:new-file-content:read-miss", {
+                        blockId: this.blockId,
+                        fileKey,
+                    });
                     return null;
                 }
-                return get(record.stateAtom).draftContent;
+                const state = get(record.stateAtom);
+                previewSharedDraftDebugLog("model:new-file-content:read", {
+                    blockId: this.blockId,
+                    fileKey,
+                    revision: state.revision,
+                    draftContent: summarizePreviewDraftContent(state.draftContent),
+                    savedContent: summarizePreviewDraftContent(state.savedContent),
+                    editorRefs: record.editorRefs.size,
+                });
+                return state.draftContent;
             },
             (get, set, update: string | null) => {
-                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
+                const fileKey = get(this.fileEditKey);
+                const record = getOrCreatePreviewSharedDraftRecord(fileKey, set);
                 if (record == null) {
+                    previewSharedDraftDebugLog("model:new-file-content:write-skip", {
+                        blockId: this.blockId,
+                        fileKey,
+                        update: summarizePreviewDraftContent(update),
+                    });
                     return;
                 }
                 set(record.stateAtom, (prev) => {
                     const draftContent = update === prev.savedContent ? null : update;
                     if (prev.draftContent === draftContent) {
+                        previewSharedDraftDebugLog("model:new-file-content:write-noop", {
+                            blockId: this.blockId,
+                            fileKey,
+                            update: summarizePreviewDraftContent(update),
+                            savedContent: summarizePreviewDraftContent(prev.savedContent),
+                            revision: prev.revision,
+                        });
                         return prev;
                     }
+                    previewSharedDraftDebugLog("model:new-file-content:write", {
+                        blockId: this.blockId,
+                        fileKey,
+                        update: summarizePreviewDraftContent(update),
+                        previousDraftContent: summarizePreviewDraftContent(prev.draftContent),
+                        savedContent: summarizePreviewDraftContent(prev.savedContent),
+                        nextDraftContent: summarizePreviewDraftContent(draftContent),
+                        nextRevision: prev.revision + 1,
+                    });
+                    publishPreviewSharedDraftToStorage(
+                        fileKey,
+                        {
+                            draftContent,
+                            savedContent: prev.savedContent,
+                        },
+                        "new-file-content"
+                    );
                     return {
                         ...prev,
                         draftContent,
@@ -852,21 +909,53 @@ export class PreviewModel implements ViewModel {
         this.fileContentSaved = atom(
             (get) => {
                 get(previewSharedDraftRecordsVersion);
-                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
+                const fileKey = get(this.fileEditKey);
+                const record = getPreviewSharedDraftRecord(fileKey);
                 if (record == null) {
+                    previewSharedDraftDebugLog("model:file-content-saved:read-miss", {
+                        blockId: this.blockId,
+                        fileKey,
+                    });
                     return null;
                 }
-                return get(record.stateAtom).savedContent;
+                const state = get(record.stateAtom);
+                previewSharedDraftDebugLog("model:file-content-saved:read", {
+                    blockId: this.blockId,
+                    fileKey,
+                    revision: state.revision,
+                    savedContent: summarizePreviewDraftContent(state.savedContent),
+                    editorRefs: record.editorRefs.size,
+                });
+                return state.savedContent;
             },
             (get, set, update: string | null) => {
-                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
+                const fileKey = get(this.fileEditKey);
+                const record = getOrCreatePreviewSharedDraftRecord(fileKey, set);
                 if (record == null) {
+                    previewSharedDraftDebugLog("model:file-content-saved:write-skip", {
+                        blockId: this.blockId,
+                        fileKey,
+                        update: summarizePreviewDraftContent(update),
+                    });
                     return;
                 }
                 set(record.stateAtom, (prev) => {
                     if (prev.savedContent === update) {
+                        previewSharedDraftDebugLog("model:file-content-saved:write-noop", {
+                            blockId: this.blockId,
+                            fileKey,
+                            update: summarizePreviewDraftContent(update),
+                            revision: prev.revision,
+                        });
                         return prev;
                     }
+                    previewSharedDraftDebugLog("model:file-content-saved:write", {
+                        blockId: this.blockId,
+                        fileKey,
+                        previousSavedContent: summarizePreviewDraftContent(prev.savedContent),
+                        nextSavedContent: summarizePreviewDraftContent(update),
+                        revision: prev.revision,
+                    });
                     return {
                         ...prev,
                         savedContent: update,
@@ -877,28 +966,70 @@ export class PreviewModel implements ViewModel {
         const fileContentAtom = atom(
             async (get) => {
                 get(previewSharedDraftRecordsVersion);
-                const record = getPreviewSharedDraftRecord(get(this.fileEditKey));
+                const fileKey = get(this.fileEditKey);
+                const record = getPreviewSharedDraftRecord(fileKey);
                 if (record != null) {
                     const state = get(record.stateAtom);
                     if (state.draftContent != null) {
+                        previewSharedDraftDebugLog("model:file-content:read-draft", {
+                            blockId: this.blockId,
+                            fileKey,
+                            revision: state.revision,
+                            draftContent: summarizePreviewDraftContent(state.draftContent),
+                            savedContent: summarizePreviewDraftContent(state.savedContent),
+                            editorRefs: record.editorRefs.size,
+                        });
                         return state.draftContent;
                     }
                     if (state.savedContent != null) {
+                        previewSharedDraftDebugLog("model:file-content:read-saved", {
+                            blockId: this.blockId,
+                            fileKey,
+                            revision: state.revision,
+                            savedContent: summarizePreviewDraftContent(state.savedContent),
+                            editorRefs: record.editorRefs.size,
+                        });
                         return state.savedContent;
                     }
                 }
                 const fullFile = await get(fullFileAtom);
-                return base64ToString(fullFile?.data64);
+                const diskContent = base64ToString(fullFile?.data64);
+                previewSharedDraftDebugLog("model:file-content:read-disk", {
+                    blockId: this.blockId,
+                    fileKey,
+                    diskContent: summarizePreviewDraftContent(diskContent),
+                    record: summarizePreviewSharedDraftRecord(record),
+                });
+                return diskContent;
             },
             (get, set, update: string) => {
-                const record = getOrCreatePreviewSharedDraftRecord(get(this.fileEditKey), set);
+                const fileKey = get(this.fileEditKey);
+                const record = getOrCreatePreviewSharedDraftRecord(fileKey, set);
                 if (record == null) {
+                    previewSharedDraftDebugLog("model:file-content:write-skip", {
+                        blockId: this.blockId,
+                        fileKey,
+                        update: summarizePreviewDraftContent(update),
+                    });
                     return;
                 }
                 set(record.stateAtom, (prev) => {
                     if (prev.savedContent === update) {
+                        previewSharedDraftDebugLog("model:file-content:write-noop", {
+                            blockId: this.blockId,
+                            fileKey,
+                            update: summarizePreviewDraftContent(update),
+                            revision: prev.revision,
+                        });
                         return prev;
                     }
+                    previewSharedDraftDebugLog("model:file-content:write", {
+                        blockId: this.blockId,
+                        fileKey,
+                        previousSavedContent: summarizePreviewDraftContent(prev.savedContent),
+                        nextSavedContent: summarizePreviewDraftContent(update),
+                        revision: prev.revision,
+                    });
                     return {
                         ...prev,
                         savedContent: update,
@@ -1053,10 +1184,28 @@ export class PreviewModel implements ViewModel {
 
     registerFileEditKey(fileKey: string | null): () => void {
         const editorRef = `${this.blockId}:${Date.now()}:${Math.random()}`;
-        return registerPreviewSharedDraftEditor(fileKey, editorRef);
+        previewSharedDraftDebugLog("model:register-file-key", {
+            blockId: this.blockId,
+            fileKey,
+            editorRef,
+        });
+        const unregister = registerPreviewSharedDraftEditor(fileKey, editorRef);
+        return () => {
+            previewSharedDraftDebugLog("model:unregister-file-key", {
+                blockId: this.blockId,
+                fileKey,
+                editorRef,
+            });
+            unregister();
+        };
     }
 
     migrateFileEditKey(previousFileKey: string | null, nextFileKey: string | null): void {
+        previewSharedDraftDebugLog("model:migrate-file-key", {
+            blockId: this.blockId,
+            previousFileKey,
+            nextFileKey,
+        });
         migratePreviewSharedDraftRecord(previousFileKey, nextFileKey);
     }
 
@@ -1454,8 +1603,20 @@ export class PreviewModel implements ViewModel {
         const record = getPreviewSharedDraftRecord(fileKey);
         const stateBeforeSave = record == null ? null : globalStore.get(record.stateAtom);
         const newFileContent = stateBeforeSave?.draftContent;
+        previewSharedDraftDebugLog("model:save:start", {
+            blockId: this.blockId,
+            filePath,
+            fileKey,
+            record: summarizePreviewSharedDraftRecord(record),
+        });
         if (record == null || newFileContent == null) {
             console.log("not saving file, newFileContent is null");
+            previewSharedDraftDebugLog("model:save:skip", {
+                blockId: this.blockId,
+                filePath,
+                fileKey,
+                reason: record == null ? "missing-record" : "missing-draft",
+            });
             return;
         }
         const savingRevision = stateBeforeSave.revision;
@@ -1468,24 +1629,60 @@ export class PreviewModel implements ViewModel {
             });
             globalStore.set(record.stateAtom, (prev) => {
                 if (prev.revision === savingRevision && prev.draftContent === newFileContent) {
+                    previewSharedDraftDebugLog("model:save:clear-current-draft", {
+                        blockId: this.blockId,
+                        filePath,
+                        fileKey,
+                        savingRevision,
+                        savedContent: summarizePreviewDraftContent(newFileContent),
+                    });
+                    publishPreviewSharedDraftToStorage(
+                        fileKey,
+                        {
+                            draftContent: null,
+                            savedContent: newFileContent,
+                        },
+                        "save-clear-current-draft"
+                    );
                     return {
                         ...prev,
                         draftContent: null,
                         savedContent: newFileContent,
                     };
                 }
+                previewSharedDraftDebugLog("model:save:preserve-newer-draft", {
+                    blockId: this.blockId,
+                    filePath,
+                    fileKey,
+                    savingRevision,
+                    currentRevision: prev.revision,
+                    savedContent: summarizePreviewDraftContent(newFileContent),
+                    currentDraftContent: summarizePreviewDraftContent(prev.draftContent),
+                });
                 return {
                     ...prev,
                     savedContent: newFileContent,
                 };
             });
             console.log("saved file", filePath);
+            previewSharedDraftDebugLog("model:save:done", {
+                blockId: this.blockId,
+                filePath,
+                fileKey,
+                record: summarizePreviewSharedDraftRecord(record),
+            });
         } catch (e) {
             const errorStatus: ErrorMsg = {
                 status: "Save Failed",
                 text: `${e}`,
             };
             globalStore.set(this.errorMsgAtom, errorStatus);
+            previewSharedDraftDebugLog("model:save:error", {
+                blockId: this.blockId,
+                filePath,
+                fileKey,
+                error: `${e}`,
+            });
         }
     }
 
@@ -1540,6 +1737,21 @@ export class PreviewModel implements ViewModel {
             const fileContent = await this.readCurrentFileContentFromDisk(filePath);
             const record = getOrCreatePreviewSharedDraftRecord(globalStore.get(this.fileEditKey));
             if (record != null) {
+                previewSharedDraftDebugLog("model:revert", {
+                    blockId: this.blockId,
+                    filePath,
+                    fileKey: globalStore.get(this.fileEditKey),
+                    diskContent: summarizePreviewDraftContent(fileContent),
+                    previousRecord: summarizePreviewSharedDraftRecord(record),
+                });
+                publishPreviewSharedDraftToStorage(
+                    globalStore.get(this.fileEditKey),
+                    {
+                        draftContent: null,
+                        savedContent: fileContent,
+                    },
+                    "revert"
+                );
                 globalStore.set(record.stateAtom, (prev) => ({
                     ...prev,
                     draftContent: null,
@@ -1619,12 +1831,29 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
-        const record = getPreviewSharedDraftRecord(globalStore.get(this.fileEditKey));
+        const fileKey = globalStore.get(this.fileEditKey);
+        const record = getPreviewSharedDraftRecord(fileKey);
+        previewSharedDraftDebugLog("model:refresh", {
+            blockId: this.blockId,
+            fileKey,
+            record: summarizePreviewSharedDraftRecord(record),
+        });
         if (record != null) {
             globalStore.set(record.stateAtom, (prev) => {
                 if (prev.savedContent == null) {
+                    previewSharedDraftDebugLog("model:refresh:no-saved-content", {
+                        blockId: this.blockId,
+                        fileKey,
+                        revision: prev.revision,
+                    });
                     return prev;
                 }
+                previewSharedDraftDebugLog("model:refresh:clear-saved-content", {
+                    blockId: this.blockId,
+                    fileKey,
+                    revision: prev.revision,
+                    savedContent: summarizePreviewDraftContent(prev.savedContent),
+                });
                 return {
                     ...prev,
                     savedContent: null,

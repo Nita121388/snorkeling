@@ -45,6 +45,7 @@ import * as monaco from "monaco-editor";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
 import "./preview-edit.scss";
+import { previewSharedDraftDebugLog, summarizePreviewDraftContent } from "./preview-shared-draft";
 
 const dlog = debug("wave:preview:edit-search");
 dlog.enabled = true;
@@ -321,6 +322,7 @@ function restoreEditorMarkdownFoldSnapshot(
 function CodeEditPreview({ model }: SpecializedViewProps) {
     const fileContent = useAtomValue(model.fileContent);
     const setNewFileContent = useSetAtom(model.newFileContent);
+    const newFileContent = useAtomValue(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
     const fileEditKey = useAtomValue(model.fileEditKey);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
@@ -356,10 +358,26 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const markdownMoveActionsEnabled = markdownListActionsEnabled || markdownHeadingActionsEnabled;
 
     useLayoutEffect(() => {
+        previewSharedDraftDebugLog("edit:register-layout-effect", {
+            blockId: model.blockId,
+            previousFileEditKey: previousFileEditKeyRef.current,
+            fileEditKey,
+        });
         model.migrateFileEditKey(previousFileEditKeyRef.current, fileEditKey);
         previousFileEditKeyRef.current = fileEditKey;
         return model.registerFileEditKey(fileEditKey);
     }, [fileEditKey, model]);
+
+    useEffect(() => {
+        previewSharedDraftDebugLog("edit:render-state", {
+            blockId: model.blockId,
+            fileEditKey,
+            fileName,
+            readonly: fileInfo?.readonly,
+            fileContent: summarizePreviewDraftContent(fileContent),
+            newFileContent: summarizePreviewDraftContent(newFileContent),
+        });
+    }, [fileContent, fileEditKey, fileInfo?.readonly, fileName, model.blockId, newFileContent]);
 
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
@@ -1151,7 +1169,15 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 fileName={fileName}
                 language={language}
                 readonly={fileInfo.readonly}
-                onChange={(text) => setNewFileContent(text)}
+                onChange={(text) => {
+                    previewSharedDraftDebugLog("edit:on-change", {
+                        blockId: model.blockId,
+                        fileEditKey,
+                        fileName,
+                        text: summarizePreviewDraftContent(text),
+                    });
+                    setNewFileContent(text);
+                }}
                 onMount={onMount}
             />
             <Search {...searchProps} />

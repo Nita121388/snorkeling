@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearPreviewSharedDraftRecordsForTest,
     getOrCreatePreviewSharedDraftRecord,
@@ -10,12 +10,17 @@ import {
     makePreviewDraftKey,
     migratePreviewSharedDraftRecord,
     normalizePreviewDraftPath,
+    publishPreviewSharedDraftToStorage,
     registerPreviewSharedDraftEditor,
 } from "./preview-shared-draft";
 
 describe("preview shared draft", () => {
     beforeEach(() => {
         clearPreviewSharedDraftRecordsForTest();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it("normalizes draft paths and keys", () => {
@@ -95,6 +100,85 @@ describe("preview shared draft", () => {
         expect(globalStore.get(canonicalRecord.stateAtom)).toMatchObject({
             draftContent: "destination draft",
             savedContent: "destination saved",
+        });
+    });
+
+    it("restores a draft from shared storage when another tab registers the same file", () => {
+        const storage = new Map<string, string>();
+        vi.stubGlobal("window", {
+            localStorage: {
+                getItem: (key: string) => storage.get(key) ?? null,
+                setItem: (key: string, value: string) => {
+                    storage.set(key, value);
+                },
+                removeItem: (key: string) => {
+                    storage.delete(key);
+                },
+            },
+            addEventListener: vi.fn(),
+        });
+        const key = makePreviewDraftKey("local", "/tmp/note.md");
+
+        publishPreviewSharedDraftToStorage(
+            key,
+            {
+                draftContent: "draft from another tab",
+                savedContent: "saved baseline",
+            },
+            "test"
+        );
+        clearPreviewSharedDraftRecordsForTest();
+
+        registerPreviewSharedDraftEditor(key, "editor-2");
+
+        const record = getPreviewSharedDraftRecord(key);
+        expect(record).not.toBeNull();
+        expect(globalStore.get(record!.stateAtom)).toMatchObject({
+            draftContent: "draft from another tab",
+            savedContent: "saved baseline",
+        });
+    });
+
+    it("does not keep a persisted draft after publishing a clear state", () => {
+        const storage = new Map<string, string>();
+        vi.stubGlobal("window", {
+            localStorage: {
+                getItem: (key: string) => storage.get(key) ?? null,
+                setItem: (key: string, value: string) => {
+                    storage.set(key, value);
+                },
+                removeItem: (key: string) => {
+                    storage.delete(key);
+                },
+            },
+            addEventListener: vi.fn(),
+        });
+        const key = makePreviewDraftKey("local", "/tmp/note.md");
+
+        publishPreviewSharedDraftToStorage(
+            key,
+            {
+                draftContent: "draft from another tab",
+                savedContent: "saved baseline",
+            },
+            "test"
+        );
+        publishPreviewSharedDraftToStorage(
+            key,
+            {
+                draftContent: null,
+                savedContent: "saved baseline",
+            },
+            "test-clear"
+        );
+        clearPreviewSharedDraftRecordsForTest();
+
+        registerPreviewSharedDraftEditor(key, "editor-2");
+
+        expect(getPreviewSharedDraftRecord(key)).not.toBeNull();
+        expect(globalStore.get(getPreviewSharedDraftRecord(key)!.stateAtom)).toMatchObject({
+            draftContent: null,
+            savedContent: null,
         });
     });
 });
