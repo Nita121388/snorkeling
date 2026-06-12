@@ -4,10 +4,10 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
-import { MessageCard } from "./session-message";
+import { HighlightedMessageText, MessageCard } from "./session-message";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
@@ -35,12 +35,25 @@ export type SessionDetailController = {
     toggleMark: (session: SessionSummary) => Promise<void>;
 };
 
+function normalizedSearchQuery(query: string): string {
+    return query.trim().toLowerCase();
+}
+
 function outlineTooltipText(message: Message): string {
     const text = trimMessageText(message.text).trim();
     if (text.length <= OutlineTooltipPreviewLength) {
         return text || "(empty)";
     }
     return `${text.slice(0, OutlineTooltipPreviewLength).trimEnd()}\n...`;
+}
+
+function userMessageResultText(message: Message, query: string): string {
+    const preview = outlineTooltipText(message);
+    const normalizedQuery = normalizedSearchQuery(query);
+    if (normalizedQuery === "" || preview.toLowerCase().includes(normalizedQuery)) {
+        return preview;
+    }
+    return message.text.trim() || "(empty)";
 }
 
 function toolCallDetailText(toolCall: ToolCall): string {
@@ -57,6 +70,17 @@ function trimToolCallText(text: string): string {
     const trimmed = text.trim();
     if (trimmed.length <= ToolCallPreviewLength) return trimmed;
     return `${trimmed.slice(0, ToolCallPreviewLength).trimEnd()}\n...`;
+}
+
+function messageMatchesSearch(message: Message, query: string): boolean {
+    const normalizedQuery = normalizedSearchQuery(query);
+    if (normalizedQuery === "") return false;
+    return message.text.toLowerCase().includes(normalizedQuery);
+}
+
+function messageSearchIndex(messages: Message[], seq: number | null): number {
+    if (seq == null) return -1;
+    return messages.findIndex((message) => message.seq === seq);
 }
 
 function ToolCallCard({
@@ -143,6 +167,9 @@ export function SessionDetailPane({
     const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
     const [collapsedMessages, setCollapsedMessages] = useState<Record<number, boolean>>({});
     const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
+    const [detailSearchQuery, setDetailSearchQuery] = useState("");
+    const [activeSearchSeq, setActiveSearchSeq] = useState<number | null>(null);
+    const [userMessageSearchQuery, setUserMessageSearchQuery] = useState("");
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
@@ -178,6 +205,9 @@ export function SessionDetailPane({
         setShowToolCalls(false);
         setVisibleMessageCount(defaultVisibleMessageCount);
         setUserMessageListOpen(false);
+        setDetailSearchQuery("");
+        setActiveSearchSeq(null);
+        setUserMessageSearchQuery("");
     }, [detail?.summary?.key]);
 
     const readableMessages = useMemo(
@@ -195,6 +225,23 @@ export function SessionDetailPane({
     const outlineMessages = useMemo(
         () => readableMessages.filter((message) => message.role === "user"),
         [readableMessages]
+    );
+    const detailSearchMatches = useMemo(
+        () => readableMessages.filter((message) => messageMatchesSearch(message, detailSearchQuery)),
+        [detailSearchQuery, readableMessages]
+    );
+    const activeSearchIndex = useMemo(
+        () => messageSearchIndex(detailSearchMatches, activeSearchSeq),
+        [activeSearchSeq, detailSearchMatches]
+    );
+    const filteredUserMessages = useMemo(
+        () =>
+            outlineMessages.filter(
+                (message) =>
+                    normalizedSearchQuery(userMessageSearchQuery) === "" ||
+                    messageMatchesSearch(message, userMessageSearchQuery)
+            ),
+        [outlineMessages, userMessageSearchQuery]
     );
     const toolCalls = detail?.toolCalls ?? [];
     const toolsLoaded = detail?.toolCalls != null;
@@ -251,6 +298,47 @@ export function SessionDetailPane({
         [readableMessages, scrollToVisibleMessage]
     );
 
+    const jumpToSearchMatch = useCallback(
+        (nextIndex: number) => {
+            if (detailSearchMatches.length === 0) {
+                setActiveSearchSeq(null);
+                return;
+            }
+            const normalizedIndex = (nextIndex + detailSearchMatches.length) % detailSearchMatches.length;
+            const match = detailSearchMatches[normalizedIndex];
+            setActiveSearchSeq(match.seq);
+            setCollapsedMessages((current) => {
+                if (!current[match.seq]) return current;
+                const next = { ...current };
+                delete next[match.seq];
+                return next;
+            });
+            jumpToMessage(match.seq);
+        },
+        [detailSearchMatches, jumpToMessage]
+    );
+
+    const jumpToNextSearchMatch = useCallback(() => {
+        jumpToSearchMatch(activeSearchIndex < 0 ? 0 : activeSearchIndex + 1);
+    }, [activeSearchIndex, jumpToSearchMatch]);
+
+    const jumpToPreviousSearchMatch = useCallback(() => {
+        jumpToSearchMatch(activeSearchIndex < 0 ? detailSearchMatches.length - 1 : activeSearchIndex - 1);
+    }, [activeSearchIndex, detailSearchMatches.length, jumpToSearchMatch]);
+
+    const handleDetailSearchKeyDown = useCallback(
+        (event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key !== "Enter" || detailSearchMatches.length === 0) return;
+            event.preventDefault();
+            if (event.shiftKey) {
+                jumpToPreviousSearchMatch();
+                return;
+            }
+            jumpToNextSearchMatch();
+        },
+        [detailSearchMatches.length, jumpToNextSearchMatch, jumpToPreviousSearchMatch]
+    );
+
     const openUserMessage = useCallback(
         (seq: number) => {
             setUserMessageListOpen(false);
@@ -265,6 +353,17 @@ export function SessionDetailPane({
         pendingJumpSeqRef.current = null;
         window.requestAnimationFrame(() => scrollToVisibleMessage(pendingSeq));
     }, [detailMessages, scrollToVisibleMessage]);
+
+    useEffect(() => {
+        if (normalizedSearchQuery(detailSearchQuery) === "" || detailSearchMatches.length === 0) {
+            setActiveSearchSeq(null);
+            return;
+        }
+        if (detailSearchMatches.some((message) => message.seq === activeSearchSeq)) {
+            return;
+        }
+        setActiveSearchSeq(detailSearchMatches[0].seq);
+    }, [activeSearchSeq, detailSearchMatches, detailSearchQuery]);
 
     useEffect(() => {
         if (noteSaveStatus !== "saved" && noteSaveStatus !== "error") return;
@@ -517,6 +616,53 @@ export function SessionDetailPane({
                             <EmptyState text="No readable messages." />
                         ) : (
                             <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg/40 px-2 py-2 text-xs">
+                                    <div className="relative min-w-[220px] flex-1">
+                                        <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
+                                        <input
+                                            className="h-7 w-full rounded border border-border bg-panel pl-7 pr-7 text-xs text-primary outline-none focus:border-accent"
+                                            placeholder="Search session detail"
+                                            value={detailSearchQuery}
+                                            onChange={(event) => setDetailSearchQuery(event.target.value)}
+                                            onKeyDown={handleDetailSearchKeyDown}
+                                        />
+                                        {detailSearchQuery ? (
+                                            <button
+                                                type="button"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary hover:text-primary"
+                                                title="Clear search"
+                                                aria-label="Clear search"
+                                                onClick={() => {
+                                                    setDetailSearchQuery("");
+                                                    setActiveSearchSeq(null);
+                                                }}
+                                            >
+                                                <i className="fa-sharp fa-solid fa-xmark" />
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    <div className="shrink-0 text-[11px] text-secondary">
+                                        {normalizedSearchQuery(detailSearchQuery) === ""
+                                            ? `Searches all ${readableMessages.length} messages`
+                                            : detailSearchMatches.length === 0
+                                              ? "No matches"
+                                              : `${activeSearchIndex + 1} / ${detailSearchMatches.length}`}
+                                    </div>
+                                    <IconButton
+                                        icon="fa-chevron-up"
+                                        label="Previous search match"
+                                        size="xs"
+                                        disabled={detailSearchMatches.length === 0}
+                                        onClick={jumpToPreviousSearchMatch}
+                                    />
+                                    <IconButton
+                                        icon="fa-chevron-down"
+                                        label="Next search match"
+                                        size="xs"
+                                        disabled={detailSearchMatches.length === 0}
+                                        onClick={jumpToNextSearchMatch}
+                                    />
+                                </div>
                                 <div className="flex items-center justify-between gap-2 text-xs text-secondary">
                                     <div>
                                         Showing #{firstVisibleMessage?.seq ?? 0}-#{lastVisibleMessage?.seq ?? 0} of{" "}
@@ -550,6 +696,8 @@ export function SessionDetailPane({
                                             message={item.message}
                                             collapsed={Boolean(collapsedMessages[item.message.seq])}
                                             onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
+                                            searchQuery={detailSearchQuery}
+                                            searchActive={item.message.seq === activeSearchSeq}
                                             registerRef={(node) => {
                                                 messageRefs.current[item.message.seq] = node;
                                             }}
@@ -659,17 +807,40 @@ export function SessionDetailPane({
                             <div className="min-w-0">
                                 <div className="text-base font-medium">User Messages</div>
                                 <div className="mt-1 text-xs text-secondary">
-                                    {outlineMessages.length} message{outlineMessages.length === 1 ? "" : "s"} in this
-                                    session
+                                    {normalizedSearchQuery(userMessageSearchQuery) === ""
+                                        ? `${outlineMessages.length} message${outlineMessages.length === 1 ? "" : "s"} in this session`
+                                        : `${filteredUserMessages.length} of ${outlineMessages.length} user messages`}
                                 </div>
                             </div>
+                        </div>
+                        <div className="relative">
+                            <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
+                            <input
+                                className="h-8 w-full rounded border border-border bg-bg pl-7 pr-7 text-xs text-primary outline-none focus:border-accent"
+                                placeholder="Search user messages"
+                                value={userMessageSearchQuery}
+                                onChange={(event) => setUserMessageSearchQuery(event.target.value)}
+                            />
+                            {userMessageSearchQuery ? (
+                                <button
+                                    type="button"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary hover:text-primary"
+                                    title="Clear user message search"
+                                    aria-label="Clear user message search"
+                                    onClick={() => setUserMessageSearchQuery("")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-xmark" />
+                                </button>
+                            ) : null}
                         </div>
                         <div className="min-h-0 flex-1 overflow-auto rounded border border-border bg-bg/40 p-2">
                             {outlineMessages.length === 0 ? (
                                 <div className="px-2 py-3 text-xs text-secondary">No user messages.</div>
+                            ) : filteredUserMessages.length === 0 ? (
+                                <div className="px-2 py-3 text-xs text-secondary">No matching user messages.</div>
                             ) : (
                                 <div className="space-y-2">
-                                    {outlineMessages.map((message, index) => (
+                                    {filteredUserMessages.map((message, index) => (
                                         <div
                                             key={message.seq}
                                             className="flex w-full items-start gap-3 rounded border border-border bg-panel px-3 py-2 text-xs hover:bg-hover"
@@ -689,7 +860,14 @@ export function SessionDetailPane({
                                                         ) : null}
                                                     </span>
                                                     <span className="block whitespace-pre-wrap break-words text-primary">
-                                                        {outlineTooltipText(message)}
+                                                        <HighlightedMessageText
+                                                            text={userMessageResultText(
+                                                                message,
+                                                                userMessageSearchQuery
+                                                            )}
+                                                            searchQuery={userMessageSearchQuery}
+                                                            active
+                                                        />
                                                     </span>
                                                 </span>
                                             </button>

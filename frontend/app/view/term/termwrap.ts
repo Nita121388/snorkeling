@@ -121,6 +121,7 @@ export class TermWrap {
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
     onSelectionTextChange?: (selectionText: string | null) => void;
+    lastResizeDebugTs: number = 0;
 
     // Paste deduplication
     // xterm.js paste() method triggers onData event, which can cause duplicate sends
@@ -614,11 +615,36 @@ export class TermWrap {
     }
 
     handleResize() {
+        const startTs = performance.now();
+        const prevResizeDebugTs = this.lastResizeDebugTs;
+        this.lastResizeDebugTs = startTs;
+        const containerRect = this.connectElem.getBoundingClientRect();
         const oldRows = this.terminal.rows;
         const oldCols = this.terminal.cols;
         this.fitAddon.fit();
-        if (oldRows !== this.terminal.rows || oldCols !== this.terminal.cols) {
-            const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
+        const didChangeTermSize = oldRows !== this.terminal.rows || oldCols !== this.terminal.cols;
+        const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
+        console.log("[termwrap-resize-debug]", {
+            blockId: this.blockId,
+            nodeId: this.nodeModel?.nodeId,
+            renderer: this.getTermRenderer(),
+            containerSize: {
+                width: Math.round(containerRect.width),
+                height: Math.round(containerRect.height),
+            },
+            oldSize: {
+                rows: oldRows,
+                cols: oldCols,
+            },
+            newSize: termSize,
+            didChangeTermSize,
+            hasResized: this.hasResized,
+            elapsedMs: Math.round((performance.now() - startTs) * 100) / 100,
+            sinceLastResizeMs:
+                prevResizeDebugTs === 0 ? null : Math.round((startTs - prevResizeDebugTs) * 100) / 100,
+            isFocused: document.activeElement != null && this.connectElem.contains(document.activeElement),
+        });
+        if (didChangeTermSize) {
             console.log("[termwrap] resize", {
                 blockId: this.blockId,
                 nodeId: this.nodeModel?.nodeId,
