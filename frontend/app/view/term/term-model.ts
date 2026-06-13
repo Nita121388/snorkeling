@@ -1111,7 +1111,8 @@ export class TermViewModel implements ViewModel {
                 {
                     label: "Open Session Detail",
                     click: () => {
-                        fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId));
+                        const connection = typeof meta.connection === "string" ? meta.connection : "";
+                        fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId, connection));
                     },
                 },
                 agentFolderMenuItem,

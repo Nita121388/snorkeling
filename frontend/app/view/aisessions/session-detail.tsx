@@ -24,10 +24,13 @@ import {
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const OutlineTooltipPreviewLength = 1800;
 const ToolCallPreviewLength = 1200;
+const UserLinesPageSize = 8;
+const UserLinesSearchLimit = 50;
 
 export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
     loadDetailTools: (refresh?: boolean) => Promise<void>;
+    loadUserLines: (session: SessionSummary, request?: Partial<AISessionsUserLinesRequest>) => Promise<UserLinesResult>;
     updateNote: (session: SessionSummary, note: string) => Promise<boolean>;
     deleteSession: (session: SessionSummary) => Promise<void>;
     restoreSession: (session: SessionSummary) => Promise<void>;
@@ -170,16 +173,27 @@ export function SessionDetailPane({
     const [detailSearchQuery, setDetailSearchQuery] = useState("");
     const [activeSearchSeq, setActiveSearchSeq] = useState<number | null>(null);
     const [userMessageSearchQuery, setUserMessageSearchQuery] = useState("");
+    const [userLines, setUserLines] = useState<Message[]>([]);
+    const [userLinesCount, setUserLinesCount] = useState(0);
+    const [userLinesHasMore, setUserLinesHasMore] = useState(false);
+    const [userLinesNextBeforeSeq, setUserLinesNextBeforeSeq] = useState(0);
+    const [userLinesLoading, setUserLinesLoading] = useState(false);
+    const [userLinesError, setUserLinesError] = useState("");
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
+    const userLinesRequestSeqRef = useRef(0);
+    const currentSummaryRef = useRef<SessionSummary | null>(null);
     const latestNoteDraftRef = useRef("");
     const summaryKeyRef = useRef<string | null>(null);
     const summaryNoteRef = useRef("");
     const summary = detail?.summary ?? null;
+    const summaryKey = summary?.key ?? "";
     const trimmedNoteDraft = noteDraft.trim();
     const noteUnchanged = trimmedNoteDraft === (summary?.note ?? "");
     const noteSaving = noteSaveStatus === "saving";
+
+    currentSummaryRef.current = summary;
 
     useEffect(() => {
         const nextKey = detail?.summary?.key ?? null;
@@ -208,6 +222,13 @@ export function SessionDetailPane({
         setDetailSearchQuery("");
         setActiveSearchSeq(null);
         setUserMessageSearchQuery("");
+        setUserLines([]);
+        setUserLinesCount(0);
+        setUserLinesHasMore(false);
+        setUserLinesNextBeforeSeq(0);
+        setUserLinesLoading(false);
+        setUserLinesError("");
+        userLinesRequestSeqRef.current++;
     }, [detail?.summary?.key]);
 
     const readableMessages = useMemo(
@@ -234,20 +255,20 @@ export function SessionDetailPane({
         () => messageSearchIndex(detailSearchMatches, activeSearchSeq),
         [activeSearchSeq, detailSearchMatches]
     );
-    const filteredUserMessages = useMemo(
-        () =>
-            outlineMessages.filter(
-                (message) =>
-                    normalizedSearchQuery(userMessageSearchQuery) === "" ||
-                    messageMatchesSearch(message, userMessageSearchQuery)
-            ),
-        [outlineMessages, userMessageSearchQuery]
-    );
+    const normalizedDetailSearchQuery = normalizedSearchQuery(detailSearchQuery);
     const toolCalls = detail?.toolCalls ?? [];
     const toolsLoaded = detail?.toolCalls != null;
     const hasPreviousMessages = visibleMessageCount < readableMessages.length;
     const firstVisibleMessage = detailMessages[0];
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
+    const detailSearchSummary =
+        normalizedDetailSearchQuery === ""
+            ? `${readableMessages.length} messages`
+            : detailSearchMatches.length === 0
+              ? "No matches"
+              : activeSearchIndex >= 0
+                ? `${activeSearchIndex + 1} / ${detailSearchMatches.length}`
+                : `${detailSearchMatches.length} match${detailSearchMatches.length === 1 ? "" : "es"}`;
 
     const scrollToVisibleMessage = useCallback((seq: number) => {
         const node = messageRefs.current[seq];
@@ -347,6 +368,56 @@ export function SessionDetailPane({
         [jumpToMessage]
     );
 
+    const loadUserLinesPage = useCallback(
+        async ({
+            beforeSeq = 0,
+            append = false,
+            query = userMessageSearchQuery,
+            refresh = false,
+        }: {
+            beforeSeq?: number;
+            append?: boolean;
+            query?: string;
+            refresh?: boolean;
+        } = {}) => {
+            const currentSummary = currentSummaryRef.current;
+            if (currentSummary == null) return;
+            const requestSeq = ++userLinesRequestSeqRef.current;
+            const normalizedQuery = normalizedSearchQuery(query);
+            setUserLinesLoading(true);
+            setUserLinesError("");
+            try {
+                const result = await model.loadUserLines(currentSummary, {
+                    beforeSeq,
+                    query: normalizedQuery,
+                    refresh,
+                    limit: normalizedQuery === "" ? UserLinesPageSize : UserLinesSearchLimit,
+                });
+                if (requestSeq !== userLinesRequestSeqRef.current) return;
+                setUserLines((current) => (append ? [...result.messages, ...current] : result.messages));
+                setUserLinesCount(result.userMessageCount);
+                setUserLinesHasMore(result.hasMore);
+                setUserLinesNextBeforeSeq(result.nextBeforeSeq ?? 0);
+            } catch (e) {
+                if (requestSeq !== userLinesRequestSeqRef.current) return;
+                setUserLinesError(e instanceof Error ? e.message : String(e));
+            } finally {
+                if (requestSeq === userLinesRequestSeqRef.current) {
+                    setUserLinesLoading(false);
+                }
+            }
+        },
+        [model, summaryKey, userMessageSearchQuery]
+    );
+
+    useEffect(() => {
+        if (!userMessageListOpen || summary == null) return;
+        const handle = window.setTimeout(() => {
+            void loadUserLinesPage({ query: userMessageSearchQuery });
+        }, 200);
+        return () => window.clearTimeout(handle);
+    }, [loadUserLinesPage, summaryKey, userMessageListOpen, userMessageSearchQuery]);
+
     useEffect(() => {
         const pendingSeq = pendingJumpSeqRef.current;
         if (pendingSeq == null || !messageRefs.current[pendingSeq]) return;
@@ -355,15 +426,14 @@ export function SessionDetailPane({
     }, [detailMessages, scrollToVisibleMessage]);
 
     useEffect(() => {
-        if (normalizedSearchQuery(detailSearchQuery) === "" || detailSearchMatches.length === 0) {
+        if (normalizedDetailSearchQuery === "" || detailSearchMatches.length === 0) {
             setActiveSearchSeq(null);
             return;
         }
-        if (detailSearchMatches.some((message) => message.seq === activeSearchSeq)) {
-            return;
+        if (activeSearchSeq != null && !detailSearchMatches.some((message) => message.seq === activeSearchSeq)) {
+            setActiveSearchSeq(null);
         }
-        setActiveSearchSeq(detailSearchMatches[0].seq);
-    }, [activeSearchSeq, detailSearchMatches, detailSearchQuery]);
+    }, [activeSearchSeq, detailSearchMatches, normalizedDetailSearchQuery]);
 
     useEffect(() => {
         if (noteSaveStatus !== "saved" && noteSaveStatus !== "error") return;
@@ -405,7 +475,7 @@ export function SessionDetailPane({
                   : "";
     return (
         <div className="relative flex h-full min-h-0 flex-col">
-            <div className="shrink-0 border-b border-border p-3">
+            <div className="shrink-0 p-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-2">
@@ -515,7 +585,7 @@ export function SessionDetailPane({
                             </div>
                         ) : null}
                         {!noteCollapsed ? (
-                            <div className="mt-2 space-y-2 rounded border border-border bg-bg/40 px-2 py-2">
+                            <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
                                 <textarea
                                     className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
                                     placeholder="Add a note"
@@ -611,108 +681,127 @@ export function SessionDetailPane({
             </div>
             <div className="relative min-h-0 flex-1">
                 <div className={cn("flex h-full min-h-0", outlineOpen && "pr-0")}>
-                    <div ref={detailScrollRef} className="min-h-0 flex-1 overflow-auto p-3">
-                        {detailMessages.length === 0 ? (
-                            <EmptyState text="No readable messages." />
-                        ) : (
-                            <div className="space-y-3">
-                                <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg/40 px-2 py-2 text-xs">
-                                    <div className="relative min-w-[220px] flex-1">
-                                        <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
-                                        <input
-                                            className="h-7 w-full rounded border border-border bg-panel pl-7 pr-7 text-xs text-primary outline-none focus:border-accent"
-                                            placeholder="Search session detail"
-                                            value={detailSearchQuery}
-                                            onChange={(event) => setDetailSearchQuery(event.target.value)}
-                                            onKeyDown={handleDetailSearchKeyDown}
-                                        />
-                                        {detailSearchQuery ? (
-                                            <button
-                                                type="button"
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary hover:text-primary"
-                                                title="Clear search"
-                                                aria-label="Clear search"
-                                                onClick={() => {
-                                                    setDetailSearchQuery("");
-                                                    setActiveSearchSeq(null);
-                                                }}
-                                            >
-                                                <i className="fa-sharp fa-solid fa-xmark" />
-                                            </button>
-                                        ) : null}
-                                    </div>
-                                    <div className="shrink-0 text-[11px] text-secondary">
-                                        {normalizedSearchQuery(detailSearchQuery) === ""
-                                            ? `Searches all ${readableMessages.length} messages`
-                                            : detailSearchMatches.length === 0
-                                              ? "No matches"
-                                              : `${activeSearchIndex + 1} / ${detailSearchMatches.length}`}
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="shrink-0 border-b border-border bg-panel px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <div className="relative min-w-[220px] flex-[1_1_280px]">
+                                    <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
+                                    <input
+                                        className="h-7 w-full rounded border border-border bg-panel pl-7 pr-7 text-xs text-primary outline-none focus:border-accent"
+                                        placeholder="Search session detail"
+                                        value={detailSearchQuery}
+                                        onChange={(event) => {
+                                            setDetailSearchQuery(event.target.value);
+                                            setActiveSearchSeq(null);
+                                        }}
+                                        onKeyDown={handleDetailSearchKeyDown}
+                                    />
+                                    {detailSearchQuery ? (
+                                        <button
+                                            type="button"
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary hover:text-primary"
+                                            title="Clear search"
+                                            aria-label="Clear search"
+                                            onClick={() => {
+                                                setDetailSearchQuery("");
+                                                setActiveSearchSeq(null);
+                                            }}
+                                        >
+                                            <i className="fa-sharp fa-solid fa-xmark" />
+                                        </button>
+                                    ) : null}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                    <div
+                                        className="min-w-[72px] text-center text-[11px] text-secondary"
+                                        aria-live="polite"
+                                    >
+                                        {detailSearchSummary}
                                     </div>
                                     <IconButton
                                         icon="fa-chevron-up"
                                         label="Previous search match"
-                                        size="xs"
                                         disabled={detailSearchMatches.length === 0}
                                         onClick={jumpToPreviousSearchMatch}
                                     />
                                     <IconButton
                                         icon="fa-chevron-down"
                                         label="Next search match"
-                                        size="xs"
                                         disabled={detailSearchMatches.length === 0}
                                         onClick={jumpToNextSearchMatch}
                                     />
                                 </div>
-                                <div className="flex items-center justify-between gap-2 text-xs text-secondary">
-                                    <div>
-                                        Showing #{firstVisibleMessage?.seq ?? 0}-#{lastVisibleMessage?.seq ?? 0} of{" "}
-                                        {readableMessages.length}
+                                <div className="ml-auto flex shrink-0 items-center gap-1">
+                                    <IconButton
+                                        icon="fa-window-restore"
+                                        label="Open user message list"
+                                        onClick={() => setUserMessageListOpen(true)}
+                                    />
+                                    <IconButton
+                                        icon={outlineOpen ? "fa-chevron-right" : "fa-list"}
+                                        label={outlineOpen ? "Collapse outline" : "Open outline"}
+                                        className={cn(outlineOpen && "border-accent bg-accent/10 text-accent")}
+                                        onClick={() => setOutlineOpen((current) => !current)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div ref={detailScrollRef} className="min-h-0 flex-1 overflow-auto p-3">
+                            {detailMessages.length === 0 ? (
+                                <EmptyState text="No readable messages." />
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between gap-2 text-xs text-secondary">
+                                        <div>
+                                            Showing #{firstVisibleMessage?.seq ?? 0}-#{lastVisibleMessage?.seq ?? 0} of{" "}
+                                            {readableMessages.length}
+                                        </div>
+                                        {hasPreviousMessages ? (
+                                            <button
+                                                className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                                onClick={loadPreviousMessages}
+                                            >
+                                                Load previous messages
+                                            </button>
+                                        ) : (
+                                            <div className="text-xxs uppercase text-secondary">Start reached</div>
+                                        )}
                                     </div>
-                                    {hasPreviousMessages ? (
-                                        <button
-                                            className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                            onClick={loadPreviousMessages}
-                                        >
-                                            Load previous messages
-                                        </button>
-                                    ) : (
-                                        <div className="text-xxs uppercase text-secondary">Start reached</div>
+                                    {showToolCalls && !toolsLoaded ? (
+                                        <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                            Loading tool calls...
+                                        </div>
+                                    ) : null}
+                                    {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
+                                        <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                            No tool calls.
+                                        </div>
+                                    ) : null}
+                                    {timelineItems.map((item) =>
+                                        item.kind === "message" ? (
+                                            <MessageCard
+                                                key={`message-${item.message.seq}`}
+                                                message={item.message}
+                                                collapsed={Boolean(collapsedMessages[item.message.seq])}
+                                                onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
+                                                searchQuery={detailSearchQuery}
+                                                searchActive={item.message.seq === activeSearchSeq}
+                                                registerRef={(node) => {
+                                                    messageRefs.current[item.message.seq] = node;
+                                                }}
+                                            />
+                                        ) : (
+                                            <ToolCallCard
+                                                key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
+                                                toolCall={item.toolCall}
+                                                expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
+                                                onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
+                                            />
+                                        )
                                     )}
                                 </div>
-                                {showToolCalls && !toolsLoaded ? (
-                                    <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                        Loading tool calls...
-                                    </div>
-                                ) : null}
-                                {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
-                                    <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                        No tool calls.
-                                    </div>
-                                ) : null}
-                                {timelineItems.map((item) =>
-                                    item.kind === "message" ? (
-                                        <MessageCard
-                                            key={`message-${item.message.seq}`}
-                                            message={item.message}
-                                            collapsed={Boolean(collapsedMessages[item.message.seq])}
-                                            onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
-                                            searchQuery={detailSearchQuery}
-                                            searchActive={item.message.seq === activeSearchSeq}
-                                            registerRef={(node) => {
-                                                messageRefs.current[item.message.seq] = node;
-                                            }}
-                                        />
-                                    ) : (
-                                        <ToolCallCard
-                                            key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
-                                            toolCall={item.toolCall}
-                                            expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
-                                            onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
-                                        />
-                                    )
-                                )}
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                     {outlineOpen ? (
                         <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
@@ -774,19 +863,7 @@ export function SessionDetailPane({
                                 )}
                             </div>
                         </aside>
-                    ) : (
-                        <button
-                            className="absolute right-3 top-3 z-10 flex h-10 items-center gap-2 rounded-full border border-border bg-panel px-3 text-xs text-primary shadow-lg hover:bg-hover"
-                            title="Outline"
-                            aria-label="Outline"
-                            onClick={() => setOutlineOpen(true)}
-                        >
-                            <i className="fa-sharp fa-solid fa-list" />
-                            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] text-accent">
-                                {outlineMessages.length}
-                            </span>
-                        </button>
-                    )}
+                    ) : null}
                 </div>
             </div>
             {loading ? (
@@ -808,8 +885,8 @@ export function SessionDetailPane({
                                 <div className="text-base font-medium">User Messages</div>
                                 <div className="mt-1 text-xs text-secondary">
                                     {normalizedSearchQuery(userMessageSearchQuery) === ""
-                                        ? `${outlineMessages.length} message${outlineMessages.length === 1 ? "" : "s"} in this session`
-                                        : `${filteredUserMessages.length} of ${outlineMessages.length} user messages`}
+                                        ? `${userLinesCount} message${userLinesCount === 1 ? "" : "s"} in this session`
+                                        : `${userLines.length} of ${userLinesCount} matching user messages`}
                                 </div>
                             </div>
                         </div>
@@ -834,13 +911,43 @@ export function SessionDetailPane({
                             ) : null}
                         </div>
                         <div className="min-h-0 flex-1 overflow-auto rounded border border-border bg-bg/40 p-2">
-                            {outlineMessages.length === 0 ? (
+                            {userLinesError ? (
+                                <div className="rounded border border-error/40 bg-error/10 px-2 py-3 text-xs text-error">
+                                    {userLinesError}
+                                </div>
+                            ) : userLinesLoading && userLines.length === 0 ? (
+                                <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-secondary">
+                                    <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
+                                    <span>Loading user messages...</span>
+                                </div>
+                            ) : userLinesCount === 0 && normalizedSearchQuery(userMessageSearchQuery) === "" ? (
                                 <div className="px-2 py-3 text-xs text-secondary">No user messages.</div>
-                            ) : filteredUserMessages.length === 0 ? (
+                            ) : userLines.length === 0 ? (
                                 <div className="px-2 py-3 text-xs text-secondary">No matching user messages.</div>
                             ) : (
                                 <div className="space-y-2">
-                                    {filteredUserMessages.map((message, index) => (
+                                    {userLinesHasMore && normalizedSearchQuery(userMessageSearchQuery) === "" ? (
+                                        <button
+                                            type="button"
+                                            className="flex h-8 w-full items-center justify-center gap-2 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                                            disabled={userLinesLoading}
+                                            onClick={() =>
+                                                void loadUserLinesPage({
+                                                    beforeSeq: userLinesNextBeforeSeq,
+                                                    append: true,
+                                                })
+                                            }
+                                        >
+                                            <i
+                                                className={cn(
+                                                    "fa-sharp fa-solid",
+                                                    userLinesLoading ? "fa-spinner animate-spin" : "fa-chevron-up"
+                                                )}
+                                            />
+                                            <span>{userLinesLoading ? "Loading..." : "Load older user messages"}</span>
+                                        </button>
+                                    ) : null}
+                                    {userLines.map((message, index) => (
                                         <div
                                             key={message.seq}
                                             className="flex w-full items-start gap-3 rounded border border-border bg-panel px-3 py-2 text-xs hover:bg-hover"

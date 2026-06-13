@@ -87,6 +87,21 @@ type LoadOptions struct {
 	IncludeTools bool
 }
 
+type UserLinesOptions struct {
+	BeforeSeq int
+	Limit     int
+	Query     string
+	Refresh   bool
+}
+
+type UserLinesResult struct {
+	Summary          SessionSummary `json:"summary"`
+	Messages         []Message      `json:"messages"`
+	UserMessageCount int            `json:"userMessageCount"`
+	HasMore          bool           `json:"hasMore"`
+	NextBeforeSeq    int            `json:"nextBeforeSeq,omitempty"`
+}
+
 type ListOptions struct {
 	Source     string
 	Project    string

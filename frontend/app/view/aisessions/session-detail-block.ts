@@ -3,20 +3,29 @@
 
 import { createBlock, createBlockSplitHorizontally } from "@/store/global";
 
-export async function openAISessionDetailBlock(sessionId: string, sourceBlockId?: string): Promise<void> {
+export async function openAISessionDetailBlock(
+    sessionId: string,
+    sourceBlockId?: string,
+    connection?: string
+): Promise<void> {
     const trimmedSessionId = sessionId.trim();
     if (trimmedSessionId === "") {
         return;
     }
-    const blockDef: BlockDef = {
-        meta: {
-            view: "aisessions",
-            "frame:title": "Session Details",
-            "aisessions:sessionid": trimmedSessionId,
-            "aisessions:sessionlistcollapsed": true,
-            icon: "comments",
-        },
+    const meta: MetaType & Record<string, unknown> = {
+        view: "aisessions",
+        "frame:title": "Session Details",
+        "aisessions:sessionid": trimmedSessionId,
+        "aisessions:sessionlistcollapsed": true,
+        icon: "comments",
     };
+    const blockDef: BlockDef = {
+        meta,
+    };
+    const trimmedConnection = connection?.trim() ?? "";
+    if (trimmedConnection !== "") {
+        blockDef.meta.connection = trimmedConnection;
+    }
     if (sourceBlockId) {
         try {
             await createBlockSplitHorizontally(blockDef, sourceBlockId, "after");

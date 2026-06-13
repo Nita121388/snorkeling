@@ -334,6 +334,20 @@ func (idx *Index) needsFullTextIndex(summary SessionSummary) bool {
 	return fileRecord.MTime != summary.MTime || fileRecord.Size != summary.Size
 }
 
+func (idx *Index) GetMessages(ctx context.Context, summary SessionSummary) ([]Message, bool, error) {
+	if ctx.Err() != nil {
+		return nil, false, ctx.Err()
+	}
+	if idx.needsFullTextIndex(summary) {
+		return nil, false, nil
+	}
+	messages, ok := idx.data.Messages[summary.Key]
+	if !ok {
+		return nil, false, nil
+	}
+	return append([]Message(nil), messages...), true, nil
+}
+
 func (idx *Index) saveMessages(summary SessionSummary, messages []Message) {
 	idx.data.Messages[summary.Key] = messages
 	summary.MessageCount = readableMessageCount(messages)

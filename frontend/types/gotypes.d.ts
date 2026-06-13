@@ -56,6 +56,7 @@ declare global {
         source?: string;
         project?: string;
         query?: string;
+        connection?: string;
         limit?: number;
         refresh?: boolean;
         markedOnly?: boolean;
@@ -85,6 +86,16 @@ declare global {
     type AISessionsSummaryRequest = {
         id: string;
         connection?: string;
+        refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsUserLinesRequest
+    type AISessionsUserLinesRequest = {
+        id: string;
+        connection?: string;
+        beforeSeq?: number;
+        limit?: number;
+        query?: string;
         refresh?: boolean;
     };
 
@@ -2191,6 +2202,15 @@ declare global {
         confirm?: boolean;
         errormsg?: string;
         checkboxstat?: boolean;
+    };
+
+    // aisessions.UserLinesResult
+    type UserLinesResult = {
+        summary: SessionSummary;
+        messages: Message[];
+        userMessageCount: number;
+        hasMore: boolean;
+        nextBeforeSeq?: number;
     };
 
     // vdom.VDomAsyncInitiationRequest

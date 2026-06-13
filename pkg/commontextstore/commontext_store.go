@@ -21,13 +21,19 @@ import (
 
 type commonTextItem = wconfig.CommonTextItemType
 
+const (
+	commonTextMigratedBackupKey = "commontext:items:migrated-backup"
+	commonTextMigrationMetaKey  = "commontext:migration"
+	commonTextAllowEmptySaveKey = "commontext:allow-empty-save"
+)
+
 type commonTextDBRow struct {
 	ID         string  `db:"id"`
 	Title      string  `db:"title"`
 	Text       string  `db:"text"`
 	Shortcut   *string `db:"shortcut"`
 	Tags       string  `db:"tags"`
-	Pinned     int64   `db:"pinned"`
+	Pinned     bool    `db:"pinned"`
 	CreatedAt  int64   `db:"createdat"`
 	UpdatedAt  int64   `db:"updatedat"`
 	LastUsedAt *int64  `db:"lastusedat"`
@@ -163,6 +169,50 @@ func commonTextItemsFromValue(value any) ([]commonTextItem, error) {
 	return items, nil
 }
 
+func commonTextItemsEqual(left []commonTextItem, right []commonTextItem) bool {
+	normalizedLeft := normalizeCommonTextItems(left)
+	normalizedRight := normalizeCommonTextItems(right)
+	if len(normalizedLeft) != len(normalizedRight) {
+		return false
+	}
+	rightByID := make(map[string]commonTextItem, len(normalizedRight))
+	for _, item := range normalizedRight {
+		rightByID[item.Id] = item
+	}
+	for _, leftItem := range normalizedLeft {
+		rightItem, found := rightByID[leftItem.Id]
+		if !found || !commonTextItemEqual(leftItem, rightItem) {
+			return false
+		}
+	}
+	return true
+}
+
+func commonTextItemEqual(left commonTextItem, right commonTextItem) bool {
+	return left.Id == right.Id &&
+		left.Title == right.Title &&
+		left.Text == right.Text &&
+		left.Shortcut == right.Shortcut &&
+		left.Pinned == right.Pinned &&
+		int64(left.CreatedAt) == int64(right.CreatedAt) &&
+		int64(left.UpdatedAt) == int64(right.UpdatedAt) &&
+		int64(left.LastUsedAt) == int64(right.LastUsedAt) &&
+		int64(left.UsageCount) == int64(right.UsageCount) &&
+		stringSlicesEqual(left.Tags, right.Tags)
+}
+
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for idx := range left {
+		if left[idx] != right[idx] {
+			return false
+		}
+	}
+	return true
+}
+
 func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 	rows := make([]commonTextDBRow, 0, len(items))
 	for _, item := range items {
@@ -171,7 +221,7 @@ func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 			Title:      item.Title,
 			Text:       item.Text,
 			Tags:       dbutil.QuickJsonArr(item.Tags),
-			Pinned:     0,
+			Pinned:     item.Pinned,
 			CreatedAt:  int64(item.CreatedAt),
 			UpdatedAt:  int64(item.UpdatedAt),
 			UsageCount: int64(item.UsageCount),
@@ -179,9 +229,6 @@ func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 		if item.Shortcut != "" {
 			shortcut := item.Shortcut
 			row.Shortcut = &shortcut
-		}
-		if item.Pinned {
-			row.Pinned = 1
 		}
 		if item.LastUsedAt > 0 {
 			lastUsedAt := int64(item.LastUsedAt)
@@ -199,7 +246,7 @@ func commonTextItemsFromDBRows(rows []commonTextDBRow) []commonTextItem {
 			Id:         row.ID,
 			Title:      row.Title,
 			Text:       row.Text,
-			Pinned:     row.Pinned != 0,
+			Pinned:     row.Pinned,
 			CreatedAt:  float64(row.CreatedAt),
 			UpdatedAt:  float64(row.UpdatedAt),
 			UsageCount: float64(row.UsageCount),
@@ -290,6 +337,8 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 }
 
 func SaveFromConfigMap(settings waveobj.MetaMapType) (bool, error) {
+	allowEmptySave := settings.GetBool(commonTextAllowEmptySaveKey, false)
+	delete(settings, commonTextAllowEmptySaveKey)
 	value, found := settings[wconfig.ConfigKey_CommonTextItems]
 	if !found {
 		return false, nil
@@ -299,7 +348,21 @@ func SaveFromConfigMap(settings waveobj.MetaMapType) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	return true, saveCommonTextItemsToDB(items)
+	normalizedItems := normalizeCommonTextItems(items)
+	if len(normalizedItems) == 0 && !allowEmptySave {
+		existingItems, err := loadCommonTextItemsFromDB()
+		if err != nil {
+			return true, err
+		}
+		legacySettings, cerrs := wconfig.ReadWaveHomeConfigFile(wconfig.SettingsFile)
+		if len(cerrs) > 0 {
+			return true, fmt.Errorf("error reading settings file for common text save: %v", cerrs[0])
+		}
+		if len(existingItems) > 0 && legacySettings != nil && legacySettings.HasKey(commonTextMigratedBackupKey) {
+			return true, fmt.Errorf("refusing to clear common text while migrated settings backup exists")
+		}
+	}
+	return true, saveCommonTextItemsToDB(normalizedItems)
 }
 
 func HydrateFullConfig(fullConfig *wconfig.FullConfigType) {
@@ -339,17 +402,33 @@ func MigrateCommonTextItems() {
 			log.Printf("error parsing common text items during migration: %v\n", err)
 			return
 		}
-		if err := saveCommonTextItemsToDB(items); err != nil {
+		normalizedItems := normalizeCommonTextItems(items)
+		if err := saveCommonTextItemsToDB(normalizedItems); err != nil {
 			log.Printf("error saving common text items during migration: %v\n", err)
 			return
 		}
-		log.Printf("migrated %d common text items to database\n", len(items))
+		migratedItems, err := loadCommonTextItemsFromDB()
+		if err != nil {
+			log.Printf("error verifying common text items after migration: %v\n", err)
+			return
+		}
+		if !commonTextItemsEqual(normalizedItems, migratedItems) {
+			log.Printf("common text migration verification failed: source=%d migrated=%d\n", len(normalizedItems), len(migratedItems))
+			return
+		}
+		log.Printf("migrated %d common text items to database\n", len(migratedItems))
 	} else {
 		log.Printf("common text database already populated, skipping import\n")
 	}
 
+	settings[commonTextMigratedBackupKey] = rawItems
+	settings[commonTextMigrationMetaKey] = map[string]any{
+		"version":    1,
+		"migratedat": time.Now().UnixMilli(),
+		"source":     wconfig.ConfigKey_CommonTextItems,
+	}
 	delete(settings, wconfig.ConfigKey_CommonTextItems)
 	if err := wconfig.WriteWaveHomeConfigFile(wconfig.SettingsFile, settings); err != nil {
-		log.Printf("error removing legacy common text items from settings file: %v\n", err)
+		log.Printf("error marking legacy common text items as migrated: %v\n", err)
 	}
 }

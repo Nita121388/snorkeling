@@ -98,6 +98,7 @@ export class AiSessionsViewModel implements ViewModel {
             const response = await this.service.List({
                 source,
                 query,
+                connection: this.getConnection(),
                 limit: 200,
                 refresh,
             });
@@ -148,6 +149,12 @@ export class AiSessionsViewModel implements ViewModel {
         return typeof sessionId === "string" ? sessionId.trim() : "";
     }
 
+    getConnection(): string {
+        const blockData = globalStore.get(this.blockAtom);
+        const connection = blockData?.meta?.connection;
+        return typeof connection === "string" ? connection.trim() : "";
+    }
+
     async loadDetail(session: SessionSummary, refresh = false): Promise<void> {
         if (!session?.key) {
             globalStore.set(this.detailAtom, null);
@@ -157,7 +164,7 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const detail = await this.service.Detail({ id: session.key, refresh });
+            const detail = await this.service.Detail({ id: session.key, connection: this.getConnection(), refresh });
             globalStore.set(this.detailAtom, detail);
             this.replaceSession(detail.summary);
         } catch (e) {
@@ -176,7 +183,12 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.toolCallsLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const detail = await this.service.Detail({ id: currentSummary.key, refresh, includeTools: true });
+            const detail = await this.service.Detail({
+                id: currentSummary.key,
+                connection: this.getConnection(),
+                refresh,
+                includeTools: true,
+            });
             globalStore.set(this.detailAtom, detail);
             this.replaceSession(detail.summary);
         } catch (e) {
@@ -186,6 +198,22 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
+    async loadUserLines(
+        session: SessionSummary,
+        request: Partial<AISessionsUserLinesRequest> = {}
+    ): Promise<UserLinesResult> {
+        if (!session?.key) {
+            throw new Error("session id is required");
+        }
+        const result = await this.service.UserLines({
+            ...request,
+            id: session.key,
+            connection: this.getConnection(),
+        });
+        this.replaceSession(result.summary);
+        return result;
+    }
+
     async loadDetailById(sessionId: string, refresh = false): Promise<boolean> {
         const trimmedSessionId = sessionId.trim();
         if (trimmedSessionId === "") return false;
@@ -193,7 +221,11 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const detail = await this.service.Detail({ id: trimmedSessionId, refresh });
+            const detail = await this.service.Detail({
+                id: trimmedSessionId,
+                connection: this.getConnection(),
+                refresh,
+            });
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
             globalStore.set(this.detailAtom, detail);
             this.replaceSession(detail.summary);
@@ -322,6 +354,10 @@ export class AiSessionsViewModel implements ViewModel {
                 file: folderPath,
             },
         };
+        const connection = this.getConnection();
+        if (connection !== "") {
+            blockDef.meta.connection = connection;
+        }
         try {
             await createBlockSplitHorizontally(blockDef, this.blockId, "after");
         } catch (e) {

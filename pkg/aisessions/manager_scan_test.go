@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -208,5 +209,160 @@ func TestManagerSummaryDoesNotLoadMessages(t *testing.T) {
 	}
 	if provider.loadMessagesHit != 0 {
 		t.Fatalf("Summary loaded messages %d times", provider.loadMessagesHit)
+	}
+}
+
+type cacheProvider struct {
+	source          string
+	summaries       []SessionSummary
+	messages        []Message
+	loadMessagesHit int
+}
+
+func (p *cacheProvider) Source() string {
+	return p.source
+}
+
+func (p *cacheProvider) List(ctx context.Context) ([]SessionSummary, error) {
+	return p.summaries, ctx.Err()
+}
+
+func (p *cacheProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
+	p.loadMessagesHit++
+	return append([]Message(nil), p.messages...), ctx.Err()
+}
+
+func TestManagerUserLinesPagesLatestUserMessages(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	summary := SessionSummary{
+		Key:      "codex:paged:/tmp/paged.jsonl",
+		ID:       "paged",
+		Source:   SourceCodex,
+		Title:    "Paged session",
+		FilePath: "/tmp/paged.jsonl",
+		MTime:    1,
+		Size:     100,
+	}
+	var messages []Message
+	for idx := 1; idx <= 18; idx++ {
+		messages = append(messages, Message{
+			Seq:  idx,
+			Role: RoleUser,
+			Text: fmt.Sprintf("user %02d", idx),
+		})
+	}
+	provider := &cacheProvider{
+		source:    SourceCodex,
+		summaries: []SessionSummary{summary},
+		messages:  messages,
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+
+	first, err := manager.UserLines(context.Background(), "paged", UserLinesOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.UserMessageCount != 18 || len(first.Messages) != 8 || !first.HasMore {
+		t.Fatalf("unexpected first page: %#v", first)
+	}
+	if first.Messages[0].Seq != 11 || first.Messages[7].Seq != 18 || first.NextBeforeSeq != 11 {
+		t.Fatalf("unexpected first page messages: %#v", first.Messages)
+	}
+
+	second, err := manager.UserLines(context.Background(), "paged", UserLinesOptions{BeforeSeq: first.NextBeforeSeq})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Messages) != 8 || !second.HasMore {
+		t.Fatalf("unexpected second page: %#v", second)
+	}
+	if second.Messages[0].Seq != 3 || second.Messages[7].Seq != 10 || second.NextBeforeSeq != 3 {
+		t.Fatalf("unexpected second page messages: %#v", second.Messages)
+	}
+
+	third, err := manager.UserLines(context.Background(), "paged", UserLinesOptions{BeforeSeq: second.NextBeforeSeq})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(third.Messages) != 2 || third.HasMore || third.Messages[0].Seq != 1 || third.Messages[1].Seq != 2 {
+		t.Fatalf("unexpected third page: %#v", third)
+	}
+}
+
+func TestManagerLoadAndUserLinesReuseMessageCache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	summary := SessionSummary{
+		Key:      "codex:cache-test:/tmp/cache-test.jsonl",
+		ID:       "cache-test",
+		Source:   SourceCodex,
+		Title:    "Cache test",
+		FilePath: "/tmp/cache-test.jsonl",
+		MTime:    42,
+		Size:     120,
+	}
+	provider := &cacheProvider{
+		source:    SourceCodex,
+		summaries: []SessionSummary{summary},
+		messages: []Message{
+			{Seq: 1, Role: RoleUser, Text: "first"},
+			{Seq: 2, Role: RoleAssistant, Text: "answer"},
+			{Seq: 3, Role: RoleUser, Text: "second"},
+		},
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+
+	if _, err := manager.Load(context.Background(), "cache-test", LoadOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.UserLines(context.Background(), "cache-test", UserLinesOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if provider.loadMessagesHit != 1 {
+		t.Fatalf("expected one source message load, got %d", provider.loadMessagesHit)
+	}
+
+	provider.summaries[0].Size = 121
+	if _, err := manager.UserLines(context.Background(), "cache-test", UserLinesOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if provider.loadMessagesHit != 2 {
+		t.Fatalf("expected cache invalidation after size change, got %d loads", provider.loadMessagesHit)
+	}
+}
+
+func TestManagerUserLinesQueryUsesCachedMessages(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	summary := SessionSummary{
+		Key:      "codex:query-test:/tmp/query-test.jsonl",
+		ID:       "query-test",
+		Source:   SourceCodex,
+		FilePath: "/tmp/query-test.jsonl",
+		MTime:    1,
+		Size:     100,
+	}
+	provider := &cacheProvider{
+		source:    SourceCodex,
+		summaries: []SessionSummary{summary},
+		messages: []Message{
+			{Seq: 1, Role: RoleUser, Text: "alpha one"},
+			{Seq: 2, Role: RoleUser, Text: "beta two"},
+			{Seq: 3, Role: RoleUser, Text: "alpha three"},
+		},
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+
+	result, err := manager.UserLines(context.Background(), "query-test", UserLinesOptions{Query: "alpha", Limit: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, message := range result.Messages {
+		texts = append(texts, message.Text)
+	}
+	if result.UserMessageCount != 2 || strings.Join(texts, ",") != "alpha one,alpha three" {
+		t.Fatalf("unexpected query result: %#v", result)
 	}
 }

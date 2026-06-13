@@ -103,24 +103,46 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 	}
 	sortSummaries(filtered)
 	limited := limitSummaries(filtered, opts.Limit)
-	m.populateMessageCounts(ctx, limited)
+	m.populateMessageCounts(ctx, limited, opts.Refresh)
 	return limited, nil
 }
 
-func (m *Manager) populateMessageCounts(ctx context.Context, summaries []SessionSummary) {
+func (m *Manager) populateMessageCounts(ctx context.Context, summaries []SessionSummary, refresh bool) {
+	idxStore, _ := m.openIndex()
+	if idxStore != nil {
+		defer idxStore.Close()
+	}
+	cacheDirty := false
 	for idx := range summaries {
 		if ctx.Err() != nil {
-			return
+			break
 		}
-		provider := providerBySource(m.Providers, summaries[idx].Source)
-		if provider == nil {
-			continue
+		var messages []Message
+		if !refresh && idxStore != nil {
+			cachedMessages, ok, err := idxStore.GetMessages(ctx, summaries[idx])
+			if err == nil && ok {
+				messages = cachedMessages
+			}
 		}
-		messages, err := provider.LoadMessages(ctx, summaries[idx].FilePath)
-		if err != nil {
-			continue
+		if messages == nil {
+			provider := providerBySource(m.Providers, summaries[idx].Source)
+			if provider == nil {
+				continue
+			}
+			loadedMessages, err := provider.LoadMessages(ctx, summaries[idx].FilePath)
+			if err != nil {
+				continue
+			}
+			messages = loadedMessages
+			if idxStore != nil {
+				idxStore.saveMessages(summaries[idx], messages)
+				cacheDirty = true
+			}
 		}
 		summaries[idx].MessageCount = readableMessageCount(messages)
+	}
+	if cacheDirty && idxStore != nil {
+		_ = idxStore.save()
 	}
 }
 
@@ -147,17 +169,17 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 	if err != nil {
 		return SessionDetail{}, err
 	}
-	provider := providerBySource(m.Providers, summary.Source)
-	if provider == nil {
-		return SessionDetail{}, fmt.Errorf("no provider for source %q", summary.Source)
-	}
-	messages, err := provider.LoadMessages(ctx, summary.FilePath)
+	messages, err := m.loadMessages(ctx, summary, opts.Refresh)
 	if err != nil {
 		return SessionDetail{}, err
 	}
 	summary.MessageCount = readableMessageCount(messages)
 	detail := SessionDetail{Summary: summary, Messages: messages}
 	if opts.IncludeTools {
+		provider := providerBySource(m.Providers, summary.Source)
+		if provider == nil {
+			return SessionDetail{}, fmt.Errorf("no provider for source %q", summary.Source)
+		}
 		toolProvider, ok := provider.(ToolCallProvider)
 		if ok {
 			toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
@@ -168,6 +190,32 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 		}
 	}
 	return detail, nil
+}
+
+func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLinesOptions) (UserLinesResult, error) {
+	summary, err := m.resolveSession(ctx, identifier)
+	if err != nil {
+		return UserLinesResult{}, err
+	}
+	messages, err := m.loadMessages(ctx, summary, opts.Refresh)
+	if err != nil {
+		return UserLinesResult{}, err
+	}
+	userMessages := filterUserMessages(messages, opts.Query)
+	limit := normalizeUserLinesLimit(opts.Limit)
+	window, hasMore := userLineWindow(userMessages, opts.BeforeSeq, limit)
+	nextBeforeSeq := 0
+	if len(window) > 0 && hasMore {
+		nextBeforeSeq = window[0].Seq
+	}
+	summary.MessageCount = readableMessageCount(messages)
+	return UserLinesResult{
+		Summary:          summary,
+		Messages:         window,
+		UserMessageCount: len(userMessages),
+		HasMore:          hasMore,
+		NextBeforeSeq:    nextBeforeSeq,
+	}, nil
 }
 
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
@@ -243,6 +291,37 @@ func (m *Manager) openMeta() (*MetaStore, error) {
 	return OpenMeta(m.MetaPath)
 }
 
+func (m *Manager) loadMessages(ctx context.Context, summary SessionSummary, refresh bool) ([]Message, error) {
+	if !refresh {
+		idx, err := m.openIndex()
+		if err == nil {
+			defer idx.Close()
+			messages, ok, err := idx.GetMessages(ctx, summary)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				return messages, nil
+			}
+		}
+	}
+	provider := providerBySource(m.Providers, summary.Source)
+	if provider == nil {
+		return nil, fmt.Errorf("no provider for source %q", summary.Source)
+	}
+	messages, err := provider.LoadMessages(ctx, summary.FilePath)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := m.openIndex()
+	if err == nil {
+		defer idx.Close()
+		idx.saveMessages(summary, messages)
+		_ = idx.save()
+	}
+	return messages, nil
+}
+
 func (m *Manager) resolveSession(ctx context.Context, identifier string) (SessionSummary, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
@@ -290,6 +369,55 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string) (Sessio
 		meta.Apply(&matches[0])
 	}
 	return matches[0], nil
+}
+
+func normalizeUserLinesLimit(limit int) int {
+	if limit <= 0 {
+		return 8
+	}
+	if limit > 50 {
+		return 50
+	}
+	return limit
+}
+
+func filterUserMessages(messages []Message, query string) []Message {
+	query = strings.ToLower(strings.TrimSpace(query))
+	var userMessages []Message
+	for _, message := range messages {
+		if message.Role != RoleUser || strings.TrimSpace(message.Text) == "" {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(message.Text), query) {
+			continue
+		}
+		userMessages = append(userMessages, message)
+	}
+	return userMessages
+}
+
+func userLineWindow(userMessages []Message, beforeSeq int, limit int) ([]Message, bool) {
+	if limit <= 0 {
+		limit = 8
+	}
+	end := len(userMessages)
+	if beforeSeq > 0 {
+		for idx, message := range userMessages {
+			if message.Seq >= beforeSeq {
+				end = idx
+				break
+			}
+		}
+	}
+	if end < 0 {
+		end = 0
+	}
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	window := append([]Message(nil), userMessages[start:end]...)
+	return window, start > 0
 }
 
 func moveSessionFileToDeleted(ctx context.Context, summary SessionSummary) (string, error) {

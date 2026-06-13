@@ -191,10 +191,23 @@ export function SelectionCopyOverlay({
         ContextMenuModel.getInstance().showContextMenu(menu, event);
     };
 
+    const quickActionButtonClassName = [
+        position,
+        "z-[1500]",
+        "flex h-6 w-6 items-center justify-center rounded",
+        "border border-[rgba(255,170,45,0.8)]",
+        "bg-[rgba(255,170,45,0.16)]",
+        "text-[11px] text-[rgb(255,184,66)]",
+        "shadow-md shadow-black/30 transition-colors",
+        "hover:border-[rgba(255,197,92,0.95)]",
+        "hover:bg-[rgba(255,170,45,0.26)]",
+        "hover:text-[rgb(255,213,116)]",
+    ].join(" ");
+
     return (
         <button
             type="button"
-            className={`${position} z-[1500] flex h-6 w-6 items-center justify-center rounded border border-border bg-modalbg/95 text-[11px] text-secondary shadow-md transition-colors hover:bg-hoverbg hover:text-white`}
+            className={quickActionButtonClassName}
             style={{ left: `${overlay.x}px`, top: `${overlay.y}px` }}
             title={copied ? "Copied" : "Quick actions"}
             tabIndex={-1}

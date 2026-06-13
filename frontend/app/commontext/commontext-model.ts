@@ -6,6 +6,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 
 export const CommonTextConfigKey = "commontext:items";
+const CommonTextAllowEmptySaveKey = "commontext:allow-empty-save";
 
 export type CommonTextItem = {
     id: string;
@@ -207,9 +208,10 @@ export function findDuplicateCommonText(
     return items.find((item) => item.id !== ignoreId && item.text.trim() === normalized) ?? null;
 }
 
-export async function saveCommonTextItems(items: CommonTextItem[]): Promise<void> {
+export async function saveCommonTextItems(items: CommonTextItem[], opts: { allowEmpty?: boolean } = {}): Promise<void> {
     await RpcApi.SetConfigCommand(TabRpcClient, {
         [CommonTextConfigKey]: sortCommonTextItems(items),
+        ...(opts.allowEmpty ? { [CommonTextAllowEmptySaveKey]: true } : {}),
     } as SettingsType);
 }
 
@@ -249,7 +251,7 @@ export async function addSelectionToCommonText(text: string): Promise<CommonText
 
 export async function deleteCommonTextItem(id: string): Promise<void> {
     const nextItems = getCommonTextItems().filter((item) => item.id !== id);
-    await saveCommonTextItems(nextItems);
+    await saveCommonTextItems(nextItems, { allowEmpty: nextItems.length === 0 });
 }
 
 export async function recordCommonTextUse(id: string): Promise<void> {
