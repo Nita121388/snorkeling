@@ -44,7 +44,7 @@ func OpenMeta(path string) (*MetaStore, error) {
 		},
 	}
 	if err := store.load(); err != nil {
-		return store, err
+		return nil, err
 	}
 	return store, nil
 }

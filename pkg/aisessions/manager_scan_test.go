@@ -15,6 +15,7 @@ import (
 func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
 	t.Setenv("WAVETERM_AI_SESSIONS_DELETED_DIR", filepath.Join(t.TempDir(), "deleted"))
 
 	sessionPath := filepath.Join(dir, "session.jsonl")
@@ -108,11 +109,15 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 	if len(afterDelete) != 0 {
 		t.Fatalf("expected no sessions after delete, got %#v", afterDelete)
 	}
+	if _, err := manager.Load(context.Background(), "test-id", LoadOptions{}); err == nil || !strings.Contains(err.Error(), "session not found") {
+		t.Fatalf("expected deleted session not to load from sqlite cache, got err=%v", err)
+	}
 }
 
 func TestManagerReadableMessageCountForClaude(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
 
 	sessionPath := filepath.Join(dir, "session-claude.jsonl")
 	err := os.WriteFile(sessionPath, []byte(
@@ -183,6 +188,7 @@ func (p *countingProvider) LoadMessages(ctx context.Context, filePath string) ([
 func TestManagerSummaryDoesNotLoadMessages(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
 	provider := &countingProvider{
 		source: SourceCodex,
 		summaries: []SessionSummary{
@@ -215,6 +221,7 @@ func TestManagerSummaryDoesNotLoadMessages(t *testing.T) {
 type cacheProvider struct {
 	source          string
 	summaries       []SessionSummary
+	listHit         int
 	messages        []Message
 	loadMessagesHit int
 }
@@ -224,6 +231,7 @@ func (p *cacheProvider) Source() string {
 }
 
 func (p *cacheProvider) List(ctx context.Context) ([]SessionSummary, error) {
+	p.listHit++
 	return p.summaries, ctx.Err()
 }
 
@@ -235,6 +243,7 @@ func (p *cacheProvider) LoadMessages(ctx context.Context, filePath string) ([]Me
 func TestManagerUserLinesPagesLatestUserMessages(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
 	summary := SessionSummary{
 		Key:      "codex:paged:/tmp/paged.jsonl",
 		ID:       "paged",
@@ -293,15 +302,24 @@ func TestManagerUserLinesPagesLatestUserMessages(t *testing.T) {
 func TestManagerLoadAndUserLinesReuseMessageCache(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
+	sessionPath := filepath.Join(dir, "cache-test.jsonl")
+	if err := os.WriteFile(sessionPath, []byte("session"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	summary := SessionSummary{
-		Key:      "codex:cache-test:/tmp/cache-test.jsonl",
 		ID:       "cache-test",
 		Source:   SourceCodex,
 		Title:    "Cache test",
-		FilePath: "/tmp/cache-test.jsonl",
-		MTime:    42,
-		Size:     120,
+		FilePath: sessionPath,
+		MTime:    info.ModTime().UnixMilli(),
+		Size:     info.Size(),
 	}
+	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	provider := &cacheProvider{
 		source:    SourceCodex,
 		summaries: []SessionSummary{summary},
@@ -322,8 +340,19 @@ func TestManagerLoadAndUserLinesReuseMessageCache(t *testing.T) {
 	if provider.loadMessagesHit != 1 {
 		t.Fatalf("expected one source message load, got %d", provider.loadMessagesHit)
 	}
+	if provider.listHit != 1 {
+		t.Fatalf("expected second call to resolve from sqlite without provider list, got %d list calls", provider.listHit)
+	}
 
-	provider.summaries[0].Size = 121
+	if err := os.WriteFile(sessionPath, []byte("session changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.summaries[0].MTime = info.ModTime().UnixMilli()
+	provider.summaries[0].Size = info.Size()
 	if _, err := manager.UserLines(context.Background(), "cache-test", UserLinesOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -332,9 +361,68 @@ func TestManagerLoadAndUserLinesReuseMessageCache(t *testing.T) {
 	}
 }
 
+func TestManagerLoadSkipsOversizedMessageIndex(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE", "0")
+	originalLimit := maxMessageIndexBytesForLoad
+	maxMessageIndexBytesForLoad = 32
+	t.Cleanup(func() {
+		maxMessageIndexBytesForLoad = originalLimit
+	})
+
+	summary := SessionSummary{
+		Key:      "codex:oversized-index:/tmp/oversized-index.jsonl",
+		ID:       "oversized-index",
+		Source:   SourceCodex,
+		FilePath: "/tmp/oversized-index.jsonl",
+		MTime:    1,
+		Size:     100,
+	}
+	provider := &cacheProvider{
+		source:    SourceCodex,
+		summaries: []SessionSummary{summary},
+		messages: []Message{
+			{Seq: 1, Role: RoleUser, Text: "fresh"},
+		},
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+	idx, err := OpenIndex(manager.IndexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx.saveMessages(summary, []Message{{Seq: 1, Role: RoleUser, Text: strings.Repeat("cached ", 20)}})
+	if err := idx.save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := manager.Load(context.Background(), "oversized-index", LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.loadMessagesHit != 1 {
+		t.Fatalf("expected provider load after oversized index skip, got %d", provider.loadMessagesHit)
+	}
+	if len(detail.Messages) != 1 || detail.Messages[0].Text != "fresh" {
+		t.Fatalf("expected fresh provider messages, got %#v", detail.Messages)
+	}
+
+	info, err := os.Stat(manager.IndexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() <= maxMessageIndexBytesForLoad {
+		t.Fatalf("test index unexpectedly below oversized threshold: %d", info.Size())
+	}
+}
+
 func TestManagerUserLinesQueryUsesCachedMessages(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
 	summary := SessionSummary{
 		Key:      "codex:query-test:/tmp/query-test.jsonl",
 		ID:       "query-test",

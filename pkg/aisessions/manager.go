@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,15 +16,33 @@ import (
 )
 
 type Manager struct {
-	Providers []Provider
-	IndexPath string
-	MetaPath  string
+	Providers  []Provider
+	IndexPath  string
+	MetaPath   string
+	SQLitePath string
 }
 
 type ManagerOptions struct {
-	Providers []Provider
-	IndexPath string
-	MetaPath  string
+	Providers  []Provider
+	IndexPath  string
+	MetaPath   string
+	SQLitePath string
+}
+
+const defaultMaxMessageIndexBytesForLoad int64 = 64 * 1024 * 1024
+
+var maxMessageIndexBytesForLoad = defaultMaxMessageIndexBytesForLoad
+
+func debugEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_DEBUG"))
+	return value != "" && value != "0" && strings.ToLower(value) != "false"
+}
+
+func debugf(format string, args ...any) {
+	if !debugEnabled() {
+		return
+	}
+	log.Printf("[aisessions-debug] "+format, args...)
 }
 
 func NewManager(indexPath string, providers []Provider) *Manager {
@@ -46,11 +65,36 @@ func NewManagerWithOptions(opts ManagerOptions) *Manager {
 	if opts.MetaPath == "" {
 		metaPath = DefaultMetaPath()
 	}
-	return &Manager{Providers: providers, IndexPath: indexPath, MetaPath: metaPath}
+	sqlitePath := opts.SQLitePath
+	if sqlitePath == "" {
+		if opts.IndexPath != "" {
+			sqlitePath = filepath.Join(filepath.Dir(indexPath), filepath.Base(DefaultSQLiteIndexPath()))
+		} else {
+			sqlitePath = DefaultSQLiteIndexPath()
+		}
+	}
+	return &Manager{Providers: providers, IndexPath: indexPath, MetaPath: metaPath, SQLitePath: sqlitePath}
 }
 
 func (m *Manager) openIndex() (*Index, error) {
 	return OpenIndex(m.IndexPath)
+}
+
+func sqliteIndexEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_SQLITE"))
+	return value == "" || (value != "0" && strings.ToLower(value) != "false")
+}
+
+func metaDualWriteEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_META_DUAL_WRITE"))
+	return value == "" || (value != "0" && strings.ToLower(value) != "false")
+}
+
+func (m *Manager) openSQLiteIndex() (*SQLiteIndex, error) {
+	if !sqliteIndexEnabled() {
+		return nil, fmt.Errorf("sqlite AI session index disabled")
+	}
+	return OpenSQLiteIndex(m.SQLitePath, m.MetaPath)
 }
 
 func (m *Manager) List(ctx context.Context, opts ListOptions) ([]SessionSummary, error) {
@@ -62,6 +106,26 @@ func (m *Manager) ListCached(ctx context.Context, opts ListOptions) ([]SessionSu
 }
 
 func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {
+	if !opts.Refresh {
+		sqliteIdx, sqliteErr := m.openSQLiteIndex()
+		if sqliteErr == nil && sqliteIdx != nil {
+			defer sqliteIdx.Close()
+			hasScan, scanErr := sqliteIdx.HasSummaryScan(ctx)
+			summaries, err := sqliteIdx.Search(ctx, opts)
+			if err == nil && scanErr == nil && hasScan {
+				return summaries, nil
+			}
+			if err == nil && scanErr == nil {
+				debugf("Manager.Search sqlite has no complete summary scan path=%q; falling back to scan", m.SQLitePath)
+			} else if err == nil {
+				debugf("Manager.Search sqlite scan marker error path=%q err=%v; falling back to scan", m.SQLitePath, scanErr)
+			} else {
+				debugf("Manager.Search sqlite error path=%q err=%v", m.SQLitePath, err)
+			}
+		} else if sqliteErr != nil {
+			debugf("Manager.Search sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+		}
+	}
 	return m.ScanList(ctx, ListOptions{
 		Source:     opts.Source,
 		Project:    opts.Project,
@@ -80,6 +144,16 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 	if len(errs) > 0 && len(summaries) == 0 {
 		return nil, errs[0]
 	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.ScanList sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+	}
+	if sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, len(errs) == 0); len(saveErrs) > 0 {
+			debugf("Manager.ScanList sqlite save scanned summaries path=%q errors=%d firstErr=%v", m.SQLitePath, len(saveErrs), saveErrs[0])
+		}
+	}
 	meta, _ := m.openMeta()
 	if meta != nil {
 		defer meta.Close()
@@ -90,7 +164,11 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 		if ctx.Err() != nil {
 			return filtered, ctx.Err()
 		}
-		if meta != nil {
+		if sqliteIdx != nil {
+			if err := sqliteIdx.ApplyMeta(ctx, &summary); err != nil {
+				debugf("Manager.ScanList sqlite meta apply error key=%q err=%v", summary.Key, err)
+			}
+		} else if meta != nil {
 			meta.Apply(&summary)
 		}
 		if !summaryMatchesList(summary, opts) {
@@ -108,7 +186,19 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 }
 
 func (m *Manager) populateMessageCounts(ctx context.Context, summaries []SessionSummary, refresh bool) {
-	idxStore, _ := m.openIndex()
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.populateMessageCounts sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+	}
+	if sqliteIdx != nil {
+		defer sqliteIdx.Close()
+	}
+	var idxStore *Index
+	if sqliteIdx == nil && m.shouldUseMessageIndexCache() {
+		idxStore, _ = m.openIndex()
+	} else {
+		debugf("Manager.populateMessageCounts index skipped path=%q maxBytes=%d", m.IndexPath, maxMessageIndexBytesForLoad)
+	}
 	if idxStore != nil {
 		defer idxStore.Close()
 	}
@@ -118,7 +208,15 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 			break
 		}
 		var messages []Message
-		if !refresh && idxStore != nil {
+		if !refresh && sqliteIdx != nil {
+			cachedMessages, ok, err := sqliteIdx.GetMessages(ctx, summaries[idx])
+			if err == nil && ok {
+				messages = cachedMessages
+			} else if err != nil {
+				debugf("Manager.populateMessageCounts sqlite messages error key=%q err=%v", summaries[idx].Key, err)
+			}
+		}
+		if messages == nil && !refresh && idxStore != nil {
 			cachedMessages, ok, err := idxStore.GetMessages(ctx, summaries[idx])
 			if err == nil && ok {
 				messages = cachedMessages
@@ -134,7 +232,11 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 				continue
 			}
 			messages = loadedMessages
-			if idxStore != nil {
+			if sqliteIdx != nil {
+				if err := sqliteIdx.SaveMessages(ctx, summaries[idx], messages); err != nil {
+					debugf("Manager.populateMessageCounts sqlite save messages error key=%q err=%v", summaries[idx].Key, err)
+				}
+			} else if idxStore != nil {
 				idxStore.saveMessages(summaries[idx], messages)
 				cacheDirty = true
 			}
@@ -147,6 +249,12 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 }
 
 func (m *Manager) Index(ctx context.Context) (IndexStats, []error) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		return sqliteIdx.IndexAll(ctx, m.Providers)
+	}
+	debugf("Manager.Index sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
 	idx, err := m.openIndex()
 	if err != nil {
 		return IndexStats{}, []error{err}
@@ -156,6 +264,12 @@ func (m *Manager) Index(ctx context.Context) (IndexStats, []error) {
 }
 
 func (m *Manager) Refresh(ctx context.Context) (IndexStats, []error) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		return sqliteIdx.RefreshSummaries(ctx, m.Providers)
+	}
+	debugf("Manager.Refresh sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
 	idx, err := m.openIndex()
 	if err != nil {
 		return IndexStats{}, []error{err}
@@ -165,12 +279,18 @@ func (m *Manager) Refresh(ctx context.Context) (IndexStats, []error) {
 }
 
 func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions) (SessionDetail, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	start := time.Now()
+	debugf("Manager.Load start id=%q refresh=%v includeTools=%v", identifier, opts.Refresh, opts.IncludeTools)
+	summary, err := m.resolveSession(ctx, identifier, opts.Refresh)
 	if err != nil {
+		debugf("Manager.Load resolve error id=%q duration=%s err=%v", identifier, time.Since(start), err)
 		return SessionDetail{}, err
 	}
+	resolveDone := time.Now()
+	debugf("Manager.Load resolved id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, resolveDone.Sub(start))
 	messages, err := m.loadMessages(ctx, summary, opts.Refresh)
 	if err != nil {
+		debugf("Manager.Load messages error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(resolveDone), err)
 		return SessionDetail{}, err
 	}
 	summary.MessageCount = readableMessageCount(messages)
@@ -184,16 +304,18 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 		if ok {
 			toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
 			if err != nil {
+				debugf("Manager.Load tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), err)
 				return SessionDetail{}, err
 			}
 			detail.ToolCalls = toolCalls
 		}
 	}
+	debugf("Manager.Load success id=%q key=%q messages=%d readable=%d toolCalls=%d duration=%s", identifier, summary.Key, len(messages), summary.MessageCount, len(detail.ToolCalls), time.Since(start))
 	return detail, nil
 }
 
 func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLinesOptions) (UserLinesResult, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	summary, err := m.resolveSession(ctx, identifier, opts.Refresh)
 	if err != nil {
 		return UserLinesResult{}, err
 	}
@@ -219,45 +341,93 @@ func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLin
 }
 
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
-	return m.resolveSession(ctx, identifier)
+	return m.resolveSession(ctx, identifier, refresh)
 }
 
 func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	summary, err := m.resolveSession(ctx, identifier, false)
 	if err != nil {
 		return SessionSummary{}, err
 	}
-	meta, err := m.openMeta()
-	if meta == nil {
-		return SessionSummary{}, err
+	var writeErr error
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.SetMarked(ctx, summary.Key, marked); err != nil {
+			debugf("Manager.Mark sqlite write error key=%q err=%v", summary.Key, err)
+			writeErr = err
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.Mark sqlite open skipped key=%q err=%v", summary.Key, sqliteErr)
 	}
-	defer meta.Close()
-	if err := meta.SetMarked(ctx, summary.Key, marked); err != nil {
-		return SessionSummary{}, err
+	if metaDualWriteEnabled() || writeErr != nil || sqliteIdx == nil {
+		meta, err := m.openMeta()
+		if meta == nil {
+			if sqliteIdx != nil && writeErr == nil {
+				debugf("Manager.Mark meta json dual-write open error key=%q err=%v", summary.Key, err)
+				summary.Marked = marked
+				return summary, nil
+			}
+			return SessionSummary{}, err
+		}
+		defer meta.Close()
+		if err := meta.SetMarked(ctx, summary.Key, marked); err != nil {
+			if writeErr != nil {
+				return SessionSummary{}, fmt.Errorf("cannot write AI session mark to sqlite (%v) or meta json (%w)", writeErr, err)
+			}
+			if sqliteIdx == nil {
+				return SessionSummary{}, err
+			}
+			debugf("Manager.Mark meta json dual-write error key=%q err=%v", summary.Key, err)
+		}
 	}
 	summary.Marked = marked
 	return summary, nil
 }
 
 func (m *Manager) Note(ctx context.Context, identifier string, note string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	summary, err := m.resolveSession(ctx, identifier, false)
 	if err != nil {
 		return SessionSummary{}, err
 	}
-	meta, err := m.openMeta()
-	if meta == nil {
-		return SessionSummary{}, err
+	var writeErr error
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.SetNote(ctx, summary.Key, note); err != nil {
+			debugf("Manager.Note sqlite write error key=%q err=%v", summary.Key, err)
+			writeErr = err
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.Note sqlite open skipped key=%q err=%v", summary.Key, sqliteErr)
 	}
-	defer meta.Close()
-	if err := meta.SetNote(ctx, summary.Key, note); err != nil {
-		return SessionSummary{}, err
+	if metaDualWriteEnabled() || writeErr != nil || sqliteIdx == nil {
+		meta, err := m.openMeta()
+		if meta == nil {
+			if sqliteIdx != nil && writeErr == nil {
+				debugf("Manager.Note meta json dual-write open error key=%q err=%v", summary.Key, err)
+				summary.Note = note
+				return summary, nil
+			}
+			return SessionSummary{}, err
+		}
+		defer meta.Close()
+		if err := meta.SetNote(ctx, summary.Key, note); err != nil {
+			if writeErr != nil {
+				return SessionSummary{}, fmt.Errorf("cannot write AI session note to sqlite (%v) or meta json (%w)", writeErr, err)
+			}
+			if sqliteIdx == nil {
+				return SessionSummary{}, err
+			}
+			debugf("Manager.Note meta json dual-write error key=%q err=%v", summary.Key, err)
+		}
 	}
 	summary.Note = note
 	return summary, nil
 }
 
 func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	summary, err := m.resolveSession(ctx, identifier, false)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -267,6 +437,16 @@ func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary
 	deletedPath, err := moveSessionFileToDeleted(ctx, summary)
 	if err != nil {
 		return SessionSummary{}, err
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.DeleteMeta(ctx, summary.Key); err != nil {
+			debugf("Manager.Delete sqlite meta delete error key=%q err=%v", summary.Key, err)
+		}
+		if err := sqliteIdx.MarkSessionMissing(ctx, summary.Key); err != nil {
+			debugf("Manager.Delete sqlite summary missing error key=%q err=%v", summary.Key, err)
+		}
 	}
 	meta, _ := m.openMeta()
 	if meta != nil {
@@ -280,7 +460,7 @@ func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary
 }
 
 func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (string, error) {
-	summary, err := m.resolveSession(ctx, identifier)
+	summary, err := m.resolveSession(ctx, identifier, refresh)
 	if err != nil {
 		return "", err
 	}
@@ -291,46 +471,128 @@ func (m *Manager) openMeta() (*MetaStore, error) {
 	return OpenMeta(m.MetaPath)
 }
 
+func (m *Manager) shouldUseMessageIndexCache() bool {
+	if maxMessageIndexBytesForLoad <= 0 {
+		return true
+	}
+	info, err := os.Stat(m.IndexPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			debugf("Manager.messageIndex stat error path=%q err=%v", m.IndexPath, err)
+		}
+		return true
+	}
+	if info.Size() <= maxMessageIndexBytesForLoad {
+		return true
+	}
+	debugf("Manager.messageIndex skipped path=%q size=%d maxBytes=%d", m.IndexPath, info.Size(), maxMessageIndexBytesForLoad)
+	return false
+}
+
 func (m *Manager) loadMessages(ctx context.Context, summary SessionSummary, refresh bool) ([]Message, error) {
-	if !refresh {
+	start := time.Now()
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.loadMessages sqlite open skipped key=%q path=%q err=%v", summary.Key, m.SQLitePath, sqliteErr)
+	}
+	if sqliteIdx != nil {
+		defer sqliteIdx.Close()
+	}
+	if !refresh && sqliteIdx != nil {
+		messages, ok, err := sqliteIdx.GetMessages(ctx, summary)
+		if err != nil {
+			debugf("Manager.loadMessages sqlite error key=%q file=%q duration=%s err=%v", summary.Key, summary.FilePath, time.Since(start), err)
+		} else if ok {
+			debugf("Manager.loadMessages sqlite hit key=%q file=%q messages=%d duration=%s", summary.Key, summary.FilePath, len(messages), time.Since(start))
+			return messages, nil
+		} else {
+			debugf("Manager.loadMessages sqlite miss key=%q file=%q duration=%s", summary.Key, summary.FilePath, time.Since(start))
+		}
+	}
+	useMessageIndexCache := m.shouldUseMessageIndexCache()
+	if sqliteIdx == nil && !refresh && useMessageIndexCache {
 		idx, err := m.openIndex()
 		if err == nil {
 			defer idx.Close()
 			messages, ok, err := idx.GetMessages(ctx, summary)
 			if err != nil {
+				debugf("Manager.loadMessages index error key=%q file=%q duration=%s err=%v", summary.Key, summary.FilePath, time.Since(start), err)
 				return nil, err
 			}
 			if ok {
+				debugf("Manager.loadMessages index hit key=%q file=%q messages=%d duration=%s", summary.Key, summary.FilePath, len(messages), time.Since(start))
 				return messages, nil
 			}
+			debugf("Manager.loadMessages index miss key=%q file=%q duration=%s", summary.Key, summary.FilePath, time.Since(start))
+		} else {
+			debugf("Manager.loadMessages index open skipped key=%q file=%q err=%v", summary.Key, summary.FilePath, err)
 		}
+	} else if !useMessageIndexCache {
+		debugf("Manager.loadMessages index read skipped key=%q file=%q", summary.Key, summary.FilePath)
 	}
 	provider := providerBySource(m.Providers, summary.Source)
 	if provider == nil {
+		debugf("Manager.loadMessages provider missing key=%q source=%q file=%q", summary.Key, summary.Source, summary.FilePath)
 		return nil, fmt.Errorf("no provider for source %q", summary.Source)
 	}
+	providerStart := time.Now()
+	debugf("Manager.loadMessages provider start key=%q source=%q file=%q refresh=%v", summary.Key, summary.Source, summary.FilePath, refresh)
 	messages, err := provider.LoadMessages(ctx, summary.FilePath)
 	if err != nil {
+		debugf("Manager.loadMessages provider error key=%q source=%q file=%q duration=%s err=%v", summary.Key, summary.Source, summary.FilePath, time.Since(providerStart), err)
 		return nil, err
+	}
+	debugf("Manager.loadMessages provider success key=%q source=%q file=%q messages=%d duration=%s", summary.Key, summary.Source, summary.FilePath, len(messages), time.Since(providerStart))
+	if sqliteIdx != nil {
+		if err := sqliteIdx.SaveMessages(ctx, summary, messages); err != nil {
+			debugf("Manager.loadMessages sqlite save skipped key=%q err=%v", summary.Key, err)
+		} else {
+			debugf("Manager.loadMessages sqlite saved key=%q messages=%d totalDuration=%s", summary.Key, len(messages), time.Since(start))
+		}
+		return messages, nil
+	}
+	if !useMessageIndexCache {
+		debugf("Manager.loadMessages index save skipped key=%q oversizedIndex=true", summary.Key)
+		return messages, nil
 	}
 	idx, err := m.openIndex()
 	if err == nil {
 		defer idx.Close()
 		idx.saveMessages(summary, messages)
 		_ = idx.save()
+		debugf("Manager.loadMessages index saved key=%q messages=%d totalDuration=%s", summary.Key, len(messages), time.Since(start))
+	} else {
+		debugf("Manager.loadMessages index save skipped key=%q err=%v", summary.Key, err)
 	}
 	return messages, nil
 }
 
-func (m *Manager) resolveSession(ctx context.Context, identifier string) (SessionSummary, error) {
+func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
+	start := time.Now()
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
 		return SessionSummary{}, fmt.Errorf("session id is required")
 	}
+	if !refresh {
+		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier); err == nil && ok {
+			debugf("Manager.resolveSession sqlite success id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, time.Since(start))
+			return summary, nil
+		} else if err != nil {
+			debugf("Manager.resolveSession sqlite skipped id=%q duration=%s err=%v", identifier, time.Since(start), err)
+		}
+	}
 
 	summaries, errs := ScanSummaries(ctx, m.Providers)
 	if len(errs) > 0 && len(summaries) == 0 {
+		debugf("Manager.resolveSession scan error id=%q duration=%s err=%v", identifier, time.Since(start), errs[0])
 		return SessionSummary{}, errs[0]
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, len(errs) == 0); len(saveErrs) > 0 {
+			debugf("Manager.resolveSession sqlite save scanned summaries path=%q errors=%d firstErr=%v", m.SQLitePath, len(saveErrs), saveErrs[0])
+		}
 	}
 	var matches []SessionSummary
 	for _, summary := range summaries {
@@ -342,6 +604,7 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string) (Sessio
 		}
 	}
 	if len(matches) == 0 {
+		debugf("Manager.resolveSession not found id=%q scanned=%d duration=%s", identifier, len(summaries), time.Since(start))
 		return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 	}
 	sort.SliceStable(matches, func(i, j int) bool {
@@ -360,15 +623,59 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string) (Sessio
 		return summarySortTime(matches[i]) > summarySortTime(matches[j])
 	})
 	if len(matches) > 1 && matches[0].ID != identifier && matches[0].Key != identifier {
+		debugf("Manager.resolveSession ambiguous id=%q matches=%d duration=%s", identifier, len(matches), time.Since(start))
 		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(matches))
 	}
 
+	if sqliteErr == nil && sqliteIdx != nil {
+		if err := sqliteIdx.ApplyMeta(ctx, &matches[0]); err != nil {
+			debugf("Manager.resolveSession sqlite meta apply error key=%q err=%v", matches[0].Key, err)
+		}
+	}
 	meta, _ := m.openMeta()
 	if meta != nil {
 		defer meta.Close()
-		meta.Apply(&matches[0])
+		if sqliteIdx == nil {
+			meta.Apply(&matches[0])
+		}
 	}
+	debugf("Manager.resolveSession success id=%q key=%q source=%q file=%q scanned=%d matches=%d duration=%s", identifier, matches[0].Key, matches[0].Source, matches[0].FilePath, len(summaries), len(matches), time.Since(start))
 	return matches[0], nil
+}
+
+func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string) (SessionSummary, bool, error) {
+	sqliteIdx, err := m.openSQLiteIndex()
+	if err != nil {
+		return SessionSummary{}, false, err
+	}
+	defer sqliteIdx.Close()
+	hasScan, err := sqliteIdx.HasSummaryScan(ctx)
+	if err != nil {
+		return SessionSummary{}, false, err
+	}
+	if !hasScan {
+		return SessionSummary{}, false, nil
+	}
+	summary, err := sqliteIdx.GetSession(ctx, identifier)
+	if err != nil {
+		return SessionSummary{}, false, nil
+	}
+	if !cachedSummaryFileIsCurrent(summary) {
+		return SessionSummary{}, false, nil
+	}
+	return summary, true, nil
+}
+
+func cachedSummaryFileIsCurrent(summary SessionSummary) bool {
+	filePath := strings.TrimSpace(summary.FilePath)
+	if filePath == "" || strings.HasPrefix(filePath, "remote:") {
+		return true
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	return info.ModTime().UnixMilli() == summary.MTime && info.Size() == summary.Size
 }
 
 func normalizeUserLinesLimit(limit int) int {

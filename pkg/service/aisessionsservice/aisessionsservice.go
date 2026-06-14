@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
@@ -85,6 +87,18 @@ type AISessionsStatResponse struct {
 	Missing  bool   `json:"missing,omitempty"`
 }
 
+func aiSessionsDebugEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_DEBUG"))
+	return value != "" && value != "0" && strings.ToLower(value) != "false"
+}
+
+func aiSessionsDebugf(format string, args ...any) {
+	if !aiSessionsDebugEnabled() {
+		return
+	}
+	log.Printf("[aisessions-debug] "+format, args...)
+}
+
 func connectionFromRemoteSessionKey(identifier string) string {
 	if !strings.HasPrefix(identifier, "codex:") && !strings.HasPrefix(identifier, "claude:") {
 		return ""
@@ -123,8 +137,9 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 		return nil, err
 	}
 	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
-		Providers: []aisessions.Provider{provider},
-		MetaPath:  remoteMetaPath(connection),
+		Providers:  []aisessions.Provider{provider},
+		MetaPath:   remoteMetaPath(connection),
+		SQLitePath: remoteSQLitePath(connection),
 	}), nil
 }
 
@@ -145,6 +160,11 @@ func (svc *AISessionsService) managerForRequest(ctx context.Context, identifier 
 func remoteMetaPath(connection string) string {
 	safeConnection := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(connection)
 	return filepath.Join(filepath.Dir(aisessions.DefaultMetaPath()), "remote-"+safeConnection+"-meta.json")
+}
+
+func remoteSQLitePath(connection string) string {
+	safeConnection := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(connection)
+	return filepath.Join(filepath.Dir(aisessions.DefaultSQLiteIndexPath()), "remote-"+safeConnection+"-index-v2.sqlite")
 }
 
 func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
@@ -192,8 +212,11 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
+	start := time.Now()
+	aiSessionsDebugf("Detail start id=%q connection=%q refresh=%v tail=%d includeTools=%v", request.ID, request.Connection, request.Refresh, request.Tail, request.IncludeTools)
 	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
 	if err != nil {
+		aiSessionsDebugf("Detail manager error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
 		return nil, err
 	}
 	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{
@@ -201,12 +224,25 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		IncludeTools: request.IncludeTools,
 	})
 	if err != nil {
+		aiSessionsDebugf("Detail load error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
 		return nil, err
 	}
+	loadedCount := len(detail.Messages)
 	tail := request.Tail
 	if tail > 0 && len(detail.Messages) > tail {
 		detail.Messages = detail.Messages[len(detail.Messages)-tail:]
 	}
+	aiSessionsDebugf(
+		"Detail success id=%q key=%q source=%q file=%q loadedMessages=%d returnedMessages=%d summaryMessageCount=%d duration=%s",
+		request.ID,
+		detail.Summary.Key,
+		detail.Summary.Source,
+		detail.Summary.FilePath,
+		loadedCount,
+		len(detail.Messages),
+		detail.Summary.MessageCount,
+		time.Since(start),
+	)
 	return &detail, nil
 }
 

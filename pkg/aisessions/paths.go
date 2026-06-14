@@ -28,6 +28,13 @@ func DefaultIndexPath() string {
 	return filepath.Join(home, ".snorkeling", "ai-sessions", "index.json")
 }
 
+func DefaultSQLiteIndexPath() string {
+	if envPath := os.Getenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX"); envPath != "" {
+		return envPath
+	}
+	return filepath.Join(filepath.Dir(DefaultIndexPath()), "index-v2.sqlite")
+}
+
 func DefaultMetaPath() string {
 	if envPath := os.Getenv("WAVETERM_AI_SESSIONS_META"); envPath != "" {
 		return envPath
