@@ -3,7 +3,9 @@
 
 import { openCommonTextSearch } from "@/app/commontext/commontext-events";
 import { Tooltip } from "@/app/element/tooltip";
+import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentLaunchTarget,
@@ -37,6 +39,7 @@ export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
     electron: {
         openBuilder: WaveEnv["electron"]["openBuilder"];
+        setActiveTab: WaveEnv["electron"]["setActiveTab"];
     };
     rpc: {
         ListAllAppsCommand: WaveEnv["rpc"]["ListAllAppsCommand"];
@@ -45,8 +48,14 @@ export type WidgetsEnv = WaveEnvSubset<{
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
         hasConfigErrors: WaveEnv["atoms"]["hasConfigErrors"];
         workspaceId: WaveEnv["atoms"]["workspaceId"];
+        workspace: WaveEnv["atoms"]["workspace"];
+        staticTabId: WaveEnv["atoms"]["staticTabId"];
         hasCustomAIPresetsAtom: WaveEnv["atoms"]["hasCustomAIPresetsAtom"];
     };
+    services: {
+        object: WaveEnv["services"]["object"];
+    };
+    wos: WaveEnv["wos"];
     createBlock: WaveEnv["createBlock"];
     showContextMenu: WaveEnv["showContextMenu"];
 }>;
@@ -280,6 +289,9 @@ type AgentTargetFloatingWindowProps = {
     env: WidgetsEnv;
     profileName?: string;
     profileLabel?: string;
+    canCreateToExistingTab: boolean;
+    onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
+    onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
 };
 
 type TerminalTargetFloatingWindowProps = {
@@ -290,13 +302,60 @@ type TerminalTargetFloatingWindowProps = {
     magnified?: boolean;
     env: WidgetsEnv;
     baseBlockDef?: BlockDef;
+    canCreateToExistingTab: boolean;
+    onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
+    onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
 };
+
+type CreateToExistingTabRequest = {
+    title: string;
+    subtitle: string;
+    blockDef: BlockDef;
+    magnified: boolean;
+};
+
+const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && !isBlank(error.message)) {
         return error.message;
     }
     return String(error ?? "unknown error");
+}
+
+function showLaunchError(label: string, error: unknown) {
+    console.error(`Failed to launch ${label.toLowerCase()}:`, error);
+    modalsModel.pushModal("MessageModal", {
+        children: `Failed to launch ${label}: ${getErrorMessage(error)}`,
+    });
+}
+
+type TargetTabActionsProps = {
+    canCreateToExistingTab: boolean;
+    onCreateToNewTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    onCreateToExistingTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
+};
+
+function TargetTabActions({ canCreateToExistingTab, onCreateToNewTab, onCreateToExistingTab }: TargetTabActionsProps) {
+    return (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+            <button
+                type="button"
+                className="rounded px-1.5 py-1 text-[11px] text-secondary hover:bg-hoverbg hover:text-white"
+                onClick={onCreateToNewTab}
+            >
+                Create to New Tab
+            </button>
+            <button
+                type="button"
+                className="rounded px-1.5 py-1 text-[11px] text-secondary hover:bg-hoverbg hover:text-white disabled:cursor-default disabled:opacity-45"
+                disabled={!canCreateToExistingTab}
+                onClick={onCreateToExistingTab}
+            >
+                Create to Existing Tab...
+            </button>
+        </div>
+    );
 }
 
 type AgentWidgetProfile = {
@@ -333,6 +392,9 @@ const AgentTargetFloatingWindow = memo(
         env,
         profileName,
         profileLabel,
+        canCreateToExistingTab,
+        onCreateToNewTab,
+        onCreateToExistingTab,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -361,33 +423,72 @@ const AgentTargetFloatingWindow = memo(
                 >
                     <div className="px-2 py-1 text-xs text-secondary">Select context for {profileLabel ?? "Agent"}</div>
                     <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => (
-                            <button
-                                key={target.blockId}
-                                type="button"
-                                className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
-                                onClick={() => {
-                                    fireAndForget(async () => {
-                                        const blockDef = createAgentBlockDefForTarget(settings, target, profileName);
-                                        try {
-                                            await env.createBlock(blockDef, magnified);
-                                            onClose();
-                                        } catch (error) {
-                                            console.error("Failed to launch agent for selected target:", error);
-                                            modalsModel.pushModal("MessageModal", {
-                                                children: `Failed to launch Agent: ${getErrorMessage(error)}`,
-                                            });
+                        {targets.map((target) => {
+                            const blockDef = createAgentBlockDefForTarget(settings, target, profileName);
+                            const createInCurrentTab = () => {
+                                fireAndForget(async () => {
+                                    try {
+                                        await env.createBlock(blockDef, magnified);
+                                        onClose();
+                                    } catch (error) {
+                                        showLaunchError("Agent", error);
+                                    }
+                                });
+                            };
+
+                            return (
+                                <div
+                                    key={target.blockId}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
+                                    onClick={createInCurrentTab}
+                                    onKeyDown={(event) => {
+                                        if (event.currentTarget !== event.target) {
+                                            return;
                                         }
-                                    });
-                                }}
-                            >
-                                <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                    {launchTargetSourceLabel(target)}
+                                        if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault();
+                                            createInCurrentTab();
+                                        }
+                                    }}
+                                >
+                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
+                                        {launchTargetSourceLabel(target)}
+                                    </div>
+                                    <div className="text-sm text-foreground">{target.label}</div>
+                                    {!isBlank(target.detail) ? (
+                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
+                                    ) : null}
+                                    <TargetTabActions
+                                        canCreateToExistingTab={canCreateToExistingTab}
+                                        onCreateToNewTab={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            fireAndForget(async () => {
+                                                try {
+                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
+                                                    onClose();
+                                                } catch (error) {
+                                                    showLaunchError("Agent", error);
+                                                }
+                                            });
+                                        }}
+                                        onCreateToExistingTab={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onCreateToExistingTab({
+                                                title: "Create Agent",
+                                                subtitle: target.detail || target.label,
+                                                blockDef,
+                                                magnified: Boolean(magnified),
+                                            });
+                                            onClose();
+                                        }}
+                                    />
                                 </div>
-                                <div className="text-sm text-foreground">{target.label}</div>
-                                <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                            </button>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </FloatingPortal>
@@ -404,6 +505,9 @@ const TerminalTargetFloatingWindow = memo(
         magnified,
         env,
         baseBlockDef,
+        canCreateToExistingTab,
+        onCreateToNewTab,
+        onCreateToExistingTab,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -432,33 +536,72 @@ const TerminalTargetFloatingWindow = memo(
                 >
                     <div className="px-2 py-1 text-xs text-secondary">Select context for Terminal</div>
                     <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => (
-                            <button
-                                key={target.blockId}
-                                type="button"
-                                className="w-full text-left px-2 py-2 rounded hover:bg-hoverbg transition-colors cursor-pointer"
-                                onClick={() => {
-                                    fireAndForget(async () => {
-                                        const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
-                                        try {
-                                            await env.createBlock(blockDef, magnified);
-                                            onClose();
-                                        } catch (error) {
-                                            console.error("Failed to launch terminal for selected target:", error);
-                                            modalsModel.pushModal("MessageModal", {
-                                                children: `Failed to launch Terminal: ${getErrorMessage(error)}`,
-                                            });
+                        {targets.map((target) => {
+                            const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+                            const createInCurrentTab = () => {
+                                fireAndForget(async () => {
+                                    try {
+                                        await env.createBlock(blockDef, magnified);
+                                        onClose();
+                                    } catch (error) {
+                                        showLaunchError("Terminal", error);
+                                    }
+                                });
+                            };
+
+                            return (
+                                <div
+                                    key={target.blockId}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
+                                    onClick={createInCurrentTab}
+                                    onKeyDown={(event) => {
+                                        if (event.currentTarget !== event.target) {
+                                            return;
                                         }
-                                    });
-                                }}
-                            >
-                                <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                    {launchTargetSourceLabel(target)}
+                                        if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault();
+                                            createInCurrentTab();
+                                        }
+                                    }}
+                                >
+                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
+                                        {launchTargetSourceLabel(target)}
+                                    </div>
+                                    <div className="text-sm text-foreground">{target.label}</div>
+                                    {!isBlank(target.detail) ? (
+                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
+                                    ) : null}
+                                    <TargetTabActions
+                                        canCreateToExistingTab={canCreateToExistingTab}
+                                        onCreateToNewTab={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            fireAndForget(async () => {
+                                                try {
+                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
+                                                    onClose();
+                                                } catch (error) {
+                                                    showLaunchError("Terminal", error);
+                                                }
+                                            });
+                                        }}
+                                        onCreateToExistingTab={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onCreateToExistingTab({
+                                                title: "Create Terminal",
+                                                subtitle: target.detail || target.label,
+                                                blockDef,
+                                                magnified: Boolean(magnified),
+                                            });
+                                            onClose();
+                                        }}
+                                    />
                                 </div>
-                                <div className="text-sm text-foreground">{target.label}</div>
-                                <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                            </button>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </FloatingPortal>
@@ -594,6 +737,9 @@ const Widgets = memo(() => {
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
     const hasConfigErrors = useAtomValue(env.atoms.hasConfigErrors);
     const workspaceId = useAtomValue(env.atoms.workspaceId);
+    const workspace = useAtomValue(env.atoms.workspace);
+    const currentTabId = useAtomValue(env.atoms.staticTabId);
+    const currentTab = useAtomValue(env.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", currentTabId)));
     const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
     const containerRef = useRef<HTMLDivElement>(null);
     const measurementRef = useRef<HTMLDivElement>(null);
@@ -620,6 +766,11 @@ const Widgets = memo(() => {
     const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
     const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
     const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
+    const [createToExistingTabRequest, setCreateToExistingTabRequest] = useState<CreateToExistingTabRequest | null>(
+        null
+    );
+    const canCreateToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== currentTabId);
+    const sourceTabName = currentTab?.name || "Tab";
 
     const closeAgentTargetSelector = useCallback(() => {
         setIsAgentTargetOpen(false);
@@ -635,6 +786,37 @@ const Widgets = memo(() => {
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
     }, []);
+
+    const createBlockInNewTab = useCallback(
+        async (blockDef: BlockDef, magnified: boolean) => {
+            if (isBlank(workspace?.oid)) {
+                throw new Error("No workspace available");
+            }
+            const result = await env.services.object.CreateBlockInNewTab(
+                workspace.oid,
+                sourceTabName,
+                blockDef,
+                DefaultCreateBlockRuntimeOpts,
+                magnified
+            );
+            env.electron.setActiveTab(result.tabid);
+        },
+        [env, workspace?.oid, sourceTabName]
+    );
+
+    const createBlockInExistingTab = useCallback(
+        async (targetTabId: string, request: CreateToExistingTabRequest) => {
+            await env.services.object.CreateBlockInTab(
+                targetTabId,
+                request.blockDef,
+                DefaultCreateBlockRuntimeOpts,
+                false,
+                request.magnified
+            );
+            env.electron.setActiveTab(targetTabId);
+        },
+        [env]
+    );
 
     const launchAgentForProfile = useCallback(
         (widget: WidgetConfigType, referenceElement: HTMLElement, profile?: AgentWidgetProfile) => {
@@ -822,6 +1004,14 @@ const Widgets = memo(() => {
         env.showContextMenu(menu, e);
     };
 
+    const openCreateToExistingTabModal = useCallback((request: CreateToExistingTabRequest) => {
+        setCreateToExistingTabRequest(request);
+    }, []);
+
+    const closeCreateToExistingTabModal = useCallback(() => {
+        setCreateToExistingTabRequest(null);
+    }, []);
+
     return (
         <>
             <div
@@ -975,6 +1165,9 @@ const Widgets = memo(() => {
                     env={env}
                     profileName={agentProfileName}
                     profileLabel={agentProfileLabel}
+                    canCreateToExistingTab={canCreateToExistingTab}
+                    onCreateToNewTab={createBlockInNewTab}
+                    onCreateToExistingTab={openCreateToExistingTabModal}
                 />
             )}
             {terminalReferenceElement != null && (
@@ -986,8 +1179,23 @@ const Widgets = memo(() => {
                     magnified={terminalWidgetMagnified}
                     env={env}
                     baseBlockDef={terminalBaseBlockDef}
+                    canCreateToExistingTab={canCreateToExistingTab}
+                    onCreateToNewTab={createBlockInNewTab}
+                    onCreateToExistingTab={openCreateToExistingTabModal}
                 />
             )}
+            {createToExistingTabRequest != null ? (
+                <TabTargetModal
+                    workspace={workspace}
+                    currentTabId={currentTabId}
+                    title={createToExistingTabRequest.title}
+                    subtitle={createToExistingTabRequest.subtitle || sourceTabName}
+                    actionLabel="Create"
+                    workingLabel="Creating..."
+                    onClose={closeCreateToExistingTabModal}
+                    onSelect={(targetTabId) => createBlockInExistingTab(targetTabId, createToExistingTabRequest)}
+                />
+            ) : null}
 
             <div
                 ref={measurementRef}

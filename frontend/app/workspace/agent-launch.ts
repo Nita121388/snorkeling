@@ -1,4 +1,4 @@
-import { atoms, getFocusedBlockId, globalStore } from "@/app/store/global";
+import { atoms, getApi, getFocusedBlockId, globalStore } from "@/app/store/global";
 import * as WOS from "@/app/store/wos";
 import { PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { isBlank } from "@/util/util";
@@ -60,6 +60,10 @@ export type AgentLaunchTarget = {
     isLocal: boolean;
     label: string;
     detail: string;
+};
+
+type CollectLaunchTargetsOptions = {
+    localHomeDir?: string | null;
 };
 
 function sanitizeArgs(args: unknown): string[] {
@@ -176,6 +180,105 @@ function normalizePath(rawPath: unknown): string | null {
     return trimmed.replace(/\/+$/, "");
 }
 
+function normalizeDedupPathSeparators(path: string): string {
+    return path.replace(/\\/g, "/");
+}
+
+function normalizeLocalHomeDir(rawHomeDir: string | null | undefined): string | null {
+    const normalizedHomeDir = normalizePath(rawHomeDir);
+    if (normalizedHomeDir == null) {
+        return null;
+    }
+    const dedupHomeDir = normalizeDedupPathSeparators(normalizedHomeDir);
+    if (getTildePathSuffix(dedupHomeDir) != null) {
+        return null;
+    }
+    return dedupHomeDir;
+}
+
+function getTildePathSuffix(path: string): string | null {
+    if (path === "~") {
+        return "";
+    }
+    if (path.startsWith("~/")) {
+        return path.slice(2);
+    }
+    return null;
+}
+
+function inferLocalHomeDirsFromLaunchTargets(
+    targets: AgentLaunchTarget[],
+    explicitLocalHomeDir?: string | null
+): string[] {
+    const homeDirs = new Set<string>();
+    const absolutePaths: string[] = [];
+    const tildeSuffixes: string[] = [];
+    const normalizedExplicitHomeDir = normalizeLocalHomeDir(explicitLocalHomeDir);
+    if (normalizedExplicitHomeDir != null) {
+        homeDirs.add(normalizedExplicitHomeDir);
+    }
+
+    for (const target of targets) {
+        if (!target.isLocal) {
+            continue;
+        }
+        for (const path of getLaunchTargetPathCandidates(target)) {
+            const normalizedPath = normalizePath(path);
+            if (normalizedPath == null) {
+                continue;
+            }
+            const dedupPath = normalizeDedupPathSeparators(normalizedPath);
+            const tildeSuffix = getTildePathSuffix(dedupPath);
+            if (tildeSuffix != null) {
+                tildeSuffixes.push(tildeSuffix);
+                continue;
+            }
+            if (!dedupPath.startsWith("/") && !/^[A-Za-z]:\//.test(dedupPath)) {
+                continue;
+            }
+            absolutePaths.push(dedupPath);
+        }
+    }
+
+    for (const suffix of tildeSuffixes) {
+        if (suffix === "") {
+            continue;
+        }
+        const absoluteSuffix = `/${suffix}`;
+        for (const absolutePath of absolutePaths) {
+            if (!absolutePath.endsWith(absoluteSuffix)) {
+                continue;
+            }
+            const homeDir = absolutePath.slice(0, absolutePath.length - absoluteSuffix.length);
+            if (!isBlank(homeDir)) {
+                homeDirs.add(homeDir);
+            }
+        }
+    }
+
+    return Array.from(homeDirs).sort((a, b) => b.length - a.length);
+}
+
+function normalizeLaunchPathForDedup(path: string | null | undefined, homeDirs: string[]): string {
+    const normalizedPath = normalizePath(path);
+    if (normalizedPath == null) {
+        return "";
+    }
+    const dedupPath = normalizeDedupPathSeparators(normalizedPath);
+    if (getTildePathSuffix(dedupPath) != null) {
+        return dedupPath;
+    }
+    for (const homeDir of homeDirs) {
+        if (dedupPath === homeDir) {
+            return "~";
+        }
+        if (dedupPath.startsWith(`${homeDir}/`)) {
+            return `~/${dedupPath.slice(homeDir.length + 1)}`;
+        }
+    }
+    return dedupPath;
+}
+
 function getParentPath(path: string): string | null {
     const normalizedPath = normalizePath(path);
     if (normalizedPath == null || normalizedPath === "/") {
@@ -238,10 +341,9 @@ function makeTerminalLaunchTarget(blockId: string, block: Block): AgentLaunchTar
     const connection = normalizeConnection(block.meta?.connection);
     const cwd = normalizePath(block.meta?.["cmd:cwd"]);
     const source = block.meta?.[AgentAutoResumeMetaKey] === true ? "agent" : "terminal";
-    const shortBlockId = (block.oid ?? blockId).slice(0, 8);
     const isLocal = connection == null;
     const label = isLocal ? "local" : connection;
-    const detail = cwd == null ? `block ${shortBlockId}` : `${cwd} • block ${shortBlockId}`;
+    const detail = cwd ?? "";
     return {
         blockId,
         connection,
@@ -267,12 +369,11 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     if (connection == null && cwd == null && filePath == null) {
         return null;
     }
-    const shortBlockId = (block.oid ?? blockId).slice(0, 8);
     const isLocal = connection == null;
     const label = isLocal ? "local" : connection;
     const locationDetail =
         filePath != null && cwd != null && filePath !== cwd ? `${filePath} -> ${cwd}` : (cwd ?? filePath);
-    const detail = locationDetail == null ? `block ${shortBlockId}` : `${locationDetail} • block ${shortBlockId}`;
+    const detail = locationDetail ?? "";
     return {
         blockId,
         connection,
@@ -324,17 +425,20 @@ function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
     return getLaunchTargetPathCandidates(target).length > 0;
 }
 
-function makeLaunchTargetDedupKey(target: AgentLaunchTarget): string {
+function makeLaunchTargetDedupKey(target: AgentLaunchTarget, homeDirs: string[]): string {
     const connection = normalizeConnection(target.connection) ?? "local";
     const pathCandidates = getLaunchTargetPathCandidates(target);
-    const primaryPath = pathCandidates[0] ?? "";
+    const primaryPath = target.isLocal
+        ? normalizeLaunchPathForDedup(pathCandidates[0], homeDirs)
+        : (normalizePath(pathCandidates[0]) ?? "");
     return `${connection}|${primaryPath}`;
 }
 
-function dedupeLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
+function dedupeLaunchTargets(targets: AgentLaunchTarget[], options?: CollectLaunchTargetsOptions): AgentLaunchTarget[] {
     const dedupedTargets = new Map<string, AgentLaunchTarget>();
+    const localHomeDirs = inferLocalHomeDirsFromLaunchTargets(targets, options?.localHomeDir);
     for (const target of targets) {
-        const dedupeKey = makeLaunchTargetDedupKey(target);
+        const dedupeKey = makeLaunchTargetDedupKey(target, localHomeDirs);
         if (dedupedTargets.has(dedupeKey)) {
             continue;
         }
@@ -343,26 +447,26 @@ function dedupeLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] 
     return Array.from(dedupedTargets.values());
 }
 
-function appendDefaultHomeLaunchTarget(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
-    return dedupeLaunchTargets([...targets, makeDefaultHomeLaunchTarget()]);
+function appendDefaultHomeLaunchTarget(
+    targets: AgentLaunchTarget[],
+    options?: CollectLaunchTargetsOptions
+): AgentLaunchTarget[] {
+    return dedupeLaunchTargets([...targets, makeDefaultHomeLaunchTarget()], options);
 }
 
 function resolvePreferredFilesLaunchTargets(
     tab: Tab,
     getBlockById: (blockId: string) => Block | null | undefined,
-    focusedBlockId?: string | null
+    focusedBlockId?: string | null,
+    options?: CollectLaunchTargetsOptions
 ): AgentLaunchTarget[] {
     const blockIds = tab.blockids ?? [];
-    const dedupedTargets = new Map<string, AgentLaunchTarget>();
+    const targetCandidates: AgentLaunchTarget[] = [];
     const addTarget = (target: AgentLaunchTarget | null) => {
         if (!hasFilesLaunchPath(target)) {
             return;
         }
-        const dedupeKey = makeLaunchTargetDedupKey(target);
-        if (dedupedTargets.has(dedupeKey)) {
-            return;
-        }
-        dedupedTargets.set(dedupeKey, target);
+        targetCandidates.push(target);
     };
 
     const normalizedFocusedBlockId = isBlank(focusedBlockId) ? null : focusedBlockId;
@@ -381,7 +485,7 @@ function resolvePreferredFilesLaunchTargets(
         addTarget(makePreviewLaunchTarget(blockId, block));
     }
 
-    return Array.from(dedupedTargets.values());
+    return dedupeLaunchTargets(targetCandidates, options);
 }
 
 function resolveLatestTerminalContextInTab(
@@ -433,23 +537,26 @@ export function resolveWorkspaceAgentContextMeta(params: ResolveWorkspaceAgentCo
 export function collectAgentLaunchTargetsInTab(
     tab: Tab | null | undefined,
     getBlockById?: (blockId: string) => Block | null | undefined,
-    focusedBlockId?: string | null
+    focusedBlockId?: string | null,
+    options?: CollectLaunchTargetsOptions
 ): AgentLaunchTarget[] {
-    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId);
+    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId, options);
 }
 
 export function collectTerminalLaunchTargetsInTab(
     tab: Tab | null | undefined,
     getBlockById?: (blockId: string) => Block | null | undefined,
-    focusedBlockId?: string | null
+    focusedBlockId?: string | null,
+    options?: CollectLaunchTargetsOptions
 ): AgentLaunchTarget[] {
-    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId);
+    return collectLaunchTargetsInTab(tab, getBlockById, focusedBlockId, options);
 }
 
 function collectLaunchTargetsInTab(
     tab: Tab | null | undefined,
     getBlockById?: (blockId: string) => Block | null | undefined,
-    focusedBlockId?: string | null
+    focusedBlockId?: string | null,
+    options?: CollectLaunchTargetsOptions
 ): AgentLaunchTarget[] {
     if (tab == null || getBlockById == null) {
         return [];
@@ -471,16 +578,24 @@ function collectLaunchTargetsInTab(
         }
     }
 
-    const filesTargets = resolvePreferredFilesLaunchTargets(tab, getBlockById, focusedBlockId);
+    const filesTargets = resolvePreferredFilesLaunchTargets(tab, getBlockById, focusedBlockId, options);
     let launchTargets: AgentLaunchTarget[];
     if (filesTargets.length === 0) {
         launchTargets = terminalTargets;
     } else if (terminalTargets.length === 0) {
         launchTargets = filesTargets;
     } else {
-        launchTargets = dedupeLaunchTargets([...filesTargets, ...terminalTargets]);
+        launchTargets = dedupeLaunchTargets([...filesTargets, ...terminalTargets], options);
     }
-    return appendDefaultHomeLaunchTarget(launchTargets);
+    return appendDefaultHomeLaunchTarget(launchTargets, options);
+}
+
+function getLocalHomeDirForLaunchTargets(): string | null {
+    try {
+        return normalizeLocalHomeDir(getApi()?.getHomeDir?.());
+    } catch {
+        return null;
+    }
 }
 
 export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
@@ -493,7 +608,8 @@ export function getCurrentTabAgentLaunchTargets(): AgentLaunchTarget[] {
     return collectAgentLaunchTargetsInTab(
         tabData,
         (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
-        focusedBlockId
+        focusedBlockId,
+        { localHomeDir: getLocalHomeDirForLaunchTargets() }
     );
 }
 
@@ -507,7 +623,8 @@ export function getCurrentTabTerminalLaunchTargets(): AgentLaunchTarget[] {
     return collectTerminalLaunchTargetsInTab(
         tabData,
         (blockId: string) => globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))),
-        focusedBlockId
+        focusedBlockId,
+        { localHomeDir: getLocalHomeDirForLaunchTargets() }
     );
 }
 

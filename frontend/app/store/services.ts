@@ -189,6 +189,18 @@ export class ObjectServiceType {
         return callBackendService(this?.waveEnv, "object", "CreateBlock", Array.from(arguments))
     }
 
+    // create a new block in a newly created empty tab
+    // @returns create result (and object updates)
+    CreateBlockInNewTab(workspaceId: string, tabNameBase: string, blockDef: BlockDef, rtOpts: RuntimeOpts, magnified: boolean): Promise<CreateBlockInNewTabResult> {
+        return callBackendService(this?.waveEnv, "object", "CreateBlockInNewTab", Array.from(arguments))
+    }
+
+    // create a new block in another tab
+    // @returns blockId (and object updates)
+    CreateBlockInTab(targetTabId: string, blockDef: BlockDef, rtOpts: RuntimeOpts, activateTargetTab: boolean, magnified: boolean): Promise<string> {
+        return callBackendService(this?.waveEnv, "object", "CreateBlockInTab", Array.from(arguments))
+    }
+
     // @returns object updates
     DeleteBlock(blockId: string): Promise<void> {
         return callBackendService(this?.waveEnv, "object", "DeleteBlock", Array.from(arguments))

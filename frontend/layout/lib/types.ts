@@ -372,6 +372,8 @@ export interface ResizeHandleProps {
     id: string;
     parentNodeId: string;
     parentIndex: number;
+    beforeNodeId: string;
+    afterNodeId: string;
     centerPx: number;
     transform: CSSProperties;
     flexDirection: FlexDirection;
@@ -383,6 +385,7 @@ export interface LayoutNodeAdditionalProps {
     rect?: Dimensions;
     pixelToSizeRatio?: number;
     resizeHandles?: ResizeHandleProps[];
+    hidden?: boolean;
 }
 
 export interface NodeModel {
@@ -400,6 +403,7 @@ export interface NodeModel {
     anyMagnified: Atom<boolean>;
     isEphemeral: Atom<boolean>;
     isMinimizedPreview: Atom<boolean>;
+    isHidden: Atom<boolean>;
     ready: Atom<boolean>;
     disablePointerEvents: Atom<boolean>;
     toggleMagnify: () => void;

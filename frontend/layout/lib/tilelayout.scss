@@ -79,6 +79,12 @@
             filter: blur(8px);
         }
 
+        &.hidden {
+            opacity: 0;
+            pointer-events: none;
+            visibility: hidden;
+        }
+
         &.resizing {
             border: 1px solid var(--accent-color);
             backdrop-filter: blur(8px);

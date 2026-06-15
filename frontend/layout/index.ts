@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TileLayout } from "./lib/TileLayout";
+import {
+    addHiddenBlockId,
+    getHiddenBlockIdsFromTab,
+    HiddenBlocksMetaKey,
+    normalizeHiddenBlockIds,
+    removeHiddenBlockId,
+    setHiddenBlockIds,
+} from "./lib/hiddenBlocks";
 import { LayoutModel } from "./lib/layoutModel";
 import {
     deleteLayoutModelForTab,
@@ -33,14 +41,20 @@ import type {
 import { DropDirection, LayoutTreeActionType, NavigateDirection } from "./lib/types";
 
 export {
+    addHiddenBlockId,
     deleteLayoutModelForTab,
     DropDirection,
+    getHiddenBlockIdsFromTab,
     getLayoutModelForStaticTab,
     getLayoutModelForTabById,
+    HiddenBlocksMetaKey,
     LayoutModel,
     LayoutTreeActionType,
     NavigateDirection,
     newLayoutNode,
+    normalizeHiddenBlockIds,
+    removeHiddenBlockId,
+    setHiddenBlockIds,
     TileLayout,
     useDebouncedNodeInnerRect,
 };

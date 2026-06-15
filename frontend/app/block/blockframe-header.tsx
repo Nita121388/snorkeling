@@ -10,7 +10,6 @@ import {
 } from "@/app/block/blockutil";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
-import { Modal } from "@/app/modals/modal";
 import { getBlockBadgeAtom } from "@/app/store/badge";
 import {
     createBlockSplitHorizontally,
@@ -23,10 +22,10 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { Button } from "@/element/button";
 import { IconButton } from "@/element/iconbutton";
 import { NodeModel } from "@/layout/index";
 import * as util from "@/util/util";
@@ -356,39 +355,6 @@ type MoveBlockToTabModalProps = {
     onCopied: (targetTabId: string, blockId: string) => void;
 };
 
-type MoveBlockToTabRowProps = {
-    tabId: string;
-    mode: BlockTabActionMode;
-    working: boolean;
-    disabled: boolean;
-    onSelect: (tabId: string) => void;
-};
-
-const MoveBlockToTabRow = React.memo(({ tabId, mode, working, disabled, onSelect }: MoveBlockToTabRowProps) => {
-    const waveEnv = useWaveEnv<BlockEnv>();
-    const tabAtom = waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
-    const tab = jotai.useAtomValue(tabAtom);
-    const tabName = tab?.name || "Untitled Tab";
-    const actionLabel = mode === "move" ? "Move" : "Copy";
-    const workingLabel = mode === "move" ? "Moving..." : "Copying...";
-
-    return (
-        <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-hoverbg disabled:cursor-default disabled:opacity-60"
-            disabled={disabled}
-            onClick={() => onSelect(tabId)}
-        >
-            <div className="min-w-0">
-                <div className="truncate text-sm text-primary">{tabName}</div>
-                <div className="truncate text-[11px] text-secondary">{tabId}</div>
-            </div>
-            <span className="shrink-0 text-xs text-secondary">{working ? workingLabel : actionLabel}</span>
-        </button>
-    );
-});
-MoveBlockToTabRow.displayName = "MoveBlockToTabRow";
-
 const MoveBlockToTabModal = React.memo(
     ({
         mode,
@@ -401,86 +367,34 @@ const MoveBlockToTabModal = React.memo(
         onCopied,
     }: MoveBlockToTabModalProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
-        const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
-        const [workingTabId, setWorkingTabId] = React.useState<string>(null);
-        const [error, setError] = React.useState<string>(null);
-        const tabIds = React.useMemo(
-            () => (workspace?.tabids ?? []).filter((tabId) => tabId !== currentTabId),
-            [workspace?.tabids, currentTabId]
-        );
         const title = mode === "move" ? "Move Block" : "Copy Block";
-
-        React.useEffect(() => {
-            setModalOpen(true);
-            return () => setModalOpen(false);
-        }, [setModalOpen]);
-
-        React.useEffect(() => {
-            const handleKeyDown = (event: KeyboardEvent) => {
-                if (event.key === "Escape") {
-                    onClose();
-                }
-            };
-            document.addEventListener("keydown", handleKeyDown);
-            return () => document.removeEventListener("keydown", handleKeyDown);
-        }, [onClose]);
+        const actionLabel = mode === "move" ? "Move" : "Copy";
+        const workingLabel = mode === "move" ? "Moving..." : "Copying...";
 
         const runTabAction = React.useCallback(
-            (targetTabId: string) => {
-                setWorkingTabId(targetTabId);
-                setError(null);
-                util.fireAndForget(async () => {
-                    try {
-                        if (mode === "move") {
-                            await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
-                            onMoved(targetTabId);
-                        } else {
-                            const newBlockId = await waveEnv.services.object.CopyBlockToTab(
-                                blockId,
-                                targetTabId,
-                                false
-                            );
-                            onCopied(targetTabId, newBlockId);
-                        }
-                        onClose();
-                    } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                        setWorkingTabId(null);
-                    }
-                });
+            async (targetTabId: string) => {
+                if (mode === "move") {
+                    await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
+                    onMoved(targetTabId);
+                    return;
+                }
+                const newBlockId = await waveEnv.services.object.CopyBlockToTab(blockId, targetTabId, false);
+                onCopied(targetTabId, newBlockId);
             },
-            [waveEnv, mode, blockId, onMoved, onCopied, onClose]
+            [waveEnv, mode, blockId, onMoved, onCopied]
         );
 
         return (
-            <Modal className="w-[420px] max-w-[calc(100vw-32px)] pt-8 pb-4" onClose={onClose} onClickBackdrop={onClose}>
-                <div className="mb-3 pr-8">
-                    <div className="truncate text-base font-semibold text-primary">{title}</div>
-                    <div className="mt-1 truncate text-xs text-secondary">{sourceTabName}</div>
-                </div>
-                <div className="max-h-[320px] w-full overflow-y-auto rounded-md border border-border/50 p-1">
-                    {tabIds.length === 0 ? (
-                        <div className="px-2 py-6 text-center text-sm text-secondary">No other tabs</div>
-                    ) : (
-                        tabIds.map((tabId) => (
-                            <MoveBlockToTabRow
-                                key={tabId}
-                                tabId={tabId}
-                                mode={mode}
-                                working={workingTabId === tabId}
-                                disabled={workingTabId != null}
-                                onSelect={runTabAction}
-                            />
-                        ))
-                    )}
-                </div>
-                {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
-                <div className="mt-4 flex w-full justify-end">
-                    <Button className="grey ghost" onClick={onClose} disabled={workingTabId != null}>
-                        Cancel
-                    </Button>
-                </div>
-            </Modal>
+            <TabTargetModal
+                workspace={workspace}
+                currentTabId={currentTabId}
+                title={title}
+                subtitle={sourceTabName}
+                actionLabel={actionLabel}
+                workingLabel={workingLabel}
+                onClose={onClose}
+                onSelect={runTabAction}
+            />
         );
     }
 );

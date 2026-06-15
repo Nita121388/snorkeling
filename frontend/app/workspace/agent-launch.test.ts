@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import type { AgentLaunchTarget } from "./agent-launch";
 import {
     collectAgentLaunchTargetsInTab,
     collectTerminalLaunchTargetsInTab,
@@ -12,7 +13,6 @@ import {
     extractTerminalContextMeta,
     resolveWorkspaceAgentContextMeta,
 } from "./agent-launch";
-import type { AgentLaunchTarget } from "./agent-launch";
 
 function makeBlock(blockId: string, meta?: Record<string, unknown>): Block {
     return {
@@ -130,9 +130,11 @@ describe("agent launch context", () => {
             }),
         };
 
-        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId]);
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null, {
+            localHomeDir: "/Users/nita",
+        });
 
-        expect(targets).toHaveLength(3);
+        expect(targets).toHaveLength(2);
         expect(targets[0]).toMatchObject({
             blockId: "block:term-local",
             connection: null,
@@ -149,7 +151,6 @@ describe("agent launch context", () => {
             isLocal: false,
             label: "ssh://server-a",
         });
-        expectHomeLaunchTarget(targets[2]);
     });
 
     it("adds focused Files target when no terminal target exists", () => {
@@ -304,6 +305,55 @@ describe("agent launch context", () => {
         expect(terminalTargets).toEqual(agentTargets);
     });
 
+    it("dedupes local tilde and absolute home paths without exposing block ids", () => {
+        const tab = makeTab(["block:preview", "block:agent-tilde", "block:agent-absolute"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects",
+            }),
+            "block:agent-tilde": makeBlock("block:agent-tilde", {
+                view: "term",
+                controller: "cmd",
+                cmd: "codex",
+                "cmd:cwd": "~/Primary/projects/snorkeling",
+                "agent:autoresume": true,
+                "agent:provider": "codex",
+            }),
+            "block:agent-absolute": makeBlock("block:agent-absolute", {
+                view: "term",
+                controller: "cmd",
+                cmd: "codex",
+                "cmd:cwd": "/Users/nita/Primary/projects/snorkeling",
+                "agent:autoresume": true,
+                "agent:provider": "codex",
+            }),
+        };
+
+        const targets = collectTerminalLaunchTargetsInTab(
+            tab,
+            (blockId: string) => blockMap[blockId],
+            "block:preview",
+            { localHomeDir: "/Users/nita" }
+        );
+
+        expect(targets).toHaveLength(3);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects",
+            detail: "/Users/nita/Primary/projects",
+        });
+        expect(targets[1]).toMatchObject({
+            blockId: "block:agent-tilde",
+            source: "agent",
+            cwd: "~/Primary/projects/snorkeling",
+            detail: "~/Primary/projects/snorkeling",
+        });
+        expect(targets[1].detail).not.toContain("block");
+        expectHomeLaunchTarget(targets[2]);
+    });
+
     it("requires selection when Files and terminal contexts do not match", () => {
         const tab = makeTab(["block:term", "block:preview"]);
         const blockMap: Record<string, Block> = {
@@ -361,6 +411,48 @@ describe("agent launch context", () => {
             source: "terminal",
             cwd: "~",
         });
+    });
+
+    it("does not duplicate the home target when local terminal context uses the absolute home path", () => {
+        const tab = makeTab(["block:term-home"]);
+        const blockMap: Record<string, Block> = {
+            "block:term-home": makeBlock("block:term-home", { view: "term", "cmd:cwd": "/Users/nita" }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null, {
+            localHomeDir: "/Users/nita",
+        });
+
+        expect(targets).toHaveLength(1);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:term-home",
+            source: "terminal",
+            cwd: "/Users/nita",
+        });
+    });
+
+    it("keeps a remote absolute path separate from the local home target", () => {
+        const tab = makeTab(["block:term-remote-home"]);
+        const blockMap: Record<string, Block> = {
+            "block:term-remote-home": makeBlock("block:term-remote-home", {
+                view: "term",
+                connection: "ssh://server-a",
+                "cmd:cwd": "/Users/nita",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null, {
+            localHomeDir: "/Users/nita",
+        });
+
+        expect(targets).toHaveLength(2);
+        expect(targets[0]).toMatchObject({
+            blockId: "block:term-remote-home",
+            source: "terminal",
+            connection: "ssh://server-a",
+            cwd: "/Users/nita",
+        });
+        expectHomeLaunchTarget(targets[1]);
     });
 
     it("builds default codex command block when no profile configured", () => {

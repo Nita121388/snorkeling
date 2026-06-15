@@ -1127,6 +1127,12 @@ declare global {
         count: number;
     };
 
+    // objectservice.CreateBlockInNewTabResult
+    type CreateBlockInNewTabResult = {
+        tabid: string;
+        blockid: string;
+    };
+
     // wshrpc.DirEntryOut
     type DirEntryOut = {
         name: string;

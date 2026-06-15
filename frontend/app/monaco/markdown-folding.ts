@@ -23,6 +23,10 @@ export type MarkdownFoldingRange = {
 let markdownFoldingRegistered = false;
 const MarkdownFilePattern = /\.md$/i;
 
+function normalizeMarkdownText(text: string | null | undefined): string {
+    return text ?? "";
+}
+
 function getFenceStart(line: string): MarkdownFence | null {
     const match = line.match(/^ {0,3}(`{3,}|~{3,})/);
     if (!match) {
@@ -53,8 +57,8 @@ function parseHeading(line: string): Pick<MarkdownHeading, "level" | "text"> | n
     };
 }
 
-export function getMarkdownHeadings(text: string): MarkdownHeading[] {
-    const lines = text.split(/\r\n|\r|\n/);
+export function getMarkdownHeadings(text: string | null | undefined): MarkdownHeading[] {
+    const lines = normalizeMarkdownText(text).split(/\r\n|\r|\n/);
     const headings: MarkdownHeading[] = [];
     let fence: MarkdownFence | null = null;
 
@@ -81,9 +85,10 @@ export function getMarkdownHeadings(text: string): MarkdownHeading[] {
     return headings;
 }
 
-export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRange[] {
-    const lines = text.split(/\r\n|\r|\n/);
-    const headings = getMarkdownHeadings(text);
+export function getMarkdownHeadingFoldingRanges(text: string | null | undefined): MarkdownFoldingRange[] {
+    const markdownText = normalizeMarkdownText(text);
+    const lines = markdownText.split(/\r\n|\r|\n/);
+    const headings = getMarkdownHeadings(markdownText);
 
     return headings.flatMap((heading, index) => {
         const nextHeading = headings.slice(index + 1).find((candidate) => candidate.level <= heading.level);
@@ -95,12 +100,13 @@ export function getMarkdownHeadingFoldingRanges(text: string): MarkdownFoldingRa
     });
 }
 
-export function getMarkdownFoldingRanges(text: string, filePath?: string | null): MarkdownFoldingRange[] {
-    const headingRanges = getMarkdownHeadingFoldingRanges(text);
+export function getMarkdownFoldingRanges(text: string | null | undefined, filePath?: string | null): MarkdownFoldingRange[] {
+    const markdownText = normalizeMarkdownText(text);
+    const headingRanges = getMarkdownHeadingFoldingRanges(markdownText);
     if (!MarkdownFilePattern.test(filePath ?? "")) {
         return headingRanges;
     }
-    const orderedListRanges = getMarkdownOrderedListFoldingRanges(text).map((range) => ({
+    const orderedListRanges = getMarkdownOrderedListFoldingRanges(markdownText).map((range) => ({
         start: range.startLineNumber,
         end: range.endLineNumber,
     }));

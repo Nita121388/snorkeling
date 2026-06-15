@@ -3,7 +3,7 @@
 
 import { atoms, getBlockComponentModel, globalStore, refocusNode, WOS } from "@/app/store/global";
 import { ObjectService } from "@/app/store/services";
-import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
+import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode, removeHiddenBlockId } from "@/layout/index";
 import type { LayoutTreeInsertNodeAction, LayoutTreeSplitHorizontalAction } from "@/layout/lib/types";
 import { isBlank } from "@/util/util";
 import { atom, type Atom } from "jotai";
@@ -16,6 +16,7 @@ type ToggleCurrentTabBlockOptions = {
     kind: string;
     blockDef: BlockDef;
     magnified?: boolean;
+    hideInsteadOfClose?: boolean;
 };
 
 type FixedLeftBlockEntry = {
@@ -92,6 +93,10 @@ async function closeCurrentTabBlock(blockId: string): Promise<boolean> {
     const layoutModel = getLayoutModelForStaticTab();
     const node = layoutModel?.getNodeByBlockId(blockId);
     if (node != null) {
+        const tab = getCurrentTab();
+        if (tab?.oid) {
+            removeHiddenBlockId(tab.oid, blockId);
+        }
         await layoutModel.closeNode(node.id);
         if (layoutModel.onNodeDelete == null) {
             await ObjectService.DeleteBlock(blockId);
@@ -204,12 +209,27 @@ export async function toggleCurrentTabBlockByKind({
     kind,
     blockDef,
     magnified = false,
+    hideInsteadOfClose = false,
 }: ToggleCurrentTabBlockOptions): Promise<string | null> {
     if (getCurrentTab() == null) {
         return null;
     }
     const existingBlockId = findCurrentTabBlockByKind(kind);
     if (existingBlockId != null) {
+        if (hideInsteadOfClose) {
+            const layoutModel = getLayoutModelForStaticTab();
+            const existingNode = layoutModel?.getNodeByBlockId(existingBlockId);
+            if (layoutModel != null && existingNode != null) {
+                if (layoutModel.isBlockHidden(existingBlockId)) {
+                    layoutModel.showBlock(existingBlockId);
+                    window.setTimeout(() => refocusNode(existingBlockId), 80);
+                    window.setTimeout(() => refocusNode(existingBlockId), 220);
+                    return existingBlockId;
+                }
+                layoutModel.hideBlock(existingBlockId);
+                return null;
+            }
+        }
         const didClose = await closeCurrentTabBlock(existingBlockId);
         return didClose ? null : existingBlockId;
     }

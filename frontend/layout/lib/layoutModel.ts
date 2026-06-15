@@ -10,6 +10,7 @@ import { Atom, atom, Getter, PrimitiveAtom, Setter } from "jotai";
 import { splitAtom } from "jotai/utils";
 import { createRef, CSSProperties } from "react";
 import { debounce } from "throttle-debounce";
+import { getHiddenBlockIdsFromTab, setHiddenBlockIds } from "./hiddenBlocks";
 import { getLayoutStateAtomFromTab } from "./layoutAtom";
 import { balanceNode, findNode, newLayoutNode, walkNodes } from "./layoutNode";
 import {
@@ -138,6 +139,7 @@ export class LayoutModel {
      * An ordered list of node ids starting from the top left corner to the bottom right corner.
      */
     leafOrder: PrimitiveAtom<LeafOrderEntry[]>;
+    hiddenBlockIds: PrimitiveAtom<string[]>;
     /**
      * Atom representing the number of leaf nodes in a layout.
      */
@@ -289,6 +291,7 @@ export class LayoutModel {
 
         this.leafs = atom([]);
         this.leafOrder = atom([]);
+        this.hiddenBlockIds = atom([]);
         this.numLeafs = atom((get) => get(this.leafOrder).length);
 
         this.nodeModels = new Map();
@@ -645,6 +648,7 @@ export class LayoutModel {
         this.renderContent = contents.renderContent;
         this.renderPreview = contents.renderPreview;
         this.onNodeDelete = contents.onNodeDelete;
+        this.syncHiddenBlockIdsFromTab();
         if (contents.gapSizePx !== undefined) {
             this.setter(this.gapSizePx, contents.gapSizePx);
         }
@@ -771,7 +775,9 @@ export class LayoutModel {
     updateTree(balanceTree = true) {
         if (this.displayContainerRef.current) {
             const newLeafs: LayoutNode[] = [];
+            const newVisibleLeafs: LayoutNode[] = [];
             const newAdditionalProps = {};
+            const hiddenBlockIdSet = this.getHiddenBlockIdSet();
 
             const pendingAction = this.getter(this.pendingTreeAction.currentValueAtom);
             const resizeAction =
@@ -789,9 +795,11 @@ export class LayoutModel {
                     node,
                     newAdditionalProps,
                     newLeafs,
+                    newVisibleLeafs,
                     resizeHandleSizePx,
                     magnifiedNodeSize,
                     boundingRect,
+                    hiddenBlockIdSet,
                     resizeAction
                 );
             if (balanceTree) this.treeState.rootNode = balanceNode(this.treeState.rootNode, callback);
@@ -810,15 +818,16 @@ export class LayoutModel {
             }
 
             this.treeState.leafOrder = getLeafOrder(newLeafs, newAdditionalProps);
+            const visibleLeafOrder = getLeafOrder(newVisibleLeafs, newAdditionalProps);
             this.logLeafNodeIdChanges(this.treeState.leafOrder);
-            this.validateFocusedNode(this.treeState.leafOrder);
-            this.validateMagnifiedNode(this.treeState.leafOrder, newAdditionalProps);
+            this.validateFocusedNode(visibleLeafOrder);
+            this.validateMagnifiedNode(visibleLeafOrder, newAdditionalProps);
             this.cleanupNodeModels(this.treeState.leafOrder);
             this.setter(
                 this.leafs,
                 newLeafs.sort((a, b) => a.id.localeCompare(b.id))
             );
-            this.setter(this.leafOrder, this.treeState.leafOrder);
+            this.setter(this.leafOrder, visibleLeafOrder);
             this.setter(this.additionalProps, newAdditionalProps);
         }
     }
@@ -834,15 +843,53 @@ export class LayoutModel {
         node: LayoutNode,
         additionalPropsMap: Record<string, LayoutNodeAdditionalProps>,
         leafs: LayoutNode[],
+        visibleLeafs: LayoutNode[],
         resizeHandleSizePx: number,
         magnifiedNodeSizePct: number,
         boundingRect: Dimensions,
+        hiddenBlockIdSet: Set<string>,
         resizeAction?: LayoutTreeResizeNodeAction
     ) {
+        if (node.children?.length && this.isNodeSubtreeHidden(node, hiddenBlockIdSet)) {
+            const addlProps = additionalPropsMap[node.id] ?? { treeKey: "0" };
+            const hiddenTransform = setTransform({ top: 0, left: -100000, width: 1, height: 1 }, false, true);
+            additionalPropsMap[node.id] = {
+                ...addlProps,
+                hidden: true,
+                transform: hiddenTransform,
+                rect: undefined,
+                resizeHandles: [],
+            };
+            node.children.forEach((child, i) => {
+                const childTreeKey = `${addlProps.treeKey}h${i}`;
+                additionalPropsMap[child.id] = {
+                    ...(additionalPropsMap[child.id] ?? { treeKey: childTreeKey }),
+                    treeKey: childTreeKey,
+                    hidden: true,
+                    transform: hiddenTransform,
+                    rect: undefined,
+                    resizeHandles: [],
+                };
+            });
+            return;
+        }
+
         if (!node.children?.length) {
+            const hidden = this.isNodeHidden(node, hiddenBlockIdSet);
             leafs.push(node);
+            if (!hidden) {
+                visibleLeafs.push(node);
+            }
             const addlProps = additionalPropsMap[node.id];
-            if (addlProps) {
+            if (hidden) {
+                additionalPropsMap[node.id] = {
+                    ...(addlProps ?? { treeKey: "0" }),
+                    hidden: true,
+                    transform: setTransform({ top: 0, left: -100000, width: 1, height: 1 }, false, true),
+                    rect: undefined,
+                    resizeHandles: [],
+                };
+            } else if (addlProps) {
                 if (this.magnifiedNodeId === node.id) {
                     const magnifiedNodeMarginPct = (1 - magnifiedNodeSizePct) / 2;
                     const transform = setTransform(
@@ -877,12 +924,25 @@ export class LayoutModel {
         const nodeRect: Dimensions = node.id === this.treeState.rootNode.id ? boundingRect : additionalProps.rect;
         const nodeIsRow = node.flexDirection === FlexDirection.Row;
         const nodePixels = nodeIsRow ? nodeRect.width : nodeRect.height;
-        const totalChildrenSize = node.children.reduce((acc, child) => acc + getNodeSize(child), 0);
+        const visibleChildren = node.children.filter((child) => !this.isNodeSubtreeHidden(child, hiddenBlockIdSet));
+        const totalChildrenSize = visibleChildren.reduce((acc, child) => acc + getNodeSize(child), 0);
         const pixelToSizeRatio = totalChildrenSize / nodePixels;
 
         let lastChildRect: Dimensions;
+        let lastVisibleChild: LayoutNode;
         const resizeHandles: ResizeHandleProps[] = [];
+        let visibleChildIndex = 0;
         node.children.forEach((child, i) => {
+            if (this.isNodeSubtreeHidden(child, hiddenBlockIdSet)) {
+                additionalPropsMap[child.id] = {
+                    rect: undefined,
+                    transform: setTransform({ top: 0, left: -100000, width: 1, height: 1 }, false, true),
+                    treeKey: `${additionalProps.treeKey}h${i}`,
+                    resizeHandles: [],
+                    hidden: true,
+                };
+                return;
+            }
             const childSize = getNodeSize(child);
             const rect: Dimensions = {
                 top: !nodeIsRow && lastChildRect ? lastChildRect.top + lastChildRect.height : nodeRect.top,
@@ -894,8 +954,9 @@ export class LayoutModel {
             additionalPropsMap[child.id] = {
                 rect,
                 transform,
-                treeKey: additionalProps.treeKey + i,
+                treeKey: additionalProps.treeKey + visibleChildIndex,
             };
+            visibleChildIndex++;
 
             // We only want the resize handles in between nodes, this ensures we have n-1 handles.
             if (lastChildRect) {
@@ -915,6 +976,8 @@ export class LayoutModel {
                     id: `${node.id}-${resizeHandleIndex}`,
                     parentNodeId: node.id,
                     parentIndex: resizeHandleIndex,
+                    beforeNodeId: lastVisibleChild?.id,
+                    afterNodeId: child.id,
                     transform: setTransform(resizeHandleDimensions, true, false),
                     flexDirection: node.flexDirection,
                     centerPx:
@@ -922,6 +985,7 @@ export class LayoutModel {
                 });
             }
             lastChildRect = rect;
+            lastVisibleChild = child;
         });
 
         additionalPropsMap[node.id] = {
@@ -930,6 +994,77 @@ export class LayoutModel {
             pixelToSizeRatio,
             resizeHandles,
         };
+    }
+
+    private syncHiddenBlockIdsFromTab(): string[] {
+        const hiddenBlockIds = getHiddenBlockIdsFromTab(this.getter(this.tabAtom));
+        this.setter(this.hiddenBlockIds, hiddenBlockIds);
+        return hiddenBlockIds;
+    }
+
+    private getHiddenBlockIds(): string[] {
+        return this.syncHiddenBlockIdsFromTab();
+    }
+
+    private getHiddenBlockIdSet(): Set<string> {
+        return new Set(this.getHiddenBlockIds());
+    }
+
+    private isNodeHidden(node: LayoutNode, hiddenBlockIdSet = this.getHiddenBlockIdSet()): boolean {
+        const blockId = node.data?.blockId;
+        return typeof blockId === "string" && hiddenBlockIdSet.has(blockId);
+    }
+
+    private isNodeSubtreeHidden(node: LayoutNode, hiddenBlockIdSet = this.getHiddenBlockIdSet()): boolean {
+        if (!node.children?.length) {
+            return this.isNodeHidden(node, hiddenBlockIdSet);
+        }
+        return node.children.every((child) => this.isNodeSubtreeHidden(child, hiddenBlockIdSet));
+    }
+
+    isBlockHidden(blockId: string): boolean {
+        if (!blockId) return false;
+        return this.getHiddenBlockIdSet().has(blockId);
+    }
+
+    setBlockHidden(blockId: string, hidden: boolean): boolean {
+        if (!blockId) return false;
+        const tab = this.getter(this.tabAtom);
+        if (!tab || !(tab.blockids ?? []).includes(blockId)) {
+            return false;
+        }
+        const node = this.getNodeByBlockId(blockId);
+        if (node == null) {
+            return false;
+        }
+        const current = this.getHiddenBlockIds();
+        const next = hidden
+            ? [...current.filter((id) => id !== blockId), blockId]
+            : current.filter((id) => id !== blockId);
+        if (next.length === current.length && next.every((id, idx) => id === current[idx])) {
+            return false;
+        }
+        if (hidden && this.treeState.focusedNodeId === node.id) {
+            this.treeState.focusedNodeId = undefined;
+        }
+        if (hidden && this.treeState.magnifiedNodeId === node.id) {
+            this.treeState.magnifiedNodeId = undefined;
+            this.magnifiedNodeId = undefined;
+        }
+        setHiddenBlockIds(tab.oid, next);
+        this.setter(this.hiddenBlockIds, next);
+        this.updateTree(false);
+        this.setter(this.localTreeStateAtom, { ...this.treeState });
+        this.persistToBackend();
+        return true;
+    }
+
+    showBlock(blockId: string): boolean {
+        return this.setBlockHidden(blockId, false);
+    }
+
+    hideBlock(blockId: string): boolean {
+        return this.setBlockHidden(blockId, true);
     }
 
     /**
@@ -1135,6 +1270,7 @@ export class LayoutModel {
                     const ephemeralNode = get(this.ephemeralNode);
                     return ephemeralNode?.id === nodeid && !get(this.ephemeralNodeDeleteOnClose);
                 }),
+                isHidden: atom((get) => get(this.hiddenBlockIds).includes(blockId)),
                 addEphemeralNodeToLayout: () => this.addEphemeralNodeToLayout(),
                 animationTimeS: this.animationTimeS,
                 ready: this.ready,
@@ -1593,9 +1729,8 @@ export class LayoutModel {
 
         // If the resize context is out of date, update it and save it for future events.
         if (this.resizeContext?.handleId !== resizeHandle.id) {
-            const parentNode = findNode(this.treeState.rootNode, resizeHandle.parentNodeId);
-            const beforeNode = parentNode.children![resizeHandle.parentIndex];
-            const afterNode = parentNode.children![resizeHandle.parentIndex + 1];
+            const beforeNode = findNode(this.treeState.rootNode, resizeHandle.beforeNodeId);
+            const afterNode = findNode(this.treeState.rootNode, resizeHandle.afterNodeId);
 
             const addlProps = this.getter(this.additionalProps);
             const pixelToSizeRatio = addlProps[resizeHandle.parentNodeId]?.pixelToSizeRatio;

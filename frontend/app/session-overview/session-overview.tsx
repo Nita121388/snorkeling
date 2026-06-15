@@ -35,15 +35,25 @@ import {
     SnorkelingBlockKindNote,
     toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
-import { getLayoutModelForTabById } from "@/layout/index";
+import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
 import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SessionOverviewModel } from "./session-overview-model";
+import {
+    getCachedSessionDetail,
+    getCachedSessionSummary,
+    getSessionOverviewCacheSnapshot,
+    loadCachedSessionDetail,
+    loadCachedSessionSummary,
+    patchCachedSessionSummary,
+    subscribeSessionOverviewCache,
+} from "./session-overview-session-cache";
 import "./session-overview.scss";
 
 const agentStatusLog = debug("wave:agentstatus");
+const overviewLog = debug("wave:sessionoverview");
 const NoteBlockOpenAtom = makeCurrentTabBlockKindOpenAtom(SnorkelingBlockKindNote);
 
 type OverviewBlock = {
@@ -62,12 +72,6 @@ type DetailState = {
     loading: boolean;
     detail: SessionDetail | null;
     error: string;
-};
-
-type SessionFileStat = {
-    mtime: number;
-    size: number;
-    missing: boolean;
 };
 
 type SummaryState = {
@@ -220,11 +224,6 @@ async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
     }
 }
 
-function sessionStatKey(stat: SessionFileStat | AISessionsStatResponse | null | undefined): string {
-    if (stat == null) return "";
-    return `${stat.missing === true ? 1 : 0}:${stat.mtime ?? 0}:${stat.size ?? 0}`;
-}
-
 function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
     return block.isAgentLike || block.view === "term";
 }
@@ -267,7 +266,10 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     return jotai.useAtomValue(overviewAtom);
 }
 
-function useBlockControllerStatuses(blocks: OverviewBlock[]): Record<string, BlockControllerRuntimeStatus | null> {
+function useBlockControllerStatuses(
+    blocks: OverviewBlock[],
+    active: boolean
+): Record<string, BlockControllerRuntimeStatus | null> {
     const service = useMemo(() => new BlockServiceType(), []);
     const blockIds = useMemo(
         () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
@@ -277,6 +279,9 @@ function useBlockControllerStatuses(blocks: OverviewBlock[]): Record<string, Blo
     const [statuses, setStatuses] = useState<Record<string, BlockControllerRuntimeStatus | null>>({});
 
     useEffect(() => {
+        if (!active) {
+            return;
+        }
         let cancelled = false;
         setStatuses((current) => {
             const next: Record<string, BlockControllerRuntimeStatus | null> = {};
@@ -286,18 +291,16 @@ function useBlockControllerStatuses(blocks: OverviewBlock[]): Record<string, Blo
             return next;
         });
 
-        for (const blockId of blockIds) {
-            service
-                .GetControllerStatus(blockId)
-                .then((status) => {
-                    if (cancelled) return;
-                    setStatuses((current) => ({ ...current, [blockId]: status }));
-                })
-                .catch(() => {
-                    if (cancelled) return;
-                    setStatuses((current) => ({ ...current, [blockId]: null }));
-                });
-        }
+        void runOverviewRequests(blockIds, OVERVIEW_STATUS_REQUEST_CONCURRENCY, async (blockId) => {
+            try {
+                const status = await service.GetControllerStatus(blockId);
+                if (cancelled) return;
+                setStatuses((current) => ({ ...current, [blockId]: status }));
+            } catch {
+                if (cancelled) return;
+                setStatuses((current) => ({ ...current, [blockId]: null }));
+            }
+        });
 
         const unsubscribers = blockIds.map((blockId) =>
             waveEventSubscribeSingle({
@@ -316,12 +319,12 @@ function useBlockControllerStatuses(blocks: OverviewBlock[]): Record<string, Blo
                 unsubscribe();
             }
         };
-    }, [service, blockIdsKey]);
+    }, [active, service, blockIdsKey]);
 
     return statuses;
 }
 
-function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, AgentStatus | null> {
+function useCanonicalAgentStatuses(blocks: OverviewBlock[], active: boolean): Record<string, AgentStatus | null> {
     const service = useMemo(() => new BlockServiceType(), []);
     const blockIds = useMemo(
         () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
@@ -331,6 +334,9 @@ function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, Agen
     const [statuses, setStatuses] = useState<Record<string, AgentStatus | null>>({});
 
     useEffect(() => {
+        if (!active) {
+            return;
+        }
         let cancelled = false;
         setStatuses((current) => {
             const next: Record<string, AgentStatus | null> = {};
@@ -347,22 +353,20 @@ function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, Agen
             };
         }
 
-        for (const blockId of blockIds) {
-            service
-                .GetAgentStatus(blockId)
-                .then((status) => {
-                    if (cancelled) return;
-                    setStatuses((current) => ({ ...current, [blockId]: normalizeCanonicalAgentStatus(status) }));
-                })
-                .catch((error) => {
-                    if (cancelled) return;
-                    agentStatusLog("overview canonical status load error", {
-                        blockId,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                    setStatuses((current) => ({ ...current, [blockId]: null }));
+        void runOverviewRequests(blockIds, OVERVIEW_STATUS_REQUEST_CONCURRENCY, async (blockId) => {
+            try {
+                const status = await service.GetAgentStatus(blockId);
+                if (cancelled) return;
+                setStatuses((current) => ({ ...current, [blockId]: normalizeCanonicalAgentStatus(status) }));
+            } catch (error) {
+                if (cancelled) return;
+                agentStatusLog("overview canonical status load error", {
+                    blockId,
+                    error: error instanceof Error ? error.message : String(error),
                 });
-        }
+                setStatuses((current) => ({ ...current, [blockId]: null }));
+            }
+        });
 
         const unsubscribers = blockIds.map((blockId) =>
             waveEventSubscribeSingle({
@@ -383,7 +387,7 @@ function useCanonicalAgentStatuses(blocks: OverviewBlock[]): Record<string, Agen
                 unsubscribe();
             }
         };
-    }, [service, blockIdsKey]);
+    }, [active, service, blockIdsKey]);
 
     return statuses;
 }
@@ -398,8 +402,25 @@ function getErrorMessage(error: unknown): string {
 
 const SESSION_HISTORY_PENDING_MESSAGE = "Session history is not available yet.";
 const SESSION_HISTORY_PENDING_RETRY_MS = 5_000;
+const SESSION_DETAIL_TRANSIENT_RETRY_MS = 30_000;
+const SESSION_SUMMARY_POLL_MS = 15_000;
 const SESSION_TRANSIENT_FETCH_PENDING_MESSAGE = "Session connection is retrying.";
-const SESSION_TRANSIENT_FETCH_RETRY_MS = 2_000;
+const OVERVIEW_STATUS_REQUEST_CONCURRENCY = 4;
+
+async function runOverviewRequests<T>(
+    items: T[],
+    limit: number,
+    task: (item: T) => Promise<void>
+): Promise<void> {
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (nextIndex < items.length) {
+            const item = items[nextIndex++];
+            await task(item);
+        }
+    });
+    await Promise.all(workers);
+}
 
 function isSessionNotFoundMessage(message: string, sessionId: string): boolean {
     const normalized = message.trim().toLowerCase();
@@ -416,14 +437,13 @@ function isSessionTransientFetchPendingMessage(message: string | undefined): boo
     return message === SESSION_TRANSIENT_FETCH_PENDING_MESSAGE;
 }
 
-function isTransientFetchErrorMessage(message: string | undefined): boolean {
-    const normalized = message?.trim().toLowerCase() ?? "";
-    if (!normalized) return false;
+function isTransientFetchErrorMessage(message: string): boolean {
+    const normalized = message.trim().toLowerCase();
     return (
         normalized.includes("failed to fetch") ||
+        normalized.includes("err_empty_response") ||
         normalized.includes("networkerror") ||
-        normalized.includes("load failed") ||
-        normalized.includes("fetch failed")
+        normalized.includes("load failed")
     );
 }
 
@@ -496,238 +516,188 @@ function useCodexHookInstallState(hasCodexAgent: boolean) {
     return { ...state, install };
 }
 
-function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<string, DetailState> {
+function useSessionOverviewCacheVersion(): number {
+    const [version, setVersion] = useState(0);
+    useEffect(() => subscribeSessionOverviewCache(() => setVersion((current) => current + 1)), []);
+    return version;
+}
+
+function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: boolean): Record<string, DetailState> {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const sessionIds = useMemo(
         () => Array.from(new Set(blocks.map((block) => block.sessionId).filter(Boolean))).sort(),
         [blocks]
     );
+    const sessionIdsKey = sessionIds.join("\n");
+    const cacheVersion = useSessionOverviewCacheVersion();
+    const cacheSnapshot = useMemo(
+        () => getSessionOverviewCacheSnapshot(sessionIds),
+        [cacheVersion, sessionIdsKey]
+    );
     const requestedRef = useRef(new Set<string>());
-    const lastRefreshSeqRef = useRef(refreshSeq);
-    const detailsRef = useRef<Record<string, DetailState>>({});
-    const fileStatsRef = useRef<Record<string, SessionFileStat>>({});
-    const quietPollCountRef = useRef(0);
-    const mountedRef = useRef(true);
     const retryTimersRef = useRef(new Map<string, number>());
-    const [details, setDetails] = useState<Record<string, DetailState>>({});
+    const refreshSeqRef = useRef(refreshSeq);
+    const [details, setDetails] = useState<Record<string, DetailState>>(() => {
+        const next: Record<string, DetailState> = {};
+        for (const sessionId of sessionIds) {
+            const cachedDetail = getCachedSessionDetail(sessionId);
+            if (cachedDetail != null) {
+                next[sessionId] = { loading: false, detail: cachedDetail, error: "" };
+            }
+        }
+        return next;
+    });
 
-    const loadSessionDetail = React.useCallback(
-        (sessionId: string, forceRefresh = false): void => {
-            if (!forceRefresh && requestedRef.current.has(sessionId)) {
+    useEffect(() => {
+        if (!active) {
+            return;
+        }
+        let cancelled = false;
+        const activeSessionIds = new Set(sessionIds);
+        const retryTimers = retryTimersRef.current;
+        const clearRetry = (sessionId: string) => {
+            const timer = retryTimers.get(sessionId);
+            if (timer == null) return;
+            window.clearTimeout(timer);
+            retryTimers.delete(sessionId);
+        };
+        const clearStaleRetries = () => {
+            for (const [sessionId, timer] of retryTimers.entries()) {
+                if (activeSessionIds.has(sessionId)) continue;
+                window.clearTimeout(timer);
+                retryTimers.delete(sessionId);
+            }
+        };
+        const loadDetail = (sessionId: string, forceRefresh = false) => {
+            if (requestedRef.current.has(sessionId)) {
+                overviewLog("detail skip already requested", { sessionId });
                 return;
             }
-            const retryTimer = retryTimersRef.current.get(sessionId);
-            if (retryTimer != null) {
-                window.clearTimeout(retryTimer);
-                retryTimersRef.current.delete(sessionId);
-            }
             requestedRef.current.add(sessionId);
-            setDetails((prev) => ({
-                ...prev,
-                [sessionId]: {
-                    loading: true,
-                    detail: forceRefresh ? (prev[sessionId]?.detail ?? null) : null,
-                    error: "",
-                },
-            }));
-            service
-                .Detail({ id: sessionId, tail: 100, refresh: forceRefresh })
+            clearRetry(sessionId);
+            const cachedDetail = getCachedSessionDetail(sessionId);
+            overviewLog("detail load begin", {
+                sessionId,
+                forceRefresh,
+                hasCached: cachedDetail != null,
+                cachedMessages: cachedDetail?.messages?.length ?? 0,
+            });
+            setDetails((prev) => {
+                const detail = prev[sessionId]?.detail ?? cachedDetail;
+                return {
+                    ...prev,
+                    [sessionId]: {
+                        loading: detail == null,
+                        detail,
+                        error: "",
+                    },
+                };
+            });
+            loadCachedSessionDetail(service, sessionId, { tail: 100, forceRefresh })
                 .then((detail) => {
-                    if (!mountedRef.current) return;
+                    requestedRef.current.delete(sessionId);
+                    if (cancelled) return;
+                    overviewLog("detail load success", {
+                        sessionId,
+                        messageCount: detail.messages?.length ?? 0,
+                        summaryMessageCount: detail.summary.messageCount,
+                    });
                     setDetails((prev) => ({ ...prev, [sessionId]: { loading: false, detail, error: "" } }));
-                    const filePath = detail.summary.filePath?.trim();
-                    if (filePath) {
-                        service
-                            .Stat({ id: sessionId, filePath })
-                            .then((stat) => {
-                                if (!mountedRef.current) return;
-                                fileStatsRef.current[sessionId] = {
-                                    mtime: stat.mtime ?? 0,
-                                    size: stat.size ?? 0,
-                                    missing: stat.missing === true,
-                                };
-                            })
-                            .catch(() => {
-                                // The next poll will surface stat errors without blocking the detail render.
-                            });
-                    }
                 })
                 .catch((error) => {
-                    if (!mountedRef.current) return;
+                    requestedRef.current.delete(sessionId);
+                    if (cancelled) return;
                     const errorMessage = getErrorMessage(error);
                     const historyPending = isSessionNotFoundMessage(errorMessage, sessionId);
-                    const transientFetchError = isTransientFetchErrorMessage(errorMessage);
-                    if (historyPending || transientFetchError) {
-                        requestedRef.current.delete(sessionId);
+                    const transientFetch = isTransientFetchErrorMessage(errorMessage);
+                    overviewLog("detail load error", {
+                        sessionId,
+                        historyPending,
+                        transientFetch,
+                        error: errorMessage,
+                    });
+                    setDetails((prev) => {
+                        const detail = prev[sessionId]?.detail ?? getCachedSessionDetail(sessionId);
+                        return {
+                            ...prev,
+                            [sessionId]: {
+                                loading: false,
+                                detail,
+                                error:
+                                    detail != null && transientFetch
+                                        ? ""
+                                        : historyPending
+                                          ? SESSION_HISTORY_PENDING_MESSAGE
+                                          : transientFetch
+                                            ? SESSION_TRANSIENT_FETCH_PENDING_MESSAGE
+                                            : errorMessage,
+                            },
+                        };
+                    });
+                    if (!activeSessionIds.has(sessionId) || retryTimers.has(sessionId)) {
+                        return;
                     }
-                    setDetails((prev) => ({
-                        ...prev,
-                        [sessionId]: {
-                            loading: false,
-                            detail: prev[sessionId]?.detail ?? null,
-                            error: historyPending
-                                ? SESSION_HISTORY_PENDING_MESSAGE
-                                : transientFetchError && prev[sessionId]?.detail != null
-                                  ? ""
-                                  : transientFetchError
-                                    ? SESSION_TRANSIENT_FETCH_PENDING_MESSAGE
-                                    : errorMessage,
-                        },
-                    }));
-                    if (transientFetchError && !retryTimersRef.current.has(sessionId)) {
-                        const timer = window.setTimeout(() => {
-                            retryTimersRef.current.delete(sessionId);
-                            if (!mountedRef.current) return;
-                            loadSessionDetail(sessionId, forceRefresh);
-                        }, SESSION_TRANSIENT_FETCH_RETRY_MS);
-                        retryTimersRef.current.set(sessionId, timer);
+                    if (!historyPending && !transientFetch) {
+                        return;
                     }
+                    const retryMs = historyPending ? SESSION_HISTORY_PENDING_RETRY_MS : SESSION_DETAIL_TRANSIENT_RETRY_MS;
+                    const timer = window.setTimeout(() => {
+                        retryTimers.delete(sessionId);
+                        if (cancelled) return;
+                        loadDetail(sessionId);
+                    }, retryMs);
+                    retryTimers.set(sessionId, timer);
                 });
-        },
-        [service]
-    );
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            for (const timer of retryTimersRef.current.values()) {
-                window.clearTimeout(timer);
-            }
-            retryTimersRef.current.clear();
         };
-    }, []);
 
-    useEffect(() => {
-        detailsRef.current = details;
-    }, [details]);
-
-    useEffect(() => {
-        const forceRefresh = refreshSeq !== lastRefreshSeqRef.current;
-        lastRefreshSeqRef.current = refreshSeq;
-        const activeSessionIds = new Set(sessionIds);
-        for (const [sessionId, retryTimer] of retryTimersRef.current.entries()) {
-            if (activeSessionIds.has(sessionId)) continue;
-            window.clearTimeout(retryTimer);
-            retryTimersRef.current.delete(sessionId);
-        }
+        clearStaleRetries();
+        const forceRefresh = refreshSeq !== refreshSeqRef.current;
+        refreshSeqRef.current = refreshSeq;
+        overviewLog("detail effect", {
+            active,
+            sessionCount: sessionIds.length,
+            forceRefresh,
+            sessionIds,
+        });
         setDetails((current) => {
-            const next = { ...current };
+            const next: Record<string, DetailState> = {};
             for (const sessionId of sessionIds) {
-                next[sessionId] ??= { loading: true, detail: null, error: "" };
+                const cachedDetail = getCachedSessionDetail(sessionId);
+                const detail = current[sessionId]?.detail ?? cachedDetail;
+                if (detail != null) {
+                    next[sessionId] = {
+                        loading: false,
+                        detail,
+                        error: "",
+                    };
+                }
+            }
+            for (const sessionId of Object.keys(current)) {
+                if (!activeSessionIds.has(sessionId)) {
+                    continue;
+                }
+                if (next[sessionId] != null) {
+                    continue;
+                }
+                const error = current[sessionId]?.error;
+                if (error) {
+                    next[sessionId] = { loading: false, detail: null, error };
+                }
             }
             return next;
         });
         for (const sessionId of sessionIds) {
-            loadSessionDetail(sessionId, forceRefresh);
+            loadDetail(sessionId, forceRefresh);
         }
-    }, [loadSessionDetail, sessionIds.join("\n"), refreshSeq]);
-
-    useEffect(() => {
-        if (sessionIds.length === 0) {
-            return;
-        }
-        let cancelled = false;
-        let timer: number | null = null;
-
-        const schedule = (delayMs: number) => {
-            if (cancelled) return;
-            timer = window.setTimeout(() => void poll(), delayMs);
-        };
-
-        const poll = async () => {
-            if (cancelled) return;
-            if (document.visibilityState === "hidden") {
-                schedule(30_000);
-                return;
-            }
-
-            const currentDetails = detailsRef.current;
-            let changed = false;
-            await Promise.all(
-                sessionIds.map(async (sessionId) => {
-                    const state = currentDetails[sessionId];
-                    if (state?.loading) return;
-                    if (
-                        isSessionHistoryPendingMessage(state?.error) ||
-                        isSessionTransientFetchPendingMessage(state?.error)
-                    ) {
-                        loadSessionDetail(sessionId);
-                        return;
-                    }
-                    const filePath = state?.detail?.summary?.filePath?.trim();
-                    if (!filePath) return;
-                    try {
-                        const stat = await service.Stat({ id: sessionId, filePath });
-                        if (cancelled) return;
-                        const prev = fileStatsRef.current[sessionId];
-                        fileStatsRef.current[sessionId] = {
-                            mtime: stat.mtime ?? 0,
-                            size: stat.size ?? 0,
-                            missing: stat.missing === true,
-                        };
-                        if (isSessionTransientFetchPendingMessage(currentDetails[sessionId]?.error)) {
-                            setDetails((current) => ({
-                                ...current,
-                                [sessionId]: {
-                                    loading: false,
-                                    detail: current[sessionId]?.detail ?? null,
-                                    error: "",
-                                },
-                            }));
-                        }
-                        if (prev == null) {
-                            return;
-                        }
-                        if (sessionStatKey(prev) === sessionStatKey(stat)) {
-                            return;
-                        }
-                        changed = true;
-                        if (stat.missing === true) {
-                            setDetails((current) => ({
-                                ...current,
-                                [sessionId]: {
-                                    loading: false,
-                                    detail: current[sessionId]?.detail ?? null,
-                                    error: "Session file is missing.",
-                                },
-                            }));
-                            return;
-                        }
-                        loadSessionDetail(sessionId, true);
-                    } catch (error) {
-                        if (cancelled) return;
-                        const errorMessage = getErrorMessage(error);
-                        const currentDetail = currentDetails[sessionId]?.detail ?? null;
-                        if (isTransientFetchErrorMessage(errorMessage) && currentDetail != null) {
-                            return;
-                        }
-                        setDetails((current) => ({
-                            ...current,
-                            [sessionId]: {
-                                loading: false,
-                                detail: current[sessionId]?.detail ?? null,
-                                error: isTransientFetchErrorMessage(errorMessage)
-                                    ? SESSION_TRANSIENT_FETCH_PENDING_MESSAGE
-                                    : errorMessage,
-                            },
-                        }));
-                    }
-                })
-            );
-            quietPollCountRef.current = changed ? 0 : quietPollCountRef.current + 1;
-            const nextDelay = quietPollCountRef.current < 6 ? 5_000 : quietPollCountRef.current < 20 ? 15_000 : 30_000;
-            schedule(nextDelay);
-        };
-
-        schedule(5_000);
         return () => {
             cancelled = true;
-            if (timer != null) {
+            requestedRef.current.clear();
+            for (const timer of retryTimers.values()) {
                 window.clearTimeout(timer);
             }
+            retryTimers.clear();
         };
-    }, [loadSessionDetail, service, sessionIds.join("\n")]);
+    }, [active, refreshSeq, service, sessionIdsKey]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
@@ -748,6 +718,7 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
                             summary: { ...state.detail.summary, ...updated },
                         },
                     };
+                    patchCachedSessionSummary(sessionId, updated);
                 }
                 return changed ? next : current;
             });
@@ -756,20 +727,54 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number): Record<
         return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
     }, []);
 
-    return details;
+    return useMemo(() => {
+        const next: Record<string, DetailState> = {};
+        for (const sessionId of sessionIds) {
+            const cachedDetail = cacheSnapshot.details[sessionId];
+            const current = details[sessionId];
+            if (cachedDetail != null) {
+                next[sessionId] = {
+                    loading: false,
+                    detail: cachedDetail,
+                    error: current?.error ?? "",
+                };
+            } else if (current != null) {
+                next[sessionId] = current;
+            }
+        }
+        return next;
+    }, [cacheSnapshot, details, sessionIdsKey]);
 }
 
-function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummaryState> {
+function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<string, SummaryState> {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const sessionIds = useMemo(
         () => Array.from(new Set(blocks.map((block) => block.sessionId).filter(Boolean))).sort(),
         [blocks]
     );
+    const sessionIdsKey = sessionIds.join("\n");
+    const cacheVersion = useSessionOverviewCacheVersion();
+    const cacheSnapshot = useMemo(
+        () => getSessionOverviewCacheSnapshot(sessionIds),
+        [cacheVersion, sessionIdsKey]
+    );
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
-    const [summaries, setSummaries] = useState<Record<string, SummaryState>>({});
+    const [summaries, setSummaries] = useState<Record<string, SummaryState>>(() => {
+        const next: Record<string, SummaryState> = {};
+        for (const sessionId of sessionIds) {
+            const cachedSummary = getCachedSessionSummary(sessionId);
+            if (cachedSummary != null) {
+                next[sessionId] = { loading: false, summary: cachedSummary, error: "" };
+            }
+        }
+        return next;
+    });
 
     useEffect(() => {
+        if (!active) {
+            return;
+        }
         let cancelled = false;
         const retryTimers = retryTimersRef.current;
         const clearRetry = (sessionId: string) => {
@@ -786,17 +791,21 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
                 retryTimers.delete(sessionId);
             }
         };
-        const loadSummary = (sessionId: string) => {
+        const loadSummary = (sessionId: string, forceRefresh = false) => {
             if (requestedRef.current.has(sessionId)) {
                 return;
             }
             requestedRef.current.add(sessionId);
             clearRetry(sessionId);
-            setSummaries((prev) => ({ ...prev, [sessionId]: { loading: true, summary: null, error: "" } }));
-            service
-                .Summary({ id: sessionId })
+            const cachedSummary = getCachedSessionSummary(sessionId);
+            setSummaries((prev) => ({
+                ...prev,
+                [sessionId]: { loading: cachedSummary == null, summary: cachedSummary, error: "" },
+            }));
+            loadCachedSessionSummary(service, sessionId, { forceRefresh })
                 .then((summary) => {
                     if (cancelled) return;
+                    requestedRef.current.delete(sessionId);
                     setSummaries((prev) => ({ ...prev, [sessionId]: { loading: false, summary, error: "" } }));
                 })
                 .catch((error) => {
@@ -829,21 +838,35 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
         setSummaries((current) => {
             const next = { ...current };
             for (const sessionId of sessionIds) {
-                next[sessionId] ??= { loading: true, summary: null, error: "" };
+                next[sessionId] ??= {
+                    loading: true,
+                    summary: getCachedSessionSummary(sessionId),
+                    error: "",
+                };
             }
             return next;
         });
         for (const sessionId of sessionIds) {
             loadSummary(sessionId);
         }
+        const pollTimer = window.setInterval(() => {
+            if (document.visibilityState === "hidden") {
+                return;
+            }
+            for (const sessionId of sessionIds) {
+                loadSummary(sessionId, true);
+            }
+        }, SESSION_SUMMARY_POLL_MS);
         return () => {
             cancelled = true;
+            requestedRef.current.clear();
+            window.clearInterval(pollTimer);
             for (const timer of retryTimers.values()) {
                 window.clearTimeout(timer);
             }
             retryTimers.clear();
         };
-    }, [service, sessionIds.join("\n")]);
+    }, [active, service, sessionIdsKey]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
@@ -861,6 +884,7 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
                         ...state,
                         summary: { ...state.summary, ...updated },
                     };
+                    patchCachedSessionSummary(sessionId, updated);
                 }
                 return changed ? next : current;
             });
@@ -869,7 +893,23 @@ function useSessionSummaries(blocks: OverviewBlock[]): Record<string, SummarySta
         return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
     }, []);
 
-    return summaries;
+    return useMemo(() => {
+        const next: Record<string, SummaryState> = {};
+        for (const sessionId of sessionIds) {
+            const cachedSummary = cacheSnapshot.summaries[sessionId];
+            const current = summaries[sessionId];
+            if (cachedSummary != null) {
+                next[sessionId] = {
+                    loading: false,
+                    summary: cachedSummary,
+                    error: current?.error ?? "",
+                };
+            } else if (current != null) {
+                next[sessionId] = current;
+            }
+        }
+        return next;
+    }, [cacheSnapshot, sessionIdsKey, summaries]);
 }
 
 function SessionOverviewBadgeIcon({ badge, className }: { badge: Badge | null; className?: string }) {
@@ -939,6 +979,20 @@ function useNow(open: boolean): number {
         return () => window.clearInterval(timer);
     }, [open]);
     return now;
+}
+
+function useCurrentOverviewBlockVisible(blockId: string | null | undefined): boolean {
+    const tabId = jotai.useAtomValue(atoms.staticTabId);
+    const tab = jotai.useAtomValue(
+        useMemo(
+            () => (tabId ? WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)) : jotai.atom<Tab | null>(null)),
+            [tabId]
+        )
+    );
+    if (!blockId || !tab) {
+        return true;
+    }
+    return !getHiddenBlockIdsFromTab(tab).includes(blockId);
 }
 
 function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean }) {
@@ -1143,6 +1197,14 @@ function MessageSquares({
     if (!block.sessionId) {
         return <div className="session-overview-muted">No session id</div>;
     }
+    if (detailState == null) {
+        return (
+            <div className="session-overview-message-strip">
+                <span className="session-overview-muted">Loading session...</span>
+                <i className={cn(makeIconClass("spinner", false), "session-overview-loading-icon")} />
+            </div>
+        );
+    }
     if (detailState?.error) {
         if (isSessionHistoryPendingMessage(detailState.error)) {
             return <div className="session-overview-muted">{detailState.error}</div>;
@@ -1155,7 +1217,7 @@ function MessageSquares({
     const messages = readableMessages(detailState?.detail);
     const visibleMessages = messages.slice(-limit);
     if (messages.length === 0 && !detailState?.loading) {
-        return <div className="session-overview-muted">No readable messages</div>;
+        return <div className="session-overview-muted">{unreadText || "No preview"}</div>;
     }
     return (
         <div className="session-overview-message-strip">
@@ -1597,7 +1659,8 @@ function BlockRow({
 }) {
     const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
     const detail = detailState?.detail;
-    const updatedAtMs = normalizeTimeMs(detail?.summary?.updatedAt);
+    const summary = noteSummary ?? detail?.summary ?? null;
+    const updatedAtMs = normalizeTimeMs(summary?.updatedAt);
     const unread = block.isAgentLike && updatedAtMs > 0 && updatedAtMs > viewedAt;
     const isCurrent = block.blockId === currentBlockId;
     const iconClass = makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" });
@@ -1640,9 +1703,9 @@ function BlockRow({
                             unreadText={unread ? formatUnreadDuration(updatedAtMs, now) : ""}
                             onOpenMessage={onOpenMessage}
                         />
-                        {detail?.summary?.note ? (
+                        {summary?.note ? (
                             <div className="session-overview-note-line">
-                                <span>{detail.summary.note}</span>
+                                <span>{summary.note}</span>
                             </div>
                         ) : null}
                     </>
@@ -1746,6 +1809,7 @@ function TabGroupSection({
     group,
     collapsed,
     details,
+    summaries,
     openNoteBlockId,
     noteEditorRef,
     displayLimit,
@@ -1766,6 +1830,7 @@ function TabGroupSection({
     group: TabGroup;
     collapsed: boolean;
     details: Record<string, DetailState>;
+    summaries: Record<string, SummaryState>;
     openNoteBlockId: string | null;
     noteEditorRef: React.Ref<OverviewSessionNoteEditorHandle>;
     displayLimit: number;
@@ -1829,7 +1894,11 @@ function TabGroupSection({
                                     key={block.blockId}
                                     block={block}
                                     detailState={details[block.sessionId]}
-                                    noteSummary={details[block.sessionId]?.detail?.summary ?? null}
+                                    noteSummary={
+                                        summaries[block.sessionId]?.summary ??
+                                        details[block.sessionId]?.detail?.summary ??
+                                        null
+                                    }
                                     noteEditorOpen={openNoteBlockId === block.blockId}
                                     noteEditorRef={noteEditorRef}
                                     displayLimit={displayLimit}
@@ -1885,7 +1954,7 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
     return jotai.useAtomValue(tabGroupsAtom);
 }
 
-function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewModel>) {
+function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOverviewViewModel>) {
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
     const activeTabId = jotai.useAtomValue(atoms.staticTabId);
@@ -1895,13 +1964,14 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
+    const overviewVisible = useCurrentOverviewBlockVisible(blockId);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
-    const details = useSessionDetails(blocks, refreshSeq);
-    const controllerStatuses = useBlockControllerStatuses(blocks);
-    const canonicalAgentStatuses = useCanonicalAgentStatuses(blocks);
+    const summaries = useSessionSummaries(blocks, overviewVisible);
+    const controllerStatuses = useBlockControllerStatuses(blocks, overviewVisible);
+    const canonicalAgentStatuses = useCanonicalAgentStatuses(blocks, overviewVisible);
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
-    const now = useNow(true);
+    const now = useNow(overviewVisible);
     const tabGroups = useTabGroups(workspace, blocks);
     const displayedTabGroups = useMemo(
         () =>
@@ -1919,11 +1989,33 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                 .filter((group) => group.blocks.length > 0),
         [activeTabId, agentsOnly, hideUnopenedTabs, openedThisLaunchTabIds, tabGroups]
     );
+    const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
+    const detailBlocks = useMemo(
+        () =>
+            displayedTabGroups.flatMap((group) =>
+                collapsedTabIds[group.tabId] === true
+                    ? []
+                    : group.blocks.filter(
+                          (block) => block.isAgentLike && block.sessionId && shouldShowFullOverviewBlock(block)
+                      )
+            ),
+        [collapsedTabIds, displayedTabGroups]
+    );
+    useEffect(() => {
+        overviewLog("visible detail blocks", {
+            overviewBlockId: blockId,
+            visible: overviewVisible,
+            displayedTabs: displayedTabGroups.length,
+            detailBlockCount: detailBlocks.length,
+            sessionIds: detailBlocks.map((block) => block.sessionId),
+        });
+    }, [blockId, detailBlocks, displayedTabGroups.length, overviewVisible]);
+    const details = useSessionDetails(detailBlocks, refreshSeq, overviewVisible);
     const hasCodexAgent = useMemo(
         () => blocks.some((block) => block.isAgentLike && normalizeAgentProviderName(block.agentProvider) === "codex"),
         [blocks]
     );
-    const codexHookInstall = useCodexHookInstallState(hasCodexAgent);
+    const codexHookInstall = useCodexHookInstallState(hasCodexAgent && overviewVisible);
     const showEnableAgentStatus =
         hasCodexAgent &&
         !codexHookInstall.loading &&
@@ -1933,7 +2025,9 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         const next: Record<string, AgentStatus> = {};
         for (const block of blocks) {
             if (!block.isAgentLike) continue;
-            const sessionUpdatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
+            const sessionUpdatedAtMs = normalizeTimeMs(
+                summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
+            );
             next[block.blockId] = presentAgentStatus({
                 blockId: block.blockId,
                 provider: block.agentProvider,
@@ -1946,7 +2040,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
             });
         }
         return next;
-    }, [blocks, canonicalAgentStatuses, controllerStatuses, details, viewedAt, now]);
+    }, [blocks, canonicalAgentStatuses, controllerStatuses, details, summaries, viewedAt, now]);
     const workspaceAgentStatuses = useMemo(() => Object.values(agentStatuses), [agentStatuses]);
     const workspaceAgentAggregate = useMemo(
         () => aggregateAgentStatuses(workspaceAgentStatuses),
@@ -1966,7 +2060,9 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
             if (previousAgentStatusKeys.current[block.blockId] === key) {
                 continue;
             }
-            const sessionUpdatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
+            const sessionUpdatedAtMs = normalizeTimeMs(
+                summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
+            );
             const controllerStatus = controllerStatuses[block.blockId];
             const canonicalStatus = canonicalAgentStatuses[block.blockId];
             agentStatusLog("overview presented status", {
@@ -2005,14 +2101,13 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
             });
         }
         previousAgentStatusKeys.current = nextKeys;
-    }, [agentStatuses, blocks, canonicalAgentStatuses, controllerStatuses, details, viewedAt, now]);
+    }, [agentStatuses, blocks, canonicalAgentStatuses, controllerStatuses, details, summaries, viewedAt, now]);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [openNoteBlockId, setOpenNoteBlockId] = useState<string | null>(null);
     const noteEditorRef = useRef<OverviewSessionNoteEditorHandle | null>(null);
     const noteSwitchSeqRef = useRef(0);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
-    const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
     useEffect(() => {
         setCollapsedTabIds((current) => {
@@ -2099,7 +2194,10 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
     const focusedOverviewBlockUpdatedAt =
         focusedOverviewBlock == null
             ? 0
-            : normalizeTimeMs(details[focusedOverviewBlock.sessionId]?.detail?.summary?.updatedAt);
+            : normalizeTimeMs(
+                  summaries[focusedOverviewBlock.sessionId]?.summary?.updatedAt ??
+                      details[focusedOverviewBlock.sessionId]?.detail?.summary?.updatedAt
+              );
 
     useEffect(() => {
         if (focusedOverviewBlock == null) return;
@@ -2114,7 +2212,9 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
         [displayedTabGroups]
     );
     const unreadCount = blocks.filter((block) => {
-        const updatedAtMs = normalizeTimeMs(details[block.sessionId]?.detail?.summary?.updatedAt);
+        const updatedAtMs = normalizeTimeMs(
+            summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
+        );
         return block.isAgentLike && updatedAtMs > 0 && updatedAtMs > (viewedAt[block.blockId] ?? 0);
     }).length;
     const emptyMessage = agentsOnly
@@ -2205,6 +2305,7 @@ function SessionOverviewPanel({ model }: ViewComponentProps<SessionOverviewViewM
                                 group={group}
                                 collapsed={collapsedTabIds[group.tabId] === true}
                                 details={details}
+                                summaries={summaries}
                                 openNoteBlockId={openNoteBlockId}
                                 noteEditorRef={noteEditorRef}
                                 displayLimit={displayLimit}

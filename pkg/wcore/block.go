@@ -60,6 +60,25 @@ func CreateBlock(ctx context.Context, tabId string, blockDef *waveobj.BlockDef, 
 	return CreateBlockWithTelemetry(ctx, tabId, blockDef, rtOpts, true)
 }
 
+func CreateBlockInTab(ctx context.Context, tabId string, blockDef *waveobj.BlockDef, rtOpts *waveobj.RuntimeOpts, focused bool, magnified bool) (*waveobj.Block, error) {
+	blockData, err := CreateBlock(ctx, tabId, blockDef, rtOpts)
+	if err != nil {
+		return nil, err
+	}
+	err = QueueLayoutActionForTab(ctx, tabId, waveobj.LayoutActionData{
+		ActionType: LayoutActionDataType_Insert,
+		BlockId:    blockData.OID,
+		Focused:    focused,
+		Magnified:  magnified,
+	})
+	if err != nil {
+		_, _ = deleteBlockObj(ctx, blockData.OID)
+		_ = filestore.WFS.DeleteZone(ctx, blockData.OID)
+		return nil, fmt.Errorf("error queuing target layout action: %w", err)
+	}
+	return blockData, nil
+}
+
 func CreateBlockWithTelemetry(ctx context.Context, tabId string, blockDef *waveobj.BlockDef, rtOpts *waveobj.RuntimeOpts, recordTelemetry bool) (rtnBlock *waveobj.Block, rtnErr error) {
 	var blockCreated bool
 	var newBlockOID string

@@ -8,7 +8,7 @@ import {
     SnorkelingBlockKindOverview,
     toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
-import { getLayoutModelForStaticTab } from "@/layout/index";
+import { getHiddenBlockIdsFromTab, getLayoutModelForStaticTab } from "@/layout/index";
 import * as jotai from "jotai";
 
 const SessionOverviewView = "sessionoverview";
@@ -24,9 +24,13 @@ export class SessionOverviewModel {
         const tabId = get(atoms.staticTabId);
         if (!tabId) return false;
         const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+        const hiddenBlockIds = new Set(getHiddenBlockIdsFromTab(tab));
         for (const blockId of tab?.blockids ?? []) {
             const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
-            if (block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview) {
+            if (
+                block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview &&
+                !hiddenBlockIds.has(blockId)
+            ) {
                 return true;
             }
         }
@@ -77,6 +81,7 @@ export class SessionOverviewModel {
                     icon: "list-tree",
                 },
             },
+            hideInsteadOfClose: true,
         });
     }
 

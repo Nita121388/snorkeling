@@ -229,17 +229,18 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
     const devicePixelRatio = useDevicePixelRatio();
     const isEphemeral = useAtomValue(nodeModel.isEphemeral);
     const isMagnified = useAtomValue(nodeModel.isMagnified);
+    const isHidden = useAtomValue(nodeModel.isHidden);
 
     const [{ isDragging }, drag, dragPreview] = useDrag(
         () => ({
             type: tileItemType,
-            canDrag: () => !(isEphemeral || isMagnified),
+            canDrag: () => !(isEphemeral || isMagnified || isHidden),
             item: () => node,
             collect: (monitor) => ({
                 isDragging: monitor.isDragging(),
             }),
         }),
-        [node, addlProps, isEphemeral, isMagnified]
+        [node, addlProps, isEphemeral, isMagnified, isHidden]
     );
 
     const [previewElementGeneration, setPreviewElementGeneration] = useState(0);
@@ -304,16 +305,19 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
         <div
             className={clsx("tile-node", {
                 dragging: isDragging,
+                hidden: isHidden,
             })}
             key={node.id}
             ref={tileNodeRef}
             id={node.id}
             style={addlProps?.transform}
-            onPointerEnter={generatePreviewImage}
+            onPointerEnter={isHidden ? undefined : generatePreviewImage}
             onPointerOver={(event) => event.stopPropagation()}
+            aria-hidden={isHidden || undefined}
+            inert={isHidden || undefined}
         >
             {leafContent}
-            {previewElement}
+            {isHidden ? null : previewElement}
         </div>
     );
 };
@@ -356,12 +360,16 @@ interface OverlayNodeProps {
 const OverlayNode = memo(({ node, layoutModel }: OverlayNodeProps) => {
     const nodeModel = useNodeModel(layoutModel, node);
     const additionalProps = useAtomValue(nodeModel.additionalProps);
+    const isHidden = useAtomValue(nodeModel.isHidden);
     const overlayRef = useRef<HTMLDivElement>(null);
 
     const [, drop] = useDrop(
         () => ({
             accept: tileItemType,
             canDrop: (_, monitor) => {
+                if (isHidden) {
+                    return false;
+                }
                 const dragItem = monitor.getItem<LayoutNode>();
                 if (monitor.isOver({ shallow: true }) && dragItem.id !== node.id) {
                     return true;
@@ -396,13 +404,24 @@ const OverlayNode = memo(({ node, layoutModel }: OverlayNodeProps) => {
                 }
             }),
         }),
-        [node.id, additionalProps?.rect, layoutModel.displayContainerRef, layoutModel.onDrop, layoutModel.treeReducer]
+        [
+            node.id,
+            additionalProps?.rect,
+            isHidden,
+            layoutModel.displayContainerRef,
+            layoutModel.onDrop,
+            layoutModel.treeReducer,
+        ]
     );
 
     // Register the overlay node as a drop target
     useEffect(() => {
         drop(overlayRef);
     }, []);
+
+    if (isHidden) {
+        return null;
+    }
 
     return <div ref={overlayRef} className="overlay-node" id={node.id} style={additionalProps?.transform} />;
 });
@@ -454,7 +473,7 @@ const ResizeHandle = memo(({ resizeHandleAtom, layoutModel }: ResizeHandleCompon
 
     // We want to wait a bit before committing the pending resize operation in case some events haven't arrived yet.
     const onPointerRelease = useCallback(
-        debounce(30, (event: React.PointerEvent<HTMLDivElement>) => {
+        debounce(30, (_event: React.PointerEvent<HTMLDivElement>) => {
             setTrackingPointer(undefined);
             layoutModel.onResizeEnd();
         }),
