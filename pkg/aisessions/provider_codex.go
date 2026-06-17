@@ -64,61 +64,58 @@ func (p *CodexProvider) LoadMessages(ctx context.Context, filePath string) ([]Me
 }
 
 func parseCodexMessages(ctx context.Context, r io.Reader) ([]Message, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	var messages []Message
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			return messages, ctx.Err()
-		}
-		var value map[string]any
-		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
-			continue
-		}
-		if strValue(value, "type") != "response_item" {
-			continue
-		}
-		payload, _ := value["payload"].(map[string]any)
-		if payload == nil {
-			continue
-		}
-		payloadType := strValue(payload, "type")
-		role := ""
-		text := ""
-		toolName := ""
-		switch payloadType {
-		case "message":
-			role = normalizeRole(strValue(payload, "role"))
-			text = extractText(payload["content"])
-		case "function_call":
-			role = RoleAssistant
-			toolName = strValue(payload, "name")
-			if toolName == "" {
-				toolName = "unknown"
-			}
-			text = "[Tool: " + toolName + "]"
-		case "function_call_output":
-			role = RoleTool
-			text = strValue(payload, "output")
-		default:
-			continue
-		}
-		if strings.TrimSpace(text) == "" {
-			continue
-		}
-		messages = append(messages, Message{
-			Seq:       len(messages) + 1,
-			Role:      role,
-			Text:      text,
-			Timestamp: parseTimestampToMS(value["timestamp"]),
-			ToolName:  toolName,
-			CharCount: runeCount(text),
-		})
+	messages, _, _, err := parseJSONLFromReader(ctx, r, 1, parseCodexMessageLine)
+	return messages, err
+}
+
+func parseCodexMessageLine(line []byte, seq int) (Message, bool) {
+	var value map[string]any
+	if err := json.Unmarshal(line, &value); err != nil {
+		return Message{}, false
 	}
-	if err := scanner.Err(); err != nil {
-		return messages, err
+	if strValue(value, "type") != "response_item" {
+		return Message{}, false
 	}
-	return messages, nil
+	payload, _ := value["payload"].(map[string]any)
+	if payload == nil {
+		return Message{}, false
+	}
+	payloadType := strValue(payload, "type")
+	role := ""
+	text := ""
+	toolName := ""
+	switch payloadType {
+	case "message":
+		role = normalizeRole(strValue(payload, "role"))
+		text = extractText(payload["content"])
+	case "function_call":
+		role = RoleAssistant
+		toolName = strValue(payload, "name")
+		if toolName == "" {
+			toolName = "unknown"
+		}
+		text = "[Tool: " + toolName + "]"
+	case "function_call_output":
+		role = RoleTool
+		text = strValue(payload, "output")
+	default:
+		return Message{}, false
+	}
+	if strings.TrimSpace(text) == "" {
+		return Message{}, false
+	}
+	return Message{
+		Seq:       seq,
+		Role:      role,
+		Text:      text,
+		Timestamp: parseTimestampToMS(value["timestamp"]),
+		ToolName:  toolName,
+		CharCount: runeCount(text),
+	}, true
+}
+
+func (p *CodexProvider) LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error) {
+	return loadLocalMessageDelta(ctx, p.Source(), filePath, cursor, maxBytes, parseCodexMessageLine)
 }
 
 func (p *CodexProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {

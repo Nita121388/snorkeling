@@ -7,6 +7,7 @@ import {
     clearPreviewSharedDraftRecordsForTest,
     getOrCreatePreviewSharedDraftRecord,
     getPreviewSharedDraftRecord,
+    getPreviewSharedDraftRecordVersionAtom,
     makePreviewDraftKey,
     migratePreviewSharedDraftRecord,
     normalizePreviewDraftPath,
@@ -37,6 +38,24 @@ describe("preview shared draft", () => {
         expect(getPreviewSharedDraftRecord(key)).not.toBeNull();
         unregister();
         expect(getPreviewSharedDraftRecord(key)).toBeNull();
+    });
+
+    it("keeps version bumps scoped to the same file key", () => {
+        const keyA = makePreviewDraftKey("local", "/tmp/a.md");
+        const keyB = makePreviewDraftKey("local", "/tmp/b.md");
+        const versionAtomA = getPreviewSharedDraftRecordVersionAtom(keyA);
+        const versionAtomB = getPreviewSharedDraftRecordVersionAtom(keyB);
+
+        expect(globalStore.get(versionAtomA)).toBe(0);
+        expect(globalStore.get(versionAtomB)).toBe(0);
+
+        const unregisterA = registerPreviewSharedDraftEditor(keyA, "editor-a");
+        expect(globalStore.get(versionAtomA)).toBe(1);
+        expect(globalStore.get(versionAtomB)).toBe(0);
+
+        unregisterA();
+        expect(globalStore.get(versionAtomA)).toBe(2);
+        expect(globalStore.get(versionAtomB)).toBe(0);
     });
 
     it("keeps unmounted unsaved drafts available for another tab", () => {

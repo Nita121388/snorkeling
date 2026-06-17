@@ -25,17 +25,46 @@ import (
 type AISessionsService struct{}
 
 type AISessionsListRequest struct {
-	Source     string `json:"source,omitempty"`
-	Project    string `json:"project,omitempty"`
-	Query      string `json:"query,omitempty"`
-	Connection string `json:"connection,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
-	Refresh    bool   `json:"refresh,omitempty"`
-	MarkedOnly bool   `json:"markedOnly,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	Project    string   `json:"project,omitempty"`
+	Query      string   `json:"query,omitempty"`
+	Connection string   `json:"connection,omitempty"`
+	Limit      int      `json:"limit,omitempty"`
+	Refresh    bool     `json:"refresh,omitempty"`
+	MarkedOnly bool     `json:"markedOnly,omitempty"`
+	TagFilters []string `json:"tagFilters,omitempty"`
 }
 
 type AISessionsListResponse struct {
 	Sessions []aisessions.SessionSummary `json:"sessions"`
+}
+
+type AISessionsTagsRequest struct {
+	Source     string `json:"source,omitempty"`
+	Project    string `json:"project,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	MarkedOnly bool   `json:"markedOnly,omitempty"`
+	Refresh    bool   `json:"refresh,omitempty"`
+}
+
+type AISessionsTagsResponse struct {
+	Tags []aisessions.SessionTagSummary `json:"tags"`
+}
+
+type AISessionsNoteAndTagsRequest struct {
+	ID   string   `json:"id"`
+	Note string   `json:"note"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+type AISessionsRenameTagRequest struct {
+	From       string `json:"from"`
+	To         string `json:"to"`
+	Connection string `json:"connection,omitempty"`
+}
+
+type AISessionsRenameTagResponse struct {
+	Count int `json:"count"`
 }
 
 type AISessionsDetailRequest struct {
@@ -44,6 +73,16 @@ type AISessionsDetailRequest struct {
 	Refresh      bool   `json:"refresh,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 	IncludeTools bool   `json:"includeTools,omitempty"`
+}
+
+type AISessionsDetailDeltaRequest struct {
+	ID           string                          `json:"id"`
+	Connection   string                          `json:"connection,omitempty"`
+	Source       string                          `json:"source,omitempty"`
+	FilePath     string                          `json:"filePath,omitempty"`
+	Cursor       aisessions.SessionMessageCursor `json:"cursor"`
+	MaxBytes     int64                           `json:"maxBytes,omitempty"`
+	MessageCount int                             `json:"messageCount,omitempty"`
 }
 
 type AISessionsUserOutlineRequest struct {
@@ -192,12 +231,41 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		Project:    request.Project,
 		Limit:      limit,
 		MarkedOnly: request.MarkedOnly,
+		TagFilters: request.TagFilters,
 		Refresh:    request.Refresh,
 	}, request.Query)
 	if err != nil {
 		return nil, err
 	}
 	return &AISessionsListResponse{Sessions: sessions}, nil
+}
+
+func (svc *AISessionsService) Tags_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list AI session tags",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session tags",
+	}
+}
+
+func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsRequest) (*AISessionsTagsResponse, error) {
+	if request == nil {
+		request = &AISessionsTagsRequest{}
+	}
+	manager, err := svc.managerForConnection(ctx, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	tags, err := manager.ListTags(ctx, aisessions.ListOptions{
+		Source:     request.Source,
+		Project:    request.Project,
+		MarkedOnly: request.MarkedOnly,
+		Refresh:    request.Refresh,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsTagsResponse{Tags: tags}, nil
 }
 
 func (svc *AISessionsService) Detail_Meta() tsgenmeta.MethodMeta {
@@ -244,6 +312,41 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		time.Since(start),
 	)
 	return &detail, nil
+}
+
+func (svc *AISessionsService) DetailDelta_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "load newly appended AI session detail messages",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session message delta",
+	}
+}
+
+func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessionsDetailDeltaRequest) (*aisessions.MessageDelta, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary := aisessions.SessionSummary{
+		Key:          strings.TrimSpace(request.ID),
+		ID:           strings.TrimSpace(request.ID),
+		Source:       strings.TrimSpace(request.Source),
+		FilePath:     strings.TrimSpace(request.FilePath),
+		MessageCount: request.MessageCount,
+	}
+	delta, err := manager.LoadDelta(ctx, request.ID, aisessions.LoadDeltaOptions{
+		Summary:   summary,
+		Cursor:    request.Cursor,
+		BaseCount: request.MessageCount,
+		MaxBytes:  request.MaxBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &delta, nil
 }
 
 func (svc *AISessionsService) UserOutline_Meta() tsgenmeta.MethodMeta {
@@ -467,6 +570,52 @@ func (svc *AISessionsService) Note(ctx context.Context, id string, note string) 
 		return nil, err
 	}
 	return &summary, nil
+}
+
+func (svc *AISessionsService) NoteAndTags_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "set a local AI session note and tags",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "updated AI session summary",
+	}
+}
+
+func (svc *AISessionsService) NoteAndTags(ctx context.Context, request *AISessionsNoteAndTagsRequest) (*aisessions.SessionSummary, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForIdentifier(ctx, request.ID)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.NoteAndTags(ctx, request.ID, request.Note, request.Tags)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+func (svc *AISessionsService) RenameTag_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "rename an AI session tag globally",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session tag rename result",
+	}
+}
+
+func (svc *AISessionsService) RenameTag(ctx context.Context, request *AISessionsRenameTagRequest) (*AISessionsRenameTagResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("rename tag request is required")
+	}
+	manager, err := svc.managerForConnection(ctx, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	count, err := manager.RenameTag(ctx, request.From, request.To)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsRenameTagResponse{Count: count}, nil
 }
 
 func (svc *AISessionsService) Delete_Meta() tsgenmeta.MethodMeta {

@@ -5,6 +5,8 @@ package aisessions
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,10 +19,11 @@ import (
 )
 
 const (
-	titleMaxChars       = 80
-	snippetMaxChars     = 160
-	tailWindowBytes     = 16 * 1024
-	toolSummaryMaxChars = 800
+	titleMaxChars        = 80
+	snippetMaxChars      = 160
+	tailWindowBytes      = 16 * 1024
+	toolSummaryMaxChars  = 800
+	messageDeltaMaxBytes = 512 * 1024
 )
 
 var uuidRe = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
@@ -80,6 +83,191 @@ func readAllLines(r io.Reader) ([]string, error) {
 		lines = append(lines, scanner.Text())
 	}
 	return lines, scanner.Err()
+}
+
+type jsonlLineParser[T any] func(line []byte, seq int) (T, bool)
+
+func parseJSONLFromReader[T any](ctx context.Context, r io.Reader, startSeq int, parser jsonlLineParser[T]) ([]T, int, int64, error) {
+	reader := bufio.NewReader(r)
+	seq := startSeq
+	var items []T
+	var bytesRead int64
+	for {
+		if ctx.Err() != nil {
+			return items, seq, bytesRead, ctx.Err()
+		}
+		line, err := reader.ReadBytes('\n')
+		if len(line) == 0 {
+			if err == io.EOF {
+				return items, seq, bytesRead, nil
+			}
+			if err != nil {
+				return items, seq, bytesRead, err
+			}
+			continue
+		}
+		if err == io.EOF && !bytes.HasSuffix(line, []byte("\n")) {
+			if item, ok := parser(bytes.TrimRight(line, "\r\n"), seq); ok {
+				items = append(items, item)
+				seq++
+			}
+			bytesRead += int64(len(line))
+			return items, seq, bytesRead, nil
+		}
+		trimmed := bytes.TrimRight(line, "\r\n")
+		if len(trimmed) == 0 {
+			bytesRead += int64(len(line))
+			continue
+		}
+		if item, ok := parser(trimmed, seq); ok {
+			items = append(items, item)
+			seq++
+		}
+		bytesRead += int64(len(line))
+	}
+}
+
+func parseCompleteJSONLFromReader[T any](ctx context.Context, r io.Reader, startSeq int, parser jsonlLineParser[T]) ([]T, int, int64, error) {
+	reader := bufio.NewReader(r)
+	seq := startSeq
+	var items []T
+	var bytesRead int64
+	for {
+		if ctx.Err() != nil {
+			return items, seq, bytesRead, ctx.Err()
+		}
+		line, err := reader.ReadBytes('\n')
+		if len(line) == 0 {
+			if err == io.EOF {
+				return items, seq, bytesRead, nil
+			}
+			if err != nil {
+				return items, seq, bytesRead, err
+			}
+			continue
+		}
+		if err == io.EOF {
+			trimmed := bytes.TrimRight(line, "\r\n")
+			if len(trimmed) == 0 {
+				bytesRead += int64(len(line))
+				return items, seq, bytesRead, nil
+			}
+			item, ok := parser(trimmed, seq)
+			if !ok && !json.Valid(trimmed) {
+				return items, seq, bytesRead, nil
+			}
+			if ok {
+				items = append(items, item)
+				seq++
+			}
+			bytesRead += int64(len(line))
+			return items, seq, bytesRead, nil
+		}
+		trimmed := bytes.TrimRight(line, "\r\n")
+		if len(trimmed) == 0 {
+			bytesRead += int64(len(line))
+			continue
+		}
+		if item, ok := parser(trimmed, seq); ok {
+			items = append(items, item)
+			seq++
+		}
+		bytesRead += int64(len(line))
+	}
+}
+
+func normalizeMessageDeltaMaxBytes(maxBytes int64) int64 {
+	if maxBytes <= 0 {
+		return messageDeltaMaxBytes
+	}
+	if maxBytes > 4*1024*1024 {
+		return 4 * 1024 * 1024
+	}
+	return maxBytes
+}
+
+func loadLocalMessageDelta(
+	ctx context.Context,
+	source string,
+	filePath string,
+	cursor SessionMessageCursor,
+	maxBytes int64,
+	parser jsonlLineParser[Message],
+) (MessageDelta, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	fileSize := stat.Size()
+	cursorOffset := cursor.ByteOffset
+	if cursorOffset < 0 {
+		cursorOffset = 0
+	}
+	nextCursor := SessionMessageCursor{
+		ByteOffset: cursorOffset,
+		FileSize:   fileSize,
+		MTime:      stat.ModTime().UnixMilli(),
+		LastSeq:    cursor.LastSeq,
+	}
+	if fileSize < cursorOffset {
+		nextCursor.ByteOffset = 0
+		nextCursor.LastSeq = 0
+		return MessageDelta{Messages: []Message{}, Cursor: nextCursor, ResetRequired: true}, nil
+	}
+	if fileSize == cursorOffset {
+		return MessageDelta{Messages: []Message{}, Cursor: nextCursor}, nil
+	}
+	readSize := fileSize - cursorOffset
+	maxBytes = normalizeMessageDeltaMaxBytes(maxBytes)
+	hasMore := false
+	if readSize > maxBytes {
+		readSize = maxBytes
+		hasMore = true
+	}
+	if _, err := file.Seek(cursorOffset, io.SeekStart); err != nil {
+		return MessageDelta{}, err
+	}
+	messages, lastSeq, bytesRead, err := parseCompleteJSONLFromReader(
+		ctx,
+		io.LimitReader(file, readSize),
+		cursor.LastSeq+1,
+		parser,
+	)
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	nextCursor.ByteOffset = cursorOffset + bytesRead
+	nextCursor.LastSeq = cursor.LastSeq
+	if lastSeq > 0 {
+		nextCursor.LastSeq = lastSeq - 1
+	}
+	nextCursor.FileSize = fileSize
+	nextCursor.MTime = stat.ModTime().UnixMilli()
+	if nextCursor.ByteOffset < fileSize {
+		hasMore = true
+	}
+	if messages == nil {
+		messages = []Message{}
+	}
+	summary := SessionSummary{
+		Source:       source,
+		FilePath:     filePath,
+		MTime:        nextCursor.MTime,
+		Size:         fileSize,
+		MessageCount: nextCursor.LastSeq,
+	}
+	return MessageDelta{
+		Summary:  summary,
+		Messages: messages,
+		Cursor:   nextCursor,
+		HasMore:  hasMore,
+	}, nil
 }
 
 func readFirstLines(r io.Reader, n int) ([]string, error) {
@@ -460,6 +648,13 @@ func readableMessageCount(messages []Message) int {
 		}
 	}
 	return count
+}
+
+func lastMessageSeq(messages []Message) int {
+	if len(messages) == 0 {
+		return 0
+	}
+	return messages[len(messages)-1].Seq
 }
 
 func fileStatFields(path string) (mtime int64, size int64) {

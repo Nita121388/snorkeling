@@ -22,6 +22,7 @@ const remoteSessionReadLimit = 16 * 1024 * 1024
 type remoteFileReader interface {
 	SearchNames(ctx context.Context, basePath string, query string, limit int) ([]wshrpc.FileNameSearchMatch, error)
 	ReadFile(ctx context.Context, path string, maxSize int64) ([]byte, *wshrpc.FileInfo, error)
+	ReadFileRange(ctx context.Context, path string, offset int64, size int) ([]byte, *wshrpc.FileInfo, error)
 }
 
 type rpcRemoteFileReader struct {
@@ -74,13 +75,26 @@ func (r *rpcRemoteFileReader) ReadFile(
 	filePath string,
 	maxSize int64,
 ) ([]byte, *wshrpc.FileInfo, error) {
+	size := int(maxSize)
+	if maxSize > int64(^uint(0)>>1) {
+		size = int(^uint(0) >> 1)
+	}
+	return r.ReadFileRange(ctx, filePath, 0, size)
+}
+
+func (r *rpcRemoteFileReader) ReadFileRange(
+	ctx context.Context,
+	filePath string,
+	offset int64,
+	size int,
+) ([]byte, *wshrpc.FileInfo, error) {
 	data, err := wshfs.Read(ctx, wshrpc.FileData{
 		Info: &wshrpc.FileInfo{
 			Path: fmt.Sprintf("wsh://%s/%s", r.connection, strings.TrimPrefix(filePath, "/")),
 		},
 		At: &wshrpc.FileDataAt{
-			Offset: 0,
-			Size:   int(maxSize),
+			Offset: offset,
+			Size:   size,
 		},
 	})
 	if err != nil {
@@ -95,7 +109,7 @@ func (r *rpcRemoteFileReader) ReadFile(
 	if data.Info.NotFound {
 		return nil, data.Info, fmt.Errorf("remote session file not found: %s", filePath)
 	}
-	if maxSize > 0 && data.Info.Size > maxSize {
+	if offset == 0 && size > 0 && data.Info.Size > int64(size) {
 		return nil, data.Info, fmt.Errorf("remote session file %q is too large (%d bytes)", filePath, data.Info.Size)
 	}
 	raw, err := base64.StdEncoding.DecodeString(data.Data64)
@@ -185,6 +199,80 @@ func (p *RemoteProvider) LoadMessages(ctx context.Context, filePath string) ([]M
 	default:
 		return nil, fmt.Errorf("unsupported remote AI session source %q", source)
 	}
+}
+
+func (p *RemoteProvider) LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error) {
+	source, remotePath, ok := splitRemoteSessionPath(filePath)
+	if !ok {
+		return MessageDelta{}, fmt.Errorf("invalid remote session path: %s", filePath)
+	}
+	var parser jsonlLineParser[Message]
+	switch source {
+	case SourceCodex:
+		parser = parseCodexMessageLine
+	case SourceClaude:
+		parser = parseClaudeMessageLine
+	default:
+		return MessageDelta{}, fmt.Errorf("unsupported remote AI session source %q", source)
+	}
+	maxBytes = normalizeMessageDeltaMaxBytes(maxBytes)
+	cursorOffset := cursor.ByteOffset
+	if cursorOffset < 0 {
+		cursorOffset = 0
+	}
+	raw, info, err := p.reader.ReadFileRange(ctx, remotePath, cursorOffset, int(maxBytes))
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	fileSize := int64(len(raw)) + cursorOffset
+	mtime := int64(0)
+	if info != nil {
+		fileSize = info.Size
+		mtime = info.ModTime
+	}
+	nextCursor := SessionMessageCursor{
+		ByteOffset: cursorOffset,
+		FileSize:   fileSize,
+		MTime:      mtime,
+		LastSeq:    cursor.LastSeq,
+	}
+	if fileSize < cursorOffset {
+		nextCursor.ByteOffset = 0
+		nextCursor.LastSeq = 0
+		return MessageDelta{Messages: []Message{}, Cursor: nextCursor, ResetRequired: true}, nil
+	}
+	if len(raw) == 0 || fileSize == cursorOffset {
+		return MessageDelta{Messages: []Message{}, Cursor: nextCursor}, nil
+	}
+	messages, lastSeq, bytesRead, err := parseCompleteJSONLFromReader(
+		ctx,
+		bytes.NewReader(raw),
+		cursor.LastSeq+1,
+		parser,
+	)
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	nextCursor.ByteOffset = cursorOffset + bytesRead
+	if lastSeq > 0 {
+		nextCursor.LastSeq = lastSeq - 1
+	}
+	hasMore := nextCursor.ByteOffset < fileSize
+	if messages == nil {
+		messages = []Message{}
+	}
+	return MessageDelta{
+		Summary: SessionSummary{
+			Source:       source,
+			FilePath:     filePath,
+			MTime:        mtime,
+			Size:         fileSize,
+			MessageCount: nextCursor.LastSeq,
+		},
+		Messages: messages,
+		Cursor:   nextCursor,
+		HasMore:  hasMore,
+	}, nil
 }
 
 func (p *RemoteProvider) listSource(ctx context.Context, source string) []SessionSummary {

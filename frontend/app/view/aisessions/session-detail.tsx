@@ -8,6 +8,8 @@ import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState }
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
+import { SessionTagChips } from "./session-tag-chips";
+import { extractSessionTagsFromNote, mergeSessionTags, normalizeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
@@ -29,9 +31,10 @@ const UserLinesSearchLimit = 50;
 
 export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
+    loadDetailDelta?: (reason?: "manual" | "bottom") => Promise<boolean>;
     loadDetailTools: (refresh?: boolean) => Promise<void>;
     loadUserLines: (session: SessionSummary, request?: Partial<AISessionsUserLinesRequest>) => Promise<UserLinesResult>;
-    updateNote: (session: SessionSummary, note: string) => Promise<boolean>;
+    updateNote: (session: SessionSummary, note: string, tags?: string[]) => Promise<boolean>;
     deleteSession: (session: SessionSummary) => Promise<void>;
     restoreSession: (session: SessionSummary) => Promise<void>;
     openSessionFolder: (summary: SessionSummary) => Promise<void>;
@@ -147,6 +150,7 @@ export function SessionDetailPane({
     model,
     detail,
     loading,
+    deltaLoading = false,
     toolCallsLoading,
     restoring,
     deleting,
@@ -155,6 +159,7 @@ export function SessionDetailPane({
     model: SessionDetailController;
     detail: SessionDetail | null;
     loading: boolean;
+    deltaLoading?: boolean;
     toolCallsLoading: boolean;
     restoring: boolean;
     deleting: boolean;
@@ -183,15 +188,19 @@ export function SessionDetailPane({
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
     const userLinesRequestSeqRef = useRef(0);
+    const bottomDeltaRequestedRef = useRef(false);
+    const bottomDeltaTimerRef = useRef<number | null>(null);
     const currentSummaryRef = useRef<SessionSummary | null>(null);
     const latestNoteDraftRef = useRef("");
     const summaryKeyRef = useRef<string | null>(null);
     const summaryNoteRef = useRef("");
     const summary = detail?.summary ?? null;
     const summaryKey = summary?.key ?? "";
-    const trimmedNoteDraft = noteDraft.trim();
-    const noteUnchanged = trimmedNoteDraft === (summary?.note ?? "");
+    const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
+    const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
+    const noteUnchanged = parsedNoteDraft.note === (summary?.note ?? "") && sessionTagsEqual(nextTags, summary?.tags);
     const noteSaving = noteSaveStatus === "saving";
+    const refreshing = loading || deltaLoading || toolCallsLoading;
 
     currentSummaryRef.current = summary;
 
@@ -202,15 +211,20 @@ export function SessionDetailPane({
         const previousNote = summaryNoteRef.current;
         summaryKeyRef.current = nextKey;
         summaryNoteRef.current = nextNote;
-        if (nextKey !== previousKey || latestNoteDraftRef.current.trim() === previousNote) {
+        if (nextKey !== previousKey || extractSessionTagsFromNote(latestNoteDraftRef.current).note === previousNote) {
             latestNoteDraftRef.current = nextNote;
             setNoteDraft(nextNote);
         }
-    }, [detail?.summary?.key, detail?.summary?.note]);
+    }, [detail?.summary?.key, detail?.summary?.note, detail?.summary?.tags]);
 
     useEffect(() => {
         messageRefs.current = {};
         pendingJumpSeqRef.current = null;
+        bottomDeltaRequestedRef.current = false;
+        if (bottomDeltaTimerRef.current != null) {
+            window.clearTimeout(bottomDeltaTimerRef.current);
+            bottomDeltaTimerRef.current = null;
+        }
         setDeleteConfirmOpen(false);
         setNoteCollapsed(true);
         setNoteSaveStatus("idle");
@@ -230,6 +244,10 @@ export function SessionDetailPane({
         setUserLinesError("");
         userLinesRequestSeqRef.current++;
     }, [detail?.summary?.key]);
+
+    useEffect(() => {
+        bottomDeltaRequestedRef.current = false;
+    }, [detail?.messages?.length, deltaLoading]);
 
     const readableMessages = useMemo(
         () => (detail?.messages ?? []).filter((message) => isReadableMessage(message)),
@@ -286,6 +304,57 @@ export function SessionDetailPane({
     const loadPreviousMessages = useCallback(() => {
         setVisibleMessageCount((current) => Math.min(current + visibleMessageCountStep, readableMessages.length));
     }, [readableMessages.length]);
+
+    const requestDetailDelta = useCallback(
+        (reason: "manual" | "bottom") => {
+            if (reason === "manual" && showToolCalls) {
+                if (summary != null) {
+                    return model.loadDetailTools(true).then(() => true);
+                }
+                return Promise.resolve(false);
+            }
+            if (model.loadDetailDelta != null) {
+                return model.loadDetailDelta(reason);
+            }
+            if (summary != null) {
+                return model.loadDetail(summary, true).then(() => true);
+            }
+            return Promise.resolve(false);
+        },
+        [model, showToolCalls, summary]
+    );
+
+    const handleDetailScroll = useCallback(() => {
+        if (deltaLoading || loading || model.loadDetailDelta == null || bottomDeltaRequestedRef.current) {
+            return;
+        }
+        const node = detailScrollRef.current;
+        if (node == null) {
+            return;
+        }
+        const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+        if (distanceFromBottom > 96) {
+            return;
+        }
+        bottomDeltaRequestedRef.current = true;
+        void requestDetailDelta("bottom").finally(() => {
+            if (bottomDeltaTimerRef.current != null) {
+                window.clearTimeout(bottomDeltaTimerRef.current);
+            }
+            bottomDeltaTimerRef.current = window.setTimeout(() => {
+                bottomDeltaRequestedRef.current = false;
+                bottomDeltaTimerRef.current = null;
+            }, 500);
+        });
+    }, [deltaLoading, loading, model.loadDetailDelta, requestDetailDelta]);
+
+    useEffect(() => {
+        return () => {
+            if (bottomDeltaTimerRef.current != null) {
+                window.clearTimeout(bottomDeltaTimerRef.current);
+            }
+        };
+    }, []);
 
     const toggleMessageCollapsed = useCallback((seq: number) => {
         setCollapsedMessages((current) => ({ ...current, [seq]: !current[seq] }));
@@ -444,13 +513,14 @@ export function SessionDetailPane({
     const saveNote = useCallback(
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || noteSaveStatus === "saving") return false;
-            const trimmedNote = nextNote.trim();
-            if (trimmedNote === (summary.note ?? "")) {
+            const parsed = extractSessionTagsFromNote(nextNote);
+            const tags = mergeSessionTags(summary.tags ?? [], parsed.tags);
+            if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                 return true;
             }
             setNoteSaveStatus("saving");
-            const saved = await model.updateNote(summary, trimmedNote);
-            const currentDraftSaved = latestNoteDraftRef.current.trim() === trimmedNote;
+            const saved = await model.updateNote(summary, parsed.note, tags);
+            const currentDraftSaved = extractSessionTagsFromNote(latestNoteDraftRef.current).note === parsed.note;
             setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
             return saved && currentDraftSaved;
         },
@@ -534,7 +604,8 @@ export function SessionDetailPane({
                                 icon="fa-tag"
                                 label={noteCollapsed ? "Expand note" : "Collapse note"}
                                 className={cn(
-                                    summary.note && "border-accent/40 bg-accent/10 text-accent",
+                                    (summary.note || summary.tags?.length) &&
+                                        "border-accent/40 bg-accent/10 text-accent",
                                     !noteCollapsed && "border-accent text-accent"
                                 )}
                                 onClick={() => setNoteCollapsed((current) => !current)}
@@ -546,12 +617,15 @@ export function SessionDetailPane({
                                 disabled={toolCallsLoading && !toolsLoaded}
                                 onClick={toggleToolCalls}
                             />
-                            {summary.note ? (
+                            {summary.note || summary.tags?.length ? (
                                 <div
                                     className="min-w-0 flex-1 truncate border-l border-accent/40 pl-2 text-xs text-secondary"
-                                    title={summary.note}
+                                    title={[summary.note, ...(summary.tags ?? []).map((tag) => `#${tag}`)]
+                                        .filter(Boolean)
+                                        .join(" ")}
                                 >
                                     {summary.note}
+                                    {summary.tags?.length ? ` ${summary.tags.map((tag) => `#${tag}`).join(" ")}` : ""}
                                 </div>
                             ) : null}
                         </div>
@@ -586,9 +660,20 @@ export function SessionDetailPane({
                         ) : null}
                         {!noteCollapsed ? (
                             <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
+                                <SessionTagChips
+                                    tags={nextTags}
+                                    removable
+                                    onRemove={(tag) => {
+                                        const baseTags = normalizeSessionTags(summary?.tags ?? []).filter(
+                                            (item) => item !== tag
+                                        );
+                                        setNoteDraft(parsedNoteDraft.note);
+                                        void model.updateNote(summary, parsedNoteDraft.note, baseTags);
+                                    }}
+                                />
                                 <textarea
                                     className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                    placeholder="Add a note"
+                                    placeholder="Add a note, use #tag to add tags"
                                     value={noteDraft}
                                     onChange={(e) => {
                                         latestNoteDraftRef.current = e.target.value;
@@ -608,7 +693,7 @@ export function SessionDetailPane({
                                             noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
                                             noteSaveStatus === "error" && "border-error bg-error/10 text-error"
                                         )}
-                                        onClick={() => void saveNote(trimmedNoteDraft)}
+                                        onClick={() => void saveNote(noteDraft)}
                                     >
                                         <i
                                             className={cn(
@@ -671,10 +756,10 @@ export function SessionDetailPane({
                             <i className={cn("fa-sharp", summary.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
                         </button>
                         <IconButton
-                            icon={loading ? "fa-spinner animate-spin" : "fa-rotate"}
+                            icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
                             label="Refresh session detail"
-                            disabled={loading}
-                            onClick={() => void model.loadDetail(summary, true)}
+                            disabled={refreshing}
+                            onClick={() => void requestDetailDelta("manual")}
                         />
                     </div>
                 </div>
@@ -746,61 +831,75 @@ export function SessionDetailPane({
                                 </div>
                             </div>
                         </div>
-                        <div ref={detailScrollRef} className="min-h-0 flex-1 overflow-auto p-3">
-                            {detailMessages.length === 0 ? (
-                                <EmptyState text="No readable messages." />
-                            ) : (
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between gap-2 text-xs text-secondary">
-                                        <div>
-                                            Showing #{firstVisibleMessage?.seq ?? 0}-#{lastVisibleMessage?.seq ?? 0} of{" "}
-                                            {readableMessages.length}
+                        <div className="relative min-h-0 flex-1">
+                            <div
+                                ref={detailScrollRef}
+                                className="h-full min-h-0 overflow-auto p-3 pb-10"
+                                onScroll={handleDetailScroll}
+                            >
+                                {detailMessages.length === 0 ? (
+                                    <EmptyState text="No readable messages." />
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-2 text-xs text-secondary">
+                                            <div>
+                                                Showing #{firstVisibleMessage?.seq ?? 0}-#
+                                                {lastVisibleMessage?.seq ?? 0} of {readableMessages.length}
+                                            </div>
+                                            {hasPreviousMessages ? (
+                                                <button
+                                                    className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                                    onClick={loadPreviousMessages}
+                                                >
+                                                    Load previous messages
+                                                </button>
+                                            ) : (
+                                                <div className="text-xxs uppercase text-secondary">Start reached</div>
+                                            )}
                                         </div>
-                                        {hasPreviousMessages ? (
-                                            <button
-                                                className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                                onClick={loadPreviousMessages}
-                                            >
-                                                Load previous messages
-                                            </button>
-                                        ) : (
-                                            <div className="text-xxs uppercase text-secondary">Start reached</div>
+                                        {showToolCalls && !toolsLoaded ? (
+                                            <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                                Loading tool calls...
+                                            </div>
+                                        ) : null}
+                                        {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
+                                            <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
+                                                No tool calls.
+                                            </div>
+                                        ) : null}
+                                        {timelineItems.map((item) =>
+                                            item.kind === "message" ? (
+                                                <MessageCard
+                                                    key={`message-${item.message.seq}`}
+                                                    message={item.message}
+                                                    collapsed={Boolean(collapsedMessages[item.message.seq])}
+                                                    onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
+                                                    searchQuery={detailSearchQuery}
+                                                    searchActive={item.message.seq === activeSearchSeq}
+                                                    registerRef={(node) => {
+                                                        messageRefs.current[item.message.seq] = node;
+                                                    }}
+                                                />
+                                            ) : (
+                                                <ToolCallCard
+                                                    key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
+                                                    toolCall={item.toolCall}
+                                                    expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
+                                                    onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
+                                                />
+                                            )
                                         )}
                                     </div>
-                                    {showToolCalls && !toolsLoaded ? (
-                                        <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                            Loading tool calls...
-                                        </div>
-                                    ) : null}
-                                    {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
-                                        <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                            No tool calls.
-                                        </div>
-                                    ) : null}
-                                    {timelineItems.map((item) =>
-                                        item.kind === "message" ? (
-                                            <MessageCard
-                                                key={`message-${item.message.seq}`}
-                                                message={item.message}
-                                                collapsed={Boolean(collapsedMessages[item.message.seq])}
-                                                onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
-                                                searchQuery={detailSearchQuery}
-                                                searchActive={item.message.seq === activeSearchSeq}
-                                                registerRef={(node) => {
-                                                    messageRefs.current[item.message.seq] = node;
-                                                }}
-                                            />
-                                        ) : (
-                                            <ToolCallCard
-                                                key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
-                                                toolCall={item.toolCall}
-                                                expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
-                                                onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
-                                            />
-                                        )
-                                    )}
+                                )}
+                            </div>
+                            {deltaLoading && detailMessages.length > 0 ? (
+                                <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded border border-border bg-panel/95 px-3 py-1.5 text-xxs text-secondary shadow-sm">
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
+                                        Loading new messages...
+                                    </span>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     </div>
                     {outlineOpen ? (
@@ -866,13 +965,6 @@ export function SessionDetailPane({
                     ) : null}
                 </div>
             </div>
-            {loading ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-panel/70 backdrop-blur-[1px]">
-                    <div className="rounded border border-border bg-bg px-3 py-2 text-xs text-secondary shadow-lg">
-                        Loading session detail...
-                    </div>
-                </div>
-            ) : null}
             {userMessageListOpen ? (
                 <Modal
                     className="w-[min(780px,calc(100vw-32px))] max-h-[calc(100vh-72px)] overflow-hidden pt-10 pb-4"

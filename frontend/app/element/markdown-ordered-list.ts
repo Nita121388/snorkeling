@@ -45,8 +45,10 @@ export type OrderedListLineRange = {
 export type OrderedListEditResult = {
     text: string;
     targetLineNumber?: number;
+    targetColumn?: number;
     movedRange?: OrderedListLineRange;
     swappedRange?: OrderedListLineRange;
+    cutText?: string;
 };
 
 export type OrderedListSwapPreview = {
@@ -182,6 +184,52 @@ export function getOrderedListSwapPreview(
     };
 }
 
+export function insertOrderedListItem(
+    text: string,
+    lineNumber: number,
+    placement: "above" | "below"
+): OrderedListEditResult | null {
+    const textLines = splitTextLines(text);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    if (item == null) return null;
+    const block = findOrderedListBlock(textLines.lines, item);
+    const insertLineIndex = placement === "above" ? item.startLineIndex : item.endLineIndex + 1;
+    const insertNumber = placement === "above" ? item.marker.number : item.marker.number + 1;
+    const insertLine = `${" ".repeat(item.marker.indent)}${insertNumber}${item.marker.delimiter} `;
+    const lines = [...textLines.lines];
+    lines.splice(insertLineIndex, 0, insertLine);
+    renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex + 1);
+
+    return {
+        text: joinTextLines(lines, textLines.eol),
+        targetLineNumber: insertLineIndex + 1,
+        targetColumn: getListItemContentColumn(lines[insertLineIndex], insertLine.length + 1),
+    };
+}
+
+export function cutOrderedListItem(text: string, lineNumber: number): OrderedListEditResult | null {
+    const textLines = splitTextLines(text);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    if (item == null) return null;
+    const block = findOrderedListBlock(textLines.lines, item);
+    const lines = [...textLines.lines];
+    const deleteCount = item.endLineIndex - item.startLineIndex + 1;
+    const cutText = lines.slice(item.startLineIndex, item.endLineIndex + 1).join(textLines.eol);
+    lines.splice(item.startLineIndex, deleteCount);
+    const renumberEndLineIndex = block.endLineIndex - deleteCount;
+    if (lines.length > 0 && block.startLineIndex <= renumberEndLineIndex) {
+        renumberOrderedListsInLines(lines, block.startLineIndex, renumberEndLineIndex);
+    }
+    const targetLineNumber = Math.max(1, Math.min(item.startLineIndex + 1, lines.length || 1));
+
+    return {
+        text: joinTextLines(lines, textLines.eol),
+        targetLineNumber,
+        targetColumn: 1,
+        cutText,
+    };
+}
+
 export function renumberOrderedListsInSelection(
     text: string,
     startLineNumber: number,
@@ -259,7 +307,11 @@ function findOrderedListItemAtLine(lines: string[], lineIndex: number): OrderedL
     return null;
 }
 
-function makeOrderedListItem(lines: string[], marker: OrderedListMarker, options?: MarkdownParseOptions): OrderedListItem {
+function makeOrderedListItem(
+    lines: string[],
+    marker: OrderedListMarker,
+    options?: MarkdownParseOptions
+): OrderedListItem {
     let endLineIndex = lines.length - 1;
     for (let idx = marker.lineIndex + 1; idx < lines.length; idx++) {
         if (isHardBoundaryLine(lines[idx], marker.indent, idx, options)) {
@@ -354,6 +406,11 @@ function renumberOrderedListsInLines(lines: string[], startLineIndex: number, en
 
 function replaceOrderedListMarkerNumber(line: string, marker: OrderedListMarker, nextNumber: number): string {
     return line.replace(OrderedListMarkerPattern, `${" ".repeat(marker.indent)}${nextNumber}${marker.delimiter}$4`);
+}
+
+function getListItemContentColumn(line: string, fallbackColumn: number): number {
+    const match = line.match(OrderedListMarkerPattern);
+    return match ? match[0].length + 1 : fallbackColumn;
 }
 
 function getMarkdownFenceLineIndexes(lines: string[]): Set<number> {

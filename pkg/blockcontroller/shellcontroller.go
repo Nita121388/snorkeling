@@ -1070,9 +1070,9 @@ func stripCodexResumeArgs(args []string) []string {
 }
 
 func resolveEnvReference(value string) string {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "$ENV:") {
-		return strings.TrimSpace(os.Getenv(strings.TrimPrefix(value, "$ENV:")))
+	ref := strings.TrimSpace(value)
+	if strings.HasPrefix(ref, "$ENV:") {
+		return strings.TrimSpace(os.Getenv(strings.TrimSpace(strings.TrimPrefix(ref, "$ENV:"))))
 	}
 	return value
 }
@@ -1395,7 +1395,7 @@ func resolveEnvMap(blockId string, blockMeta waveobj.MetaMapType, connName strin
 	connKeywords := config.Connections[connName]
 	ckEnv := connKeywords.CmdEnv
 	for k, v := range ckEnv {
-		rtn[k] = v
+		rtn[k] = resolveEnvReference(v)
 	}
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
@@ -1418,7 +1418,7 @@ func resolveEnvMap(blockId string, blockMeta waveobj.MetaMapType, connName strin
 			delete(rtn, k)
 			continue
 		}
-		rtn[k] = v
+		rtn[k] = resolveEnvReference(v)
 	}
 	connEnv := blockMeta.GetConnectionOverride(connName).GetStringMap(waveobj.MetaKey_CmdEnv, true)
 	for k, v := range connEnv {
@@ -1426,7 +1426,7 @@ func resolveEnvMap(blockId string, blockMeta waveobj.MetaMapType, connName strin
 			delete(rtn, k)
 			continue
 		}
-		rtn[k] = v
+		rtn[k] = resolveEnvReference(v)
 	}
 	return rtn, nil
 }

@@ -49,10 +49,10 @@ import {
     discardPreviewSharedDraftIfUnshared,
     getOrCreatePreviewSharedDraftRecord,
     getPreviewSharedDraftRecord,
+    getPreviewSharedDraftRecordVersionAtom,
     makePreviewDraftKey,
     migratePreviewSharedDraftRecord,
     previewSharedDraftDebugLog,
-    previewSharedDraftRecordsVersion,
     publishPreviewSharedDraftToStorage,
     registerPreviewSharedDraftEditor,
     summarizePreviewDraftContent,
@@ -814,8 +814,8 @@ export class PreviewModel implements ViewModel {
         });
         this.newFileContent = atom(
             (get) => {
-                get(previewSharedDraftRecordsVersion);
                 const fileKey = get(this.fileEditKey);
+                get(getPreviewSharedDraftRecordVersionAtom(fileKey));
                 const record = getPreviewSharedDraftRecord(fileKey);
                 if (record == null) {
                     previewSharedDraftDebugLog("model:new-file-content:read-miss", {
@@ -910,8 +910,8 @@ export class PreviewModel implements ViewModel {
 
         this.fileContentSaved = atom(
             (get) => {
-                get(previewSharedDraftRecordsVersion);
                 const fileKey = get(this.fileEditKey);
+                get(getPreviewSharedDraftRecordVersionAtom(fileKey));
                 const record = getPreviewSharedDraftRecord(fileKey);
                 if (record == null) {
                     previewSharedDraftDebugLog("model:file-content-saved:read-miss", {
@@ -967,8 +967,8 @@ export class PreviewModel implements ViewModel {
         );
         const fileContentAtom = atom(
             async (get) => {
-                get(previewSharedDraftRecordsVersion);
                 const fileKey = get(this.fileEditKey);
+                get(getPreviewSharedDraftRecordVersionAtom(fileKey));
                 const record = getPreviewSharedDraftRecord(fileKey);
                 if (record != null) {
                     const state = get(record.stateAtom);

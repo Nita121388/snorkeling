@@ -132,6 +132,7 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		Limit:      opts.Limit,
 		Refresh:    opts.Refresh,
 		MarkedOnly: false,
+		TagFilters: opts.TagFilters,
 	}, opts.Query)
 }
 
@@ -183,6 +184,47 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 	limited := limitSummaries(filtered, opts.Limit)
 	m.populateMessageCounts(ctx, limited, opts.Refresh)
 	return limited, nil
+}
+
+func (m *Manager) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagSummary, error) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		hasScan, scanErr := sqliteIdx.HasSummaryScan(ctx)
+		tags, err := sqliteIdx.ListTags(ctx, opts)
+		if err == nil && scanErr == nil && hasScan {
+			return tags, nil
+		}
+		if err != nil {
+			debugf("Manager.ListTags sqlite error path=%q err=%v", m.SQLitePath, err)
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.ListTags sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+	}
+	sessions, err := m.ScanList(ctx, ListOptions{
+		Source:     opts.Source,
+		Project:    opts.Project,
+		Since:      opts.Since,
+		Before:     opts.Before,
+		MarkedOnly: opts.MarkedOnly,
+		Refresh:    opts.Refresh,
+		Limit:      0,
+	}, "")
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, session := range sessions {
+		for _, tag := range NormalizeSessionTags(session.Tags) {
+			counts[tag]++
+		}
+	}
+	tags := make([]SessionTagSummary, 0, len(counts))
+	for tag, count := range counts {
+		tags = append(tags, SessionTagSummary{Tag: tag, Count: count})
+	}
+	sortSessionTagSummaries(tags)
+	return tags, nil
 }
 
 func (m *Manager) populateMessageCounts(ctx context.Context, summaries []SessionSummary, refresh bool) {
@@ -294,7 +336,16 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 		return SessionDetail{}, err
 	}
 	summary.MessageCount = readableMessageCount(messages)
-	detail := SessionDetail{Summary: summary, Messages: messages}
+	detail := SessionDetail{
+		Summary:  summary,
+		Messages: messages,
+		Cursor: SessionMessageCursor{
+			ByteOffset: summary.Size,
+			FileSize:   summary.Size,
+			MTime:      summary.MTime,
+			LastSeq:    lastMessageSeq(messages),
+		},
+	}
 	if opts.IncludeTools {
 		provider := providerBySource(m.Providers, summary.Source)
 		if provider == nil {
@@ -312,6 +363,42 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 	}
 	debugf("Manager.Load success id=%q key=%q messages=%d readable=%d toolCalls=%d duration=%s", identifier, summary.Key, len(messages), summary.MessageCount, len(detail.ToolCalls), time.Since(start))
 	return detail, nil
+}
+
+func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDeltaOptions) (MessageDelta, error) {
+	summary := opts.Summary
+	var err error
+	if strings.TrimSpace(summary.FilePath) == "" || strings.TrimSpace(summary.Source) == "" {
+		summary, err = m.resolveSession(ctx, identifier, false)
+		if err != nil {
+			return MessageDelta{}, err
+		}
+	}
+	provider := providerBySource(m.Providers, summary.Source)
+	if provider == nil {
+		return MessageDelta{}, fmt.Errorf("no provider for source %q", summary.Source)
+	}
+	deltaProvider, ok := provider.(MessageDeltaProvider)
+	if !ok {
+		return MessageDelta{}, fmt.Errorf("provider %q does not support message delta loading", summary.Source)
+	}
+	delta, err := deltaProvider.LoadMessageDelta(ctx, summary.FilePath, opts.Cursor, opts.MaxBytes)
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	if delta.ResetRequired {
+		return delta, nil
+	}
+	mergedSummary := summary
+	mergedSummary.MTime = delta.Cursor.MTime
+	mergedSummary.Size = delta.Cursor.FileSize
+	baseCount := opts.BaseCount
+	if baseCount <= 0 {
+		baseCount = summary.MessageCount
+	}
+	mergedSummary.MessageCount = baseCount + readableMessageCount(delta.Messages)
+	delta.Summary = mergedSummary
+	return delta, nil
 }
 
 func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLinesOptions) (UserLinesResult, error) {
@@ -390,6 +477,7 @@ func (m *Manager) Note(ctx context.Context, identifier string, note string) (Ses
 	if err != nil {
 		return SessionSummary{}, err
 	}
+	cleanNote, _ := ExtractSessionTagsFromNote(note)
 	var writeErr error
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr == nil && sqliteIdx != nil {
@@ -406,13 +494,15 @@ func (m *Manager) Note(ctx context.Context, identifier string, note string) (Ses
 		if meta == nil {
 			if sqliteIdx != nil && writeErr == nil {
 				debugf("Manager.Note meta json dual-write open error key=%q err=%v", summary.Key, err)
-				summary.Note = note
+				if applyErr := sqliteIdx.ApplyMeta(ctx, &summary); applyErr != nil {
+					summary.Note = cleanNote
+				}
 				return summary, nil
 			}
 			return SessionSummary{}, err
 		}
 		defer meta.Close()
-		if err := meta.SetNote(ctx, summary.Key, note); err != nil {
+		if err := meta.SetNote(ctx, summary.Key, cleanNote); err != nil {
 			if writeErr != nil {
 				return SessionSummary{}, fmt.Errorf("cannot write AI session note to sqlite (%v) or meta json (%w)", writeErr, err)
 			}
@@ -422,8 +512,39 @@ func (m *Manager) Note(ctx context.Context, identifier string, note string) (Ses
 			debugf("Manager.Note meta json dual-write error key=%q err=%v", summary.Key, err)
 		}
 	}
-	summary.Note = note
+	summary.Note = cleanNote
+	if sqliteIdx != nil {
+		_ = sqliteIdx.ApplyMeta(ctx, &summary)
+	}
 	return summary, nil
+}
+
+func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note string, tags []string) (SessionSummary, error) {
+	summary, err := m.resolveSession(ctx, identifier, false)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil || sqliteIdx == nil {
+		return SessionSummary{}, fmt.Errorf("session tags require sqlite AI session index: %w", sqliteErr)
+	}
+	defer sqliteIdx.Close()
+	if err := sqliteIdx.SetNoteAndTags(ctx, summary.Key, note, tags); err != nil {
+		return SessionSummary{}, err
+	}
+	if err := sqliteIdx.ApplyMeta(ctx, &summary); err != nil {
+		return SessionSummary{}, err
+	}
+	return summary, nil
+}
+
+func (m *Manager) RenameTag(ctx context.Context, from string, to string) (int, error) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil || sqliteIdx == nil {
+		return 0, fmt.Errorf("session tag rename requires sqlite AI session index: %w", sqliteErr)
+	}
+	defer sqliteIdx.Close()
+	return sqliteIdx.RenameTag(ctx, from, to)
 }
 
 func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary, error) {

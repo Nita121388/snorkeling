@@ -3,8 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    cutMarkdownHeadingSection,
     getMarkdownHeadingMoveState,
     getMarkdownHeadingSwapPreview,
+    insertMarkdownHeadingSection,
     isMarkdownHeadingSectionPath,
     moveMarkdownHeadingSection,
 } from "./markdown-heading-section";
@@ -127,6 +129,37 @@ describe("markdown heading section helpers", () => {
             sectionEndLineNumber: 4,
             canMoveUp: false,
             canMoveDown: true,
+        });
+    });
+
+    it("inserts an empty sibling heading above the current heading section", () => {
+        const text = ["# Intro", "body", "# Next"].join("\n");
+
+        expect(insertMarkdownHeadingSection(text, 3, "above")).toEqual({
+            text: ["# Intro", "body", "# ", "# Next"].join("\n"),
+            targetLineNumber: 3,
+            targetColumn: 3,
+        });
+    });
+
+    it("inserts an empty sibling heading below the current heading section", () => {
+        const text = ["# Intro", "body", "## Child", "child body", "# Next"].join("\n");
+
+        expect(insertMarkdownHeadingSection(text, 1, "below")).toEqual({
+            text: ["# Intro", "body", "## Child", "child body", "# ", "# Next"].join("\n"),
+            targetLineNumber: 5,
+            targetColumn: 3,
+        });
+    });
+
+    it("cuts the entire current heading section", () => {
+        const text = ["# Intro", "body", "## Child", "child body", "# Next"].join("\n");
+
+        expect(cutMarkdownHeadingSection(text, 1)).toEqual({
+            text: "# Next",
+            targetLineNumber: 1,
+            targetColumn: 1,
+            cutText: ["# Intro", "body", "## Child", "child body"].join("\n"),
         });
     });
 });

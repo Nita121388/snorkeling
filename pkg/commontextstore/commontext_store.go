@@ -19,6 +19,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
 
+type Item = wconfig.CommonTextItemType
 type commonTextItem = wconfig.CommonTextItemType
 
 const (
@@ -38,6 +39,26 @@ type commonTextDBRow struct {
 	UpdatedAt  int64   `db:"updatedat"`
 	LastUsedAt *int64  `db:"lastusedat"`
 	UsageCount int64   `db:"usagecount"`
+}
+
+type ListOptions struct {
+	Query      string
+	TagFilters []string
+	Limit      int
+}
+
+type TagSummary struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+type UpdateRequest struct {
+	ID      string   `json:"id"`
+	Title   *string  `json:"title,omitempty"`
+	Text    *string  `json:"text,omitempty"`
+	Content *string  `json:"content,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	SetTags bool     `json:"setTags,omitempty"`
 }
 
 func normalizeCommonTextTitle(title string, text string) string {
@@ -265,6 +286,220 @@ func commonTextItemsFromDBRows(rows []commonTextDBRow) []commonTextItem {
 	return sortCommonTextItems(items)
 }
 
+func List(ctx context.Context, opts ListOptions) ([]commonTextItem, error) {
+	items, err := loadCommonTextItemsFromDBContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	queryTerms := strings.Fields(strings.ToLower(strings.TrimSpace(opts.Query)))
+	tagFilters := normalizeCommonTextTags(opts.TagFilters)
+	normalizedTagFilters := make([]string, 0, len(tagFilters))
+	for _, tag := range tagFilters {
+		normalizedTagFilters = append(normalizedTagFilters, strings.ToLower(tag))
+	}
+	var filtered []commonTextItem
+	for _, item := range items {
+		if ctx.Err() != nil {
+			return filtered, ctx.Err()
+		}
+		if !commonTextItemMatchesTags(item, normalizedTagFilters) {
+			continue
+		}
+		if !commonTextItemMatchesQuery(item, queryTerms) {
+			continue
+		}
+		filtered = append(filtered, item)
+		if opts.Limit > 0 && len(filtered) >= opts.Limit {
+			break
+		}
+	}
+	return filtered, nil
+}
+
+func Get(ctx context.Context, id string) (commonTextItem, bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return commonTextItem{}, false, fmt.Errorf("common text id is required")
+	}
+	items, err := loadCommonTextItemsFromDBContext(ctx)
+	if err != nil {
+		return commonTextItem{}, false, err
+	}
+	for _, item := range items {
+		if item.Id == id {
+			return item, true, nil
+		}
+	}
+	return commonTextItem{}, false, nil
+}
+
+func ListTags(ctx context.Context, opts ListOptions) ([]TagSummary, error) {
+	items, err := List(ctx, ListOptions{Query: opts.Query, Limit: 0})
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	display := make(map[string]string)
+	for _, item := range items {
+		for _, tag := range normalizeCommonTextTags(item.Tags) {
+			key := strings.ToLower(tag)
+			counts[key]++
+			if display[key] == "" {
+				display[key] = tag
+			}
+		}
+	}
+	tags := make([]TagSummary, 0, len(counts))
+	for key, count := range counts {
+		tags = append(tags, TagSummary{Tag: display[key], Count: count})
+	}
+	sort.SliceStable(tags, func(i, j int) bool {
+		if tags[i].Count != tags[j].Count {
+			return tags[i].Count > tags[j].Count
+		}
+		return strings.ToLower(tags[i].Tag) < strings.ToLower(tags[j].Tag)
+	})
+	return tags, nil
+}
+
+func Update(ctx context.Context, request UpdateRequest) (commonTextItem, error) {
+	id := strings.TrimSpace(request.ID)
+	if id == "" {
+		return commonTextItem{}, fmt.Errorf("common text id is required")
+	}
+	if !wstore.IsInitialized() {
+		return commonTextItem{}, fmt.Errorf("wstore is not initialized")
+	}
+	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (commonTextItem, error) {
+		item, found, err := commonTextItemByIDTx(ctx, tx, id)
+		if err != nil {
+			return commonTextItem{}, err
+		}
+		if !found {
+			return commonTextItem{}, fmt.Errorf("common text not found: %q", id)
+		}
+		if request.Title != nil {
+			item.Title = normalizeCommonTextTitle(*request.Title, item.Text)
+		}
+		if request.Text != nil {
+			item.Text = *request.Text
+			if strings.TrimSpace(item.Text) == "" {
+				return commonTextItem{}, fmt.Errorf("common text content cannot be empty")
+			}
+			if request.Title == nil {
+				item.Title = normalizeCommonTextTitle(item.Title, item.Text)
+			}
+		}
+		if request.Content != nil {
+			item.Text = *request.Content
+			if strings.TrimSpace(item.Text) == "" {
+				return commonTextItem{}, fmt.Errorf("common text content cannot be empty")
+			}
+			if request.Title == nil {
+				item.Title = normalizeCommonTextTitle(item.Title, item.Text)
+			}
+		}
+		if request.SetTags {
+			item.Tags = normalizeCommonTextTags(request.Tags)
+		}
+		item.UpdatedAt = float64(time.Now().UnixMilli())
+		if err := updateCommonTextItemTx(ctx, tx, item); err != nil {
+			return commonTextItem{}, err
+		}
+		return item, nil
+	})
+}
+
+func RenameTag(ctx context.Context, from string, to string) (int, error) {
+	fromTags := normalizeCommonTextTags([]string{from})
+	toTags := normalizeCommonTextTags([]string{to})
+	if len(fromTags) == 0 {
+		return 0, fmt.Errorf("source tag is required")
+	}
+	if len(toTags) == 0 {
+		return 0, fmt.Errorf("target tag is required")
+	}
+	fromTag := fromTags[0]
+	toTag := toTags[0]
+	if strings.EqualFold(fromTag, toTag) {
+		return 0, nil
+	}
+	if !wstore.IsInitialized() {
+		return 0, fmt.Errorf("wstore is not initialized")
+	}
+	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (int, error) {
+		var rows []commonTextDBRow
+		tx.Select(&rows, `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text`)
+		items := commonTextItemsFromDBRows(rows)
+		count := 0
+		now := float64(time.Now().UnixMilli())
+		for _, item := range items {
+			if ctx.Err() != nil {
+				return count, ctx.Err()
+			}
+			nextTags, changed := renameCommonTextItemTag(item.Tags, fromTag, toTag)
+			if !changed {
+				continue
+			}
+			item.Tags = nextTags
+			item.UpdatedAt = now
+			if err := updateCommonTextItemTx(ctx, tx, item); err != nil {
+				return count, err
+			}
+			count++
+		}
+		return count, nil
+	})
+}
+
+func commonTextItemMatchesTags(item commonTextItem, normalizedTagFilters []string) bool {
+	if len(normalizedTagFilters) == 0 {
+		return true
+	}
+	itemTags := make(map[string]bool, len(item.Tags))
+	for _, tag := range normalizeCommonTextTags(item.Tags) {
+		itemTags[strings.ToLower(tag)] = true
+	}
+	for _, tag := range normalizedTagFilters {
+		if !itemTags[tag] {
+			return false
+		}
+	}
+	return true
+}
+
+func commonTextItemMatchesQuery(item commonTextItem, terms []string) bool {
+	if len(terms) == 0 {
+		return true
+	}
+	haystack := strings.ToLower(strings.Join([]string{
+		item.Title,
+		item.Text,
+		item.Shortcut,
+		strings.Join(item.Tags, " "),
+	}, "\n"))
+	for _, term := range terms {
+		if !strings.Contains(haystack, term) {
+			return false
+		}
+	}
+	return true
+}
+
+func renameCommonTextItemTag(tags []string, from string, to string) ([]string, bool) {
+	changed := false
+	var next []string
+	for _, tag := range tags {
+		if strings.EqualFold(strings.TrimSpace(tag), from) {
+			next = append(next, to)
+			changed = true
+		} else {
+			next = append(next, tag)
+		}
+	}
+	return normalizeCommonTextTags(next), changed
+}
+
 func commonTextNullableString(val *string) any {
 	if val == nil {
 		return nil
@@ -280,15 +515,51 @@ func commonTextNullableInt64(val *int64) any {
 }
 
 func loadCommonTextItemsFromDB() ([]commonTextItem, error) {
+	return loadCommonTextItemsFromDBContext(context.Background())
+}
+
+func loadCommonTextItemsFromDBContext(ctx context.Context) ([]commonTextItem, error) {
 	if !wstore.IsInitialized() {
 		return nil, nil
 	}
-	return wstore.WithTxRtn(context.Background(), func(tx *wstore.TxWrap) ([]commonTextItem, error) {
+	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) ([]commonTextItem, error) {
 		var rows []commonTextDBRow
 		query := `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text`
 		tx.Select(&rows, query)
 		return commonTextItemsFromDBRows(rows), nil
 	})
+}
+
+func commonTextItemByIDTx(ctx context.Context, tx *wstore.TxWrap, id string) (commonTextItem, bool, error) {
+	var rows []commonTextDBRow
+	tx.Select(&rows, `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text WHERE id = ?`, id)
+	if ctx.Err() != nil {
+		return commonTextItem{}, false, ctx.Err()
+	}
+	if len(rows) == 0 {
+		return commonTextItem{}, false, nil
+	}
+	items := commonTextItemsFromDBRows(rows)
+	if len(items) == 0 {
+		return commonTextItem{}, false, fmt.Errorf("common text item is invalid: %q", id)
+	}
+	return items[0], true, nil
+}
+
+func updateCommonTextItemTx(ctx context.Context, tx *wstore.TxWrap, item commonTextItem) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	row := commonTextItemsToDBRows([]commonTextItem{item})[0]
+	tx.Exec(
+		`UPDATE db_common_text SET title = ?, text = ?, tags = ?, updatedat = ? WHERE id = ?`,
+		row.Title,
+		row.Text,
+		row.Tags,
+		row.UpdatedAt,
+		row.ID,
+	)
+	return nil
 }
 
 func saveCommonTextItemsToDB(items []commonTextItem) error {

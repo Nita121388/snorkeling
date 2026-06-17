@@ -16,8 +16,10 @@ export type MarkdownHeadingMoveState = {
 export type MarkdownHeadingEditResult = {
     text: string;
     targetLineNumber?: number;
+    targetColumn?: number;
     movedRange?: MarkdownHeadingLineRange;
     swappedRange?: MarkdownHeadingLineRange;
+    cutText?: string;
 };
 
 export type MarkdownHeadingSwapPreview = {
@@ -148,6 +150,49 @@ export function moveMarkdownHeadingSection(
             startLineNumber: swappedStartLineIndex + 1,
             endLineNumber: swappedStartLineIndex + swapLines.length,
         },
+    };
+}
+
+export function insertMarkdownHeadingSection(
+    text: string,
+    lineNumber: number,
+    placement: "above" | "below"
+): MarkdownHeadingEditResult | null {
+    const textLines = splitTextLines(text);
+    const section = findHeadingSectionAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    if (section == null) return null;
+
+    const headingLine = textLines.lines[section.startLineIndex] ?? "";
+    const markerMatch = headingLine.match(/^( {0,3}#{1,6})(?:[ \t]|$)/);
+    const markerText = markerMatch?.[1] ?? "#";
+    const insertLine = `${markerText} `;
+    const insertLineIndex = placement === "above" ? section.startLineIndex : section.endLineIndex + 1;
+    const lines = [...textLines.lines];
+    lines.splice(insertLineIndex, 0, insertLine);
+
+    return {
+        text: joinTextLines(lines, textLines.eol),
+        targetLineNumber: insertLineIndex + 1,
+        targetColumn: insertLine.length + 1,
+    };
+}
+
+export function cutMarkdownHeadingSection(text: string, lineNumber: number): MarkdownHeadingEditResult | null {
+    const textLines = splitTextLines(text);
+    const section = findHeadingSectionAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    if (section == null) return null;
+
+    const lines = [...textLines.lines];
+    const deleteCount = section.endLineIndex - section.startLineIndex + 1;
+    const cutText = lines.slice(section.startLineIndex, section.endLineIndex + 1).join(textLines.eol);
+    lines.splice(section.startLineIndex, deleteCount);
+    const targetLineNumber = Math.max(1, Math.min(section.startLineIndex + 1, lines.length || 1));
+
+    return {
+        text: joinTextLines(lines, textLines.eol),
+        targetLineNumber,
+        targetColumn: 1,
+        cutText,
     };
 }
 

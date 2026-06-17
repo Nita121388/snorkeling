@@ -3,9 +3,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    cutOrderedListItem,
     getMarkdownOrderedListFoldingRanges,
     getOrderedListMoveState,
     getOrderedListSwapPreview,
+    insertOrderedListItem,
     isMarkdownOrderedListPath,
     moveOrderedListItem,
     renumberOrderedListsInSelection,
@@ -159,6 +161,48 @@ describe("markdown ordered list helpers", () => {
 
         expect(renumberOrderedListsInSelection(text, 2, 6)).toEqual({
             text: ["Intro", "1. First", "2. Second", "   1. Child", "   2. Child two", "3. Third", "Outro"].join("\n"),
+        });
+    });
+
+    it("inserts an empty ordered list item above and renumbers siblings", () => {
+        const text = ["1. First", "2. Second", "3. Third"].join("\n");
+
+        expect(insertOrderedListItem(text, 2, "above")).toEqual({
+            text: ["1. First", "2. ", "3. Second", "4. Third"].join("\n"),
+            targetLineNumber: 2,
+            targetColumn: 4,
+        });
+    });
+
+    it("inserts an empty ordered list item below the current item content", () => {
+        const text = ["1. First", "   detail", "2. Second"].join("\n");
+
+        expect(insertOrderedListItem(text, 1, "below")).toEqual({
+            text: ["1. First", "   detail", "2. ", "3. Second"].join("\n"),
+            targetLineNumber: 3,
+            targetColumn: 4,
+        });
+    });
+
+    it("cuts an ordered list item and renumbers the remaining siblings", () => {
+        const text = ["1. First", "   detail", "2. Second", "3. Third"].join("\n");
+
+        expect(cutOrderedListItem(text, 1)).toEqual({
+            text: ["1. Second", "2. Third"].join("\n"),
+            targetLineNumber: 1,
+            targetColumn: 1,
+            cutText: ["1. First", "   detail"].join("\n"),
+        });
+    });
+
+    it("cuts the only ordered list item without renumbering unrelated lines", () => {
+        const text = ["Intro", "1. First", "   detail", "# Outro"].join("\n");
+
+        expect(cutOrderedListItem(text, 2)).toEqual({
+            text: ["Intro", "# Outro"].join("\n"),
+            targetLineNumber: 2,
+            targetColumn: 1,
+            cutText: ["1. First", "   detail"].join("\n"),
         });
     });
 

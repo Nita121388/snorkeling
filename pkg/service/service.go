@@ -12,6 +12,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/service/aisessionsservice"
 	"github.com/wavetermdev/waveterm/pkg/service/blockservice"
 	"github.com/wavetermdev/waveterm/pkg/service/clientservice"
+	"github.com/wavetermdev/waveterm/pkg/service/commontextservice"
 	"github.com/wavetermdev/waveterm/pkg/service/objectservice"
 	"github.com/wavetermdev/waveterm/pkg/service/userinputservice"
 	"github.com/wavetermdev/waveterm/pkg/service/windowservice"
@@ -27,6 +28,7 @@ var ServiceMap = map[string]any{
 	"block":      blockservice.BlockServiceInstance,
 	"object":     &objectservice.ObjectService{},
 	"client":     &clientservice.ClientService{},
+	"commontext": &commontextservice.CommonTextService{},
 	"window":     &windowservice.WindowService{},
 	"workspace":  &workspaceservice.WorkspaceService{},
 	"userinput":  &userinputservice.UserInputService{},

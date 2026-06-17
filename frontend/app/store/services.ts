@@ -33,6 +33,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Detail", Array.from(arguments))
     }
 
+    // load newly appended AI session detail messages
+    // @returns AI session message delta
+    DetailDelta(request: AISessionsDetailDeltaRequest): Promise<MessageDelta> {
+        return callBackendService(this?.waveEnv, "aisessions", "DetailDelta", Array.from(arguments))
+    }
+
     // list local AI sessions
     // @returns AI session summaries
     List(request: AISessionsListRequest): Promise<AISessionsListResponse> {
@@ -51,6 +57,18 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Note", Array.from(arguments))
     }
 
+    // set a local AI session note and tags
+    // @returns updated AI session summary
+    NoteAndTags(request: AISessionsNoteAndTagsRequest): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "NoteAndTags", Array.from(arguments))
+    }
+
+    // rename an AI session tag globally
+    // @returns AI session tag rename result
+    RenameTag(request: AISessionsRenameTagRequest): Promise<AISessionsRenameTagResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "RenameTag", Array.from(arguments))
+    }
+
     // stat a local AI session file without loading messages
     // @returns AI session file stat
     Stat(request: AISessionsStatRequest): Promise<AISessionsStatResponse> {
@@ -61,6 +79,12 @@ export class AISessionsServiceType {
     // @returns AI session summary
     Summary(request: AISessionsSummaryRequest): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Summary", Array.from(arguments))
+    }
+
+    // list AI session tags
+    // @returns AI session tags
+    Tags(request: AISessionsTagsRequest): Promise<AISessionsTagsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "Tags", Array.from(arguments))
     }
 
     // load paged user messages for an AI session
@@ -163,6 +187,47 @@ export class ClientServiceType {
 }
 
 export const ClientService = new ClientServiceType();
+
+// commontextservice.CommonTextService (commontext)
+export class CommonTextServiceType {
+    waveEnv: WaveEnv;
+
+    constructor(waveEnv?: WaveEnv) {
+        this.waveEnv = waveEnv;
+    }
+
+    // get a common text item by id
+    // @returns common text item
+    Get(request: CommonTextGetRequest): Promise<CommonTextGetResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "Get", Array.from(arguments))
+    }
+
+    // list common text items
+    // @returns common text items
+    List(request: CommonTextListRequest): Promise<CommonTextListResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "List", Array.from(arguments))
+    }
+
+    // rename a common text tag globally
+    // @returns common text tag rename result
+    RenameTag(request: CommonTextRenameTagRequest): Promise<CommonTextRenameTagResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "RenameTag", Array.from(arguments))
+    }
+
+    // list common text tags
+    // @returns common text tags
+    Tags(request: CommonTextListRequest): Promise<CommonTextTagsResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "Tags", Array.from(arguments))
+    }
+
+    // update common text title, text, or tags
+    // @returns updated common text item
+    Update(request: CommonTextUpdateRequest): Promise<CommonTextItemType> {
+        return callBackendService(this?.waveEnv, "commontext", "Update", Array.from(arguments))
+    }
+}
+
+export const CommonTextService = new CommonTextServiceType();
 
 // objectservice.ObjectService (object)
 export class ObjectServiceType {
@@ -355,6 +420,7 @@ export const AllServiceTypes = {
     "aisessions": AISessionsServiceType,
     "block": BlockServiceType,
     "client": ClientServiceType,
+    "commontext": CommonTextServiceType,
     "object": ObjectServiceType,
     "userinput": UserInputServiceType,
     "window": WindowServiceType,
@@ -365,6 +431,7 @@ export const AllServiceImpls = {
     "aisessions": AISessionsService,
     "block": BlockService,
     "client": ClientService,
+    "commontext": CommonTextService,
     "object": ObjectService,
     "userinput": UserInputService,
     "window": WindowService,

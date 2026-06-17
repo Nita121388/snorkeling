@@ -24,6 +24,12 @@ import {
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
+import {
+    extractSessionTagsFromNote,
+    mergeSessionTags,
+    sessionTagsEqual,
+    sessionTagsLabel,
+} from "@/app/view/aisessions/session-tags";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
@@ -621,8 +627,9 @@ const TermSessionNoteEditor = React.memo(
                 if (summary == null) {
                     return;
                 }
-                const trimmedNote = nextNote.trim();
-                if (trimmedNote === (summary.note ?? "")) {
+                const parsed = extractSessionTagsFromNote(nextNote);
+                const tags = mergeSessionTags(summary.tags ?? [], parsed.tags);
+                if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                     setError("");
                     return;
                 }
@@ -631,7 +638,7 @@ const TermSessionNoteEditor = React.memo(
                 setSaveStatus("saving");
                 setError("");
                 service
-                    .Note(summary.key, trimmedNote)
+                    .NoteAndTags({ id: summary.key, note: parsed.note, tags })
                     .then((updated) => {
                         if (saveSeq !== saveSeqRef.current) {
                             return;
@@ -665,7 +672,14 @@ const TermSessionNoteEditor = React.memo(
         }, [noteDraft, saveNote]);
 
         React.useEffect(() => {
-            if (summary == null || noteDraft.trim() === (summary.note ?? "")) {
+            if (
+                summary == null ||
+                (extractSessionTagsFromNote(noteDraft).note === (summary.note ?? "") &&
+                    sessionTagsEqual(
+                        mergeSessionTags(summary.tags ?? [], extractSessionTagsFromNote(noteDraft).tags),
+                        summary.tags
+                    ))
+            ) {
                 return;
             }
             saveTimerRef.current = window.setTimeout(() => {
@@ -695,11 +709,14 @@ const TermSessionNoteEditor = React.memo(
         }
         const title = summary?.title || summary?.id || sessionId;
         const trimmedDraft = noteDraft.trim();
+        const tagText = sessionTagsLabel(summary.tags);
         const previewText =
             trimmedDraft
                 .split(/\r?\n/)
                 .find((line) => line.trim() !== "")
-                ?.trim() || "Note";
+                ?.trim() ||
+            tagText ||
+            "Note";
         const statusIcon =
             saveStatus === "saving"
                 ? "fa-spinner animate-spin"

@@ -47,6 +47,15 @@ func (r *fakeRemoteFileReader) ReadFile(
 	filePath string,
 	maxSize int64,
 ) ([]byte, *wshrpc.FileInfo, error) {
+	return r.ReadFileRange(ctx, filePath, 0, int(maxSize))
+}
+
+func (r *fakeRemoteFileReader) ReadFileRange(
+	ctx context.Context,
+	filePath string,
+	offset int64,
+	size int,
+) ([]byte, *wshrpc.FileInfo, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -57,6 +66,13 @@ func (r *fakeRemoteFileReader) ReadFile(
 	info := r.info[filePath]
 	if info == nil {
 		info = &wshrpc.FileInfo{Path: filePath, Size: int64(len(raw))}
+	}
+	if offset > int64(len(raw)) {
+		return nil, info, nil
+	}
+	raw = raw[offset:]
+	if size > 0 && len(raw) > size {
+		raw = raw[:size]
 	}
 	return raw, info, nil
 }

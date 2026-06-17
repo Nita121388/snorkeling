@@ -42,6 +42,17 @@ declare global {
         configs: {[key: string]: AIModeConfigType};
     };
 
+    // aisessionsservice.AISessionsDetailDeltaRequest
+    type AISessionsDetailDeltaRequest = {
+        id: string;
+        connection?: string;
+        source?: string;
+        filePath?: string;
+        cursor: SessionMessageCursor;
+        maxBytes?: number;
+        messageCount?: number;
+    };
+
     // aisessionsservice.AISessionsDetailRequest
     type AISessionsDetailRequest = {
         id: string;
@@ -60,11 +71,31 @@ declare global {
         limit?: number;
         refresh?: boolean;
         markedOnly?: boolean;
+        tagFilters?: string[];
     };
 
     // aisessionsservice.AISessionsListResponse
     type AISessionsListResponse = {
         sessions: SessionSummary[];
+    };
+
+    // aisessionsservice.AISessionsNoteAndTagsRequest
+    type AISessionsNoteAndTagsRequest = {
+        id: string;
+        note: string;
+        tags?: string[];
+    };
+
+    // aisessionsservice.AISessionsRenameTagRequest
+    type AISessionsRenameTagRequest = {
+        from: string;
+        to: string;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsRenameTagResponse
+    type AISessionsRenameTagResponse = {
+        count: number;
     };
 
     // aisessionsservice.AISessionsStatRequest
@@ -87,6 +118,20 @@ declare global {
         id: string;
         connection?: string;
         refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsTagsRequest
+    type AISessionsTagsRequest = {
+        source?: string;
+        project?: string;
+        connection?: string;
+        markedOnly?: boolean;
+        refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsTagsResponse
+    type AISessionsTagsResponse = {
+        tags: SessionTagSummary[];
     };
 
     // aisessionsservice.AISessionsUserLinesRequest
@@ -1017,6 +1062,17 @@ declare global {
         data64: string;
     };
 
+    // commontextservice.CommonTextGetRequest
+    type CommonTextGetRequest = {
+        id: string;
+    };
+
+    // commontextservice.CommonTextGetResponse
+    type CommonTextGetResponse = {
+        item: CommonTextItemType;
+        found: boolean;
+    };
+
     // wconfig.CommonTextItemType
     type CommonTextItemType = {
         id?: string;
@@ -1029,6 +1085,44 @@ declare global {
         updatedat?: number;
         lastusedat?: number;
         usagecount?: number;
+    };
+
+    // commontextservice.CommonTextListRequest
+    type CommonTextListRequest = {
+        query?: string;
+        tagFilters?: string[];
+        limit?: number;
+    };
+
+    // commontextservice.CommonTextListResponse
+    type CommonTextListResponse = {
+        items: CommonTextItemType[];
+    };
+
+    // commontextservice.CommonTextRenameTagRequest
+    type CommonTextRenameTagRequest = {
+        from: string;
+        to: string;
+    };
+
+    // commontextservice.CommonTextRenameTagResponse
+    type CommonTextRenameTagResponse = {
+        count: number;
+    };
+
+    // commontextservice.CommonTextTagsResponse
+    type CommonTextTagsResponse = {
+        tags: TagSummary[];
+    };
+
+    // commontextservice.CommonTextUpdateRequest
+    type CommonTextUpdateRequest = {
+        id: string;
+        title?: string;
+        text?: string;
+        content?: string;
+        tags?: string[];
+        setTags?: boolean;
     };
 
     // wconfig.ConfigError
@@ -1387,6 +1481,15 @@ declare global {
         timestamp?: number;
         toolName?: string;
         charCount: number;
+    };
+
+    // aisessions.MessageDelta
+    type MessageDelta = {
+        summary: SessionSummary;
+        messages: Message[];
+        cursor: SessionMessageCursor;
+        hasMore?: boolean;
+        resetRequired?: boolean;
     };
 
     // waveobj.MetaTSType
@@ -1757,6 +1860,15 @@ declare global {
         summary: SessionSummary;
         messages: Message[];
         toolCalls?: ToolCall[];
+        cursor?: SessionMessageCursor;
+    };
+
+    // aisessions.SessionMessageCursor
+    type SessionMessageCursor = {
+        byteOffset?: number;
+        fileSize?: number;
+        mtime?: number;
+        lastSeq?: number;
     };
 
     // aisessions.SessionSummary
@@ -1774,7 +1886,15 @@ declare global {
         snippet?: string;
         marked?: boolean;
         note?: string;
+        tags?: string[];
         missing?: boolean;
+        size?: number;
+    };
+
+    // aisessions.SessionTagSummary
+    type SessionTagSummary = {
+        tag: string;
+        count: number;
     };
 
     // wconfig.SettingsType
@@ -2092,6 +2212,12 @@ declare global {
         name: string;
         layoutstate: string;
         blockids: string[];
+    };
+
+    // commontextstore.TagSummary
+    type TagSummary = {
+        tag: string;
+        count: number;
     };
 
     // waveobj.TermSize

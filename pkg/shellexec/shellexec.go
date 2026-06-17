@@ -71,6 +71,15 @@ func forcedWaveEnv(cmdOpts CommandOptsType) map[string]string {
 	return env
 }
 
+func commandEnv(cmdOpts CommandOptsType) map[string]string {
+	if cmdOpts.SwapToken == nil || len(cmdOpts.SwapToken.Env) == 0 {
+		return nil
+	}
+	env := make(map[string]string, len(cmdOpts.SwapToken.Env))
+	maps.Copy(env, cmdOpts.SwapToken.Env)
+	return env
+}
+
 func shellEnvPrefix(env map[string]string) string {
 	if len(env) == 0 {
 		return ""
@@ -219,7 +228,11 @@ func StartWslShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, cmdS
 
 	args := []string{"~", "-d", client.Name()}
 	if cmdStr != "" {
-		args = append(args, "--", "sh", "-c", applyCwdToShellCommand(cmdStr, cmdOpts))
+		cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
+		if envPrefix := shellEnvPrefix(commandEnv(cmdOpts)); envPrefix != "" {
+			cmdToRun = fmt.Sprintf("%s %s", envPrefix, cmdToRun)
+		}
+		args = append(args, "--", "sh", "-c", cmdToRun)
 	}
 	ecmd := exec.Command("wsl.exe", args...)
 
@@ -333,7 +346,11 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 		conn.Debugf(ctx, "packed swaptoken %s\n", packedToken)
 		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveSwapTokenVarName, packedToken, cmdCombined)
 	}
-	if envPrefix := shellEnvPrefix(forcedWaveEnv(cmdOpts)); envPrefix != "" {
+	envToPrefix := forcedWaveEnv(cmdOpts)
+	if cmdToRun != "" {
+		envToPrefix = commandEnv(cmdOpts)
+	}
+	if envPrefix := shellEnvPrefix(envToPrefix); envPrefix != "" {
 		conn.Debugf(ctx, "adding forced Wave environment\n")
 		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
@@ -391,6 +408,11 @@ func StartRemoteShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, c
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
 	startCmd := cmdStr
 	startCmd = applyCwdToShellCommand(startCmd, cmdOpts)
+	if startCmd != "" {
+		if envPrefix := shellEnvPrefix(commandEnv(cmdOpts)); envPrefix != "" {
+			startCmd = fmt.Sprintf("%s %s", envPrefix, startCmd)
+		}
+	}
 	sessionWrap := MakeSessionWrap(session, startCmd, pipePty)
 	if startCmd == "" {
 		err = session.Shell()
@@ -523,7 +545,11 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveSwapTokenVarName, packedToken, cmdCombined)
 	}
-	if envPrefix := shellEnvPrefix(forcedWaveEnv(cmdOpts)); envPrefix != "" {
+	envToPrefix := forcedWaveEnv(cmdOpts)
+	if cmdToRun != "" {
+		envToPrefix = commandEnv(cmdOpts)
+	}
+	if envPrefix := shellEnvPrefix(envToPrefix); envPrefix != "" {
 		conn.Debugf(logCtx, "adding forced Wave environment\n")
 		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
@@ -624,7 +650,11 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 			conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 			env[wavebase.WaveSwapTokenVarName] = packedToken
 		}
-		maps.Copy(env, forcedWaveEnv(cmdOpts))
+		envToCopy := forcedWaveEnv(cmdOpts)
+		if cmdStr != "" {
+			envToCopy = commandEnv(cmdOpts)
+		}
+		maps.Copy(env, envToCopy)
 		shellutil.AddTokenSwapEntry(cmdOpts.SwapToken)
 	}
 
@@ -702,7 +732,11 @@ func StartLocalShellProc(logCtx context.Context, termSize waveobj.TermSize, cmdS
 		blocklogger.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
 		shellutil.UpdateCmdEnv(ecmd, map[string]string{wavebase.WaveSwapTokenVarName: packedToken})
 	}
-	shellutil.UpdateCmdEnv(ecmd, forcedWaveEnv(cmdOpts))
+	if isShell {
+		shellutil.UpdateCmdEnv(ecmd, forcedWaveEnv(cmdOpts))
+	} else {
+		shellutil.UpdateCmdEnv(ecmd, commandEnv(cmdOpts))
+	}
 
 	/*
 	  For Snap installations, we need to correct the XDG environment variables as Snap

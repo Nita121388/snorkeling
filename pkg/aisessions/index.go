@@ -377,6 +377,7 @@ func (idx *Index) summaryMatchesSearch(summary SessionSummary, query string) boo
 		summary.ProjectPath,
 		summary.FilePath,
 		summary.Note,
+		strings.Join(summary.Tags, " "),
 	}, " "))
 	if strings.Contains(metaText, query) {
 		return true
@@ -411,6 +412,9 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if opts.MarkedOnly && !summary.Marked {
 		return false
 	}
+	if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
+		return false
+	}
 	return true
 }
 
@@ -423,6 +427,7 @@ func summaryMatchesQuery(summary SessionSummary, query string) bool {
 		summary.ProjectPath,
 		summary.FilePath,
 		summary.Note,
+		strings.Join(summary.Tags, " "),
 	}, " "))
 	return strings.Contains(text, query)
 }

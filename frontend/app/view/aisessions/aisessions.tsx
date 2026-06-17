@@ -20,6 +20,7 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
+import { normalizeSessionTags } from "./session-tags";
 import type { SourceFilter } from "./types";
 import {
     dirname,
@@ -50,14 +51,18 @@ export class AiSessionsViewModel implements ViewModel {
     selectedKeyAtom = jotai.atom<string>("");
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
+    tagFiltersAtom = jotai.atom<string[]>([]);
+    availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
     detailLoadingAtom = jotai.atom<boolean>(false);
+    detailDeltaLoadingAtom = jotai.atom<boolean>(false);
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
+    detailLoadSeq = 0;
     markRequestSeqByKey = new Map<string, number>();
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
@@ -92,6 +97,7 @@ export class AiSessionsViewModel implements ViewModel {
         const loadSeq = ++this.sessionsLoadSeq;
         const source = globalStore.get(this.sourceAtom);
         const query = globalStore.get(this.queryAtom);
+        const tagFilters = globalStore.get(this.tagFiltersAtom);
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
@@ -101,12 +107,14 @@ export class AiSessionsViewModel implements ViewModel {
                 connection: this.getConnection(),
                 limit: 200,
                 refresh,
+                tagFilters,
             });
-            if (!this.isCurrentSessionsLoad(loadSeq, source, query)) {
+            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
                 return;
             }
             const sessions = response?.sessions ?? [];
             globalStore.set(this.sessionsAtom, sessions);
+            void this.loadTags(refresh);
             const selectedKey = globalStore.get(this.selectedKeyAtom);
             const selectedStillExists = sessions.some((session) => session.key === selectedKey);
             if (!selectedStillExists) {
@@ -124,22 +132,36 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
             }
         } finally {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
                 globalStore.set(this.loadingAtom, false);
             }
         }
     }
 
-    isCurrentSessionsLoad(loadSeq: number, source: SourceFilter, query: string): boolean {
+    isCurrentSessionsLoad(loadSeq: number, source: SourceFilter, query: string, tagFilters: string[]): boolean {
         return (
             loadSeq === this.sessionsLoadSeq &&
             globalStore.get(this.sourceAtom) === source &&
-            globalStore.get(this.queryAtom) === query
+            globalStore.get(this.queryAtom) === query &&
+            tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters)
         );
+    }
+
+    async loadTags(refresh = false): Promise<void> {
+        try {
+            const response = await this.service.Tags({
+                source: globalStore.get(this.sourceAtom),
+                connection: this.getConnection(),
+                refresh,
+            });
+            globalStore.set(this.availableTagsAtom, response.tags ?? []);
+        } catch (e) {
+            globalStore.set(this.availableTagsAtom, []);
+        }
     }
 
     getBoundSessionId(): string {
@@ -160,18 +182,99 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             return;
         }
+        const loadSeq = ++this.detailLoadSeq;
         globalStore.set(this.selectedKeyAtom, session.key);
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
             const detail = await this.service.Detail({ id: session.key, connection: this.getConnection(), refresh });
+            if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
+                return;
+            }
             globalStore.set(this.detailAtom, detail);
             this.replaceSession(detail.summary);
         } catch (e) {
-            globalStore.set(this.errorAtom, getErrorMessage(e));
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            }
         } finally {
-            globalStore.set(this.detailLoadingAtom, false);
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.detailLoadingAtom, false);
+            }
         }
+    }
+
+    async loadDetailDelta(reason: "manual" | "bottom" = "manual"): Promise<boolean> {
+        const currentDetail = globalStore.get(this.detailAtom);
+        const currentSummary = currentDetail?.summary;
+        const cursor = currentDetail?.cursor;
+        if (!currentSummary?.key || cursor == null) {
+            if (currentSummary != null) {
+                await this.loadDetail(currentSummary, true);
+                return true;
+            }
+            return false;
+        }
+        if (globalStore.get(this.detailDeltaLoadingAtom) || globalStore.get(this.detailLoadingAtom)) {
+            return false;
+        }
+        const loadSeq = this.detailLoadSeq;
+        globalStore.set(this.detailDeltaLoadingAtom, true);
+        globalStore.set(this.errorAtom, "");
+        try {
+            const delta = await this.service.DetailDelta({
+                id: currentSummary.key,
+                connection: this.getConnection(),
+                source: currentSummary.source,
+                filePath: currentSummary.filePath,
+                cursor,
+                messageCount: currentSummary.messageCount,
+            });
+            if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== currentSummary.key) {
+                return false;
+            }
+            if (delta.resetRequired) {
+                await this.loadDetail(currentSummary, true);
+                return true;
+            }
+            const deltaMessages = delta.messages ?? [];
+            const cursorAdvanced = (delta.cursor?.byteOffset ?? cursor.byteOffset ?? 0) > (cursor.byteOffset ?? 0);
+            this.applyDetailDelta(currentSummary.key, delta);
+            if (delta.hasMore && reason === "bottom" && (cursorAdvanced || deltaMessages.length > 0)) {
+                window.setTimeout(() => {
+                    void this.loadDetailDelta("bottom");
+                }, 0);
+            }
+            return deltaMessages.length > 0;
+        } catch (e) {
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            }
+            return false;
+        } finally {
+            globalStore.set(this.detailDeltaLoadingAtom, false);
+        }
+    }
+
+    applyDetailDelta(sessionKey: string, delta: MessageDelta): void {
+        const detail = globalStore.get(this.detailAtom);
+        if (detail?.summary?.key !== sessionKey) {
+            return;
+        }
+        const existingSeqs = new Set((detail.messages ?? []).map((message) => message.seq));
+        const nextMessages = [
+            ...(detail.messages ?? []),
+            ...(delta.messages ?? []).filter((message) => !existingSeqs.has(message.seq)),
+        ];
+        const nextSummary = mergeDeltaSummary(detail.summary, delta.summary);
+        const nextDetail: SessionDetail = {
+            ...detail,
+            summary: nextSummary,
+            messages: nextMessages,
+            cursor: delta.cursor ?? detail.cursor,
+        };
+        globalStore.set(this.detailAtom, nextDetail);
+        this.replaceSession(nextSummary);
     }
 
     async loadDetailTools(refresh = false): Promise<void> {
@@ -285,12 +388,16 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
-    async updateNote(session: SessionSummary, note: string): Promise<boolean> {
+    async updateNote(session: SessionSummary, note: string, tags?: string[]): Promise<boolean> {
         if (!session?.key) return false;
         try {
-            const updated = await this.service.Note(session.key, note);
+            const updated =
+                tags == null
+                    ? await this.service.Note(session.key, note)
+                    : await this.service.NoteAndTags({ id: session.key, note, tags });
             this.replaceSession(updated);
             dispatchAISessionNoteUpdated(updated);
+            void this.loadTags(false);
             return true;
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -378,6 +485,26 @@ export class AiSessionsViewModel implements ViewModel {
     }
 }
 
+function tagsEqual(left: string[], right: string[]): boolean {
+    const leftTags = normalizeSessionTags(left);
+    const rightTags = normalizeSessionTags(right);
+    if (leftTags.length !== rightTags.length) return false;
+    return leftTags.every((tag, index) => tag === rightTags[index]);
+}
+
+function mergeDeltaSummary(current: SessionSummary, deltaSummary?: SessionSummary): SessionSummary {
+    if (deltaSummary == null) {
+        return current;
+    }
+    return {
+        ...current,
+        source: deltaSummary.source || current.source,
+        filePath: deltaSummary.filePath || current.filePath,
+        messageCount:
+            typeof deltaSummary.messageCount === "number" ? deltaSummary.messageCount : current.messageCount,
+    };
+}
+
 function findSessionById(sessions: SessionSummary[], sessionId: string): SessionSummary | null {
     const trimmedSessionId = sessionId.trim();
     if (trimmedSessionId === "") return null;
@@ -418,8 +545,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
     const source = jotai.useAtomValue(model.sourceAtom);
     const query = jotai.useAtomValue(model.queryAtom);
+    const tagFilters = jotai.useAtomValue(model.tagFiltersAtom);
+    const availableTags = jotai.useAtomValue(model.availableTagsAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
+    const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
     const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
@@ -433,8 +563,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         const filteredSessions = markedOnly ? sessions.filter((session) => session.marked) : sessions;
         return sortSessionsByTime(filteredSessions, sortDescending);
     }, [markedOnly, sessions, sortDescending]);
+    const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
-    const remoteFilterActive = queryActive || source !== "";
+    const tagFilterActive = normalizedTagFilters.length > 0;
+    const remoteFilterActive = queryActive || source !== "" || tagFilterActive;
     const filterActive = remoteFilterActive || markedOnly;
     const filterBusy = loading && remoteFilterActive;
 
@@ -445,7 +577,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source]);
+    }, [model, query, source, tagFilters]);
 
     useEffect(() => {
         writeSortPreference(sortDescending);
@@ -493,6 +625,25 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         },
         [model]
     );
+
+    const toggleTagFilter = useCallback(
+        (tag: string) => {
+            const normalizedTag = normalizeSessionTags([tag])[0];
+            if (!normalizedTag) return;
+            globalStore.set(model.loadingAtom, true);
+            const currentTags = normalizeSessionTags(globalStore.get(model.tagFiltersAtom));
+            const nextTags = currentTags.includes(normalizedTag)
+                ? currentTags.filter((item) => item !== normalizedTag)
+                : [...currentTags, normalizedTag];
+            globalStore.set(model.tagFiltersAtom, nextTags);
+        },
+        [model]
+    );
+
+    const clearTagFilters = useCallback(() => {
+        globalStore.set(model.loadingAtom, true);
+        globalStore.set(model.tagFiltersAtom, []);
+    }, [model]);
 
     useEffect(() => {
         return () => {
@@ -575,7 +726,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         <i className="fa-sharp fa-solid fa-magnifying-glass absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-secondary" />
                                         <input
                                             className="h-8 w-full bg-transparent pl-7 pr-7 text-sm outline-none"
-                                            placeholder="Search title, note, path"
+                                            placeholder="Search title, note, path, tag"
                                             value={query}
                                             onChange={(e) => setQuery(e.target.value)}
                                             onKeyDown={(e) => {
@@ -628,11 +779,53 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         onToggle={() => setSortDescending((current) => !current)}
                                     />
                                 </div>
+                                {availableTags.length > 0 ? (
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-secondary">
+                                            <span>Tags</span>
+                                            {tagFilterActive ? (
+                                                <button
+                                                    type="button"
+                                                    className="text-[10px] text-secondary hover:text-primary"
+                                                    onClick={clearTagFilters}
+                                                >
+                                                    Clear
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        <div className="max-h-20 overflow-auto pr-1">
+                                            <div className="flex flex-wrap gap-1">
+                                                {availableTags.map((tagSummary) => {
+                                                    const active = normalizedTagFilters.includes(tagSummary.tag);
+                                                    return (
+                                                        <button
+                                                            key={tagSummary.tag}
+                                                            type="button"
+                                                            className={cn(
+                                                                "inline-flex h-5 max-w-full items-center gap-1 rounded border px-1.5 text-[10px]",
+                                                                active
+                                                                    ? "border-accent bg-accent/10 text-accent"
+                                                                    : "border-border text-secondary hover:bg-hover hover:text-primary"
+                                                            )}
+                                                            title={`#${tagSummary.tag}`}
+                                                            onClick={() => toggleTagFilter(tagSummary.tag)}
+                                                        >
+                                                            <span className="truncate">#{tagSummary.tag}</span>
+                                                            <span className="text-[9px] opacity-70">
+                                                                {tagSummary.count}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <div className="flex h-5 items-center gap-2 text-[11px] text-secondary">
                                     {filterBusy ? (
                                         <>
                                             <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
-                                            <span>Filtering notes, titles, and paths...</span>
+                                            <span>Filtering notes, tags, titles, and paths...</span>
                                         </>
                                     ) : filterActive ? (
                                         <>
@@ -642,7 +835,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             </span>
                                         </>
                                     ) : (
-                                        <span>Search includes notes.</span>
+                                        <span>Search includes notes and tags.</span>
                                     )}
                                 </div>
                             </div>
@@ -671,7 +864,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 e.stopPropagation();
                                                 model.toggleMark(session);
                                             }}
-                                            onNoteSave={(note) => model.updateNote(session, note)}
+                                            onNoteSave={(note, tags) => model.updateNote(session, note, tags)}
                                             onResume={(e) => {
                                                 e.stopPropagation();
                                                 void model.restoreSession(session);
@@ -697,6 +890,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     model={model}
                     detail={detail}
                     loading={detailLoading}
+                    deltaLoading={detailDeltaLoading}
                     toolCallsLoading={toolCallsLoading}
                     restoring={restoring}
                     deleting={deleting}

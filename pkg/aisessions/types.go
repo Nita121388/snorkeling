@@ -24,22 +24,23 @@ const (
 )
 
 type SessionSummary struct {
-	Key          string `json:"key"`
-	ID           string `json:"id"`
-	Source       string `json:"source"`
-	Title        string `json:"title,omitempty"`
-	TitleSource  string `json:"titleSource,omitempty"`
-	ProjectPath  string `json:"projectPath,omitempty"`
-	CreatedAt    int64  `json:"createdAt,omitempty"`
-	UpdatedAt    int64  `json:"updatedAt,omitempty"`
-	MessageCount int    `json:"messageCount,omitempty"`
-	FilePath     string `json:"filePath,omitempty"`
-	Snippet      string `json:"snippet,omitempty"`
-	Marked       bool   `json:"marked,omitempty"`
-	Note         string `json:"note,omitempty"`
-	Missing      bool   `json:"missing,omitempty"`
-	MTime        int64  `json:"-"`
-	Size         int64  `json:"-"`
+	Key          string   `json:"key"`
+	ID           string   `json:"id"`
+	Source       string   `json:"source"`
+	Title        string   `json:"title,omitempty"`
+	TitleSource  string   `json:"titleSource,omitempty"`
+	ProjectPath  string   `json:"projectPath,omitempty"`
+	CreatedAt    int64    `json:"createdAt,omitempty"`
+	UpdatedAt    int64    `json:"updatedAt,omitempty"`
+	MessageCount int      `json:"messageCount,omitempty"`
+	FilePath     string   `json:"filePath,omitempty"`
+	Snippet      string   `json:"snippet,omitempty"`
+	Marked       bool     `json:"marked,omitempty"`
+	Note         string   `json:"note,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	Missing      bool     `json:"missing,omitempty"`
+	MTime        int64    `json:"-"`
+	Size         int64    `json:"size,omitempty"`
 }
 
 type Message struct {
@@ -60,9 +61,15 @@ type ToolCall struct {
 }
 
 type SessionDetail struct {
-	Summary   SessionSummary `json:"summary"`
-	Messages  []Message      `json:"messages"`
-	ToolCalls []ToolCall     `json:"toolCalls,omitempty"`
+	Summary   SessionSummary       `json:"summary"`
+	Messages  []Message            `json:"messages"`
+	ToolCalls []ToolCall           `json:"toolCalls,omitempty"`
+	Cursor    SessionMessageCursor `json:"cursor,omitempty"`
+}
+
+type SessionTagSummary struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
 }
 
 type SessionFile struct {
@@ -82,9 +89,35 @@ type ToolCallProvider interface {
 	LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error)
 }
 
+type MessageDeltaProvider interface {
+	LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error)
+}
+
 type LoadOptions struct {
 	Refresh      bool
 	IncludeTools bool
+}
+
+type LoadDeltaOptions struct {
+	Summary   SessionSummary
+	Cursor    SessionMessageCursor
+	BaseCount int
+	MaxBytes  int64
+}
+
+type SessionMessageCursor struct {
+	ByteOffset int64 `json:"byteOffset,omitempty"`
+	FileSize   int64 `json:"fileSize,omitempty"`
+	MTime      int64 `json:"mtime,omitempty"`
+	LastSeq    int   `json:"lastSeq,omitempty"`
+}
+
+type MessageDelta struct {
+	Summary       SessionSummary       `json:"summary"`
+	Messages      []Message            `json:"messages"`
+	Cursor        SessionMessageCursor `json:"cursor"`
+	HasMore       bool                 `json:"hasMore,omitempty"`
+	ResetRequired bool                 `json:"resetRequired,omitempty"`
 }
 
 type UserLinesOptions struct {
@@ -109,15 +142,17 @@ type ListOptions struct {
 	Before     int64
 	Limit      int
 	MarkedOnly bool
+	TagFilters []string
 	Refresh    bool
 }
 
 type SearchOptions struct {
-	Query   string
-	Source  string
-	Project string
-	Limit   int
-	Refresh bool
+	Query      string
+	Source     string
+	Project    string
+	Limit      int
+	TagFilters []string
+	Refresh    bool
 }
 
 func StableKey(source string, id string, filePath string) string {

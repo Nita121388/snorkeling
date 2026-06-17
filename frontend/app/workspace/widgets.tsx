@@ -337,22 +337,24 @@ type TargetTabActionsProps = {
 };
 
 function TargetTabActions({ canCreateToExistingTab, onCreateToNewTab, onCreateToExistingTab }: TargetTabActionsProps) {
+    const buttonClass =
+        "group flex min-w-[130px] flex-1 items-center justify-center gap-1.5 rounded-md border border-border/60 bg-secondarybg/35 px-2.5 py-1.5 text-[11px] font-medium text-secondary transition-colors hover:border-accent/60 hover:bg-hoverbg hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70 disabled:cursor-default disabled:border-border/35 disabled:bg-transparent disabled:text-muted disabled:opacity-55 disabled:hover:border-border/35 disabled:hover:bg-transparent disabled:hover:text-muted";
+    const iconClass = "text-[10px] text-muted transition-colors group-hover:text-inherit group-disabled:text-muted";
+
     return (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-                type="button"
-                className="rounded px-1.5 py-1 text-[11px] text-secondary hover:bg-hoverbg hover:text-white"
-                onClick={onCreateToNewTab}
-            >
-                Create to New Tab
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button type="button" className={buttonClass} onClick={onCreateToNewTab}>
+                <i className={clsx(makeIconClass("plus", true), iconClass)} aria-hidden="true" />
+                <span className="truncate">Create to New Tab</span>
             </button>
             <button
                 type="button"
-                className="rounded px-1.5 py-1 text-[11px] text-secondary hover:bg-hoverbg hover:text-white disabled:cursor-default disabled:opacity-45"
+                className={buttonClass}
                 disabled={!canCreateToExistingTab}
                 onClick={onCreateToExistingTab}
             >
-                Create to Existing Tab...
+                <i className={clsx(makeIconClass("window-restore", true), iconClass)} aria-hidden="true" />
+                <span className="truncate">Create to Existing Tab...</span>
             </button>
         </div>
     );

@@ -59,44 +59,41 @@ func (p *ClaudeProvider) LoadMessages(ctx context.Context, filePath string) ([]M
 }
 
 func parseClaudeMessages(ctx context.Context, r io.Reader) ([]Message, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	var messages []Message
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			return messages, ctx.Err()
-		}
-		var value map[string]any
-		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
-			continue
-		}
-		if boolValue(value, "isMeta") {
-			continue
-		}
-		message, _ := value["message"].(map[string]any)
-		if message == nil {
-			continue
-		}
-		role := normalizeRole(strValue(message, "role"))
-		if role == RoleUser && claudeContentAllToolResults(message["content"]) {
-			role = RoleTool
-		}
-		text := extractText(message["content"])
-		if strings.TrimSpace(text) == "" {
-			continue
-		}
-		messages = append(messages, Message{
-			Seq:       len(messages) + 1,
-			Role:      role,
-			Text:      text,
-			Timestamp: parseTimestampToMS(value["timestamp"]),
-			CharCount: runeCount(text),
-		})
+	messages, _, _, err := parseJSONLFromReader(ctx, r, 1, parseClaudeMessageLine)
+	return messages, err
+}
+
+func parseClaudeMessageLine(line []byte, seq int) (Message, bool) {
+	var value map[string]any
+	if err := json.Unmarshal(line, &value); err != nil {
+		return Message{}, false
 	}
-	if err := scanner.Err(); err != nil {
-		return messages, err
+	if boolValue(value, "isMeta") {
+		return Message{}, false
 	}
-	return messages, nil
+	message, _ := value["message"].(map[string]any)
+	if message == nil {
+		return Message{}, false
+	}
+	role := normalizeRole(strValue(message, "role"))
+	if role == RoleUser && claudeContentAllToolResults(message["content"]) {
+		role = RoleTool
+	}
+	text := extractText(message["content"])
+	if strings.TrimSpace(text) == "" {
+		return Message{}, false
+	}
+	return Message{
+		Seq:       seq,
+		Role:      role,
+		Text:      text,
+		Timestamp: parseTimestampToMS(value["timestamp"]),
+		CharCount: runeCount(text),
+	}, true
+}
+
+func (p *ClaudeProvider) LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error) {
+	return loadLocalMessageDelta(ctx, p.Source(), filePath, cursor, maxBytes, parseClaudeMessageLine)
 }
 
 func (p *ClaudeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {

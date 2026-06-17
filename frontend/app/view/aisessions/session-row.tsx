@@ -5,7 +5,15 @@ import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton, IconButton } from "./controls";
-import { formatDateTimeToSecond, restoreCommandForSession } from "./utils";
+import { SessionTagChips } from "./session-tag-chips";
+import {
+    extractSessionTagsFromNote,
+    mergeSessionTags,
+    normalizeSessionTags,
+    sessionTagsEqual,
+    sessionTagsLabel,
+} from "./session-tags";
+import { formatDateTimeToSecond, formatFileSize, restoreCommandForSession } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -22,12 +30,13 @@ export function SessionRow({
     selected: boolean;
     onSelect: () => void;
     onMark: MouseEventHandler<HTMLButtonElement>;
-    onNoteSave: (note: string) => Promise<boolean>;
+    onNoteSave: (note: string, tags: string[]) => Promise<boolean>;
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
+    const [tagDraft, setTagDraft] = useState<string[]>(() => normalizeSessionTags(session.tags));
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const latestDraftRef = useRef(session.note ?? "");
 
@@ -36,8 +45,9 @@ export function SessionRow({
             const nextNote = session.note ?? "";
             latestDraftRef.current = nextNote;
             setNoteDraft(nextNote);
+            setTagDraft(normalizeSessionTags(session.tags));
         }
-    }, [noteEditing, session.note]);
+    }, [noteEditing, session.note, session.tags]);
 
     useEffect(() => {
         if (noteSaveStatus !== "saved" && noteSaveStatus !== "error") return;
@@ -51,6 +61,8 @@ export function SessionRow({
                 session.title || session.id,
                 session.snippet ? `Content: ${session.snippet}` : "",
                 session.note ? `Note: ${session.note}` : "",
+                session.tags?.length ? `Tags: ${sessionTagsLabel(session.tags)}` : "",
+                session.size != null ? `Size: ${formatFileSize(session.size)} (${session.size} bytes)` : "",
                 session.projectPath || session.filePath ? `Path: ${session.projectPath || session.filePath}` : "",
             ]
                 .filter(Boolean)
@@ -58,21 +70,24 @@ export function SessionRow({
         [session]
     );
 
-    const noteUnchanged = noteDraft.trim() === (session.note ?? "");
+    const parsedDraft = extractSessionTagsFromNote(noteDraft);
+    const nextTags = mergeSessionTags(tagDraft, parsedDraft.tags);
+    const noteUnchanged = parsedDraft.note === (session.note ?? "") && sessionTagsEqual(nextTags, session.tags);
     const noteSaving = noteSaveStatus === "saving";
 
     const saveNote = useCallback(async (): Promise<boolean> => {
         if (noteSaveStatus === "saving") return false;
-        const nextNote = noteDraft.trim();
-        if (nextNote === (session.note ?? "")) {
+        const parsed = extractSessionTagsFromNote(noteDraft);
+        const tags = mergeSessionTags(tagDraft, parsed.tags);
+        if (parsed.note === (session.note ?? "") && sessionTagsEqual(tags, session.tags)) {
             return true;
         }
         setNoteSaveStatus("saving");
-        const saved = await onNoteSave(nextNote);
-        const currentDraftSaved = latestDraftRef.current.trim() === nextNote;
+        const saved = await onNoteSave(parsed.note, tags);
+        const currentDraftSaved = extractSessionTagsFromNote(latestDraftRef.current).note === parsed.note;
         setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
         return saved && currentDraftSaved;
-    }, [noteDraft, noteSaveStatus, onNoteSave, session.note]);
+    }, [noteDraft, noteSaveStatus, onNoteSave, session.note, session.tags, tagDraft]);
 
     return (
         <div
@@ -121,7 +136,8 @@ export function SessionRow({
                             size="xs"
                             className={cn(
                                 "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
-                                session.note && "border-accent/40 bg-accent/10 text-accent opacity-100"
+                                (session.note || session.tags?.length) &&
+                                    "border-accent/40 bg-accent/10 text-accent opacity-100"
                             )}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -133,6 +149,7 @@ export function SessionRow({
                         <span className="uppercase">{session.source}</span>
                         <span>{formatDateTimeToSecond(session.updatedAt || session.createdAt || 0)}</span>
                         <span>{session.messageCount ?? 0} msgs</span>
+                        {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
                     </div>
                     {session.snippet ? (
                         <div className="mt-1 line-clamp-2 text-xs leading-5 text-secondary">{session.snippet}</div>
@@ -142,11 +159,17 @@ export function SessionRow({
                             {session.note}
                         </div>
                     ) : null}
+                    <SessionTagChips tags={session.tags} className="mt-1" />
                     {noteEditing ? (
                         <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <SessionTagChips
+                                tags={nextTags}
+                                removable
+                                onRemove={(tag) => setTagDraft((current) => current.filter((item) => item !== tag))}
+                            />
                             <textarea
                                 className="min-h-[56px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                placeholder="Add a note"
+                                placeholder="Add a note, use #tag to add tags"
                                 value={noteDraft}
                                 onChange={(e) => {
                                     latestDraftRef.current = e.target.value;
@@ -200,7 +223,8 @@ export function SessionRow({
                                         latestDraftRef.current = nextNote;
                                         setNoteSaveStatus("saving");
                                         setNoteDraft(nextNote);
-                                        void onNoteSave(nextNote).then((saved) => {
+                                        setTagDraft([]);
+                                        void onNoteSave(nextNote, []).then((saved) => {
                                             const currentDraftSaved = latestDraftRef.current.trim() === nextNote;
                                             setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
                                             if (saved && currentDraftSaved) {

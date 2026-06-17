@@ -17,7 +17,8 @@ export type PreviewSharedDraftRecord = {
     editorRefs: Set<string>;
 };
 
-export const previewSharedDraftRecordsVersion = atom(0);
+const previewSharedDraftNullRecordVersion = atom(0);
+const previewSharedDraftRecordVersions = new Map<string, PrimitiveAtom<number>>();
 
 const previewSharedDraftRecords = new Map<string, PreviewSharedDraftRecord>();
 const PreviewSharedDraftDebugStorageKey = "snorkelingPreviewDraftDebug";
@@ -425,12 +426,25 @@ export function makePreviewDraftKey(
     return fileKey;
 }
 
-function bumpPreviewSharedDraftRecordsVersion(set?: Setter): void {
+export function getPreviewSharedDraftRecordVersionAtom(fileKey: string | null): PrimitiveAtom<number> {
+    if (isBlank(fileKey)) {
+        return previewSharedDraftNullRecordVersion;
+    }
+    let versionAtom = previewSharedDraftRecordVersions.get(fileKey);
+    if (versionAtom == null) {
+        versionAtom = atom(0);
+        previewSharedDraftRecordVersions.set(fileKey, versionAtom);
+    }
+    return versionAtom;
+}
+
+function bumpPreviewSharedDraftRecordVersion(fileKey: string | null, set?: Setter): void {
+    const versionAtom = getPreviewSharedDraftRecordVersionAtom(fileKey);
     if (set != null) {
-        set(previewSharedDraftRecordsVersion, (version) => version + 1);
+        set(versionAtom, (version) => version + 1);
         return;
     }
-    globalStore.set(previewSharedDraftRecordsVersion, (version) => version + 1);
+    globalStore.set(versionAtom, (version) => version + 1);
 }
 
 export function getPreviewSharedDraftRecord(fileKey: string | null): PreviewSharedDraftRecord | null {
@@ -464,7 +478,7 @@ export function getOrCreatePreviewSharedDraftRecord(
         editorRefs: new Set<string>(),
     };
     previewSharedDraftRecords.set(fileKey, newRecord);
-    bumpPreviewSharedDraftRecordsVersion(set);
+    bumpPreviewSharedDraftRecordVersion(fileKey, set);
     previewSharedDraftDebugLog("record:create", {
         fileKey,
         record: summarizePreviewSharedDraftRecord(newRecord),
@@ -492,7 +506,7 @@ export function cleanupPreviewSharedDraftRecordIfUnused(fileKey: string | null):
         return;
     }
     previewSharedDraftRecords.delete(fileKey!);
-    bumpPreviewSharedDraftRecordsVersion();
+    bumpPreviewSharedDraftRecordVersion(fileKey);
     previewSharedDraftDebugLog("record:cleanup-delete", {
         fileKey,
         deletedState: {
@@ -672,7 +686,13 @@ export function migratePreviewSharedDraftRecord(fromKey: string | null, toKey: s
 }
 
 export function clearPreviewSharedDraftRecordsForTest(): void {
+    const fileKeys = Array.from(previewSharedDraftRecordVersions.keys());
     previewSharedDraftRecords.clear();
     previewSharedDraftAppliedVersions.clear();
-    bumpPreviewSharedDraftRecordsVersion();
+    for (const fileKey of fileKeys) {
+        bumpPreviewSharedDraftRecordVersion(fileKey);
+    }
+    previewSharedDraftRecordVersions.clear();
+    globalStore.set(previewSharedDraftNullRecordVersion, 0);
+    bumpPreviewSharedDraftRecordVersion(null);
 }

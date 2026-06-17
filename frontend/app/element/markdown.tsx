@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CopyButton } from "@/app/element/copybutton";
+import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
 import { createContentBlockPlugin } from "@/app/element/markdown-contentblock-plugin";
+import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import {
     MarkdownContentBlockType,
     resolveRemoteFile,
@@ -10,6 +12,7 @@ import {
     transformBlocks,
 } from "@/app/element/markdown-util";
 import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
+import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { Atom } from "jotai";
@@ -31,7 +34,6 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
-import RemarkFlexibleToc, { TocItem } from "remark-flexible-toc";
 import remarkGfm from "remark-gfm";
 import { openLink } from "../store/global";
 import { normalizeLinkedFilePath, openFileLinkInPreview } from "../view/preview/file-link-navigation";
@@ -195,6 +197,22 @@ function isLineBreakNode(node: React.ReactNode): boolean {
     return isValidElement(node) && node.type === "br";
 }
 
+function isBlankTextNode(node: React.ReactNode): boolean {
+    return typeof node === "string" && node.trim().length === 0;
+}
+
+function trimBlankTextNodes(children: React.ReactNode[]): React.ReactNode[] {
+    let startIndex = 0;
+    let endIndex = children.length;
+    while (startIndex < endIndex && isBlankTextNode(children[startIndex])) {
+        startIndex++;
+    }
+    while (endIndex > startIndex && isBlankTextNode(children[endIndex - 1])) {
+        endIndex--;
+    }
+    return children.slice(startIndex, endIndex);
+}
+
 function cloneWithChildren(element: React.ReactElement, children: React.ReactNode[]): React.ReactElement {
     return cloneElement(
         element as React.ReactElement<{ children?: React.ReactNode }>,
@@ -218,11 +236,11 @@ function splitChildrenAtFirstBreak(children: React.ReactNode): {
     };
 }
 
-function splitOrderedListItemChildren(children: React.ReactNode): {
+export function splitOrderedListItemChildren(children: React.ReactNode): {
     summaryChildren: React.ReactNode[];
     bodyChildren: React.ReactNode[];
 } {
-    const childArray = Children.toArray(children);
+    const childArray = trimBlankTextNodes(Children.toArray(children));
     if (childArray.length === 0) {
         return { summaryChildren: [], bodyChildren: [] };
     }
@@ -233,15 +251,15 @@ function splitOrderedListItemChildren(children: React.ReactNode): {
         const split = splitChildrenAtFirstBreak(firstChildProps.children);
         if (split != null && split.after.some((child) => getTextContent(child).trim().length > 0)) {
             return {
-                summaryChildren: [cloneWithChildren(firstChild, split.before)],
-                bodyChildren: [cloneWithChildren(firstChild, split.after), ...childArray.slice(1)],
+                summaryChildren: trimBlankTextNodes([cloneWithChildren(firstChild, split.before)]),
+                bodyChildren: trimBlankTextNodes([cloneWithChildren(firstChild, split.after), ...childArray.slice(1)]),
             };
         }
     }
 
     return {
-        summaryChildren: [firstChild],
-        bodyChildren: childArray.slice(1),
+        summaryChildren: trimBlankTextNodes([firstChild]),
+        bodyChildren: trimBlankTextNodes(childArray.slice(1)),
     };
 }
 
@@ -653,7 +671,6 @@ const Markdown = ({
     onClickExecute,
 }: MarkdownProps) => {
     const textAtomValue = useAtomValueSafe<string>(textAtom);
-    const tocRef = useRef<TocItem[]>([]);
     const showToc = useAtomValueSafe(showTocAtom) ?? false;
     const contentsOsRef = useRef<OverlayScrollbarsComponentRef>(null);
     const programmaticScrollUntilRef = useRef(0);
@@ -687,21 +704,17 @@ const Markdown = ({
             return;
         }
         const elements = Array.from(root.children) as HTMLElement[];
-        let activeCollapsedLevel: number | null = null;
+        const collapsedHeadingStack: number[] = [];
         for (const elem of elements) {
-            const headingLevel = Number(elem.dataset.headingLevel);
-            if (Number.isFinite(headingLevel) && headingLevel > 0) {
-                if (activeCollapsedLevel != null && headingLevel <= activeCollapsedLevel) {
-                    activeCollapsedLevel = null;
-                }
-                elem.classList.remove("collapsed-hidden");
-                const headingId = elem.dataset.headingId;
-                if (headingId && collapsedHeadings.has(headingId)) {
-                    activeCollapsedLevel = headingLevel;
-                }
-                continue;
-            }
-            elem.classList.toggle("collapsed-hidden", activeCollapsedLevel != null);
+            const headingLevelValue = Number(elem.dataset.headingLevel);
+            const headingLevel = Number.isFinite(headingLevelValue) && headingLevelValue > 0 ? headingLevelValue : null;
+            const hidden = shouldHideMarkdownElementForCollapsedHeadings(
+                headingLevel,
+                elem.dataset.headingId ?? null,
+                collapsedHeadings,
+                collapsedHeadingStack
+            );
+            elem.classList.toggle("collapsed-hidden", hidden);
         }
     };
 
@@ -781,6 +794,35 @@ const Markdown = ({
             return next;
         });
         setFocusedHeadingId(headingId);
+    };
+
+    const focusHeadingLine = (lineNumber: number) => {
+        const instance = contentsOsRef.current?.osInstance();
+        if (!instance) {
+            return;
+        }
+        const { viewport } = instance.elements();
+        const heading = viewport.querySelector<HTMLElement>(
+            `.markdown-render-root .heading[data-source-line="${lineNumber}"]`
+        );
+        if (!heading) {
+            return;
+        }
+        const headingId = heading.dataset.headingId;
+        if (headingId) {
+            setCollapsedHeadings((prev) => {
+                if (!prev.has(headingId)) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                next.delete(headingId);
+                return next;
+            });
+        }
+        const headingBoundingRect = heading.getBoundingClientRect();
+        const viewportBoundingRect = viewport.getBoundingClientRect();
+        const headingTop = headingBoundingRect.top - viewportBoundingRect.top;
+        viewport.scrollBy({ top: headingTop });
     };
 
     useEffect(() => {
@@ -1084,33 +1126,22 @@ const Markdown = ({
         return <Mermaid chart={chartText} />;
     };
 
-    const toc = useMemo(() => {
-        if (showToc) {
-            if (tocRef.current.length > 0) {
-                return tocRef.current.map((item) => {
-                    return (
-                        <a
-                            key={item.href}
-                            className="toc-item text-accent hover:underline"
-                            style={{ "--indent-factor": item.depth } as React.CSSProperties}
-                            onClick={() => focusHeading(item.href)}
-                        >
-                            {item.value}
-                        </a>
-                    );
-                });
-            } else {
-                return (
-                    <div
-                        className="toc-item toc-empty text-secondary"
-                        style={{ "--indent-factor": 2 } as React.CSSProperties}
-                    >
-                        No headings found
-                    </div>
-                );
-            }
+    const tocItems = useMemo<MarkdownOutlineItem[]>(
+        () =>
+            getMarkdownHeadings(transformedText).map((heading, index) => ({
+                id: `${heading.lineNumber}-${index}`,
+                label: heading.text,
+                level: heading.level,
+                lineNumber: heading.lineNumber,
+            })),
+        [transformedText]
+    );
+
+    const handleSelectTocItem = (item: MarkdownOutlineItem) => {
+        if (item.lineNumber != null) {
+            focusHeadingLine(item.lineNumber);
         }
-    }, [showToc, tocRef]);
+    };
 
     let rehypePlugins = null;
     if (rehype) {
@@ -1154,7 +1185,6 @@ const Markdown = ({
         remarkMermaidToTag,
         remarkSoftBreaks,
         remarkGfm,
-        [RemarkFlexibleToc, { tocRef: tocRef.current, skipLevels: [] }],
         [createContentBlockPlugin, { blocks: contentBlocksMap }],
     ];
 
@@ -1199,13 +1229,16 @@ const Markdown = ({
                     </ReactMarkdown>
                 </div>
             )}
-            {toc && (
-                <OverlayScrollbarsComponent className="toc mt-1" options={{ scrollbars: { autoHide: "leave" } }}>
-                    <div className="toc-inner">
-                        <h4 className="font-bold">Table of Contents</h4>
-                        {toc}
-                    </div>
-                </OverlayScrollbarsComponent>
+            {showToc && (
+                <div className="toc">
+                    <MarkdownOutline
+                        items={tocItems}
+                        placement="sidebar"
+                        resizeAxes={{ width: true }}
+                        resizeStorageKey="snorkeling.markdownOutline.preview.size"
+                        onSelectItem={handleSelectTocItem}
+                    />
+                </div>
             )}
         </div>
     );

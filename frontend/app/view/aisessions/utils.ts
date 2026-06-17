@@ -215,6 +215,18 @@ export function formatDateTimeToSecond(timestamp: number): string {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
+export function formatFileSize(bytes: number | null | undefined): string {
+    if (bytes == null || Number.isNaN(bytes)) return "";
+    if (bytes < 0) return "";
+    if (bytes === 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+    const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, unitIndex);
+    const display =
+        unitIndex === 0 ? Math.round(value).toString() : value.toFixed(value < 10 ? 1 : 0).replace(/\.0$/, "");
+    return `${display} ${units[unitIndex]}`;
+}
+
 function pad2(value: number): string {
     return value.toString().padStart(2, "0");
 }

@@ -5,6 +5,8 @@ import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
+import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
+import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { shortSessionId } from "@/app/view/aisessions/utils";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,16 +62,17 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     const saveNote = useCallback(
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || saveStatus === "saving") return false;
-            const trimmedNote = nextNote.trim();
-            if (trimmedNote === (summary.note ?? "")) {
+            const parsed = extractSessionTagsFromNote(nextNote);
+            const tags = mergeSessionTags(summary.tags ?? [], parsed.tags);
+            if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                 setError("");
                 return true;
             }
             setSaveStatus("saving");
             setError("");
             try {
-                const updated = await service.Note(summary.key, trimmedNote);
-                const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
+                const updated = await service.NoteAndTags({ id: summary.key, note: parsed.note, tags });
+                const currentDraftSaved = extractSessionTagsFromNote(latestDraftRef.current).note === parsed.note;
                 setSummary((current) => (current?.key === updated.key ? { ...current, ...updated } : current));
                 if (currentDraftSaved) {
                     setNoteDraft(updated.note ?? "");
@@ -88,8 +91,10 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     );
 
     const currentNote = summary?.note ?? "";
+    const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
+    const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
     const trimmedNoteDraft = noteDraft.trim();
-    const noteUnchanged = trimmedNoteDraft === currentNote;
+    const noteUnchanged = parsedNoteDraft.note === currentNote && sessionTagsEqual(nextTags, summary?.tags);
     const saving = saveStatus === "saving";
     const title = summary?.title || summary?.id || sessionId;
     const closeModal = useCallback(() => {
@@ -153,9 +158,10 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                                 {error}
                             </div>
                         ) : null}
+                        <SessionTagChips tags={nextTags} />
                         <textarea
                             className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
-                            placeholder="Add a note"
+                            placeholder="Add a note, use #tag to add tags"
                             value={noteDraft}
                             onChange={(e) => {
                                 latestDraftRef.current = e.target.value;

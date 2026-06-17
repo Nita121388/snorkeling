@@ -485,3 +485,161 @@ func TestManagerNoteSucceedsWhenMetaJSONDualWriteFailsAfterSQLiteWrite(t *testin
 		t.Fatalf("expected sqlite note despite meta json write failure, got %#v", summary)
 	}
 }
+
+func TestSQLiteIndexMigratesNoteTagsSafely(t *testing.T) {
+	dir := t.TempDir()
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	sessionKey := "codex:tag-migration:/tmp/tag-migration.jsonl"
+	idx, err := OpenSQLiteIndex(sqlitePath, filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.setMeta(context.Background(), sessionKey, sessionMeta{Note: "Follow up #todo #研究", UpdatedAt: 1770000000000}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.setSchemaMeta(context.Background(), "schema_version", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err = OpenSQLiteIndex(sqlitePath, filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	summary := SessionSummary{Key: sessionKey}
+	if err := idx.ApplyMeta(context.Background(), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Note != "Follow up" {
+		t.Fatalf("expected cleaned note, got %#v", summary)
+	}
+	if strings.Join(summary.Tags, ",") != "todo,研究" {
+		t.Fatalf("expected migrated tags, got %#v", summary.Tags)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "index-v2.sqlite.backup-before-tags-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected sqlite tag migration backup, got %#v", matches)
+	}
+}
+
+func TestManagerNoteExtractsTagsAndListFiltersByTags(t *testing.T) {
+	dir := t.TempDir()
+	metaPath := filepath.Join(dir, "meta.json")
+	indexPath := filepath.Join(dir, "index.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	provider := &cacheProvider{
+		source: SourceCodex,
+		summaries: []SessionSummary{
+			{Key: "codex:tag-a:/tmp/tag-a.jsonl", ID: "tag-a", Source: SourceCodex, FilePath: "/tmp/tag-a.jsonl", MTime: 1, Size: 10},
+			{Key: "codex:tag-b:/tmp/tag-b.jsonl", ID: "tag-b", Source: SourceCodex, FilePath: "/tmp/tag-b.jsonl", MTime: 1, Size: 10},
+		},
+		messages: []Message{{Seq: 1, Role: RoleUser, Text: "hello"}},
+	}
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  indexPath,
+		MetaPath:   metaPath,
+		SQLitePath: sqlitePath,
+	})
+	if _, err := manager.Note(context.Background(), "tag-a", "Needs review #review #urgent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.NoteAndTags(context.Background(), "tag-b", "Different", []string{"review"}); err != nil {
+		t.Fatal(err)
+	}
+	tagA, err := manager.Summary(context.Background(), "tag-a", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tagA.Note != "Needs review" || strings.Join(tagA.Tags, ",") != "review,urgent" {
+		t.Fatalf("unexpected tagged summary: %#v", tagA)
+	}
+	matches, err := manager.ScanList(context.Background(), ListOptions{TagFilters: []string{"review", "urgent"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].ID != "tag-a" {
+		t.Fatalf("expected AND tag filter to return tag-a, got %#v", matches)
+	}
+	tags, err := manager.ListTags(context.Background(), ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 || tags[0].Tag != "review" || tags[0].Count != 2 {
+		t.Fatalf("unexpected tag summaries: %#v", tags)
+	}
+	searchMatches, err := manager.Search(context.Background(), SearchOptions{Query: "urgent", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(searchMatches) != 1 || searchMatches[0].ID != "tag-a" {
+		t.Fatalf("expected query to search tags, got %#v", searchMatches)
+	}
+}
+
+func TestExtractSessionTagsFromNoteUsesHashSyntax(t *testing.T) {
+	cleanNote, tags := ExtractSessionTagsFromNote("Follow #todo and #研究")
+	if cleanNote != "Follow and" {
+		t.Fatalf("expected tags removed from note, got %q", cleanNote)
+	}
+	if strings.Join(tags, ",") != "todo,研究" {
+		t.Fatalf("expected hash tags, got %#v", tags)
+	}
+
+	cleanNote, tags = ExtractSessionTagsFromNote("Keep legacy #+todo text and url https://example.test/a#section")
+	if cleanNote != "Keep legacy #+todo text and url https://example.test/a#section" {
+		t.Fatalf("expected non-tag text preserved, got %q", cleanNote)
+	}
+	if len(tags) != 0 {
+		t.Fatalf("expected legacy plus syntax and URL fragment not to become tags, got %#v", tags)
+	}
+}
+
+func TestSQLiteIndexRenameTagUpdatesAllSessions(t *testing.T) {
+	dir := t.TempDir()
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	idx, err := OpenSQLiteIndex(sqlitePath, filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	if err := idx.SetNoteAndTags(context.Background(), "codex:rename-a:/tmp/a.jsonl", "A", []string{"todo", "urgent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetNoteAndTags(context.Background(), "codex:rename-b:/tmp/b.jsonl", "B", []string{"Todo", "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetNoteAndTags(context.Background(), "codex:rename-c:/tmp/c.jsonl", "C", []string{"done"}); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := idx.RenameTag(context.Background(), "#todo", "done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 renamed sessions, got %d", count)
+	}
+
+	aTags, err := idx.tagsForSession(context.Background(), "codex:rename-a:/tmp/a.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(aTags, ",") != "done,urgent" {
+		t.Fatalf("expected renamed and preserved tags for a, got %#v", aTags)
+	}
+	bTags, err := idx.tagsForSession(context.Background(), "codex:rename-b:/tmp/b.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(bTags, ",") != "done" {
+		t.Fatalf("expected duplicate target tag to be deduped for b, got %#v", bTags)
+	}
+}

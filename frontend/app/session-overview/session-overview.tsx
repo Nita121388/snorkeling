@@ -28,6 +28,7 @@ import {
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
+import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import {
@@ -407,11 +408,7 @@ const SESSION_SUMMARY_POLL_MS = 15_000;
 const SESSION_TRANSIENT_FETCH_PENDING_MESSAGE = "Session connection is retrying.";
 const OVERVIEW_STATUS_REQUEST_CONCURRENCY = 4;
 
-async function runOverviewRequests<T>(
-    items: T[],
-    limit: number,
-    task: (item: T) => Promise<void>
-): Promise<void> {
+async function runOverviewRequests<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
     let nextIndex = 0;
     const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
         while (nextIndex < items.length) {
@@ -530,10 +527,7 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: 
     );
     const sessionIdsKey = sessionIds.join("\n");
     const cacheVersion = useSessionOverviewCacheVersion();
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheVersion, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheVersion, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const refreshSeqRef = useRef(refreshSeq);
@@ -640,7 +634,9 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: 
                     if (!historyPending && !transientFetch) {
                         return;
                     }
-                    const retryMs = historyPending ? SESSION_HISTORY_PENDING_RETRY_MS : SESSION_DETAIL_TRANSIENT_RETRY_MS;
+                    const retryMs = historyPending
+                        ? SESSION_HISTORY_PENDING_RETRY_MS
+                        : SESSION_DETAIL_TRANSIENT_RETRY_MS;
                     const timer = window.setTimeout(() => {
                         retryTimers.delete(sessionId);
                         if (cancelled) return;
@@ -754,10 +750,7 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
     );
     const sessionIdsKey = sessionIds.join("\n");
     const cacheVersion = useSessionOverviewCacheVersion();
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheVersion, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheVersion, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const [summaries, setSummaries] = useState<Record<string, SummaryState>>(() => {
@@ -1348,8 +1341,9 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
             async (nextNote: string): Promise<boolean> => {
                 const currentSummary = summaryRef.current;
                 if (currentSummary == null) return false;
-                const trimmedNote = nextNote.trim();
-                if (trimmedNote === (currentSummary.note ?? "")) {
+                const parsed = extractSessionTagsFromNote(nextNote);
+                const tags = mergeSessionTags(currentSummary.tags ?? [], parsed.tags);
+                if (parsed.note === (currentSummary.note ?? "") && sessionTagsEqual(tags, currentSummary.tags)) {
                     setError("");
                     return true;
                 }
@@ -1358,12 +1352,13 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
                 setSaveStatus("saving");
                 setError("");
                 const savePromise = service
-                    .Note(currentSummary.key, trimmedNote)
+                    .NoteAndTags({ id: currentSummary.key, note: parsed.note, tags })
                     .then((updated) => {
                         if (saveSeq !== saveSeqRef.current) return false;
                         summaryRef.current = updated;
                         setSummary(updated);
-                        const currentDraftSaved = latestDraftRef.current.trim() === trimmedNote;
+                        const currentDraftSaved =
+                            extractSessionTagsFromNote(latestDraftRef.current).note === parsed.note;
                         if (currentDraftSaved) {
                             const savedNote = updated.note ?? "";
                             latestDraftRef.current = savedNote;
@@ -1401,7 +1396,9 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
                 return Promise.resolve(true);
             }
             const latestDraft = latestDraftRef.current;
-            if (latestDraft.trim() === (currentSummary.note ?? "")) {
+            const parsed = extractSessionTagsFromNote(latestDraft);
+            const tags = mergeSessionTags(currentSummary.tags ?? [], parsed.tags);
+            if (parsed.note === (currentSummary.note ?? "") && sessionTagsEqual(tags, currentSummary.tags)) {
                 setError("");
                 return Promise.resolve(true);
             }
@@ -1416,7 +1413,11 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
             [saveBeforeSwitch]
         );
 
-        const noteUnchanged = summary == null || noteDraft.trim() === (summary.note ?? "");
+        const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
+        const noteUnchanged =
+            summary == null ||
+            (parsedNoteDraft.note === (summary.note ?? "") &&
+                sessionTagsEqual(mergeSessionTags(summary.tags ?? [], parsedNoteDraft.tags), summary.tags));
         const saving = saveStatus === "saving";
 
         useEffect(() => {

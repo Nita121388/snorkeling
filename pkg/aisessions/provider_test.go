@@ -4,10 +4,13 @@
 package aisessions
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
 func TestCodexSummarySkipsAgentsInjection(t *testing.T) {
@@ -271,5 +274,131 @@ func TestClaudeLoadToolCalls(t *testing.T) {
 	}
 	if toolCalls[0].Summary == "" {
 		t.Fatalf("expected summary: %#v", toolCalls[0])
+	}
+}
+
+func TestParseCompleteJSONLFromReaderIncludesFinalLineWithoutNewline(t *testing.T) {
+	ctx := context.Background()
+	items, seq, bytesRead, err := parseCompleteJSONLFromReader(ctx, bytes.NewBufferString("one\ntwo"), 1, func(line []byte, seq int) (string, bool) {
+		return string(line), true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != 3 {
+		t.Fatalf("unexpected seq: %d", seq)
+	}
+	if bytesRead != 7 {
+		t.Fatalf("unexpected bytes read: %d", bytesRead)
+	}
+	if len(items) != 2 || items[1] != "two" {
+		t.Fatalf("unexpected items: %#v", items)
+	}
+}
+
+func TestLoadLocalMessageDeltaStopsAtIncompleteTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	err := os.WriteFile(path, []byte(
+		`{"timestamp":"2026-03-06T21:50:13Z","type":"response_item","payload":{"type":"message","role":"user","content":"first"}}`+"\n"+
+			`{"timestamp":"2026-03-06T21:50:14Z","type":"response_item","payload":{"type":"message","role":"assistant","content":"second"`,
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delta, err := loadLocalMessageDelta(context.Background(), SourceCodex, path, SessionMessageCursor{ByteOffset: 0, LastSeq: 0}, 1024, parseCodexMessageLine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delta.Messages) != 1 {
+		t.Fatalf("expected only the complete first message, got %#v", delta.Messages)
+	}
+	if delta.Cursor.ByteOffset != int64(len(`{"timestamp":"2026-03-06T21:50:13Z","type":"response_item","payload":{"type":"message","role":"user","content":"first"}}`+"\n")) {
+		t.Fatalf("unexpected cursor offset: %#v", delta.Cursor)
+	}
+	if !delta.HasMore {
+		t.Fatal("expected hasMore for incomplete tail")
+	}
+}
+
+func TestLoadLocalMessageDeltaConsumesCompleteIgnoredTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	raw := []byte(`{"timestamp":"2026-03-06T21:50:12Z","type":"session_meta","payload":{"id":"test-id","cwd":"/tmp/project"}}`)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	delta, err := loadLocalMessageDelta(context.Background(), SourceCodex, path, SessionMessageCursor{}, 1024, parseCodexMessageLine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delta.Messages) != 0 {
+		t.Fatalf("expected no readable messages, got %#v", delta.Messages)
+	}
+	if delta.Cursor.ByteOffset != int64(len(raw)) {
+		t.Fatalf("expected cursor to consume complete ignored line, got %#v", delta.Cursor)
+	}
+	if delta.HasMore {
+		t.Fatal("did not expect hasMore after complete ignored line")
+	}
+}
+
+func TestLoadLocalMessageDeltaReturnsEmptyMessagesArrayWhenUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	raw := []byte(`{"timestamp":"2026-03-06T21:50:12Z","type":"response_item","payload":{"type":"message","role":"user","content":"first"}}` + "\n")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	delta, err := loadLocalMessageDelta(context.Background(), SourceCodex, path, SessionMessageCursor{ByteOffset: int64(len(raw)), FileSize: int64(len(raw)), LastSeq: 1}, 1024, parseCodexMessageLine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta.Messages == nil {
+		t.Fatal("expected empty messages slice, got nil")
+	}
+	if len(delta.Messages) != 0 {
+		t.Fatalf("expected no messages, got %#v", delta.Messages)
+	}
+}
+
+func TestRemoteProviderLoadMessageDeltaStopsAtIncompleteTail(t *testing.T) {
+	sessionPath := "/home/tester/.codex/sessions/2026/05/29/rollout-remote-session.jsonl"
+	raw := []byte(
+		`{"timestamp":"2026-05-29T00:00:00Z","type":"response_item","payload":{"type":"message","role":"user","content":"Remote user request"}}` + "\n" +
+			`{"timestamp":"2026-05-29T00:00:01Z","type":"response_item","payload":{"type":"message","role":"assistant","content":"Remote answer"`,
+	)
+	reader := &fakeRemoteFileReader{
+		files: map[string][]byte{
+			sessionPath: raw,
+		},
+		info: map[string]*wshrpc.FileInfo{
+			sessionPath: {Path: sessionPath, Size: int64(len(raw)), ModTime: 1234},
+		},
+	}
+	provider, err := NewRemoteProvider(RemoteProviderOptions{
+		Connection: "ssh://example",
+		HomeDir:    "/home/tester",
+		FileReader: reader,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delta, err := provider.LoadMessageDelta(context.Background(), makeRemoteSessionPath(SourceCodex, "ssh://example", sessionPath), SessionMessageCursor{}, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delta.Messages) != 1 {
+		t.Fatalf("expected only the complete first message, got %#v", delta.Messages)
+	}
+	if delta.Cursor.ByteOffset != int64(len(`{"timestamp":"2026-05-29T00:00:00Z","type":"response_item","payload":{"type":"message","role":"user","content":"Remote user request"}}`+"\n")) {
+		t.Fatalf("unexpected cursor offset: %#v", delta.Cursor)
+	}
+	if !delta.HasMore {
+		t.Fatal("expected hasMore for incomplete remote tail")
 	}
 }

@@ -14,14 +14,15 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-const sqliteIndexSchemaVersion = "1"
+const sqliteIndexSchemaVersion = "2"
 
 type SQLiteIndex struct {
 	path     string
@@ -49,14 +50,6 @@ func OpenSQLiteIndex(path string, metaPath string) (*SQLiteIndex, error) {
 	}
 	debugf("SQLiteIndex renamed corrupt database path=%q corruptPath=%q err=%v", path, corruptPath, err)
 	return openSQLiteIndex(path, metaPath)
-}
-
-func isRecoverableSQLiteCorruption(err error) bool {
-	var sqliteErr sqlite3.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	return sqliteErr.Code == sqlite3.ErrCorrupt || sqliteErr.Code == sqlite3.ErrNotADB
 }
 
 func openSQLiteIndex(path string, metaPath string) (*SQLiteIndex, error) {
@@ -123,6 +116,17 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := idx.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	existingSchemaVersion, _, err := idx.schemaMeta(ctx, "schema_version")
+	if err != nil {
+		return err
+	}
+	stmts = []string{
 		`CREATE TABLE IF NOT EXISTS ai_sessions (
 			key TEXT PRIMARY KEY,
 			id TEXT NOT NULL,
@@ -159,6 +163,12 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			source TEXT NOT NULL DEFAULT 'migration',
 			dirty INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS ai_session_tags (
+			session_key TEXT NOT NULL,
+			tag TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY(session_key, tag)
+		)`,
 		`CREATE TABLE IF NOT EXISTS ai_files (
 			file_path TEXT PRIMARY KEY,
 			source TEXT NOT NULL,
@@ -170,16 +180,114 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_source_id ON ai_sessions(source, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated ON ai_sessions(updated_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_messages_session ON ai_session_messages(session_key, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_session_tags_tag ON ai_session_tags(tag)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := idx.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
-	if err := idx.setSchemaMeta(ctx, "schema_version", sqliteIndexSchemaVersion); err != nil {
+	if err := idx.MigrateMetaJSON(ctx); err != nil {
 		return err
 	}
-	if err := idx.MigrateMetaJSON(ctx); err != nil {
+	tagMigrationComplete, err := idx.migrateSessionTags(ctx, existingSchemaVersion)
+	if err != nil {
+		return err
+	}
+	if tagMigrationComplete {
+		if err := idx.setSchemaMeta(ctx, "schema_version", sqliteIndexSchemaVersion); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVersion string) (bool, error) {
+	version, err := strconv.Atoi(strings.TrimSpace(existingSchemaVersion))
+	if err != nil {
+		version = 0
+	}
+	rows := []struct {
+		Key       string `db:"session_key"`
+		Note      string `db:"note"`
+		UpdatedAt int64  `db:"updated_at"`
+	}{}
+	if err := idx.db.SelectContext(ctx, &rows, `SELECT session_key, note, updated_at FROM ai_session_meta WHERE instr(note, '#') > 0`); err != nil {
+		return false, err
+	}
+	if version >= 2 && len(rows) == 0 {
+		return true, nil
+	}
+	type tagMigrationRow struct {
+		key       string
+		note      string
+		tags      []string
+		updatedAt int64
+	}
+	var migrations []tagMigrationRow
+	for _, row := range rows {
+		cleanNote, tags := ExtractSessionTagsFromNote(row.Note)
+		if len(tags) == 0 {
+			continue
+		}
+		migrations = append(migrations, tagMigrationRow{key: row.Key, note: cleanNote, tags: tags, updatedAt: row.UpdatedAt})
+	}
+	if len(migrations) > 0 {
+		if err := idx.backupSQLiteBeforeTagMigration(); err != nil {
+			debugf("SQLiteIndex skipping session tag migration because sqlite backup failed path=%q err=%v", idx.path, err)
+			return false, nil
+		}
+	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	now := time.Now().UnixMilli()
+	for _, migration := range migrations {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		updatedAt := migration.updatedAt
+		if updatedAt == 0 {
+			updatedAt = now
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET note = ?, updated_at = ?, source = ?, dirty = 1 WHERE session_key = ?`,
+			migration.note, updatedAt, "tag-migration", migration.key); err != nil {
+			return false, err
+		}
+		for _, tag := range migration.tags {
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO ai_session_tags(session_key, tag, created_at) VALUES(?, ?, ?)`,
+				migration.key, tag, now); err != nil {
+				return false, err
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO ai_schema_meta(key, value) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "session_tags_migrated_at", fmt.Sprintf("%d", now)); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO ai_schema_meta(key, value) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "session_tags_migrated_count", fmt.Sprintf("%d", len(migrations))); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (idx *SQLiteIndex) backupSQLiteBeforeTagMigration() error {
+	if idx.path == "" {
+		return nil
+	}
+	if _, err := os.Stat(idx.path); err != nil {
+		return err
+	}
+	backupPath := filepath.Join(filepath.Dir(idx.path), fmt.Sprintf("%s.backup-before-tags-%s", filepath.Base(idx.path), time.Now().Format("20060102-150405")))
+	if _, err := idx.db.Exec(`VACUUM INTO ?`, backupPath); err != nil {
 		return err
 	}
 	return nil
@@ -362,6 +470,11 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	}
 	summary.Marked = marked
 	summary.Note = note
+	tags, err := idx.tagsForSession(ctx, summary.Key)
+	if err != nil {
+		return err
+	}
+	summary.Tags = tags
 	return nil
 }
 
@@ -370,12 +483,110 @@ func (idx *SQLiteIndex) SetMarked(ctx context.Context, key string, marked bool) 
 }
 
 func (idx *SQLiteIndex) SetNote(ctx context.Context, key string, note string) error {
-	return idx.setMeta(ctx, key, sessionMeta{Note: note, UpdatedAt: time.Now().UnixMilli()}, "sqlite-note")
+	cleanNote, extractedTags := ExtractSessionTagsFromNote(note)
+	if len(extractedTags) == 0 && cleanNote == strings.TrimSpace(note) {
+		return idx.setMeta(ctx, key, sessionMeta{Note: cleanNote, UpdatedAt: time.Now().UnixMilli()}, "sqlite-note")
+	}
+	existingTags, err := idx.tagsForSession(ctx, key)
+	if err != nil {
+		return err
+	}
+	return idx.SetNoteAndTags(ctx, key, cleanNote, MergeSessionTags(existingTags, extractedTags))
+}
+
+func (idx *SQLiteIndex) SetNoteAndTags(ctx context.Context, key string, note string, tags []string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("session key is required")
+	}
+	cleanNote, extractedTags := ExtractSessionTagsFromNote(note)
+	tags = MergeSessionTags(tags, extractedTags)
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if err := idx.setMetaTx(ctx, tx, key, sessionMeta{Note: cleanNote, UpdatedAt: time.Now().UnixMilli()}, "sqlite-note-tags"); err != nil {
+		return err
+	}
+	if err := idx.replaceTagsTx(ctx, tx, key, tags); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (idx *SQLiteIndex) RenameTag(ctx context.Context, from string, to string) (int, error) {
+	fromTags := NormalizeSessionTags([]string{from})
+	toTags := NormalizeSessionTags([]string{to})
+	if len(fromTags) == 0 {
+		return 0, fmt.Errorf("source tag is required")
+	}
+	if len(toTags) == 0 {
+		return 0, fmt.Errorf("target tag is required")
+	}
+	fromTag := fromTags[0]
+	toTag := toTags[0]
+	if fromTag == toTag {
+		return 0, nil
+	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	var sessionKeys []string
+	if err := tx.SelectContext(ctx, &sessionKeys, `SELECT session_key FROM ai_session_tags WHERE tag = ? ORDER BY session_key`, fromTag); err != nil {
+		return 0, err
+	}
+	now := time.Now().UnixMilli()
+	for _, key := range sessionKeys {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_tags WHERE session_key = ? AND tag = ?`, key, fromTag); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO ai_session_tags(session_key, tag, created_at) VALUES(?, ?, ?)`, key, toTag, now); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(sessionKeys), nil
 }
 
 func (idx *SQLiteIndex) DeleteMeta(ctx context.Context, key string) error {
-	_, err := idx.db.ExecContext(ctx, `DELETE FROM ai_session_meta WHERE session_key = ?`, key)
-	return err
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_tags WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_meta WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (idx *SQLiteIndex) tagsForSession(ctx context.Context, key string) ([]string, error) {
+	var tags []string
+	err := idx.db.SelectContext(ctx, &tags, `SELECT tag FROM ai_session_tags WHERE session_key = ? ORDER BY tag`, key)
+	return tags, err
+}
+
+func (idx *SQLiteIndex) tagsForSessionTx(ctx context.Context, tx *sqlx.Tx, key string) ([]string, error) {
+	var tags []string
+	err := tx.SelectContext(ctx, &tags, `SELECT tag FROM ai_session_tags WHERE session_key = ? ORDER BY tag`, key)
+	return tags, err
 }
 
 func (idx *SQLiteIndex) MarkSessionMissing(ctx context.Context, key string) error {
@@ -392,17 +603,31 @@ func (idx *SQLiteIndex) setMeta(ctx context.Context, key string, incoming sessio
 	if key == "" {
 		return fmt.Errorf("session key is required")
 	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if err := idx.setMetaTx(ctx, tx, key, incoming, source); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (idx *SQLiteIndex) setMetaTx(ctx context.Context, tx *sqlx.Tx, key string, incoming sessionMeta, source string) error {
 	now := time.Now().UnixMilli()
 	var existing sessionMeta
 	var existingCreatedAt int64
-	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
+	err := tx.QueryRowxContext(ctx, `SELECT marked, note, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
 		Scan(&existing.Marked, &existing.Note, &existing.UpdatedAt, &existingCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if source == "sqlite-mark" {
 		incoming.Note = existing.Note
-	} else if source == "sqlite-note" {
+	} else if source == "sqlite-note" || source == "sqlite-note-tags" {
 		incoming.Marked = existing.Marked
 	}
 	if incoming.UpdatedAt == 0 {
@@ -412,7 +637,7 @@ func (idx *SQLiteIndex) setMeta(ctx context.Context, key string, incoming sessio
 	if createdAt == 0 {
 		createdAt = now
 	}
-	_, err = idx.db.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, updated_at, created_at, source, dirty)
+	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, updated_at, created_at, source, dirty)
 		VALUES(?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(session_key) DO UPDATE SET
 			marked = excluded.marked,
@@ -422,6 +647,20 @@ func (idx *SQLiteIndex) setMeta(ctx context.Context, key string, incoming sessio
 			dirty = excluded.dirty`,
 		key, boolToInt(incoming.Marked), incoming.Note, incoming.UpdatedAt, createdAt, source)
 	return err
+}
+
+func (idx *SQLiteIndex) replaceTagsTx(ctx context.Context, tx *sqlx.Tx, key string, tags []string) error {
+	tags = NormalizeSessionTags(tags)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_tags WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	for _, tag := range tags {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_session_tags(session_key, tag, created_at) VALUES(?, ?, ?)`, key, tag, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (idx *SQLiteIndex) GetMessages(ctx context.Context, summary SessionSummary) ([]Message, bool, error) {
@@ -668,6 +907,35 @@ func (idx *SQLiteIndex) CountMeta(ctx context.Context) (int, error) {
 	return count, err
 }
 
+func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagSummary, error) {
+	summaries, err := idx.List(ctx, ListOptions{
+		Source:     opts.Source,
+		Project:    opts.Project,
+		Since:      opts.Since,
+		Before:     opts.Before,
+		MarkedOnly: opts.MarkedOnly,
+		Limit:      0,
+	})
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, summary := range summaries {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		for _, tag := range NormalizeSessionTags(summary.Tags) {
+			counts[tag]++
+		}
+	}
+	tags := make([]SessionTagSummary, 0, len(counts))
+	for tag, count := range counts {
+		tags = append(tags, SessionTagSummary{Tag: tag, Count: count})
+	}
+	sortSessionTagSummaries(tags)
+	return tags, nil
+}
+
 func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSummary, error) {
 	var rows []sqliteSessionRow
 	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, snippet, mtime, size, missing FROM ai_sessions`)
@@ -686,6 +954,9 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 		if !summaryMatchesList(summary, opts) {
 			continue
 		}
+		if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
+			continue
+		}
 		summaries = append(summaries, summary)
 	}
 	sortSummaries(summaries)
@@ -694,7 +965,7 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 
 func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
-	summaries, err := idx.List(ctx, ListOptions{Source: opts.Source, Project: opts.Project, Limit: 0})
+	summaries, err := idx.List(ctx, ListOptions{Source: opts.Source, Project: opts.Project, Limit: 0, TagFilters: opts.TagFilters})
 	if err != nil {
 		return nil, err
 	}

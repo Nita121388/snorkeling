@@ -66,3 +66,20 @@ func TestForcedWaveEnvRequiresForceJwt(t *testing.T) {
 		t.Fatalf("expected nil env without ForceJwt, got %#v", env)
 	}
 }
+
+func TestCommandEnvIncludesSwapTokenEnvironment(t *testing.T) {
+	env := commandEnv(CommandOptsType{
+		ForceJwt: true,
+		SwapToken: &shellutil.TokenSwapEntry{Env: map[string]string{
+			wavebase.WaveJwtTokenVarName: "jwt-token",
+			"WAVETERM_BLOCKID":           "block-1",
+			"ANTHROPIC_API_KEY":          "anthropic-key",
+		}},
+	})
+	if env[wavebase.WaveJwtTokenVarName] != "jwt-token" || env["WAVETERM_BLOCKID"] != "block-1" {
+		t.Fatalf("expected Wave environment, got %#v", env)
+	}
+	if env["ANTHROPIC_API_KEY"] != "anthropic-key" {
+		t.Fatalf("expected custom command environment, got %#v", env)
+	}
+}

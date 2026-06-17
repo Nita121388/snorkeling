@@ -146,6 +146,16 @@ func TestCreateCmdStrAndOptsSetsCodexSessionLookupRoot(t *testing.T) {
 	}
 }
 
+func TestResolveEnvReferenceExpandsProcessEnv(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "anthropic-key")
+	if got := resolveEnvReference("$ENV:ANTHROPIC_API_KEY"); got != "anthropic-key" {
+		t.Fatalf("expected env reference to expand, got %q", got)
+	}
+	if got := resolveEnvReference(" literal value "); got != " literal value " {
+		t.Fatalf("expected literal env value to be preserved, got %q", got)
+	}
+}
+
 func TestCreateCmdStrAndOptsForcesJwtForExistingCodexAgentBlock(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_Cmd:     "codex",

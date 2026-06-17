@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { buildSessionDetailTimeline, isReadableMessage } from "./utils";
+import { buildSessionDetailTimeline, formatFileSize, isReadableMessage } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -95,5 +95,12 @@ describe("AI session detail timeline", () => {
         const timeline = buildSessionDetailTimeline(allMessages, visibleMessages, [makeToolCall(1, "shell")], false);
 
         expect(timeline.map((item) => item.kind === "message" && item.message.seq)).toEqual([1, 3]);
+    });
+
+    it("formats file sizes for session metadata", () => {
+        expect(formatFileSize(0)).toBe("0 B");
+        expect(formatFileSize(999)).toBe("999 B");
+        expect(formatFileSize(1536)).toBe("1.5 KB");
+        expect(formatFileSize(5 * 1024 * 1024)).toBe("5 MB");
     });
 });

@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -195,5 +196,111 @@ func TestSaveFromConfigMapAllowsExplicitEmptySave(t *testing.T) {
 	}
 	if len(dbItems) != 0 {
 		t.Fatalf("expected db to be cleared, got %#v", dbItems)
+	}
+}
+
+func TestCommonTextUpdatePreservesUsageFields(t *testing.T) {
+	resetCommonTextTestState(t, nil)
+	item := commonTextItem{
+		Id:         "55555555-5555-5555-5555-555555555555",
+		Title:      "Original",
+		Text:       "original text",
+		Tags:       []string{"prompt", "old"},
+		Pinned:     true,
+		CreatedAt:  1700000000000,
+		UpdatedAt:  1700000000001,
+		LastUsedAt: 1700000000002,
+		UsageCount: 7,
+	}
+	if err := saveCommonTextItemsToDB([]commonTextItem{item}); err != nil {
+		t.Fatal(err)
+	}
+
+	newTitle := "Updated"
+	newText := "updated text"
+	updated, err := Update(context.Background(), UpdateRequest{
+		ID:      item.Id,
+		Title:   &newTitle,
+		Text:    &newText,
+		Tags:    []string{"new", "New", "prompt"},
+		SetTags: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Title != "Updated" || updated.Text != "updated text" {
+		t.Fatalf("expected updated title/text, got %#v", updated)
+	}
+	if int64(updated.CreatedAt) != int64(item.CreatedAt) || int64(updated.LastUsedAt) != int64(item.LastUsedAt) || int64(updated.UsageCount) != int64(item.UsageCount) || !updated.Pinned {
+		t.Fatalf("expected history fields preserved, got %#v", updated)
+	}
+	if got := strings.Join(updated.Tags, ","); got != "new,prompt" {
+		t.Fatalf("expected normalized tags, got %q", got)
+	}
+
+	reloaded, found, err := Get(context.Background(), item.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected updated common text item to exist")
+	}
+	if int64(reloaded.CreatedAt) != int64(item.CreatedAt) || int64(reloaded.LastUsedAt) != int64(item.LastUsedAt) || int64(reloaded.UsageCount) != int64(item.UsageCount) {
+		t.Fatalf("expected persisted history fields preserved, got %#v", reloaded)
+	}
+}
+
+func TestCommonTextListAndRenameTags(t *testing.T) {
+	resetCommonTextTestState(t, nil)
+	items := []commonTextItem{
+		{
+			Id:        "66666666-6666-6666-6666-666666666666",
+			Title:     "Support reply",
+			Text:      "refund answer",
+			Tags:      []string{"email", "todo"},
+			CreatedAt: 1700000000000,
+			UpdatedAt: 1700000000000,
+		},
+		{
+			Id:        "77777777-7777-7777-7777-777777777777",
+			Title:     "Ops note",
+			Text:      "deploy checklist",
+			Tags:      []string{"Todo", "done"},
+			CreatedAt: 1700000000000,
+			UpdatedAt: 1700000000000,
+		},
+	}
+	if err := saveCommonTextItemsToDB(items); err != nil {
+		t.Fatal(err)
+	}
+
+	filtered, err := List(context.Background(), ListOptions{Query: "refund", TagFilters: []string{"email"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].Id != items[0].Id {
+		t.Fatalf("expected filtered support item, got %#v", filtered)
+	}
+
+	count, err := RenameTag(context.Background(), "todo", "done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 renamed items, got %d", count)
+	}
+	reloaded, err := List(context.Background(), ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]commonTextItem{}
+	for _, item := range reloaded {
+		byID[item.Id] = item
+	}
+	if got := strings.Join(byID[items[0].Id].Tags, ","); got != "email,done" {
+		t.Fatalf("expected first item tags renamed, got %q", got)
+	}
+	if got := strings.Join(byID[items[1].Id].Tags, ","); got != "done" {
+		t.Fatalf("expected second item tags deduped, got %q", got)
 	}
 }
