@@ -169,7 +169,7 @@ Sessions 提供辅助操作：
 
 - 打开 session 文件所在目录。
 - 复制 session id。
-- 复制 session file path。
+- 复制 session folder path。
 - 复制 resume command。
 - 复制单条消息内容。
 

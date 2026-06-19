@@ -497,13 +497,9 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 	if bc.ControllerType == BlockController_Shell {
 		cmdOpts.Interactive = true
 		cmdOpts.Login = true
-		cmdOpts.Cwd = blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
-		if cmdOpts.Cwd != "" {
-			cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
-			if err != nil {
-				return nil, nil, err
-			}
-			cmdOpts.Cwd = cwdPath
+		cmdOpts.Cwd, err = resolveCmdCwdForConn(blockMeta.GetString(waveobj.MetaKey_CmdCwd, ""), connUnion.ConnType == ConnType_Local)
+		if err != nil {
+			return nil, nil, err
 		}
 	} else if bc.ControllerType == BlockController_Cmd {
 		var cmdOptsPtr *shellexec.CommandOptsType
@@ -827,6 +823,17 @@ func getLocalShellOpts(blockMeta waveobj.MetaMapType) []string {
 	return nil
 }
 
+func resolveCmdCwdForConn(cwd string, isLocalConn bool) (string, error) {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return "", nil
+	}
+	if !isLocalConn {
+		return cwd, nil
+	}
+	return wavebase.ExpandHomeDir(cwd)
+}
+
 // for "cmd" type blocks
 func createCmdStrAndOpts(
 	blockId string,
@@ -842,15 +849,11 @@ func createCmdStrAndOpts(
 	}
 	cmdOpts.Cwd = blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
 	if cmdOpts.Cwd != "" {
-		if isLocalConn {
-			cwdPath, err := wavebase.ExpandHomeDir(cmdOpts.Cwd)
-			if err != nil {
-				return "", nil, nil, err
-			}
-			cmdOpts.Cwd = cwdPath
-		} else {
-			cmdOpts.Cwd = strings.TrimSpace(cmdOpts.Cwd)
+		resolvedCwd, err := resolveCmdCwdForConn(cmdOpts.Cwd, isLocalConn)
+		if err != nil {
+			return "", nil, nil, err
 		}
+		cmdOpts.Cwd = resolvedCwd
 	}
 	if agentRunInfo != nil && agentRunInfo.CaptureCodexSessionId {
 		agentRunInfo.CodexSessionLookupRoot = codexSessionLookupRoot(localHomeDir, blockMeta)

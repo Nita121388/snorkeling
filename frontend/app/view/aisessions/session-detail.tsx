@@ -13,6 +13,7 @@ import { extractSessionTagsFromNote, mergeSessionTags, normalizeSessionTags, ses
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
+    dirname,
     formatDateTimeToSecond,
     formatToolCallPreview,
     isReadableMessage,
@@ -560,8 +561,8 @@ export function SessionDetailPane({
                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <span className="min-w-0 truncate">{summary.projectPath || summary.filePath}</span>
                                 <CopyIconButton
-                                    text={summary.filePath}
-                                    label="Copy session file path"
+                                    text={dirname(summary.filePath)}
+                                    label="Copy session folder path"
                                     size="xs"
                                     className="!border-transparent"
                                 />

@@ -380,7 +380,7 @@ declare global {
         dispose?: () => void;
     }
 
-    type UpdaterStatus = "up-to-date" | "checking" | "downloading" | "ready" | "error" | "installing";
+    type UpdaterStatus = "up-to-date" | "checking" | "downloading" | "ready" | "manual-update" | "error" | "installing";
 
     // jotai doesn't export this type :/
     type Loadable<T> = { state: "loading" } | { state: "hasData"; data: T } | { state: "hasError"; error: unknown };
@@ -434,6 +434,7 @@ declare global {
             updateSupport: {
                 supported: boolean;
                 reason?: string;
+                manualInstallOnly?: boolean;
             } | null;
             availableUpdateReleaseName: string | null;
         };

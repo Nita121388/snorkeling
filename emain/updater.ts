@@ -1,6 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { spawnSync } from "child_process";
 import { app, dialog, autoUpdater as electronAutoUpdater, ipcMain, Notification, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { existsSync, readFileSync } from "fs";
@@ -21,6 +22,7 @@ let quittingForUpdate = false;
 type UpdateSupportState = {
     supported: boolean;
     reason?: string;
+    manualInstallOnly?: boolean;
 };
 
 export function isQuittingForUpdate(): boolean {
@@ -34,7 +36,47 @@ function getWindowsUninstallerCandidates(): string[] {
     return Array.from(nameCandidates).map((name) => path.join(exeDir, `Uninstall ${name}.exe`));
 }
 
+function getMacAppBundlePath(): string | null {
+    const marker = ".app/Contents/MacOS/";
+    const markerIndex = process.execPath.indexOf(marker);
+    if (markerIndex === -1) {
+        return null;
+    }
+    return process.execPath.slice(0, markerIndex + ".app".length);
+}
+
+function isAdhocSignedMacApp(): boolean {
+    if (process.platform !== "darwin" || !app.isPackaged) {
+        return false;
+    }
+
+    const appBundlePath = getMacAppBundlePath();
+    if (!appBundlePath) {
+        console.log("could not resolve macOS app bundle path for update signing check");
+        return false;
+    }
+
+    const result = spawnSync("codesign", ["-dv", "--verbose=4", appBundlePath], {
+        encoding: "utf8",
+    });
+    if (result.error || result.status !== 0) {
+        console.log("could not inspect macOS app signature for update support", result.error ?? result.stderr);
+        return false;
+    }
+
+    const codesignOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    return codesignOutput.includes("Signature=adhoc");
+}
+
 function detectUpdateSupportState(): UpdateSupportState {
+    if (isAdhocSignedMacApp()) {
+        return {
+            supported: false,
+            manualInstallOnly: true,
+            reason: "This macOS build is ad-hoc signed. Automatic in-place updates require a stable Developer ID signature, so please install the latest release manually.",
+        };
+    }
+
     if (process.platform !== "win32") {
         return { supported: true };
     }
@@ -93,6 +135,7 @@ export class Updater {
         this.updateSupport = detectUpdateSupportState();
 
         autoUpdater.autoInstallOnAppQuit = settings["autoupdate:installonquit"];
+        autoUpdater.autoDownload = !this.updateSupport.manualInstallOnly;
         console.log("Install update on quit:", settings["autoupdate:installonquit"]);
         if (!this.updateSupport.supported) {
             console.log("Automatic in-place updates are disabled for this installation:", this.updateSupport.reason);
@@ -120,8 +163,24 @@ export class Updater {
             this.status = "checking";
         });
 
-        autoUpdater.on("update-available", () => {
+        autoUpdater.on("update-available", (info) => {
             console.log("update-available; downloading...");
+            if (this.updateSupport.manualInstallOnly) {
+                this.availableUpdateReleaseName = info.releaseName ?? info.version ?? null;
+                this.availableUpdateReleaseNotes = typeof info.releaseNotes === "string" ? info.releaseNotes : null;
+                this.lastUpdateErrorMessage = null;
+                this.status = "manual-update";
+
+                const updateNotification = new Notification({
+                    title: "Snorkeling",
+                    body: "A new version of Snorkeling is available for manual installation.",
+                });
+                updateNotification.on("click", () => {
+                    fireAndForget(this.promptToInstallUpdate.bind(this));
+                });
+                updateNotification.show();
+                return;
+            }
             this.status = "downloading";
         });
 
@@ -179,7 +238,7 @@ export class Updater {
      * Check for updates and start the background update check, if configured.
      */
     async start() {
-        if (!this.updateSupport.supported) {
+        if (!this.updateSupport.supported && !this.updateSupport.manualInstallOnly) {
             console.log("skipping updater start because this installation does not support in-place updates");
             return;
         }
@@ -209,7 +268,7 @@ export class Updater {
      */
     async checkForUpdates(userInput: boolean) {
         const now = new Date();
-        if (!this.updateSupport.supported) {
+        if (!this.updateSupport.supported && !this.updateSupport.manualInstallOnly) {
             if (userInput) {
                 const dialogOpts: Electron.MessageBoxOptions = {
                     type: "info",
@@ -241,7 +300,7 @@ export class Updater {
                 const result = await autoUpdater.checkForUpdates();
 
                 // If the user requested this check and we do not have an available update, let them know with a popup dialog. No need to tell them if there is an update, because we show a banner once the update is ready to install.
-                if (userInput && !result.downloadPromise) {
+                if (userInput && !result.downloadPromise && this.status !== "manual-update") {
                     const dialogOpts: Electron.MessageBoxOptions = {
                         type: "info",
                         message: "There are currently no updates available.",
@@ -284,6 +343,11 @@ export class Updater {
      * Prompts the user to install the downloaded application update and restarts the application
      */
     async promptToInstallUpdate() {
+        if (this.updateSupport.manualInstallOnly && this.status === "manual-update") {
+            await this.showManualInstallDialog();
+            return;
+        }
+
         if (this.status !== "ready") {
             await this.showInstallUnavailableDialog();
             return;
@@ -311,6 +375,11 @@ export class Updater {
      * Restarts the app and installs an update if it is available.
      */
     async installUpdate() {
+        if (this.updateSupport.manualInstallOnly) {
+            await this.showManualInstallDialog();
+            return;
+        }
+
         if (this.status !== "ready") {
             await this.showInstallUnavailableDialog();
             return;
@@ -350,6 +419,28 @@ export class Updater {
                 ? await dialog.showMessageBox(focusedWaveWindow ?? allWindows[0], dialogOpts)
                 : await dialog.showMessageBox(dialogOpts);
         if (dialogResult.response === 1) {
+            await shell.openExternal(SnorkelingLatestReleaseUrl);
+        }
+    }
+
+    private async showManualInstallDialog() {
+        const releaseText = this.availableUpdateReleaseName
+            ? `A new Snorkeling release is available: ${this.availableUpdateReleaseName}.`
+            : "A new Snorkeling release is available.";
+        const dialogOpts: Electron.MessageBoxOptions = {
+            type: "info",
+            buttons: ["Open Latest Release", "Later"],
+            defaultId: 0,
+            cancelId: 1,
+            message: "Manual update required.",
+            detail: `${releaseText}\n\n${this.updateSupport.reason ?? "Automatic installation is unavailable for this copy."}`,
+        };
+        const allWindows = getAllWaveWindows();
+        const dialogResult =
+            allWindows.length > 0
+                ? await dialog.showMessageBox(focusedWaveWindow ?? allWindows[0], dialogOpts)
+                : await dialog.showMessageBox(dialogOpts);
+        if (dialogResult.response === 0) {
             await shell.openExternal(SnorkelingLatestReleaseUrl);
         }
     }

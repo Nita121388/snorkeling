@@ -6,6 +6,7 @@ package blockcontroller
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,6 +187,24 @@ func TestCreateCmdStrAndOptsDoesNotExpandRemoteHomeCwdLocally(t *testing.T) {
 	}
 	if cmdOpts.Cwd != "~/project" {
 		t.Fatalf("expected remote cwd to remain unexpanded, got %q", cmdOpts.Cwd)
+	}
+}
+
+func TestResolveCmdCwdForConnOnlyExpandsLocalHome(t *testing.T) {
+	remoteCwd, err := resolveCmdCwdForConn("~/project", false)
+	if err != nil {
+		t.Fatalf("resolve remote cwd returned error: %v", err)
+	}
+	if remoteCwd != "~/project" {
+		t.Fatalf("expected remote cwd to remain target-host relative, got %q", remoteCwd)
+	}
+
+	localCwd, err := resolveCmdCwdForConn("~/project", true)
+	if err != nil {
+		t.Fatalf("resolve local cwd returned error: %v", err)
+	}
+	if localCwd == "~/project" || !strings.HasSuffix(localCwd, "/project") {
+		t.Fatalf("expected local cwd to expand home, got %q", localCwd)
 	}
 }
 

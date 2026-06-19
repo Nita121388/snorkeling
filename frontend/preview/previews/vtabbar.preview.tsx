@@ -78,6 +78,7 @@ function VTabBarPreviewInner({ platform, setPlatform }: VTabBarPreviewInnerProps
                     >
                         <option value="up-to-date">Hidden</option>
                         <option value="ready">Update Available</option>
+                        <option value="manual-update">Manual Update</option>
                         <option value="downloading">Downloading</option>
                         <option value="installing">Installing</option>
                         <option value="error">Error</option>

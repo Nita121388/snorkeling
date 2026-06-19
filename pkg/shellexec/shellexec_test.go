@@ -26,10 +26,60 @@ func TestApplyCwdToShellCommandQuotesUnsafeCwd(t *testing.T) {
 	}
 }
 
+func TestMakeNoWshShellCommandAppliesEnvAfterCwd(t *testing.T) {
+	got := makeNoWshShellCommand("codex", CommandOptsType{
+		Cwd: "~/Project Files",
+		SwapToken: &shellutil.TokenSwapEntry{Env: map[string]string{
+			"ANTHROPIC_API_KEY": "anthropic-key",
+		}},
+	})
+	expected := `cd ~/"Project Files" && ANTHROPIC_API_KEY=anthropic-key codex`
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestMakeNoWshShellCommandAppliesInteractiveEnvAfterCwd(t *testing.T) {
+	got := makeNoWshShellCommand("", CommandOptsType{
+		Cwd: "/srv/app",
+		SwapToken: &shellutil.TokenSwapEntry{Env: map[string]string{
+			"WAVETERM_BLOCKID": "block-1",
+		}},
+	})
+	expected := `cd /srv/app && WAVETERM_BLOCKID=block-1 exec "${SHELL:-sh}" -l`
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
 func TestApplyCwdToShellCommandLeavesInteractiveShellBlank(t *testing.T) {
 	got := applyCwdToShellCommand("", CommandOptsType{Cwd: "~/Primary/projects/snorkeling"})
 	if got != "" {
 		t.Fatalf("expected blank command for interactive shell, got %q", got)
+	}
+}
+
+func TestApplyCwdToInteractiveShellCommandWrapsShell(t *testing.T) {
+	got := applyCwdToInteractiveShellCommand("/bin/bash --rcfile ~/.snorkeling/shell/bash/.bashrc", CommandOptsType{Cwd: "/srv/app"})
+	expected := `cd /srv/app && /bin/bash --rcfile ~/.snorkeling/shell/bash/.bashrc`
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestWrapShellInvocationWithCwdQuotesShellArgs(t *testing.T) {
+	shellPath, shellOpts := wrapShellInvocationWithCwd("/bin/bash", []string{"--rcfile", "/home/user/Project Files/.bashrc"}, CommandOptsType{Cwd: "~/Project Files"})
+	if shellPath != "sh" {
+		t.Fatalf("expected sh wrapper, got %q", shellPath)
+	}
+	expected := []string{"-c", `cd ~/"Project Files" && exec /bin/bash --rcfile "/home/user/Project Files/.bashrc"`}
+	if len(shellOpts) != len(expected) {
+		t.Fatalf("expected opts %#v, got %#v", expected, shellOpts)
+	}
+	for idx := range expected {
+		if shellOpts[idx] != expected[idx] {
+			t.Fatalf("expected opts %#v, got %#v", expected, shellOpts)
+		}
 	}
 }
 

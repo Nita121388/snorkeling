@@ -19,6 +19,8 @@ function getUpdateStatusMessage(status: string): string {
     switch (status) {
         case "ready":
             return "Update";
+        case "manual-update":
+            return "Manual Update";
         case "downloading":
             return "Downloading";
         case "installing":
@@ -36,7 +38,7 @@ const UpdateStatusBannerComponent = () => {
     const updateStatusMessage = getUpdateStatusMessage(appUpdateStatus);
 
     const onClick = useCallback(() => {
-        if (appUpdateStatus === "ready" || appUpdateStatus === "error") {
+        if (appUpdateStatus === "ready" || appUpdateStatus === "manual-update" || appUpdateStatus === "error") {
             env.electron.installAppUpdate();
         }
     }, [appUpdateStatus, env]);
@@ -46,26 +48,33 @@ const UpdateStatusBannerComponent = () => {
     }
 
     const isReady = appUpdateStatus === "ready";
+    const isManualUpdate = appUpdateStatus === "manual-update";
     const isError = appUpdateStatus === "error";
     const tooltipContent = isReady
         ? "Click to Install Update"
-        : isError
-          ? "Update failed. Click for details."
-          : updateStatusMessage;
+        : isManualUpdate
+          ? "Open latest release for manual installation."
+          : isError
+            ? "Update failed. Click for details."
+            : updateStatusMessage;
 
     return (
         <Tooltip
             content={tooltipContent}
             placement="bottom"
-            divOnClick={isReady || isError ? onClick : undefined}
+            divOnClick={isReady || isManualUpdate || isError ? onClick : undefined}
             divClassName={`flex items-center gap-1 px-2 mb-1 h-[22px] text-xs font-medium text-black rounded-sm transition-all ${
                 isError
                     ? "bg-error text-white cursor-pointer hover:bg-[var(--button-red-hover-bg)]"
-                    : `bg-accent ${isReady ? "cursor-pointer hover:bg-[var(--button-green-border-color)]" : ""}`
+                    : `bg-accent ${
+                          isReady || isManualUpdate ? "cursor-pointer hover:bg-[var(--button-green-border-color)]" : ""
+                      }`
             }`}
             divStyle={{ WebkitAppRegion: "no-drag" } as any}
         >
-            <i className={`fa ${isError ? "fa-triangle-exclamation" : "fa-download"}`} />
+            <i
+                className={`fa ${isError ? "fa-triangle-exclamation" : isManualUpdate ? "fa-up-right-from-square" : "fa-download"}`}
+            />
             {updateStatusMessage}
         </Tooltip>
     );

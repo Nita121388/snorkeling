@@ -114,6 +114,49 @@ func applyCwdToShellCommand(cmdStr string, cmdOpts CommandOptsType) string {
 	return fmt.Sprintf("cd %s && %s", quoteCwdForShell(cwd), cmdStr)
 }
 
+func applyCwdToInteractiveShellCommand(shellCmd string, cmdOpts CommandOptsType) string {
+	cwd := strings.TrimSpace(cmdOpts.Cwd)
+	if cwd == "" || shellCmd == "" {
+		return shellCmd
+	}
+	return fmt.Sprintf("cd %s && %s", quoteCwdForShell(cwd), shellCmd)
+}
+
+func makeNoWshShellCommand(cmdStr string, cmdOpts CommandOptsType) string {
+	cwd := strings.TrimSpace(cmdOpts.Cwd)
+	envPrefix := shellEnvPrefix(commandEnv(cmdOpts))
+	if envPrefix != "" {
+		envPrefix += " "
+	}
+	if cmdStr == "" {
+		if cwd == "" {
+			return ""
+		}
+		return fmt.Sprintf(`cd %s && %sexec "${SHELL:-sh}" -l`, quoteCwdForShell(cwd), envPrefix)
+	}
+	if cwd == "" {
+		return envPrefix + cmdStr
+	}
+	return fmt.Sprintf("cd %s && %s%s", quoteCwdForShell(cwd), envPrefix, cmdStr)
+}
+
+func shellInvocationCommand(shellPath string, shellOpts []string) string {
+	parts := []string{shellutil.HardQuote(shellPath)}
+	for _, opt := range shellOpts {
+		parts = append(parts, shellutil.HardQuote(opt))
+	}
+	return strings.Join(parts, " ")
+}
+
+func wrapShellInvocationWithCwd(shellPath string, shellOpts []string, cmdOpts CommandOptsType) (string, []string) {
+	cwd := strings.TrimSpace(cmdOpts.Cwd)
+	if cwd == "" {
+		return shellPath, shellOpts
+	}
+	wrappedCmd := fmt.Sprintf("cd %s && exec %s", quoteCwdForShell(cwd), shellInvocationCommand(shellPath, shellOpts))
+	return "sh", []string{"-c", wrappedCmd}
+}
+
 func quoteCwdForShell(cwd string) string {
 	if cwd == "~" {
 		return "~"
@@ -227,11 +270,8 @@ func StartWslShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, cmdS
 	conn.Infof(ctx, "WSL-NEWSESSION (StartWslShellProcNoWsh)")
 
 	args := []string{"~", "-d", client.Name()}
-	if cmdStr != "" {
-		cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
-		if envPrefix := shellEnvPrefix(commandEnv(cmdOpts)); envPrefix != "" {
-			cmdToRun = fmt.Sprintf("%s %s", envPrefix, cmdToRun)
-		}
+	cmdToRun := makeNoWshShellCommand(cmdStr, cmdOpts)
+	if cmdToRun != "" {
 		args = append(args, "--", "sh", "-c", cmdToRun)
 	}
 	ecmd := exec.Command("wsl.exe", args...)
@@ -331,8 +371,6 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	}
-	conn.Infof(ctx, "starting shell, using command: %s\n", cmdCombined)
-	conn.Infof(ctx, "WSL-NEWSESSION (StartWslShellProc)\n")
 
 	if shellType == shellutil.ShellType_zsh {
 		zshDir := fmt.Sprintf("~/.snorkeling/%s", shellutil.ZshIntegrationDir)
@@ -354,6 +392,11 @@ func StartWslShellProc(ctx context.Context, termSize waveobj.TermSize, cmdStr st
 		conn.Debugf(ctx, "adding forced Wave environment\n")
 		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
+	if cmdToRun == "" {
+		cmdCombined = applyCwdToInteractiveShellCommand(cmdCombined, cmdOpts)
+	}
+	conn.Infof(ctx, "starting shell, using command: %s\n", cmdCombined)
+	conn.Infof(ctx, "WSL-NEWSESSION (StartWslShellProc)\n")
 	log.Printf("full combined command: %s", cmdCombined)
 	ecmd := exec.Command("wsl.exe", "~", "-d", client.Name(), "--", "sh", "-c", cmdCombined)
 	if termSize.Rows == 0 || termSize.Cols == 0 {
@@ -406,13 +449,7 @@ func StartRemoteShellProcNoWsh(ctx context.Context, termSize waveobj.TermSize, c
 	session.Stderr = remoteStdoutWrite
 
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
-	startCmd := cmdStr
-	startCmd = applyCwdToShellCommand(startCmd, cmdOpts)
-	if startCmd != "" {
-		if envPrefix := shellEnvPrefix(commandEnv(cmdOpts)); envPrefix != "" {
-			startCmd = fmt.Sprintf("%s %s", envPrefix, startCmd)
-		}
-	}
+	startCmd := makeNoWshShellCommand(cmdStr, cmdOpts)
 	sessionWrap := MakeSessionWrap(session, startCmd, pipePty)
 	if startCmd == "" {
 		err = session.Shell()
@@ -503,8 +540,6 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
 		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
 	}
-	conn.Infof(logCtx, "starting shell, using command: %s\n", cmdCombined)
-	conn.Infof(logCtx, "SSH-NEWSESSION (StartRemoteShellProc)\n")
 	session, err := client.NewSession()
 	if err != nil {
 		return nil, err
@@ -553,6 +588,11 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		conn.Debugf(logCtx, "adding forced Wave environment\n")
 		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
 	}
+	if cmdToRun == "" {
+		cmdCombined = applyCwdToInteractiveShellCommand(cmdCombined, cmdOpts)
+	}
+	conn.Infof(logCtx, "starting shell, using command: %s\n", cmdCombined)
+	conn.Infof(logCtx, "SSH-NEWSESSION (StartRemoteShellProc)\n")
 	shellutil.AddTokenSwapEntry(cmdOpts.SwapToken)
 	session.RequestPty("xterm-256color", termSize.Rows, termSize.Cols, nil)
 	sessionWrap := MakeSessionWrap(session, cmdCombined, pipePty)
@@ -622,8 +662,9 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 				shellOpts = append(shellOpts, "-i")
 			}
 		}
+		shellPath, shellOpts = wrapShellInvocationWithCwd(shellPath, shellOpts, cmdOpts)
 	} else {
-		shellOpts = append(shellOpts, "-c", cmdStr)
+		shellOpts = append(shellOpts, "-c", applyCwdToShellCommand(cmdStr, cmdOpts))
 	}
 	conn.Infof(logCtx, "starting shell job, using command: %s %s\n", shellPath, strings.Join(shellOpts, " "))
 

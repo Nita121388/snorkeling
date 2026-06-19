@@ -34,7 +34,7 @@ AI Sessions 是 Snorkeling 的本机 AI 会话浏览器，用于在右侧 `Sessi
 - 大纲：按用户消息生成 outline，支持跳转到详情位置
 - 长消息折叠：长对话内容支持双击折叠/展开
 - 恢复会话：支持打开新 terminal block 并尝试 resume
-- 复制：支持复制 session ID、session file path、resume command、单条消息
+- 复制：支持复制 session ID、session folder path、resume command、单条消息
 - 删除：删除前二次确认，源文件移动到 deleted storage
 
 ## 设计边界

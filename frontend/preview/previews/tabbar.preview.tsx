@@ -5,8 +5,8 @@ import { loadBadges, LoadBadgesEnv } from "@/app/store/badge";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabBarEnv } from "@/app/tab/tabbarenv";
 import { useWaveEnv, WaveEnvContext } from "@/app/waveenv/waveenv";
-import { makeTabBarMockEnv, TabBarMockWorkspaceId } from "@/preview/mock/tabbar-mock";
 import { MockWaveEnv } from "@/preview/mock/mockwaveenv";
+import { makeTabBarMockEnv, TabBarMockWorkspaceId } from "@/preview/mock/tabbar-mock";
 import { PlatformLinux, PlatformMacOS, PlatformWindows } from "@/util/platformutil";
 import { useAtom, useAtomValue } from "jotai";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -87,6 +87,7 @@ function TabBarPreviewInner({ platform, setPlatform }: TabBarPreviewInnerProps) 
                     >
                         <option value="up-to-date">Hidden</option>
                         <option value="ready">Update Available</option>
+                        <option value="manual-update">Manual Update</option>
                         <option value="downloading">Downloading</option>
                         <option value="installing">Installing</option>
                         <option value="error">Error</option>
