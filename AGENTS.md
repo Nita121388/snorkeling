@@ -1,5 +1,7 @@
 # Snorkeling Codex Instructions
 
+@.kilocode/rules/rules.md
+
 Read and honor the existing project guidance in `CLAUDE.md` and any referenced skill guides when the task matches them.
 
 # Ponytail, lazy senior dev mode

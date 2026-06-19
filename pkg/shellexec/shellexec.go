@@ -761,7 +761,7 @@ func StartLocalShellProc(logCtx context.Context, termSize waveobj.TermSize, cmdS
 		}
 	} else {
 		isShell = false
-		shellOpts = append(shellOpts, "-c", cmdStr)
+		shellOpts = append(shellOpts, "-c", applyCwdToShellCommand(cmdStr, cmdOpts))
 		ecmd = exec.Command(shellPath, shellOpts...)
 		ecmd.Env = os.Environ()
 	}

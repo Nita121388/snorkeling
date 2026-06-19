@@ -188,9 +188,17 @@ export function dirname(path: string): string {
     return normalized.slice(0, idx);
 }
 
+function quoteShellPath(path: string): string {
+    if (/^[A-Za-z0-9_@%:,./=+-]+$/.test(path)) {
+        return path;
+    }
+    return `'${path.replace(/'/g, `'"'"'`)}'`;
+}
+
 export function restoreCommandForSession(summary: SessionSummary): string {
     if (summary.source === "claude") {
-        return `claude --resume ${summary.id}`;
+        const resumeCommand = `claude --resume ${summary.id}`;
+        return summary.projectPath ? `cd ${quoteShellPath(summary.projectPath)} && ${resumeCommand}` : resumeCommand;
     }
     return `codex resume ${summary.id}`;
 }

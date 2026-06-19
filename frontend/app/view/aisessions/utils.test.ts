@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { buildSessionDetailTimeline, formatFileSize, isReadableMessage } from "./utils";
+import { buildSessionDetailTimeline, formatFileSize, isReadableMessage, restoreCommandForSession } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -102,5 +102,15 @@ describe("AI session detail timeline", () => {
         expect(formatFileSize(999)).toBe("999 B");
         expect(formatFileSize(1536)).toBe("1.5 KB");
         expect(formatFileSize(5 * 1024 * 1024)).toBe("5 MB");
+    });
+
+    it("copies Claude resume commands from the session project directory", () => {
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                projectPath: "/Users/nita/Project Files/it's-here",
+            } as SessionSummary)
+        ).toBe(`cd '/Users/nita/Project Files/it'"'"'s-here' && claude --resume session-123`);
     });
 });
