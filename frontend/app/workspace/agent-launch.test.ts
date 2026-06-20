@@ -508,6 +508,34 @@ describe("agent launch context", () => {
         expect(metaRecord["agent:provider"]).toBe("codex");
     });
 
+    it("uses the provider command instead of a Windows shim on remote targets", () => {
+        const settings = {
+            "agent:defaultprofile": "codex",
+            "agent:profiles": {
+                codex: {
+                    cmd: "C:\\Users\\chemclin\\AppData\\Roaming\\npm\\codex.cmd",
+                },
+            },
+        } as SettingsType;
+        const target = {
+            blockId: "block:term",
+            connection: "ssh://nita@NitadeMacBook-Pro",
+            cwd: "/Users/nita/project",
+            filePath: null,
+            source: "terminal",
+            isLocal: false,
+            label: "ssh://nita@NitadeMacBook-Pro",
+            detail: "/Users/nita/project",
+        } as const;
+
+        const blockDef = createAgentBlockDefForTarget(settings, target);
+        expect(blockDef.meta?.cmd).toBe("codex");
+        expect(blockDef.meta?.connection).toBe("ssh://nita@NitadeMacBook-Pro");
+        expect(blockDef.meta?.["cmd:cwd"]).toBe("/Users/nita/project");
+        const metaRecord = blockDef.meta as Record<string, unknown>;
+        expect(metaRecord["agent:provider"]).toBe("codex");
+    });
+
     it("builds an agent block for an explicit profile without changing the default profile", () => {
         const settings = {
             "agent:defaultprofile": "codex",

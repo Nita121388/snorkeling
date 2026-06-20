@@ -26,6 +26,14 @@ func TestApplyCwdToShellCommandQuotesUnsafeCwd(t *testing.T) {
 	}
 }
 
+func TestApplyCwdToPowerShellCommandUsesCompatibleSeparator(t *testing.T) {
+	got := applyCwdToPowerShellCommand("codex", CommandOptsType{Cwd: `C:\Users\chemclin`})
+	expected := `Set-Location -LiteralPath 'C:\Users\chemclin'; if ($?) { codex }`
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
 func TestMakeNoWshShellCommandAppliesEnvAfterCwd(t *testing.T) {
 	got := makeNoWshShellCommand("codex", CommandOptsType{
 		Cwd: "~/Project Files",

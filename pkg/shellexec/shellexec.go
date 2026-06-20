@@ -114,6 +114,14 @@ func applyCwdToShellCommand(cmdStr string, cmdOpts CommandOptsType) string {
 	return fmt.Sprintf("cd %s && %s", quoteCwdForShell(cwd), cmdStr)
 }
 
+func applyCwdToPowerShellCommand(cmdStr string, cmdOpts CommandOptsType) string {
+	cwd := strings.TrimSpace(cmdOpts.Cwd)
+	if cwd == "" || cmdStr == "" {
+		return cmdStr
+	}
+	return fmt.Sprintf("Set-Location -LiteralPath %s; if ($?) { %s }", quoteForPowerShell(cwd), cmdStr)
+}
+
 func applyCwdToInteractiveShellCommand(shellCmd string, cmdOpts CommandOptsType) string {
 	cwd := strings.TrimSpace(cmdOpts.Cwd)
 	if cwd == "" || shellCmd == "" {
@@ -165,6 +173,10 @@ func quoteCwdForShell(cwd string) string {
 		return "~/" + shellutil.HardQuote(strings.TrimPrefix(cwd, "~/"))
 	}
 	return shellutil.HardQuote(cwd)
+}
+
+func quoteForPowerShell(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func (sp *ShellProc) Close() {
@@ -761,7 +773,11 @@ func StartLocalShellProc(logCtx context.Context, termSize waveobj.TermSize, cmdS
 		}
 	} else {
 		isShell = false
-		shellOpts = append(shellOpts, "-c", applyCwdToShellCommand(cmdStr, cmdOpts))
+		cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
+		if shellType == shellutil.ShellType_pwsh {
+			cmdToRun = applyCwdToPowerShellCommand(cmdStr, cmdOpts)
+		}
+		shellOpts = append(shellOpts, "-c", cmdToRun)
 		ecmd = exec.Command(shellPath, shellOpts...)
 		ecmd.Env = os.Environ()
 	}

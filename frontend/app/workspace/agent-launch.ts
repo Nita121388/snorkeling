@@ -97,6 +97,29 @@ function extractCommandBaseName(cmd: string): string {
     return lastPart.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "");
 }
 
+function isRemoteExecutionConnection(connection: unknown): boolean {
+    const normalizedConnection = normalizeConnection(connection);
+    return normalizedConnection != null && !normalizedConnection.startsWith("local:");
+}
+
+function isWindowsShimCommand(cmd: string): boolean {
+    const trimmed = cmd.trim();
+    if (/^[a-z]:[\\/]/i.test(trimmed) || trimmed.startsWith("\\\\")) {
+        return true;
+    }
+    return /\.(cmd|bat|ps1|exe)$/i.test(trimmed);
+}
+
+function resolveAgentCommandForContext(cmd: string, provider: string, contextMeta: AgentContextMeta): string {
+    if (!isRemoteExecutionConnection(contextMeta.connection)) {
+        return cmd;
+    }
+    if (!isWindowsShimCommand(cmd)) {
+        return cmd;
+    }
+    return extractCommandBaseName(cmd) === provider ? provider : cmd;
+}
+
 function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
     if (rawProfile == null || typeof rawProfile !== "object") {
         return null;
@@ -715,6 +738,7 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
     const profile = getProfileConfig(settings, profileName);
     const cmd = !isBlank(profile.cmd) ? profile.cmd : DefaultAgentCommand;
     const provider = resolveAgentProvider(settings, cmd);
+    const resolvedCmd = resolveAgentCommandForContext(cmd, provider, contextMeta);
     const cmdArgs = sanitizeArgs(profile.args);
     const model = !isBlank(profile.model) ? profile.model : null;
     const modelFlag = !isBlank(profile.modelflag) ? profile.modelflag : DefaultModelFlag;
@@ -730,7 +754,7 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
     const blockMeta: MetaType = {
         view: "term",
         controller: "cmd",
-        cmd,
+        cmd: resolvedCmd,
         "cmd:shell": false,
         "cmd:runonstart": true,
         "cmd:jwt": true,
