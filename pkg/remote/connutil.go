@@ -22,6 +22,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/genconn"
 	"github.com/wavetermdev/waveterm/pkg/util/iterfn"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
+	"github.com/wavetermdev/waveterm/pkg/util/syncbuf"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"golang.org/x/crypto/ssh"
@@ -42,6 +43,9 @@ func ParseOpts(input string) (*SSHOpts, error) {
 
 func normalizeOs(os string) string {
 	os = strings.ToLower(strings.TrimSpace(os))
+	if strings.HasPrefix(os, "mingw") || strings.HasPrefix(os, "msys") || strings.HasPrefix(os, "cygwin") {
+		return "windows"
+	}
 	return os
 }
 
@@ -56,6 +60,49 @@ func normalizeArch(arch string) string {
 	return arch
 }
 
+func IsWindowsCmdUnknownCommandOutput(output string, command string) bool {
+	outputLower := strings.ToLower(output)
+	command = strings.ToLower(command)
+	if !strings.Contains(outputLower, command) {
+		return false
+	}
+	return strings.Contains(outputLower, "not recognized") ||
+		strings.Contains(outputLower, "\u4e0d\u662f\u5185\u90e8") ||
+		strings.Contains(output, "\xb2\xbb\xca\xc7")
+}
+
+func makeWindowsPlatformDetectCommand() string {
+	script := strings.Join([]string{
+		`$Arch = if ($env:PROCESSOR_ARCHITECTURE -match "ARM64|AARCH64") { "arm64" } else { "x64" }`,
+		`Write-Output ("windows " + $Arch)`,
+	}, "; ")
+	return shellutil.MakePowerShellEncodedCommand(script)
+}
+
+func getClientPlatformFromOutput(ctx context.Context, output string) (string, string, error) {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		clientOs, clientArch, err := GetClientPlatformFromOsArchStr(ctx, line)
+		if err == nil {
+			return clientOs, clientArch, nil
+		}
+	}
+	return "", "", fmt.Errorf("unexpected platform output: %s", output)
+}
+
+func detectWindowsClientPlatform(ctx context.Context, shell genconn.ShellClient) (string, string, error) {
+	stdout, stderr, err := genconn.RunSimpleCommand(ctx, shell, genconn.CommandSpec{
+		Cmd: makeWindowsPlatformDetectCommand(),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("error running windows platform detection: %w, stdout: %s, stderr: %s", err, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
+	}
+	return getClientPlatformFromOutput(ctx, stdout)
+}
+
 // returns (os, arch, error)
 // guaranteed to return a supported platform
 func GetClientPlatform(ctx context.Context, shell genconn.ShellClient) (string, string, error) {
@@ -64,6 +111,9 @@ func GetClientPlatform(ctx context.Context, shell genconn.ShellClient) (string, 
 		Cmd: "uname -sm",
 	})
 	if err != nil {
+		if IsWindowsCmdUnknownCommandOutput(stdout+"\n"+stderr, "uname") {
+			return detectWindowsClientPlatform(ctx, shell)
+		}
 		return "", "", fmt.Errorf("error running uname -sm: %w, stderr: %s", err, stderr)
 	}
 	// Parse and normalize output
@@ -90,6 +140,35 @@ func GetClientPlatformFromOsArchStr(ctx context.Context, osArchStr string) (stri
 	return os, arch, nil
 }
 
+func GetRemoteWshPath(clientOs string) string {
+	if clientOs == "windows" {
+		return wavebase.RemoteFullWshBinPath + ".exe"
+	}
+	return wavebase.RemoteFullWshBinPath
+}
+
+func getRemoteWshTempPath(clientOs string, remoteWshPath string) string {
+	if clientOs == "windows" {
+		return fmt.Sprintf("~/.snorkeling/tmp/wsh.exe.%d.%d.temp", time.Now().UnixNano(), rand.Int63())
+	}
+	return fmt.Sprintf("%s.%d.%d.temp", remoteWshPath, time.Now().UnixNano(), rand.Int63())
+}
+
+func getRemoteWshInstallDiagnosticCmd() string {
+	return `printf 'wsh install diagnostics:\n' >&2; ls -la ~/.snorkeling/bin ~/.snorkeling/tmp 2>&1 >&2 || true`
+}
+
+func getRemoteWshInstallDiagnosticCmdForOs(clientOs string) string {
+	if clientOs == "windows" {
+		script := strings.Join([]string{
+			`Write-Output "wsh install diagnostics:"`,
+			`Get-ChildItem -Force "$HOME\.snorkeling\bin", "$HOME\.snorkeling\tmp" | Format-List | Out-String | Write-Output`,
+		}, "; ")
+		return shellutil.MakePowerShellEncodedCommand(script)
+	}
+	return getRemoteWshInstallDiagnosticCmd()
+}
+
 var installTemplateRawDefault = strings.TrimSpace(`
 mkdir -p {{.installDir}} || exit 1;
 cat > {{.tempPath}} || { status=$?; rm -f {{.tempPath}}; exit $status; };
@@ -101,8 +180,131 @@ if [ "$actual_size" != "{{.expectedSize}}" ]; then
 fi;
 mv {{.tempPath}} {{.installPath}} || exit 1;
 chmod a+x {{.installPath}} || exit 1;
+if [ ! -f {{.installPath}} ]; then
+    echo "final wsh binary missing after install: {{.installPath}}" >&2;
+    {{.diagnostics}};
+    exit 1;
+fi;
 `)
 var installTemplate = template.Must(template.New("wsh-install-template").Parse(installTemplateRawDefault))
+
+func makeWindowsAutoInstallWshCommand(remoteTempPath string, remoteWshPath string, expectedSize int64) string {
+	relativeTempPath := strings.ReplaceAll(strings.TrimPrefix(remoteTempPath, "~/"), "/", `\`)
+	script := strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`$ProgressPreference = "SilentlyContinue"`,
+		`New-Item -ItemType Directory -Force "$HOME\.snorkeling\tmp", "$HOME\.snorkeling\bin" | Out-Null`,
+		`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(relativeTempPath),
+		`$WshPath = Join-Path $HOME ".snorkeling\bin\wsh.exe"`,
+		`$InputStream = [Console]::OpenStandardInput()`,
+		`$OutputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)`,
+		`try { $InputStream.CopyTo($OutputStream) } finally { $OutputStream.Close() }`,
+		`$ActualSize = (Get-Item -LiteralPath $TempPath).Length`,
+		fmt.Sprintf(`if ($ActualSize -ne %d) { throw "wsh install size mismatch: expected %d, got $ActualSize" }`, expectedSize, expectedSize),
+		`Move-Item -Force -LiteralPath $TempPath -Destination $WshPath`,
+		`if (!(Test-Path -LiteralPath $WshPath)) { throw "final wsh binary missing after install: $WshPath" }`,
+	}, "; ")
+	return shellutil.MakePowerShellEncodedCommand(script)
+}
+
+func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string) error {
+	installCmd := makeWindowsAutoInstallWshCommand(remoteTempPath, remoteWshPath, inputSize)
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create remote command: %w", err)
+	}
+	defer session.Close()
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+	stderrBuf := syncbuf.MakeSyncBuffer()
+	session.Stderr = stderrBuf
+	if err := session.Start(installCmd); err != nil {
+		return fmt.Errorf("failed to start remote command: %w", err)
+	}
+	copyDone := make(chan error, 1)
+	go func() {
+		defer close(copyDone)
+		defer stdin.Close()
+		if _, err := io.Copy(stdin, input); err != nil && err != io.EOF {
+			copyDone <- fmt.Errorf("failed to copy data: %w", err)
+		} else {
+			copyDone <- nil
+		}
+	}()
+	procErr := runSessionWaitWithContext(ctx, session)
+	copyErr := <-copyDone
+	if procErr != nil {
+		return fmt.Errorf("remote command failed: %w (stderr: %s)", procErr, stderrBuf.String())
+	}
+	if copyErr != nil {
+		return fmt.Errorf("failed to copy data: %w (stderr: %s)", copyErr, stderrBuf.String())
+	}
+	verifyStdout, verifyStderr, err := runRemoteCommandOutput(ctx, client, shellutil.MakePowerShellEncodedCommand(`& (Join-Path $HOME ".snorkeling\bin\wsh.exe") version`))
+	if err != nil {
+		diagStdout, diagStderr, _ := runRemoteCommandOutput(ctx, client, diagnosticsCmd)
+		return fmt.Errorf("installed wsh version check failed for %s: %w (stderr: %s; diagnostics stdout: %s; diagnostics stderr: %s)",
+			remoteWshPath, err, strings.TrimSpace(verifyStderr), strings.TrimSpace(diagStdout), strings.TrimSpace(diagStderr))
+	}
+	expectedVersionLine := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
+	if extractWshVersionLine(verifyStdout) != expectedVersionLine {
+		return fmt.Errorf("installed wsh version mismatch: expected %q, got stdout %q stderr %q", expectedVersionLine, strings.TrimSpace(verifyStdout), strings.TrimSpace(verifyStderr))
+	}
+	return nil
+}
+
+func runSessionWaitWithContext(ctx context.Context, session *ssh.Session) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- session.Wait()
+	}()
+	select {
+	case <-ctx.Done():
+		session.Close()
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
+func runRemoteCommandOutput(ctx context.Context, client *ssh.Client, cmd string) (string, string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", "", err
+	}
+	defer session.Close()
+	stdoutBuf := &strings.Builder{}
+	stderrBuf := &strings.Builder{}
+	session.Stdout = stdoutBuf
+	session.Stderr = stderrBuf
+	err = runSessionWithContext(ctx, session, cmd)
+	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+func runSessionWithContext(ctx context.Context, session *ssh.Session, cmd string) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- session.Run(cmd)
+	}()
+	select {
+	case <-ctx.Done():
+		session.Close()
+		return ctx.Err()
+	case err := <-errCh:
+		return err
+	}
+}
+
+func extractWshVersionLine(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "wsh ") {
+			return line
+		}
+	}
+	return strings.TrimSpace(output)
+}
 
 func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, clientArch string) error {
 	deadline, ok := ctx.Deadline()
@@ -125,18 +327,24 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 	if inputInfo.Size() <= 0 {
 		return fmt.Errorf("local wsh binary %s is empty", wshLocalPath)
 	}
-	remoteTempPath := fmt.Sprintf("%s.%d.%d.temp", wavebase.RemoteFullWshBinPath, time.Now().UnixNano(), rand.Int63())
+	remoteWshPath := GetRemoteWshPath(clientOs)
+	remoteTempPath := getRemoteWshTempPath(clientOs, remoteWshPath)
+	diagnosticsCmd := getRemoteWshInstallDiagnosticCmdForOs(clientOs)
+	if clientOs == "windows" {
+		return cpWshToWindowsRemote(ctx, client, input, inputInfo.Size(), remoteWshPath, remoteTempPath, diagnosticsCmd)
+	}
 	installWords := map[string]string{
-		"installDir":   filepath.ToSlash(filepath.Dir(wavebase.RemoteFullWshBinPath)),
+		"installDir":   filepath.ToSlash(filepath.Dir(remoteWshPath)),
 		"tempPath":     remoteTempPath,
-		"installPath":  wavebase.RemoteFullWshBinPath,
+		"installPath":  remoteWshPath,
 		"expectedSize": fmt.Sprintf("%d", inputInfo.Size()),
+		"diagnostics":  diagnosticsCmd,
 	}
 	var installCmd bytes.Buffer
 	if err := installTemplate.Execute(&installCmd, installWords); err != nil {
 		return fmt.Errorf("failed to prepare install command: %w", err)
 	}
-	blocklogger.Infof(ctx, "[conndebug] copying %q to remote server %q\n", wshLocalPath, wavebase.RemoteFullWshBinPath)
+	blocklogger.Infof(ctx, "[conndebug] copying %q to remote server %q\n", wshLocalPath, remoteWshPath)
 	genCmd, err := genconn.MakeSSHCmdClient(client, genconn.CommandSpec{
 		Cmd: installCmd.String(),
 	})
@@ -174,13 +382,17 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 		return fmt.Errorf("failed to copy data: %w (stderr: %s)", copyErr, stderrBuf.String())
 	}
 	verifyStdout, verifyStderr, err := genconn.RunSimpleCommand(ctx, genconn.MakeSSHShellClient(client), genconn.CommandSpec{
-		Cmd: wavebase.RemoteFullWshBinPath + " version",
+		Cmd: remoteWshPath + " version",
 	})
 	if err != nil {
-		return fmt.Errorf("installed wsh version check failed: %w (stderr: %s)", err, strings.TrimSpace(verifyStderr))
+		diagStdout, diagStderr, _ := genconn.RunSimpleCommand(ctx, genconn.MakeSSHShellClient(client), genconn.CommandSpec{
+			Cmd: diagnosticsCmd,
+		})
+		return fmt.Errorf("installed wsh version check failed for %s: %w (stderr: %s; diagnostics stdout: %s; diagnostics stderr: %s)",
+			remoteWshPath, err, strings.TrimSpace(verifyStderr), strings.TrimSpace(diagStdout), strings.TrimSpace(diagStderr))
 	}
 	expectedVersionLine := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
-	if strings.TrimSpace(verifyStdout) != expectedVersionLine {
+	if extractWshVersionLine(verifyStdout) != expectedVersionLine {
 		return fmt.Errorf("installed wsh version mismatch: expected %q, got stdout %q stderr %q", expectedVersionLine, strings.TrimSpace(verifyStdout), strings.TrimSpace(verifyStderr))
 	}
 	return nil

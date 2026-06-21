@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,6 +121,13 @@ func (impl *ServerImpl) ConnServerInitCommand(ctx context.Context, data wshrpc.C
 		return fmt.Errorf("could not create client directory %s: %w", symlinkDir, err)
 	}
 	os.Remove(symlinkPath)
+	if strings.Contains(impl.SockName, ":") {
+		if err := os.WriteFile(symlinkPath, []byte(impl.SockName), 0600); err != nil {
+			return fmt.Errorf("could not write socket address file %s -> %s: %w", symlinkPath, impl.SockName, err)
+		}
+		impl.Log("created socket address file %s -> %s\n", symlinkPath, impl.SockName)
+		return nil
+	}
 	if err := os.Symlink(impl.SockName, symlinkPath); err != nil {
 		return fmt.Errorf("could not create symlink %s -> %s: %w", symlinkPath, impl.SockName, err)
 	}

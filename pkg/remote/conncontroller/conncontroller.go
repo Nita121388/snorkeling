@@ -78,6 +78,11 @@ const (
 	ConnHealthStatus_Stalled  = "stalled"
 )
 
+const (
+	ConnServerMode_DomainSocketRouter = "router-domainsocket"
+	ConnServerMode_StdioRouter        = "router-stdio"
+)
+
 const DefaultConnectionTimeout = 60 * time.Second
 
 var globalLock = &sync.Mutex{}
@@ -108,10 +113,76 @@ type SSHConn struct {
 	Monitor            *ConnMonitor // will not be nil
 }
 
+type recentLinesBuffer struct {
+	lock  sync.Mutex
+	limit int
+	lines []string
+}
+
+func makeRecentLinesBuffer(limit int) *recentLinesBuffer {
+	return &recentLinesBuffer{limit: limit}
+}
+
+func (b *recentLinesBuffer) Add(line string) {
+	if b == nil {
+		return
+	}
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	line = strings.TrimRight(line, "\r\n")
+	if len(line) > 500 {
+		line = line[:500] + "...<truncated>"
+	}
+	b.lines = append(b.lines, line)
+	if len(b.lines) > b.limit {
+		b.lines = b.lines[len(b.lines)-b.limit:]
+	}
+}
+
+func (b *recentLinesBuffer) String() string {
+	if b == nil {
+		return ""
+	}
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	if len(b.lines) == 0 {
+		return "<none>"
+	}
+	return strings.Join(b.lines, "\n")
+}
+
 var ConnServerCmdTemplate = strings.TrimSpace(
 	strings.Join([]string{
-		"%s version 2> /dev/null || (echo -n \"not-installed \"; uname -sm; exit 0);",
-		"exec %s connserver --conn %s %s %s",
+		"wshbin=%s;",
+		"case \"$(uname -s 2> /dev/null)\" in MINGW*|MSYS*|CYGWIN*) if [ -x %s ]; then wshbin=%s; fi;; esac;",
+		"if [ ! -x \"$wshbin\" ] && [ -x %s ]; then wshbin=%s; fi;",
+		"\"$wshbin\" version 2> /dev/null || (echo -n \"not-installed \"; uname -sm; exit 0);",
+		"exec \"$wshbin\" connserver --conn %s %s %s",
+	}, "\n"))
+
+var WindowsConnServerPowerShellTemplate = strings.TrimSpace(
+	strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`$ProgressPreference = "SilentlyContinue"`,
+		`function Write-Diag([string]$Message) { [Console]::Error.WriteLine("[snorkeling-wsh-start] " + $Message) }`,
+		`Write-Diag "script started"`,
+		`$Arch = if ($env:PROCESSOR_ARCHITECTURE -match "ARM64|AARCH64") { "arm64" } else { "x64" }`,
+		`Write-Diag ("PROCESSOR_ARCHITECTURE=" + $env:PROCESSOR_ARCHITECTURE)`,
+		`$WshPath = %s`,
+		`Write-Diag ("WshPath=" + $WshPath)`,
+		`$WshExists = Test-Path -LiteralPath $WshPath`,
+		`Write-Diag ("WshExists=" + $WshExists)`,
+		`if (!$WshExists) { Write-Diag "wsh missing"; Write-Output "not-installed windows $Arch"; exit 0 }`,
+		`Write-Diag "running wsh version"`,
+		`& $WshPath version 2>$null`,
+		`$VersionExitCode = $LASTEXITCODE`,
+		`Write-Diag ("wsh version exit=" + $VersionExitCode)`,
+		`if ($VersionExitCode -ne 0) { Write-Diag "wsh version failed"; Write-Output "not-installed windows $Arch"; exit 0 }`,
+		`Write-Diag "starting connserver"`,
+		`& $WshPath connserver --conn %s %s %s`,
+		`$ConnserverExitCode = $LASTEXITCODE`,
+		`Write-Diag ("connserver exited=" + $ConnserverExitCode)`,
+		`exit $ConnserverExitCode`,
 	}, "\n"))
 
 func IsLocalConnName(connName string) bool {
@@ -457,12 +528,253 @@ func (conn *SSHConn) GetConfigShellPath() string {
 	return config.ConnShellPath
 }
 
+func isWindowsUname(uname string) bool {
+	uname = strings.ToLower(strings.TrimSpace(uname))
+	return strings.HasPrefix(uname, "mingw") || strings.HasPrefix(uname, "msys") || strings.HasPrefix(uname, "cygwin")
+}
+
+func isWindowsCmdUnknownCommand(output string, command string) bool {
+	return remote.IsWindowsCmdUnknownCommandOutput(output, command)
+}
+
+func runRemoteCommandOutput(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	outputBuf := &strings.Builder{}
+	session.Stdout = outputBuf
+	session.Stderr = outputBuf
+	err = runSessionWithContext(ctx, session, cmd)
+	return outputBuf.String(), err
+}
+
+func detectWindowsRemoteWithDiagnostics(ctx context.Context, client *ssh.Client) (bool, string) {
+	detectCtx, cancelFn := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelFn()
+	stdout, err := runRemoteCommandOutput(detectCtx, client, "uname -s")
+	if err == nil && isWindowsUname(stdout) {
+		return true, fmt.Sprintf("uname=%q", strings.TrimSpace(stdout))
+	}
+	unameDiag := fmt.Sprintf("uname stdout=%q err=%v", strings.TrimSpace(stdout), err)
+	if err != nil && isWindowsCmdUnknownCommand(stdout, "uname") {
+		return true, unameDiag + "; detected windows cmd unknown-command response"
+	}
+	stdout, err = runRemoteCommandOutput(detectCtx, client, "ver")
+	if err == nil && strings.Contains(strings.ToLower(stdout), "windows") {
+		return true, fmt.Sprintf("%s; ver stdout=%q", unameDiag, strings.TrimSpace(stdout))
+	}
+	verDiag := fmt.Sprintf("%s; ver stdout=%q err=%v", unameDiag, strings.TrimSpace(stdout), err)
+	stdout, err = runRemoteCommandOutput(detectCtx, client, "cmd /c ver")
+	if err != nil {
+		return false, fmt.Sprintf("%s; cmdver err=%v", verDiag, err)
+	}
+	isWindows := strings.Contains(strings.ToLower(stdout), "windows")
+	return isWindows, fmt.Sprintf("%s; cmdver stdout=%q", verDiag, strings.TrimSpace(stdout))
+}
+
+func detectWindowsRemote(ctx context.Context, client *ssh.Client) bool {
+	isWindows, _ := detectWindowsRemoteWithDiagnostics(ctx, client)
+	return isWindows
+}
+
+func makeWindowsWshPathExpr(wshPath string) string {
+	path := strings.TrimSpace(wshPath)
+	if path == "" || path == wavebase.RemoteFullWshBinPath {
+		return `Join-Path $HOME ".snorkeling\bin\wsh.exe"`
+	}
+	if path == wavebase.RemoteFullWshBinPath+".exe" {
+		return `Join-Path $HOME ".snorkeling\bin\wsh.exe"`
+	}
+	if strings.HasPrefix(path, "~/") {
+		path = strings.ReplaceAll(strings.TrimPrefix(path, "~/"), "/", `\`)
+		if !strings.HasSuffix(strings.ToLower(path), ".exe") {
+			path += ".exe"
+		}
+		return "Join-Path $HOME " + shellutil.HardQuotePowerShell(path)
+	}
+	if strings.HasPrefix(path, "$HOME/") {
+		path = strings.ReplaceAll(strings.TrimPrefix(path, "$HOME/"), "/", `\`)
+		if !strings.HasSuffix(strings.ToLower(path), ".exe") {
+			path += ".exe"
+		}
+		return "Join-Path $HOME " + shellutil.HardQuotePowerShell(path)
+	}
+	if strings.HasPrefix(path, `$HOME\`) {
+		path = strings.TrimPrefix(path, `$HOME\`)
+		if !strings.HasSuffix(strings.ToLower(path), ".exe") {
+			path += ".exe"
+		}
+		return "Join-Path $HOME " + shellutil.HardQuotePowerShell(path)
+	}
+	if !strings.HasSuffix(strings.ToLower(path), ".exe") {
+		path += ".exe"
+	}
+	return shellutil.HardQuotePowerShell(path)
+}
+
+func makeWindowsConnServerCmd(wshPath string, connName string, devFlag string, routerFlag string) string {
+	script := fmt.Sprintf(
+		WindowsConnServerPowerShellTemplate,
+		makeWindowsWshPathExpr(wshPath),
+		shellutil.HardQuotePowerShell(connName),
+		devFlag,
+		routerFlag,
+	)
+	return shellutil.MakePowerShellEncodedCommand(script)
+}
+
+func makeWindowsConnServerProbeCmd(wshPath string) string {
+	script := strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`$ProgressPreference = "SilentlyContinue"`,
+		`function Write-Diag([string]$Message) { [Console]::Error.WriteLine("[snorkeling-wsh-probe] " + $Message) }`,
+		`Write-Diag "probe started"`,
+		`$WshPath = ` + makeWindowsWshPathExpr(wshPath),
+		`Write-Diag ("WshPath=" + $WshPath)`,
+		`$WshExists = Test-Path -LiteralPath $WshPath`,
+		`Write-Diag ("WshExists=" + $WshExists)`,
+		`if (!$WshExists) { Write-Output "probe-missing"; exit 0 }`,
+		`Write-Diag "running wsh version"`,
+		`& $WshPath version`,
+		`Write-Diag ("wsh version exit=" + $LASTEXITCODE)`,
+		`Write-Output "probe-ok"`,
+	}, "\n")
+	return shellutil.MakePowerShellEncodedCommand(script)
+}
+
+func runConnServerProbe(ctx context.Context, client *ssh.Client, cmd string) (string, string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", "", err
+	}
+	defer session.Close()
+	stdoutBuf := &strings.Builder{}
+	stderrBuf := &strings.Builder{}
+	session.Stdout = stdoutBuf
+	session.Stderr = stderrBuf
+	err = runSessionWithContext(ctx, session, cmd)
+	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+func isWindowsProbeSuccess(stdout string, stderr string) bool {
+	return strings.Contains(stdout, "probe-ok") || strings.Contains(stdout, "probe-missing")
+}
+
+func probeWindowsConnServerStart(ctx context.Context, client *ssh.Client, wshPath string) (string, error) {
+	probeCtx, cancelFn := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelFn()
+	stdout, stderr, err := runConnServerProbe(probeCtx, client, makeWindowsConnServerProbeCmd(wshPath))
+	stdout = strings.TrimSpace(stdout)
+	stderr = strings.TrimSpace(stderr)
+	if err != nil {
+		return "", fmt.Errorf("windows connserver probe failed: %w (stdout: %s; stderr: %s)", err, stdout, stderr)
+	}
+	if !isWindowsProbeSuccess(stdout, stderr) {
+		return "", fmt.Errorf("windows connserver probe did not finish (stdout: %s; stderr: %s)", stdout, stderr)
+	}
+	return fmt.Sprintf("stdout: %s; stderr: %s", stdout, stderr), nil
+}
+
+func makePosixConnServerCmd(wshPath string, connName string, devFlag string, routerFlag string) string {
+	wshExePath := wshPath
+	if !strings.HasSuffix(strings.ToLower(wshExePath), ".exe") {
+		wshExePath += ".exe"
+	}
+	cmdStr := fmt.Sprintf(
+		ConnServerCmdTemplate,
+		shellutil.SoftQuote(wshPath),
+		shellutil.SoftQuote(wshExePath),
+		shellutil.SoftQuote(wshExePath),
+		shellutil.SoftQuote(wshExePath),
+		shellutil.SoftQuote(wshExePath),
+		shellutil.HardQuote(connName),
+		devFlag,
+		routerFlag,
+	)
+	return fmt.Sprintf("sh -c %s", shellutil.HardQuote(cmdStr))
+}
+
+func isWshVersionStatusLine(line string) bool {
+	line = strings.TrimSpace(line)
+	return strings.HasPrefix(line, "wsh ") || strings.HasPrefix(line, "not-installed")
+}
+
+func readMatchingLineWithTimeout(ctx context.Context, linesChan chan utilfn.LineOutput, timeout time.Duration, matches func(string) bool, recentStdout *recentLinesBuffer, recentStderr *recentLinesBuffer) (string, error) {
+	timeout = utilfn.TimeoutFromContext(ctx, timeout)
+	if timeout <= 0 {
+		return "", makeReadWshVersionTimeoutError(recentStdout, recentStderr)
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return "", makeReadWshVersionTimeoutError(recentStdout, recentStderr)
+		}
+		select {
+		case output, ok := <-linesChan:
+			if !ok {
+				return "", io.EOF
+			}
+			if output.Error != nil {
+				return "", output.Error
+			}
+			if recentStdout != nil {
+				recentStdout.Add(output.Line)
+			}
+			if matches(output.Line) {
+				return output.Line, nil
+			}
+		case <-time.After(remaining):
+			return "", makeReadWshVersionTimeoutError(recentStdout, recentStderr)
+		}
+	}
+}
+
+func makeReadWshVersionTimeoutError(recentStdout *recentLinesBuffer, recentStderr *recentLinesBuffer) error {
+	stdoutStr := "<none>"
+	if recentStdout != nil {
+		stdoutStr = recentStdout.String()
+	}
+	stderrStr := "<none>"
+	if recentStderr != nil {
+		stderrStr = recentStderr.String()
+	}
+	return fmt.Errorf("context deadline exceeded (recent stdout:\n%s\nrecent stderr:\n%s)", stdoutStr, stderrStr)
+}
+
+func readWshVersionLine(ctx context.Context, linesChan chan utilfn.LineOutput, recentStdout *recentLinesBuffer, recentStderr *recentLinesBuffer) (string, error) {
+	return readMatchingLineWithTimeout(ctx, linesChan, 30*time.Second, isWshVersionStatusLine, recentStdout, recentStderr)
+}
+
+func readJwtStatusLine(ctx context.Context, linesChan chan utilfn.LineOutput, recentStdout *recentLinesBuffer, recentStderr *recentLinesBuffer) (string, error) {
+	return readMatchingLineWithTimeout(ctx, linesChan, 3*time.Second, func(line string) bool {
+		line = strings.TrimSpace(line)
+		return line == wavebase.NeedJwtConst || line == "HAVE-JWT"
+	}, recentStdout, recentStderr)
+}
+
+func makeConnServerStartDiag(connServerMode string, startConnServerMode string, isWindowsRemote bool, windowsDetectDiag string, wshPath string, routerFlag string, commandKind string) string {
+	return fmt.Sprintf("requestedMode=%s startMode=%s windows=%v windowsDetect=%q wshPath=%s routerFlag=%s commandKind=%s",
+		connServerMode, startConnServerMode, isWindowsRemote, windowsDetectDiag, wshPath, routerFlag, commandKind)
+}
+
+func wrapConnServerStartError(err error, diag string) error {
+	if diag == "" {
+		return err
+	}
+	return fmt.Errorf("%w (connserver start diag: %s)", err, diag)
+}
+
 // returns (needsInstall, clientVersion, osArchStr, error)
 // if wsh is not installed, the clientVersion will be "not-installed", and it will also return an osArchStr
 // if clientVersion is set, then no osArchStr will be returned
-// if useRouterMode is true, will start connserver with --router-domainsocket flag
-func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useRouterMode bool) (bool, string, string, error) {
-	conn.Infof(ctx, "running StartConnServer (routerMode=%v)...\n", useRouterMode)
+// if connServerMode is ConnServerMode_DomainSocketRouter, starts connserver with --router-domainsocket.
+// if connServerMode is ConnServerMode_StdioRouter, starts connserver with --router.
+func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, connServerMode string) (bool, string, string, error) {
+	conn.Infof(ctx, "running StartConnServer (mode=%s)...\n", connServerMode)
 	allowed := WithLockRtn(conn, func() bool {
 		return conn.Status == Status_Connecting
 	})
@@ -470,34 +782,48 @@ func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useR
 		return false, "", "", fmt.Errorf("cannot start conn server for %q when status is %q", conn.GetName(), conn.GetStatus())
 	}
 	client := conn.GetClient()
+	if client == nil {
+		return false, "", "", fmt.Errorf("ssh client is not connected")
+	}
 	wshPath := conn.getWshPath()
 	sockName := conn.GetDomainSocketName()
+	startConnServerMode := connServerMode
+	isWindowsRemote, windowsDetectDiag := detectWindowsRemoteWithDiagnostics(ctx, client)
+	conn.Infof(ctx, "windows remote detect: isWindows=%v diag=%s\n", isWindowsRemote, windowsDetectDiag)
+	if isWindowsRemote && startConnServerMode == ConnServerMode_DomainSocketRouter {
+		startConnServerMode = ConnServerMode_StdioRouter
+	}
 	var rpcCtx wshrpc.RpcContext
-	if useRouterMode {
+	var jwtToken string
+	switch startConnServerMode {
+	case ConnServerMode_DomainSocketRouter:
 		rpcCtx = wshrpc.RpcContext{
 			IsRouter: true,
 			SockName: sockName,
 			Conn:     conn.GetName(),
 		}
-	} else {
-		rpcCtx = wshrpc.RpcContext{
-			RouteId:  wshutil.MakeConnectionRouteId(conn.GetName()),
-			SockName: sockName,
-			Conn:     conn.GetName(),
+		var err error
+		jwtToken, err = wshutil.MakeClientJWTToken(rpcCtx)
+		if err != nil {
+			return false, "", "", fmt.Errorf("unable to create jwt token for conn controller: %w", err)
 		}
-	}
-	jwtToken, err := wshutil.MakeClientJWTToken(rpcCtx)
-	if err != nil {
-		return false, "", "", fmt.Errorf("unable to create jwt token for conn controller: %w", err)
+	case ConnServerMode_StdioRouter:
+		rpcCtx = wshrpc.RpcContext{
+			RouteId: wshutil.MakeConnectionRouteId(conn.GetName()),
+			Conn:    conn.GetName(),
+		}
+	default:
+		return false, "", "", fmt.Errorf("unsupported connserver mode: %s", connServerMode)
 	}
 	conn.Infof(ctx, "SSH-NEWSESSION (StartConnServer)\n")
 	sshSession, err := client.NewSession()
 	if err != nil {
 		return false, "", "", fmt.Errorf("unable to create ssh session for conn controller: %w", err)
 	}
-	pipeRead, pipeWrite := io.Pipe()
-	sshSession.Stdout = pipeWrite
-	sshSession.Stderr = pipeWrite
+	stdoutRead, stdoutWrite := io.Pipe()
+	stderrRead, stderrWrite := io.Pipe()
+	sshSession.Stdout = stdoutWrite
+	sshSession.Stderr = stderrWrite
 	stdinPipe, err := sshSession.StdinPipe()
 	if err != nil {
 		return false, "", "", fmt.Errorf("unable to get stdin pipe: %w", err)
@@ -507,29 +833,64 @@ func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useR
 		devFlag = "--dev"
 	}
 	routerFlag := ""
-	if useRouterMode {
+	if startConnServerMode == ConnServerMode_DomainSocketRouter {
 		routerFlag = "--router-domainsocket"
+	} else if startConnServerMode == ConnServerMode_StdioRouter {
+		routerFlag = "--router"
 	}
-	cmdStr := fmt.Sprintf(ConnServerCmdTemplate, wshPath, wshPath, shellutil.HardQuote(conn.GetName()), devFlag, routerFlag)
-	log.Printf("starting conn controller: %q\n", cmdStr)
-	shWrappedCmdStr := fmt.Sprintf("sh -c %s", shellutil.HardQuote(cmdStr))
-	blocklogger.Debugf(ctx, "[conndebug] wrapped command:\n%s\n", shWrappedCmdStr)
-	err = sshSession.Start(shWrappedCmdStr)
+	commandKind := "posix-sh"
+	startCmd := makePosixConnServerCmd(wshPath, conn.GetName(), devFlag, routerFlag)
+	if isWindowsRemote {
+		commandKind = "windows-powershell"
+		startDiag := makeConnServerStartDiag(connServerMode, startConnServerMode, isWindowsRemote, windowsDetectDiag, wshPath, routerFlag, commandKind)
+		conn.Infof(ctx, "running windows connserver start probe\n")
+		probeDiag, err := probeWindowsConnServerStart(ctx, client, wshPath)
+		if err != nil {
+			return false, "", "", wrapConnServerStartError(err, startDiag)
+		}
+		conn.Infof(ctx, "windows connserver start probe succeeded: %s\n", probeDiag)
+		startCmd = makeWindowsConnServerCmd(wshPath, conn.GetName(), devFlag, routerFlag)
+	}
+	startDiag := makeConnServerStartDiag(connServerMode, startConnServerMode, isWindowsRemote, windowsDetectDiag, wshPath, routerFlag, commandKind)
+	log.Printf("starting conn controller: %q\n", startCmd)
+	blocklogger.Debugf(ctx, "[conndebug] wrapped command:\n%s\n", startCmd)
+	conn.Infof(ctx, "connserver start diagnostics: %s\n", startDiag)
+	err = sshSession.Start(startCmd)
 	if err != nil {
-		return false, "", "", fmt.Errorf("unable to start conn controller command: %w", err)
+		return false, "", "", wrapConnServerStartError(fmt.Errorf("unable to start conn controller command: %w", err), startDiag)
 	}
-	linesChan := utilfn.StreamToLinesChan(pipeRead)
-	versionLine, err := utilfn.ReadLineWithTimeout(linesChan, utilfn.TimeoutFromContext(ctx, 30*time.Second))
+	recentStdout := makeRecentLinesBuffer(20)
+	recentStderr := makeRecentLinesBuffer(20)
+	stderrLinesChan := utilfn.StreamToLinesChan(stderrRead)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("conncontroller:sshSession-stderr", recover())
+		}()
+		for output := range stderrLinesChan {
+			if output.Error != nil {
+				log.Printf("[conncontroller:%s:stderr] error: %v\n", conn.GetName(), output.Error)
+				continue
+			}
+			line := output.Line
+			recentStderr.Add(line)
+			if !strings.HasSuffix(line, "\n") {
+				line += "\n"
+			}
+			log.Printf("[conncontroller:%s:stderr] %s", conn.GetName(), line)
+		}
+	}()
+	linesChan := utilfn.StreamToLinesChan(stdoutRead)
+	versionLine, err := readWshVersionLine(ctx, linesChan, recentStdout, recentStderr)
 	if err != nil {
 		sshSession.Close()
-		return false, "", "", fmt.Errorf("error reading wsh version: %w", err)
+		return false, "", "", wrapConnServerStartError(fmt.Errorf("error reading wsh version: %w", err), startDiag)
 	}
 	conn.Infof(ctx, "actual connnserverversion: %q\n", versionLine)
 	conn.Infof(ctx, "got connserver version: %s\n", strings.TrimSpace(versionLine))
 	isUpToDate, clientVersion, osArchStr, err := IsWshVersionUpToDate(ctx, versionLine)
 	if err != nil {
 		sshSession.Close()
-		return false, "", "", fmt.Errorf("error checking wsh version: %w", err)
+		return false, "", "", wrapConnServerStartError(fmt.Errorf("error checking wsh version: %w", err), startDiag)
 	}
 	if isUpToDate && !afterUpdate && os.Getenv(wavebase.WaveWshForceUpdateVarName) != "" {
 		isUpToDate = false
@@ -540,19 +901,21 @@ func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useR
 		sshSession.Close()
 		return true, clientVersion, osArchStr, nil
 	}
-	jwtLine, err := utilfn.ReadLineWithTimeout(linesChan, 3*time.Second)
-	if err != nil {
-		sshSession.Close()
-		return false, clientVersion, "", fmt.Errorf("error reading jwt status line: %w", err)
-	}
-	conn.Infof(ctx, "got jwt status line: %s\n", jwtLine)
-	if strings.TrimSpace(jwtLine) == wavebase.NeedJwtConst {
-		// write the jwt
-		conn.Infof(ctx, "writing jwt token to connserver\n")
-		_, err = fmt.Fprintf(stdinPipe, "%s\n", jwtToken)
+	if startConnServerMode == ConnServerMode_DomainSocketRouter {
+		jwtLine, err := readJwtStatusLine(ctx, linesChan, recentStdout, recentStderr)
 		if err != nil {
 			sshSession.Close()
-			return false, clientVersion, "", fmt.Errorf("failed to write JWT token: %w", err)
+			return false, clientVersion, "", wrapConnServerStartError(fmt.Errorf("error reading jwt status line: %w", err), startDiag)
+		}
+		conn.Infof(ctx, "got jwt status line: %s\n", jwtLine)
+		if strings.TrimSpace(jwtLine) == wavebase.NeedJwtConst {
+			// write the jwt
+			conn.Infof(ctx, "writing jwt token to connserver\n")
+			_, err = fmt.Fprintf(stdinPipe, "%s\n", jwtToken)
+			if err != nil {
+				sshSession.Close()
+				return false, clientVersion, "", wrapConnServerStartError(fmt.Errorf("failed to write JWT token: %w", err), startDiag)
+			}
 		}
 	}
 	conn.WithLock(func() {
@@ -578,33 +941,42 @@ func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useR
 		waitErr = sshSession.Wait()
 		log.Printf("conn controller (%q) terminated: %v", conn.GetName(), waitErr)
 	}()
-	go func() {
-		defer func() {
-			panichandler.PanicHandler("conncontroller:sshSession-output", recover())
+	if startConnServerMode == ConnServerMode_StdioRouter {
+		go func() {
+			defer func() {
+				panichandler.PanicHandler("conncontroller:StartConnServer:handleStdIOClient", recover())
+			}()
+			wshutil.HandleStdIOClient(fmt.Sprintf("sshconn:%s", conn.GetName()), linesChan, stdinPipe)
 		}()
-		for output := range linesChan {
-			if output.Error != nil {
-				log.Printf("[conncontroller:%s:output] error: %v\n", conn.GetName(), output.Error)
-				continue
+	} else {
+		go func() {
+			defer func() {
+				panichandler.PanicHandler("conncontroller:sshSession-output", recover())
+			}()
+			for output := range linesChan {
+				if output.Error != nil {
+					log.Printf("[conncontroller:%s:output] error: %v\n", conn.GetName(), output.Error)
+					continue
+				}
+				monitor := conn.GetMonitor()
+				if monitor != nil {
+					monitor.UpdateLastActivityTime()
+				}
+				line := output.Line
+				if !strings.HasSuffix(line, "\n") {
+					line += "\n"
+				}
+				log.Printf("[conncontroller:%s:output] %s", conn.GetName(), line)
 			}
-			monitor := conn.GetMonitor()
-			if monitor != nil {
-				monitor.UpdateLastActivityTime()
-			}
-			line := output.Line
-			if !strings.HasSuffix(line, "\n") {
-				line += "\n"
-			}
-			log.Printf("[conncontroller:%s:output] %s", conn.GetName(), line)
-		}
-	}()
+		}()
+	}
 	conn.Infof(ctx, "connserver started, waiting for route to be registered\n")
 	regCtx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelFn()
 	connRoute := wshutil.MakeConnectionRouteId(rpcCtx.Conn)
 	err = wshutil.DefaultRouter.WaitForRegister(regCtx, connRoute)
 	if err != nil {
-		return false, clientVersion, "", fmt.Errorf("timeout waiting for connserver to register")
+		return false, clientVersion, "", wrapConnServerStartError(fmt.Errorf("timeout waiting for connserver to register"), startDiag)
 	}
 	time.Sleep(300 * time.Millisecond) // TODO remove this sleep (but we need to wait until connserver is "ready")
 	err = wshclient.ConnServerInitCommand(
@@ -613,7 +985,7 @@ func (conn *SSHConn) StartConnServer(ctx context.Context, afterUpdate bool, useR
 		&wshrpc.RpcOpts{Route: connRoute},
 	)
 	if err != nil {
-		return false, clientVersion, "", fmt.Errorf("connserver init failed: %w", err)
+		return false, clientVersion, "", wrapConnServerStartError(fmt.Errorf("connserver init failed: %w", err), startDiag)
 	}
 	conn.Infof(ctx, "connserver is registered and ready\n")
 	return false, clientVersion, "", nil
@@ -931,6 +1303,9 @@ func diagnoseWshInstallError(err error) string {
 	if strings.Contains(errStr, "cannot open local file") {
 		return "Could not find the matching local wsh binary for this remote platform."
 	}
+	if strings.Contains(errStr, "final wsh binary missing") || strings.Contains(errStr, "installed wsh version check failed") {
+		return "Remote wsh binary was not found after install. Check the install diagnostics for ~/.snorkeling/bin and ~/.snorkeling/tmp."
+	}
 	if strings.Contains(errStr, "no such file") || strings.Contains(errStr, "not found") {
 		return "Remote temp file was missing or the upload was interrupted. Retry the install."
 	}
@@ -941,6 +1316,14 @@ func diagnoseWshInstallError(err error) string {
 		return "The remote platform or CPU architecture is not supported by the selected wsh binary."
 	}
 	return err.Error()
+}
+
+func isStreamlocalForwardDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "streamlocal-forward@openssh.com") && strings.Contains(errStr, "denied")
 }
 
 // returns (wsh-enabled, clientVersion, text-reason, wshError)
@@ -963,14 +1346,30 @@ func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string)
 			return WshCheckResult{NoWshReason: "user selected not to install wsh extensions", NoWshCode: NoWshCode_UserDeclined}
 		}
 	}
-	err := conn.OpenDomainSocketListener(ctx)
-	if err != nil {
-		conn.Infof(ctx, "ERROR opening domain socket listener: %v\n", err)
-		err = fmt.Errorf("error opening domain socket listener: %w", err)
-		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_DomainSocketError, true)
-		return WshCheckResult{NoWshReason: "error opening domain socket", NoWshCode: NoWshCode_DomainSocketError, WshError: err}
+	connServerMode := ConnServerMode_DomainSocketRouter
+	client := conn.GetClient()
+	if client != nil {
+		isWindowsRemote, windowsDetectDiag := detectWindowsRemoteWithDiagnostics(ctx, client)
+		conn.Infof(ctx, "windows remote detect before router setup: isWindows=%v diag=%s\n", isWindowsRemote, windowsDetectDiag)
+		if isWindowsRemote {
+			conn.Infof(ctx, "using stdio connserver router for windows remote\n")
+			connServerMode = ConnServerMode_StdioRouter
+		}
 	}
-	needsInstall, clientVersion, osArchStr, err := conn.StartConnServer(ctx, false, true)
+	if connServerMode == ConnServerMode_DomainSocketRouter {
+		err := conn.OpenDomainSocketListener(ctx)
+		if err != nil {
+			conn.Infof(ctx, "ERROR opening domain socket listener: %v\n", err)
+			if !isStreamlocalForwardDenied(err) {
+				err = fmt.Errorf("error opening domain socket listener: %w", err)
+				conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_DomainSocketError, true)
+				return WshCheckResult{NoWshReason: "error opening domain socket", NoWshCode: NoWshCode_DomainSocketError, WshError: err}
+			}
+			conn.Infof(ctx, "falling back to stdio connserver router\n")
+			connServerMode = ConnServerMode_StdioRouter
+		}
+	}
+	needsInstall, clientVersion, osArchStr, err := conn.StartConnServer(ctx, false, connServerMode)
 	if err != nil {
 		conn.Infof(ctx, "ERROR starting conn server: %v\n", err)
 		err = fmt.Errorf("error starting conn server: %w", err)
@@ -987,7 +1386,7 @@ func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string)
 			return WshCheckResult{NoWshReason: "error installing wsh/connserver", NoWshCode: NoWshCode_InstallError, WshError: err}
 		}
 		conn.updateWshInstallState(WshInstallStatus_RestartingServer, "Restarting remote connserver", "", true)
-		needsInstall, clientVersion, _, err = conn.StartConnServer(ctx, true, true)
+		needsInstall, clientVersion, _, err = conn.StartConnServer(ctx, true, connServerMode)
 		if err != nil {
 			conn.Infof(ctx, "ERROR starting conn server (after install): %v\n", err)
 			err = fmt.Errorf("error starting conn server (after install): %w", err)

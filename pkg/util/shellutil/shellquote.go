@@ -4,8 +4,10 @@
 package shellutil
 
 import (
+	"encoding/base64"
 	"log"
 	"regexp"
+	"unicode/utf16"
 )
 
 const (
@@ -106,6 +108,19 @@ func HardQuotePowerShell(s string) string {
 
 	buf = append(buf, '"')
 	return string(buf)
+}
+
+func MakePowerShellEncodedCommand(script string) string {
+	return "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + EncodePowerShellCommand(script)
+}
+
+func EncodePowerShellCommand(script string) string {
+	utf16Words := utf16.Encode([]rune(script))
+	buf := make([]byte, 0, len(utf16Words)*2)
+	for _, word := range utf16Words {
+		buf = append(buf, byte(word), byte(word>>8))
+	}
+	return base64.StdEncoding.EncodeToString(buf)
 }
 
 func SoftQuote(s string) string {

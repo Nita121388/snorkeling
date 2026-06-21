@@ -185,26 +185,53 @@ func tryTcpSocket(sockName string) (net.Conn, error) {
 	return net.DialTCP("tcp", nil, addr)
 }
 
+func readSocketAddressFile(sockName string) string {
+	data, err := os.ReadFile(sockName)
+	if err != nil {
+		return ""
+	}
+	addr := strings.TrimSpace(string(data))
+	if addr == "" || !strings.Contains(addr, ":") {
+		return ""
+	}
+	return addr
+}
+
+func setupTcpRpcClient(conn net.Conn, serverImpl ServerImpl, debugName string) (*WshRpc, error) {
+	rtn, errCh, err := SetupConnRpcClient(conn, serverImpl, debugName)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("SetupDomainSocketRpcClient:closeConn", recover())
+		}()
+		defer conn.Close()
+		err := <-errCh
+		if err != nil && err != io.EOF {
+			log.Printf("error in domain socket connection: %v\n", err)
+		}
+	}()
+	return rtn, err
+}
+
 func SetupDomainSocketRpcClient(sockName string, serverImpl ServerImpl, debugName string) (*WshRpc, error) {
 	sockName = wavebase.ExpandHomeDirSafe(sockName)
 	conn, tcpErr := tryTcpSocket(sockName)
 	if tcpErr == nil {
-		rtn, errCh, err := SetupConnRpcClient(conn, serverImpl, debugName)
-		go func() {
-			defer func() {
-				panichandler.PanicHandler("SetupDomainSocketRpcClient:closeConn", recover())
-			}()
-			defer conn.Close()
-			err := <-errCh
-			if err != nil && err != io.EOF {
-				log.Printf("error in domain socket connection: %v\n", err)
-			}
-		}()
-		return rtn, err
+		return setupTcpRpcClient(conn, serverImpl, debugName)
 	}
 	resolvedPath, err := filepath.EvalSymlinks(sockName)
 	if err == nil {
 		sockName = resolvedPath
+	}
+	socketAddr := readSocketAddressFile(sockName)
+	if socketAddr != "" {
+		conn, addrTcpErr := tryTcpSocket(socketAddr)
+		if addrTcpErr == nil {
+			return setupTcpRpcClient(conn, serverImpl, debugName)
+		}
+		tcpErr = addrTcpErr
 	}
 	if !filepath.IsAbs(sockName) {
 		return nil, fmt.Errorf("socket path must be absolute: %s", sockName)
@@ -402,6 +429,9 @@ func ExtractUnverifiedSocketName(tokenStr string) (string, error) {
 func getShell() string {
 	if runtime.GOOS == "darwin" {
 		return shellutil.GetMacUserShell()
+	}
+	if runtime.GOOS == "windows" {
+		return shellutil.DetectLocalShellPath()
 	}
 	shell := os.Getenv("SHELL")
 	if shell == "" {

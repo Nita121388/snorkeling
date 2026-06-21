@@ -19,8 +19,6 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
-const manualRemoteWshPath = "$HOME/.snorkeling/bin/wsh"
-
 func (ws *WshServer) ConnPrepareManualWshInstallCommand(ctx context.Context, data wshrpc.ConnExtData) (wshrpc.CommandManualWshInstallData, error) {
 	connName := data.ConnName
 	if conncontroller.IsLocalConnName(connName) {
@@ -56,16 +54,17 @@ func (ws *WshServer) ConnPrepareManualWshInstallCommand(ctx context.Context, dat
 	if err != nil {
 		return wshrpc.CommandManualWshInstallData{}, fmt.Errorf("error generating remote temp path: %w", err)
 	}
-	remoteTempPath := fmt.Sprintf("/tmp/snorkeling-wsh-%s-%s.%s-%s.tmp", wavebase.WaveVersion, clientOs, clientArch, randHex)
+	remoteTempPath := makeManualRemoteTempPath(clientOs, clientArch, randHex)
+	remoteWshPath := makeManualRemoteWshPath(clientOs)
 	remoteSshTarget := manualSshTarget(connOpts)
-	cmd := buildManualWshInstallCommand(runtime.GOOS, connName, localWshPath, remoteSshTarget, connOpts.SSHPort, remoteTempPath)
+	cmd := buildManualWshInstallCommand(runtime.GOOS, clientOs, connName, localWshPath, remoteSshTarget, connOpts.SSHPort, remoteTempPath, remoteWshPath)
 	return wshrpc.CommandManualWshInstallData{
 		ConnName:        connName,
 		ClientOs:        clientOs,
 		ClientArch:      clientArch,
 		LocalWshPath:    localWshPath,
 		RemoteTempPath:  remoteTempPath,
-		RemoteWshPath:   manualRemoteWshPath,
+		RemoteWshPath:   remoteWshPath,
 		RemoteSshTarget: remoteSshTarget,
 		Cmd:             cmd,
 	}, nil
@@ -78,18 +77,61 @@ func manualSshTarget(opts *remote.SSHOpts) string {
 	return opts.SSHUser + "@" + opts.SSHHost
 }
 
-func buildManualWshInstallCommand(localGoos string, connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string) string {
-	remoteInstallCmd := fmt.Sprintf(
-		"mkdir -p \"$HOME/.snorkeling/bin\"; mv %s \"$HOME/.snorkeling/bin/wsh\"; chmod a+x \"$HOME/.snorkeling/bin/wsh\"; \"$HOME/.snorkeling/bin/wsh\" version",
-		shellutil.HardQuote(remoteTempPath),
-	)
+func makeManualRemoteTempPath(clientOs string, clientArch string, randHex string) string {
+	name := fmt.Sprintf("snorkeling-wsh-%s-%s.%s-%s.tmp", wavebase.WaveVersion, clientOs, clientArch, randHex)
+	if clientOs == "windows" {
+		return ".snorkeling/tmp/" + name
+	}
+	return "/tmp/" + name
+}
+
+func makeManualRemoteWshPath(clientOs string) string {
+	if clientOs == "windows" {
+		return "$HOME/.snorkeling/bin/wsh.exe"
+	}
+	return "$HOME/.snorkeling/bin/wsh"
+}
+
+func buildManualWshInstallCommand(localGoos string, clientOs string, connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remoteWshPath string) string {
+	remotePrepareCmd, remoteInstallCmd := buildManualRemoteInstallCommands(clientOs, remoteTempPath, remoteWshPath)
 	if localGoos == "windows" {
-		return buildManualWshInstallPowerShellCommand(connName, localWshPath, remoteSshTarget, sshPort, remoteTempPath, remoteInstallCmd)
+		return buildManualWshInstallPowerShellCommand(connName, localWshPath, remoteSshTarget, sshPort, remoteTempPath, remotePrepareCmd, remoteInstallCmd)
 	}
 	return buildManualWshInstallPosixCommand(connName, localWshPath, remoteSshTarget, sshPort, remoteTempPath, remoteInstallCmd)
 }
 
-func buildManualWshInstallPowerShellCommand(connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remoteInstallCmd string) string {
+func buildManualRemoteInstallCommands(clientOs string, remoteTempPath string, remoteWshPath string) (string, string) {
+	if clientOs == "windows" {
+		remotePrepareScript := strings.Join([]string{
+			`$ErrorActionPreference = "Stop"`,
+			`New-Item -ItemType Directory -Force "$HOME\.snorkeling\tmp", "$HOME\.snorkeling\bin" | Out-Null`,
+		}, "; ")
+		remoteInstallScript := strings.Join([]string{
+			`$ErrorActionPreference = "Stop"`,
+			`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(strings.ReplaceAll(remoteTempPath, "/", `\`)),
+			`$WshPath = Join-Path $HOME ".snorkeling\bin\wsh.exe"`,
+			`Move-Item -Force $TempPath $WshPath`,
+			`& $WshPath version`,
+		}, "; ")
+		return makeRemotePowerShellCommand(remotePrepareScript), makeRemotePowerShellCommand(remoteInstallScript)
+	}
+	remotePrepareCmd := `mkdir -p "$HOME/.snorkeling/bin"`
+	remoteInstallCmd := fmt.Sprintf(
+		"%s; mv %s %s; chmod a+x %s; %s version",
+		remotePrepareCmd,
+		shellutil.HardQuote(remoteTempPath),
+		shellutil.HardQuote(remoteWshPath),
+		shellutil.HardQuote(remoteWshPath),
+		shellutil.HardQuote(remoteWshPath),
+	)
+	return remotePrepareCmd, remoteInstallCmd
+}
+
+func makeRemotePowerShellCommand(script string) string {
+	return shellutil.MakePowerShellEncodedCommand(script)
+}
+
+func buildManualWshInstallPowerShellCommand(connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remotePrepareCmd string, remoteInstallCmd string) string {
 	var sb strings.Builder
 	sb.WriteString("$ErrorActionPreference = \"Stop\"\n")
 	sb.WriteString("$LocalWsh = " + shellutil.HardQuotePowerShell(localWshPath) + "\n")
@@ -109,6 +151,11 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 	sb.WriteString("Write-Host \"Local wsh: $LocalWsh\"\n")
 	sb.WriteString("Write-Host \"Remote: $Remote\"\n")
 	sb.WriteString("Write-Host \"Remote temp: $RemoteTemp\"\n")
+	sb.WriteString("Write-Host \"\"\n")
+	sb.WriteString("Write-Host \"==> Preparing remote directories\" -ForegroundColor Cyan\n")
+	sb.WriteString("$RemotePrepareCmd = " + shellutil.HardQuotePowerShell(remotePrepareCmd) + "\n")
+	sb.WriteString("& ssh @SshArgs $Remote $RemotePrepareCmd\n")
+	sb.WriteString("if ($LASTEXITCODE -ne 0) { throw \"remote prepare failed with exit code $LASTEXITCODE\" }\n")
 	sb.WriteString("Write-Host \"\"\n")
 	sb.WriteString("Write-Host \"==> Uploading wsh binary with scp\" -ForegroundColor Cyan\n")
 	sb.WriteString("$RemoteScpTarget = \"${Remote}:$RemoteTemp\"\n")

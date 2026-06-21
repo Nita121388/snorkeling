@@ -71,6 +71,7 @@ const (
 	ShellType_zsh     = "zsh"
 	ShellType_fish    = "fish"
 	ShellType_pwsh    = "pwsh"
+	ShellType_cmd     = "cmd"
 	ShellType_unknown = "unknown"
 )
 
@@ -464,6 +465,10 @@ func initCustomShellStartupFilesInternal() error {
 
 func GetShellTypeFromShellPath(shellPath string) string {
 	shellBase := filepath.Base(shellPath)
+	if strings.Contains(shellBase, `\`) {
+		shellBase = filepath.Base(strings.ReplaceAll(shellBase, `\`, `/`))
+	}
+	shellBase = strings.ToLower(shellBase)
 	if strings.Contains(shellBase, "bash") {
 		return ShellType_bash
 	}
@@ -475,6 +480,9 @@ func GetShellTypeFromShellPath(shellPath string) string {
 	}
 	if strings.Contains(shellBase, "pwsh") || strings.Contains(shellBase, "powershell") {
 		return ShellType_pwsh
+	}
+	if strings.EqualFold(shellBase, "cmd") || strings.EqualFold(shellBase, "cmd.exe") {
+		return ShellType_cmd
 	}
 	return ShellType_unknown
 }

@@ -108,3 +108,11 @@ func TestQuote(t *testing.T) {
 		})
 	}
 }
+
+func TestGetShellTypeFromShellPathDetectsCmd(t *testing.T) {
+	for _, shellPath := range []string{"cmd", "cmd.exe", `C:\Windows\System32\cmd.exe`, `C:\Windows\System32\CMD.EXE`} {
+		if got := GetShellTypeFromShellPath(shellPath); got != ShellType_cmd {
+			t.Fatalf("expected cmd shell type for %q, got %q", shellPath, got)
+		}
+	}
+}

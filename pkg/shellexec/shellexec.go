@@ -80,9 +80,9 @@ func commandEnv(cmdOpts CommandOptsType) map[string]string {
 	return env
 }
 
-func shellEnvPrefix(env map[string]string) string {
+func sortedValidEnvKeys(env map[string]string) []string {
 	if len(env) == 0 {
-		return ""
+		return nil
 	}
 	keys := make([]string, 0, len(env))
 	for key := range env {
@@ -91,11 +91,69 @@ func shellEnvPrefix(env map[string]string) string {
 		}
 	}
 	sort.Strings(keys)
+	return keys
+}
+
+func shellEnvPrefix(env map[string]string) string {
+	keys := sortedValidEnvKeys(env)
+	if len(keys) == 0 {
+		return ""
+	}
 	var parts []string
 	for _, key := range keys {
 		parts = append(parts, fmt.Sprintf("%s=%s", key, shellutil.HardQuote(env[key])))
 	}
 	return strings.Join(parts, " ")
+}
+
+func addValidEnvVar(env map[string]string, key string, value string) map[string]string {
+	if value == "" || !shellutil.IsValidEnvVarName(key) {
+		return env
+	}
+	if env == nil {
+		env = make(map[string]string)
+	}
+	env[key] = value
+	return env
+}
+
+func remoteCommandInvocation(shellPath string, shellOpts []string) string {
+	if len(shellOpts) == 0 {
+		return shellPath
+	}
+	return fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
+}
+
+func remoteShellIntegrationPath(clientOs string, homeDir string, integrationDir string, fileName string) string {
+	path := fmt.Sprintf("%s/.snorkeling/%s/%s", strings.TrimRight(homeDir, `/\`), integrationDir, fileName)
+	if clientOs == "windows" {
+		return strings.ReplaceAll(path, "/", `\`)
+	}
+	return path
+}
+
+func makeWindowsRemotePowerShellCommand(shellPath string, shellOpts []string, env map[string]string, cwd string) string {
+	var sb strings.Builder
+	sb.WriteString("$ErrorActionPreference = \"Stop\"\n")
+	sb.WriteString("$ProgressPreference = \"SilentlyContinue\"\n")
+	for _, key := range sortedValidEnvKeys(env) {
+		sb.WriteString(fmt.Sprintf("$env:%s = %s\n", key, shellutil.HardQuotePowerShell(env[key])))
+	}
+	if strings.TrimSpace(cwd) != "" {
+		sb.WriteString("Set-Location -LiteralPath " + shellutil.HardQuotePowerShell(cwd) + "\n")
+	}
+	sb.WriteString("$ShellPath = " + shellutil.HardQuotePowerShell(shellPath) + "\n")
+	sb.WriteString("$ShellArgs = @(")
+	for idx, opt := range shellOpts {
+		if idx > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(shellutil.HardQuotePowerShell(opt))
+	}
+	sb.WriteString(")\n")
+	sb.WriteString("& $ShellPath @ShellArgs\n")
+	sb.WriteString("exit $LASTEXITCODE\n")
+	return shellutil.MakePowerShellEncodedCommand(sb.String())
 }
 
 type ShellProc struct {
@@ -154,6 +212,94 @@ func shellInvocationCommand(shellPath string, shellOpts []string) string {
 		parts = append(parts, shellutil.HardQuote(opt))
 	}
 	return strings.Join(parts, " ")
+}
+
+func makePosixRemoteShellCommand(remoteInfo wshrpc.RemoteInfo, shellPath string, shellType string, cmdStr string, cmdOpts CommandOptsType, packedToken string) string {
+	shellOpts := append([]string{}, cmdOpts.ShellOpts...)
+	cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
+	if cmdToRun == "" {
+		if shellType == shellutil.ShellType_bash {
+			bashPath := remoteShellIntegrationPath(remoteInfo.ClientOs, remoteInfo.HomeDir, shellutil.BashIntegrationDir, ".bashrc")
+			shellOpts = append(shellOpts, "--rcfile", bashPath)
+		} else if shellType == shellutil.ShellType_fish {
+			if cmdOpts.Login {
+				shellOpts = append(shellOpts, "-l")
+			}
+			waveFishPath := remoteShellIntegrationPath(remoteInfo.ClientOs, remoteInfo.HomeDir, shellutil.FishIntegrationDir, "wave.fish")
+			carg := fmt.Sprintf(`"source %s"`, waveFishPath)
+			shellOpts = append(shellOpts, "-C", carg)
+		} else if shellType == shellutil.ShellType_pwsh {
+			pwshPath := remoteShellIntegrationPath(remoteInfo.ClientOs, remoteInfo.HomeDir, shellutil.PwshIntegrationDir, "wavepwsh.ps1")
+			shellPath = "& " + shellPath
+			shellOpts = append(shellOpts, "-ExecutionPolicy", "Bypass", "-NoExit", "-File", pwshPath)
+		} else {
+			if cmdOpts.Login {
+				shellOpts = append(shellOpts, "-l")
+			}
+			if cmdOpts.Interactive {
+				shellOpts = append(shellOpts, "-i")
+			}
+		}
+	} else {
+		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
+	}
+
+	cmdCombined := remoteCommandInvocation(shellPath, shellOpts)
+	if shellType == shellutil.ShellType_zsh {
+		zshDir := fmt.Sprintf("~/.snorkeling/%s", shellutil.ZshIntegrationDir)
+		cmdCombined = fmt.Sprintf(`ZDOTDIR=%s %s`, zshDir, cmdCombined)
+	}
+	cmdCombined = applyEnvPrefixToPosixRemoteCommand(cmdCombined, cmdOpts, cmdToRun != "", packedToken)
+	if cmdToRun == "" {
+		cmdCombined = applyCwdToInteractiveShellCommand(cmdCombined, cmdOpts)
+	}
+	return cmdCombined
+}
+
+func applyEnvPrefixToPosixRemoteCommand(cmdCombined string, cmdOpts CommandOptsType, commandMode bool, packedToken string) string {
+	envToPrefix := forcedWaveEnv(cmdOpts)
+	if commandMode {
+		envToPrefix = commandEnv(cmdOpts)
+	}
+	envToPrefix = addValidEnvVar(envToPrefix, wavebase.WaveSwapTokenVarName, packedToken)
+	if envPrefix := shellEnvPrefix(envToPrefix); envPrefix != "" {
+		return fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
+	}
+	return cmdCombined
+}
+
+func makeWindowsRemoteShellCommand(remoteInfo wshrpc.RemoteInfo, shellPath string, shellType string, cmdStr string, cmdOpts CommandOptsType, packedToken string) string {
+	shellOpts := append([]string{}, cmdOpts.ShellOpts...)
+	commandMode := strings.TrimSpace(cmdStr) != ""
+	envToSet := forcedWaveEnv(cmdOpts)
+	if commandMode {
+		envToSet = commandEnv(cmdOpts)
+	}
+	envToSet = addValidEnvVar(envToSet, wavebase.WaveSwapTokenVarName, packedToken)
+
+	if commandMode {
+		if shellType == shellutil.ShellType_pwsh {
+			shellOpts = append(shellOpts, "-Command", cmdStr)
+		} else if shellType == shellutil.ShellType_cmd {
+			shellOpts = append(shellOpts, "/d", "/q", "/c", cmdStr)
+		} else {
+			shellOpts = append(shellOpts, "-c", cmdStr)
+		}
+		return makeWindowsRemotePowerShellCommand(shellPath, shellOpts, envToSet, cmdOpts.Cwd)
+	}
+
+	if shellType == shellutil.ShellType_pwsh {
+		pwshPath := remoteShellIntegrationPath(remoteInfo.ClientOs, remoteInfo.HomeDir, shellutil.PwshIntegrationDir, "wavepwsh.ps1")
+		shellOpts = append(shellOpts, "-ExecutionPolicy", "Bypass", "-NoExit", "-File", pwshPath)
+	}
+	return makeWindowsRemotePowerShellCommand(shellPath, shellOpts, envToSet, cmdOpts.Cwd)
+}
+
+func makeRemoteShellCommand(remoteInfo wshrpc.RemoteInfo, shellPath string, shellType string, cmdStr string, cmdOpts CommandOptsType, packedToken string) string {
+	if remoteInfo.ClientOs == "windows" {
+		return makeWindowsRemoteShellCommand(remoteInfo, shellPath, shellType, cmdStr, cmdOpts, packedToken)
+	}
+	return makePosixRemoteShellCommand(remoteInfo, shellPath, shellType, cmdStr, cmdOpts, packedToken)
 }
 
 func wrapShellInvocationWithCwd(shellPath string, shellOpts []string, cmdOpts CommandOptsType) (string, []string) {
@@ -508,50 +654,12 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 		conn.Infof(logCtx, "no shell path detected, using default (/bin/bash)\n")
 		shellPath = "/bin/bash"
 	}
-	var shellOpts []string
-	var cmdCombined string
 	log.Printf("detected shell %q for conn %q\n", shellPath, conn.GetName())
-	shellOpts = append(shellOpts, cmdOpts.ShellOpts...)
 	shellType := shellutil.GetShellTypeFromShellPath(shellPath)
 	conn.Infof(logCtx, "detected shell type: %s\n", shellType)
 	conn.Infof(logCtx, "swaptoken: %s\n", cmdOpts.SwapToken.Token)
 	conn.Debugf(logCtx, "cmdStr: %q\n", cmdStr)
 
-	cmdToRun := applyCwdToShellCommand(cmdStr, cmdOpts)
-	if cmdToRun == "" {
-		/* transform command in order to inject environment vars */
-		if shellType == shellutil.ShellType_bash {
-			// add --rcfile
-			// cant set -l or -i with --rcfile
-			bashPath := fmt.Sprintf("%s/.snorkeling/%s/.bashrc", remoteInfo.HomeDir, shellutil.BashIntegrationDir)
-			shellOpts = append(shellOpts, "--rcfile", bashPath)
-		} else if shellType == shellutil.ShellType_fish {
-			if cmdOpts.Login {
-				shellOpts = append(shellOpts, "-l")
-			}
-			// source the wave.fish file
-			waveFishPath := fmt.Sprintf("%s/.snorkeling/%s/wave.fish", remoteInfo.HomeDir, shellutil.FishIntegrationDir)
-			carg := fmt.Sprintf(`"source %s"`, waveFishPath)
-			shellOpts = append(shellOpts, "-C", carg)
-		} else if shellType == shellutil.ShellType_pwsh {
-			pwshPath := fmt.Sprintf("%s/.snorkeling/%s/wavepwsh.ps1", remoteInfo.HomeDir, shellutil.PwshIntegrationDir)
-			// powershell is weird about quoted path executables and requires an ampersand first
-			shellPath = "& " + shellPath
-			shellOpts = append(shellOpts, "-ExecutionPolicy", "Bypass", "-NoExit", "-File", pwshPath)
-		} else {
-			if cmdOpts.Login {
-				shellOpts = append(shellOpts, "-l")
-			}
-			if cmdOpts.Interactive {
-				shellOpts = append(shellOpts, "-i")
-			}
-			// zdotdir setting moved to after session is created
-		}
-		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
-	} else {
-		shellOpts = append(shellOpts, "-c", shellutil.HardQuote(cmdToRun))
-		cmdCombined = fmt.Sprintf("%s %s", shellPath, strings.Join(shellOpts, " "))
-	}
 	session, err := client.NewSession()
 	if err != nil {
 		return nil, err
@@ -580,29 +688,17 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 	session.Stdin = remoteStdinRead
 	session.Stdout = remoteStdoutWrite
 	session.Stderr = remoteStdoutWrite
-	if shellType == shellutil.ShellType_zsh {
-		zshDir := fmt.Sprintf("~/.snorkeling/%s", shellutil.ZshIntegrationDir)
-		conn.Infof(logCtx, "setting ZDOTDIR to %s\n", zshDir)
-		cmdCombined = fmt.Sprintf(`ZDOTDIR=%s %s`, zshDir, cmdCombined)
-	}
 	packedToken, err := cmdOpts.SwapToken.PackForClient()
 	if err != nil {
 		conn.Infof(logCtx, "error packing swap token: %v", err)
-	} else {
-		conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
-		cmdCombined = fmt.Sprintf(`%s=%s %s`, wavebase.WaveSwapTokenVarName, packedToken, cmdCombined)
+		packedToken = ""
 	}
-	envToPrefix := forcedWaveEnv(cmdOpts)
-	if cmdToRun != "" {
-		envToPrefix = commandEnv(cmdOpts)
+	conn.Debugf(logCtx, "packed swaptoken %s\n", packedToken)
+	if shellType == shellutil.ShellType_zsh {
+		zshDir := fmt.Sprintf("~/.snorkeling/%s", shellutil.ZshIntegrationDir)
+		conn.Infof(logCtx, "setting ZDOTDIR to %s\n", zshDir)
 	}
-	if envPrefix := shellEnvPrefix(envToPrefix); envPrefix != "" {
-		conn.Debugf(logCtx, "adding forced Wave environment\n")
-		cmdCombined = fmt.Sprintf(`%s %s`, envPrefix, cmdCombined)
-	}
-	if cmdToRun == "" {
-		cmdCombined = applyCwdToInteractiveShellCommand(cmdCombined, cmdOpts)
-	}
+	cmdCombined := makeRemoteShellCommand(remoteInfo, shellPath, shellType, cmdStr, cmdOpts, packedToken)
 	conn.Infof(logCtx, "starting shell, using command: %s\n", cmdCombined)
 	conn.Infof(logCtx, "SSH-NEWSESSION (StartRemoteShellProc)\n")
 	shellutil.AddTokenSwapEntry(cmdOpts.SwapToken)

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -119,16 +120,25 @@ func getRemoteDomainSocketName() string {
 	return filepath.Join(homeDir, wavebase.RemoteWaveHomeDirName, wavebase.RemoteDomainSocketBaseName)
 }
 
-func MakeRemoteUnixListener() (net.Listener, error) {
+func MakeRemoteListener() (net.Listener, string, error) {
+	if runtime.GOOS == "windows" {
+		rtn, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, "", fmt.Errorf("error creating tcp listener: %v", err)
+		}
+		serverAddr := rtn.Addr().String()
+		log.Printf("Server [tcp] listening on %s\n", serverAddr)
+		return rtn, serverAddr, nil
+	}
 	serverAddr := getRemoteDomainSocketName()
 	os.Remove(serverAddr) // ignore error
 	rtn, err := net.Listen("unix", serverAddr)
 	if err != nil {
-		return nil, fmt.Errorf("error creating listener at %v: %v", serverAddr, err)
+		return nil, "", fmt.Errorf("error creating listener at %v: %v", serverAddr, err)
 	}
 	os.Chmod(serverAddr, 0700)
 	log.Printf("Server [unix-domain] listening on %s\n", serverAddr)
-	return rtn, nil
+	return rtn, serverAddr, nil
 }
 
 func handleNewListenerConn(conn net.Conn, router *wshutil.WshRouter) {
@@ -233,7 +243,16 @@ func serverRunRouter() error {
 	}()
 	router.RegisterUpstream(termProxy)
 
-	sockName := getRemoteDomainSocketName()
+	listener, sockName, err := MakeRemoteListener()
+	if err != nil {
+		return fmt.Errorf("cannot create local listener: %v", err)
+	}
+	listenerStarted := false
+	defer func() {
+		if !listenerStarted {
+			listener.Close()
+		}
+	}()
 
 	// setup the connserver rpc client first
 	client, bareRouteId, err := setupConnServerRpcClientWithRouter(router, sockName)
@@ -261,17 +280,13 @@ func serverRunRouter() error {
 
 	log.Printf("got JWT public key")
 
-	// now set up the domain socket
-	unixListener, err := MakeRemoteUnixListener()
-	if err != nil {
-		return fmt.Errorf("cannot create unix listener: %v", err)
-	}
-	log.Printf("unix listener started")
+	log.Printf("local listener started")
+	listenerStarted = true
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("serverRunRouter:runListener", recover())
 		}()
-		runListener(unixListener, router)
+		runListener(listener, router)
 	}()
 	// run the sysinfo loop
 	go func() {
@@ -289,16 +304,16 @@ func serverRunRouterDomainSocket(jwtToken string) error {
 	log.Printf("starting connserver router (domain socket upstream)")
 
 	// extract socket name from JWT token (unverified - we're on the client side)
-	sockName, err := wshutil.ExtractUnverifiedSocketName(jwtToken)
+	upstreamSockName, err := wshutil.ExtractUnverifiedSocketName(jwtToken)
 	if err != nil {
 		return fmt.Errorf("error extracting socket name from JWT: %v", err)
 	}
 
 	// connect to the forwarded domain socket
-	sockName = wavebase.ExpandHomeDirSafe(sockName)
-	conn, err := net.Dial("unix", sockName)
+	upstreamSockName = wavebase.ExpandHomeDirSafe(upstreamSockName)
+	conn, err := net.Dial("unix", upstreamSockName)
 	if err != nil {
-		return fmt.Errorf("error connecting to domain socket %s: %v", sockName, err)
+		return fmt.Errorf("error connecting to domain socket %s: %v", upstreamSockName, err)
 	}
 
 	// create router
@@ -360,25 +375,32 @@ func serverRunRouterDomainSocket(jwtToken string) error {
 	}
 	log.Printf("got JWT public key")
 
+	listener, _, err := MakeRemoteListener()
+	if err != nil {
+		return fmt.Errorf("cannot create local listener: %v", err)
+	}
+	listenerStarted := false
+	defer func() {
+		if !listenerStarted {
+			listener.Close()
+		}
+	}()
+
 	// now setup the connserver rpc client
-	client, bareRouteId, err := setupConnServerRpcClientWithRouter(router, sockName)
+	client, bareRouteId, err := setupConnServerRpcClientWithRouter(router, upstreamSockName)
 	if err != nil {
 		return fmt.Errorf("error setting up connserver rpc client: %v", err)
 	}
 	wshfs.RpcClient = client
 	wshfs.RpcClientRouteId = bareRouteId
 
-	// set up the local domain socket listener for local wsh commands
-	unixListener, err := MakeRemoteUnixListener()
-	if err != nil {
-		return fmt.Errorf("cannot create unix listener: %v", err)
-	}
-	log.Printf("unix listener started")
+	log.Printf("local listener started")
+	listenerStarted = true
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("serverRunRouterDomainSocket:runListener", recover())
 		}()
-		runListener(unixListener, router)
+		runListener(listener, router)
 	}()
 
 	// run the sysinfo loop
