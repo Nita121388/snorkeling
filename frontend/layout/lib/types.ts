@@ -89,6 +89,7 @@ export enum LayoutTreeActionType {
     ReplaceNode = "replace",
     SplitHorizontal = "splithorizontal",
     SplitVertical = "splitvertical",
+    MergeInlineTab = "mergeinlinetab",
 }
 
 /**
@@ -135,6 +136,12 @@ export interface LayoutTreeSwapNodeAction extends LayoutTreeAction {
      * The node that node1 will replace.
      */
     node2Id: string;
+}
+
+export interface LayoutTreeMergeInlineTabAction extends LayoutTreeAction {
+    type: LayoutTreeActionType.MergeInlineTab;
+    targetNodeId: string;
+    sourceNodeId: string;
 }
 
 interface InsertNodeOperation {
@@ -391,6 +398,7 @@ export interface LayoutNodeAdditionalProps {
 export interface NodeModel {
     additionalProps: Atom<LayoutNodeAdditionalProps>;
     innerRect: Atom<CSSProperties>;
+    layoutData: Atom<TabLayoutData | null>;
     blockNum: Atom<number>;
     numLeafs: Atom<number>;
     nodeId: string;
