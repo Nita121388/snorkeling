@@ -10,6 +10,15 @@ import { Atom, atom, Getter, PrimitiveAtom, Setter } from "jotai";
 import { splitAtom } from "jotai/utils";
 import { createRef, CSSProperties } from "react";
 import { debounce } from "throttle-debounce";
+import {
+    findInlineTabMergeTarget,
+    getLayoutDataActiveBlockId,
+    getLayoutDataBlockIds,
+    layoutDataContainsBlockId,
+    mergeSourceNodeIntoTargetNode,
+    removeBlockIdFromInlineTabNode,
+    setInlineTabNodeBlockIds,
+} from "./inlineTabs";
 import { getLayoutStateAtomFromTab } from "./layoutAtom";
 import { balanceNode, findNode, newLayoutNode, walkNodes } from "./layoutNode";
 import {
@@ -42,6 +51,7 @@ import {
     LayoutTreeInsertNodeAction,
     LayoutTreeInsertNodeAtIndexAction,
     LayoutTreeMagnifyNodeToggleAction,
+    LayoutTreeMergeInlineTabAction,
     LayoutTreeMoveNodeAction,
     LayoutTreeRemoveNodeFromLayoutAction,
     LayoutTreeReplaceNodeAction,
@@ -429,9 +439,12 @@ export class LayoutModel {
         }
 
         walkNodes(this.treeState.rootNode, (node) => {
-            if (node.data?.blockId) {
-                layoutBlockIds.add(node.data.blockId);
-                if (!tabBlockIds.has(node.data.blockId)) {
+            const nodeBlockIds = getLayoutDataBlockIds(node.data);
+            if (nodeBlockIds.length > 0) {
+                for (const blockId of nodeBlockIds) {
+                    layoutBlockIds.add(blockId);
+                }
+                if (nodeBlockIds.some((blockId) => !tabBlockIds.has(blockId))) {
                     layoutOnlyNodeIds.push(node.id);
                 }
             }
@@ -688,6 +701,9 @@ export class LayoutModel {
             case LayoutTreeActionType.Swap:
                 swapNode(this.treeState, action as LayoutTreeSwapNodeAction);
                 break;
+            case LayoutTreeActionType.MergeInlineTab:
+                this.mergeInlineTabAction(action as LayoutTreeMergeInlineTabAction);
+                break;
             case LayoutTreeActionType.ResizeNode:
                 resizeNode(this.treeState, action as LayoutTreeResizeNodeAction);
                 break;
@@ -926,7 +942,7 @@ export class LayoutModel {
 
         additionalPropsMap[node.id] = {
             ...additionalProps,
-            ...(node.data?.blockId ? { rect: nodeRect } : {}),
+            ...(getLayoutDataBlockIds(node.data).length > 0 ? { rect: nodeRect } : {}),
             pixelToSizeRatio,
             resizeHandles,
         };
@@ -1075,6 +1091,14 @@ export class LayoutModel {
 
                     return setTransform(placeholderDimensions);
                 }
+                case LayoutTreeActionType.MergeInlineTab: {
+                    const action = pendingAction as LayoutTreeMergeInlineTabAction;
+                    const targetBoundingRect = this.getNodeRectById(action.targetNodeId);
+                    if (!targetBoundingRect) {
+                        return;
+                    }
+                    return setTransform(targetBoundingRect);
+                }
                 default:
                     // No-op
                     break;
@@ -1090,11 +1114,16 @@ export class LayoutModel {
      */
     getNodeModel(node: LayoutNode): NodeModel {
         const nodeid = node.id;
-        const blockId = node.data.blockId;
+        const blockId = getLayoutDataActiveBlockId(node.data);
         const addlPropsAtom = this.getNodeAdditionalPropertiesAtom(nodeid);
         if (!this.nodeModels.has(nodeid)) {
             this.nodeModels.set(nodeid, {
                 additionalProps: addlPropsAtom,
+                layoutData: atom((get) => {
+                    const treeState = get(this.localTreeStateAtom);
+                    const currentNode = findNode(treeState.rootNode, nodeid);
+                    return currentNode?.data ?? null;
+                }),
                 innerRect: atom((get) => {
                     const addlProps = get(addlPropsAtom);
                     const numLeafs = get(this.numLeafs);
@@ -1147,6 +1176,7 @@ export class LayoutModel {
             });
         }
         const nodeModel = this.nodeModels.get(nodeid);
+        nodeModel.blockId = blockId;
         return nodeModel;
     }
 
@@ -1356,7 +1386,7 @@ export class LayoutModel {
             return [];
         }
         return targetLeafNodeIds
-            .map((leafNodeId) => findNode(this.treeState?.rootNode, leafNodeId)?.data?.blockId ?? null)
+            .flatMap((leafNodeId) => getLayoutDataBlockIds(findNode(this.treeState?.rootNode, leafNodeId)?.data))
             .filter((blockId): blockId is string => blockId != null);
     }
 
@@ -1419,6 +1449,180 @@ export class LayoutModel {
         return undefined;
     }
 
+    private commitInlineTabMutation(focusedNodeId?: string) {
+        if (focusedNodeId) {
+            this.treeState.focusedNodeId = focusedNodeId;
+            FocusManager.getInstance().requestNodeFocus();
+        }
+        this.updateTree();
+        this.setter(this.localTreeStateAtom, { ...this.treeState });
+        this.persistToBackend();
+    }
+
+    canInlineMinimizeBlock(blockId: string): boolean {
+        return (
+            findInlineTabMergeTarget(
+                blockId,
+                this.getter(this.leafOrder),
+                this.getter(this.additionalProps),
+                this.treeState
+            ) != null
+        );
+    }
+
+    inlineMinimizeBlock(blockId: string): boolean {
+        const mergeTarget = findInlineTabMergeTarget(
+            blockId,
+            this.getter(this.leafOrder),
+            this.getter(this.additionalProps),
+            this.treeState
+        );
+        if (!mergeTarget || mergeTarget.sourceNode.id === mergeTarget.targetNode.id) {
+            return false;
+        }
+        mergeSourceNodeIntoTargetNode(mergeTarget.sourceNode, mergeTarget.targetNode, blockId);
+        this.treeReducer(
+            {
+                type: LayoutTreeActionType.RemoveNodeFromLayout,
+                nodeId: mergeTarget.sourceNode.id,
+            } as LayoutTreeRemoveNodeFromLayoutAction,
+            false
+        );
+        this.commitInlineTabMutation(mergeTarget.targetNode.id);
+        return true;
+    }
+
+    private mergeInlineTabAction(action: LayoutTreeMergeInlineTabAction): boolean {
+        const targetNode = findNode(this.treeState.rootNode, action.targetNodeId);
+        const sourceNode = findNode(this.treeState.rootNode, action.sourceNodeId);
+        if (!targetNode || !sourceNode || targetNode.id === sourceNode.id) {
+            return false;
+        }
+        const sourceBlockIds = getLayoutDataBlockIds(sourceNode.data);
+        if (sourceBlockIds.length !== 1) {
+            return false;
+        }
+        mergeSourceNodeIntoTargetNode(sourceNode, targetNode, sourceBlockIds[0]);
+        this.treeReducer(
+            {
+                type: LayoutTreeActionType.RemoveNodeFromLayout,
+                nodeId: sourceNode.id,
+            } as LayoutTreeRemoveNodeFromLayoutAction,
+            false
+        );
+        this.treeState.focusedNodeId = targetNode.id;
+        FocusManager.getInstance().requestNodeFocus();
+        return true;
+    }
+
+    setPendingInlineTabMerge(targetNodeId: string, sourceNodeId: string): boolean {
+        if (!targetNodeId || !sourceNodeId || targetNodeId === sourceNodeId) {
+            return false;
+        }
+        const targetNode = findNode(this.treeState.rootNode, targetNodeId);
+        const sourceNode = findNode(this.treeState.rootNode, sourceNodeId);
+        if (!targetNode || !sourceNode || getLayoutDataBlockIds(sourceNode.data).length !== 1) {
+            this.treeReducer({ type: LayoutTreeActionType.ClearPendingAction });
+            return false;
+        }
+        this.treeReducer({
+            type: LayoutTreeActionType.SetPendingAction,
+            action: {
+                type: LayoutTreeActionType.MergeInlineTab,
+                targetNodeId,
+                sourceNodeId,
+            } as LayoutTreeMergeInlineTabAction,
+        } as LayoutTreeSetPendingAction);
+        return true;
+    }
+
+    setActiveInlineTabBlock(nodeId: string, blockId: string): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node || !layoutDataContainsBlockId(node.data, blockId)) {
+            return false;
+        }
+        node.data = {
+            ...node.data,
+            blockIds: getLayoutDataBlockIds(node.data),
+            activeBlockId: blockId,
+        };
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
+    setInlineTabTitle(nodeId: string, blockId: string, title: string): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node || !layoutDataContainsBlockId(node.data, blockId)) {
+            return false;
+        }
+        const nextTitles = { ...(node.data?.blockTabTitles ?? {}) };
+        const trimmedTitle = title.trim();
+        if (trimmedTitle) {
+            nextTitles[blockId] = trimmedTitle;
+        } else {
+            delete nextTitles[blockId];
+        }
+        node.data = {
+            ...node.data,
+            blockIds: getLayoutDataBlockIds(node.data),
+            activeBlockId: getLayoutDataActiveBlockId(node.data) ?? blockId,
+            blockTabTitles: Object.keys(nextTitles).length > 0 ? nextTitles : undefined,
+        };
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
+    restoreInlineTabBlock(blockId: string): boolean {
+        const node = this.getNodeByBlockId(blockId);
+        if (!node || getLayoutDataBlockIds(node.data).length <= 1) {
+            return false;
+        }
+        removeBlockIdFromInlineTabNode(node, blockId);
+        const newNode = newLayoutNode(undefined, undefined, undefined, { blockId });
+        this.treeReducer(
+            {
+                type: LayoutTreeActionType.SplitHorizontal,
+                targetNodeId: node.id,
+                newNode,
+                position: "after",
+                focused: true,
+            } as LayoutTreeSplitHorizontalAction,
+            false
+        );
+        this.commitInlineTabMutation(newNode.id);
+        return true;
+    }
+
+    cleanupInlineTabBlockIds(nodeId: string, validBlockIds: string[]): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node) {
+            return false;
+        }
+        const currentBlockIds = getLayoutDataBlockIds(node.data);
+        if (currentBlockIds.length <= 1) {
+            return false;
+        }
+        const validBlockIdSet = new Set(validBlockIds);
+        const nextBlockIds = currentBlockIds.filter((blockId) => validBlockIdSet.has(blockId));
+        if (nextBlockIds.length === currentBlockIds.length) {
+            return false;
+        }
+        if (nextBlockIds.length === 0) {
+            this.treeReducer(
+                {
+                    type: LayoutTreeActionType.RemoveNodeFromLayout,
+                    nodeId: node.id,
+                } as LayoutTreeRemoveNodeFromLayoutAction,
+                false
+            );
+            this.commitInlineTabMutation();
+            return true;
+        }
+        setInlineTabNodeBlockIds(node, nextBlockIds);
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
     /**
      * Toggle magnification of a given node.
      * @param nodeId The id of the node that is being magnified.
@@ -1439,6 +1643,20 @@ export class LayoutModel {
      * Close a given node and update the tree state.
      * @param nodeId The id of the node that is being closed.
      */
+    async closeBlock(blockId: string) {
+        const node = this.getNodeByBlockId(blockId);
+        if (!node) {
+            return;
+        }
+        if (getLayoutDataBlockIds(node.data).length > 1) {
+            removeBlockIdFromInlineTabNode(node, blockId);
+            this.commitInlineTabMutation(node.id);
+            await this.onNodeDelete?.({ blockId });
+            return;
+        }
+        await this.closeNode(node.id);
+    }
+
     async closeNode(nodeId: string) {
         const nodeToDelete = findNode(this.treeState.rootNode, nodeId);
         if (!nodeToDelete) {
@@ -1476,6 +1694,12 @@ export class LayoutModel {
      * Shorthand function for closing the focused node in a layout.
      */
     async closeFocusedNode() {
+        const focusedNode = findNode(this.treeState.rootNode, this.focusedNodeId);
+        const activeBlockId = getLayoutDataActiveBlockId(focusedNode?.data);
+        if (activeBlockId) {
+            await this.closeBlock(activeBlockId);
+            return;
+        }
         await this.closeNode(this.focusedNodeId);
     }
 
@@ -1670,7 +1894,7 @@ export class LayoutModel {
      */
     getNodeByBlockId(blockId: string): LayoutNode {
         for (const leaf of this.getter(this.leafs)) {
-            if (leaf.data.blockId === blockId) {
+            if (layoutDataContainsBlockId(leaf.data, blockId)) {
                 return leaf;
             }
         }
@@ -1757,7 +1981,7 @@ function getLeafOrder(
     additionalProps: Record<string, LayoutNodeAdditionalProps>
 ): LeafOrderEntry[] {
     return leafs
-        .map((node) => ({ nodeid: node.id, blockid: node.data.blockId }) as LeafOrderEntry)
+        .map((node) => ({ nodeid: node.id, blockid: getLayoutDataActiveBlockId(node.data) }) as LeafOrderEntry)
         .sort((a, b) => {
             const treeKeyA = additionalProps[a.nodeid]?.treeKey;
             const treeKeyB = additionalProps[b.nodeid]?.treeKey;

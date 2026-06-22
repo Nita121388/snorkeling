@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TileLayout } from "./lib/TileLayout";
+import { TileItemType, TileLayout } from "./lib/TileLayout";
 import { LayoutModel } from "./lib/layoutModel";
 import {
     deleteLayoutModelForTab,
@@ -41,6 +41,7 @@ export {
     LayoutTreeActionType,
     NavigateDirection,
     newLayoutNode,
+    TileItemType,
     TileLayout,
     useDebouncedNodeInnerRect,
 };

@@ -22,6 +22,7 @@ import {
     LayoutTreeInsertNodeAction,
     LayoutTreeInsertNodeAtIndexAction,
     LayoutTreeMagnifyNodeToggleAction,
+    LayoutTreeMergeInlineTabAction,
     LayoutTreeMoveNodeAction,
     LayoutTreeRemoveNodeFromLayoutAction,
     LayoutTreeResizeNodeAction,
@@ -203,14 +204,14 @@ export function computeMoveNode(layoutState: LayoutTreeState, computeInsertActio
             break;
         case DropDirection.Center:
             if (nodeId !== rootNode.id && nodeToMoveId !== rootNode.id) {
-                const swapAction: LayoutTreeSwapNodeAction = {
-                    type: LayoutTreeActionType.Swap,
-                    node1Id: nodeId,
-                    node2Id: nodeToMoveId,
+                const mergeAction: LayoutTreeMergeInlineTabAction = {
+                    type: LayoutTreeActionType.MergeInlineTab,
+                    targetNodeId: nodeId,
+                    sourceNodeId: nodeToMoveId,
                 };
-                return swapAction;
+                return mergeAction;
             } else {
-                console.warn("cannot swap");
+                console.warn("cannot merge inline tab");
             }
             break;
         default:

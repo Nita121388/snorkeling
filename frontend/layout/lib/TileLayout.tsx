@@ -31,7 +31,7 @@ import {
 } from "./types";
 import { determineDropDirection } from "./utils";
 
-const tileItemType = "TILE_ITEM";
+export const TileItemType = "TILE_ITEM";
 
 export interface TileLayoutProps {
     /**
@@ -68,7 +68,7 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
     }));
 
     useEffect(() => {
-        const activeTileDrag = activeDrag && dragItemType == tileItemType;
+        const activeTileDrag = activeDrag && dragItemType == TileItemType;
         setActiveDrag(activeTileDrag);
     }, [activeDrag, dragItemType]);
 
@@ -223,6 +223,7 @@ interface DisplayNodeProps {
  */
 const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
     const nodeModel = useNodeModel(layoutModel, node);
+    const layoutData = useAtomValue(nodeModel.layoutData);
     const tileNodeRef = useRef<HTMLDivElement>(null);
     const previewRef = useRef<HTMLDivElement>(null);
     const addlProps = useAtomValue(nodeModel.additionalProps);
@@ -232,7 +233,7 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
 
     const [{ isDragging }, drag, dragPreview] = useDrag(
         () => ({
-            type: tileItemType,
+            type: TileItemType,
             canDrag: () => !(isEphemeral || isMagnified),
             item: () => node,
             collect: (monitor) => ({
@@ -293,7 +294,7 @@ const DisplayNode = ({ layoutModel, node }: DisplayNodeProps) => {
                 {layoutModel.renderContent(nodeModel)}
             </div>
         );
-    }, [nodeModel]);
+    }, [nodeModel, layoutData]);
 
     // Register the display node as a draggable item
     useEffect(() => {
@@ -360,7 +361,7 @@ const OverlayNode = memo(({ node, layoutModel }: OverlayNodeProps) => {
 
     const [, drop] = useDrop(
         () => ({
-            accept: tileItemType,
+            accept: TileItemType,
             canDrop: (_, monitor) => {
                 const dragItem = monitor.getItem<LayoutNode>();
                 if (monitor.isOver({ shallow: true }) && dragItem.id !== node.id) {
@@ -454,7 +455,7 @@ const ResizeHandle = memo(({ resizeHandleAtom, layoutModel }: ResizeHandleCompon
 
     // We want to wait a bit before committing the pending resize operation in case some events haven't arrived yet.
     const onPointerRelease = useCallback(
-        debounce(30, (event: React.PointerEvent<HTMLDivElement>) => {
+        debounce(30, (_event: React.PointerEvent<HTMLDivElement>) => {
             setTrackingPointer(undefined);
             layoutModel.onResizeEnd();
         }),
