@@ -26,6 +26,7 @@ import {
 import { getActiveTabModel } from "@/app/store/tab-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
+import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import * as keyutil from "@/util/keyutil";
 import { isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
@@ -71,7 +72,7 @@ export function keyboardMouseDownHandler(e: MouseEvent) {
 function getFocusedBlockInStaticTab(): string {
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
-    return focusedNode.data?.blockId;
+    return getLayoutDataActiveBlockId(focusedNode?.data);
 }
 
 function getSimpleControlShiftAtom() {
@@ -181,7 +182,7 @@ async function uxCloseBlock(blockId: string) {
     const layoutModel = getLayoutModelForStaticTab();
     const node = layoutModel.getNodeByBlockId(blockId);
     if (node) {
-        await layoutModel.closeNode(node.id);
+        await layoutModel.closeBlock(blockId);
 
         if (isAIFileDiff && isAIPanelOpen) {
             setTimeout(() => WaveAIModel.getInstance().focusInput(), 50);
@@ -205,11 +206,11 @@ async function genericClose() {
             const layoutModel = getLayoutModelForStaticTab();
             const focusedNode = globalStore.get(layoutModel.focusedNode);
             if (focusedNode) {
-                const focusedBlockId = focusedNode.data.blockId;
+                const focusedBlockId = getLayoutDataActiveBlockId(focusedNode.data);
                 if (focusedBlockId != null && !(await confirmBlockClose(focusedBlockId))) {
                     return;
                 }
-                replaceBlock(focusedNode.data.blockId, { meta: { view: "launcher" } }, false);
+                replaceBlock(focusedBlockId, { meta: { view: "launcher" } }, false);
                 setTimeout(() => WaveAIModel.getInstance().focusInput(), 50);
                 return;
             }
@@ -223,7 +224,7 @@ async function genericClose() {
 
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
-    const blockId = focusedNode?.data?.blockId;
+    const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
     if (blockId != null && !(await confirmBlockClose(blockId))) {
         return;
     }
@@ -344,7 +345,7 @@ function globalRefocus() {
         layoutModel.focusFirstNode();
         return;
     }
-    const blockId = focusedNode?.data?.blockId;
+    const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
     if (blockId == null) {
         return;
     }
@@ -371,7 +372,9 @@ function getDefaultNewBlockDef(): BlockDef {
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
     if (focusedNode != null) {
-        const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", focusedNode.data?.blockId));
+        const blockAtom = WOS.getWaveObjectAtom<Block>(
+            WOS.makeORef("block", getLayoutDataActiveBlockId(focusedNode.data))
+        );
         const blockData = globalStore.get(blockAtom);
         if (blockData?.meta?.view == "term") {
             if (blockData?.meta?.["cmd:cwd"] != null) {
@@ -397,7 +400,7 @@ async function handleSplitHorizontal(position: "before" | "after") {
         return;
     }
     const blockDef = getDefaultNewBlockDef();
-    await createBlockSplitHorizontally(blockDef, focusedNode.data.blockId, position);
+    await createBlockSplitHorizontally(blockDef, getLayoutDataActiveBlockId(focusedNode.data), position);
 }
 
 async function handleSplitVertical(position: "before" | "after") {
@@ -407,7 +410,7 @@ async function handleSplitVertical(position: "before" | "after") {
         return;
     }
     const blockDef = getDefaultNewBlockDef();
-    await createBlockSplitVertically(blockDef, focusedNode.data.blockId, position);
+    await createBlockSplitVertically(blockDef, getLayoutDataActiveBlockId(focusedNode.data), position);
 }
 
 let lastHandledEvent: KeyboardEvent | null = null;
@@ -470,7 +473,7 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
     if (isTabWindow()) {
         const layoutModel = getLayoutModelForStaticTab();
         const focusedNode = globalStore.get(layoutModel.focusedNode);
-        const blockId = focusedNode?.data?.blockId;
+        const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
         if (blockId != null && shouldDispatchToBlock(waveEvent)) {
             const bcm = getBlockComponentModel(blockId);
             const viewModel = bcm?.viewModel;
