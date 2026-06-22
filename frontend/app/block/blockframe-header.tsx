@@ -27,7 +27,8 @@ import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { IconButton } from "@/element/iconbutton";
-import { NodeModel } from "@/layout/index";
+import { getLayoutModelForTabById, NodeModel } from "@/layout/index";
+import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import * as util from "@/util/util";
 import { cn, makeIconClass } from "@/util/util";
 import * as jotai from "jotai";
@@ -231,6 +232,11 @@ type HeaderEndIconsProps = {
 const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext }: HeaderEndIconsProps) => {
     const blockEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
+    const layoutModel = getLayoutModelForTabById(tabModel.tabId);
+    const layoutData = jotai.useAtomValue(nodeModel.layoutData);
+    jotai.useAtomValue(nodeModel.additionalProps);
+    const inlineBlockIds = getLayoutDataBlockIds(layoutData);
+    const isInlineTabGroup = inlineBlockIds.length > 1;
     const endIconButtons = util.useAtomValueSafe(viewModel?.endIconButtons);
     const magnified = jotai.useAtomValue(nodeModel.isMagnified);
     const ephemeral = jotai.useAtomValue(nodeModel.isEphemeral);
@@ -318,15 +324,20 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
                 disabled={magnifyDisabled}
             />
         );
-        if (moveContext) {
-            const minimizeDecl: IconButtonDecl = {
-                elemtype: "iconbutton",
-                icon: "box",
-                title: "Minimize to Float",
-                click: () => minimizeBlockToFloat(moveContext.currentTabId, blockId),
-            };
-            endIconsElem.push(<IconButton key="minimize-to-float" decl={minimizeDecl} />);
-        }
+        const inlineMinimizeDecl: IconButtonDecl = {
+            elemtype: "iconbutton",
+            icon: isInlineTabGroup ? "box-open" : "box",
+            title: isInlineTabGroup ? "Restore as Block" : "Merge into Previous Block",
+            disabled: isInlineTabGroup ? false : !layoutModel?.canInlineMinimizeBlock(blockId),
+            click: () => {
+                if (isInlineTabGroup) {
+                    layoutModel?.restoreInlineTabBlock(blockId);
+                } else {
+                    layoutModel?.inlineMinimizeBlock(blockId);
+                }
+            },
+        };
+        endIconsElem.push(<IconButton key="inline-tab-minimize" decl={inlineMinimizeDecl} />);
     }
 
     const closeDecl: IconButtonDecl = {

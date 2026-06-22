@@ -8,6 +8,7 @@ import {
     DropDirection,
     LayoutTreeActionType,
     LayoutTreeComputeMoveNodeAction,
+    LayoutTreeMergeInlineTabAction,
     LayoutTreeMoveNodeAction,
     LayoutTreeRemoveNodeFromLayoutAction,
 } from "../lib/types";
@@ -83,6 +84,23 @@ test("computeMove - noop action", () => {
 
     pendingAction = computeMoveNode(treeState, moveAction);
     assert(pendingAction === undefined, "inserting a node to the right of itself should not produce a pendingAction");
+});
+
+test("computeMove - center drop merges into inline tab instead of swapping", () => {
+    const target = newLayoutNode(undefined, undefined, undefined, { blockId: "target" });
+    const source = newLayoutNode(undefined, undefined, undefined, { blockId: "source" });
+    const treeState = newLayoutTreeState(newLayoutNode(undefined, undefined, [target, source]));
+
+    const pendingAction = computeMoveNode(treeState, {
+        type: LayoutTreeActionType.ComputeMove,
+        nodeId: target.id,
+        nodeToMoveId: source.id,
+        direction: DropDirection.Center,
+    }) as LayoutTreeMergeInlineTabAction;
+
+    assert(pendingAction.type === LayoutTreeActionType.MergeInlineTab, "center drop should create merge action");
+    assert(pendingAction.targetNodeId === target.id, "target node should receive the dragged block");
+    assert(pendingAction.sourceNodeId === source.id, "source node should be merged into target");
 });
 
 test("deleteNode clears focused and magnified state for removed node", () => {

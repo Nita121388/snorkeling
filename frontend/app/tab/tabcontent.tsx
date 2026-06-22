@@ -5,6 +5,7 @@ import { Block } from "@/app/block/block";
 import { MinimizedBlocksFloat } from "@/app/block/minimized-blocks-float";
 import { CenteredDiv } from "@/element/quickelems";
 import { ContentRenderer, NodeModel, PreviewRenderer, TileLayout } from "@/layout/index";
+import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import { TileLayoutContents } from "@/layout/lib/types";
 import { atoms, getApi } from "@/store/global";
 import * as services from "@/store/services";
@@ -35,8 +36,10 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
             return <Block key={nodeModel.blockId} nodeModel={nodeModel} preview={true} />;
         };
 
-        function onNodeDelete(data: TabLayoutData) {
-            return services.ObjectService.DeleteBlock(data.blockId);
+        async function onNodeDelete(data: TabLayoutData) {
+            for (const blockId of getLayoutDataBlockIds(data)) {
+                await services.ObjectService.DeleteBlock(blockId);
+            }
         }
 
         return {
