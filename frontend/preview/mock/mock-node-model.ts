@@ -19,6 +19,7 @@ export function makeMockNodeModel(opts: MockNodeModelOpts): NodeModel {
     return {
         additionalProps: atom({} as any),
         innerRect: atom(opts.innerRect ?? { width: "1000px", height: "640px" }),
+        layoutData: atom({ blockId: opts.blockId }),
         blockNum: atom(1),
         numLeafs: atom(opts.numLeafs ?? 1),
         nodeId: opts.nodeId,

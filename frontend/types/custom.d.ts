@@ -49,7 +49,10 @@ declare global {
     type WritableSplitAtom<Item> = WritableAtom<PrimitiveAtom<Item>[], [SplitAtomAction<Item>], void>;
 
     type TabLayoutData = {
-        blockId: string;
+        blockId?: string;
+        blockIds?: string[];
+        activeBlockId?: string;
+        blockTabTitles?: Record<string, string>;
     };
 
     type GlobalInitOptions = {
