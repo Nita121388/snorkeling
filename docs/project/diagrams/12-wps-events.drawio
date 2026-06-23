@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="snorkeling-12" name="WPS Event System">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="WPS Event System" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="760" height="40" as="geometry"/></mxCell>
+        <mxCell id="note" value="Wave PubSub keeps windows and blocks synchronized after backend mutations." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;fontColor=#424242;dashed=1;" vertex="1" parent="1"><mxGeometry x="830" y="10" width="420" height="50" as="geometry"/></mxCell>
+        <mxCell id="mutation" value="Backend Mutation&#xa;wcore / remote / block service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="60" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="event" value="WaveEvent&#xa;Event + scopes + data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="310" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="broker" value="WPS Broker&#xa;pkg/wps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="560" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="client" value="RPC Client&#xa;setWpsRpcClient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="810" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="frontend" value="Frontend Store&#xa;frontend/app/store/wps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="1060" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="subscriber" value="Subscribers&#xa;windows, menus, views" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="1310" y="120" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="reconnect" value="Reconnect Handler&#xa;re-subscribe after WS reconnect" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontColor=#B71C1C;" vertex="1" parent="1"><mxGeometry x="810" y="280" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="edge1" value="publish" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="mutation" target="event"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge2" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="event" target="broker"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge3" value="send" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="broker" target="client"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge4" value="receive" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="client" target="frontend"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge5" value="notify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="frontend" target="subscriber"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge6" value="restore subscriptions" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="reconnect" target="frontend"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

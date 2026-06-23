@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="snorkeling-25" name="Testing Coverage">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Testing Coverage" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="760" height="40" as="geometry"/></mxCell>
+        <mxCell id="note" value="Main automated checks by layer and the high-risk gaps they cover." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;fontColor=#424242;dashed=1;" vertex="1" parent="1"><mxGeometry x="830" y="10" width="420" height="50" as="geometry"/></mxCell>
+        <mxCell id="go" value="Go Tests&#xa;pkg/*_test.go" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="60" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="vitest" value="Vitest&#xa;frontend unit tests" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="330" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="playwright" value="Playwright / testdriver&#xa;app-level flows" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="600" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="pkg" value="Backend Logic&#xa;aisessions, filestore, stream, vcs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="60" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="ui" value="UI Logic&#xa;filters, markdown, agent launch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="330" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="e2e" value="User Workflows&#xa;open, edit, sessions, VCS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontColor=#0D47A1;" vertex="1" parent="1"><mxGeometry x="600" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="ci" value="CI / Release Checks&#xa;GitHub Actions packaging" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="870" y="170" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="manual" value="Manual Smoke&#xa;local dev app and screenshots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontColor=#B71C1C;" vertex="1" parent="1"><mxGeometry x="1140" y="170" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="edge1" value="covers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="go" target="pkg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge2" value="covers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="vitest" target="ui"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge3" value="covers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="playwright" target="e2e"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge4" value="feeds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="pkg" target="ci"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge5" value="feeds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ui" target="ci"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge6" value="verify visually" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="e2e" target="manual"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge7" value="release candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ci" target="manual"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

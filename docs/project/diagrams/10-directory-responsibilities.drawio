@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="snorkeling-10" name="Directory Responsibilities">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Directory Responsibilities" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="760" height="40" as="geometry"/></mxCell>
+        <mxCell id="note" value="What each top-level directory owns." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;fontColor=#424242;dashed=1;" vertex="1" parent="1"><mxGeometry x="830" y="10" width="420" height="50" as="geometry"/></mxCell>
+        <mxCell id="frontend" value="frontend&#xa;Renderer UI, preview, builder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="60" y="80" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="emain" value="emain&#xa;Electron lifecycle, windows, IPC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#EF6C00;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="310" y="80" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="pkg" value="pkg&#xa;Backend services and domain logic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="560" y="80" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="cmd" value="cmd&#xa;Entrypoints and generators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="810" y="80" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="db" value="db&#xa;SQLite migrations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontColor=#006064;" vertex="1" parent="1"><mxGeometry x="1060" y="80" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="schema" value="schema&#xa;Generated JSON/schema artifacts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontColor=#006064;" vertex="1" parent="1"><mxGeometry x="60" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="docs" value="docs&#xa;Docusaurus + project notes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="310" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="assets" value="assets&#xa;branding and screenshots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="560" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="scripts" value="scripts + make&#xa;local toolchain and packaging" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="810" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="tsunami" value="tsunami&#xa;embedded Wave app framework" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="1060" y="250" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="edge1" value="imports" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="cmd" target="pkg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge2" value="uses generated types" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="frontend" target="schema"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge3" value="migrates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="pkg" target="db"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge4" value="loads" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="emain" target="frontend"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge5" value="builds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="scripts" target="cmd"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge6" value="embeds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="docs" target="assets"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge7" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="pkg" target="schema"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge8" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="pkg" target="tsunami"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

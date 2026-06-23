@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="snorkeling-11" name="RPC Interface">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="RPC Interface" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="760" height="40" as="geometry"/></mxCell>
+        <mxCell id="note" value="Custom wshrpc command/type generation and runtime dispatch." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;fontColor=#424242;dashed=1;" vertex="1" parent="1"><mxGeometry x="830" y="10" width="420" height="50" as="geometry"/></mxCell>
+        <mxCell id="types" value="Go RPC Types&#xa;pkg/wshrpc/wshrpctypes*.go" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="60" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="gen" value="task generate&#xa;cmd/generatets + generatego" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="310" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="ts" value="Generated TS Client&#xa;wshclientapi.ts + gotypes.d.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="560" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="go" value="Generated Go Client&#xa;pkg/wshrpc/wshclient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="560" y="240" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="ui" value="Frontend Calls&#xa;RpcApi / Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="820" y="90" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="router" value="WshRouter&#xa;routes + reqids" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="1080" y="160" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="server" value="Server Impl&#xa;wshserver + service handlers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="1340" y="160" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="leaf" value="Trusted Leaf Routes&#xa;electron / conn:local / remote" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="1080" y="320" width="180" height="70" as="geometry"/></mxCell>
+        <mxCell id="edge1" value="source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="types" target="gen"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge2" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="gen" target="ts"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge3" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="gen" target="go"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge4" value="typed calls" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ts" target="ui"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge5" value="rpc msg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ui" target="router"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge6" value="wsh command" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="go" target="router"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge7" value="dispatch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="router" target="server"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge8" value="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="router" target="leaf"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

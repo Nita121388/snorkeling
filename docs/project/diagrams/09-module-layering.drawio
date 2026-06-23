@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-24T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="snorkeling-09" name="Module Layering">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Module Layering" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="760" height="40" as="geometry"/></mxCell>
+        <mxCell id="note" value="High-level source layers in the repository." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;fontColor=#424242;dashed=1;" vertex="1" parent="1"><mxGeometry x="830" y="10" width="420" height="50" as="geometry"/></mxCell>
+        <mxCell id="ui" value="frontend/app&#xa;React views, blocks, stores" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="90" y="60" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="preview" value="frontend/preview&#xa;preview iframe app" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontColor=#1B5E20;" vertex="1" parent="1"><mxGeometry x="420" y="60" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="emain" value="emain&#xa;Electron main, IPC, windows" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#EF6C00;fontColor=#BF360C;" vertex="1" parent="1"><mxGeometry x="750" y="60" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="cmd" value="cmd&#xa;server, wsh, generators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="90" y="210" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="pkg" value="pkg&#xa;Go domain packages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontColor=#4A148C;" vertex="1" parent="1"><mxGeometry x="420" y="210" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="db" value="db + schema&#xa;migrations and generated schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontColor=#006064;" vertex="1" parent="1"><mxGeometry x="750" y="210" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="docs" value="docs&#xa;Docusaurus project docs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="90" y="360" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="assets" value="assets + build + make&#xa;icons, packaging support" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="420" y="360" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="tests" value="tests + testdriver&#xa;integration support" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFDE7;strokeColor=#827717;fontColor=#5D5600;" vertex="1" parent="1"><mxGeometry x="750" y="360" width="260" height="70" as="geometry"/></mxCell>
+        <mxCell id="edge1" value="Electron API" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ui" target="emain"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge2" value="generated RPC/services" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="ui" target="pkg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge3" value="launches server" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="emain" target="cmd"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge4" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="cmd" target="pkg"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge5" value="persists" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="pkg" target="db"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge6" value="references" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="docs" target="assets"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge7" value="verifies" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="tests" target="ui"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="edge8" value="verifies" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#546E7A;fontColor=#37474F;" edge="1" parent="1" source="tests" target="pkg"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
