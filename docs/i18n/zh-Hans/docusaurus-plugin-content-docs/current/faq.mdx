@@ -1,0 +1,68 @@
+---
+sidebar_position: 101
+id: "faq"
+title: "FAQ"
+---
+
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+# FAQ
+
+### 如何查看块编号？
+
+按住 Ctrl-Shift 时会显示块编号，松开后编号会消失。
+
+### 如何建立远程连接？
+
+顶部有一个按钮。点击 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/>，然后输入你想连接的 `[user]@[host]`。
+
+### 在 Windows 上，如何把 Git Bash 设为默认 shell？
+
+Wave 会自动检测 Git Bash 安装，并把它添加到连接下拉菜单。点击块标题中的 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/> 按钮，然后在列表中选择 "Git Bash"。
+
+你也可以手动把 Git Bash 设为默认 shell：把配置变量 `term:localshellpath` 设置为 Git Bash 的 "bash.exe" 二进制文件位置。默认位置是 "C:\Program Files\Git\bin\bash.exe"。
+注意 JSON 中的反斜杠需要转义。因此请把下面内容添加到你的 [settings.json](./config) 文件：
+
+```json
+"term:localshellpath": "C:\\Program Files\\Git\\bin\\bash.exe"
+```
+
+### 可以在 Wave 外部使用 WSH 吗？
+
+`wsh` 是 Wave 内部 CLI，用来把 Wave 的控制能力扩展到命令行。你可以在 [这里](./wsh) 了解更多。为了防止其他应用误用，`wsh` 需要 Wave 提供的访问令牌，因此无法在应用外部运行。
+
+## 为什么 Wave 启动时会提示 ARM64 转译？
+
+macOS 和 Windows 都有兼容层，可以让 x64 应用在 ARM 电脑上运行。这能让更多应用在这些系统上可用，同时开发者也可以逐步添加原生 ARM 支持。不过，这通常会带来明显的性能损耗。
+
+为了获得更好的 Wave 使用体验，建议卸载 Wave，并重新安装为你的电脑原生编译的版本。你可以查看 [安装说明](./gettingstarted#installation) 找到正确版本。
+
+你可以在 [配置](./config) 中设置 `app:dismissarchitecturewarning=true` 来关闭此提示。
+
+## 如何加入 Wave beta 构建？
+
+Wave 发布到两个渠道：`latest` 和 `beta`。如果你通过 DEB 或 RPM 安装了 macOS、Windows 或 Linux 应用，可以在 `settings.json` 中设置以下配置。更多信息见 [配置](./config)：
+
+```json
+"autoupdate:enabled": true,
+"autoupdate:channel": "beta"
+```
+
+如果你通过 Snap 安装，可以使用以下命令：
+
+```sh
+sudo snap install waveterm --classic --beta
+```
+
+## 不启用 telemetry，也可以使用 Wave AI 吗？
+
+<VersionBadge version="v0.13.1" noLeftMargin={true}/>
+
+可以。通常情况下，未启用 telemetry 时 Wave AI 会被禁用。不过，你可以通过配置自己的自定义 AI 模型来启用 Wave AI，例如本地模型或自己的 API key。
+
+在不启用 telemetry 的情况下启用 Wave AI：
+
+1. 配置一个自定义 AI 模式，见 [Wave AI 文档](./waveai-modes)
+2. 在 Wave 设置中把 `waveai:defaultmode` 设为你的自定义模式 key
+
+完成这两步后，Wave AI 就会启用，并且可以在不使用 telemetry 的情况下完全私密地使用。你可以使用 Ollama 这样的本地模型，也可以使用 OpenAI、OpenRouter 或其他服务商的自己的 API key。

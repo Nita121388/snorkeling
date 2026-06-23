@@ -1,0 +1,164 @@
+---
+sidebar_position: 1
+id: "gettingstarted"
+title: "入门指南"
+---
+
+import { PlatformProvider, PlatformSelectorButton, PlatformItem } from "@site/src/components/platformcontext";
+import { Kbd } from "@site/src/components/kbd";
+
+Wave Terminal 是一个现代终端，在传统终端功能之外，还包含网页浏览、文件预览和 AI 辅助等图形化能力。本指南会帮助你开始使用。
+
+## 安装
+
+<PlatformProvider>
+  <PlatformSelectorButton />
+
+### 平台要求
+
+<PlatformItem platforms={["mac"]}>
+
+- 支持架构：Apple Silicon、x64
+- 支持系统版本：macOS 11 Big Sur 或更高版本
+
+</PlatformItem>
+
+<PlatformItem platforms={["windows"]}>
+
+- 支持架构：x64
+- 支持系统版本：Windows 10 1809 或更高版本、Windows 11
+
+:::note
+
+ARM64 支持已经在计划中，但目前被上游依赖阻塞。详情见 [Windows ARM Support](https://github.com/wavetermdev/waveterm/issues/928)。
+
+:::
+
+</PlatformItem>
+
+<PlatformItem platforms={["linux"]}>
+
+- 支持架构：x64、ARM64
+- 支持系统版本：需要 glibc-2.28 或更高版本，例如 Debian >=10、RHEL >=8、Ubuntu >=20.04 等
+
+</PlatformItem>
+
+### 包管理器
+
+<PlatformItem platforms={["mac"]}>
+
+#### Homebrew
+
+```bash
+brew install --cask wave
+```
+
+</PlatformItem>
+
+<PlatformItem platforms={["windows"]}>
+
+#### Windows Package Manager
+
+```powershell
+winget install CommandLine.Wave
+```
+
+#### Chocolatey
+
+```powershell
+choco install wave
+```
+
+</PlatformItem>
+
+<PlatformItem platforms={["linux"]}>
+
+#### Snap
+
+```bash
+sudo snap install --classic waveterm
+```
+
+其他选择：[AUR package](https://aur.archlinux.org/packages/waveterm)（社区维护）、[Nix package](https://search.nixos.org/packages?channel=unstable&show=waveterm)（社区维护）
+
+</PlatformItem>
+
+你也可以直接从 [Downloads page](https://www.waveterm.dev/download) 下载安装包。
+
+## 核心概念
+
+### 标签页和块
+
+- **标签页**：类似浏览器标签页，用来整理工作。使用 <Kbd k="Cmd:t"/> 创建新标签页。
+- **块**：Wave 的基本工作单元。每个块都可以是终端、网页浏览器、文件预览或其他组件。
+- **布局**：可以拖拽、放置和调整块大小，创建适合你的布局。
+
+### 主要功能
+
+1. **终端功能**
+
+   - 支持常见 shell，例如 bash、zsh、fish
+   - 支持标准终端功能，例如 readline、控制序列等
+   - 包含 `wsh` 命令，可与 Wave 的 GUI 功能交互
+   - 大多数平台支持 GPU 加速
+
+2. **图形化组件**
+
+   - 预览文件，例如图片、视频、Markdown、带语法高亮的代码
+   - 浏览网页
+   - 直接在终端中提问并获得 AI 帮助，也可以设置多个 AI 模型
+   - 基础系统监控图表
+
+3. **远程连接**
+   - 使用连接按钮 <i className="fa-sharp fa-laptop"/> 轻松建立 SSH 连接
+   - Windows 上支持 WSL 集成
+   - 本地和远程会话体验一致
+
+## 快速开始
+
+1. **打开第一个新标签页**
+
+   - 新的 Wave 标签页会从一个终端块开始
+   - 像使用普通终端一样使用它
+   - 使用 <Kbd k="Cmd:n"/> 创建更多终端块
+
+2. **试几个基础命令**
+
+   ```bash
+   # 查看文件或目录
+   wsh view ~/Documents
+
+   # 打开网页
+   wsh web open github.com
+
+   # 获取 AI 辅助
+   wsh ai -m "how do I find large files in my current directory?" -s
+   ```
+
+3. **自定义布局**
+
+   - 拖拽块标题来重新排列
+   - 悬停在块之间可调整大小
+   - 右键点击标签页标题，可设置背景选项
+   - 右键点击块标题，可查看该块专属选项
+
+4. **连接远程机器**
+   - 点击 <i className="fa-sharp fa-laptop"/> 按钮
+   - 输入 `username@hostname` 建立 SSH 连接
+   - 或在 Windows 上选择一个 WSL 发行版
+
+## 下一步
+
+- 查看 [快捷键](./keybindings)，提高使用效率
+- 学习 [标签页布局](./layout)，整理工作空间
+- 设置 [自定义组件](./customwidgets)，快速访问你的工具
+- 配置 [Wave AI](./waveai)，使用你偏好的 AI 模型
+- 查看 [配置](./config)，了解更详细的自定义选项
+
+## 获取帮助
+
+- 加入 [Discord community](https://discord.gg/XfvZ334gwU) 获取帮助和参与讨论
+- 在 [GitHub](https://github.com/wavetermdev/waveterm/issues) 报告问题
+- 查看 [FAQ](./faq) 了解常见问题
+
+</PlatformProvider>

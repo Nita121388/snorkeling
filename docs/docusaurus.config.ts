@@ -3,6 +3,7 @@ import rehypeHighlight from "rehype-highlight";
 import { docOgRenderer } from "./src/renderer/image-renderers";
 
 const baseUrl = process.env.EMBEDDED ? "/docsite/" : "/";
+const generateOgImages = !process.env.EMBEDDED && process.env.GENERATE_OG_IMAGES === "1";
 
 const config: Config = {
     title: "Wave Terminal Documentation",
@@ -31,7 +32,16 @@ const config: Config = {
     // may want to replace "en" with "zh-Hans".
     i18n: {
         defaultLocale: "en",
-        locales: ["en"],
+        locales: ["en", "zh-Hans"],
+        localeConfigs: {
+            en: {
+                label: "English",
+            },
+            "zh-Hans": {
+                label: "简体中文",
+                htmlLang: "zh-Hans",
+            },
+        },
     },
     plugins: [
         [
@@ -52,7 +62,7 @@ const config: Config = {
                 filename: "sitemap.xml",
             },
         ],
-        !process.env.EMBEDDED && [
+        generateOgImages && [
             "@waveterm/docusaurus-og",
             {
                 path: "./preview-images", // relative to the build directory
@@ -115,6 +125,10 @@ const config: Config = {
                           },
                       ]
                     : [],
+                {
+                    type: "localeDropdown",
+                    position: "right",
+                },
             ].flat(),
         },
         metadata: [
