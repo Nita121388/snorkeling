@@ -1,0 +1,210 @@
+---
+sidebar_position: 4
+id: "wsh"
+title: "wsh 概览"
+---
+
+`wsh` 命令提供 Wave Terminal 的核心命令行接口，让用户可以从命令行同时操作终端和图形化元素。本指南介绍 `wsh` 的基础用法和主要功能。
+
+所有 `wsh` 命令及其参数请参阅 [wsh 参考](/wsh-reference)。
+
+## 概览
+
+从核心上看，`wsh` 让终端命令和 Wave 的图形化 block 可以无缝交互。你可以用它：
+
+- 直接从命令行控制图形化 widget
+- 在终端会话和 GUI 组件之间共享数据
+- 以脚本方式管理 workspace
+- 连接远程环境和本地环境
+- 将 CLI 输出和文件直接发送到 AI 对话
+- 在独立隔离的 block 中运行终端命令
+
+## 核心概念
+
+### 与 Block 交互
+
+`wsh` 支持通过命令行直接与 Wave 的图形化 block 交互。例如：
+
+```bash
+# 在编辑器中打开文件
+wsh edit config.json
+
+# 从预览 block 获取当前文件路径
+wsh getmeta -b 2 file
+
+# 将输出发送给 AI 助手（"-" 表示从 stdin 读取）
+ls -la | wsh ai - "what are the largest files here?"
+```
+
+### 持久状态
+
+`wsh` 可以通过变量系统在不同终端会话之间保持状态：
+
+```bash
+# 存储可跨会话保留的变量
+wsh setvar API_KEY=abc123
+
+# 存储到全局作用域
+wsh setvar DEPLOY_ENV=prod
+# 或存储到当前 workspace
+wsh setvar -b workspace DEPLOY_ENV=staging
+
+# 在命令中使用已存储的变量
+curl -H "Authorization: $(wsh getvar API_KEY)" https://api.example.com
+```
+
+### 从远程访问本地文件
+
+在远程机器上工作时，你可以在 `wsh file` 命令中使用 `wsh://local/~/` 路径前缀访问本机文件。也可以把简写 `/~/` 作为 `wsh://local/~/` 的别名：
+
+```bash
+# 从远程机器读取本地文件
+wsh file cat wsh://local/~/config/app.json
+
+# 使用 shell 进程替换，在远程机器上运行本地脚本
+bash <(wsh file cat wsh://local/~/scripts/deploy.sh)
+python <(wsh file cat wsh://local/~/scripts/deploy.py)
+
+# 将远程输出追加到本地日志文件
+echo "Remote machine log entry" | wsh file append wsh://local/~/app.log
+
+# 将本地文件复制到远程机器
+wsh file cp wsh://local/~/data.csv ./remote-data.csv
+
+# 将远程文件复制回本地机器
+wsh file cp ./results.txt wsh://local/~/results.txt
+
+# 也可以用简写 /~/ 代替 wsh://local/~/
+wsh file cat /~/config/app.json
+```
+
+### Block 管理
+
+Wave 中的每个可视元素都是一个 block，`wsh` 可以完整控制这些 block（按住 Ctrl+Shift 可查看 block 编号）：
+
+```bash
+# 创建一个显示网页的新 block
+wsh web open github.com
+
+# 在新 block 中执行网页搜索
+wsh web open "wave terminal"
+
+# 在新 block 中运行命令，完成后自动关闭
+wsh run -x -- npm test
+
+# 获取当前 block 信息
+wsh getmeta
+```
+
+## 常见工作流
+
+下面是一些常见的 `wsh` 用法：
+
+### 开发工作流
+
+```bash
+# 打开目录或 Markdown 文件
+wsh view .
+wsh view README.md
+
+# 加上 -m 可以用“放大”模式打开 block
+wsh view -m README.md
+
+# 在新 block 中启动开发服务器（-m 会在启动时放大该 block）
+wsh run -m -- npm run dev
+
+# 在 Web block 中打开文档
+wsh web open http://localhost:3000
+```
+
+### 远程开发
+
+```bash
+# 使用可选密钥连接远程服务器
+wsh ssh -i ~/.ssh/mykey.pem dev@server
+
+# 编辑远程文件
+wsh edit /etc/nginx/nginx.conf
+
+# 监控远程日志
+wsh run -- tail -f /var/log/app.log
+
+# 在会话之间共享变量
+wsh setvar -b tab SHARED_ENV=staging
+```
+
+### AI 辅助开发
+
+`wsh ai` 命令会把内容追加到 Wave AI 侧边栏。默认情况下，文件会被附加但不会自动提交，方便你在发送前检查并补充更多上下文。
+
+```bash
+# 将输出管道传入 AI 侧边栏（在 UI 中提问）
+git diff | wsh ai -
+
+# 附加文件并带上一条消息
+wsh ai main.go utils.go -m "find bugs in these files"
+
+# 附加消息并自动提交
+wsh ai config.json -s -m "explain this config"
+
+# 附加文件并开始新对话
+wsh ai -n *.log -m "analyze these logs"
+
+# 附加多种文件类型（图片、PDF、代码）
+wsh ai screenshot.png report.pdf app.py -m "review these"
+
+# 使用 stdin 调试并自动提交
+dmesg | wsh ai -s - -m "help me understand these errors"
+```
+
+**标志：**
+- `-` - 从 stdin 读取，而不是从文件读取
+- `-m, --message` - 随文件一起添加消息文本
+- `-s, --submit` - 立即自动提交（默认等待用户确认）
+- `-n, --new` - 清空聊天并开始新的对话
+
+**文件限制：**
+- 文本文件：最大 200KB
+- PDF：最大 5MB
+- 图片：最大 7MB
+- 每条命令最多 15 个文件
+
+## 技巧与功能
+
+1. **使用 Block**
+
+   - 使用 block 编号（1-9）定位当前标签页中的特定 block（按住 Ctrl+Shift 可查看编号）
+   - 右键点击 block 标题并选择“Copy Block Id”可获取完整 block id（适合脚本使用）
+   - 使用 `"this"`、`"tab"`、`"workspace"` 或 `"global"` 等引用表示不同作用域
+
+2. **数据存储**
+
+   - 使用 `wsh setvar/getvar` 存储配置和密钥
+   - 使用 `wsh file` 存储文件数据，这些数据可被所有终端轻松引用（本地和远程均可）
+   - 使用合适的存储作用域（block、tab、workspace、global）
+
+3. **命令执行**
+   - 使用 `wsh run` 在新 block 中执行命令
+   - 使用 `wsh ai` 将命令输出和文件快速发送到 AI block
+
+## 使用 wsh 编写脚本
+
+可以在脚本中组合多个 wsh 命令来自动化常见任务。下面示例会搭建开发环境，并用 `wsh notify` 监控长时间运行的构建：
+
+```bash
+#!/bin/bash
+# 搭建开发环境
+wsh run -- docker-compose up -d
+wsh web open localhost:8080
+wsh view ./src
+wsh run -- npm run test:watch
+
+# 使用 wsh notify 在长任务完成时收到通知
+npm run build && wsh notify "Build complete" || wsh notify "Build failed"
+```
+
+## 获取帮助
+
+运行不带参数的 `wsh` 可以查看可用命令；使用 `wsh [command] -h` 可以查看某个具体命令的详细帮助。
+
+完整的 `wsh` 功能参考请参阅 [wsh 命令参考](./wsh-reference)。

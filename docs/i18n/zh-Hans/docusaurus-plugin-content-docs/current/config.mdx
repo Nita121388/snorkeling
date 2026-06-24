@@ -1,0 +1,384 @@
+---
+sidebar_position: 3.45
+id: "config"
+title: "配置"
+---
+
+import { Kbd } from "@site/src/components/kbd";
+import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
+import { VersionBadge, DeprecatedBadge } from "@site/src/components/versionbadge";
+
+<PlatformProvider>
+
+<PlatformSelectorButton />
+<div style={{ marginBottom: 20 }}></div>
+
+Wave 的配置文件位于 `~/.config/waveterm/`。
+
+主配置文件是 `settings.json`（`~/.config/waveterm/settings.json`）。
+
+该文件基本上是扁平结构的 JSON 文件。我们不使用子对象，而是更倾向于用 ":" 作为层级分隔符。
+
+:::info
+
+编辑配置文件最简单的方式是使用 `wsh editconfig` 命令，它会在 Wave 内置预览编辑器中打开你的 Wave 配置文件。
+
+```
+wsh editconfig
+```
+
+:::
+
+## 配置键
+
+| 键名                                 | 类型     | 功能                                                                                                                                                                                                                                                          |
+| ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| app:globalhotkey                     | string   | 系统级快捷键，用于打开最近使用的 Wave 窗口。这是一组以 `:` 分隔的按键名称。更多信息参见[可自定义的系统级全局热键](#customizable-systemwide-global-hotkey)                                      |
+| app:dismissarchitecturewarning       | bool     | 当你使用非原生架构运行 Wave 时，禁用应用启动警告。更多信息参见[为什么 Wave 启动时会提醒我 ARM64 转译？](./faq#why-does-wave-warn-me-about-arm64-translation-when-it-launches)。                |
+| app:defaultnewblock                  | string   | 设置默认新块（Cmd:n、Cmd:d）。"term" 表示终端块，"launcher" 表示启动器块（默认 = "term"）                                                                                                       |
+| app:showoverlayblocknums             | bool     | 设为 false 会禁用按住 Ctrl+Shift 时显示的 Ctrl+Shift 块编号叠加层（默认为 true）                                                                                                                |
+| app:ctrlvpaste                       | bool     | 在 Windows/Linux 上，为 null（默认）时仅在 Windows 使用 Control+V。设为 true 可在所有非 macOS 平台强制使用 Control+V，设为 false 可禁用此快捷键。无论该设置如何，macOS 始终使用 Command+V     |
+| app:confirmquit <VersionBadge version="v0.14" />                     | bool     | 设为 false 会在关闭 Wave Terminal 时禁用退出确认对话框（默认为 true，需要重启应用）                                                                                                             |
+| app:hideaibutton <VersionBadge version="v0.14" />                    | bool     | 设为 true 会隐藏标签栏中的 AI 按钮（默认为 false）                                                                                                                                              |
+| app:disablectrlshiftarrows <VersionBadge version="v0.14" />          | bool     | 设为 true 会禁用 Ctrl+Shift 块导航快捷键（`Arrow` 和 `h/j/k/l`）（默认为 false）                                                                                                                 |
+| app:disablectrlshiftdisplay <VersionBadge version="v0.14" />         | bool     | 设为 true 会禁用 Ctrl+Shift 视觉指示显示（默认为 false）                                                                                                                                        |
+| app:focusfollowscursor <VersionBadge version="v0.14" />              | string   | 控制块焦点是否跟随光标移动：`"off"`（默认）、`"on"`（所有块）或 `"term"`（仅终端块）                                                                                                            |
+| app:tabbar <VersionBadge version="v0.14.4" />                        | string   | 控制标签栏位置：`"top"`（默认）表示窗口顶部的水平标签栏，`"left"` 表示窗口左侧的垂直标签栏                                                                                                      |
+| ai:preset                            | string   | 默认使用的 AI 预设                                                                                                                                                                                                                                           |
+| ai:baseurl                           | string   | 设置 AI 基础 URL（必须与 OpenAI 兼容）                                                                                                                                                                                                                       |
+| ai:apitoken                          | string   | 你的 AI API 令牌                                                                                                                                                                                                                                             |
+| ai:apitype                           | string   | 默认为 "open_ai"，也可设为 "azure"（用于 Azure AI 的特殊处理）、"anthropic" 或 "perplexity"                                                                                                    |
+| ai:name                              | string   | Wave AI 块标题中显示的字符串                                                                                                                                                                                                                                 |
+| ai:model                             | string   | 传递给 API 的模型名称                                                                                                                                                                                                                                        |
+| ai:apiversion                        | string   | 仅适用于 Azure AI（当 apitype 为 "azure" 时，默认值为 "2023-05-15"）                                                                                                                                                                                        |
+| ai:orgid                             | string   |                                                                                                                                                                                                                                                               |
+| ai:maxtokens                         | int      | 传递给 API 的最大令牌数                                                                                                                                                                                                                                      |
+| ai:timeoutms                         | int      | AI 调用超时时间（毫秒）                                                                                                                                                                                                                                      |
+| ai:proxyurl                          | string   | AI API 请求的 HTTP 代理 URL（不适用于 Wave Cloud AI）                                                                                                                                                                                                        |
+| conn:askbeforewshinstall             | bool     | 设为 false 会禁用在新机器上安装 wsh 扩展前询问的弹窗                                                                                                                                                                                                         |
+| conn:localhostdisplayname <VersionBadge version="v0.14" />           | string   | 覆盖 UI 中 localhost 的显示名称（例如设置为 "My Laptop" 或 "Local"，或设为空字符串以隐藏名称）                                                                                                                                             |
+| term:fontsize                        | float    | 终端块的字体大小                                                                                                                                                                                                                                             |
+| term:fontfamily                      | string   | 终端块使用的字体族                                                                                                                                                                                                                                           |
+| term:disablewebgl                    | bool     | 设为 false 会禁用终端中的 WebGL 加速                                                                                                                                                                                                                         |
+| term:localshellpath                  | string   | 设置后覆盖本地终端的默认 shell 路径                                                                                                                                                                                                                          |
+| term:localshellopts                  | string[] | 设置后向 `term:localshellpath` 传递额外参数（示例：PowerShell 使用 `["-NoLogo"]` 会移除版权提示）                                                                                              |
+| term:copyonselect                    | bool     | 设为 false 会禁用终端选中即复制                                                                                                                                                                                                                              |
+| term:scrollback                      | int      | 终端回滚缓冲区大小，最大为 10000                                                                                                                                                                                                                             |
+| term:theme                           | string   | 默认应用的终端主题预设名称（默认 "default-dark"）                                                                                                                                                                                                            |
+| term:transparency                    | float64  | 设置终端主题的背景透明度（默认 0.5，0 = 不透明，1.0 = 完全透明）                                                                                                                               |
+| term:allowbracketedpaste             | bool     | 允许终端括号粘贴模式（默认 false）                                                                                                                                                                                                                           |
+| term:shiftenternewline               | bool     | 启用后，Shift+Enter 会发送转义序列 + 换行（\u001b\n），而不是回车；适用于 claude code 和类似的 AI 编程工具（默认 false）                                                                       |
+| term:macoptionismeta                 | bool     | 在 macOS 上，将 Option 键作为终端快捷键中的 Meta 键（默认 false）                                                                                                                              |
+| term:cursor <VersionBadge version="v0.14" />                        | string   | 终端光标样式。有效值为 `block`（默认）、`underline` 和 `bar`                                                                                                                                   |
+| term:cursorblink <VersionBadge version="v0.14" />                   | bool     | 启用后，终端光标闪烁（默认 false）                                                                                                                                                                                                                           |
+| term:bellsound <VersionBadge version="v0.14" />                      | bool     | 启用后，当终端收到响铃（BEL 字符）时播放系统蜂鸣声（默认 false）                                                                                                                               |
+| term:bellindicator <VersionBadge version="v0.14" />                  | bool     | 启用后，当终端收到响铃时在标签页中显示视觉指示（默认 false）                                                                                                                                   |
+| term:osc52 <VersionBadge version="v0.14" />                          | string   | 控制 OSC 52 剪贴板行为：`always`（默认，始终允许 OSC 52）或 `focus`（要求窗口和块均已聚焦）                                                                                                    |
+| term:durable <VersionBadge version="v0.14" />                        | bool     | 使远程终端会话在网络断开后仍可持久保留（默认为 false）                                                                                                                                         |
+| term:showsplitbuttons <VersionBadge version="v0.15" />               | bool     | 启用后，在终端块标题栏中显示水平和垂直拆分按钮（默认为 false）                                                                                                                                 |
+| editor:minimapenabled                | bool     | 设为 false 会禁用编辑器小地图                                                                                                                                                                                                                                |
+| editor:stickyscrollenabled           | bool     | 启用 Monaco 编辑器的 stickyScroll 功能（固定当前上下文的标题，例如类名、方法名等），默认为 false                                                                                               |
+| editor:wordwrap                      | bool     | 设为 true 会启用编辑器自动换行（默认为 false）                                                                                                                                                                                                                |
+| editor:fontsize                      | float64  | 设置编辑器字体大小（默认为 12px）                                                                                                                                                                                                                            |
+| editor:inlinediff                    | bool     | 设为 true 以内联方式显示差异；设为 false 使用左右并排；默认为 undefined，此时使用 Monaco 的响应式行为                                                                                          |
+| preview:showhiddenfiles              | bool     | 设为 false 会禁用目录预览中的隐藏文件显示（默认为 true）                                                                                                                                        |
+| preview:defaultsort <VersionBadge version="v0.14.2" />                 | string   | 设置目录预览的默认排序列。`"name"`（默认）按名称升序字母排序；`"modtime"` 按最后修改时间降序排序（最新优先）                                                                                  |
+| markdown:fontsize                    | float64  | 在预览中渲染 Markdown 普通文本时的字体大小。标题会在此基础上放大（默认 14px）                                                                                                                  |
+| markdown:fixedfontsize               | float64  | 在预览中渲染 Markdown 代码块时的字体大小（默认 12px）                                                                                                                                           |
+| web:openlinksinternally              | bool     | 设为 false 会在外部浏览器中打开网页链接                                                                                                                                                                                                                      |
+| web:defaulturl                       | string   | 未提供 url 时，在网页组件中打开的默认网页（主页）                                                                                                                                                                                                            |
+| web:defaultsearch                    | string   | 网页搜索的搜索模板。例如 `https://www.google.com/search?q={query}`。"\{query}" 会替换为搜索词                                                                                                  |
+| autoupdate:enabled                   | bool     | 启用/禁用更新检查（需要重启应用）                                                                                                                                                                                                                            |
+| autoupdate:intervalms                | float64  | 两次更新检查之间等待的毫秒数（需要重启应用）                                                                                                                                                                                                                 |
+| autoupdate:installonquit             | bool     | 退出时是否自动安装更新（需要重启应用）                                                                                                                                                                                                                       |
+| autoupdate:channel                   | string   | 自动更新通道："latest"（稳定构建）或 "beta"（更新更频繁）（需要重启应用）                                                                                                                      |
+| tab:preset <DeprecatedBadge />       | string   | 自动应用到新标签页的 "bg@" 预设，例如 `bg@green`。应与预设键匹配。已弃用，请改用 `tab:background`                                                                                              |
+| tab:background <VersionBadge version="v0.14.4" />  | string   | 自动应用到新标签页的 "bg@" 预设，例如 `bg@green`。应与预设键匹配                                                                                                                               |
+| tab:confirmclose                     | bool     | 设为 true 时，关闭标签页前会显示确认对话框（默认为 false）                                                                                                                                      |
+| widget:showhelp                      | bool     | 是否在右侧边栏显示帮助/提示组件                                                                                                                                                                                                                              |
+| window:transparent                   | bool     | 设为 true 会启用窗口透明（不能与 `window:blur` 同用）（仅 macOS 和 Windows，需要重启应用，参见 [Windows 兼容性说明](https://www.electronjs.org/docs/latest/tutorial/custom-window-styles#limitations)） |
+| window:blur                          | bool     | 设置后启用窗口背景模糊（不能与 `window:transparent` 同用）（仅 macOS 和 Windows，需要重启应用，参见 [Windows 兼容性说明](https://www.electronjs.org/docs/latest/tutorial/custom-window-styles#limitations)） |
+| window:opacity                       | float64  | 设置 `window:transparent` 或 `window:blur` 时的窗口不透明度，范围为 0-1                                                                                                                         |
+| window:bgcolor                       | string   | 设置窗口背景颜色（应为十六进制：#xxxxxx）                                                                                                                                                                                                                    |
+| window:reducedmotion                 | bool     | 设为 true 会禁用大多数动画                                                                                                                                                                                                                                    |
+| window:tilegapsize                   | int      | 设置并覆盖块之间的默认间距（CSS 像素）                                                                                                                                                                                                                       |
+| window:magnifiedblockopacity         | float64  | 修改放大块的不透明度（必须介于 0 和 1 之间，默认为 0.6）                                                                                                                                        |
+| window:magnifiedblocksize            | float64  | 将放大块尺寸设置为其父布局尺寸的百分比（必须介于 0 和 1 之间，默认为 0.9）                                                                                                                     |
+| window:magnifiedblockblurprimarypx   | int      | 修改直接应用在放大块背后的模糊量（CSS 像素，参见 [backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter) 了解应用方式）                                             |
+| window:magnifiedblockblursecondarypx | int      | 修改块被放大时，非放大块可见部分上应用的模糊量（CSS 像素，参见 [backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter) 了解应用方式）                               |
+| window:maxtabcachesize               | int      | 要缓存的标签页数量。标签页被缓存后，切换速度会非常快。（默认为 10）                                                                                                                             |
+| window:showmenubar                   | bool     | 设置为使用操作系统原生菜单栏（仅 Windows 和 Linux，需要重启应用）                                                                                                                               |
+| window:nativetitlebar                | bool     | 设置为使用操作系统原生标题栏，而不是覆盖式标题栏（仅 Windows 和 Linux，需要重启应用）                                                                                                           |
+| window:disablehardwareacceleration   | bool     | 设置为禁用 Chromium 硬件加速，以解决图形问题（需要重启应用）                                                                                                                                   |
+| window:fullscreenonlaunch            | bool     | 设为 true 会以前台窗口全屏模式启动（默认为 false）                                                                                                                                                                                                            |
+| window:savelastwindow                | bool     | 当 `true` 时，最后关闭的窗口会被保留，并在下次启动应用时重新打开（默认为 `true`）                                                                                                               |
+| window:confirmonclose                | bool     | 当 `true` 时，如果窗口包含未保存的工作区且标签页多于一个，系统会提示用户确认关闭窗口（默认为 `true`）                                                                                           |
+| window:dimensions                    | string   | 使用 "WIDTHxHEIGHT" 格式设置新窗口的默认尺寸（例如 "1920x1080"）。创建新窗口时会自动应用这些尺寸。宽度和高度值应以像素指定。                                                                   |
+| telemetry:enabled                    | bool     | 设置为启用/禁用遥测                                                                                                                                                                                                                                          |
+
+以下是当前默认配置（v0.14.0），供参考：
+
+```json
+{
+    "ai:preset": "ai@global",
+    "ai:model": "gpt-5-mini",
+    "ai:maxtokens": 4000,
+    "ai:timeoutms": 60000,
+    "app:defaultnewblock": "term",
+    "app:confirmquit": true,
+    "app:hideaibutton": false,
+    "app:disablectrlshiftarrows": false,
+    "app:disablectrlshiftdisplay": false,
+    "app:focusfollowscursor": "off",
+    "autoupdate:enabled": true,
+    "autoupdate:installonquit": true,
+    "autoupdate:intervalms": 3600000,
+    "conn:askbeforewshinstall": true,
+    "conn:wshenabled": true,
+    "editor:minimapenabled": true,
+    "web:defaulturl": "https://github.com/wavetermdev/waveterm",
+    "web:defaultsearch": "https://www.google.com/search?q={query}",
+    "window:tilegapsize": 3,
+    "window:maxtabcachesize": 10,
+    "window:nativetitlebar": true,
+    "window:magnifiedblockopacity": 0.6,
+    "window:magnifiedblocksize": 0.9,
+    "window:magnifiedblockblurprimarypx": 10,
+    "window:fullscreenonlaunch": false,
+    "window:magnifiedblockblursecondarypx": 2,
+    "window:confirmclose": true,
+    "window:savelastwindow": true,
+    "telemetry:enabled": true,
+    "term:bellsound": false,
+    "term:bellindicator": false,
+    "term:osc52": "always",
+    "term:cursor": "block",
+    "term:cursorblink": false,
+    "term:copyonselect": true,
+    "term:durable": false,
+    "waveai:showcloudmodes": true,
+    "waveai:defaultmode": "waveai@balanced",
+    "preview:defaultsort": "name"
+}
+```
+
+:::warning
+
+如果你安装的是 Wave v0.9.0 之前的版本，你的配置文件将位于
+`~/.waveterm/config/settings.json`。其他配置文件也位于同一位置：
+`termthemes.json`、`presets.json` 和 `widgets.json`。
+
+:::
+
+## 环境变量解析
+
+为了避免把密钥直接写入配置文件，Wave 支持使用 `$ENV:VARIABLE_NAME` 或 `$ENV:VARIABLE_NAME:fallback` 语法解析环境变量。这适用于任何配置文件中的任意字符串值（settings.json、presets.json、ai.json 等）。
+
+```json
+{
+  "ai:apitoken": "$ENV:OPENAI_APIKEY",
+  "ai:baseurl": "$ENV:AI_BASEURL:https://api.openai.com/v1"
+}
+```
+
+## WebBookmarks 配置
+
+WebBookmarks 允许你存储和管理网页链接，并自定义显示偏好。书签存储在 JSON 文件（`bookmarks.json`）中，形式为键值映射，其中键（`id`）是书签的任意标识符。按约定，id 应以 "bookmark@" 开头。在网页组件中，你可以使用 <Kbd k="Cmd:o"/> 调出书签。
+
+### 书签结构
+
+每个书签遵循以下结构（只有 `url` 必填）：
+
+```json
+{
+  "url": "https://example.com",
+  "title": "Example Site",
+  "iconurl": "https://example.com/custom-icon.png",
+  "display:order": 1
+}
+```
+
+### 字段
+
+| 字段          | 类型    | 说明                                                                                                              |
+| ------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| url           | string  | **必填。** 书签的 URL。                                                                                           |
+| title         | string  | **可选。** 书签的显示标题。                                                                                       |
+| icon          | string  | **可选，很少使用。** 用图标名称覆盖默认网站图标。                                                                 |
+| iconcolor     | string  | **可选，很少使用。** 为指定图标设置自定义颜色。                                                                   |
+| iconurl       | string  | **可选。** 提供自定义图标 URL；当网站图标不正确时很有用（例如为了兼容深色模式）。                                 |
+| display:order | float64 | **可选。** 定义书签的显示顺序。                                                                                   |
+
+### 示例 `bookmarks.json`
+
+```json
+{
+  "bookmark@google": {
+    "url": "https://www.google.com",
+    "title": "Google"
+  },
+  "bookmark@claude": {
+    "url": "https://claude.ai",
+    "title": "Claude AI"
+  },
+  "bookmark@wave": {
+    "url": "https://waveterm.dev",
+    "title": "Wave Terminal",
+    "display:order": -1
+  },
+  "bookmark@wave-github": {
+    "url": "https://github.com/wavetermdev/waveterm",
+    "title": "Wave Github",
+    "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
+  },
+  "bookmark@chatgpt": {
+    "url": "https://chatgpt.com",
+    "iconurl": "https://cdn.oaistatic.com/assets/favicon-miwirzcw.ico"
+  },
+  "bookmark@wave-pulls": {
+    "url": "https://github.com/wavetermdev/waveterm/pulls",
+    "title": "Wave Pull Requests",
+    "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
+  }
+}
+```
+
+### 行为
+
+- 如果设置了 `iconurl`，会从指定 URL 获取图标，而不是使用站点默认网站图标。
+- 书签会根据 `display:order`（如果提供）排序，否则按 id 排序。
+- `icon` 和 `iconcolor` 很少需要，因为默认行为会获取站点的网站图标。
+- 网站图标每 24 小时刷新一次
+
+## 终端主题
+
+用户自定义终端主题位于 `~/.config/waveterm/termthemes.json`。
+
+该 JSON 文件是一个对象，每个子键定义一个主题。
+可以右键单击终端标题栏，并从“主题”子菜单中选择条目来应用主题。也可以将主题应用到
+块的元数据键 `term:theme`。这里使用 JSON 键值作为标识符。注意，为了获得最佳一致性，所有颜色都应使用 "#rrggbb" 或 "#rrggbbaa" 格式（aa = 透明度 alpha 通道）。
+
+```
+wsh setmeta this term:theme="default-dark"
+```
+
+以下是完整终端主题定义示例。所有内置主题都定义在这里：https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/termthemes.json （如果你想添加热门终端主题，请提交拉取请求！）
+
+```json
+{
+  "default-dark": {
+    "display:name": "Default Dark",
+    "display:order": 1,
+    "black": "#757575",
+    "red": "#cc685c",
+    "green": "#76c266",
+    "yellow": "#cbca9b",
+    "blue": "#85aacb",
+    "magenta": "#cc72ca",
+    "cyan": "#74a7cb",
+    "white": "#c1c1c1",
+    "brightBlack": "#727272",
+    "brightRed": "#cc9d97",
+    "brightGreen": "#a3dd97",
+    "brightYellow": "#cbcaaa",
+    "brightBlue": "#9ab6cb",
+    "brightMagenta": "#cc8ecb",
+    "brightCyan": "#b7b8cb",
+    "brightWhite": "#f0f0f0",
+    "gray": "#8b918a",
+    "cmdtext": "#f0f0f0",
+    "foreground": "#c1c1c1",
+    "selectionBackground": "",
+    "background": "#00000077",
+    "cursorAccent": ""
+  }
+}
+```
+
+:::info
+
+运行以下命令即可轻松打开 `termthemes.json` 配置文件：
+
+```
+wsh editconfig termthemes.json
+```
+
+:::
+
+| 键名                | 类型      | ANSI 前景色编号 | ANSI 背景色编号 | 功能                                                                                                                         |
+| ------------------- | --------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| display:name        | string    |          |          | 在 UI 上下文菜单中显示的名称                                                                                                             |
+| display:order       | float     |          |          | 上下文菜单中的条目按 display:order 排序                                                                                                  |
+| black               | CSS 颜色  | 30       | 40       | 黑色                                                                                                                                     |
+| red                 | CSS 颜色  | 31       | 41       | 红色                                                                                                                                     |
+| green               | CSS 颜色  | 32       | 42       | 绿色                                                                                                                                     |
+| yellow              | CSS 颜色  | 33       | 43       | 黄色                                                                                                                                     |
+| blue                | CSS 颜色  | 34       | 44       | 蓝色                                                                                                                                     |
+| magenta             | CSS 颜色  | 35       | 45       | 洋红色                                                                                                                                   |
+| cyan                | CSS 颜色  | 36       | 46       | 青色                                                                                                                                     |
+| white               | CSS 颜色  | 37       | 47       | 白色                                                                                                                                     |
+| brightBlack         | CSS 颜色  | 90       | 100      | 亮黑色                                                                                                                                   |
+| brightRed           | CSS 颜色  | 91       | 101      | 亮红色                                                                                                                                   |
+| brightGreen         | CSS 颜色  | 92       | 102      | 亮绿色                                                                                                                                   |
+| brightYellow        | CSS 颜色  | 93       | 103      | 亮黄色                                                                                                                                   |
+| brightBlue          | CSS 颜色  | 94       | 104      | 亮蓝色                                                                                                                                   |
+| brightMagenta       | CSS 颜色  | 95       | 105      | 亮洋红色                                                                                                                                 |
+| brightCyan          | CSS 颜色  | 96       | 106      | 亮青色                                                                                                                                   |
+| brightWhite         | CSS 颜色  | 97       | 107      | 亮白色                                                                                                                                   |
+| gray                | CSS 颜色  |          |          | 当前未使用                                                                                                                               |
+| cmdtext             | CSS 颜色  |          |          | 当前未使用                                                                                                                               |
+| foreground          | CSS 颜色  |          |          | 前景色（未应用颜色代码时的默认值）                                                                                                       |
+| background          | CSS 颜色  |          |          | 背景色（未应用颜色代码时的默认值）；如果希望终端透明，必须包含 alpha 通道（#rrggbbaa）                                                  |
+| cursorAccent        | CSS 颜色  |          |          | 光标颜色                                                                                                                                 |
+| selectionBackground | CSS 颜色  |          |          | 选中文本的背景色                                                                                                                         |
+
+## 可自定义的系统级全局热键 {#customizable-systemwide-global-hotkey}
+
+Wave 允许设置自定义全局热键，用于从电脑上的任意位置打开你最近使用的窗口。它在 `settings.json` 文件中的名称是 `"app:globalhotkey"`，格式是一组由 `:` 字符分隔的按键名称。
+
+### 示例
+
+作为一个实际示例，假设你想使用 `F5` 作为全局热键。只需将 `"app:globalhotkey"` 的值设置为 `"F5"`，然后重启 Wave，即可让它成为你的全局热键。
+
+作为一个不太常见的示例，假设你使用 `Ctrl`、`Option` 和 `e` 的组合。那么这个快捷键的值就是 `"Ctrl:Option:e"`。
+
+### 允许的按键名称
+
+支持以下按键名称：
+
+- `Ctrl`
+- `Cmd`
+- `Shift`
+- `Alt`
+- `Option`
+- `Meta`
+- `Super`
+- 数字键（非小键盘），表示为 `c{Digit0}` 到 `c{Digit9}`
+- 字母 `a` 到 `z`
+- F 键 `F1` 到 `F20`
+- 软键 `Soft1` 到 `Soft4`。它们本质上等同于 `F21` 到 `F24`。
+- 空格，表示为 `Space` 或字面量空格 &nbsp;<code>&nbsp;</code>
+- `Enter`（在 Mac 上标为 Return）
+- `Tab`
+- `CapsLock`
+- `NumLock`
+- `Backspace`（在 Mac 上标为 Delete）
+- `Delete`
+- `Insert`
+- 方向键 `ArrowUp`、`ArrowDown`、`ArrowLeft` 和 `ArrowRight`
+- `Home`
+- `End`
+- `PageUp`
+- `PageDown`
+- `Esc`
+- 音量控制 `AudioVolumeUp`、`AudioVolumeDown`、`AudioVolumeMute`
+- 媒体控制 `MediaTrackNext`、`MediaTrackPrevious`、`MediaPlayPause` 和 `MediaStop`
+- `PrintScreen`
+- 小键盘数字键，表示为 `c{Numpad0}` 到 `c{Numpad9}`
+- 小键盘小数点，表示为 `Decimal`
+- 小键盘加号/加法，表示为 `Add`
+- 小键盘减号/减法，表示为 `Subtract`
+- 小键盘星号/乘法，表示为 `Multiply`
+- 小键盘斜杠/除法，表示为 `Divide`
+
+</PlatformProvider>

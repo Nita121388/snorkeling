@@ -1,0 +1,110 @@
+---
+sidebar_position: 1.5
+id: "waveai"
+title: "Wave AI"
+---
+
+import { Kbd } from "@site/src/components/kbd";
+import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
+
+<PlatformProvider>
+
+<PlatformSelectorButton />
+
+<br/><br/>
+可感知上下文的终端助手，可访问终端输出、widget 和文件系统。
+
+## 键盘快捷键 {#keyboard-shortcuts}
+
+| 快捷键 | 操作 |
+|----------|--------|
+| <Kbd k="Cmd:Shift:a"/> | 切换 AI 面板 |
+| <Kbd k="Ctrl:Shift:0" windows="Alt:0"/> | 聚焦 AI 输入框 |
+| <Kbd k="Cmd:k"/> | 清空聊天 / 开始新对话 |
+| <Kbd k="Enter"/> | 发送消息 |
+| <Kbd k="Shift:Enter"/> | 换行 |
+
+## Widget 上下文开关 {#widget-context-toggle}
+
+控制 AI 对你的 workspace 的访问权限：
+
+**开启**：AI 可以读取终端输出、截取 widget 屏幕截图、访问文件/目录（需批准）、导航 Web widget，并使用自定义 widget 工具。适用于调试、代码分析和 workspace 任务。
+
+**关闭**：AI 只能看到你的消息和附件文件。这是用于一般问题的标准聊天模式。
+
+## 文件附件 {#file-attachments}
+
+将文件拖到 AI 面板即可附加（并非所有模型都支持）：
+
+| 类型 | 格式 | 大小限制 | 说明 |
+|------|---------|------------|-------|
+| 图片 | JPEG, PNG, GIF, WebP, SVG | 10 MB | 自动缩放到最大 4096px，并转换为 WebP |
+| PDF | `.pdf` | 5 MB | 提取文本用于分析 |
+| 文本/代码 | `.js`, `.ts`, `.py`, `.go`, `.md`, `.json`, `.yaml` 等 | 200 KB | 支持所有常见语言和配置文件 |
+
+## CLI 集成 {#cli-integration}
+
+使用 `wsh ai` 从命令行发送文件和提示词：
+
+```bash
+git diff | wsh ai -                          # Pipe to AI
+wsh ai main.go -m "find bugs"                # Attach files with message
+wsh ai $(tail -n 500 my.log) -m "review" -s  # Auto-submit with output
+```
+
+支持文本文件、图片、PDF 和目录。使用 `-n` 开始新聊天，使用 `-s` 自动提交。
+
+## AI 工具（已启用 Widget 上下文） {#ai-tools-widget-context-enabled}
+
+### 终端 {#terminal}
+- **读取终端输出**：从终端 widget 获取回滚内容，支持指定行范围
+
+### 文件系统 {#file-system}
+- **读取文件**：读取文本文件，并支持指定行范围（需批准）
+- **列出目录**：返回文件信息、大小、权限和时间戳（需批准）
+- **写入文本文件**：创建或修改文件，并提供 diff 预览和批准流程（需批准）
+
+### 网页 {#web}
+- **导航网页**：更改 Web 浏览器 widget 中的 URL
+
+### 所有 Widget {#all-widgets}
+- **截取屏幕截图**：截取任意 widget 的屏幕截图用于视觉分析（并非所有模型都支持）
+
+:::warning 安全性
+文件系统操作需要明确批准。所有文件访问都由你控制。
+:::
+
+## 本地模型与 BYOK {#local-models--byok}
+
+Wave AI 支持使用你自己的 AI 模型和 API key：
+
+- **本地模型**：使用 [Ollama](https://ollama.ai)、[LM Studio](https://lmstudio.ai)、[vLLM](https://docs.vllm.ai) 以及其他兼容 OpenAI 的服务器在本地运行 AI 模型
+- **BYOK (Bring Your Own Key)**：将你自己的 API key 用于 OpenAI、OpenRouter、Google AI (Gemini)、Azure OpenAI 以及其他云提供商
+- **多模式**：配置并在多个 AI 提供商和模型之间切换
+- **隐私**：让数据保留在本地，或使用你偏好的云提供商
+
+完整的配置说明、示例和故障排除，请参阅 [**本地模型与 BYOK 指南**](./waveai-modes.mdx)。
+
+## 隐私 {#privacy}
+
+**默认 Wave AI 服务：**
+- 消息会通过 Wave Cloud AI 服务代理（由 OpenAI API 提供支持）。关于数据处理细节，请参阅 OpenAI 的隐私政策。
+- Wave 不会存储你的聊天、附件，也不会将其用于训练
+- 使用量计数会包含在匿名遥测中
+- 文件访问需要明确批准
+
+**本地模型与 BYOK：**
+- 使用本地模型时，你的聊天数据不会离开本机
+- 使用 BYOK 搭配云提供商时，请求会直接发送到你选择的提供商
+- 关于数据处理细节，请参阅对应提供商的隐私政策
+
+:::info 正在积极开发中
+Wave AI 目前处于活跃 beta 阶段，在我们持续打磨体验期间会附带 AI 额度。欢迎在我们的 [Discord](https://discord.gg/XfvZ334gwU) 分享反馈。
+
+**即将推出：**
+- **远程文件访问**：读取通过 SSH 连接的系统上的文件
+- **命令执行**：在批准后运行终端命令
+- **Web 内容**：从网页提取文本（目前仅支持屏幕截图）
+:::
+
+</PlatformProvider>

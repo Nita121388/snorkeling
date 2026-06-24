@@ -21,6 +21,18 @@ export class AISessionsServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // list AI session migration backups
+    // @returns AI session backup stats
+    BackupStats(request: AISessionsBackupRequest): Promise<BackupStats> {
+        return callBackendService(this?.waveEnv, "aisessions", "BackupStats", Array.from(arguments))
+    }
+
+    // delete old AI session migration backups
+    // @returns AI session backup cleanup result
+    CleanupBackups(request: AISessionsBackupRequest): Promise<BackupCleanupResult> {
+        return callBackendService(this?.waveEnv, "aisessions", "CleanupBackups", Array.from(arguments))
+    }
+
     // delete a local AI session by moving its source file to deleted storage
     // @returns deleted AI session summary
     Delete(id: string): Promise<SessionSummary> {

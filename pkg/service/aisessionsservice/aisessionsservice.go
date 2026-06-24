@@ -126,6 +126,12 @@ type AISessionsStatResponse struct {
 	Missing  bool   `json:"missing,omitempty"`
 }
 
+type AISessionsBackupRequest struct {
+	Connection string `json:"connection,omitempty"`
+	KeepRecent int    `json:"keepRecent,omitempty"`
+	MaxAgeDays int    `json:"maxAgeDays,omitempty"`
+}
+
 func aiSessionsDebugEnabled() bool {
 	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_DEBUG"))
 	return value != "" && value != "0" && strings.ToLower(value) != "false"
@@ -206,6 +212,24 @@ func remoteSQLitePath(connection string) string {
 	return filepath.Join(filepath.Dir(aisessions.DefaultSQLiteIndexPath()), "remote-"+safeConnection+"-index-v2.sqlite")
 }
 
+func backupPathsForConnection(connection string) (string, string) {
+	connection = strings.TrimSpace(connection)
+	if conncontroller.IsLocalConnName(connection) || conncontroller.IsWslConnName(connection) {
+		return aisessions.DefaultSQLiteIndexPath(), aisessions.DefaultMetaPath()
+	}
+	return remoteSQLitePath(connection), remoteMetaPath(connection)
+}
+
+func backupRetentionOptions(request *AISessionsBackupRequest) aisessions.BackupRetentionOptions {
+	if request == nil {
+		return aisessions.BackupRetentionOptions{}
+	}
+	return aisessions.BackupRetentionOptions{
+		KeepRecent: request.KeepRecent,
+		MaxAgeDays: request.MaxAgeDays,
+	}
+}
+
 func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "list local AI sessions",
@@ -238,6 +262,48 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		return nil, err
 	}
 	return &AISessionsListResponse{Sessions: sessions}, nil
+}
+
+func (svc *AISessionsService) BackupStats_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list AI session migration backups",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session backup stats",
+	}
+}
+
+func (svc *AISessionsService) BackupStats(ctx context.Context, request *AISessionsBackupRequest) (*aisessions.BackupStats, error) {
+	var connection string
+	if request != nil {
+		connection = request.Connection
+	}
+	sqlitePath, metaPath := backupPathsForConnection(connection)
+	stats, err := aisessions.BackupStatsForPaths(ctx, sqlitePath, metaPath, backupRetentionOptions(request))
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
+func (svc *AISessionsService) CleanupBackups_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "delete old AI session migration backups",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI session backup cleanup result",
+	}
+}
+
+func (svc *AISessionsService) CleanupBackups(ctx context.Context, request *AISessionsBackupRequest) (*aisessions.BackupCleanupResult, error) {
+	var connection string
+	if request != nil {
+		connection = request.Connection
+	}
+	sqlitePath, metaPath := backupPathsForConnection(connection)
+	result, err := aisessions.CleanupBackupsForPaths(ctx, sqlitePath, metaPath, backupRetentionOptions(request))
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (svc *AISessionsService) Tags_Meta() tsgenmeta.MethodMeta {

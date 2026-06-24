@@ -158,11 +158,27 @@
                             background: rgb(34 197 94 / 0.1);
                         }
 
+                        &.is-idle {
+                            border-color: rgb(56 189 248 / 0.34);
+                            color: #38bdf8;
+                            background: rgb(56 189 248 / 0.08);
+                        }
+
                         &.is-blocked {
                             border-color: rgb(245 158 11 / 0.64);
                             color: var(--warning-color, #f59e0b);
                             background: rgb(245 158 11 / 0.12);
                             animation: agent-status-blocked-border 1.6s ease-in-out infinite;
+                        }
+
+                        &.is-stale {
+                            border-color: rgb(168 85 247 / 0.38);
+                            color: #a855f7;
+                            background: rgb(168 85 247 / 0.1);
+                        }
+
+                        &.is-unknown {
+                            background: transparent;
                         }
 
                         &.is-inferred {

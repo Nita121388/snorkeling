@@ -1,0 +1,120 @@
+---
+sidebar_position: 3.5
+id: "tab-backgrounds"
+title: "标签页背景"
+---
+
+# 标签页背景 {#tab-backgrounds}
+
+Wave 的背景系统充分利用 CSS 背景能力，让你通过 `background` 属性创建丰富的视觉效果。你可以应用纯色、渐变（线性和径向）、图片，甚至将多个元素混合在一起。
+
+## 管理背景 {#managing-backgrounds}
+
+自定义背景存储在 `~/.config/waveterm/backgrounds.json`。
+
+**通过 UI 编辑：**
+1. 点击 widget 栏中的设置（齿轮）图标
+2. 在菜单中选择 "Settings"
+3. 在设置侧边栏中选择 "Tab Backgrounds"
+
+**或者从命令行打开：**
+```bash
+wsh editconfig backgrounds.json
+```
+
+## 文件格式 {#file-format}
+
+背景条目遵循以下格式：
+
+```json
+{
+  "bg@<key>": {
+    "display:name": "<Background name>",
+    "display:order": <number>,
+    "bg": "<CSS background value>",
+    "bg:opacity": <float>
+  }
+}
+```
+
+要查看 Wave 内置背景的定义方式，请查看[默认 backgrounds.json 文件](https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/backgrounds.json)。
+
+## 配置键 {#configuration-keys}
+
+| 键名                 | 类型   | 功能                                                                                                    |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| display:name         | string | UI 菜单中显示的名称（必填）                                                                              |
+| display:order        | float  | 控制在菜单中的顺序（可选）                                                                              |
+| bg                   | string | 标签页的 CSS `background` 属性（支持颜色、渐变、图片等）                                                |
+| bg:opacity           | float  | 背景透明度（默认 0.5）                                                                                  |
+| bg:blendmode         | string | 背景的[混合模式](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode)                           |
+| bg:bordercolor       | string | block 未激活时的边框颜色（很少使用）                                                                    |
+| bg:activebordercolor | string | block 激活时的边框颜色                                                                                  |
+
+## 示例 {#examples}
+
+#### 简单纯色： {#simple-solid-color}
+
+```json
+{
+  "bg@blue": {
+    "display:name": "Blue",
+    "bg": "blue",
+    "bg:opacity": 0.3,
+    "bg:activebordercolor": "rgba(0, 0, 255, 1.0)"
+  }
+}
+```
+
+#### 复杂渐变： {#complex-gradient}
+
+```json
+{
+  "bg@duskhorizon": {
+    "display:name": "Dusk Horizon",
+    "bg": "linear-gradient(0deg, rgba(128,0,0,1) 0%, rgba(204,85,0,0.7) 20%, rgba(255,140,0,0.6) 45%, rgba(160,90,160,0.5) 65%, rgba(60,60,120,1) 100%), radial-gradient(circle at 30% 30%, rgba(255,255,255,0.1), transparent 60%), radial-gradient(circle at 70% 70%, rgba(255,255,255,0.05), transparent 70%)",
+    "bg:opacity": 0.9,
+    "bg:blendmode": "overlay"
+  }
+}
+```
+
+#### 背景图片： {#background-image}
+
+```json
+{
+  "bg@ocean": {
+    "display:name": "Ocean Scene",
+    "bg": "url('/path/to/ocean.jpg') center/cover no-repeat",
+    "bg:opacity": 0.2
+  }
+}
+```
+
+:::info
+背景图片同时支持 URL 和本地文件路径。为了更可靠，建议使用本地文件。本地路径必须是绝对路径，或以 `~` 开头（例如 `~/Downloads/background.png`）。支持常见 Web 格式：PNG、JPEG/JPG、WebP、GIF 和 SVG。
+:::
+
+:::tip
+`setbg` 命令可以帮助生成背景 JSON：
+
+```bash
+# 预览纯色背景
+wsh setbg --print "#ff0000"
+{
+  "bg:*": true,
+  "bg": "#ff0000",
+  "bg:opacity": 0.5
+}
+
+# 预览居中图片背景
+wsh setbg --print --center --opacity 0.3 ~/logo.png
+{
+  "bg:*": true,
+  "bg": "url('/absolute/path/to/logo.png') no-repeat center/auto",
+  "bg:opacity": 0.3
+}
+```
+
+只需添加必需的 `display:name` 字段和 `bg@<key>` 包装层，即可完成背景条目。
+:::

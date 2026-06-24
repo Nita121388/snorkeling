@@ -286,7 +286,7 @@ func (idx *SQLiteIndex) backupSQLiteBeforeTagMigration() error {
 	if _, err := os.Stat(idx.path); err != nil {
 		return err
 	}
-	backupPath := filepath.Join(filepath.Dir(idx.path), fmt.Sprintf("%s.backup-before-tags-%s", filepath.Base(idx.path), time.Now().Format("20060102-150405")))
+	backupPath := uniqueDeletedPath(filepath.Join(filepath.Dir(idx.path), fmt.Sprintf("%s.backup-before-tags-%s", filepath.Base(idx.path), time.Now().Format("20060102-150405"))))
 	if _, err := idx.db.Exec(`VACUUM INTO ?`, backupPath); err != nil {
 		return err
 	}

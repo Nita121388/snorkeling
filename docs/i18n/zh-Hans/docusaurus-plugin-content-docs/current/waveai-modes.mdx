@@ -1,0 +1,565 @@
+---
+sidebar_position: 1.6
+id: "waveai-modes"
+title: "Wave AI（本地模型 + BYOK）"
+---
+
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+<VersionBadge version="v0.13" noLeftMargin={true}/>
+
+Wave AI 支持自定义 AI 模式，让你可以使用本地模型、自定义 API 端点以及替代 AI 提供商。这样你就能完全控制 Wave AI 功能使用哪些模型和提供商。
+
+## 配置概览 {#configuration-overview}
+
+AI 模式在 `~/.config/waveterm/waveai.json` 中配置。
+
+**通过 UI 编辑：**
+1. 点击 widget 栏中的设置（齿轮）图标
+2. 在菜单中选择“Settings”
+3. 在设置侧边栏中选择“Wave AI Modes”
+
+**或者从命令行打开：**
+```bash
+wsh editconfig waveai.json
+```
+
+每个模式都会定义一套完整的 AI 配置，包括模型、API 端点、身份验证和显示属性。
+
+## 基于提供商的配置 {#provider-based-configuration}
+
+Wave AI 现在支持基于提供商的配置，会为常见提供商自动应用合理的默认值。通过指定 `ai:provider` 字段，可以大幅简化配置，因为系统会自动设置端点、API 类型和密钥名称。
+
+### 支持的提供商 {#supported-providers}
+
+- **`openai`** - OpenAI API（自动配置端点和密钥名称）[[查看示例](#openai)]
+- **`openrouter`** - OpenRouter API（自动配置端点和密钥名称）[[查看示例](#openrouter)]
+- **`nanogpt`** - NanoGPT API（自动配置端点和密钥名称）[[查看示例](#nanogpt)]
+- **`groq`** - Groq API（自动配置端点和密钥名称）[[查看示例](#groq)]
+- **`google`** - Google AI (Gemini) [[查看示例](#google-ai-gemini)]
+- **`azure`** - Azure OpenAI Service（现代 API）[[查看示例](#azure-openai-modern-api)]
+- **`azure-legacy`** - Azure OpenAI Service（旧版部署 API）[[查看示例](#azure-openai-legacy-deployment-api)]
+- **`custom`** - 自定义 API 端点（完全手动配置）[[查看示例](#local-model-examples)]
+
+### 支持的 API 类型 {#supported-api-types}
+
+Wave AI 支持以下 API 类型：
+
+- **`openai-chat`**：使用 `/v1/chat/completions` 端点（最常见）
+- **`openai-responses`**：使用 `/v1/responses` 端点（适用于 GPT-5+ 模型的现代 API）
+- **`google-gemini`**：Google 的 Gemini API 格式（使用 `ai:provider: "google"` 时会自动设置，通常无需直接使用）
+
+## 全局 Wave AI 设置 {#global-wave-ai-settings}
+
+你可以在 Wave Terminal 设置中配置全局 Wave AI 行为（独立于 `waveai.json` 中的模式配置）。
+
+### 设置默认 AI 模式 {#setting-a-default-ai-mode}
+
+配置本地模型或自定义模式后，可以在 Wave Terminal 设置中设置 `waveai:defaultmode`，让它成为默认模式。
+
+:::important
+请使用**模式键**（`waveai.json` 配置中的 key），不要使用显示名称。例如，应使用 `"ollama-llama"`（key），而不是 `"Ollama - Llama 3.3"`（显示名称）。
+:::
+
+**使用设置命令：**
+```bash
+wsh setconfig waveai:defaultmode="ollama-llama"
+```
+
+**或者直接编辑 settings.json：**
+1. 点击 widget 栏中的设置（齿轮）图标
+2. 在菜单中选择“Settings”
+3. 将 `waveai:defaultmode` 键添加到 settings.json：
+```json
+  "waveai:defaultmode": "ollama-llama"
+```
+
+这样在打开 Wave AI 功能时，指定模式会成为默认选项。
+
+:::note
+Wave AI 通常要求启用遥测。不过，如果你配置了自己的自定义模型（本地或 BYOK），并将 `waveai:defaultmode` 设置为该自定义模式的 key，就不会收到遥测要求提示。这样你就可以用自己的模型完全私密地使用 Wave AI 功能。 <VersionBadge version="v0.13.1"/>
+:::
+
+### 隐藏 Wave Cloud 模式 {#hiding-wave-cloud-modes}
+
+如果你只想使用本地或自定义模型，并希望在模式下拉列表中隐藏 Wave 的云端 AI 模式，请将 `waveai:showcloudmodes` 设置为 `false`：
+
+**使用设置命令：**
+```bash
+wsh setconfig waveai:showcloudmodes=false
+```
+
+**或者直接编辑 settings.json：**
+1. 点击 widget 栏中的设置（齿轮）图标
+2. 在菜单中选择“Settings”
+3. 将 `waveai:showcloudmodes` 键添加到 settings.json：
+```json
+  "waveai:showcloudmodes": false
+```
+
+这会隐藏 Wave 内置的云端 AI 模式，只显示你自定义配置的模式。
+
+## 本地模型示例 {#local-model-examples}
+
+### Ollama
+
+[Ollama](https://ollama.ai) 提供兼容 OpenAI 的 API，用于在本地运行模型：
+
+```json
+{
+  "ollama-llama": {
+    "display:name": "Ollama - Llama 3.3",
+    "display:order": 1,
+    "display:icon": "microchip",
+    "display:description": "Local Llama 3.3 70B model via Ollama",
+    "ai:apitype": "openai-chat",
+    "ai:model": "llama3.3:70b",
+    "ai:thinkinglevel": "medium",
+    "ai:endpoint": "http://localhost:11434/v1/chat/completions",
+    "ai:apitoken": "ollama"
+  }
+}
+```
+
+:::tip
+`ai:apitoken` 字段是必填项，但 Ollama 会忽略它，可以将其设置为任意值，例如 `"ollama"`。
+:::
+
+### LM Studio
+
+[LM Studio](https://lmstudio.ai) 提供可运行多种模型的本地服务器：
+
+```json
+{
+  "lmstudio-qwen": {
+    "display:name": "LM Studio - Qwen",
+    "display:order": 2,
+    "display:icon": "server",
+    "display:description": "Local Qwen model via LM Studio",
+    "ai:apitype": "openai-chat",
+    "ai:model": "qwen/qwen-2.5-coder-32b-instruct",
+    "ai:thinkinglevel": "medium",
+    "ai:endpoint": "http://localhost:1234/v1/chat/completions",
+    "ai:apitoken": "not-needed"
+  }
+}
+```
+
+### vLLM
+
+[vLLM](https://docs.vllm.ai) 是一个高性能推理服务器，并兼容 OpenAI API：
+
+```json
+{
+  "vllm-local": {
+    "display:name": "vLLM",
+    "display:order": 3,
+    "display:icon": "server",
+    "display:description": "Local model via vLLM",
+    "ai:apitype": "openai-chat",
+    "ai:model": "your-model-name",
+    "ai:thinkinglevel": "medium",
+    "ai:endpoint": "http://localhost:8000/v1/chat/completions",
+    "ai:apitoken": "not-needed"
+  }
+}
+```
+
+## 云提供商示例 {#cloud-provider-examples}
+
+### OpenAI
+
+使用 `openai` 提供商会自动配置端点和密钥名称：
+
+```json
+{
+  "openai-gpt4o": {
+    "display:name": "GPT-4o",
+    "ai:provider": "openai",
+    "ai:model": "gpt-4o"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://api.openai.com/v1/chat/completions`
+- `ai:apitype` 为 `openai-chat`（GPT-5+ 模型为 `openai-responses`）
+- `ai:apitokensecretname` 为 `OPENAI_KEY`（请用此名称存储你的 OpenAI API key）
+- `ai:capabilities` 为 `["tools", "images", "pdfs"]`（根据模型自动判断）
+
+对于 GPT-4.1 或 GPT-5 等较新的模型，API 类型会自动判断：
+
+```json
+{
+  "openai-gpt41": {
+    "display:name": "GPT-4.1",
+    "ai:provider": "openai",
+    "ai:model": "gpt-4.1"
+  }
+}
+```
+
+### OpenAI 兼容接口 {#openai-compatible}
+
+要使用兼容 OpenAI 的 API 提供商，需要提供 `ai:endpoint`、`ai:apitokensecretname`、`ai:model` 参数，
+并将 `ai:apitype` 设置为 `"openai-chat"`。
+
+:::note
+`ai:endpoint` *不是* baseurl。端点应包含完整路径，而不仅仅是 baseurl。
+例如：https://api.x.ai/v1/chat/completions
+
+如果只提供 baseurl，很可能会收到 404 消息。
+:::
+
+```json
+{
+  "xai-grokfast": {
+    "display:name": "xAI Grok Fast",
+    "display:order": 2,
+    "display:icon": "server",
+    "ai:apitype": "openai-chat",
+    "ai:model": "grok-4-1-fast-reasoning",
+    "ai:endpoint": "https://api.x.ai/v1/chat/completions",
+    "ai:apitokensecretname": "XAI_KEY",
+    "ai:capabilities": ["tools", "images", "pdfs"]
+  }
+}
+```
+
+`ai:apitokensecretname` 应该是包含你的 API key 的环境变量名称。请在运行 Wave Terminal 前设置此环境变量。
+
+
+### OpenRouter
+
+[OpenRouter](https://openrouter.ai) 提供对多个 AI 模型的访问。使用 `openrouter` 提供商可以简化配置：
+
+```json
+{
+  "openrouter-qwen": {
+    "display:name": "OpenRouter - Qwen",
+    "ai:provider": "openrouter",
+    "ai:model": "qwen/qwen-2.5-coder-32b-instruct"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://openrouter.ai/api/v1/chat/completions`
+- `ai:apitype` 为 `openai-chat`
+- `ai:apitokensecretname` 为 `OPENROUTER_KEY`（请用此名称存储你的 OpenRouter API key）
+
+:::note
+对于 OpenRouter，你必须根据模型功能手动指定 `ai:capabilities`。示例：
+```json
+{
+  "openrouter-qwen": {
+    "display:name": "OpenRouter - Qwen",
+    "ai:provider": "openrouter",
+    "ai:model": "qwen/qwen-2.5-coder-32b-instruct",
+    "ai:capabilities": ["tools"]
+  }
+}
+```
+:::
+
+### NanoGPT
+
+[NanoGPT](https://nano-gpt.com) 以有竞争力的价格提供对多个 AI 模型的访问。使用 `nanogpt` 提供商可以简化配置：
+
+```json
+{
+  "nanogpt-glm47": {
+    "display:name": "NanoGPT - GLM 4.7",
+    "ai:provider": "nanogpt",
+    "ai:model": "zai-org/glm-4.7"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://nano-gpt.com/api/v1/chat/completions`
+- `ai:apitype` 为 `openai-chat`
+- `ai:apitokensecretname` 为 `NANOGPT_KEY`（请用此名称存储你的 NanoGPT API key）
+
+:::note
+NanoGPT 是一个代理服务，可提供对多个 AI 模型的访问。你必须根据模型功能手动指定 `ai:capabilities`。对于具备工具调用能力的模型，NanoGPT 支持兼容 OpenAI 的工具调用。请通过 [NanoGPT models API](https://nano-gpt.com/api/v1/models?detailed=true) 中的 `capabilities.vision` 字段判断是否支持图片。下面是一个支持工具的纯文本模型示例：
+```json
+{
+  "nanogpt-glm47": {
+    "display:name": "NanoGPT - GLM 4.7",
+    "ai:provider": "nanogpt",
+    "ai:model": "zai-org/glm-4.7",
+    "ai:capabilities": ["tools"]
+  }
+}
+```
+对于 `openai/gpt-5` 这类具备视觉能力的模型，请将 `"images"` 添加到 capabilities。
+:::
+
+### Groq
+
+[Groq](https://groq.com) 通过兼容 OpenAI 的 API 为开放模型提供快速推理。使用 `groq` 提供商可以简化配置：
+
+```json
+{
+  "groq-kimi-k2": {
+    "display:name": "Groq - Kimi K2",
+    "ai:provider": "groq",
+    "ai:model": "moonshotai/kimi-k2-instruct"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://api.groq.com/openai/v1/chat/completions`
+- `ai:apitype` 为 `openai-chat`
+- `ai:apitokensecretname` 为 `GROQ_KEY`（请用此名称存储你的 Groq API key）
+
+:::note
+对于 Groq，你必须根据模型功能手动指定 `ai:capabilities`。
+:::
+
+### Google AI (Gemini) {#google-ai-gemini}
+
+[Google AI](https://ai.google.dev) 提供 Gemini 系列模型。使用 `google` 提供商可以简化配置：
+
+```json
+{
+  "google-gemini": {
+    "display:name": "Gemini 3 Pro",
+    "ai:provider": "google",
+    "ai:model": "gemini-3-pro-preview"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent`
+- `ai:apitype` 为 `google-gemini`
+- `ai:apitokensecretname` 为 `GOOGLE_AI_KEY`（请用此名称存储你的 Google AI API key）
+- `ai:capabilities` 为 `["tools", "images", "pdfs"]`（自动配置）
+
+### Azure OpenAI（现代 API） {#azure-openai-modern-api}
+
+对于现代 Azure OpenAI API，请使用 `azure` 提供商：
+
+```json
+{
+  "azure-gpt4": {
+    "display:name": "Azure GPT-4",
+    "ai:provider": "azure",
+    "ai:model": "gpt-4",
+    "ai:azureresourcename": "your-resource-name"
+  }
+}
+```
+
+该提供商会自动设置：
+- `ai:endpoint` 为 `https://your-resource-name.openai.azure.com/openai/v1/chat/completions`（较新模型使用 `/responses`）
+- 根据模型设置 `ai:apitype`
+- `ai:apitokensecretname` 为 `AZURE_OPENAI_KEY`（请用此名称存储你的 Azure OpenAI key）
+
+:::note
+对于 Azure 提供商，你必须根据模型功能手动指定 `ai:capabilities`。示例：
+```json
+{
+  "azure-gpt4": {
+    "display:name": "Azure GPT-4",
+    "ai:provider": "azure",
+    "ai:model": "gpt-4",
+    "ai:azureresourcename": "your-resource-name",
+    "ai:capabilities": ["tools", "images"]
+  }
+}
+```
+:::
+
+### Azure OpenAI（旧版部署 API） {#azure-openai-legacy-deployment-api}
+
+对于旧版 Azure 部署，请使用 `azure-legacy` 提供商：
+
+```json
+{
+  "azure-legacy-gpt4": {
+    "display:name": "Azure GPT-4 (Legacy)",
+    "ai:provider": "azure-legacy",
+    "ai:azureresourcename": "your-resource-name",
+    "ai:azuredeployment": "your-deployment-name"
+  }
+}
+```
+
+该提供商会自动构造完整端点 URL 并设置 API 版本（默认为 `2025-04-01-preview`）。如有需要，可以用 `ai:azureapiversion` 覆盖 API 版本。
+
+:::note
+对于 Azure Legacy 提供商，你必须根据模型功能手动指定 `ai:capabilities`。
+:::
+
+## 使用 Secrets 存储 API Key {#using-secrets-for-api-keys}
+
+不建议直接在配置中存储 API key。你应该使用 Wave 的 secret store 来安全保存凭据。Secrets 会使用系统原生钥匙串加密存储。
+
+### 存储 API Key {#storing-an-api-key}
+
+**使用 Secrets UI（推荐）：**
+1. 点击 widget 栏中的设置（齿轮）图标
+2. 在菜单中选择“Secrets”
+3. 点击“Add New Secret”
+4. 输入 secret 名称（例如 `OPENAI_API_KEY`）和你的 API key
+5. 点击“Save”
+
+**或者通过命令行：**
+```bash
+wsh secret set OPENAI_KEY=sk-xxxxxxxxxxxxxxxx
+wsh secret set OPENROUTER_KEY=sk-xxxxxxxxxxxxxxxx
+```
+
+### 引用 Secret {#referencing-the-secret}
+
+使用 `openai` 或 `openrouter` 等提供商时，secret 名称会自动设置。只需确保对应名称的 secret 已存在：
+
+```json
+{
+  "my-openai-mode": {
+    "display:name": "OpenAI GPT-4o",
+    "ai:provider": "openai",
+    "ai:model": "gpt-4o"
+  }
+}
+```
+
+`openai` 提供商会自动查找 `OPENAI_KEY` secret。关于如何在 Wave 中安全管理 secrets，请参阅 [Secrets 文档](./secrets.mdx)。
+
+## 多模式示例 {#multiple-modes-example}
+
+你可以定义多个 AI 模式，并在它们之间轻松切换：
+
+```json
+{
+  "ollama-llama": {
+    "display:name": "Ollama - Llama 3.3",
+    "display:order": 1,
+    "ai:model": "llama3.3:70b",
+    "ai:endpoint": "http://localhost:11434/v1/chat/completions",
+    "ai:apitoken": "ollama"
+  },
+  "ollama-codellama": {
+    "display:name": "Ollama - CodeLlama",
+    "display:order": 2,
+    "ai:model": "codellama:34b",
+    "ai:endpoint": "http://localhost:11434/v1/chat/completions",
+    "ai:apitoken": "ollama"
+  },
+  "openai-gpt4o": {
+    "display:name": "GPT-4o",
+    "display:order": 10,
+    "ai:provider": "openai",
+    "ai:model": "gpt-4o"
+  }
+}
+```
+
+## 故障排除 {#troubleshooting}
+
+### 连接问题 {#connection-issues}
+
+如果 Wave 无法连接到你的模型服务器：
+
+1. **对于已设置 `ai:provider` 的云提供商**：确保已存储正确的 secret（例如 `OPENAI_KEY`、`OPENROUTER_KEY`）
+2. **对于本地/自定义端点**：确认服务器正在运行（Ollama 可用 `curl http://localhost:11434/v1/models` 检查）
+3. 检查 `ai:endpoint` 是否为包含路径的完整端点 URL（例如 `http://localhost:11434/v1/chat/completions`）
+4. 确认 `ai:apitype` 与服务器 API 匹配（使用提供商预设时，默认值通常是正确的）
+5. 如果使用非 localhost 地址，请检查防火墙设置
+
+### 找不到模型 {#model-not-found}
+
+如果收到“model not found”错误：
+
+1. 确认模型名称与服务器期望的名称完全一致
+2. 对于 Ollama，可使用 `ollama list` 查看可用模型
+3. 某些服务器要求特定前缀或命名格式
+
+### API 类型选择 {#api-type-selection}
+
+- 如果未指定，API 类型默认是 `openai-chat`，适用于大多数提供商
+- Ollama、LM Studio、自定义端点以及多数云提供商请使用 `openai-chat`
+- 较新的 OpenAI 模型（GPT-5+）或提供商明确要求时，请使用 `openai-responses`
+- 提供商预设会在需要时自动设置正确的 API 类型
+
+## 配置参考 {#configuration-reference}
+
+### 最小配置（使用提供商） {#minimal-configuration-with-provider}
+
+```json
+{
+  "mode-key": {
+    "display:name": "Qwen (OpenRouter)",
+    "ai:provider": "openrouter",
+    "ai:model": "qwen/qwen-2.5-coder-32b-instruct"
+  }
+}
+```
+
+### 完整配置（所有字段） {#full-configuration-all-fields}
+
+```json
+{
+  "mode-key": {
+    "display:name": "Display Name",
+    "display:order": 1,
+    "display:icon": "icon-name",
+    "display:description": "Full description",
+    "ai:provider": "custom",
+    "ai:apitype": "openai-chat",
+    "ai:model": "model-name",
+    "ai:thinkinglevel": "medium",
+    "ai:endpoint": "http://localhost:11434/v1/chat/completions",
+    "ai:azureapiversion": "v1",
+    "ai:apitoken": "your-token",
+    "ai:apitokensecretname": "PROVIDER_KEY",
+    "ai:azureresourcename": "your-resource",
+    "ai:azuredeployment": "your-deployment",
+    "ai:capabilities": ["tools", "images", "pdfs"]
+  }
+}
+```
+
+### 字段参考 {#field-reference}
+
+| 字段 | 是否必填 | 说明 |
+|-------|----------|-------------|
+| `display:name` | 是 | AI 模式选择器中显示的名称 |
+| `display:order` | 否 | 在选择器中的排序顺序（数字越小越靠前） |
+| `display:icon` | 否 | 模式的图标标识符（可使用任意 [FontAwesome icon](https://fontawesome.com/search)，使用不带 "fa-" 前缀的名称）。默认值为 "sparkles" |
+| `display:description` | 否 | 模式的完整描述 |
+| `ai:provider` | 否 | 提供商预设：`openai`、`openrouter`、`nanogpt`、`groq`、`google`、`azure`、`azure-legacy`、`custom` |
+| `ai:apitype` | 否 | API 类型：`openai-chat`、`openai-responses` 或 `google-gemini`（未指定时默认为 `openai-chat`） |
+| `ai:model` | 否 | 模型标识符（多数提供商需要） |
+| `ai:thinkinglevel` | 否 | 思考级别：`low`、`medium` 或 `high` |
+| `ai:endpoint` | 否 | *完整* API 端点 URL（可用时由提供商自动设置） |
+| `ai:azureapiversion` | 否 | Azure API 版本（用于 `azure-legacy` 提供商，默认为 `2025-04-01-preview`） |
+| `ai:apitoken` | 否 | API key/token（不推荐，建议改用 secrets） |
+| `ai:apitokensecretname` | 否 | 包含 API token 的 secret 名称（由提供商自动设置） |
+| `ai:azureresourcename` | 否 | Azure 资源名称（用于 Azure 提供商） |
+| `ai:azuredeployment` | 否 | Azure 部署名称（用于 `azure-legacy` 提供商） |
+| `ai:capabilities` | 否 | 支持的能力数组：`"tools"`、`"images"`、`"pdfs"` |
+| `waveai:cloud` | 否 | 内部字段，仅用于 Wave Cloud AI 配置 |
+| `waveai:premium` | 否 | 内部字段，仅用于 Wave Cloud AI 配置 |
+
+### AI 能力 {#ai-capabilities}
+
+`ai:capabilities` 字段用于指定该 AI 模式支持哪些功能：
+
+- **`tools`** - 启用 AI 工具，用于文件读写、shell 集成和 widget 交互
+- **`images`** - 允许在聊天中附加图片（模型可以查看上传的图片）
+- **`pdfs`** - 允许在聊天中附加 PDF 文件（模型可以读取 PDF 内容）
+
+**提供商特定行为：**
+- **OpenAI 和 Google 提供商**：会根据模型自动配置能力。你无需手动指定。
+- **OpenRouter、NanoGPT、Groq、Azure、Azure-Legacy 和 Custom 提供商**：你必须根据模型功能手动指定能力。
+
+:::warning
+如果 `ai:capabilities` 数组中不包含 `"tools"`，AI 模型将无法与你的 Wave 终端 widget 交互、读写文件或执行命令。大多数 AI 模式都应包含 `"tools"`，以获得更好的 Wave 体验。
+:::
+
+大多数模型都支持 `tools` 并能从中受益。具备视觉能力的模型应包含 `images`。并非所有模型都支持 PDF，因此只有在模型可以处理 PDF 时才包含 `pdfs`。

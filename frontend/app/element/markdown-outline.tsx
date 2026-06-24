@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cn, makeIconClass } from "@/util/util";
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 const OutlineDefaultWidth = 236;
 const OutlineOverlayDefaultHeight = 360;
@@ -29,8 +29,42 @@ export type MarkdownOutlineItem = {
     title?: string;
 };
 
+export type MarkdownOutlineVisibleItem = {
+    item: MarkdownOutlineItem;
+    index: number;
+    hasChildren: boolean;
+    collapsed: boolean;
+};
+
 export function getMarkdownOutlineLabel(item: Pick<MarkdownOutlineItem, "label">): string {
     return item.label || "(untitled heading)";
+}
+
+export function getVisibleMarkdownOutlineItems(
+    items: MarkdownOutlineItem[],
+    collapsedItemIds: Set<string>
+): MarkdownOutlineVisibleItem[] {
+    const visibleItems: MarkdownOutlineVisibleItem[] = [];
+    const collapsedLevels: number[] = [];
+
+    for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        while (collapsedLevels.length > 0 && item.level <= collapsedLevels[collapsedLevels.length - 1]) {
+            collapsedLevels.pop();
+        }
+        if (collapsedLevels.length > 0) {
+            continue;
+        }
+
+        const hasChildren = items[index + 1]?.level > item.level;
+        const collapsed = collapsedItemIds.has(item.id);
+        visibleItems.push({ item, index, hasChildren, collapsed });
+        if (collapsed && hasChildren) {
+            collapsedLevels.push(item.level);
+        }
+    }
+
+    return visibleItems;
 }
 
 function getOutlineItemTitle(item: MarkdownOutlineItem): string {
@@ -120,6 +154,8 @@ export function MarkdownOutline({
     const [outlineSize, setOutlineSize] = useState<MarkdownOutlineSize>(() =>
         readStoredOutlineSize(storageKey, defaultSize)
     );
+    const [collapsedOutlineItems, setCollapsedOutlineItems] = useState<Set<string>>(() => new Set());
+    const visibleItems = getVisibleMarkdownOutlineItems(items, collapsedOutlineItems);
 
     useEffect(() => {
         if (!canResize) {
@@ -127,6 +163,35 @@ export function MarkdownOutline({
         }
         writeStoredOutlineSize(storageKey, outlineSize);
     }, [canResize, outlineSize, storageKey]);
+
+    useEffect(() => {
+        setCollapsedOutlineItems((prev) => {
+            const itemIds = new Set(items.map((item) => item.id));
+            let changed = false;
+            const next = new Set<string>();
+            for (const itemId of prev) {
+                if (!itemIds.has(itemId)) {
+                    changed = true;
+                    continue;
+                }
+                next.add(itemId);
+            }
+            return changed ? next : prev;
+        });
+    }, [items]);
+
+    const toggleOutlineItemCollapse = (event: ReactMouseEvent<HTMLButtonElement>, itemId: string) => {
+        event.stopPropagation();
+        setCollapsedOutlineItems((prev) => {
+            const next = new Set(prev);
+            if (next.has(itemId)) {
+                next.delete(itemId);
+            } else {
+                next.add(itemId);
+            }
+            return next;
+        });
+    };
 
     const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>, axes: Required<MarkdownOutlineResizeAxes>) => {
         event.preventDefault();
@@ -245,18 +310,36 @@ export function MarkdownOutline({
                 {items.length === 0 ? (
                     <div className="px-3 py-2 text-secondary">{emptyMessage}</div>
                 ) : (
-                    items.map((item, index) => (
-                        <button
+                    visibleItems.map(({ item, index, hasChildren, collapsed }) => (
+                        <div
                             key={`${item.id}-${index}`}
-                            type="button"
                             className="flex w-full min-w-0 items-center gap-1.5 px-2 py-1 text-left text-secondary hover:bg-hoverbg hover:text-foreground"
                             style={{ paddingLeft: `${8 + Math.min(item.level - 1, 5) * 10}px` }}
                             title={getOutlineItemTitle(item)}
-                            onClick={() => onSelectItem(item)}
                         >
-                            <span className="w-4 shrink-0 text-[9px] tabular-nums text-muted">{item.level}</span>
-                            <span className="min-w-0 flex-1 truncate">{getMarkdownOutlineLabel(item)}</span>
-                        </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded bg-transparent text-[9px] text-inherit hover:bg-hoverbg",
+                                    !hasChildren && "pointer-events-none opacity-0"
+                                )}
+                                title={collapsed ? "Expand outline section" : "Collapse outline section"}
+                                aria-label={collapsed ? "Expand outline section" : "Collapse outline section"}
+                                aria-expanded={hasChildren ? !collapsed : undefined}
+                                tabIndex={hasChildren ? 0 : -1}
+                                onClick={(event) => toggleOutlineItemCollapse(event, item.id)}
+                            >
+                                <i className={makeIconClass(collapsed ? "chevron-right" : "chevron-down", false)} />
+                            </button>
+                            <button
+                                type="button"
+                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 bg-transparent text-left text-inherit"
+                                onClick={() => onSelectItem(item)}
+                            >
+                                <span className="w-4 shrink-0 text-[9px] tabular-nums text-muted">{item.level}</span>
+                                <span className="min-w-0 flex-1 truncate">{getMarkdownOutlineLabel(item)}</span>
+                            </button>
+                        </div>
                     ))
                 )}
             </div>

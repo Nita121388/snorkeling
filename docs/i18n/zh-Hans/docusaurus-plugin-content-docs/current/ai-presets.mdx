@@ -1,0 +1,253 @@
+---
+sidebar_position: 3.6
+id: "ai-presets"
+title: "AI 预设（已弃用）"
+---
+:::warning 弃用说明
+AI Widget 及其预设正在由 [Wave AI](./waveai.mdx) 取代。请参考 Wave AI 文档了解最新的 AI 功能和配置选项。
+:::
+
+
+![AI 预设菜单](./img/ai-presets.png#right)
+
+Wave 的 AI widget 可以通过预设配置为使用不同的 AI 提供商和模型。预设允许你定义多套 AI 配置，并通过 AI widget 中的下拉菜单轻松切换。
+
+## AI 预设如何工作 {#how-ai-presets-work}
+
+AI 预设定义在 `~/.config/waveterm/presets/ai.json` 中。你可以使用下面的命令方便地编辑这个文件：
+
+```bash
+wsh editconfig presets/ai.json
+```
+
+每个预设都会为 AI widget 定义一整套配置值。当你从下拉菜单中选择某个预设时，这些配置值会应用到该 widget。如果没有选择任何预设，widget 会使用 `settings.json` 中的默认值。
+
+下面是一个使用 Claude 的基础示例：
+
+```json
+{
+  "ai@claude-sonnet": {
+    "display:name": "Claude 3 Sonnet",
+    "display:order": 1,
+    "ai:*": true,
+    "ai:apitype": "anthropic",
+    "ai:model": "claude-3-5-sonnet-latest",
+    "ai:apitoken": "<your anthropic API key>"
+  }
+}
+```
+
+要把某个预设设为默认值，在 `settings.json` 中添加这一行：
+
+```json
+{
+  "ai:preset": "ai@claude-sonnet"
+}
+```
+
+:::info
+你也可以使用 `setconfig` 命令快速设置默认预设：
+
+```bash
+wsh setconfig ai:preset=ai@claude-sonnet
+```
+
+这比直接编辑 `settings.json` 更简单。
+:::
+
+## 按提供商配置 {#provider-specific-configurations}
+
+### Anthropic (Claude)
+
+要使用 Claude 模型，可以创建这样的预设：
+
+```json
+{
+  "ai@claude-sonnet": {
+    "display:name": "Claude 3 Sonnet",
+    "display:order": 1,
+    "ai:*": true,
+    "ai:apitype": "anthropic",
+    "ai:model": "claude-3-5-sonnet-latest",
+    "ai:apitoken": "<your anthropic API key>"
+  }
+}
+```
+
+### OpenAI
+
+要使用 OpenAI 的模型：
+
+```json
+{
+  "ai@openai-gpt41": {
+    "display:name": "GPT-4.1",
+    "display:order": 2,
+    "ai:*": true,
+    "ai:model": "gpt-4.1",
+    "ai:apitoken": "<your OpenAI API key>"
+  }
+}
+```
+
+### 本地 LLM (Ollama) {#local-llms-ollama}
+
+要连接本地 Ollama 实例：
+
+```json
+{
+  "ai@ollama-llama": {
+    "display:name": "Ollama - Llama2",
+    "display:order": 3,
+    "ai:*": true,
+    "ai:baseurl": "http://localhost:11434/v1",
+    "ai:name": "llama2",
+    "ai:model": "llama2",
+    "ai:apitoken": "ollama"
+  }
+}
+```
+
+注意：`ai:apitoken` 是必填项，但 Ollama 会忽略它，因此可以填写任意值。更多细节请参阅 [Ollama OpenAI 兼容性文档](https://github.com/ollama/ollama/blob/main/docs/openai.md)。
+
+### Azure OpenAI
+
+要连接 Azure AI 服务：
+
+```json
+{
+  "ai@azure-gpt4": {
+    "display:name": "Azure GPT-4",
+    "display:order": 4,
+    "ai:*": true,
+    "ai:apitype": "azure",
+    "ai:baseurl": "<your Azure AI base URL>",
+    "ai:model": "<your model deployment name>",
+    "ai:apitoken": "<your Azure API key>"
+  }
+}
+```
+
+注意：不要在 `ai:baseurl` 中包含查询参数或 `api-version`。`ai:model` 应填写你在 Azure 中的模型部署名称。
+
+### Perplexity
+
+要使用 Perplexity 的模型：
+
+```json
+{
+  "ai@perplexity-sonar": {
+    "display:name": "Perplexity Sonar",
+    "display:order": 5,
+    "ai:*": true,
+    "ai:apitype": "perplexity",
+    "ai:model": "llama-3.1-sonar-small-128k-online",
+    "ai:apitoken": "<your perplexity API key>"
+  }
+}
+```
+
+### Google (Gemini)
+
+要使用来自 [Google AI Studio](https://aistudio.google.com) 的 Google Gemini 模型：
+
+```json
+{
+  "ai@gemini-2.0": {
+    "display:name": "Gemini 2.0",
+    "display:order": 6,
+    "ai:*": true,
+    "ai:apitype": "google",
+    "ai:model": "gemini-2.0-flash-exp",
+    "ai:apitoken": "<your Google AI API key>"
+  }
+}
+```
+
+### OpenRouter
+
+要使用 OpenRouter 的模型：
+
+```json
+{
+  "ai@openrouter": {
+    "display:name": "OpenRouter (Qwen)",
+    "display:order": 7,
+    "ai:*": true,
+    "ai:model": "qwen/qwen3-next-80b-a3b-thinking",
+    "ai:apitoken": "<openrouter-key>",
+    "ai:baseurl": "https://openrouter.ai/api/v1"
+  }
+}
+```
+
+## 多预设示例 {#multiple-presets-example}
+
+你可以在 `ai.json` 文件中定义多个预设：
+
+```json
+{
+  "ai@claude-sonnet": {
+    "display:name": "Claude 3 Sonnet",
+    "display:order": 1,
+    "ai:*": true,
+    "ai:apitype": "anthropic",
+    "ai:model": "claude-3-5-sonnet-latest",
+    "ai:apitoken": "<your anthropic API key>"
+  },
+  "ai@openai-gpt41": {
+    "display:name": "GPT-4.1",
+    "display:order": 2,
+    "ai:*": true,
+    "ai:model": "gpt-4.1",
+    "ai:apitoken": "<your OpenAI API key>"
+  },
+  "ai@ollama-llama": {
+    "display:name": "Ollama - Llama2",
+    "display:order": 3,
+    "ai:*": true,
+    "ai:baseurl": "http://localhost:11434/v1",
+    "ai:name": "llama2",
+    "ai:model": "llama2",
+    "ai:apitoken": "ollama"
+  },
+  "ai@perplexity-sonar": {
+    "display:name": "Perplexity Sonar",
+    "display:order": 4,
+    "ai:*": true,
+    "ai:apitype": "perplexity",
+    "ai:model": "llama-3.1-sonar-small-128k-online",
+    "ai:apitoken": "<your perplexity API key>"
+  }
+}
+```
+
+`display:order` 的值决定预设在下拉菜单中的显示顺序。
+
+记得在 `settings.json` 中设置默认预设：
+
+```json
+{
+  "ai:preset": "ai@claude-sonnet"
+}
+```
+
+## 使用代理 {#using-a-proxy}
+
+如果需要让 AI 请求通过 HTTP 代理转发，可以在任意预设中添加 `ai:proxyurl` 设置：
+
+```json
+{
+  "ai@claude-with-proxy": {
+    "display:name": "Claude 3 Sonnet (via Proxy)",
+    "display:order": 1,
+    "ai:*": true,
+    "ai:apitype": "anthropic",
+    "ai:model": "claude-3-5-sonnet-latest",
+    "ai:apitoken": "<your anthropic API key>",
+    "ai:proxyurl": "http://proxy.example.com:8080"
+  }
+}
+```
+
+代理 URL 应采用 `http://host:port` 或 `https://host:port` 格式。除默认的 Wave Cloud AI 外，这个设置适用于所有 AI 提供商。

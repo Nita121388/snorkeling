@@ -1,0 +1,71 @@
+---
+sidebar_position: 100
+title: 遥测
+id: "telemetry"
+---
+
+## 简短版 {#tldr}
+
+Wave Terminal 会收集遥测数据，帮助我们跟踪功能使用情况、指导未来产品投入，并生成有关 Wave 受欢迎程度和使用情况的汇总指标。我们不会收集个人身份信息 (PII)、按键、文件内容、AI 提示词、IP 地址、主机名或命令。所有信息都会关联到一个匿名、随机生成的 _ClientId_ (UUID)。你可以随时选择退出收集。
+
+下面是收集内容的简要汇总：
+
+- 基础应用/系统信息：操作系统、架构、应用版本、更新设置
+- 使用指标：应用启动/关闭、活跃分钟数、前台时间、标签页/block 数量和使用情况
+- 功能交互：创建标签页、运行命令、修改设置等
+- 显示信息：显示器分辨率、显示器数量
+- 连接事件：SSH/WSL 连接尝试，但不包含主机名/IP
+- Wave AI 使用情况：模型/提供商选择、token 数量、请求指标、延迟，但不包含提示词或响应
+- 错误报告：崩溃/panic 事件及最少量调试信息，但不包含堆栈跟踪或详细错误
+
+你可以随时在设置中禁用遥测。如果未禁用，遥测会在启动、关闭以及每 4 小时时发送。
+
+## 如何禁用遥测 {#how-to-disable-telemetry}
+
+Wave 首次启动时，可以在初始欢迎界面启用或禁用遥测。完成设置后，也可以在 Wave 的通用配置文件中将 `telemetry:enabled` 设置为 `false` 来禁用遥测。还可以使用 CLI 命令 `wsh setconfig telemetry:enabled=false` 禁用。
+
+:::info
+
+本文档描述的是 v0.11.1 时的当前遥测系统。从 v0.12.5 起，Wave Terminal 不再发送旧版遥测。之前的遥测文档可在 [旧版遥测文档](./telemetry-old.mdx) 中查看，仅供历史参考。
+
+:::
+
+## 诊断 Ping {#diagnostics-ping}
+
+Wave 会在应用运行一小段时间后发送一个小型匿名诊断 ping，之后最多每天发送一次。它用于估算活跃安装量，并了解仍在使用哪些版本，从而帮助我们就持续支持和弃用策略做出更有依据的决策。
+
+这个 ping 只包含：你的 Wave 版本、OS/CPU 架构、本地日期 (yyyy-mm-dd，不含时区或具体时间)、随机生成的匿名客户端 ID，以及使用遥测是否启用。
+
+它不包含使用数据、命令、文件或任何遥测事件。
+
+这个 ping 有意与遥测分离，以便 Wave 统计活跃安装量。如果你想禁用它，请设置 `WAVETERM_NOPING` 环境变量。
+
+## 发送遥测 {#sending-telemetry}
+
+如果启用了遥测，Wave 首次启动后不久会发送一次，之后每 4 小时再发送一次。下面列出的少数特殊情况也可能触发发送。遥测发送后，事件会被标记为已发送，以避免重复传输。
+
+### 启用遥测后发送 {#sending-once-telemetry-is-enabled}
+
+一旦启用遥测，无论距离上次发送过去多久，都会立即发送一次遥测更新。这不会重置常规遥测发送计时器。
+
+### Wave 关闭时 {#when-wave-is-closed}
+
+如果启用了遥测，Waveterm 关闭时会发送遥测。
+
+## 事件类型和属性 {#event-types-and-properties}
+
+Wave 会收集上方汇总中描述的事件类型和属性。随着我们添加新功能，也可能增加新的事件和属性来跟踪它们的使用情况。
+
+完整且最新的遥测事件和属性列表请参阅源代码：[telemetrydata.go](https://github.com/wavetermdev/waveterm/blob/main/pkg/telemetry/telemetrydata/telemetrydata.go)
+
+## GDPR 退出合规 {#gdpr-opt-out-compliance}
+
+禁用遥测时，Wave 会发送一条与匿名客户端 ID 关联的最小退出记录，用于记录遥测已关闭以及关闭时间。该记录会出于合规目的保留。之后不会再发送任何遥测或使用数据。
+
+## 删除你的数据 {#deleting-your-data}
+
+如果你希望删除此前收集的遥测数据，请将你的 _ClientId_ 通过邮件发送到 support (at) waveterm.dev，我们会移除这些数据。
+
+## 隐私政策 {#privacy-policy}
+
+关于上述内容的摘要，可以查看我们的 [隐私政策](https://www.waveterm.dev/privacy)。

@@ -42,6 +42,13 @@ declare global {
         configs: {[key: string]: AIModeConfigType};
     };
 
+    // aisessionsservice.AISessionsBackupRequest
+    type AISessionsBackupRequest = {
+        connection?: string;
+        keepRecent?: number;
+        maxAgeDays?: number;
+    };
+
     // aisessionsservice.AISessionsDetailDeltaRequest
     type AISessionsDetailDeltaRequest = {
         id: string;
@@ -276,6 +283,35 @@ declare global {
         "bg:activebordercolor"?: string;
         "display:name": string;
         "display:order"?: number;
+    };
+
+    // aisessions.BackupCleanupResult
+    type BackupCleanupResult = {
+        deleted: BackupFileSummary[];
+        stats: BackupStats;
+        count: number;
+        size: number;
+    };
+
+    // aisessions.BackupFileSummary
+    type BackupFileSummary = {
+        path: string;
+        name: string;
+        kind: string;
+        size: number;
+        modtime: number;
+        cleanupCandidate?: boolean;
+    };
+
+    // aisessions.BackupStats
+    type BackupStats = {
+        backups: BackupFileSummary[];
+        count: number;
+        size: number;
+        cleanupCount: number;
+        cleanupSize: number;
+        keepRecent: number;
+        maxAgeDays: number;
     };
 
     // baseds.Badge

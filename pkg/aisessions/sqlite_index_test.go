@@ -7,8 +7,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSQLiteIndexMigratesMetaJSONAndManagerAppliesIt(t *testing.T) {
@@ -275,6 +277,9 @@ func TestManagerDoesNotOverwriteCorruptMetaJSON(t *testing.T) {
 }
 
 func TestSQLiteIndexDoesNotRenameHealthyDatabaseWhenMetaBackupFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod write-denial simulation is POSIX-only")
+	}
 	dir := t.TempDir()
 	dbDir := filepath.Join(dir, "db")
 	metaDir := filepath.Join(dir, "meta")
@@ -641,5 +646,61 @@ func TestSQLiteIndexRenameTagUpdatesAllSessions(t *testing.T) {
 	}
 	if strings.Join(bTags, ",") != "done" {
 		t.Fatalf("expected duplicate target tag to be deduped for b, got %#v", bTags)
+	}
+}
+
+func TestCleanupBackupsOnlyDeletesOldKnownMigrationBackups(t *testing.T) {
+	dir := t.TempDir()
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	metaPath := filepath.Join(dir, "meta.json")
+	oldTagBackup := filepath.Join(dir, "index-v2.sqlite.backup-before-tags-20260101-000000")
+	recentTagBackup := filepath.Join(dir, "index-v2.sqlite.backup-before-tags-20260102-000000")
+	oldMetaBackup := filepath.Join(dir, "meta.json.backup-before-sqlite-20260101-000000")
+	ignoredBackup := filepath.Join(dir, "index-v2.corrupt-20260101-000000.sqlite")
+	for path, text := range map[string]string{
+		oldTagBackup:    "old tag",
+		recentTagBackup: "recent tag",
+		oldMetaBackup:   "old meta",
+		ignoredBackup:   "ignored",
+	} {
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldTime := time.Now().AddDate(0, 0, -20)
+	recentTime := time.Now()
+	for _, path := range []string{oldTagBackup, oldMetaBackup} {
+		if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(recentTagBackup, recentTime, recentTime); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := BackupStatsForPaths(context.Background(), sqlitePath, metaPath, BackupRetentionOptions{KeepRecent: 1, MaxAgeDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Count != 3 || stats.CleanupCount != 2 {
+		t.Fatalf("unexpected backup stats: %#v", stats)
+	}
+
+	result, err := CleanupBackupsForPaths(context.Background(), sqlitePath, metaPath, BackupRetentionOptions{KeepRecent: 1, MaxAgeDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Count != 2 {
+		t.Fatalf("expected two deleted backups, got %#v", result)
+	}
+	for _, path := range []string{oldTagBackup, oldMetaBackup} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected old backup deleted path=%q err=%v", path, err)
+		}
+	}
+	for _, path := range []string{recentTagBackup, ignoredBackup} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected path preserved %q: %v", path, err)
+		}
 	}
 }

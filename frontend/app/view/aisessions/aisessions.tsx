@@ -23,7 +23,6 @@ import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
 import type { SourceFilter } from "./types";
 import {
-    dirname,
     emptySessionsText,
     getErrorMessage,
     readSortPreference,
@@ -452,13 +451,13 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
-    async openSessionFolder(summary: SessionSummary): Promise<void> {
-        const folderPath = summary.projectPath || dirname(summary.filePath);
-        if (!folderPath) return;
+    async openProjectDirectory(summary: SessionSummary): Promise<void> {
+        const projectDirectory = summary.projectPath?.trim() ?? "";
+        if (!projectDirectory) return;
         const blockDef: BlockDef = {
             meta: {
                 view: "preview",
-                file: folderPath,
+                file: projectDirectory,
             },
         };
         const connection = this.getConnection();
@@ -470,6 +469,12 @@ export class AiSessionsViewModel implements ViewModel {
         } catch (e) {
             await createBlock(blockDef);
         }
+    }
+
+    async openSessionFile(summary: SessionSummary): Promise<void> {
+        const sessionFilePath = summary.filePath?.trim() ?? "";
+        if (!sessionFilePath) return;
+        this.env.electron.openNativePath(sessionFilePath);
     }
 
     replaceSession(updated: SessionSummary): void {
@@ -516,6 +521,8 @@ const DefaultSessionListWidth = 320;
 const MinSessionListWidth = 240;
 const MaxSessionListWidth = 520;
 const CollapsedSessionListWidth = 44;
+const BackupKeepRecent = 3;
+const BackupMaxAgeDays = 7;
 
 function clampSessionListWidth(width: number): number {
     if (!Number.isFinite(width)) return DefaultSessionListWidth;
@@ -539,6 +546,13 @@ function readDefaultSessionListCollapsed(model: AiSessionsViewModel): boolean {
     return blockData?.meta?.["aisessions:sessionlistcollapsed"] === true;
 }
 
+function formatBackupSize(size: number): string {
+    if (!Number.isFinite(size) || size <= 0) return "0 B";
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
@@ -558,6 +572,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [markedOnly, setMarkedOnly] = useState(false);
+    const [tagsCollapsed, setTagsCollapsed] = useState(false);
+    const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
+    const [backupCleanupError, setBackupCleanupError] = useState("");
+    const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const visibleSessions = useMemo(() => {
         const filteredSessions = markedOnly ? sessions.filter((session) => session.marked) : sessions;
@@ -573,6 +591,27 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         model.loadSessions(false, sortDescending);
     }, [model]);
+
+    const loadBackupStats = useCallback(() => {
+        void model.service
+            .BackupStats({
+                connection: model.getConnection(),
+                keepRecent: BackupKeepRecent,
+                maxAgeDays: BackupMaxAgeDays,
+            })
+            .then((stats) => {
+                setBackupStats(stats);
+                setBackupCleanupError("");
+            })
+            .catch(() => {
+                setBackupStats(null);
+            });
+    }, [model]);
+
+    useEffect(() => {
+        if (loading) return;
+        loadBackupStats();
+    }, [loadBackupStats, loading]);
 
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
@@ -644,6 +683,31 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         globalStore.set(model.loadingAtom, true);
         globalStore.set(model.tagFiltersAtom, []);
     }, [model]);
+
+    const cleanupBackups = useCallback(() => {
+        if (backupStats == null || backupStats.cleanupCount <= 0 || backupCleanupRunning) return;
+        const confirmed = window.confirm(
+            `Delete ${backupStats.cleanupCount} old AI session backup file(s), freeing ${formatBackupSize(backupStats.cleanupSize)}?`
+        );
+        if (!confirmed) return;
+        setBackupCleanupRunning(true);
+        setBackupCleanupError("");
+        void model.service
+            .CleanupBackups({
+                connection: model.getConnection(),
+                keepRecent: BackupKeepRecent,
+                maxAgeDays: BackupMaxAgeDays,
+            })
+            .then((result) => {
+                setBackupStats(result.stats);
+            })
+            .catch((e) => {
+                setBackupCleanupError(getErrorMessage(e));
+            })
+            .finally(() => {
+                setBackupCleanupRunning(false);
+            });
+    }, [backupCleanupRunning, backupStats, model]);
 
     useEffect(() => {
         return () => {
@@ -782,43 +846,58 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 {availableTags.length > 0 ? (
                                     <div className="space-y-1">
                                         <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-secondary">
-                                            <span>Tags</span>
+                                            <button
+                                                type="button"
+                                                className="flex min-w-0 items-center gap-1 text-[10px] uppercase text-secondary hover:text-primary cursor-pointer"
+                                                aria-expanded={!tagsCollapsed}
+                                                onClick={() => setTagsCollapsed((current) => !current)}
+                                            >
+                                                <i
+                                                    className={cn(
+                                                        "fa-sharp fa-solid text-[9px]",
+                                                        tagsCollapsed ? "fa-chevron-right" : "fa-chevron-down"
+                                                    )}
+                                                />
+                                                <span>Tags</span>
+                                            </button>
                                             {tagFilterActive ? (
                                                 <button
                                                     type="button"
-                                                    className="text-[10px] text-secondary hover:text-primary"
+                                                    className="text-[10px] text-secondary hover:text-primary cursor-pointer"
                                                     onClick={clearTagFilters}
                                                 >
                                                     Clear
                                                 </button>
                                             ) : null}
                                         </div>
-                                        <div className="max-h-20 overflow-auto pr-1">
-                                            <div className="flex flex-wrap gap-1">
-                                                {availableTags.map((tagSummary) => {
-                                                    const active = normalizedTagFilters.includes(tagSummary.tag);
-                                                    return (
-                                                        <button
-                                                            key={tagSummary.tag}
-                                                            type="button"
-                                                            className={cn(
-                                                                "inline-flex h-5 max-w-full items-center gap-1 rounded border px-1.5 text-[10px]",
-                                                                active
-                                                                    ? "border-accent bg-accent/10 text-accent"
-                                                                    : "border-border text-secondary hover:bg-hover hover:text-primary"
-                                                            )}
-                                                            title={`#${tagSummary.tag}`}
-                                                            onClick={() => toggleTagFilter(tagSummary.tag)}
-                                                        >
-                                                            <span className="truncate">#{tagSummary.tag}</span>
-                                                            <span className="text-[9px] opacity-70">
-                                                                {tagSummary.count}
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })}
+                                        {!tagsCollapsed ? (
+                                            <div className="max-h-20 overflow-auto pr-1">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {availableTags.map((tagSummary) => {
+                                                        const active = normalizedTagFilters.includes(tagSummary.tag);
+                                                        return (
+                                                            <button
+                                                                key={tagSummary.tag}
+                                                                type="button"
+                                                                className={cn(
+                                                                    "inline-flex h-5 max-w-full items-center gap-1 rounded border px-1.5 text-[10px] cursor-pointer",
+                                                                    active
+                                                                        ? "border-accent bg-accent/10 text-accent"
+                                                                        : "border-border text-secondary hover:bg-hover hover:text-primary"
+                                                                )}
+                                                                title={`#${tagSummary.tag}`}
+                                                                onClick={() => toggleTagFilter(tagSummary.tag)}
+                                                            >
+                                                                <span className="truncate">#{tagSummary.tag}</span>
+                                                                <span className="text-[9px] opacity-70">
+                                                                    {tagSummary.count}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
-                                        </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
                                 <div className="flex h-5 items-center gap-2 text-[11px] text-secondary">
@@ -838,6 +917,27 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         <span>Search includes notes and tags.</span>
                                     )}
                                 </div>
+                                {backupStats != null && backupStats.cleanupCount > 0 ? (
+                                    <div className="rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-secondary">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="min-w-0">
+                                                {backupStats.cleanupCount} old backup files use{" "}
+                                                {formatBackupSize(backupStats.cleanupSize)}.
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="shrink-0 text-[11px] text-primary hover:text-accent cursor-pointer"
+                                                disabled={backupCleanupRunning}
+                                                onClick={cleanupBackups}
+                                            >
+                                                {backupCleanupRunning ? "Cleaning..." : "Clean up"}
+                                            </button>
+                                        </div>
+                                        {backupCleanupError !== "" ? (
+                                            <div className="mt-1 text-error">{backupCleanupError}</div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="flex h-5 items-center justify-between gap-2 text-[11px] text-secondary">
                                 <span>{visibleSessions.length} sessions</span>

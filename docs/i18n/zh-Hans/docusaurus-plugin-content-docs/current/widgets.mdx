@@ -1,0 +1,148 @@
+---
+sidebar_position: 3.3
+id: "widgets"
+title: "Widget"
+---
+
+import { Kbd } from "@site/src/components/kbd";
+import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+<PlatformProvider>
+
+# Widget {#widgets}
+
+每个独立组件都包含在自己的 widget 中。widget 可以添加、移除、移动和调整大小。每个 widget 都有自己的标题栏，右键点击标题栏可以显示更多可对该 widget 执行的操作。
+
+<PlatformSelectorButton />
+
+### 如何添加 Widget {#how-to-add-a-widget}
+
+可以使用窗口右侧的 widget 栏添加 widget。这会把所选类型的 widget 添加到当前标签页。
+
+### 如何关闭 Widget {#how-to-close-a-widget}
+
+点击标题栏右侧的 **<code><i className="fa-solid fa-sharp fa-xmark"/></code>** 按钮可以关闭 widget。也可以按 <Kbd k="Cmd:w"/> 关闭当前聚焦的 widget。
+
+### 如何在 Widget 间导航 {#how-to-navigate-widgets}
+
+同一时间最多只有一个 widget 可以获得焦点。根据 widget 类型不同，获得焦点后你可以直接与其中内容交互。聚焦的 widget 始终会显示明显边框。点击 widget 可以使其获得焦点；也可以按 <Kbd k="Ctrl:Shift:Arrows"/>（Ctrl + Shift + 方向键）相对于当前选中的 widget 切换焦点。
+
+### 如何放大 Widget {#how-to-magnify-widgets}
+
+放大 widget 会将其弹出到其他内容前方。可以使用标题栏图标放大，也可以按 <Kbd k="Cmd:m"/>。
+
+### 如何重新组织 Widget {#how-to-reorganize-widgets}
+
+通过拖放标题栏，可以把 widget 移动到布局中的不同位置。这让你可以按自己的需要重新组织屏幕。拖动时，你会看到正在拖动的 widget 预览。当 widget 位于有效投放点上方时，目标区域会变成绿色。松开鼠标后，widget 会放置到该位置，周围其他 widget 会重新排布。如果绿色框覆盖两个不同 widget 的各一半，投放后 widget 会插入到二者之间。如果绿色框覆盖屏幕边缘处某个 widget 的一半，widget 会被放置到该 widget 与屏幕边缘之间。如果绿色框完整覆盖某个 widget，则两个 widget 会交换位置。
+
+更多信息请参阅[标签页布局系统](./layout#move-a-block)。
+
+### 如何调整 Widget 大小 {#how-to-resize-widgets}
+
+将鼠标悬停在两个 widget 之间时，光标会变为 <i className="fa-sharp fa-arrows-left-right"/> 或 <i className="fa-sharp fa-arrows-up-down"/>，并显示一条分隔 widget 的绿色线。拖动这条绿色线即可调整相邻 widget 的大小。
+
+更多信息请参阅[标签页布局系统](./layout#resize-a-block)。
+
+## Widget 类型 {#types-of-widgets}
+
+### Term
+
+你熟悉的普通终端。我们通过 `wsh` 命令添加了一些插件，下面会进一步说明。
+
+### Preview
+
+Preview 是用于查看文件的通用 widget 类型。根据所查看文件类型的不同，它可以呈现为多种形式。
+你可以在任意 Wave 终端窗口中使用 `wsh view [path]`，打开一个显示指定路径内容的预览 widget（例如 `wsh view .` 或 `wsh view ~/myimage.jpg`）。
+
+#### 目录 {#directory}
+
+查看目录时，Preview 会显示类似 macOS _Finder_ 或 Windows _File Explorer_ 的文件查看器。这个变体更偏向软件开发场景，重点展示类似 `ls -alh` 命令的内容。
+
+##### 查看新文件 {#view-a-new-file}
+
+查看新文件最简单的方式是在文件查看器中双击对应行。或者在 widget 获得焦点时，使用 <Kbd k="ArrowUp" /> 和 <Kbd k="ArrowDown" /> 方向键选择一行，然后按 Enter 预览对应文件。
+
+##### 复制文件 {#copy-a-file}
+
+如果打开了两个目录 widget，可以在它们之间复制文件或目录。只需将文件或目录从一个目录预览 widget 拖到另一个已打开到目标位置的目录预览 widget。跨连接复制文件和目录也支持这种方式。
+
+##### 查看父目录 {#view-the-parent-directory}
+
+在目录视图中，可以像打开普通文件一样打开 `..` 条目来查看父目录。你可以使用上面的方法，也可以使用快捷键 <Kbd k="Cmd:ArrowUp"/>。
+
+##### 后退和前进 {#navigate-back-and-forward}
+
+查看文件时，可以点击 widget 标题栏中的后退按钮，或使用快捷键 <Kbd k="Cmd:ArrowLeft" /> 后退。也可以随时使用 <Kbd k="Cmd:ArrowLeft" /> 和 <Kbd k="Cmd:ArrowRight" /> 后退和前进。
+
+##### 筛选文件列表 {#filter-the-list-of-files}
+
+widget 获得焦点时，可以输入目标文件名的一部分来按文件名筛选。要清除筛选，可以点击筛选下拉框中的 **<code><i className="fa-solid fa-sharp fa-xmark"/></code>**，或按 <Kbd k="Escape" />。
+
+##### 按文件列排序 {#sort-by-a-file-column}
+
+要按指定列排序文件，请点击该列的表头。再次点击表头会反转排序顺序。
+
+##### 隐藏和显示隐藏文件 {#hide-and-show-hidden-files}
+
+widget 标题栏右侧有一个 **<code><i className="fa fa-sharp fa-solid fa-eye"/></code>** 按钮。点击该按钮可以隐藏或显示隐藏文件。
+
+##### 刷新目录 {#refresh-the-directory}
+
+widget 标题栏右侧有一个刷新按钮 **<code><i className="fa fa-sharp fa-solid fa-arrows-rotate" /></code>**。点击该按钮会刷新目录内容。
+
+##### 导航到常用目录 {#navigate-to-common-directories}
+
+widget 标题栏左侧有一个文件图标 **<code><i className="fa fa-sharp fa-solid fa-folder-open"/></code>**。点击并按住该图标会打开菜单，你可以选择要导航到的常用文件夹。可选项包括 _Home_、_Desktop_、_Downloads_ 和 _Root_。
+
+##### 在当前目录打开新终端 {#open-a-new-terminal-in-the-current-directory}
+
+右键点击 widget 标题栏（或点击齿轮图标 **<code><i className="fa fa-sharp fa-solid fa-cog"/></code>**）时，菜单中会有 **Open Terminal in New Widget** 选项。它会在当前目录创建一个新的终端 widget。
+
+##### 在子目录中打开新终端 {#open-a-new-terminal-in-a-child-directory}
+
+如果要为某个子目录打开终端，可以右键点击该文件行，选择 **Open Terminal in New Widget**。点击后会在该目录打开终端。注意，此选项只对目录类型的子项可用。
+
+##### 为子项打开新预览 {#open-a-new-preview-for-a-child}
+
+要为某个子项打开新的 Preview widget，可以右键点击该文件行并选择 **Open Preview in New Widget**。
+
+##### Quick Look（仅 macOS） {#quick-look-macos-only}
+
+在 macOS 主机上，可以从目录预览中使用 Quick Look 功能。选择要查看的文件并按 <Kbd k="Space" /> 即可在单独窗口中打开文件预览。再次按 <Kbd k="Space" /> 可关闭预览。目前支持 `qlmanage` 命令可访问的文件类型。
+
+#### Markdown
+
+打开 Markdown 文件会显示渲染后的 Markdown 视图。目前无法在预览中编辑这些文件。
+
+#### 图片/媒体 {#imagesmedia}
+
+打开图片会显示该图片。打开视频会显示可观看视频的播放器。
+
+### Codeedit
+
+打开大多数文本文件时，会打开 Codeedit 来查看或编辑文件。从技术上说它属于 Preview widget，但它足够重要，值得单独说明。
+打开 Codeedit widget 后，通常可以将其放大（<Kbd k="Cmd:m" />）以获得更大的视图。随后可以使用下面的快捷键切换到编辑模式、进行修改、保存，然后用 <Kbd k="Cmd:w" /> 关闭 widget（全程无需使用鼠标）。
+
+#### 切换到编辑模式 {#switch-to-edit-mode}
+
+要切换到编辑模式，请点击标题栏右侧的编辑按钮。这会让你使用常规 Monaco 编辑器编辑文件内容。
+也可以按 <Kbd k="Cmd:e" /> 切换到编辑模式。
+
+#### 保存编辑 {#save-an-edit}
+
+在**编辑模式**中做出修改后，点击标题栏右侧的保存按钮即可保存内容。
+也可以按 <Kbd k="Cmd:s" /> 保存。
+
+#### 不保存退出编辑模式 {#exit-edit-mode-without-saving}
+
+要不保存并退出**编辑模式**，请点击标题栏右侧的取消按钮。
+也可以按 <Kbd k="Cmd:r" /> 不保存退出。
+
+### 进程查看器 <VersionBadge version="v0.14.5" /> {#process-viewer}
+
+进程查看器会实时显示任意已连接主机上的运行进程列表。它类似 `top` 或 `htop`，会显示 PID、命令、CPU% 和内存使用情况。在 Linux 上还会显示进程状态和线程数。
+
+点击列标题可以排序。右键点击某一行可以发送 Unix 信号（SIGTERM、SIGKILL 等）或复制 PID。按 <Kbd k="Cmd:f"/> 并输入搜索词可以筛选列表。按 <Kbd k="Space"/> 可以暂停实时更新（检查特定进程时很有用）；再次按下可恢复。
+
+</PlatformProvider>

@@ -13,7 +13,6 @@ import { extractSessionTagsFromNote, mergeSessionTags, normalizeSessionTags, ses
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
-    dirname,
     formatDateTimeToSecond,
     formatToolCallPreview,
     isReadableMessage,
@@ -38,7 +37,8 @@ export type SessionDetailController = {
     updateNote: (session: SessionSummary, note: string, tags?: string[]) => Promise<boolean>;
     deleteSession: (session: SessionSummary) => Promise<void>;
     restoreSession: (session: SessionSummary) => Promise<void>;
-    openSessionFolder: (summary: SessionSummary) => Promise<void>;
+    openProjectDirectory: (summary: SessionSummary) => Promise<void>;
+    openSessionFile: (summary: SessionSummary) => Promise<void>;
     toggleMark: (session: SessionSummary) => Promise<void>;
 };
 
@@ -544,6 +544,8 @@ export function SessionDetailPane({
                 : !noteUnchanged
                   ? "Unsaved changes"
                   : "";
+    const projectDirectory = summary.projectPath?.trim() ?? "";
+    const sessionFilePath = summary.filePath?.trim() ?? "";
     return (
         <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 p-3">
@@ -557,31 +559,69 @@ export function SessionDetailPane({
                                 {summary.source}
                             </span>
                         </div>
-                        <div className="mt-1 flex min-w-0 items-center gap-3 text-xxs text-secondary">
-                            <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <span className="min-w-0 truncate">{summary.projectPath || summary.filePath}</span>
-                                <CopyIconButton
-                                    text={dirname(summary.filePath)}
-                                    label="Copy session folder path"
-                                    size="xs"
-                                    className="!border-transparent"
-                                />
-                                <IconButton
-                                    icon="fa-folder-open"
-                                    label="Open session folder in files"
-                                    size="xs"
-                                    className="!border-transparent"
-                                    onClick={() => void model.openSessionFolder(summary)}
-                                />
+                        <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
+                            <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
+                                <span className="shrink-0 text-[10px] uppercase">Project directory:</span>
+                                <span
+                                    className="min-w-0 truncate"
+                                    title={projectDirectory || "Project directory unavailable"}
+                                >
+                                    {projectDirectory || "No project directory"}
+                                </span>
+                                {projectDirectory ? (
+                                    <>
+                                        <CopyIconButton
+                                            text={projectDirectory}
+                                            label="Copy project directory"
+                                            size="xs"
+                                            className="!border-transparent"
+                                        />
+                                        <IconButton
+                                            icon="fa-folder-open"
+                                            label="Open project directory"
+                                            size="xs"
+                                            className="!border-transparent"
+                                            onClick={() => void model.openProjectDirectory(summary)}
+                                        />
+                                    </>
+                                ) : null}
                             </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                                <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
-                                <CopyIconButton
-                                    text={summary.id}
-                                    label="Copy session ID"
-                                    size="xs"
-                                    className="!border-transparent"
-                                />
+                            <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
+                                    <CopyIconButton
+                                        text={summary.id}
+                                        label="Copy session ID"
+                                        size="xs"
+                                        className="!border-transparent"
+                                    />
+                                </div>
+                                <div className="flex w-full min-w-0 items-center justify-end gap-2">
+                                    <span className="shrink-0 text-[10px] uppercase">Session file:</span>
+                                    <span
+                                        className="min-w-0 truncate text-right"
+                                        title={sessionFilePath || "Session file unavailable"}
+                                    >
+                                        {sessionFilePath || "No session file"}
+                                    </span>
+                                    {sessionFilePath ? (
+                                        <>
+                                            <CopyIconButton
+                                                text={sessionFilePath}
+                                                label="Copy session file path"
+                                                size="xs"
+                                                className="!border-transparent"
+                                            />
+                                            <IconButton
+                                                icon="fa-up-right-from-square"
+                                                label="Open session file"
+                                                size="xs"
+                                                className="!border-transparent"
+                                                onClick={() => void model.openSessionFile(summary)}
+                                            />
+                                        </>
+                                    ) : null}
+                                </div>
                             </div>
                         </div>
                         <div className="mt-2 flex items-center gap-2 text-xs">

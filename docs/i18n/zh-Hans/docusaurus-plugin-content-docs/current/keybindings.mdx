@@ -1,0 +1,122 @@
+---
+sidebar_position: 2
+id: "keybindings"
+title: "快捷键"
+---
+
+import { Kbd, KbdChord } from "@site/src/components/kbd";
+import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+<PlatformProvider>
+
+下面是 Wave 可用的默认快捷键集合，按部分划分。
+有些快捷键始终生效，另一些只在特定类型的块中生效。
+
+请注意，这些是 macOS 快捷键（使用 "Cmd"）。在 Windows 和 Linux 上，
+请将 "Cmd" 替换为 "Alt"（注意 "Ctrl" 在 Mac、Windows 和 Linux 上都是 "Ctrl"）。
+
+连续快捷键会在按键之间用 + 显示。按下第一个键后，你有 2 秒时间按下第二个键。在按下连续快捷键的第一个键后按 Escape，始终不会执行任何操作。
+
+## 全局快捷键
+
+<PlatformSelectorButton />
+<div style={{ marginBottom: 20 }}></div>
+
+| 按键                                              | 功能                                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| <Kbd k="Cmd:t"/>                                  | 打开新标签页                                                                                                                                           |
+| <Kbd k="Cmd:n"/>                                  | 打开新块（默认创建一个与当前连接和工作目录相同的终端块）。可通过 `app:defaultnewblock` 设置切换为启动器                                                |
+| <Kbd k="Cmd:Shift:a"/>                            | 切换 WaveAI 面板可见性                                                                                                                                 |
+| <Kbd k="Cmd:d"/>                                  | 水平拆分，在右侧打开新块                                                                                                                               |
+| <Kbd k="Cmd:Shift:d"/>                            | 垂直拆分，在下方打开新块                                                                                                                               |
+| <KbdChord karr={["Ctrl:Shift:s", "ArrowUp"]}/>    | 垂直拆分，在上方打开新块                                                                                                                               |
+| <KbdChord karr={["Ctrl:Shift:s", "ArrowDown"]}/>  | 垂直拆分，在下方打开新块                                                                                                                               |
+| <KbdChord karr={["Ctrl:Shift:s", "ArrowLeft"]}/>  | 水平拆分，在左侧打开新块                                                                                                                               |
+| <KbdChord karr={["Ctrl:Shift:s", "ArrowRight"]}/> | 水平拆分，在右侧打开新块                                                                                                                               |
+| <Kbd k="Cmd:Shift:n"/>                            | 打开新窗口                                                                                                                                             |
+| <Kbd k="Cmd:w"/>                                  | 关闭当前块                                                                                                                                             |
+| <Kbd k="Cmd:Shift:w"/>                            | 关闭当前标签页                                                                                                                                         |
+| <Kbd k="Cmd:m"/>                                  | 放大/取消放大当前块                                                                                                                                    |
+| <Kbd k="Cmd:g"/>                                  | 打开“连接”切换器                                                                                                                                       |
+| <Kbd k="Cmd:i"/>                                  | 重新聚焦当前块（当块失去输入焦点时很有用）                                                                                                             |
+| <Kbd k="Ctrl:Shift"/>                             | 显示块编号                                                                                                                                             |
+| <Kbd k="Ctrl:Shift:0"/>                           | 聚焦 WaveAI 输入框                                                                                                                                     |
+| <Kbd k="Ctrl:Shift:1-9"/>                         | 切换到对应编号的块                                                                                                                                     |
+| <Kbd k="Ctrl:Shift:Arrows"/> / <Kbd k="Ctrl:Shift:h/j/k/l"/> | 在块之间向左、右、上、下移动                                                                                                             |
+| <Kbd k="Ctrl:Shift:x"/>                           | 用启动器块替换当前块                                                                                                                                   |
+| <Kbd k="F2"/>                                     | 重命名当前标签页 <VersionBadge version="v0.15" />                                                                                                      |
+| <Kbd k="Cmd:1-9"/>                                | 切换到对应编号的标签页                                                                                                                                 |
+| <Kbd k="Cmd:["/> / <Kbd k="Shift:Cmd:["/>         | 向左切换标签页                                                                                                                                         |
+| <Kbd k="Cmd:]"/> / <Kbd k="Shift:Cmd:]"/>         | 向右切换标签页                                                                                                                                         |
+| <Kbd k="Cmd:Ctrl:1-9"/>                           | 切换到对应编号的工作区                                                                                                                                 |
+| <Kbd k="Cmd:Shift:r"/>                            | 刷新 UI                                                                                                                                                |
+| <Kbd k="Ctrl:Shift:i"/>                           | 切换终端多输入模式                                                                                                                                     |
+
+## 文件预览快捷键
+
+| 按键                                      | 功能                                                                                               |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| <Kbd k="[text]"/>                         | 任意普通字符（例如 "a"、"b"）都会筛选文件列表                                                    |
+| <Kbd k="Escape"/>                         | 清除筛选                                                                                           |
+| <Kbd k="ArrowUp"/> / <Kbd k="ArrowDown"/> | 向上/向下更改文件选择                                                                              |
+| <Kbd k="Enter"/>                          | 打开当前选中的文件/目录                                                                            |
+| <Kbd k="Cmd:ArrowUp"/>                    | 上移一级目录（父目录）                                                                             |
+| <Kbd k="Cmd:ArrowLeft"/>                  | 后退，移动到之前选中的文件/目录                                                                    |
+| <Kbd k="Cmd:ArrowRight"/>                 | 前进（与后退相反）                                                                                 |
+| <Kbd k="Cmd:o"/>                          | 打开新文件（接受相对于当前目录的路径）                                                            |
+| <Kbd k="Cmd:s"/>                          | 文件编辑器打开时，保存文件                                                                         |
+| <Kbd k="Cmd:e"/>                          | 对于可预览或编辑的文件（Markdown、CSV），在预览和编辑模式之间切换                                 |
+| <Kbd k="Cmd:r"/>                          | 文件编辑器打开时，还原更改                                                                         |
+
+## Web 快捷键
+
+| 按键                      | 功能                                                          |
+| ------------------------- | ------------------------------------------------------------- |
+| <Kbd k="Cmd:l"/>          | 聚焦 URL 输入栏                                             |
+| <Kbd k="Escape"/>         | URL 输入栏已聚焦时，转而聚焦网页内容                         |
+| <Kbd k="Cmd:r"/>          | 重新加载网页                                                  |
+| <Kbd k="Cmd:ArrowLeft"/>  | 后退                                                          |
+| <Kbd k="Cmd:ArrowRight"/> | 前进                                                          |
+| <Kbd k="Cmd:f"/>          | 在网页中查找                                                  |
+| <Kbd k="Cmd:o"/>          | 打开书签                                                      |
+
+## WaveAI 快捷键
+
+| 按键                    | 功能                    |
+| ----------------------- | ----------------------- |
+| <Kbd k="Cmd:Shift:a"/>  | 切换 WaveAI 面板        |
+| <Kbd k="Ctrl:Shift:0" windows="Alt:0"/> | 聚焦 WaveAI 输入框      |
+| <Kbd k="Cmd:k"/>        | 清空 AI 聊天            |
+
+## 终端快捷键
+
+| 按键                    | 功能                         |
+| ----------------------- | ---------------------------- |
+| <Kbd k="Ctrl:Shift:c"/> | 复制                         |
+| <Kbd k="Ctrl:Shift:v"/> | 粘贴                         |
+| <Kbd k="Ctrl:v" mac="N/A" linux="N/A"/> | 粘贴（仅 Windows） |
+| <Kbd k="Cmd:k"/>        | 清空终端                     |
+| <Kbd k="Cmd:f"/>        | 在终端中查找                 |
+| <Kbd k="Shift:Home"/>   | 滚动到顶部                   |
+| <Kbd k="Shift:End"/>    | 滚动到底部                   |
+| <Kbd k="Cmd:Home" windows="N/A" linux="N/A"/>     | 滚动到顶部（仅 macOS）       |
+| <Kbd k="Cmd:End" windows="N/A" linux="N/A"/>      | 滚动到底部（仅 macOS）       |
+| <Kbd k="Cmd:ArrowLeft" windows="N/A" linux="N/A"/> | 移动到行首（仅 macOS）       |
+| <Kbd k="Cmd:ArrowRight" windows="N/A" linux="N/A"/> | 移动到行尾（仅 macOS）       |
+| <Kbd k="Shift:PageUp"/> | 向上滚动一页                 |
+| <Kbd k="Shift:PageDown"/>| 向下滚动一页                |
+
+## 进程查看器快捷键
+
+| 按键                    | 功能                                  |
+| ----------------------- | ------------------------------------- |
+| <Kbd k="Space"/>        | 暂停/恢复实时更新                     |
+| <Kbd k="Cmd:f"/>        | 打开进程筛选/搜索                     |
+| <Kbd k="Escape"/>       | 关闭搜索栏                            |
+
+## 可自定义的系统级全局热键 {#customizeable-systemwide-global-hotkey}
+
+Wave 允许设置自定义全局热键，用于从电脑上的任意位置聚焦你最近使用的窗口。更多信息参见[配置文档](./config#customizable-systemwide-global-hotkey)。
+
+</PlatformProvider>

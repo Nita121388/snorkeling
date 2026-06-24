@@ -6,8 +6,8 @@ import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { SessionDetailController, SessionDetailPane } from "@/app/view/aisessions/session-detail";
 import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
-import { dirname, getErrorMessage } from "@/app/view/aisessions/utils";
-import { createBlock } from "@/store/global";
+import { getErrorMessage } from "@/app/view/aisessions/utils";
+import { createBlock, getApi } from "@/store/global";
 import { isBlank } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -259,21 +259,28 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                     setRestoring(false);
                 }
             },
-            openSessionFolder: async (summary) => {
-                const folderPath = summary.projectPath || dirname(summary.filePath);
-                if (isBlank(folderPath)) {
+            openProjectDirectory: async (summary) => {
+                const projectDirectory = summary.projectPath?.trim() ?? "";
+                if (isBlank(projectDirectory)) {
                     return;
                 }
                 try {
                     await createBlock({
                         meta: {
                             view: "preview",
-                            file: folderPath,
+                            file: projectDirectory,
                         },
                     });
                 } catch (e) {
                     setError(getErrorMessage(e));
                 }
+            },
+            openSessionFile: async (summary) => {
+                const sessionFilePath = summary.filePath?.trim() ?? "";
+                if (isBlank(sessionFilePath)) {
+                    return;
+                }
+                getApi().openNativePath(sessionFilePath);
             },
             toggleMark: async (session) => {
                 if (isBlank(session?.key)) {

@@ -1,0 +1,81 @@
+---
+sidebar_position: 3.2
+id: "customization"
+title: "自定义"
+---
+
+## 标签页主题 {#tab-themes}
+
+![Tab Context Menu](./img/tab-context-menu.png#right)
+
+右键点击任意标签页会打开一个菜单，你可以在其中重命名标签页并选择不同背景。
+
+你也可以编辑 `backgrounds.json` 配置文件，使用自定义颜色、渐变、图片等创建自己的背景主题。要查看 Wave 内置标签页背景的定义方式，可以查看[默认 backgrounds.json 文件](https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/backgrounds.json)。
+
+要默认将某个标签页背景应用到所有新标签页，请在 [Wave 配置文件](/config)中将 `tab:background` 键设置为某个背景预设 key（例如 `"bg@ocean-depths"`）。可用的内置背景 key 可以在[默认 backgrounds.json 文件](https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/backgrounds.json)中找到。
+
+## 终端自定义 {#terminal-customization}
+
+#### 终端主题 {#terminal-theme}
+
+![Terminal Context Menu](./img/terminal-context-menu.png#right)
+
+右键点击任意终端 block 的标题区域会打开菜单，你可以在其中为该终端设置终端主题。
+
+你可以编辑 `settings.json` 文件，添加 `term:theme` 键并将其设置为合适的 key，从而为所有未手动覆盖主题的终端设置默认主题。这些 key 可以在[默认 termthemes.json 文件](https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/termthemes.json)中找到。
+
+如果你在配置目录中添加自己的 `termthemes.json` 文件，也可以添加自定义终端主题（只需遵循相同格式）。
+
+#### 字体大小 {#font-size}
+
+在同一个上下文菜单中，也可以修改终端字体大小。要修改所有未覆盖设置终端的默认字体大小，可以将配置键 `term:fontsize` 设置为所需大小，例如 `{ "term:fontsize": 14}`。
+
+#### 字体族 {#font-family}
+
+目前没有用于编辑默认终端字体族的 UI。不过，它_可以_被覆盖。你可以在 `settings.json` 文件中添加 `term:fontfamily` 键，并将其设置为本地系统中_已安装_的字体。如果输入了未安装的字体，或使用非等宽字体，终端显示效果会很糟糕（不要这样做 🙂）。删除该键即可恢复默认字体。
+
+## Widget 侧边栏 {#widgets-sidebar}
+
+![Terminal Context Menu](./img/custom-widgets.png#right)
+
+关于如何修改右侧 widget 侧边栏中显示的内容，请参阅 [自定义 Widget](/customwidgets) 的详细文档。
+
+使用 `widgets.json`，你可以移除任意默认 widget，并添加自己的 widget。你可以完整自定义 widget 的图标、颜色、文字和默认值（例如目录、网页、AI 模型、远程连接、命令等）。
+
+也可以将配置键 `widget:showhelp` 设置为 `false`，以隐藏右下角的帮助 widget。
+
+## 标签页背景 {#tab-backgrounds}
+
+Wave 支持使用图片、图案、渐变和颜色为标签页设置强大的自定义背景。设置图片背景最快的方法是使用 `wsh setbg` 命令：
+
+```bash
+# 设置 50% 透明度的图片背景（默认）
+wsh setbg ~/pictures/background.jpg
+
+# 设置颜色背景（使用引号避免 # 被解释为 shell 注释）
+wsh setbg "#ff0000"          # 十六进制颜色
+wsh setbg forestgreen        # CSS 颜色名称
+
+# 调整透明度
+wsh setbg --opacity 0.3 ~/pictures/light-pattern.png
+wsh setbg --opacity 0.7      # 只修改当前背景的透明度
+
+# 图片位置选项
+wsh setbg --tile ~/pictures/texture.png          # 创建平铺图案
+wsh setbg --center ~/pictures/logo.png           # 不缩放并居中
+wsh setbg --center --size 200px ~/pictures/logo.png  # 使用指定尺寸居中（px、%、auto）
+
+# 移除背景
+wsh setbg --clear
+```
+
+你可以使用任意 JPEG、PNG、GIF、WebP 或 SVG 图片作为背景。`--center` 选项特别适合需要保持原始尺寸的 logo 或图标。
+
+要预览某个背景的元数据而不实际应用它，请使用 `--print` 标志：
+
+```bash
+wsh setbg --print "#ff0000"
+```
+
+关于渐变、颜色、保存自定义背景等更高级的自定义选项，请查看我们的[标签页背景](/tab-backgrounds)文档。
+

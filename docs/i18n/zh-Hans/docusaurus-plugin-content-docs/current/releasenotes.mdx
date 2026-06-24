@@ -1,0 +1,718 @@
+---
+id: "releasenotes"
+title: "发布说明"
+sidebar_position: 200
+---
+
+# 发布说明 {#release-notes}
+
+### v0.14.5 &mdash; 2026 年 4 月 16 日
+
+Wave v0.14.5 引入了新的进程查看器 widget、全局热键的 Quake Mode，以及多项体验改进。
+
+- **进程查看器** - 新 widget，可显示本地和远程机器上正在运行的进程，包括 CPU 和内存使用率、可排序列，以及向进程发送信号的能力。
+- **Quake Mode** - 全局热键 (`app:globalhotkey`) 现在会切换 Wave 窗口的显示和隐藏状态。
+- **[bugfix] 设置 Widget** - 修复了尚不存在的配置文件无法通过 Settings widget UI 创建或编辑的问题。
+- **拖放文件到终端** - 从 Finder (macOS) 或文件管理器将文件拖入终端 block，可粘贴其带引号的路径 ([#746](https://github.com/wavetermdev/waveterm/issues/746))。
+- 新增可选的 `app:showsplitbuttons` 设置，可在 block 标题中添加水平/垂直拆分按钮。
+- 可从 View 菜单切换 widgets 侧边栏；可见性按工作区持久保存。
+- 按 F2 可重命名当前标签页。
+- 鼠标按钮 3/4（后退/前进）现在可在 web widgets 中导航。
+- 终端会话现在设置 `COLORTERM=truecolor`，为 CLI 工具提供更好的颜色支持。
+- [bugfix] 从终端复制到剪贴板时移除末尾空白。
+- 包和依赖升级。
+
+### v0.14.4 &mdash; 2026 年 3 月 26 日
+
+Wave v0.14.4 引入了垂直标签页，升级到 xterm.js v6，并包含一组 bug 修复和内部改进。
+
+**垂直标签栏：**
+
+- **新的垂直标签栏选项** - 标签页现在可以垂直显示在窗口侧边，让你获得更多水平空间，并在打开大量标签页时更容易访问。可在设置中切换水平和垂直标签页布局。
+
+**终端改进：**
+
+- **xterm.js v6.0.0 升级** - 升级到最新的 xterm.js v6，带来更好的终端兼容性和渲染效果。这应该能解决使用 Claude Code 等工具时观察到的多种终端渲染异常。
+
+**其他变更：**
+
+- **`backgrounds.json`** - 将 `presets/bg.json` 重命名为 `backgrounds.json`，并把背景配置迁移到新的 `tab:background` key（启动时自动迁移）。
+- **配置错误移动** - 将配置错误从标签栏移到 Settings / WaveConfig 视图，减少界面杂乱。
+- **未保存变更警告** - WaveConfig 视图现在会在丢弃未保存变更前发出警告。
+- **流式传输性能** - 将文件流式传输迁移到带流控的新现代接口，修复了一个大型首字节延迟 bug。
+- **macOS 首次点击** - 改进 macOS 上的首次点击处理（取消该点击，但正确设置 block/WaveAI 焦点）。
+- 已移除旧版 AI widget。
+- [bugfix] 修复新建 block 的焦点 bug。
+- [bugfix] 修复通过拆分旧持久会话来启动新持久会话时的问题。
+- Electron 升级到 v41。
+- 包和依赖升级。
+
+### v0.14.2 &mdash; 2026 年 3 月 12 日
+
+Wave v0.14.2 添加了 block/标签页徽章、目录预览改进，以及若干 bug 修复。
+
+**Block/标签页徽章：**
+
+- **Block 级徽章，汇总到标签页** - Block 现在可以显示图标徽章（带颜色和优先级），并汇总显示到标签栏中，方便快速查看状态。
+- **默认启用铃声指示器** - 终端铃声徽章现在默认开启，当终端响铃时会点亮 block 和标签页（由 `term:bellindicator` 控制）。
+- **`wsh badge`** - 新增 `wsh badge` 命令，可从命令行设置或清除 block 上的徽章。支持图标、颜色、优先级、提示音，以及与 PID 关联、进程退出后自动清除的徽章。非常适合配合 Claude Code hooks，将通知显示到标签栏中（[文档](https://docs.waveterm.dev/wsh-reference#badge)）。
+
+**其他变更：**
+
+- **目录预览改进** - 改进修改时间格式、斑马纹行、更好的默认排序、YAML 文件支持，以及上下文菜单改进。
+- **搜索栏** - 改进搜索栏中的剪贴板和焦点行为。
+- [bugfix] 修复 GNOME 桌面上 "New Window" 卡住/无法工作的问题。
+- [bugfix] 修复 "Save Session As..."（焦点窗口跟踪 bug）。
+- [bugfix] 修复缩放变更通知没有正确发送到所有标签页的问题（布局不一致）。
+- 在设置菜单中添加 Release Notes 链接。
+- 正在开发 anthropic-messages Wave AI 后端（用于原生 Claude 集成）。
+- 大量测试/mock 基础设施的内部工作，用于更快启用异步 AI 编辑。
+- 文档更新。
+- 包和依赖升级。
+
+### v0.14.1 &mdash; 2026 年 3 月 3 日
+
+Wave v0.14.1 修复了几个高影响终端 bug（Claude Code 滚动、IME 输入），并添加了新的配置选项：焦点跟随光标、光标样式自定义、工作区级 widget，以及 vim 风格 block 导航。
+
+**终端改进：**
+
+- **Claude Code 滚动修复** - 修复一个长期存在的 bug，该 bug 会导致终端窗口意外跳到顶部，影响了许多 Claude Code 用户。
+- **IME 修复** - 修复韩文/CJK 输入中字符丢失或卡在组合状态、只有按 Space 才提交的问题。
+- **调整大小时保留滚动位置** - 当终端已经滚动到底部时，调整大小后仍保持在底部。
+- **更好的链接处理** - 终端 URL 现在拥有改进的上下文菜单和 tooltip，方便导航。
+- **保存终端回滚内容** - 新增上下文菜单项和 `wsh` 命令，可将终端 scrollback 保存到文件。
+
+**新功能：**
+
+- **焦点跟随光标** - 新增 `app:focusfollowscursor` 设置（off/on/term），用于基于 hover 的 block 焦点。
+- **终端光标样式和闪烁** - 新增光标样式（block/bar/underline）和闪烁设置，可按 block 配置。
+- **标签页关闭确认** - 新增 `tab:confirmclose` 设置，在关闭标签页前提示确认。
+- **工作区级 Widget** - `widgets.json` 中新增可选的 `workspaces` 字段，可按工作区显示/隐藏 widget。
+- **Vim 风格 Block 导航** - 添加 Ctrl+Shift+H/J/K/L，用于在 block 之间导航。
+- **新的 AI 提供商** - 添加 Groq 和 NanoGPT 作为内置 AI 提供商预设。
+
+**其他变更：**
+
+- 修复终端 block 中连接切换的间歇性 bug。
+- 改进 widgets.json schema，提供更好的编辑器校验。
+- 包和依赖升级。
+- 内部代码清理和重构。
+
+### v0.14.0 &mdash; 2026 年 2 月 10 日
+
+**持久 SSH 会话和增强连接监控**
+
+Wave v0.14 为 SSH 连接引入持久会话，让你的远程终端会话能够在连接中断、网络变化和 Wave 重启后继续存在。本版本还包含连接监控、带流控的 RPC 基础设施，以及扩展终端能力方面的重大改进。
+
+**持久会话（仅远程 SSH）：**
+
+- **在中断后继续存在** - SSH 终端会话会在网络变化、电脑睡眠和 Wave 重启后保持，并在连接恢复时自动重连。
+- **会话保护** - 即使 Wave 关闭或断开连接，也会保留 shell 状态、运行中的程序和终端历史。
+- **可视状态指示** - 终端标题中的盾牌图标会显示会话状态（Standard、Durable Attached、Durable Detached、Durable Awaiting），并提供详细悬浮信息。
+- **灵活配置** - 可在全局、按连接或按 block 级别配置，并轻松在标准模式和持久模式之间切换。
+- 设置和使用方式请参阅新的[持久会话文档](https://docs.waveterm.dev/durable-sessions)。
+
+**增强连接监控：**
+
+- **连接 Keepalive** - 主动监控 SSH 连接，并自动发送 keepalive 探测。
+- **连接停滞检测** - 新连接监控器可在出现网络问题时检测并显示 "stalled" 连接状态，提供清晰的视觉反馈。
+- **更好的错误处理** - 改进连接状态跟踪和面向用户的连接状态指示。
+
+**终端改进：**
+
+- **OSC 52 剪贴板支持** - 终端应用现在可以通过 OSC 52 转义序列直接复制到系统剪贴板。
+- **增强上下文菜单** - 右键终端可快速访问拆分、打开 URL、主题、文件浏览器等功能。
+- **简化标题布局** - 终端标题现在专注于连接信息，不再显示冗余的视图类型标签。
+
+**Wave AI 更新：**
+
+- **图像/视觉支持** - 为 OpenAI chat completions API 添加图像支持，使兼容模型具备视觉能力。
+- **停止生成** - 新增能力，可在 OpenAI 和 Gemini 后端中途停止 AI 响应生成。
+- **AI 面板滚动锁定** - 改进 Wave AI 面板中的自动滚动行为。
+- **可配置详细程度** - 可控制 OpenAI Responses API 的详细程度级别。
+- 弃用旧 AI-widget 代理端点。
+
+**RPC 和性能：**
+
+- **带流控的 RPC 流式传输** - 新增带内置流控的流式传输原语，提高性能和可靠性。
+- **WSH Router 重构** - 重大路由架构改进，避免连接中断时卡住。
+- **RPC 客户端/服务器清理** - 改进 RPC 实现和错误处理。
+
+**配置更新：**
+
+- **隐藏 AI 按钮** - 新增 `app:hideaibutton` 设置，可从 UI 隐藏 AI 按钮。
+- **禁用 Ctrl+Shift 箭头** - 新增 `app:disablectrlshiftarrows` 设置，用于处理键盘快捷键冲突。
+- **禁用 Ctrl+Shift 显示** - 新增 `app:disablectrlshiftdisplay` 设置，可禁用覆盖 block 编号显示。
+
+**破坏性变更：**
+
+- **移除固定标签页** - 已从 UI 中移除固定标签页功能。
+- **移除 S3 和 WaveFile** - 移除 S3 文件系统和 wavefile 实现，以避免大型/递归文件传输问题并简化代码库。
+
+**其他变更：**
+
+- **退出确认** - 当 Wave 有活跃会话时，关闭应用会显示确认对话框。
+- Monaco Editor 升级，移除 `monaco-editor/loader` 和 `monaco-editor/react` 依赖，以提升性能和稳定性。
+- 新 Tab 模型和 React provider，改进状态管理。
+- 移除 OSC 23198 和 OSC 9283 旧处理器。
+- 更新贡献指南。
+- Go 工具链升级到 1.25.6。
+- 增强 OpenAI 兼容 API 提供商文档。
+- [bugfix] 修复 sysinfo 视图中的空数据处理。
+- [bugfix] 修复 Windows 上的 `app:ctrlvpaste` 设置（现在可以禁用）。
+- [bugfix] 修复某些提供商下 Wave AI 系统提示词重复的问题。
+- [bugfix] 修复断开连接卡住的问题，现在会立即断开。
+- [bugfix] 修复工具批准生命周期，使其匹配 SSE 连接时序。
+- [bugfix] 增加 WSL 连接超时时间，以处理初始 WSL 启动较慢的情况。
+- [bugfix] 改进终端关闭逻辑，使用 SIGHUP 实现更优雅的 shell 退出。
+- 包和依赖升级。
+
+### v0.13.1 &mdash; 2025 年 12 月 16 日
+
+**Windows 改进和 Wave AI 增强**
+
+本版本重点带来显著的 Windows 平台改进、Wave AI 视觉更新，以及本地 AI 使用的更大灵活性。
+
+**Windows 平台增强：**
+
+- **集成窗口布局** - 在 Windows 上移除单独的标题栏和菜单栏，将控件直接集成到标签栏标题中，使界面更干净、更统一。
+- **Git Bash 自动检测** - Wave 现在会自动检测 Git Bash 安装，并将其添加到连接下拉菜单中，方便访问。
+- **SSH Agent 回退** - 改进 SSH agent 支持，在 Windows 上可自动回退到 `\\.\pipe\openssh-ssh-agent`。
+- **更新焦点快捷键** - Windows 上 Wave AI 焦点快捷键改为 Alt:0，以保持更好一致性。
+- **配置 Schema** - 改进配置校验和 schema 支持。
+- Ctrl-V 现在在 Windows 终端中作为标准粘贴工作。
+
+**Wave AI 更新：**
+
+- **刷新视觉设计** - 完整 UI 刷新，移除蓝色强调色，并添加透明度支持，以便更好地与自定义背景集成。
+- **BYOK 无需遥测** - Wave AI 现在可在不要求启用遥测的情况下使用自带 key 和本地模型。
+- [bugfix] 修复与 Mistral 等提供商兼容的工具类型 "function" 问题。
+
+**终端改进：**
+
+- **新的滚动快捷键** - 添加 Shift+Home、Shift+End、Shift+PageUp 和 Shift+PageDown，改善终端导航。
+
+**其他变更：**
+
+- 包和依赖升级。
+
+### v0.13.0 &mdash; 2025 年 12 月 8 日
+
+**Wave v0.13 带来本地 AI 支持、BYOK 和统一配置**
+
+Wave v0.13 是一次重要发布，向本地模型、第三方提供商和自带 key (BYOK) 配置开放了 Wave AI。本版本还包含完全重新设计的配置系统和多项终端改进。
+
+**本地 AI 与 BYOK 支持：**
+
+- **OpenAI 兼容 API** - Wave 现在支持任何使用 `/v1/chat/completions` 端点的提供商或本地服务器，从而可以使用 Ollama、LM Studio、vLLM、OpenRouter 以及大量其他本地和托管模型。
+- **Google Gemini 集成** - 通过专用 API 适配器原生支持 Google 的 Gemini 模型。
+- **提供商预设** - 内置 OpenAI、OpenRouter、Google、Azure 和自定义端点预设，简化配置。
+- **多 AI 模式** - 通过统一界面轻松在不同模型和提供商之间切换。
+- 配置示例和设置指南请参阅新的 [Wave AI Modes 文档](https://docs.waveterm.dev/waveai-modes)。
+
+**统一配置 Widget：**
+
+- **新的配置界面** - 用可从侧边栏访问的专用配置 widget 替代基础 JSON 编辑器。
+- **更好的组织方式** - 浏览和编辑不同配置类型（通用设置、AI modes、secrets），并提供改进的校验和错误处理。
+- **集成 Secret 管理** - 可直接从配置 widget 访问 Wave 的 secret store，安全管理凭据。
+
+**终端改进：**
+
+- **括号粘贴模式** - 现在默认启用，以改善多行粘贴行为，并兼容 Claude Code 等工具。
+- **Windows 粘贴修复** - Ctrl+V 现在在 Windows 上作为标准粘贴加速键工作。
+- **SSH 密码管理** - 将 SSH 连接密码存储在 Wave 的 secret store 中，避免重复输入凭据。
+
+**其他变更：**
+
+- 包和依赖升级。
+- 各类 bug 修复和稳定性改进。
+
+### v0.12.5 &mdash; 2025 年 11 月 24 日
+
+快速补丁版本，用于修复 Linux 上的粘贴行为（防止原始 HTML 被粘贴到终端）。
+
+### v0.12.4 &mdash; 2025 年 11 月 21 日
+
+包含 bug 修复和小改进的快速补丁版本。
+
+- 新增 `term:macoptionismeta` 设置，可在 macOS 终端中将 Option 键视为 Meta 键。
+- 修复 zsh shell 的目录跟踪。
+- 修复编辑器复制操作。
+- 小幅 Wave AI 改进（图像处理、滚动、焦点）。
+- 包和依赖升级。
+- WIP：WaveApps builder framework（尚未发布）。
+
+### v0.12.3 &mdash; 2025 年 11 月 17 日
+
+补丁版本，包含 Wave AI 模型升级、新的 secret 管理功能，以及改进的终端输入处理。
+
+**Wave AI 更新：**
+
+- **GPT-5.1 模型** - 升级为使用 OpenAI 的 GPT-5.1 模型，以改善响应质量。
+- **Thinking Mode 切换** - 新下拉菜单，可在 Quick、Balanced 和 Deep thinking modes 之间选择，在响应质量和速度之间取得最佳平衡。
+- [bugfix] 修复恢复 AI 写文件备份时的路径不匹配问题。
+
+**新功能：**
+
+- **Secret Store** - 新的 secret 管理 widget，用于存储和管理敏感凭据。可通过 CLI 的 `wsh secret list/get/set` 命令访问 secrets。
+
+**终端改进：**
+
+- **增强输入处理** - 更好地支持 Claude Code 等交互式 CLI 工具。Shift+Enter 现在默认插入换行，用于多行命令。
+- **图像粘贴支持** - 可直接将图像粘贴到终端（保存到临时文件并插入路径）。在 Claude Code 中非常好用。
+- **IME 修复** - 修复中/日/韩输入法组合期间切换输入法时出现重复文本的问题。
+
+**其他变更：**
+
+- 改进后端 panic 跟踪，以便更好调试。
+- 修复 sysinfo 事件相关的内存泄漏。
+- WIP：新的 WaveApps builder framework（尚未发布）。
+- 包和依赖升级。
+
+### v0.12.2 &mdash; 2025 年 11 月 4 日
+
+Wave v0.12.2 为 Wave AI 添加了文件编辑能力。批准文件编辑前，你可以轻松查看 diff（在 Monaco Editor diff viewer 中渲染）；批准编辑后，也可以用 "Revert File" 按钮轻松回滚变更。
+
+**Wave AI 更新：**
+
+- **文件写入工具** - Wave AI 现在可以在获得你的批准后创建和修改文件。
+- **可视 Diff 预览** - 批准编辑前，在 Monaco Editor 中准确查看会发生什么变更。
+- **轻松回滚** - 通过简单的 "Revert File" 按钮回滚文件变更。
+- **拖放文件** - 可直接从预览查看器将文件拖到 Wave AI。
+- **目录列表** - `wsh ai` 现在可以将目录列表附加到聊天中。
+- **可调设置** - 可按聊天控制 thinking level 和最大输出 token 数。
+
+**Bug 修复和改进：**
+
+- 修复 RPC 系统中的重大内存泄漏。
+- 配置文件 schema 校验恢复工作。
+- 改进工具描述和输入校验（在工具批准前运行）。
+- 修复过早工具超时的问题。
+- 修复 PowerShell 5.x 回归。
+- 修复附加文件时的 prompt caching 问题。
+
+### v0.12.1 &mdash; 2025 年 10 月 20 日
+
+补丁版本，重点是 shell 集成改进和 Wave AI 增强。本版本修复了代码编辑器中的语法高亮，并添加了重要的 shell 上下文跟踪能力。
+
+**Shell 集成和上下文：**
+
+- **OSC 7 支持** - 在 bash、zsh、fish 和 pwsh shell 中添加 OSC 7（当前工作目录）支持。Wave 现在会自动跟踪并在重启后恢复本地和远程终端的当前目录。
+- **Shell 上下文跟踪** - 为 bash、zsh 和 fish shell 实现 shell 集成。Wave 现在会跟踪 shell 何时可接收命令、最后执行的命令和退出码。这个增强上下文支持更好的终端管理，也为 Wave AI 智能写入和执行命令奠定基础。
+
+**Wave AI 改进：**
+
+- 等待 AI 响应时在 UI 中显示 reasoning 摘要。
+- 添加增强终端上下文，Wave AI 现在可以访问 shell 状态，包括当前目录、命令历史和退出码。
+- 为 AI 响应添加反馈按钮（赞/踩），帮助改进体验。
+- 添加复制按钮，可轻松复制 AI 响应到剪贴板。
+
+**其他变更：**
+
+- web widgets 支持移动端 user agent 模拟 [#2442](https://github.com/wavetermdev/waveterm/issues/2442)。
+- [bugfix] 修复代码编辑器头部按钮的 padding（Tailwind 回归）。
+- [bugfix] 恢复代码编辑器预览 block 中的语法高亮 [#2427](https://github.com/wavetermdev/waveterm/issues/2427)。
+- 包和依赖升级。
+
+### v0.12.0 &mdash; 2025 年 10 月 16 日
+
+**Wave v0.12 带着 Wave AI (beta) 到来了！**
+
+Wave Terminal v0.12.0 引入了完全重新设计、由 OpenAI GPT-5 驱动的 AI 体验。这相比 Wave 之前的 AI 集成是一次重大升级和现代化，带来多模态支持、高级工具集成，以及直观的新界面。仅主 AI PR 就包含 128 个提交，并新增 13,000+ 行代码。
+
+**Wave AI 功能：**
+
+- **新的滑出式聊天面板** - 可通过热键（Cmd-Shift-A 或 Ctrl-Shift-0）从屏幕左侧访问 Wave AI。
+- **多模态输入** - 支持图像、PDF 和文本文件附件。
+- **拖放文件** - 只需将文件拖入聊天即可附加。
+- **命令行集成** - 使用 `wsh ai` 将文件和命令输出直接发送到 Wave AI。
+- **智能上下文切换** - 允许 Wave AI 查看你的 widgets 和文件系统。
+- **内置工具：**
+  - Web 搜索能力
+  - 本地文件和目录操作
+  - Widget 截图
+  - 终端 scrollback 访问
+  - Web 导航
+
+Wave AI 正处于活跃 beta 阶段，并包含 AI credits，供我们打磨体验。BYOK（Bring Your Own Key）会在核心功能稳定、并收集到哪些体验最佳的反馈后提供。欢迎在我们的 [Discord](https://discord.gg/XfvZ334gwU) 中分享反馈。
+
+更多信息和即将推出的功能，请访问我们的 [Wave AI 文档](https://docs.waveterm.dev/waveai)。
+
+**其他改进：**
+
+- 新的引导流程，展示 block 放大、Wave AI，以及 wsh view/edit 能力。
+- 新增 `wsh blocks list` 命令，可按工作区、标签页或视图类型列出和过滤 blocks。
+- 继续从 SCSS 迁移到 Tailwind v4。
+- 包和依赖升级。
+- 内部代码清理和重构。
+
+### v0.11.6 &mdash; 2025 年 9 月 22 日
+
+补丁版本，用于修复在两个独立 edit widget 中打开两个文件时的编辑器 bug。同时为 markdown block 添加 Mermaid 支持。
+
+- WIP：大型 AI 改造即将到来（多模态支持、高级模型和工具支持）。
+- WIP：集成新的 Tsunami widget framework，让编写和运行 Wave widgets 更简单。
+- 大量包更新。
+- 大量内部清理（preview widget）。
+- 更多迁移到 Tailwind v4 CSS。
+- 构建更新，从 yarn 切换到 npm。
+
+### v0.11.5 &mdash; 2025 年 8 月 28 日
+
+又一次维护版本，用于让 Wave 更现代，并保持更新。
+
+- Wave AI Cloud Proxy 现在使用 gpt-5-mini（从 gpt-4o-mini 升级）。
+- 修复从 widgets 运行 "Wave Apps" 时的 JWT 问题。
+- 在配置文件中添加 `$ENV:envvar:fallback` 语法，使 Wave 配置可以从环境变量获取值（主要用于将 secrets 移出配置文件）。
+- 新增设置，可禁用按住 Ctrl:Shift 时显示覆盖 blocknums (`app:showoverlayblocknums`)。
+- 新增设置，允许 Shift-Enter 与 Claude Code 等工具配合工作 (`term:shiftenternewline`)。
+- 前端升级到 React 19。
+- 将更多前端迁移到 Tailwind v4（进行中）。
+- 移除 Universal MacOS 构建。90% 的 Mac 用户现在都在 Apple Silicon 上，因此 universal 构建的重要性降低（文件更大，也让构建流程更复杂）。
+- [bugfix] 移除 RPM 构建中的 build-ids，尝试修复与 Slack 的冲突。
+- 移除一些 Wave v7 感知升级和旧代码路径。
+- 内部清理、TypeScript 错误修复、lint 修复等。
+- 其他各类 Go/npm 包升级。
+
+### v0.11.4 &mdash; 2025 年 8 月 19 日
+
+快速补丁版本，用于更新包、修复一些安全问题（依赖包相关），以及一些小 bug。
+
+- 更新 AI Libraries，WaveAI 现在支持 GPT-5。
+- 添加 `ai:proxyurl` 设置，允许通过代理（例如 SOCKS）访问 AI。
+
+### v0.11.3 &mdash; 2025 年 5 月 2 日
+
+快速补丁版本，用于更新包、修复一些安全问题（依赖包相关），以及一些小 bug。
+
+### v0.11.2 &mdash; 2025 年 3 月 8 日
+
+快速补丁版本，用于修复后端 panic，并回滚一个导致 WSL 连接卡住的变更。
+
+### v0.11.1 &mdash; 2025 年 2 月 28 日
+
+Wave Terminal v0.11.1 相比 v0.11.0 添加了大量新功能（它几乎可以算作 v0.12）！
+
+头号功能是我们的 files/preview widget 现在支持浏览 S3 bucket。我们会直接从你的 `~/.aws/config` 读取凭据信息，你现在可以在连接下拉菜单中轻松选择任意 AWS profile 来开始查看 S3 文件。我们甚至支持使用内置编辑器编辑 S3 文本文件。
+
+还有很多其他功能和 bug 修复：
+
+- **S3 Bucket** 目录查看和文件预览。
+- **拖放文件和目录** 可在 Wave 目录视图之间进行。它支持跨机器，以及远程机器和 S3 连接之间。
+- 为部分配置文件添加 json-schema 支持。现在你会在 `settings.json`、`widgets.json`、`ai.json` 和 `connections.json` 文件中获得字段自动补全弹窗。
+- 新的 block 拆分支持：使用 Cmd-D 和 Cmd-Shift-D 水平/垂直拆分。要获得更多控制，可以使用 Ctrl-Shift-S，然后按 Up/Down/Left/Right 向指定方向拆分。
+- 删除 block（不从布局中移除）。你可以使用 Ctrl-Shift-D 移除一个 block，同时保留其布局位置。之后可以在其位置启动新的 widget。
+- `wsh file` 现在支持在本机、远程机器以及 S3 之间复制文件。
+- 新的 analytics framework（基于事件，而不是基于计数器）。更多信息请参阅 Telemetry Docs。
+- Web bookmarks！可在 `bookmarks.json` 文件中编辑，并在 web widget 中使用 Cmd+O 打开。
+- 对 `ai.json` 预设文件的编辑现在会在 AI widgets 中_立即_生效。
+- 当 preview 或 editor widget 中发生错误时，提供更好的错误处理和消息。
+- 添加 `wsh ssh --new`，用于在新 widget 中打开新的 ssh 连接。
+- 新增 `wsh launch` 命令，用于打开 `widget.json` 中定义的任意自定义 widget。
+- 使用终端多输入 (Ctrl-Shift-I) 时，粘贴文本现在会发送到所有终端。
+- [bugfix] 修复命令失败或超时时一些 goroutine 卡住的问题。
+- [bugfix] 修复部分文件扩展名 mimetype，使编辑器可用于更多文件类型。
+- [bugfix] 按下 "tab" 有时会把 widget 滚出屏幕导致无法使用。
+- [bugfix] XDG 变量不再泄漏到终端 widgets。
+- 添加 tailwind CSS 和 shadcn 支持，帮助更快构建新 widgets。
+- 更好的内部 widget 抽象。
+
+### v0.11.0 &mdash; 2025 年 1 月 24 日
+
+Wave Terminal v0.11.0 包含一次对连接基础设施的重大重写，涉及后端和远程文件协议系统，同时带来大量功能、bug 修复和稳定性改进。
+
+本版本的一个关键新增项是新的 shell 初始化系统，它支持跨本地和远程连接自定义 shell 环境。你现在可以按 block 或按连接配置环境变量和 shell 专用初始化脚本。
+
+日常使用方面，我们添加了终端和 web block 中的搜索功能，以及用于同时向标签页内所有终端输入的终端多输入功能。我们还为 Wave AI 添加了 Google Gemini 支持，扩展了 AI 集成套件。
+
+幕后方面，我们重新设计了远程文件协议，为 preview widget 即将支持 S3（以及 S3 兼容系统）奠定基础。这一架构变更也为未来添加更多文件后端铺路。
+
+- **Shell 环境自定义** - 使用环境变量和初始化脚本配置 shell 环境，并支持本地和远程连接。
+- **连接后端改进** - 大幅重写，改进 shell 检测、更好的错误日志，并减少使用 ForceCommand 时的 2FA 提示。
+- **多 Shell 支持** - 增强对 bash、zsh、pwsh 和 fish shell 的支持，并具备 shell 专用初始化能力。
+- **终端搜索** - 使用 Cmd-F 在终端 widgets 中搜索文本。
+- **Web 搜索** - 使用 Cmd-F 在 web 视图中搜索文本。
+- **终端多输入** - 使用 Ctrl-Shift-I 允许向同一标签页中的所有终端进行多输入。
+- **Wave AI 现在支持 Google Gemini**。
+- 改进 WSL 支持，并提供无 wsh 连接选项。
+- 添加内联连接调试信息。
+- 修复 Windows 系统上的文件权限处理问题。
+- 连接相关弹窗现在只发送到发起连接的窗口。
+- 改进需要 2FA 提示的 SSH 连接超时处理。
+- 修复全局事件处理器中的 Escape 键处理（关闭模态框）。
+- 目录预览现在填满整个 block 宽度。
+- 自定义 widgets 现在可以以放大模式启动。
+- 围绕关闭/删除工作区改进多项工作区 UX。
+- `file:///` URL 现在可在 web widget 中工作。
+- `wsh ai` 允许的文件最大大小增加到 50k。
+- `term:scrollback` 允许的最大值增加到 50k 行。
+- 允许完全在 `connections.json` 中定义连接，而不依赖 `~/.ssh/config`。
+- 为本地连接添加在外部文件查看器中显示文件的选项。
+- 右键 MacOS Dock 图标按钮时添加 New Window 选项。
+- [build] 切换到免费的 Ubuntu ARM runners，以获得更好的 ARM64 构建支持。
+- [build] Windows 构建现在使用 zig，简化 Windows 开发设置。
+- [bugfix] 当 ssh 配置缺失或无效时，连接下拉菜单现在仍会填充。
+- [bugfix] 默认禁用 bracketed paste mode（保留配置选项可重新开启）。
+- [bugfix] `wsh ssh` 超时时间增加到 60s。
+- [bugfix] 修复 sysinfo widget 显示大量 CPU 图表时的问题。
+- [bugfix] 修复 Snap 安装中的 XDG 变量。
+- [bugfix] 遵守 SSH IdentitiesOnly 标志（当 ssh-agent 加载很多 key 时很有用）。
+- [bugfix] 改进运行本地 shell 时的 shell 环境变量设置。
+- [bugfix] 修复大型文本文件预览。
+- [bugfix] 修复终端中的 URL（现在又可以点击）。
+- [bugfix] Windows URL 现在可正确用于 Wave 背景图像。
+- [bugfix] 如果无法打开 unix domain socket，连接会在没有 wsh 的情况下启动。
+- [bugfix] 连接状态列表会正确点亮当前已连接的连接。
+- [bugfix] 如果终端中请求的 LANG 不可用，则使用 en_US.UTF-8。
+- 其他 bug 修复、性能改进和依赖更新。
+
+### v0.10.4 &mdash; 2024 年 12 月 20 日
+
+包含 bug 修复和新配置选项的快速更新。
+
+- 添加 "window:confirmclose" 和 "window:savelastwindow" 配置选项。
+- [bugfix] 修复 AI widget 中损坏的滚动条。
+- [bugfix] 修复 wsh shell 检测的默认路径（用于远程连接）。
+- 依赖更新。
+
+### v0.10.3 &mdash; 2024 年 12 月 19 日
+
+v0.10 的快速更新，包含新功能和 bug 修复。
+
+- 全局热键支持 [文档](https://docs.waveterm.dev/config#customizable-systemwide-global-hotkey)。
+- 添加配置，可覆盖 markdown、AI-chat 和 preview editor 的字体大小 [文档](https://docs.waveterm.dev/config)。
+- 添加为 web view 设置独立缩放级别的能力（右键 block 标题）。
+- 新增 `wsh wavepath` 命令，用于打开配置目录、数据目录和日志文件。
+- [bugfix] 修复 `/etc/sshd_config` 包含不支持的 Match 指令时崩溃的问题（Fedora 上最常见）。
+- [bugfix] 工作区现在在窗口间更一致，删除 Workspaces 时会关闭关联窗口。
+- [bugfix] 修复 WSL 上的 zsh。
+- [bugfix] 修复一个长期存在的 bug：切换标签页时终端输出中偶尔显示控制序列。
+- 在 shell overrides、presets、widgets 和 connections 文档中添加了大量新示例。
+- 其他 bug 修复和 UI 更新。
+
+（注意，v0.10.2 和 v0.10.3 的发布说明已经合并在一起）
+
+### v0.10.1 &mdash; 2024 年 12 月 12 日
+
+快速更新，用于修复工作区应用菜单动作。还修复了从非工作区窗口调用工作区切换时，总是打开新窗口的问题。这降低了意外丢失非工作区窗口标签页的概率。
+
+### v0.10.0 &mdash; 2024 年 12 月 11 日
+
+Wave Terminal v0.10.0 引入工作区，让管理多个工作环境更加容易。我们添加了强大的新命令执行能力 `wsh run`，允许你在专用 block 中启动和控制命令。本版本还通过新的 connections 配置系统显著改进 SSH，用于管理你的远程环境。
+
+- **工作区**：将工作组织到独立环境中，每个环境有自己的标签页、布局和设置。
+- **命令 Block**：新的 `wsh run` 命令，用于在专用 block 中启动终端命令，并支持放大、自动关闭和执行控制（[文档](https://docs.waveterm.dev/wsh-reference#run)）。
+- **连接**：新的配置系统，用于管理 SSH 连接，支持无 wsh 操作、按连接主题等（[文档](https://docs.waveterm.dev/connections)）。
+- 改进标签页管理，提供更好的切换行为和上下文菜单（大量 bug 修复）。
+- 新标签页功能，包括固定标签页和拖放改进。
+- 可直接在目录预览中创建、重命名和删除文件/目录。
+- 如果 wsh 安装或执行失败，则尝试以无 wsh 连接作为回退。
+- 为 `wsh ssh` 命令添加新的 `-i` 标志，用于添加 identity files。
+- 添加 Perplexity API 集成（[文档](https://docs.waveterm.dev/faq#perplexity)）。
+- `wsh setbg` 命令用于背景处理（[文档](https://docs.waveterm.dev/wsh-reference#setbg)）。
+- 从 Less 切换到 SCSS 进行样式编写。
+- [bugfix] 修复标签页切换期间标签页闪烁问题。
+- [bugfix] 修正 WaveAI 文本区域调整大小行为。
+- [bugfix] 修复并发 block controller 启动问题。
+- [bugfix] 修复未初始化连接的 Preview Blocks。
+- [bugfix] 修复无响应的上下文菜单。
+- [bugfix] 修复 Help block 中的连接错误。
+- Go 工具链升级到 1.23.4。
+- 大量新文档，包括 [Getting Started](https://docs.waveterm.dev/gettingstarted)、[AI Presets](https://docs.waveterm.dev/ai-presets) 和 [wsh overview](https://docs.waveterm.dev/wsh) 的新页面。
+- 其他 bug 修复、性能改进和依赖更新。
+
+### v0.9.3 &mdash; 2024 年 11 月 20 日
+
+新的小版本发布，引入 Wave 的 connected computing 扩展。我们引入了新的 `wsh` 命令，允许你存储变量和文件，并跨终端会话（本地和远程机器）访问它们。
+
+- `wsh setvar/getvar` 用于获取和设置变量 -- [文档](https://docs.waveterm.dev/wsh-reference#getvarsetvar)。
+- `wsh file` 操作（cat、write、append、rm、info、cp 和 ls）-- [文档](https://docs.waveterm.dev/wsh-reference#file)。
+- 改进 golang panic 处理，防止后端崩溃。
+- 改进 SSH 配置日志，并修复一个复用连接 bug。
+- 更新遥测以跟踪额外计数器。
+- 新配置设置（位于 "window:magnifiedblock" 下），用于控制放大 block 的边距和显示。
+- 新 block/zone 别名（client、global、block、workspace、temp）。
+- `wsh ai` 文件附件现在会在 AI block 中以特殊方式渲染。
+- 新的 ephemeral block 类型，用于创建不会干扰底层布局的模态 widget。
+- 从 Wave AI block 编辑 AI 预设文件现在会打开 ephemeral editor。
+- 点击放大 block 外部现在会取消放大。
+- 新按钮用于清空 AI chat（也绑定到 Cmd-L）。
+- 新按钮用于重置自定义 cmd widgets 中的终端命令。
+- [bugfix] presets 目录在 Windows 上加载不正确。
+- [bugfix] 放大的 blocks 启动时显示不正确。
+- [bugfix] 窗口透明度和背景色在某些情况下没有正确应用。
+- [bugfix] 修复应用全局默认值时的终端主题 [#1287](https://github.com/wavetermdev/waveterm/issues/1287)。
+- 不再支持 MacOS 10.15 (Catalina)。
+- 其他 bug 修复、文档改进和依赖升级。
+
+### v0.9.2 &mdash; 2024 年 11 月 11 日
+
+包含 bug 修复和新功能的小版本发布！修复了让 Wave 全屏的问题（也影响 Hyprland 等某些窗口管理器）。我们还在文档站 (https://docs.waveterm.dev) 上投入了大量工作，包括记录 [Widgets](./widgets) 和 Presets 的工作方式。
+
+- 更新文档。
+- Wave AI 现在支持 Anthropic API！查看 [FAQ](./faq) 了解如何在 Wave AI 中使用 Claude 模型。
+- 移除 `defaultwidgets.json` 并统一到 `widgets.json`。这让覆盖默认 widgets 更直接。
+- 为 `wsh` 中的 `-b` 参数新增解析器。"tab:N" 用于访问第 N 个标签页，"[view]" 和 "[view]:N" 用于访问某个特定视图的 blocks。
+- 新增 `wsh ai` 命令，可将 AI chats（和文件）直接发送到新的或现有 AI block。
+- 改进 wsh setmeta/getmeta。允许 setmeta 接收 json 文件（也可从 stdin 读取），同时为 getmeta 提供更好的输出格式（兼容 setmeta）。
+- [bugfix] 在 OpenAI API 中设置 max completion tokens，因此现在可以使用 o1 模型（并回退到非流式模式）。
+- [bugfix] 修复进入 "full screen" 模式时的内容调整大小问题。这个 bug 也影响了某些窗口管理器（如 Hyprland）。
+- 大量其他小 bug 修复、文档更新和依赖升级。
+
+### v0.9.1 &mdash; 2024 年 11 月 1 日
+
+小型 bug 修复版本，跟进 v0.9.0 构建。修复了大量问题（尤其是 Windows）。
+
+- 需要麦克风、摄像头或位置访问权限的 CLI 应用现在可在 MacOS 上工作。你会在 Wave 中看到安全弹窗，用于允许/拒绝 [#1086](https://github.com/wavetermdev/waveterm/issues/1086)。
+- 现在可以使用 `wsh version -v` 打印新的 data/config 目录。
+- 恢复旧的 T1、T2、T3、... 标签页命名逻辑。
+- 暂时恢复在 Windows 上使用 "Title Bar"，以缓解窗口控件覆盖在标签页上方的 bug（正在为下个版本做真正修复）。
+- 编辑器中新增设置，可启用/禁用自动换行 [#1038](https://github.com/wavetermdev/waveterm/issues/1038)。
+- Ctrl-S 现在会在 codeedit 中保存文件 [#1081](https://github.com/wavetermdev/waveterm/issues/1081)。
+- [#1020](https://github.com/wavetermdev/waveterm/issues/1020) 现在有一个 preset config 选项，可修改标签页主题中的 active border color。
+- [bugfix] 针对 [#1167](https://github.com/wavetermdev/waveterm/issues/1167) 的多项修复，用于尝试解决更新期间标签页丢失问题。
+- [bugfix] Windows 应用打开 View 菜单时因错误 accelerator key 崩溃。
+- [bugfix] 标签栏中的自动更新器消息现在在切换标签页时更一致，并且在网络断开时不显示错误。
+- [bugfix] 全屏模式现在真的会在全屏中显示标签页。
+- [bugfix] [#1175](https://github.com/wavetermdev/waveterm/issues/1175) 现在可以编辑 .awk 文件。
+- [bugfix] [#1066](https://github.com/wavetermdev/waveterm/issues/1066) 应用默认主题现在会适当更新背景，无需刷新。
+
+### v0.9.0 &mdash; 2024 年 10 月 28 日
+
+新的 Wave Terminal 重大版本！Wave 标签页现在会被缓存。标签页切换性能现在快得多，并且 webview 状态、编辑器状态和滚动位置会在标签页切换期间持久保留。我们还拥有原生 WSL2 支持。你可以使用连接按钮为 Windows WSL2 发行版创建原生 Wave 连接。
+
+我们也为接下来几周即将发布的一些大功能奠定了基础，包括 Workspaces、AI 改进和自定义 widgets。
+
+还有大量其他较小变更和 bug 修复。完整 PR 列表请参阅 https://github.com/wavetermdev/waveterm/releases/tag/v0.9.0
+
+### v0.8.13 &mdash; 2024 年 10 月 24 日
+
+- Wave 现在作为 Snap 提供给 Linux 用户！你可以在 [Snap Store](https://snapcraft.io/waveterm) 找到它。
+- Wave 现在可通过 Windows Package Manager 安装！可以使用 `winget install CommandLine.Wave` 安装。
+- 现在可以使用 `term:fontsize` 覆盖单个终端 block 的字体大小（上下文菜单中也有）。
+- 现在允许连接使用大小写混合主机名，以兼容 ssh config。
+- Linux 应用图标现在已更新，以匹配 Windows 图标。
+- [bugfix] 修复切换标签页时有时会打印转义序列的 bug。
+- [bugfix] 修复 preview block 未清理临时文件的问题（仅 Windows）。
+- [bugfix] 修复 Linux 上 chrome sandbox 权限错误。
+- [bugfix] 修复 MacOS/Linux 上的关闭逻辑，该问题有时会让孤儿进程残留。
+
+### v0.8.12 &mdash; 2024 年 10 月 18 日
+
+- 添加对多 AI 配置的支持！你现在可以同时运行 Open AI 和 Ollama 模型。可以在 `presets.json` 中创建 AI 预设，并通过 AI widget 中的新下拉菜单轻松切换。
+- 修复 WebSocket 重连错误。该问题有时会导致从睡眠唤醒时终端卡住。
+- 向 sysinfo widget 添加内存图和每 CPU 图（并将其从 cpuplot 重命名）。
+- 当配置 JSON 文件中存在解析错误时，添加醒目的红色 "Config Error" 按钮。
+- Preview/CodeEdit widget 现在会在 JSON 或 YAML 文件解析失败时显示错误（波浪线）。
+- 新的 Windows 应用图标，更好匹配 Fluent UI 标准。
+- 向终端添加 copy-on-select（默认开启，可使用 `term:copyonselect` 禁用）。
+- 添加按钮，可静音 webviews 中的音频。
+- 添加右键 "Open Clipboard URL"，可轻松从系统剪贴板中存储的 URL 打开 webview。
+- [bugfix] 修复从睡眠唤醒或重启应用时空白 "help" 页面的问题。
+
+### v0.8.11 &mdash; 2024 年 10 月 10 日
+
+热修复版本，用于处理 v0.8.10 中引入的几个 bug。
+
+- 修复 v0.8.10 中的回归问题，该问题会导致新标签页有时变为空白且损坏。
+- 修复 AI widget 间距布局。
+- 终端滚动条现在半透明，并覆盖最后一列。
+- 修复首次启动时的初始窗口大小，适配较小和较大的屏幕。
+- 为在远程机器上安装 `wsh` 添加 "Don't Ask Again" 复选框（设置新的配置标志）。
+- 防止安装 beta 构建时应用降级。安装 beta 构建现在会切换到 beta 更新通道。
+
+### v0.8.10 &mdash; 2024 年 10 月 9 日
+
+小型 bug 修复版本（但也有一些新功能）。
+
+- 添加 Azure AI 支持 [参阅 FAQ](https://docs.waveterm.dev/faq#how-can-i-connect-to-azure-ai)。
+- AI 错误现在会显示在聊天中。
+- 在 MacOS 上，在 directorypreview 中按 "Space" 会用 Quick Look 打开选中的文件。
+- [bugfix] 修复透明度设置。
+- [bugfix] 修复连接下拉菜单中非标准端口号的问题。
+- [bugfix] 修复嵌入式文档站的问题（刷新后返回 404）。
+
+### v0.8.9 &mdash; 2024 年 10 月 8 日
+
+大量 bug 修复和新功能！
+
+- 新的 "help" 视图，使用我们文档站的嵌入版本：https://docs.waveterm.dev
+- [breaking] `wsh getmeta`、`wsh setmeta` 和 `wsh deleteblock` 现在通过 `-b` 参数接收 blockid，而不是作为位置参数。
+- 允许 metadata 覆盖 block 图标、标题和文本（frame:title、frame:icon 和 frame:text）。
+- web widget 上的 home 按钮可返回主页，可为整个应用或给定 block 设置默认主页。
+- 降低终端 checkpoint 频率，以减少输出 bug 的出现频率（仍在处理完整修复）。
+- 新终端主题：Warm Yellow 和 One Dark Pro。
+- 现在支持 GitHub flavored markdown alerts。
+- `wsh notify` 命令可发送桌面通知。
+- `wsh createblock` 可通过 CLI 创建任意 block。
+- 在 webview 中右键可 "Save Image"。
+- `wsh edit` 现在允许你打开新文件（只要父目录直接存在）。
+- 添加 8 个有趣的新标签页背景预设（右键任意标签页并选择 "Backgrounds" 试试看）。
+- [config] 新配置 key `term:scrollback`，用于设置终端 scrollback 行数。使用 "-1" 表示设置为 0，最大值为 10000。
+- [config] 新配置 key `term:theme`，用于为所有新终端设置默认终端主题。
+- [config] 新配置 key `preview:showhiddenfiles`，用于设置 preview 默认 "show hidden files"。
+- [bugfix] 修复 `wsh getmeta` 的格式问题。
+- [bugfix] 修复 Linux 上 home 目录为 NFS mount 时的启动问题。
+- [bugfix] 修复终端主题中的光标颜色。
+- [bugfix] 修复显示 markdown 内容时出现的一些双滚动条。
+- [bugfix] 改进关闭序列，以更好捕获 wavesrv 日志。
+- [bugfix] 修复 Linux/Windows 的 Alt+G 键盘 accelerator。
+- 其他各类 bug 修复、清理和安全修复。
+
+### v0.8.8 &mdash; 2024 年 10 月 1 日
+
+快速补丁版本，用于修复 Windows/Linux 的 "Alt" 快捷键。同时带来 AI 流式速度的大幅性能提升。
+
+### v0.8.7 &mdash; 2024 年 9 月 30 日
+
+快速补丁版本，用于修复 bug：
+
+- 修复 Windows SSH 连接（尝试安装 wsh 工具时路径无效）。
+- 修复 Windows 路径中解析 `~` 的问题，`~\` 现在可以工作，而不只是 `~/`。
+- 尝试修复网页背景色。读取 color-scheme meta 标签，并在检测到暗色时设置黑色背景（修复渲染 raw githubusercontent 文件的问题）。
+- 修复 useDimensions hook，使其正确触发。修复一些尺寸问题，包括允许 SSH 连接失败时稳定显示错误消息。
+- 允许在自定义标签页背景中使用 `data:` URL。
+- 添加别名 "tab"，用于通过 wsh 表示当前标签页的 UUID。
+- [BUILD] 仅在生成文件已更新时才有条件写入。
+
+### v0.8.6 &mdash; 2024 年 9 月 26 日
+
+又一个快速热修复更新。修复了如果你删除窗口中所有标签页，下次启动时该窗口会恢复为空白的问题。
+
+另外，作为额外功能，我们添加了 fish shell 支持！
+
+### v0.8.5 &mdash; 2024 年 9 月 25 日
+
+热修复，降级 `jotai` 库。升级造成 codeedit 的重大回归，导致用户无法编辑文件。
+
+### v0.8.4 &mdash; 2024 年 9 月 25 日
+
+- 添加 `window:disablehardwareacceleration` 设置，用于禁用原生硬件加速。
+- 为旧版用户提供新的启动模型，让他们可以选择下载 WaveLegacy。
+- 一致地使用 `WAVETERM_HOME` 作为 home 目录。
+
+### v0.8.3 &mdash; 2024 年 9 月 25 日
+
+面向 Linux 用户的更多热修复。我们现在链接到较旧版本的 glibc，并在 Linux 上使用 zig 编译器（较新版本会导致我们无法在旧发行版上运行）。
+还修复了通过 .deb 安装时的权限问题。还有一个新的配置值 `window:nativetitlebar`，可在 Windows/Linux 上恢复原生标题栏。
+
+### v0.8.2 &mdash; 2024 年 9 月 24 日
+
+热修复，修复 Linux 用户启动时的严重崩溃（动态链接但使用 netcgo DNS library）。
+
+### v0.8.1 &mdash; 2024 年 9 月 23 日
+
+小型清理版本。
+
+- 修复某些配置文件值的数字解析。
+- 添加文档站链接。
+- 为目录视图添加新的返回按钮。
+- 遥测修复。
+
+### v0.8.0 &mdash; 2024 年 9 月 20 日
+
+**Wave Terminal 重大新版本**
+
+新构建是一次全新开始，并与当前版本彻底分离。因此，你的历史、设置和配置不会迁移过来。如果你想继续运行旧版，需要单独下载。
+
+发布产物和源代码 diff 可在 [GitHub](https://github.com/wavetermdev/waveterm) 找到。

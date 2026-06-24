@@ -1,0 +1,216 @@
+---
+sidebar_position: 3.5
+id: "durable-sessions"
+title: "持久会话"
+---
+
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+# 持久会话 <VersionBadge version="v0.14" /> {#durable-sessions}
+
+在网络变化、电脑休眠和 Wave 重启后，仍保持远程 SSH shell 会话存活。
+
+## 概览 {#overview}
+
+使用远程 SSH 连接时，持久会话会保护终端状态。它类似 tmux 或 screen，但直接内置在 Wave 中。与连接断开就终止的标准 SSH 会话不同，持久会话会保留：
+
+- **Shell 状态** - 当前目录、环境变量和 shell 历史
+- **正在运行的程序** - 后台任务和长时间运行的命令会继续执行
+- **终端历史** - 重连后仍保留完整回滚缓冲区
+
+连接恢复后，持久会话会自动重连，并从你离开的地方继续。
+
+:::info Remote Connections Only
+持久会话仅面向**远程 SSH 连接**设计。本地终端和 WSL 连接使用标准会话，因为它们不受网络中断影响，并且只要 Wave 运行就会保持活动。
+:::
+
+## 工作原理 {#how-it-works}
+
+启动持久会话时，Wave 会在远程服务器上启动一个轻量级 job manager。类似 tmux 和 screen 的工作方式，该管理器会：
+
+1. 让 shell 进程独立于 Wave 连接继续运行
+2. 在断开连接期间缓冲终端输出
+3. 让 Wave 在重连时无缝重新附加
+4. 在 Wave 重启和网络中断后继续存活
+
+即使关闭 Wave、让电脑休眠或切换网络，会话也会继续在远程服务器上运行。
+
+## 会话状态指示器 {#session-status-indicator}
+
+终端标题栏中的盾牌图标会显示当前会话状态：
+
+| 图标 | 状态 | 说明 |
+|------|--------|-------------|
+| <i className="fa-sharp fa-regular fa-shield" style={{color: 'rgb(140, 145, 140)'}}></i> | 标准会话 | 连接断开会结束会话 |
+| <i className="fa-sharp fa-solid fa-shield" style={{color: '#0ea5e9'}}></i> | 持久（已附加） | 会话受保护且已连接 |
+| <i className="fa-sharp fa-solid fa-shield" style={{color: '#7dd3fc'}}></i> | 持久（已分离） | 会话正在运行，但当前已断开 |
+| <i className="fa-sharp fa-solid fa-shield" style={{color: 'rgb(140, 145, 140)'}}></i> | 持久（等待中） | 已配置但尚未启动 |
+
+将鼠标悬停在盾牌图标上，可以查看详细状态信息和可用操作。
+
+## 配置 {#configuration}
+
+持久会话可以在三个层级配置，越具体的设置会覆盖越通用的设置：
+
+### 全局设置（最低优先级） {#global-settings-lowest-priority}
+
+在 `settings.json` 中为所有 SSH 连接设置默认值：
+
+```json
+{
+  "term:durable": true
+}
+```
+
+### 连接设置（中等优先级） {#connection-settings-medium-priority}
+
+在 `connections.json` 中按连接配置持久性：
+
+```json
+{
+  "connections": {
+    "user@host": {
+      "term:durable": true
+    }
+  }
+}
+```
+
+### Block 设置（最高优先级） {#block-settings-highest-priority}
+
+可以通过以下方式为单个终端 block 覆盖设置：
+
+- **上下文菜单**：右键终端 → Advanced → Session Durability
+- **悬浮操作**：点击盾牌图标 → "Restart as Durable" 或 "Restart as Standard"
+- **命令行**：使用 `wsh setmeta term:durable=true` 或 `wsh setmeta term:durable=false`
+
+配置层级（从高到低）：
+1. Block 级设置
+2. 连接级设置
+3. 全局设置
+
+### 默认行为 {#default-behavior}
+
+- **SSH 连接**：默认禁用持久会话（通过配置显式启用）
+- **本地终端**：始终使用标准会话（持久性不适用）
+- **WSL 连接**：始终使用标准会话（持久性不适用）
+
+## 在模式之间切换 {#switching-between-modes}
+
+### 从标准切换为持久 {#standard-to-durable}
+
+1. 将鼠标悬停在普通盾牌图标上
+2. 在悬浮面板中点击 **"Restart as Durable"**
+3. 会话会重启并启用持久性
+
+也可以使用上下文菜单：
+- 右键终端 → Advanced → Session Durability → Restart Session in Durable Mode
+
+### 从持久切换为标准 {#durable-to-standard}
+
+1. 打开终端上下文菜单（右键）
+2. 进入 Advanced → Session Durability
+3. 选择 **"Restart Session in Standard Mode"**
+
+:::warning Switching Modes Restarts the Session
+在标准模式和持久模式之间转换需要重启 shell。当前会话中所有正在运行的进程都会被终止。
+:::
+
+## 会话状态 {#session-states}
+
+### Attached
+终端已连接到远程会话。你可以与 shell 交互并看到实时输出。
+
+### Detached
+连接已丢失，但会话会继续在远程服务器上运行。Wave 会在可能时自动重连。你已运行的任何命令都会继续执行。
+
+### Awaiting Start
+会话已配置为持久会话，但尚未启动。点击 "Start Session" 或运行命令即可开始。
+
+### Starting
+job manager 正在远程服务器上初始化。会话很快会变为已附加状态。
+
+### Ended
+会话已终止。常见原因包括：
+- **Exited**：Shell 正常关闭（例如输入了 `exit`）
+- **Lost**：服务器上找不到会话（可能已被终止或系统已重启）
+- **Failed to Start**：job manager 初始化时遇到错误
+
+点击 "Restart Session" 可以启动新的持久会话，点击 "Restart as Standard" 可以切换模式。
+
+## 使用场景 {#use-cases}
+
+### 长时间运行的命令 {#long-running-commands}
+启动构建、部署或数据处理任务后关闭笔记本。命令会继续执行，你可以稍后回来查看。
+
+```bash
+# 启动长时间构建
+./build.sh
+
+# 合上笔记本，去喝杯咖啡
+# 稍后：重连并查看完成后的输出
+```
+
+### 不稳定网络 {#unstable-networks}
+在咖啡馆、火车上或蜂窝网络下工作。短暂断连不会终止会话，也不会丢失工作。
+
+### 多地点工作 {#multiple-locations}
+在台式机上开始工作，再到笔记本上继续。会话及其状态会保留在远程服务器上。
+
+### 系统维护 {#system-maintenance}
+Wave 更新、重启或崩溃不会中断远程工作。重连后即可立即继续。
+
+## 会话生命周期 {#session-lifecycle}
+
+持久会话绑定到 Wave 中的终端 block。以下情况会终止会话：
+
+- **关闭 block**：关闭终端并终止远程会话
+- **切换连接**：更改 block 上的连接会终止旧会话
+- **删除工作区/标签页**：移除 block 并终止相关会话
+
+### 清理行为 {#cleanup-behavior}
+
+如果在**断开连接**时关闭 block，远程会话会继续运行直到下一次重连。当 Wave 重新连接到该服务器时，会自动清理来自已关闭 block 的孤立会话。
+
+这可以确保离线关闭终端时，远程会话不会在服务器上不断堆积。
+
+## 限制 {#limitations}
+
+- **本地终端**：不适用（已经随本机保持持久）
+- **WSL 连接**：不适用（WSL 会话由 Windows 管理）
+- **网络延迟**：分离状态的会话会缓冲输出；重连时可能需要一点时间同步
+- **服务器资源**：每个持久会话都会在远程服务器上维护一个轻量 Go 进程用于会话管理
+
+## 故障排查 {#troubleshooting}
+
+### 会话显示为 "Lost" {#session-shows-as-lost}
+会话已在远程服务器上终止，可能原因包括：
+- 服务器重启
+- job manager 进程被手动终止
+- 远程系统资源耗尽
+
+**解决方案**：点击 "Restart Session" 启动新的持久会话。
+
+### 会话无法重连 {#session-wont-reconnect}
+请确认：
+- 到服务器的 SSH 连接正常（检查连接状态）
+- job manager 进程仍在远程服务器上运行
+
+**尝试**：右键终端 → Advanced → Force Restart Controller
+
+### "Failed to Start" 错误 {#failed-to-start-error}
+job manager 无法在远程服务器上初始化。请查看错误消息了解具体细节。
+
+**尝试**：重启会话。如果问题仍然存在，请带上错误详情提交 bug 报告。
+
+:::info Technical Details
+持久会话使用远程服务器上的 Unix domain socket，在 shell 与 Wave 的 job manager 之间保持持久连接。job manager 进程独立运行，并能在 SSH 断开后继续存活。
+:::
+
+## 隐私与安全 {#privacy--security}
+
+- 持久会话完全运行在你的远程服务器上
+- 所有数据都通过 SSH 在本地 Wave 实例和远程机器之间传输
+- 远程机器上不会开放端口，通信通过现有 SSH 连接完成
+- 断开连接时，输出会在远程机器本地缓冲，直到你重新连接
+- 会话按用户隔离，并使用远程用户的权限

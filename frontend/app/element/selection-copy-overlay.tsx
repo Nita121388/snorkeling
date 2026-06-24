@@ -155,9 +155,11 @@ export function SelectionCopyOverlay({
 }: SelectionCopyOverlayProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimerRef = useRef<number | null>(null);
+    const quickActionsMenuOpenRef = useRef(false);
 
     useEffect(() => {
         setCopied(false);
+        quickActionsMenuOpenRef.current = false;
         return () => {
             if (copiedTimerRef.current != null) {
                 window.clearTimeout(copiedTimerRef.current);
@@ -183,12 +185,20 @@ export function SelectionCopyOverlay({
         }, SelectionCopyFeedbackMs);
     };
 
-    const handleQuickActionsClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    const showQuickActionsMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
+        if (quickActionsMenuOpenRef.current) {
+            return;
+        }
+        quickActionsMenuOpenRef.current = true;
         const menu = makeSelectionQuickActionMenu(overlay.text, {
             onCopied: handleCopiedFeedback,
             extraMenuItems,
         });
-        ContextMenuModel.getInstance().showContextMenu(menu, event);
+        ContextMenuModel.getInstance().showContextMenu(menu, event, {
+            onClose: () => {
+                quickActionsMenuOpenRef.current = false;
+            },
+        });
     };
 
     const quickActionButtonClassName = [
@@ -212,7 +222,8 @@ export function SelectionCopyOverlay({
             title={copied ? "Copied" : "Quick actions"}
             tabIndex={-1}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={handleQuickActionsClick}
+            onMouseEnter={showQuickActionsMenu}
+            onClick={showQuickActionsMenu}
         >
             <i className={copied ? "fa fa-solid fa-check" : "fa fa-regular fa-lightbulb"} />
         </button>

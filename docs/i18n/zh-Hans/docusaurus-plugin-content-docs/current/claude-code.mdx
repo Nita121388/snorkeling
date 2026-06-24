@@ -1,0 +1,131 @@
+---
+sidebar_position: 1.9
+id: "claude-code"
+title: "Claude Code 集成"
+---
+
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+# Claude Code 标签页徽章 <VersionBadge version="v0.14.2" /> {#claude-code-tab-badges}
+
+当你并行运行多个 Claude Code 会话时，比如每个功能一个会话、每个仓库一个会话，或同时跑几个长任务，如果逐个点开标签页才能知道哪里需要关注，就会很麻烦。Wave 的徽章系统解决了这个问题：当重要事件发生时，Claude Code 中的 hooks 会把一个小型视觉指示写到标签页标题上，让你一眼就能看出哪些会话正在等待、已经完成或出了问题。
+
+:::info
+简短版：你可以把本页直接复制粘贴到 Claude Code 中，它会帮助你完成全部设置。
+:::
+
+## 工作原理 {#how-it-works}
+
+Claude Code 支持 [lifecycle hooks](https://code.claude.com/docs/en/hooks)，也就是在会话特定节点自动运行的 shell 命令。Wave 的 `wsh badge` 命令可以在当前 block 或标签页上设置或清除视觉指示。把两者连接起来后，你无需盯着每个会话，也能对所有会话的状态保持感知。
+
+当你聚焦对应 block 时，徽章会自动清除，因此它只是一种“这里需要看一下”的提示。只要你点进去查看发生了什么，徽章就会自行消失。
+
+当终端输出 BEL 字符时，Wave 已经会显示铃铛图标。这些 hooks 在此基础上提供语义化徽章，例如 *需要权限*、*已完成*，并且它们可以跨标签页切换保留，也能在拆分窗格中工作。
+
+### 徽章汇总 {#badge-rollup}
+
+如果一个标签页中有多个终端 block，Wave 会在标签页标题上显示优先级最高的徽章。如果多个徽章优先级相同，则使用最早设置的那个，这样标签页中最紧急的信号会浮到最上层。
+
+## 设置 {#setup}
+
+这些 hooks 应放在全局 Claude Code 设置中，这样它们会应用到你机器上的每个会话，而不只是某一个项目。
+
+将下面内容添加到 `~/.claude/settings.json`。如果你已经有 `hooks` 键，请把这些条目合并进去：
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh badge bell-exclamation --color '#e0b956' --priority 20 --beep"
+          }
+        ]
+      },
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh badge message-question --color '#e0b956' --priority 20 --beep"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh badge check --color '#58c142' --priority 10"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wsh badge message-question --color '#e0b956' --priority 20 --beep"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+就这样。重启所有正在运行的 Claude Code 会话后，hooks 就会生效。
+
+:::warning 已知问题
+Claude Code 中有一个已知问题：`Notification` hooks 触发前可能延迟数秒。这个延迟与 Wave 无关，它发生在 Claude Code 自身。详情请参阅 [#5186](https://github.com/anthropics/claude-code/issues/5186) 和 [#19627](https://github.com/anthropics/claude-code/issues/19627)。
+:::
+
+## 每个 hook 的作用 {#what-each-hook-does}
+
+### 权限提示：`bell-exclamation` 金色，优先级 20 {#permission-prompt-bell-exclamation-gold-priority-20}
+
+Claude Code 有时需要得到你的批准才能继续，例如运行命令、写入项目外部文件，或使用需要显式授权的工具。遇到这些情况时，它会停下来等待。如果没有信号，你可能好几分钟都不会注意到。
+
+这个 hook 会在 `permission_prompt` 通知类型上触发，并设置一个高优先级的金色徽章，同时发出提示音。优先级 20 表示它会盖过该标签页上的其他任何徽章，因此等待中的会话总会显示在已完成会话之上。
+
+当你点击进入标签页并批准或拒绝请求后，徽章会自动清除。
+
+### 会话完成：`check` 绿色，优先级 10 {#session-complete-check-green-priority-10}
+
+当 Claude Code 完成响应后，这个 hook 会设置一个绿色对勾徽章。这是一个低调的提示：看一眼标签栏，就能知道哪些会话已经完成，然后按你喜欢的顺序查看输出。
+
+### AskUserQuestion：`message-question` 金色，优先级 20 {#askuserquestion-message-question-gold-priority-20}
+
+当 Claude Code 使用 `AskUserQuestion` 工具时，它会暂停并等待你回复，然后才能继续。这个 `PreToolUse` hook 会在该工具调用前触发，并设置与权限提示相同的高优先级金色徽章。
+
+`PreToolUse` hooks 可以按名称匹配任意工具，因此你也可以给其他工具添加徽章。例如，当 Claude 运行 shell 命令 (`Bash`) 或编辑文件 (`Edit`) 时发出提示。Claude Code 支持的任意工具名都可以作为 matcher 使用。
+
+## 选择自己的图标和颜色 {#choosing-your-own-icons-and-colors}
+
+图标名使用 [Font Awesome](https://fontawesome.com/icons) 的图标名称，但不带 `fa-` 前缀。颜色可以是任何有效的 CSS 颜色，例如十六进制值、命名颜色，或 CSS 接受的其他格式。
+
+下面是一些图标和颜色搭配思路：
+
+| 场景 | 图标 | 颜色 |
+|-----------|------|-------|
+| 自定义高优先级警报 | `triangle-exclamation` | `#FF453A` |
+| 阻塞 / 等待输入 | `hourglass-half` | `#FF9500` |
+| 中性 / 信息提示 | `circle-info` | `#429DFF` |
+| 后台任务运行中 | `spinner` | `#00FFDB` |
+
+所有可用参数请参阅 [`wsh badge` 参考](/wsh-reference#badge)。
+
+## 调整优先级 {#adjusting-priorities}
+
+当同一标签页内多个 block 都有徽章时，优先级决定最终显示哪个徽章。数字越大，优先级越高。上面的默认配置使用：
+
+- **20** 用于权限提示，总是显示在其他所有徽章之上
+- **10** 用于会话完成，在没有更紧急事件时显示
+
+如果你添加更多 hooks，建议把会阻塞权限的信号保持在较高区间 (15-25)，把信息类信号放在较低区间 (5-10)。

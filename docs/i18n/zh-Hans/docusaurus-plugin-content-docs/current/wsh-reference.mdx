@@ -1,0 +1,1120 @@
+---
+sidebar_position: 4.1
+id: "wsh-reference"
+title: "wsh 参考"
+---
+
+import { Kbd } from "@site/src/components/kbd";
+import { PlatformProvider, PlatformSelectorButton } from "@site/src/components/platformcontext";
+import { VersionBadge } from "@site/src/components/versionbadge";
+
+<PlatformProvider>
+
+# wsh 命令 {#wsh-command}
+
+`wsh` 命令始终可以在 Wave block 中使用。它是一个强大的工具，可用于和 Wave block 交互，并在 CLI 与 widget GUI 之间桥接数据。
+
+本文是详细的 `wsh` 参考文档。关于 `wsh` 功能概览，请参阅 [wsh 命令文档](/wsh)。
+
+---
+
+## view
+
+运行下面的命令，可以用任意文件或目录的内容打开一个预览 block：
+
+```sh
+wsh view [path]
+wsh view -m [path]           # 以放大 block 打开
+```
+
+你可以用这个命令快速预览图片、Markdown 文件和目录。对于代码/文本文件，它会打开一个 codeedit block，你可以在 Wave 的内嵌图形编辑器中快速编辑文件。
+
+---
+
+## edit
+
+```sh
+wsh edit [path]
+wsh edit -m [path]           # 以放大 block 打开
+```
+
+这会为指定文件打开一个 codeedit block，适合在 Wave 的图形编辑器中快速编辑本地或远程机器上的文件。该命令会在打开 block 后立即返回。
+
+如需集成 `$EDITOR`（例如配合 `git commit` 使用），请参阅 [`wsh editor`](#editor)。它会阻塞直到编辑器关闭。
+
+---
+
+## editor
+
+```sh
+wsh editor [path]
+wsh editor -m [path]         # 以放大 block 打开
+```
+
+该命令会为指定文件打开一个 codeedit block，并且**阻塞直到编辑器关闭**。这适合设置 `$EDITOR` 环境变量，让 CLI 工具（例如 `git commit`、`crontab -e`）在 Wave 的图形编辑器中打开文件：
+
+```sh
+export EDITOR="wsh editor"
+```
+
+文件必须已经存在。使用 `-m` 可以用放大模式打开编辑器。
+
+---
+
+## getmeta
+
+运行下面的命令可以查看任意 block 或 tab 的元数据：
+
+```sh
+# 获取当前终端 block 的元数据
+wsh getmeta
+
+# 获取编号为 2 的 block 的元数据（按住 Ctrl+Shift 可查看 block 编号）
+wsh getmeta -b 2
+
+# 获取某个 blockid 的元数据（右键任意 block 标题并选择 "Copy Block Id" 可获取 block id）
+wsh getmeta -b [blockid]
+
+# 获取当前 tab 的元数据
+wsh getmeta -b tab
+
+# 输出单个元数据键
+wsh getmeta [-b [blockid]] [key]
+
+# 输出具有指定前缀的一组键
+wsh getmeta -b tab "bg:*"
+
+# 输出具有指定前缀的一组键（并包含 'clear' 键）
+wsh getmeta -b tab --clear-prefix "bg:*"
+```
+
+这对预览 block 和 Web block 尤其有用，因为你可以看到它们指向的文件或 URL，并在 CLI 脚本中使用这些信息。
+
+blockid 格式：
+
+- `this` -- 当前 block（也是默认值）
+- `tab` -- 当前 tab 的 ID
+- `d6ff4966-231a-4074-b78a-20acc7226b41` -- 完整 blockid 是 UUID
+- `a67f55a3` -- blockid 可以截断为前 8 个字符
+- `5` -- 如果提供小于 100 的数字，会被视为 block 编号。block 会在当前 tab 中按从左上到右下的顺序编号。按住 <Kbd k="Ctrl:Shift"/> 会显示 block 编号叠加层。
+
+---
+
+## setmeta
+
+使用 `setmeta` 命令可以更新 block（以及 tab）的任意元数据键值对。`setmeta` 命令接受和 `getmeta` 相同的 `-b` 参数。
+
+```sh
+wsh setmeta -b [blockid] [key]=[value]
+wsh setmeta -b [blockid] file=~/myfile.txt
+wsh setmeta -b [blockid] url=https://waveterm.dev/
+
+# 使用给定 JSON 文件设置当前 tab 的元数据
+wsh setmeta -b tab --json [jsonfile]
+
+# 使用从 stdin 读取的 JSON 设置当前 tab 的元数据
+wsh setmeta -b tab --json
+```
+
+你可以右键点击对应 block 并选择 "Copy BlockId" 来获取 block 和 tab id（也可以通过 Ctrl+Shift 使用 block 编号）。当你更新预览 block 或 Web block 的元数据时，变化会立即反映到该 block 中。
+
+还可以覆盖其他有用的元数据值，例如 block 标题、图标、颜色、主题等。
+
+下面这个较复杂的命令会把一个 tab 的背景（`bg:*` 键）复制到当前 tab：
+
+```sh
+wsh getmeta -b [other-tab-id] "bg:*" --clear-prefix | wsh setmeta -b tab --json -
+```
+
+---
+
+## ai
+
+将内容追加到 Wave AI 侧边栏。文件会作为真正的文件附件添加（支持图片、PDF 和文本），而不是编码成文本。默认情况下，内容会添加到侧边栏但不会自动提交，方便你在发送给 AI 前检查并补充更多上下文。
+
+你可以一次附加多个文件（最多 15 个）。使用 `-m` 可以随文件添加消息，使用 `-s` 可以立即自动提交，使用 `-n` 可以开始新的聊天对话。使用 `-` 可从 stdin 读取。
+
+```sh
+# 将命令输出管道传给 AI（在 UI 中提问）
+git diff | wsh ai -
+docker logs mycontainer | wsh ai -
+
+# 附加文件但不自动提交（先在 UI 中检查）
+wsh ai main.go utils.go
+wsh ai screenshot.png logs.txt
+
+# 附加文件并带消息
+wsh ai app.py -m "find potential bugs"
+wsh ai *.log -m "analyze these error logs"
+
+# 立即自动提交
+wsh ai config.json -s -m "explain this configuration"
+tail -n 50 app.log | wsh ai -s - -m "what's causing these errors?"
+
+# 开始新聊天并附加文件
+wsh ai -n report.pdf data.csv -m "summarize these reports"
+
+# 附加不同类型的文件（图片、PDF、代码）
+wsh ai architecture.png api-spec.pdf server.go -m "review the system design"
+```
+
+**文件大小限制：**
+- 文本文件：最大 200KB
+- PDF 文件：最大 5MB
+- 图片文件：最大 7MB（考虑了 base64 编码开销）
+- 每条命令最多 15 个文件
+
+**标志：**
+- `-m, --message <text>` - 随文件一起添加消息文本
+- `-s, --submit` - 立即自动提交（默认等待用户确认）
+- `-n, --new` - 清空当前聊天并开始新的对话
+
+---
+
+## editconfig
+
+你可以使用这个命令轻松打开 Wave 的任意配置文件。
+
+```sh
+wsh editconfig [config-file-name]
+
+# 打开默认 settings.json 文件
+wsh editconfig
+
+# 打开 presets.json
+wsh editconfig presets.json
+
+# 打开 widgets.json
+wsh editconfig widgets.json
+
+# 打开 AI 预设
+wsh editconfig presets/ai.json
+```
+
+---
+
+## setbg
+
+`setbg` 命令允许你为当前 tab 设置背景图片或背景颜色，并提供多种自定义选项。
+
+```sh
+wsh setbg [--opacity value] [--tile|--center] [--size value] [--border-color color] [--active-border-color color] (image-path|"#color"|color-name)
+```
+
+可以使用以下内容设置背景：
+
+- 图片文件（可按 cover、平铺或居中方式显示）
+- 十六进制颜色（必须像 `"#ff0000"` 这样加引号）
+- CSS 颜色名称（例如 `"blue"` 或 `"forestgreen"`）
+
+标志：
+
+- `--opacity value` - 设置背景透明度（0.0-1.0，默认 0.5）
+- `--tile` - 平铺背景图片，而不是使用 cover 模式
+- `--center` - 图片不缩放并居中显示（适合 logo）
+- `--size` - 居中图片的尺寸（px、% 或 auto）
+- `--clear` - 移除背景
+- `--border-color color` - 设置 block 边框颜色（十六进制或 CSS 颜色名称）
+- `--active-border-color color` - 设置 block 获得焦点时的边框颜色（十六进制或 CSS 颜色名称）
+- `--print` - 显示元数据但不应用
+
+支持的图片格式：JPEG、PNG、GIF、WebP 和 SVG。
+
+示例：
+
+```sh
+# 使用默认设置设置图片背景
+wsh setbg ~/pictures/background.jpg
+
+# 设置带自定义透明度的背景
+wsh setbg --opacity 0.3 ~/pictures/light-pattern.png
+
+# 设置平铺背景
+wsh setbg --tile --opacity 0.2 ~/pictures/texture.png
+
+# 居中显示图片（适合 logo）
+wsh setbg --center ~/pictures/logo.png
+wsh setbg --center --size 200px ~/pictures/logo.png
+
+# 设置纯色背景
+wsh setbg "#ff0000"          # 十六进制颜色（需要引号）
+wsh setbg forestgreen        # CSS 颜色名称
+
+# 只修改当前背景的透明度
+wsh setbg --opacity 0.7
+
+# 在设置背景的同时设置边框颜色
+wsh setbg --border-color "#ff0000" --active-border-color "#00ff00" ~/pictures/background.jpg
+wsh setbg --border-color steelblue forestgreen
+
+# 移除背景
+wsh setbg --clear
+
+# 预览元数据
+wsh setbg --print "#ff0000"
+```
+
+该命令会验证：
+
+- 颜色值是有效的十六进制代码或 CSS 颜色名称
+- 图片路径指向可访问且受支持的图片文件
+- 透明度值位于 0.0 到 1.0 之间
+- `--center` 和 `--tile` 选项不会同时使用
+
+:::tip
+使用 `--print` 可以预览任意背景配置的元数据，而不会实际应用。随后你可以复制这段 JSON 表示，用作[背景条目](/tab-backgrounds)。
+:::
+
+---
+
+## badge
+
+<VersionBadge version="v0.14.2" />
+
+`badge` 命令用于在 block 或 tab 标题上设置或清除可视徽标提示。
+
+```sh
+wsh badge [icon]
+wsh badge --clear
+```
+
+徽标用于吸引你注意某个 block 或 tab，例如表示进程已经完成或需要关注。如果没有提供图标，默认使用 `circle-small`。图标名称是 [Font Awesome](https://fontawesome.com/icons) 图标名（不包含 `fa-` 前缀）。
+
+标志：
+
+- `--color string` - 设置徽标颜色（CSS 颜色名称或十六进制）
+- `--priority float` - 设置徽标优先级（默认 10；优先级更高的徽标会优先生效）
+- `--clear` - 从 block 或 tab 移除徽标
+- `--beep` - 设置徽标时播放系统提示音
+- `--pid int` - 监听 PID，并在该进程退出时自动清除徽标（默认优先级设为 5）
+- `-b, --block` - 指定目标 block 或 tab（格式与 `getmeta` 相同）
+
+示例：
+
+```sh
+# 在当前 block 上设置默认徽标
+wsh badge
+
+# 设置带自定义图标和颜色的徽标
+wsh badge circle-check --color green
+
+# 在指定 block 上设置高优先级徽标
+wsh badge triangle-exclamation --color red --priority 20 -b 2
+
+# 设置会在进程退出时清除的徽标
+wsh badge --pid 12345
+
+# 任务完成时播放提示音并设置徽标
+wsh badge circle-check --beep
+
+# 清除当前 block 上的徽标
+wsh badge --clear
+
+# 清除指定 tab 上的徽标
+wsh badge --clear -b tab
+```
+
+:::note
+Windows 不支持 `--pid` 标志。
+:::
+
+---
+
+## run
+
+`run` 命令会创建一个新的终端命令 block，并在其中执行指定命令。命令既可以作为 `--` 之后的参数提供，也可以使用 `-c` 标志提供。除非传入 `-x` 或 `-X` 标志，否则命令运行完成后可以按 `Enter` 重新执行。
+
+```sh
+# 运行 -- 后指定的命令
+wsh run -- ls -la
+
+# 使用 -c 标志运行命令
+wsh run -c "ls -la"
+
+# 指定工作目录运行
+wsh run --cwd /path/to/dir -- ./script.sh
+
+# 以放大模式运行
+wsh run -m -- make build
+
+# 成功完成后自动关闭
+wsh run -x -- npm test
+
+# 不论退出状态如何，完成后都自动关闭
+wsh run -X -- ./long-running-task.sh
+```
+
+默认情况下，命令会继承当前环境变量和工作目录。
+
+标志：
+
+- `-m, --magnified` - 以放大模式打开 block
+- `-c, --command string` - 在 _shell_ 中运行命令字符串
+- `-x, --exit` - 命令成功退出时关闭 block（如果出错则保持打开）
+- `-X, --forceexit` - 命令退出时关闭 block，不论退出状态如何
+- `--delay int` - 使用 `-x`/`-X` 时，关闭 block 前延迟的毫秒数（默认 2000）
+- `-p, --paused` - 以暂停状态创建 block
+- `-a, --append` - 命令重启时追加输出，而不是清空输出
+- `--cwd string` - 设置命令的工作目录
+
+示例：
+
+```sh
+# 以放大模式运行构建命令
+wsh run -m -- npm run build
+
+# 执行脚本并在成功后自动关闭
+wsh run -x -- ./backup-script.sh
+
+# 在指定目录中运行命令
+wsh run --cwd ./project -- make test
+
+# 运行 shell 命令并在完成后强制关闭
+wsh run -X -c "find . -name '*.log' -delete"
+
+# 以暂停状态启动命令
+wsh run -p -- ./server --dev
+
+# 使用自定义关闭延迟
+wsh run -x --delay 5000 -- ./deployment.sh
+```
+
+使用 `-x` 或 `-X` 标志时，block 会在命令完成后自动关闭。`-x` 只会在成功完成（退出码为 0）时关闭，而 `-X` 不论退出状态如何都会关闭。`--delay` 标志控制关闭前等待多长时间（默认 2000ms）。
+
+`-p` 标志会以暂停状态创建 block，让你可以在执行前检查命令。
+
+:::tip
+你可以使用 `--` 后接命令和参数，也可以使用 `-c` 标志传入带引号的命令字符串。需要保留参数处理时推荐使用 `--`；需要使用管道或重定向等 shell 功能时，`-c` 更方便。
+:::
+
+---
+
+## deleteblock
+
+```sh
+wsh deleteblock -b [blockid]
+```
+
+该命令会删除指定 id 的 block。
+
+---
+
+## ssh
+
+```sh
+wsh ssh [user@host]
+```
+
+该命令会使用 Wave 内部的 SSH 实现连接到指定远程机器。可以使用 `-i` 标志指定身份文件路径。
+
+---
+
+## wsl
+
+```sh
+wsh wsl [-d <distribution-name>]
+```
+
+该命令会连接到本地机器上的 WSL 发行版。如果未提供发行版，则使用默认发行版。
+
+---
+
+## web
+
+`web` 命令会在 Wave Terminal 的 Web block 中打开 URL。
+
+```sh
+wsh web open [url] [-m] [-r blockid]
+```
+
+你可以打开指定 URL，也可以使用已配置的搜索引擎执行搜索。
+
+标志：
+
+- `-m, --magnified` - 以放大模式打开 Web block
+- `-r, --replace <blockid>` - 替换已有 block，而不是创建新 block
+
+示例：
+
+```sh
+# 打开 URL
+wsh web open https://waveterm.dev
+
+# 使用已配置搜索引擎搜索
+wsh web open "wave terminal documentation"
+
+# 以放大模式打开
+wsh web open -m https://github.com
+
+# 替换已有 block
+wsh web open -r 2 https://example.com
+```
+
+该命令会打开包含目标页面的新 Web block；如果使用 `-r` 标志，则会替换已有 block。注意，`--replace` 和 `--magnified` 不能一起使用。
+
+---
+
+## notify
+
+`notify` 命令会从 Wave Terminal 创建桌面通知。
+
+```sh
+wsh notify [message] [-t title] [-s]
+```
+
+这允许你从脚本或命令触发桌面通知。通知会使用系统原生通知机制显示。它既适用于远程机器，也适用于本地机器。
+
+标志：
+
+- `-t, --title string` - 设置通知标题（默认 "Wsh Notify"）
+- `-s, --silent` - 禁用通知声音
+
+示例：
+
+```sh
+# 基本通知
+wsh notify "Build completed successfully"
+
+# 带自定义标题的通知
+wsh notify -t "Deployment Status" "Production deployment finished"
+
+# 静默通知
+wsh notify -s "Background task completed"
+```
+
+这对长时间运行的命令尤其有用，可以在完成或状态变化时收到提醒。
+
+---
+
+## conn
+
+该命令包含多个子命令，用于执行与连接相关的各种操作。
+
+### status
+
+```sh
+wsh conn status
+```
+
+该命令会显示 waveterm 启动以来创建过的所有连接状态。
+
+### reinstall
+
+对于 SSH 连接：
+
+```sh
+wsh conn reinstall [user@host]
+```
+
+对于 WSL 连接：
+
+```sh
+wsh conn reinstall [wsl://<distribution-name>]
+```
+
+该命令会在指定连接上重新安装 Wave Shell Extensions。
+
+### disconnect
+
+对于 SSH 连接：
+
+```sh
+wsh conn disconnect [user@host]
+```
+
+对于 WSL 连接：
+
+```sh
+wsh conn disconnect [wsl://<distribution name>]
+```
+
+该命令会完全断开指定连接。所有正在使用该连接的 block 都会受到影响。
+
+### connect
+
+对于 SSH 连接：
+
+```sh
+wsh conn connect [user@host]
+```
+
+对于 WSL 连接：
+
+```sh
+wsh conn connect [wsl://<distribution-name>]
+```
+
+该命令会连接到指定连接，但不会为它创建 block。
+
+### ensure
+
+对于 SSH 连接：
+
+```sh
+wsh conn ensure [user@host]
+```
+
+对于 WSL 连接：
+
+```sh
+wsh conn ensure [wsl://<distribution-name>]
+```
+
+如果指定连接尚未连接，该命令会建立连接。
+
+---
+
+## setconfig
+
+```sh
+wsh setconfig [<config-name>=<config-value>]
+```
+
+该命令允许设置 `config/settings.json` 文件中的多个选项。它会检查提供的配置选项是否有效。
+
+---
+
+## file
+
+`file` 命令提供一组子命令，用于跨不同存储系统管理文件，例如 `wsh` 远程服务器。
+
+:::note
+
+Wave Terminal 可以管理远程 SSH 主机上的文件。文件通过 URI 寻址，具体格式取决于存储系统。如果未指定 scheme，该文件会被视为本地连接上的文件。
+
+URI 格式：`[profile]:[uri-scheme]://[connection]/[path]`
+
+支持的 URI scheme：
+
+- `wsh` - 用于通过 WSH helper 经 SSH 访问远程主机上的文件。支持将文件流式传输到 Wave 和其他远程端。
+
+  对于 WSH URI，如果你已经在 `"connections.json"` 或 `"~/.ssh/config"` 中配置了远程主机，则 profile 是可选的。
+
+  如果提供 profile，则必须在 Wave 配置目录中的 `"profiles.json"` 中定义。
+
+  格式：`wsh://[remote]/[path]`
+
+  可以使用简写来表示当前远程端和你的本地电脑：
+  `[path]` 当前远程端上的相对或绝对路径
+  `//[remote]/[path]` 远程端上的路径
+  `/~/[path]` 相对于本机 home 目录的路径
+
+:::
+
+### cat
+
+```sh
+wsh file cat [file-uri]
+```
+
+显示文件内容（最大文件大小 10MB）。例如：
+
+```sh
+wsh file cat wsh://user@ec2/home/user/config.txt
+wsh file cat ./local-config.txt
+```
+
+### write
+
+```sh
+wsh file write [file-uri]
+```
+
+将 stdin 中的数据写入文件。最大文件大小为 10MB。例如：
+
+```sh
+echo "hello" | wsh file write ./greeting.txt
+cat config.json | wsh file write //ec2-user@remote01/~/config.json
+```
+
+### append
+
+```sh
+wsh file append [file-uri]
+```
+
+将 stdin 中的数据追加到文件。写入前输入会在本地缓冲（总文件大小限制最大 10MB）。例如：
+
+```sh
+cat additional-content.txt | wsh file append ./notes.txt
+echo "new line" | wsh file append //user@remote/~/notes.txt
+```
+
+### rm
+
+```sh
+wsh file rm [flag] [file-uri]
+```
+
+删除文件。例如：
+
+```sh
+wsh file rm wsh://user@ec2/home/user/config.txt
+wsh file rm ./local-config.txt
+```
+
+标志：
+
+- `-r, --recursive` - 递归删除目录条目
+
+### info
+
+```sh
+wsh file info [file-uri]
+```
+
+显示文件信息，包括大小、创建时间、修改时间和元数据。例如：
+
+```sh
+wsh file info wsh://user@ec2/home/user/config.txt
+wsh file info ./local-config.txt
+```
+
+### cp
+
+```sh
+wsh file cp [flags] [source-uri] [destination-uri]
+```
+
+在不同存储系统之间复制文件（最大文件大小 10MB）。例如：
+
+```sh
+# 将远程文件复制到本地文件系统
+wsh file cp wsh://user@ec2/home/user/config.txt ./local-config.txt
+
+# 将本地文件复制到远程系统
+wsh file cp ./local-config.txt wsh://user@ec2/home/user/config.txt
+
+# 在远程系统之间复制
+wsh file cp wsh://user@ec2/home/user/config.txt wsh://user@server2/home/user/backup.txt
+```
+
+标志：
+
+- `-f, --force` - 复制时覆盖任何冲突
+- `-m, --merge` - 复制目录时不清空已有目录条目，而是将内容合并到目标目录
+
+### mv
+
+```sh
+wsh file mv [flags] [source-uri] [destination-uri]
+```
+
+在不同存储系统之间移动文件（最大文件大小 10MB）。操作成功完成后，源文件会被删除。例如：
+
+```sh
+# 将远程文件移动到本地文件系统
+wsh file mv wsh://user@ec2/home/user/config.txt ./local-config.txt
+
+# 将本地文件移动到远程系统
+wsh file mv ./local-config.txt wsh://user@ec2/home/user/config.txt
+
+# 在远程系统之间移动
+wsh file mv wsh://user@ec2/home/user/config.txt wsh://user@server2/home/user/backup.txt
+```
+
+标志：
+
+- `-f, --force` - 移动时覆盖任何冲突
+
+### ls
+
+```sh
+wsh file ls [flags] [file-uri]
+```
+
+列出目录中的文件。默认情况下，会列出当前终端会话当前目录中的文件。
+
+示例：
+
+```sh
+wsh file ls wsh://user@ec2/home/user/
+wsh file ls ./local-dir/
+```
+
+标志：
+
+- `-l, --long` - 使用长列表格式，显示大小、时间戳和元数据
+- `-1, --one` - 每行列出一个文件
+- `-f, --files` - 只列出文件（不列出目录）
+
+当输出通过管道传递给其他命令时，会自动切换到每行一个文件的格式：
+
+```sh
+# 便于用 grep、awk 等处理
+wsh file ls ./ | grep ".json$"
+```
+
+---
+
+## launch
+
+`wsh launch` 命令允许你直接从终端打开预配置的 widget。
+
+```sh
+wsh launch [flags] widget-id
+```
+
+该命令会在用户定义的 widget 和默认 widget 中搜索指定 widget ID，然后使用该 widget 的配置创建一个新 block。
+
+标志：
+
+- `-m, --magnify` - 以放大模式打开 widget，覆盖该 widget 的默认放大设置
+
+示例：
+
+```sh
+# 使用默认设置启动 widget
+wsh launch my-custom-widget
+
+# 以放大模式启动 widget
+wsh launch -m system-monitor
+```
+
+widget 的配置决定初始 block 设置，包括视图类型、元数据和默认放大状态。可以使用 `-m` 标志覆盖 widget 的默认放大设置。
+
+:::tip
+可以在 `widgets.json` 配置文件中自定义 widget 配置，并可使用 `wsh editconfig widgets.json` 编辑该文件。
+:::
+
+---
+
+## getvar/setvar
+
+Wave Terminal 提供命令，用于在不同作用域（block、tab、workspace 或整个客户端）管理持久变量。
+
+### setvar
+
+```sh
+wsh setvar [flags] KEY=VALUE...
+```
+
+设置一个或多个变量。默认情况下，变量会设置在客户端（全局）级别。使用 `-l` 可设置 block 局部变量。
+
+示例：
+
+```sh
+# 设置单个变量
+wsh setvar API_KEY=abc123
+
+# 一次设置多个变量
+wsh setvar HOST=localhost PORT=8080 DEBUG=true
+
+# 设置 block 局部变量
+wsh setvar -l BLOCK_SPECIFIC=value
+
+# 移除变量
+wsh setvar -r API_KEY PORT
+```
+
+标志：
+
+- `-l, --local` - 设置当前 block 局部变量
+- `-r, --remove` - 移除指定变量，而不是设置变量
+- `--varfile string` - 使用不同的变量文件（默认 `"var"`）
+- `-b [blockid]` - 用于设置指定区域（block、tab、workspace、client 或 UUID）
+
+### getvar
+
+```sh
+wsh getvar [flags] [key]
+```
+
+获取变量值。如果变量存在，返回退出码 0；如果不存在，返回 1。这样可以用于 shell 脚本，例如：
+
+```sh
+# 检查变量是否存在
+if wsh getvar API_KEY >/dev/null; then
+    echo "API key is set"
+fi
+
+# 在命令中使用变量
+curl -H "Authorization: $(wsh getvar API_KEY)" https://api.example.com
+
+# 获取 block 局部变量
+wsh getvar -l BLOCK_SPECIFIC
+
+# 列出所有变量
+wsh getvar --all
+
+# 以 null 终止符列出所有变量（用于脚本）
+wsh getvar --all -0
+```
+
+标志：
+
+- `-l, --local` - 获取当前 block 局部变量
+- `--all` - 列出所有变量
+- `-0, --null` - 在输出中使用 null 终止符，而不是换行符
+- `--varfile string` - 使用不同的变量文件（默认 `"var"`）
+
+可以使用 `-b` 标志访问不同作用域的变量：
+
+```sh
+# 在 block 级别获取/设置
+wsh getvar -b block MYVAR
+wsh setvar -b block MYVAR=value
+
+# 在 tab 级别获取/设置
+wsh getvar -b tab MYVAR
+wsh setvar -b tab MYVAR=value
+
+# 在 workspace 级别获取/设置
+wsh getvar -b workspace MYVAR
+wsh setvar -b workspace MYVAR=value
+
+# 在 client（全局）级别获取/设置
+wsh getvar -b client MYVAR
+wsh setvar -b client MYVAR=value
+```
+
+使用这些命令设置的变量会跨会话持久保存，可用于存储配置值、密钥或任何需要跨 block 或 tab 访问的字符串数据。
+
+---
+
+## termscrollback
+
+从终端 block 获取终端回滚内容。这适合捕获终端输出以便处理或归档。
+
+```sh
+wsh termscrollback [-b blockid] [flags]
+```
+
+默认情况下，会从当前终端 block 检索所有行。你可以指定行范围，也可以只获取上一条命令的输出。
+
+标志：
+
+- `-b, --block <blockid>` - 指定目标终端 block（默认：当前 block）
+- `--start <line>` - 起始行号（0 = 从头开始，默认：0）
+- `--end <line>` - 结束行号（0 = 所有行，默认：0）
+- `--lastcommand` - 获取上一条命令的输出（需要 shell 集成）
+- `-o, --output <file>` - 将输出写入文件，而不是 stdout
+
+示例：
+
+```sh
+# 获取当前终端的所有回滚内容
+wsh termscrollback
+
+# 获取指定终端 block 的回滚内容
+wsh termscrollback -b 2
+
+# 只获取上一条命令的输出
+wsh termscrollback --lastcommand
+
+# 获取指定行范围（第 100-200 行）
+wsh termscrollback --start 100 --end 200
+
+# 将回滚内容保存到文件
+wsh termscrollback -o terminal-log.txt
+
+# 将上一条命令输出保存到文件
+wsh termscrollback --lastcommand -o last-output.txt
+
+# 用 grep 处理上一条命令输出
+wsh termscrollback --lastcommand | grep "ERROR"
+```
+
+:::note
+`--lastcommand` 标志要求启用 shell 集成。该功能允许你只捕获最近一条命令的输出，这对脚本和自动化尤其有用。
+:::
+
+---
+
+## wavepath
+
+`wavepath` 命令用于获取多个 Wave Terminal 目录和文件的路径，包括配置、数据存储和日志。
+
+```sh
+wsh wavepath {config|data|log}
+```
+
+该命令会返回所请求的 Wave Terminal 系统目录或文件的完整路径。它适合访问 Wave 配置文件、数据存储或检查日志。
+
+标志：
+
+- `-o, --open` - 在新 block 中打开路径
+- `-O, --open-external` - 在默认外部应用中打开路径
+- `-t, --tail` - 显示日志文件最后约 100 行（仅适用于 log 路径）
+
+示例：
+
+```sh
+# 获取配置目录路径
+wsh wavepath config
+
+# 获取数据目录路径
+wsh wavepath data
+
+# 获取日志文件路径
+wsh wavepath log
+
+# 在新 block 中打开日志文件
+wsh wavepath -o log
+
+# 在系统文件浏览器中打开配置目录
+wsh wavepath -O config
+
+# 查看最近日志条目
+wsh wavepath -t log
+```
+
+该命令会显示以下内容的完整路径：
+
+- `config` - Wave Terminal 存储配置文件的位置
+- `data` - Wave Terminal 存储持久数据的位置
+- `log` - Wave Terminal 主日志文件
+
+:::tip
+使用 `-t` 标志配合 log 路径，可以快速查看最近日志条目，而无需打开完整日志文件。这对故障排除尤其有用。
+:::
+
+---
+
+## blocks
+
+`blocks` 命令提供跨 workspace、窗口和 tab 列出与查询 block 的操作。它主要适合调试和脚本使用。
+
+### list
+
+```sh
+wsh blocks list [flags]
+```
+
+列出所有 block，并可按 workspace、窗口、tab 或视图类型过滤。输出可以格式化为表格（默认）或 JSON，便于脚本使用。
+
+标志：
+- `--workspace <id>` - 限定到指定 workspace id
+- `--window <id>` - 限定到指定 window id
+- `--tab <id>` - 限定到指定 tab id
+- `--view <type>` - 按视图类型过滤（term、web、preview、edit、sysinfo、waveai）
+- `--json` - 以 JSON 输出结果
+- `--timeout <ms>` - RPC 超时时间，单位毫秒（默认：5000）
+
+示例：
+
+```sh
+# 列出所有 block
+wsh blocks list
+
+# 只列出终端 block
+wsh blocks list --view=term
+
+# 按 workspace 过滤
+wsh blocks list --workspace=12d0c067-378e-454c-872e-77a314248114
+
+# 以 JSON 输出，便于脚本处理
+wsh blocks list --json
+```
+
+---
+
+## secret
+
+`secret` 命令为 API key、密码和令牌等敏感信息提供安全存储和管理。密钥会使用系统原生安全存储后端保存（macOS 上为 Keychain，Linux 上为 Secret Service，Windows 上为 Credential Manager）。
+
+secret 名称必须以字母开头，并且只能包含字母、数字和下划线。
+
+### get
+
+```sh
+wsh secret get [name]
+```
+
+获取并显示已存储 secret 的值。
+
+示例：
+
+```sh
+# 获取 API key
+wsh secret get github_token
+
+# 在脚本中使用
+export API_KEY=$(wsh secret get my_api_key)
+```
+
+### set
+
+```sh
+wsh secret set [name]=[value]
+```
+
+安全存储 secret 值。该命令需要可用的系统 secret 管理器；如果只能使用基础文本存储，它会失败。
+
+示例：
+
+```sh
+# 设置 API token
+wsh secret set github_token=ghp_abc123xyz
+
+# 设置数据库密码
+wsh secret set db_password=mySecurePassword123
+```
+
+:::warning
+`set` 命令需要合适的系统 secret 管理器（Keychain、Secret Service 或 Credential Manager）。出于安全原因，它不能使用基础文本存储。
+:::
+
+### list
+
+```sh
+wsh secret list
+```
+
+显示所有已存储 secret 的名称（不会显示值）。
+
+示例：
+
+```sh
+# 列出所有 secret
+wsh secret list
+```
+
+### delete
+
+```sh
+wsh secret delete [name]
+```
+
+从安全存储中移除 secret。
+
+示例：
+
+```sh
+# 删除 API key
+wsh secret delete github_token
+
+# 删除多个 secret
+wsh secret delete old_api_key
+wsh secret delete temp_token
+```
+
+### ui
+
+```sh
+wsh secret ui [-m]
+```
+
+在新 block 中打开 secret 管理界面。它提供图形界面，用于查看和管理所有 secret。
+
+标志：
+
+- `-m, --magnified` - 以放大模式打开 secret UI
+
+示例：
+
+```sh
+# 打开 secret UI
+wsh secret ui
+
+# 以放大模式打开 secret UI
+wsh secret ui -m
+```
+
+secret UI 提供一种方便的可视方式来浏览、添加、编辑和删除 secret，无需使用命令行接口。
+
+:::tip
+在脚本中使用 secret 可以避免硬编码敏感值。secret 可跨远程机器使用：用 `wsh secret set` 在本地存储 API key 后，可以从任意 SSH 或 WSL 连接中用 `wsh secret get` 访问它。该 secret 会从你的本机安全获取，无需复制到远程系统。
+:::
+
+</PlatformProvider>

@@ -1,0 +1,130 @@
+---
+id: "telemetry-old"
+title: "旧版遥测"
+sidebar_class_name: hidden
+---
+
+Wave Terminal 会收集遥测数据，帮助我们跟踪功能使用情况、指导未来产品投入，并生成关于 Wave 受欢迎程度和使用情况的汇总指标。我们不会收集或存储任何 PII（个人身份信息），所有指标数据只会关联到并通过你随机生成的 _ClientId_ 汇总。你可以随时选择退出收集。
+
+如果你想开启或关闭遥测，第一次机会是在初始欢迎页上的按钮。之后，可以通过在 `config/settings.json` 文件中添加 `"telemetry:enabled": false` 来关闭。也可以通过添加 `"telemetry:enabled": true` 来重新开启。
+
+:::info
+
+你也可以运行下面的 wsh 命令修改遥测设置：
+
+```
+wsh setconfig telemetry:enabled=true
+```
+
+:::
+
+---
+
+## 发送遥测 {#sending-telemetry}
+
+如果启用了遥测，它会在 Waveterm 首次启动 10 秒后发送一次，之后每 4 小时再发送一次。下面列出的少数特殊情况也可能触发发送。发送遥测时，数据会按照你的时区分组到各个自然日中。前一天的数据会标记为 `Uploaded`，因此不需要再次发送。
+
+### 启用遥测后发送 {#sending-once-telemetry-is-enabled}
+
+一旦启用遥测，无论距离上次发送过去多久，都会立即发送一次遥测更新。这不会重置常规遥测发送计时器。
+
+### 通知遥测已禁用 {#notifying-that-telemetry-is-disabled}
+
+一旦禁用遥测，Waveterm 会发送一条特殊更新，通知我们这一变更。更多信息请参阅[关闭遥测时](#when-telemetry-is-turned-off)。计时器仍会在后台运行，但不会发送任何数据。
+
+### Waveterm 关闭时 {#when-waveterm-is-closed}
+
+如果启用了遥测，Waveterm 关闭时会发送遥测。
+
+---
+
+## 遥测数据 {#telemetry-data}
+
+遥测启用时，我们会收集以下数据。它在源代码中存储于 `telemetry.TelemetryData` 类型。
+
+| 名称 | 描述 |
+| --- | --- |
+| ActiveMinutes | 用户在某一天主动使用 Waveterm 的分钟数。这要求终端窗口处于焦点状态，并且用户正在主动与其交互。 |
+| FgMinutes | Waveterm 在某一天处于前台的分钟数。这要求终端窗口处于焦点状态，但不要求用户正在交互。 |
+| OpenMinutes | Waveterm 在某一天保持打开的分钟数。只要求终端已打开，即使窗口不在焦点中也会计入。 |
+| NumBlocks | 某一天已打开的现有 block 数量。 |
+| NumTabs | 某一天已打开的现有标签页数量。 |
+| NewTab | 某一天创建的新标签页数量。 |
+| NumWindows | 某一天已打开的现有窗口数量。 |
+| NumWS | 某一天现有工作区数量。 |
+| NumWSNamed | 某一天已命名工作区数量。 |
+| NewTab | 某一天打开的新标签页数量。 |
+| NumStartup | 某一天 waveterm 启动的次数。 |
+| NumShutdown | 某一天 waveterm 关闭的次数。 |
+| SetTabTheme | 从上下文菜单修改标签页主题的次数。 |
+| NumMagnify | 任意 block 被放大的次数。 |
+| NumPanics | 当天捕获到的后端 (golang) panic 数量。 |
+| NumAIReqs | 当天发起的 AI 请求数量。 |
+| NumSSHConn | 对不同主机建立过的不同 SSH 连接数量。 |
+| NumWSLConns | 对不同发行版建立过的不同 WSL 连接数量。 |
+| Renderers | 某一天每种类型新打开的 block 视图数量。 |
+| WshCmds | 某一天运行的每种类型 wsh 命令数量。 |
+| Blocks | 某一天打开的不同视图类型 block 数量。 |
+| Conn | 某一天建立的成功远程连接数量（以及错误）。 |
+
+## 关联数据 {#associated-data}
+
+除收集的遥测数据外，还会报告以下数据。它在源代码中存储于 `telemetry.ActivityType` 类型。
+
+| 名称 | 描述 |
+| --- | --- |
+| Day | 与遥测关联的日期。不包含具体时间。 |
+| Uploaded | 一个布尔值，表示这一天的遥测是否已最终确定。与当天相关联时它为 false，但在该日期之后的第一次遥测上传时会设为 true。一旦为 true，该特定日期的数据就不会再随遥测上传。 |
+| TzName | 用户操作系统报告的时区代码，例如 PST、GMT、JST。 |
+| TzOffset | 用户操作系统报告的时区偏移，例如 -08:00、+00:00、+09:00。 |
+| ClientVersion | 已安装的 Waveterm 版本。 |
+| ClientArch | 包含用户的操作系统（例如 linux 或 darwin）和架构（例如 x86_64 或 arm64）。目前不包含任何 Connections 的数据。 |
+| BuildTime | 作为更准确的版本号，用来记录我们构建该版本的时间。它与你安装该版本的时间无关。 |
+| OSRelease | 用户已安装操作系统的版本。 |
+| Displays | 显示器分辨率（v0.9.3 添加，用于帮助我们了解应该优化哪些屏幕分辨率）。 |
+
+## 遥测元数据 {#telemetry-metadata}
+
+最后，还会随遥测一起发送一些用于分类的数据。它在源代码中存储于 `wcloud.TelemetryInputType`。
+
+| 名称 | 描述 |
+| --- | --- |
+| UserId | 当前未使用。这是一个匿名 UUID，预留给未来功能使用。 |
+| ClientId | Waveterm 首次启动时创建的匿名 UUID。它用于遥测以及向 Open AI 发送提示词。 |
+| AppType | 用于区分当前版本的 waveterm 与旧版应用。 |
+| AutoUpdateEnabled | 是否开启自动更新。 |
+| AutoUpdateChannel | 正在使用的自动更新类型。具体指选择的是 latest 通道还是 beta 通道。 |
+| CurDay | 发送遥测时的当前日期（以你的时区为准）。不包含当天具体时间。 |
+
+## 地理数据 {#geo-data}
+
+我们不会在遥测表中存储 IP 地址。不过，CloudFlare 会向我们传递 Geo-Location 请求头。我们会存储以下两个请求头值：
+
+| 名称 | 描述 |
+| --- | --- |
+| CFCountry | 两位国家/地区代码，例如 "US"、"FR" 或 "JP"。 |
+| CFRegionCode | 区域代码，通常是一个国家/地区内的省、区域或州。 |
+
+---
+
+## 关闭遥测时 {#when-telemetry-is-turned-off}
+
+当用户禁用遥测时，Waveterm 会发送一条通知，说明其匿名 _ClientId_ 已禁用遥测。这通过源代码中的 `wcloud.NoTelemetryInputType` 类型完成。除此之外，除非再次开启遥测，否则不会发送任何进一步信息。如果再次开启，会发送之前 30 天的遥测数据。
+
+---
+
+## 关于 IP 地址的说明 {#a-note-on-ip-addresses}
+
+遥测通过 https 上传，这意味着遥测服务器会知道你的 IP 地址。我们**不会**在遥测表中存储你的 IP 地址，也**不会**将其与你的 _ClientId_ 关联。
+
+---
+
+## 之前收集的遥测数据 {#previously-collected-telemetry-data}
+
+虽然我们认为遥测收集的数据已经相当少，但我们不能替每个用户做这个决定。如果你之后改变主意，不希望保留之前收集的数据，可以发送邮件到 [support@waveterm.dev](mailto:support@waveterm.dev) 请求删除数据。为完成删除，我们需要你的 _ClientId_。
+
+---
+
+## 隐私政策 {#privacy-policy}
+
+关于上述内容的摘要，可以查看我们的 [隐私政策](https://www.waveterm.dev/privacy)。

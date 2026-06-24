@@ -41,6 +41,7 @@ import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { agentStatusHookProvidersForBlocks } from "./session-overview-agent-status";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
@@ -444,8 +445,10 @@ function isTransientFetchErrorMessage(message: string): boolean {
     );
 }
 
-function useCodexHookInstallState(hasCodexAgent: boolean) {
+function useAgentStatusHookInstallState(providers: string[], active: boolean) {
     const service = useMemo(() => new BlockServiceType(), []);
+    const providersKey = providers.join("\n");
+    const providersForHook = useMemo(() => providersKey.split("\n").filter(Boolean), [providersKey]);
     const [state, setState] = useState<HookInstallState>({
         loading: false,
         installing: false,
@@ -453,15 +456,23 @@ function useCodexHookInstallState(hasCodexAgent: boolean) {
         error: "",
     });
     const refresh = React.useCallback(() => {
-        if (!hasCodexAgent) {
+        if (!active || providersForHook.length === 0) {
             setState({ loading: false, installing: false, status: null, error: "" });
             return;
         }
         setState((current) => ({ ...current, loading: true, error: "" }));
         service
-            .CheckAgentStatusHooks("codex")
+            .CheckAgentStatusHooks("all")
             .then((result) => {
-                const status = result.statuses?.find((entry) => entry.provider === "codex") ?? null;
+                const status =
+                    providersForHook
+                        .map(
+                            (provider) =>
+                                result.statuses?.find(
+                                    (entry) => normalizeAgentProviderName(entry.provider) === provider
+                                ) ?? null
+                        )
+                        .find((entry) => entry?.supported === true && entry.needsInstall === true) ?? null;
                 setState((current) => ({ ...current, loading: false, status, error: "" }));
             })
             .catch((error) => {
@@ -472,22 +483,31 @@ function useCodexHookInstallState(hasCodexAgent: boolean) {
                     error: error instanceof Error ? error.message : String(error),
                 }));
             });
-    }, [hasCodexAgent, service]);
+    }, [active, providersForHook, service]);
     useEffect(() => {
         refresh();
     }, [refresh]);
     const install = React.useCallback(() => {
+        const provider = normalizeAgentProviderName(state.status?.provider ?? "");
+        if (!provider) {
+            return;
+        }
         setState((current) => ({ ...current, installing: true, error: "" }));
         service
-            .InstallAgentStatusHooks("codex")
+            .InstallAgentStatusHooks(provider)
             .then((results) => {
                 setState((current) => ({ ...current, installing: false }));
-                const codexResult = results.find((entry) => normalizeAgentProviderName(entry.Provider) === "codex");
+                const installResult = results.find((entry) => normalizeAgentProviderName(entry.Provider) === provider);
+                const updatedPath =
+                    installResult?.HooksPath ||
+                    installResult?.SettingsPath ||
+                    installResult?.ConfigPath ||
+                    installResult?.HookPath;
                 modalsModel.pushModal("MessageModal", {
                     children: (
                         <div>
-                            <div>Agent status enabled.</div>
-                            {codexResult?.HooksPath ? <div>Updated hooks: {codexResult.HooksPath}</div> : null}
+                            <div>Agent status enabled for {formatAgentProvider(provider)}.</div>
+                            {updatedPath ? <div>Updated: {updatedPath}</div> : null}
                         </div>
                     ),
                 });
@@ -509,7 +529,7 @@ function useCodexHookInstallState(hasCodexAgent: boolean) {
                     ),
                 });
             });
-    }, [refresh, service]);
+    }, [refresh, service, state.status?.provider]);
     return { ...state, install };
 }
 
@@ -2012,16 +2032,14 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         });
     }, [blockId, detailBlocks, displayedTabGroups.length, overviewVisible]);
     const details = useSessionDetails(detailBlocks, refreshSeq, overviewVisible);
-    const hasCodexAgent = useMemo(
-        () => blocks.some((block) => block.isAgentLike && normalizeAgentProviderName(block.agentProvider) === "codex"),
-        [blocks]
-    );
-    const codexHookInstall = useCodexHookInstallState(hasCodexAgent && overviewVisible);
+    const agentStatusHookProviders = useMemo(() => agentStatusHookProvidersForBlocks(blocks), [blocks]);
+    const agentStatusHookInstall = useAgentStatusHookInstallState(agentStatusHookProviders, overviewVisible);
+    const agentStatusHookProvider = normalizeAgentProviderName(agentStatusHookInstall.status?.provider ?? "");
+    const agentStatusHookProviderLabel = formatAgentProvider(agentStatusHookProvider);
     const showEnableAgentStatus =
-        hasCodexAgent &&
-        !codexHookInstall.loading &&
-        codexHookInstall.status?.supported === true &&
-        codexHookInstall.status?.needsInstall === true;
+        !agentStatusHookInstall.loading &&
+        agentStatusHookInstall.status?.supported === true &&
+        agentStatusHookInstall.status?.needsInstall === true;
     const agentStatuses = useMemo(() => {
         const next: Record<string, AgentStatus> = {};
         for (const block of blocks) {
@@ -2233,8 +2251,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
                             {displayedBlockCount} of {blocks.length} blocks · {unreadCount} unread{agentSummary}
-                            {codexHookInstall.error ? (
-                                <span className="session-overview-hook-error"> · {codexHookInstall.error}</span>
+                            {agentStatusHookInstall.error ? (
+                                <span className="session-overview-hook-error"> · {agentStatusHookInstall.error}</span>
                             ) : null}
                         </div>
                     </div>
@@ -2243,21 +2261,21 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             <button
                                 type="button"
                                 className="session-overview-enable-agent-status"
-                                onClick={codexHookInstall.install}
-                                disabled={codexHookInstall.installing}
+                                onClick={agentStatusHookInstall.install}
+                                disabled={agentStatusHookInstall.installing}
                                 title={
-                                    codexHookInstall.status?.reason
-                                        ? `Install Codex agent status hooks: ${codexHookInstall.status.reason}`
-                                        : "Install Codex agent status hooks"
+                                    agentStatusHookInstall.status?.reason
+                                        ? `Install ${agentStatusHookProviderLabel} agent status hooks: ${agentStatusHookInstall.status.reason}`
+                                        : `Install ${agentStatusHookProviderLabel} agent status hooks`
                                 }
                             >
                                 <i
                                     className={makeIconClass(
-                                        codexHookInstall.installing ? "spinner" : "plug-circle-bolt",
+                                        agentStatusHookInstall.installing ? "spinner" : "plug-circle-bolt",
                                         false
                                     )}
                                 />
-                                <span>{codexHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
+                                <span>{agentStatusHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
                             </button>
                         ) : null}
                         <div className="session-overview-filter-group" aria-label="Overview filters">
