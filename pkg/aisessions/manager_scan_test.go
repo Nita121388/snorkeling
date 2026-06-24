@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
@@ -226,6 +228,14 @@ type cacheProvider struct {
 	loadMessagesHit int
 }
 
+type blockingRefreshProvider struct {
+	source       string
+	summaries    []SessionSummary
+	listCalls    int32
+	blockStarted chan struct{}
+	release      chan struct{}
+}
+
 func (p *cacheProvider) Source() string {
 	return p.source
 }
@@ -238,6 +248,106 @@ func (p *cacheProvider) List(ctx context.Context) ([]SessionSummary, error) {
 func (p *cacheProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
 	p.loadMessagesHit++
 	return append([]Message(nil), p.messages...), ctx.Err()
+}
+
+func (p *blockingRefreshProvider) Source() string {
+	return p.source
+}
+
+func (p *blockingRefreshProvider) List(ctx context.Context) ([]SessionSummary, error) {
+	atomic.AddInt32(&p.listCalls, 1)
+	select {
+	case p.blockStarted <- struct{}{}:
+	default:
+	}
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return p.summaries, ctx.Err()
+}
+
+func (p *blockingRefreshProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
+	return nil, fmt.Errorf("LoadMessages should not be called")
+}
+
+func TestManagerSummaryRefreshReturnsCachedSummaryAndRefreshesInBackground(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WAVETERM_AI_SESSIONS_META", filepath.Join(dir, "meta.json"))
+	t.Setenv("WAVETERM_AI_SESSIONS_SQLITE_INDEX", filepath.Join(dir, "index-v2.sqlite"))
+	summary := SessionSummary{
+		Key:      "codex:cached-refresh:/tmp/cached-refresh.jsonl",
+		ID:       "cached-refresh",
+		Source:   SourceCodex,
+		Title:    "Cached refresh",
+		FilePath: "/tmp/cached-refresh.jsonl",
+		MTime:    1,
+		Size:     100,
+	}
+	otherSummary := SessionSummary{
+		Key:      "codex:cached-refresh-other:/tmp/cached-refresh-other.jsonl",
+		ID:       "cached-refresh-other",
+		Source:   SourceCodex,
+		Title:    "Cached refresh other",
+		FilePath: "/tmp/cached-refresh-other.jsonl",
+		MTime:    1,
+		Size:     100,
+	}
+	provider := &blockingRefreshProvider{
+		source:       SourceCodex,
+		summaries:    []SessionSummary{summary, otherSummary},
+		blockStarted: make(chan struct{}, 2),
+		release:      make(chan struct{}),
+	}
+	manager := NewManager(filepath.Join(dir, "index.json"), []Provider{provider})
+	idx, err := manager.openSQLiteIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SaveSummary(context.Background(), summary); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SaveSummary(context.Background(), otherSummary); err != nil {
+		t.Fatal(err)
+	}
+	idx.Close()
+
+	start := time.Now()
+	cached, err := manager.Summary(context.Background(), "cached-refresh", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.ID != "cached-refresh" {
+		t.Fatalf("unexpected cached summary: %#v", cached)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("refresh summary waited for background scan: %s", elapsed)
+	}
+
+	select {
+	case <-provider.blockStarted:
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not start")
+	}
+	if _, err := manager.Summary(context.Background(), "cached-refresh-other", true); err != nil {
+		t.Fatal(err)
+	}
+	if calls := atomic.LoadInt32(&provider.listCalls); calls != 1 {
+		t.Fatalf("expected duplicate refresh to reuse in-flight scan, got %d list calls", calls)
+	}
+	close(provider.release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		refreshKey := manager.SQLitePath + "\x00" + manager.MetaPath + "\x00" + manager.IndexPath
+		if !summaryRefreshes.start(refreshKey) {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		summaryRefreshes.done(refreshKey)
+		return
+	}
+	t.Fatal("background refresh did not finish")
 }
 
 func TestManagerUserLinesPagesLatestUserMessages(t *testing.T) {

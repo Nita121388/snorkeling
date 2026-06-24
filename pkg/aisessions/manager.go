@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,9 +30,18 @@ type ManagerOptions struct {
 	SQLitePath string
 }
 
-const defaultMaxMessageIndexBytesForLoad int64 = 64 * 1024 * 1024
+const (
+	defaultMaxMessageIndexBytesForLoad int64 = 64 * 1024 * 1024
+	backgroundSummaryRefreshTimeout          = 2 * time.Minute
+)
 
 var maxMessageIndexBytesForLoad = defaultMaxMessageIndexBytesForLoad
+var summaryRefreshes summaryRefreshTracker
+
+type summaryRefreshTracker struct {
+	lock     sync.Mutex
+	inflight map[string]bool
+}
 
 func debugEnabled() bool {
 	value := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_DEBUG"))
@@ -428,7 +438,19 @@ func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLin
 }
 
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
-	return m.resolveSession(ctx, identifier, refresh)
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return SessionSummary{}, fmt.Errorf("session id is required")
+	}
+	if refresh {
+		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier, false); err == nil && ok {
+			m.refreshSummariesInBackground(identifier)
+			return summary, nil
+		} else if err != nil {
+			debugf("Manager.Summary stale sqlite skipped id=%q err=%v", identifier, err)
+		}
+	}
+	return m.resolveSession(ctx, identifier, false)
 }
 
 func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (SessionSummary, error) {
@@ -688,6 +710,54 @@ func (m *Manager) loadMessages(ctx context.Context, summary SessionSummary, refr
 	return messages, nil
 }
 
+func (m *Manager) refreshSummariesInBackground(identifier string) {
+	key := m.SQLitePath + "\x00" + m.MetaPath + "\x00" + m.IndexPath
+	if !summaryRefreshes.start(key) {
+		debugf("Manager.Summary background refresh already running id=%q path=%q", identifier, m.SQLitePath)
+		return
+	}
+	providers := append([]Provider(nil), m.Providers...)
+	indexPath := m.IndexPath
+	sqlitePath := m.SQLitePath
+	metaPath := m.MetaPath
+	go func() {
+		defer summaryRefreshes.done(key)
+		ctx, cancel := context.WithTimeout(context.Background(), backgroundSummaryRefreshTimeout)
+		defer cancel()
+		manager := NewManagerWithOptions(ManagerOptions{
+			Providers:  providers,
+			IndexPath:  indexPath,
+			SQLitePath: sqlitePath,
+			MetaPath:   metaPath,
+		})
+		stats, errs := manager.Refresh(ctx)
+		if len(errs) > 0 {
+			debugf("Manager.Summary background refresh error id=%q path=%q summaries=%d errors=%d firstErr=%v", identifier, sqlitePath, stats.Summaries, len(errs), errs[0])
+			return
+		}
+		debugf("Manager.Summary background refresh success id=%q path=%q summaries=%d", identifier, sqlitePath, stats.Summaries)
+	}()
+}
+
+func (r *summaryRefreshTracker) start(key string) bool {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.inflight == nil {
+		r.inflight = make(map[string]bool)
+	}
+	if r.inflight[key] {
+		return false
+	}
+	r.inflight[key] = true
+	return true
+}
+
+func (r *summaryRefreshTracker) done(key string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.inflight, key)
+}
+
 func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
 	start := time.Now()
 	identifier = strings.TrimSpace(identifier)
@@ -695,7 +765,7 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 		return SessionSummary{}, fmt.Errorf("session id is required")
 	}
 	if !refresh {
-		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier); err == nil && ok {
+		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier, true); err == nil && ok {
 			debugf("Manager.resolveSession sqlite success id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, time.Since(start))
 			return summary, nil
 		} else if err != nil {
@@ -764,24 +834,26 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 	return matches[0], nil
 }
 
-func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string) (SessionSummary, bool, error) {
+func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string, requireCurrent bool) (SessionSummary, bool, error) {
 	sqliteIdx, err := m.openSQLiteIndex()
 	if err != nil {
 		return SessionSummary{}, false, err
 	}
 	defer sqliteIdx.Close()
-	hasScan, err := sqliteIdx.HasSummaryScan(ctx)
-	if err != nil {
-		return SessionSummary{}, false, err
-	}
-	if !hasScan {
-		return SessionSummary{}, false, nil
+	if requireCurrent {
+		hasScan, err := sqliteIdx.HasSummaryScan(ctx)
+		if err != nil {
+			return SessionSummary{}, false, err
+		}
+		if !hasScan {
+			return SessionSummary{}, false, nil
+		}
 	}
 	summary, err := sqliteIdx.GetSession(ctx, identifier)
 	if err != nil {
 		return SessionSummary{}, false, nil
 	}
-	if !cachedSummaryFileIsCurrent(summary) {
+	if requireCurrent && !cachedSummaryFileIsCurrent(summary) {
 		return SessionSummary{}, false, nil
 	}
 	return summary, true, nil

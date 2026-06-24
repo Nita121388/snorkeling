@@ -1013,18 +1013,27 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
     const workspace = jotai.useAtomValue(atoms.workspace);
     const focused = jotai.useAtomValue(model.isFocusedAtom);
     const blocks = useOverviewBlocks(workspace);
-    const summaries = useSessionSummaries(blocks);
     const viewedAt = jotai.useAtomValue(model.blockViewedAtAtom);
     const now = useNow(true);
+    const sessionIds = useMemo(
+        () => Array.from(new Set(blocks.map((block) => block.sessionId).filter(Boolean))).sort(),
+        [blocks]
+    );
+    const sessionIdsKey = sessionIds.join("\n");
+    const cacheVersion = useSessionOverviewCacheVersion();
+    const cachedSummaries = useMemo(
+        () => getSessionOverviewCacheSnapshot(sessionIds).summaries,
+        [cacheVersion, sessionIdsKey]
+    );
     const unreadBlocks = blocks.filter((block) => {
         if (!block.isAgentLike || !block.sessionId) return false;
-        const summary = summaries[block.sessionId]?.summary;
+        const summary = cachedSummaries[block.sessionId];
         const updatedAtMs = normalizeTimeMs(summary?.updatedAt);
         return updatedAtMs > 0 && updatedAtMs > (viewedAt[block.blockId] ?? 0);
     });
     const newestUnreadMs = Math.max(
         0,
-        ...unreadBlocks.map((block) => normalizeTimeMs(summaries[block.sessionId]?.summary?.updatedAt))
+        ...unreadBlocks.map((block) => normalizeTimeMs(cachedSummaries[block.sessionId]?.updatedAt))
     );
     const icon = <i className={makeIconClass("list-tree", false)} />;
     const badge =
