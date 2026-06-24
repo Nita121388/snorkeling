@@ -13,15 +13,15 @@ import { VersionBadge, DeprecatedBadge } from "@site/src/components/versionbadge
 <PlatformSelectorButton />
 <div style={{ marginBottom: 20 }}></div>
 
-Wave 的配置文件位于 `~/.config/waveterm/`。
+Snorkeling 的配置文件默认位于 `~/.config/snorkeling/`。
 
-主配置文件是 `settings.json`（`~/.config/waveterm/settings.json`）。
+主配置文件是 `settings.json`（`~/.config/snorkeling/settings.json`）。开发构建可能使用带 `snorkeling-dev` 后缀的目录。
 
 该文件基本上是扁平结构的 JSON 文件。我们不使用子对象，而是更倾向于用 ":" 作为层级分隔符。
 
 :::info
 
-编辑配置文件最简单的方式是使用 `wsh editconfig` 命令，它会在 Wave 内置预览编辑器中打开你的 Wave 配置文件。
+编辑配置文件最简单的方式是使用 `wsh editconfig` 命令，它会在内置预览编辑器中打开你的 Snorkeling 配置文件。
 
 ```
 wsh editconfig
@@ -33,12 +33,12 @@ wsh editconfig
 
 | 键名                                 | 类型     | 功能                                                                                                                                                                                                                                                          |
 | ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| app:globalhotkey                     | string   | 系统级快捷键，用于打开最近使用的 Wave 窗口。这是一组以 `:` 分隔的按键名称。更多信息参见[可自定义的系统级全局热键](#customizable-systemwide-global-hotkey)                                      |
-| app:dismissarchitecturewarning       | bool     | 当你使用非原生架构运行 Wave 时，禁用应用启动警告。更多信息参见[为什么 Wave 启动时会提醒我 ARM64 转译？](./faq#why-does-wave-warn-me-about-arm64-translation-when-it-launches)。                |
+| app:globalhotkey                     | string   | 系统级快捷键，用于打开最近使用的 Snorkeling 窗口。这是一组以 `:` 分隔的按键名称。更多信息参见[可自定义的系统级全局热键](#customizable-systemwide-global-hotkey)                                      |
+| app:dismissarchitecturewarning       | bool     | 当你使用非原生架构运行 Snorkeling 时，禁用应用启动警告。更多信息参见[为什么 Snorkeling 启动时会提醒我 ARM64 转译？](./faq#why-does-snorkeling-warn-me-about-arm64-translation-when-it-launches)。                |
 | app:defaultnewblock                  | string   | 设置默认新块（Cmd:n、Cmd:d）。"term" 表示终端块，"launcher" 表示启动器块（默认 = "term"）                                                                                                       |
 | app:showoverlayblocknums             | bool     | 设为 false 会禁用按住 Ctrl+Shift 时显示的 Ctrl+Shift 块编号叠加层（默认为 true）                                                                                                                |
 | app:ctrlvpaste                       | bool     | 在 Windows/Linux 上，为 null（默认）时仅在 Windows 使用 Control+V。设为 true 可在所有非 macOS 平台强制使用 Control+V，设为 false 可禁用此快捷键。无论该设置如何，macOS 始终使用 Command+V     |
-| app:confirmquit <VersionBadge version="v0.14" />                     | bool     | 设为 false 会在关闭 Wave Terminal 时禁用退出确认对话框（默认为 true，需要重启应用）                                                                                                             |
+| app:confirmquit <VersionBadge version="v0.14" />                     | bool     | 设为 false 会在关闭 Snorkeling 时禁用退出确认对话框（默认为 true，需要重启应用）                                                                                                             |
 | app:hideaibutton <VersionBadge version="v0.14" />                    | bool     | 设为 true 会隐藏标签栏中的 AI 按钮（默认为 false）                                                                                                                                              |
 | app:disablectrlshiftarrows <VersionBadge version="v0.14" />          | bool     | 设为 true 会禁用 Ctrl+Shift 块导航快捷键（`Arrow` 和 `h/j/k/l`）（默认为 false）                                                                                                                 |
 | app:disablectrlshiftdisplay <VersionBadge version="v0.14" />         | bool     | 设为 true 会禁用 Ctrl+Shift 视觉指示显示（默认为 false）                                                                                                                                        |
@@ -54,7 +54,9 @@ wsh editconfig
 | ai:orgid                             | string   |                                                                                                                                                                                                                                                               |
 | ai:maxtokens                         | int      | 传递给 API 的最大令牌数                                                                                                                                                                                                                                      |
 | ai:timeoutms                         | int      | AI 调用超时时间（毫秒）                                                                                                                                                                                                                                      |
-| ai:proxyurl                          | string   | AI API 请求的 HTTP 代理 URL（不适用于 Wave Cloud AI）                                                                                                                                                                                                        |
+| ai:proxyurl                          | string   | AI API 请求的 HTTP 代理 URL（不适用于继承的 Wave Cloud AI 模式）                                                                                                                                                                                                        |
+| agent:defaultprofile                 | string   | 启动 Agent 区块时使用的默认 Agent profile                                                                                                                                                                                                                     |
+| agent:profiles                       | object   | Agent profile 定义映射，可配置命令、参数、模型参数和环境变量                                                                                                                                                                                                  |
 | conn:askbeforewshinstall             | bool     | 设为 false 会禁用在新机器上安装 wsh 扩展前询问的弹窗                                                                                                                                                                                                         |
 | conn:localhostdisplayname <VersionBadge version="v0.14" />           | string   | 覆盖 UI 中 localhost 的显示名称（例如设置为 "My Laptop" 或 "Local"，或设为空字符串以隐藏名称）                                                                                                                                             |
 | term:fontsize                        | float    | 终端块的字体大小                                                                                                                                                                                                                                             |
@@ -116,7 +118,7 @@ wsh editconfig
 | window:dimensions                    | string   | 使用 "WIDTHxHEIGHT" 格式设置新窗口的默认尺寸（例如 "1920x1080"）。创建新窗口时会自动应用这些尺寸。宽度和高度值应以像素指定。                                                                   |
 | telemetry:enabled                    | bool     | 设置为启用/禁用遥测                                                                                                                                                                                                                                          |
 
-以下是当前默认配置（v0.14.0），供参考：
+以下是当前默认配置，供参考：
 
 ```json
 {
@@ -125,8 +127,10 @@ wsh editconfig
     "ai:maxtokens": 4000,
     "ai:timeoutms": 60000,
     "app:defaultnewblock": "term",
+    "app:tabbar": "top",
     "app:confirmquit": true,
     "app:hideaibutton": false,
+    "term:showsplitbuttons": false,
     "app:disablectrlshiftarrows": false,
     "app:disablectrlshiftdisplay": false,
     "app:focusfollowscursor": "off",
@@ -142,7 +146,7 @@ wsh editconfig
     "window:maxtabcachesize": 10,
     "window:nativetitlebar": true,
     "window:magnifiedblockopacity": 0.6,
-    "window:magnifiedblocksize": 0.9,
+    "window:magnifiedblocksize": 0.95,
     "window:magnifiedblockblurprimarypx": 10,
     "window:fullscreenonlaunch": false,
     "window:magnifiedblockblursecondarypx": 2,
@@ -150,29 +154,37 @@ wsh editconfig
     "window:savelastwindow": true,
     "telemetry:enabled": true,
     "term:bellsound": false,
-    "term:bellindicator": false,
+    "term:bellindicator": true,
     "term:osc52": "always",
     "term:cursor": "block",
     "term:cursorblink": false,
     "term:copyonselect": true,
+    "term:trimtrailingwhitespace": true,
     "term:durable": false,
     "waveai:showcloudmodes": true,
     "waveai:defaultmode": "waveai@balanced",
-    "preview:defaultsort": "name"
+    "note:dir": "~",
+    "preview:defaultsort": "name",
+    "preview:defaultdirectorydisplay": "tree",
+    "preview:defaultopentarget": "right"
 }
 ```
 
+:::note
+
+当前源码默认的 `web:defaulturl` 仍指向上游 Wave 仓库。如果你希望 web widget 默认打开 Snorkeling 仓库，可以手动设置为 `https://github.com/Nita121388/snorkeling`。
+
+:::
+
 :::warning
 
-如果你安装的是 Wave v0.9.0 之前的版本，你的配置文件将位于
-`~/.waveterm/config/settings.json`。其他配置文件也位于同一位置：
-`termthemes.json`、`presets.json` 和 `widgets.json`。
+如果存在旧式合并 app-home 目录，Snorkeling 仍可读取 `~/.snorkeling/config/settings.json` 中的兼容数据。其他配置文件也位于同一位置，例如 `termthemes.json`、`presets.json` 和 `widgets.json`。
 
 :::
 
 ## 环境变量解析
 
-为了避免把密钥直接写入配置文件，Wave 支持使用 `$ENV:VARIABLE_NAME` 或 `$ENV:VARIABLE_NAME:fallback` 语法解析环境变量。这适用于任何配置文件中的任意字符串值（settings.json、presets.json、ai.json 等）。
+为了避免把密钥直接写入配置文件，Snorkeling 支持使用 `$ENV:VARIABLE_NAME` 或 `$ENV:VARIABLE_NAME:fallback` 语法解析环境变量。这适用于任何配置文件中的任意字符串值（settings.json、presets.json、ai.json 等）。
 
 ```json
 {
@@ -221,23 +233,23 @@ WebBookmarks 允许你存储和管理网页链接，并自定义显示偏好。�
     "url": "https://claude.ai",
     "title": "Claude AI"
   },
-  "bookmark@wave": {
-    "url": "https://waveterm.dev",
-    "title": "Wave Terminal",
+  "bookmark@snorkeling-docs": {
+    "url": "https://nita121388.github.io/snorkeling/",
+    "title": "Snorkeling Docs",
     "display:order": -1
   },
-  "bookmark@wave-github": {
-    "url": "https://github.com/wavetermdev/waveterm",
-    "title": "Wave Github",
+  "bookmark@snorkeling-github": {
+    "url": "https://github.com/Nita121388/snorkeling",
+    "title": "Snorkeling GitHub",
     "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
   },
   "bookmark@chatgpt": {
     "url": "https://chatgpt.com",
     "iconurl": "https://cdn.oaistatic.com/assets/favicon-miwirzcw.ico"
   },
-  "bookmark@wave-pulls": {
-    "url": "https://github.com/wavetermdev/waveterm/pulls",
-    "title": "Wave Pull Requests",
+  "bookmark@snorkeling-pulls": {
+    "url": "https://github.com/Nita121388/snorkeling/pulls",
+    "title": "Snorkeling Pull Requests",
     "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
   }
 }
@@ -252,7 +264,7 @@ WebBookmarks 允许你存储和管理网页链接，并自定义显示偏好。�
 
 ## 终端主题
 
-用户自定义终端主题位于 `~/.config/waveterm/termthemes.json`。
+用户自定义终端主题位于 `~/.config/snorkeling/termthemes.json`。
 
 该 JSON 文件是一个对象，每个子键定义一个主题。
 可以右键单击终端标题栏，并从“主题”子菜单中选择条目来应用主题。也可以将主题应用到
@@ -262,7 +274,7 @@ WebBookmarks 允许你存储和管理网页链接，并自定义显示偏好。�
 wsh setmeta this term:theme="default-dark"
 ```
 
-以下是完整终端主题定义示例。所有内置主题都定义在这里：https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/termthemes.json （如果你想添加热门终端主题，请提交拉取请求！）
+以下是完整终端主题定义示例。Snorkeling 当前继承源码树中的上游默认终端主题。
 
 ```json
 {
@@ -334,11 +346,11 @@ wsh editconfig termthemes.json
 
 ## 可自定义的系统级全局热键 {#customizable-systemwide-global-hotkey}
 
-Wave 允许设置自定义全局热键，用于从电脑上的任意位置打开你最近使用的窗口。它在 `settings.json` 文件中的名称是 `"app:globalhotkey"`，格式是一组由 `:` 字符分隔的按键名称。
+Snorkeling 允许设置自定义全局热键，用于从电脑上的任意位置打开你最近使用的窗口。它在 `settings.json` 文件中的名称是 `"app:globalhotkey"`，格式是一组由 `:` 字符分隔的按键名称。
 
 ### 示例
 
-作为一个实际示例，假设你想使用 `F5` 作为全局热键。只需将 `"app:globalhotkey"` 的值设置为 `"F5"`，然后重启 Wave，即可让它成为你的全局热键。
+作为一个实际示例，假设你想使用 `F5` 作为全局热键。只需将 `"app:globalhotkey"` 的值设置为 `"F5"`，然后重启 Snorkeling，即可让它成为你的全局热键。
 
 作为一个不太常见的示例，假设你使用 `Ctrl`、`Option` 和 `e` 的组合。那么这个快捷键的值就是 `"Ctrl:Option:e"`。
 

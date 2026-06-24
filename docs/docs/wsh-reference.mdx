@@ -12,7 +12,7 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # wsh command
 
-The `wsh` command is always available from Wave blocks. It is a powerful tool for interacting with Wave blocks and can bridge data between your CLI and the widget GUIs.
+The `wsh` command is always available from Snorkeling blocks. It is a powerful tool for interacting with Snorkeling blocks and can bridge data between your CLI and the widget GUIs.
 
 This is the detailed wsh reference documention. For an overview of `wsh` functionality, please see our [wsh command docs](/wsh).
 
@@ -28,7 +28,7 @@ wsh view -m [path]           # opens in magnified block
 ```
 
 You can use this command to easily preview images, markdown files, and directories. For code/text files this will open
-a codeedit block which you can use to quickly edit the file using Wave's embedded graphical editor.
+a codeedit block which you can use to quickly edit the file using Snorkeling's embedded graphical editor.
 
 ---
 
@@ -39,7 +39,7 @@ wsh edit [path]
 wsh edit -m [path]           # opens in magnified block
 ```
 
-This will open up a codeedit block for the specified file. This is useful for quickly editing files on a local or remote machine in Wave's graphical editor. This command returns immediately after opening the block. 
+This will open up a codeedit block for the specified file. This is useful for quickly editing files on a local or remote machine in Snorkeling's graphical editor. This command returns immediately after opening the block. 
 
 For `$EDITOR` integration (e.g. with `git commit`), see [`wsh editor`](#editor) which blocks until the editor is closed.
 
@@ -52,7 +52,7 @@ wsh editor [path]
 wsh editor -m [path]         # opens in magnified block
 ```
 
-This opens a codeedit block for the specified file and **blocks until the editor is closed**. This is useful for setting your `$EDITOR` environment variable so that CLI tools (e.g. `git commit`, `crontab -e`) open files in Wave's graphical editor:
+This opens a codeedit block for the specified file and **blocks until the editor is closed**. This is useful for setting your `$EDITOR` environment variable so that CLI tools (e.g. `git commit`, `crontab -e`) open files in Snorkeling's graphical editor:
 
 ```sh
 export EDITOR="wsh editor"
@@ -108,7 +108,7 @@ You can update any metadata key value pair for blocks (and tabs) by using the se
 ```sh
 wsh setmeta -b [blockid] [key]=[value]
 wsh setmeta -b [blockid] file=~/myfile.txt
-wsh setmeta -b [blockid] url=https://waveterm.dev/
+wsh setmeta -b [blockid] url=https://github.com/Nita121388/snorkeling
 
 # set the metadata for the current tab using the given json file
 wsh setmeta -b tab --json [jsonfile]
@@ -132,7 +132,7 @@ wsh getmeta -b [other-tab-id] "bg:*" --clear-prefix | wsh setmeta -b tab --json 
 
 ## ai
 
-Append content to the Wave AI sidebar. Files are attached as proper file attachments (supporting images, PDFs, and text), not encoded as text. By default, content is added to the sidebar without auto-submitting, allowing you to review and add more context before sending to the AI.
+Append content to the Snorkeling AI sidebar. Files are attached as proper file attachments (supporting images, PDFs, and text), not encoded as text. By default, content is added to the sidebar without auto-submitting, allowing you to review and add more context before sending to the AI.
 
 You can attach multiple files at once (up to 15 files). Use `-m` to add a message along with files, `-s` to auto-submit immediately, and `-n` to start a new chat conversation. Use "-" to read from stdin.
 
@@ -175,7 +175,7 @@ wsh ai architecture.png api-spec.pdf server.go -m "review the system design"
 
 ## editconfig
 
-You can easily open up any of Wave's config files using this command.
+You can easily open Snorkeling configuration files using this command.
 
 ```sh
 wsh editconfig [config-file-name]
@@ -423,7 +423,7 @@ This will connect to a WSL distribution on the local machine. It will use the de
 
 ## web
 
-The `web` command opens URLs in a web block within Wave Terminal.
+The `web` command opens URLs in a Snorkeling web block.
 
 ```sh
 wsh web open [url] [-m] [-r blockid]
@@ -440,10 +440,10 @@ Examples:
 
 ```sh
 # Open a URL
-wsh web open https://waveterm.dev
+wsh web open https://github.com/Nita121388/snorkeling
 
 # Search with the configured search engine
-wsh web open "wave terminal documentation"
+wsh web open "snorkeling documentation"
 
 # Open in magnified mode
 wsh web open -m https://github.com
@@ -458,7 +458,7 @@ The command will open a new web block with the desired page, or replace an exist
 
 ## notify
 
-The `notify` command creates a desktop notification from Wave Terminal.
+The `notify` command creates a desktop notification from Snorkeling.
 
 ```sh
 wsh notify [message] [-t title] [-s]
@@ -514,7 +514,7 @@ For wsl connections,
 wsh conn reinstall [wsl://<distribution-name>]
 ```
 
-This command reinstalls the Wave Shell Extensions on the specified connection.
+This command reinstalls the Snorkeling remote shell helper on the specified connection.
 
 ### disconnect
 
@@ -582,18 +582,18 @@ The `file` command provides a set of subcommands for managing files across diffe
 
 :::note
 
-Wave Terminal is capable of managing files from remote SSH hosts. Files are addressed via URIs, which
+Snorkeling is capable of managing files from remote SSH hosts. Files are addressed via URIs, which
 vary depending on the storage system. If no scheme is specified, the file will be treated as a local connection.
 
 URI format: `[profile]:[uri-scheme]://[connection]/[path]`
 
 Supported URI schemes:
 
-- `wsh` - Used to access files on remote hosts over SSH via the WSH helper. Allows for file streaming to Wave and other remotes.
+- `wsh` - Used to access files on remote hosts over SSH via the WSH helper. Allows for file streaming to Snorkeling and other remotes.
 
   Profiles are optional for WSH URIs, provided that you have configured the remote host in your "connections.json" or "~/.ssh/config" file.
 
-  If a profile is provided, it must be defined in "profiles.json" in the Wave configuration directory.
+  If a profile is provided, it must be defined in "profiles.json" in the Snorkeling configuration directory.
 
   Format: `wsh://[remote]/[path]`
 
@@ -784,7 +784,7 @@ Widget configurations can be customized in your `widgets.json` configuration fil
 
 ## getvar/setvar
 
-Wave Terminal provides commands for managing persistent variables at different scopes (block, tab, workspace, or client-wide).
+Snorkeling provides commands for managing persistent variables at different scopes (block, tab, workspace, or client-wide).
 
 ### setvar
 
@@ -926,13 +926,13 @@ The `--lastcommand` flag requires shell integration to be enabled. This feature 
 
 ## wavepath
 
-The `wavepath` command lets you get the paths to various Wave Terminal directories and files, including configuration, data storage, and logs.
+The `wavepath` command lets you get the paths to various Snorkeling directories and files, including configuration, data storage, and logs. The command name is inherited from upstream Wave for compatibility.
 
 ```sh
 wsh wavepath {config|data|log}
 ```
 
-This command returns the full path to the requested Wave Terminal system directory or file. It's useful for accessing Wave's configuration files, data storage, or checking logs.
+This command returns the full path to the requested Snorkeling system directory or file. It's useful for accessing Snorkeling configuration files, data storage, or checking logs.
 
 Flags:
 
@@ -964,9 +964,9 @@ wsh wavepath -t log
 
 The command will show you the full path to:
 
-- `config` - Where Wave Terminal stores its configuration files
-- `data` - Where Wave Terminal stores its persistent data
-- `log` - The main Wave Terminal log file
+- `config` - Where Snorkeling stores its configuration files
+- `data` - Where Snorkeling stores its persistent data
+- `log` - The main Snorkeling log file
 
 :::tip
 Use the `-t` flag with the log path to quickly view recent log entries without having to open the full file. This is particularly useful for troubleshooting.

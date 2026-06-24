@@ -9,58 +9,52 @@ hide_table_of_contents: true
 import { Card, CardGroup } from "@site/src/components/card";
 import waveScreenshot from "@site/docs/img/wave-screenshot.webp";
 
-# 欢迎使用 Wave Terminal
+# 欢迎使用 Snorkeling
 
-Wave 是一个 [open-source](https://github.com/wavetermdev/waveterm) 终端，把传统终端能力和文件预览、网页浏览、AI 辅助等图形化能力放在一起。它支持 macOS、Linux 和 Windows。
+Snorkeling 是基于 [Wave Terminal](https://github.com/wavetermdev/waveterm) 的开源 AI 编程工作流二次开发版。它保留 Wave 的终端、远程连接、文件预览、编辑器、AI、组件和布局基础，并在此之上加入更贴近日常 AI 辅助开发的工作流能力。
 
-现代开发经常需要在终端和浏览器之间切换：查文档、预览文件、监控系统、使用 AI 工具。Wave 把这些图形化工具直接放进终端，让你可以通过命令行控制它们。这样你可以继续保持终端工作流，同时也能使用需要的可视化界面。
+它的目标很直接：把终端、文件、版本控制和 AI 编程 Agent 放在同一个工作台里，让你少切窗口，并尽量保留当前工作的上下文。
 
-安装说明请查看 [入门指南](./gettingstarted)。
+安装请查看 [入门指南](./gettingstarted)。如果想先了解 Snorkeling 相比上游 Wave 增加了什么，请查看 [Snorkeling 功能概览](./snorkeling-features)。
 
-<img src={waveScreenshot} alt="Wave 截图" />
+<img src={waveScreenshot} alt="Snorkeling 截图" />
 
 <CardGroup>
   <Card
-    href="./waveai"
+    href="./snorkeling-features"
     icon="fa-sparkles"
-    title="Wave AI"
-    description="能够理解终端输出、组件和文件系统上下文的终端助手。"
+    title="Snorkeling 功能"
+    description="Agent 启动、AI 会话浏览、文件工作流、版本控制区块和 Snorkeling 专属发布行为。"
   />
   <Card
-    href="./customization"
-    icon="fa-paintbrush"
-    title="自定义"
-    description="按你的工作流设置标签页和终端。"
-  />
-  <Card
-    href="./keybindings"
-    icon="fa-keyboard"
-    title="快捷键"
-    description="通过键盘快捷键提高导航和操作效率。"
-  />
-  <Card
-    href="./layout"
-    icon="fa-grid-2"
-    title="布局"
-    description="使用布局系统整理你的工作空间。"
+    href="./gettingstarted"
+    icon="fa-rocket"
+    title="入门指南"
+    description="从 GitHub Releases 安装 Snorkeling，并了解核心工作区模型。"
   />
   <Card
     href="./connections"
     icon="fa-network-wired"
     title="远程连接"
-    description="一步完成 SSH 或远程机器连接。"
+    description="连接 SSH 和 WSL 环境；Snorkeling 的 wsh helper 默认安装在 ~/.snorkeling 下。"
   />
   <Card
-    href="./widgets"
-    icon="fa-rocket"
-    title="组件"
-    description="探索内置工具，扩展终端功能。"
+    href="./config"
+    icon="fa-sliders"
+    title="配置"
+    description="了解 settings.json、配置/数据目录，以及当前运行时仍使用的 WAVETERM_* 兼容环境变量。"
+  />
+  <Card
+    href="./waveai"
+    icon="fa-message-bot"
+    title="AI"
+    description="使用继承自 Wave 的 AI modes，并结合 Snorkeling 的本地 Agent 与 Sessions 工作流。"
   />
   <Card
     href="./wsh"
     icon="fa-rectangle-terminal"
     title="wsh 命令"
-    description="从命令行控制 Wave 并启动组件。"
+    description="从命令行控制 Snorkeling 组件和连接。当前 CLI 名称仍然是 wsh。"
   />
 </CardGroup>
 
@@ -68,7 +62,7 @@ Wave 是一个 [open-source](https://github.com/wavetermdev/waveterm) 终端，�
 
 :::info
 
-如果你有问题，欢迎在 [Discord](https://discord.gg/XfvZ334gwU) 提问。若要提交 bug 或改进建议，请使用 [Github Issues](https://github.com/wavetermdev/waveterm/issues)。这些文档也是开源的，我们接受文档 PR：[docs](https://github.com/wavetermdev/waveterm/blob/main/docs)。你也可以点击页面底部的 "Edit this page" 链接，直接打开 GitHub 中对应文档的编辑页面。
+Snorkeling 是一个二次开发版本。当前运行时里有些内部名称、命令名和环境变量仍然沿用 Wave 或 `WAVETERM_*`，这是为了兼容当前代码真实接口，并不是文档漏改。
 
 :::
 
@@ -77,6 +71,7 @@ Wave 是一个 [open-source](https://github.com/wavetermdev/waveterm) 终端，�
 其他参考：
 
 - [配置](./config)
+- [远程连接](./connections)
 - [自定义组件](./customwidgets)
 - [完整 wsh 参考](./wsh-reference)
 - [遥测](./telemetry)
@@ -85,17 +80,7 @@ Wave 是一个 [open-source](https://github.com/wavetermdev/waveterm) 终端，�
 
 </div>
 
-## 路线图
-
-想参与未来版本规划？欢迎通过 [Discord](https://discord.gg/XfvZ334gwU) 联系我们，或提交 [Feature Request](https://github.com/wavetermdev/waveterm/issues/new/choose)。
-
 ## 链接
 
-- **主页** https://waveterm.dev
-- **下载** https://waveterm.dev/download
-- **Discord** https://discord.gg/XfvZ334gwU
-- **GitHub** https://github.com/wavetermdev/waveterm/
-
-## 在找 WaveLegacy 文档？
-
-WaveLegacy 文档在 [legacydocs.waveterm.dev](https://legacydocs.waveterm.dev)。
+- **GitHub** https://github.com/Nita121388/snorkeling
+- **上游 Wave Terminal** https://github.com/wavetermdev/waveterm

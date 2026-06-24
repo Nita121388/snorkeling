@@ -1,0 +1,89 @@
+---
+sidebar_position: 0
+id: "snorkeling-features"
+title: "Snorkeling 功能概览"
+---
+
+# Snorkeling 功能概览
+
+Snorkeling 继承 Wave Terminal 的核心工作区模型，并为 AI 编程工作流加入了一批用户可见能力。本页只描述 Snorkeling 二次开发新增或相比上游 Wave 明显改变的部分。
+
+## 产品身份
+
+- 桌面应用打包名称为 `Snorkeling`。
+- 发布产物来自 `Nita121388/snorkeling` GitHub 仓库。
+- Release tag 使用 `snorkeling-v...` 格式，应用版本号包含 `snorkeling` 后缀。
+- 本地应用数据和远端 helper 路径使用 `.snorkeling` 目录。
+
+## Agent 工作流
+
+Snorkeling 在工作区侧边栏增加了 `Agent` 入口，用于从当前上下文启动 Codex、Claude Code 等 AI 编程 Agent。
+
+关键行为包括：
+
+- 从当前本地终端目录启动 Agent。
+- 当前焦点是 SSH 终端时，从同一远程连接和目录启动 Agent。
+- 当前焦点是 Files 路径时，以文件所在目录或当前目录作为 Agent 启动目录。
+- 当存在多个候选上下文时，显示选择器让用户确认。
+- 通过 `settings.json` 中的 `agent:defaultprofile` 和 `agent:profiles` 配置 Agent profile。
+
+## AI Sessions
+
+Snorkeling 增加了 `Sessions` 视图，用于浏览本机 AI 编程会话历史。
+
+当前本地来源包括：
+
+- Codex：`~/.codex/sessions`
+- Claude Code：`~/.claude/projects`
+- Claude Code cache：`~/.cache/claude/projects`
+
+Snorkeling 自己的会话索引和元数据存放在 `~/.snorkeling/ai-sessions`。标记、备注和删除暂存会写入 Snorkeling 自己的数据文件，不会写回 Codex 或 Claude 的原始 session 文件。
+
+已支持的工作流包括过滤、搜索、标记、备注、详情查看、复制会话信息，以及在元数据足够时创建新的终端区块尝试恢复会话。
+
+## Files 与上下文复制
+
+Files 工作流不再只是简单预览目录：
+
+- 目录树浏览和自然排序。
+- 隐藏文件显示控制。
+- 新建、重命名、删除、复制和粘贴文件/文件夹。
+- 复制文件名、完整路径、相对路径或 shell quoted 路径。
+- 按指定布局方向打开文件或文件夹。
+- 从选中的文件或目录直接运行 Agent。
+- 本地目录支持通过右键菜单 `Open VS Code Here` 打开。
+
+编辑器和预览区也增加了上下文复制动作，方便把选中代码、路径和行号发给 AI Agent。
+
+## 版本控制
+
+Snorkeling 增加了 `Version Control` 区块，支持 Git 和 SVN 仓库。
+
+能力包括：
+
+- 从当前路径及附近父/子路径检测仓库。
+- 显示已修改、未跟踪和远端相关文件。
+- 打开文件 diff、文件历史和仓库提交列表。
+- 选择文件并输入 commit message 后提交。
+- 执行 Git fetch、pull、push 和 SVN update 等常见同步动作。
+- 在 Files 右键菜单中使用版本控制入口。
+
+## 工作区布局
+
+Snorkeling 增加了一些面向工作流的布局改进：
+
+- 最小化区块，并从浮动的最小化区块入口恢复。
+- 把区块复制到其他标签页或新标签页。
+- 把标签页移动到新窗口，并支持移回。
+- 打开文件和回到相关标签页时尽量保留上下文。
+
+## 当前边界
+
+Snorkeling 当前仍有一些上游名称和接口需要保留：
+
+- CLI 名称仍然是 `wsh`。
+- 许多环境变量仍然叫 `WAVETERM_*`。
+- 部分内部包名、文件名、socket 名和数据库名仍使用 `wave` 命名。
+- Shell integration 当前仍把 `TERM_PROGRAM` 设置为 `waveterm`。
+
+这些名称是当前运行时事实，文档应如实说明，而不应该盲目替换。

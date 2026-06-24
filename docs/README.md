@@ -1,27 +1,19 @@
-# Wave Terminal Documentation
+# Snorkeling Documentation
 
-This is the home for Wave Terminal's documentation site. This README is specifically about _building_ and contributing to the docs site. If you are looking for the actual hosted docs, go here -- https://docs.waveterm.dev
+This directory contains the Docusaurus documentation site for Snorkeling.
 
-### Installation
+Snorkeling is a customization fork built on top of Wave Terminal, so some docs still describe inherited Wave behavior. Snorkeling-specific pages should clearly distinguish runtime facts that still use upstream names, such as `wsh`, `WAVETERM_*`, and `waveai:*`.
 
-Our docs are built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+## Development
 
-### Local Development
-
-```sh
-task docsite
+```bash
+npm install
+npm run start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+## Build
 
-### Build
-
-```sh
-task docsite:build:public
+```bash
+npm run build -- --locale en
+npm run build -- --locale zh-Hans
 ```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
-
-### Deployment
-
-Deployments are handled automatically by the [Docsite CI/CD workflow](../.github/workflows/deploy-docsite.yml)

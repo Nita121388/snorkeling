@@ -8,11 +8,11 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 <VersionBadge version="v0.13" noLeftMargin={true}/>
 
-Wave AI 支持自定义 AI 模式，让你可以使用本地模型、自定义 API 端点以及替代 AI 提供商。这样你就能完全控制 Wave AI 功能使用哪些模型和提供商。
+Snorkeling 的 AI 系统支持自定义 AI 模式，让你可以使用本地模型、自定义 API 端点以及替代 AI 提供商。配置文件和配置键仍沿用 Wave AI 命名，用于保持现有 `waveai.json` 与 `waveai:*` 设置兼容。
 
 ## 配置概览 {#configuration-overview}
 
-AI 模式在 `~/.config/waveterm/waveai.json` 中配置。
+AI 模式默认在 `~/.config/snorkeling/waveai.json` 中配置。配置键名仍使用 `waveai:*`，用于兼容上游接口。
 
 **通过 UI 编辑：**
 1. 点击 widget 栏中的设置（齿轮）图标
@@ -28,7 +28,7 @@ wsh editconfig waveai.json
 
 ## 基于提供商的配置 {#provider-based-configuration}
 
-Wave AI 现在支持基于提供商的配置，会为常见提供商自动应用合理的默认值。通过指定 `ai:provider` 字段，可以大幅简化配置，因为系统会自动设置端点、API 类型和密钥名称。
+继承的 Wave AI 配置支持基于提供商的设置，会为常见提供商自动应用合理的默认值。通过指定 `ai:provider` 字段，可以大幅简化配置，因为系统会自动设置端点、API 类型和密钥名称。
 
 ### 支持的提供商 {#supported-providers}
 
@@ -43,19 +43,19 @@ Wave AI 现在支持基于提供商的配置，会为常见提供商自动应用
 
 ### 支持的 API 类型 {#supported-api-types}
 
-Wave AI 支持以下 API 类型：
+Snorkeling 支持以下 AI API 类型：
 
 - **`openai-chat`**：使用 `/v1/chat/completions` 端点（最常见）
 - **`openai-responses`**：使用 `/v1/responses` 端点（适用于 GPT-5+ 模型的现代 API）
 - **`google-gemini`**：Google 的 Gemini API 格式（使用 `ai:provider: "google"` 时会自动设置，通常无需直接使用）
 
-## 全局 Wave AI 设置 {#global-wave-ai-settings}
+## 全局 AI 设置 {#global-wave-ai-settings}
 
-你可以在 Wave Terminal 设置中配置全局 Wave AI 行为（独立于 `waveai.json` 中的模式配置）。
+你可以在 Snorkeling 设置中配置全局 AI 行为（独立于 `waveai.json` 中的模式配置）。
 
 ### 设置默认 AI 模式 {#setting-a-default-ai-mode}
 
-配置本地模型或自定义模式后，可以在 Wave Terminal 设置中设置 `waveai:defaultmode`，让它成为默认模式。
+配置本地模型或自定义模式后，可以在 Snorkeling 设置中设置 `waveai:defaultmode`，让它成为默认模式。
 
 :::important
 请使用**模式键**（`waveai.json` 配置中的 key），不要使用显示名称。例如，应使用 `"ollama-llama"`（key），而不是 `"Ollama - Llama 3.3"`（显示名称）。
@@ -74,15 +74,15 @@ wsh setconfig waveai:defaultmode="ollama-llama"
   "waveai:defaultmode": "ollama-llama"
 ```
 
-这样在打开 Wave AI 功能时，指定模式会成为默认选项。
+这样在打开 Snorkeling AI 功能时，指定模式会成为默认选项。
 
 :::note
-Wave AI 通常要求启用遥测。不过，如果你配置了自己的自定义模型（本地或 BYOK），并将 `waveai:defaultmode` 设置为该自定义模式的 key，就不会收到遥测要求提示。这样你就可以用自己的模型完全私密地使用 Wave AI 功能。 <VersionBadge version="v0.13.1"/>
+Snorkeling 当前继承了上游内置云端 AI 模式的遥测门槛。不过，如果你配置了自己的自定义模型（本地或 BYOK），并将 `waveai:defaultmode` 设置为该自定义模式的 key，就不会收到遥测要求提示。这样你就可以用自己的模型私密使用 AI 功能。 <VersionBadge version="v0.13.1"/>
 :::
 
-### 隐藏 Wave Cloud 模式 {#hiding-wave-cloud-modes}
+### 隐藏继承的云端模式 {#hiding-wave-cloud-modes}
 
-如果你只想使用本地或自定义模型，并希望在模式下拉列表中隐藏 Wave 的云端 AI 模式，请将 `waveai:showcloudmodes` 设置为 `false`：
+如果你只想使用本地或自定义模型，并希望在模式下拉列表中隐藏继承的云端 AI 模式，请将 `waveai:showcloudmodes` 设置为 `false`：
 
 **使用设置命令：**
 ```bash
@@ -97,7 +97,7 @@ wsh setconfig waveai:showcloudmodes=false
   "waveai:showcloudmodes": false
 ```
 
-这会隐藏 Wave 内置的云端 AI 模式，只显示你自定义配置的模式。
+这会隐藏继承的内置云端 AI 模式，只显示你自定义配置的模式。
 
 ## 本地模型示例 {#local-model-examples}
 
@@ -226,7 +226,7 @@ wsh setconfig waveai:showcloudmodes=false
 }
 ```
 
-`ai:apitokensecretname` 应该是包含你的 API key 的环境变量名称。请在运行 Wave Terminal 前设置此环境变量。
+`ai:apitokensecretname` 应该是包含你的 API key 的环境变量名称。请在运行 Snorkeling 前设置此环境变量。
 
 
 ### OpenRouter
@@ -397,7 +397,7 @@ NanoGPT 是一个代理服务，可提供对多个 AI 模型的访问。你必�
 
 ## 使用 Secrets 存储 API Key {#using-secrets-for-api-keys}
 
-不建议直接在配置中存储 API key。你应该使用 Wave 的 secret store 来安全保存凭据。Secrets 会使用系统原生钥匙串加密存储。
+不建议直接在配置中存储 API key。你应该使用 Snorkeling 的 secret store 来安全保存凭据。Secrets 会使用系统原生钥匙串加密存储。
 
 ### 存储 API Key {#storing-an-api-key}
 
@@ -428,7 +428,7 @@ wsh secret set OPENROUTER_KEY=sk-xxxxxxxxxxxxxxxx
 }
 ```
 
-`openai` 提供商会自动查找 `OPENAI_KEY` secret。关于如何在 Wave 中安全管理 secrets，请参阅 [Secrets 文档](./secrets.mdx)。
+`openai` 提供商会自动查找 `OPENAI_KEY` secret。关于如何在 Snorkeling 中安全管理 secrets，请参阅 [Secrets 文档](./secrets.mdx)。
 
 ## 多模式示例 {#multiple-modes-example}
 
@@ -463,7 +463,7 @@ wsh secret set OPENROUTER_KEY=sk-xxxxxxxxxxxxxxxx
 
 ### 连接问题 {#connection-issues}
 
-如果 Wave 无法连接到你的模型服务器：
+如果 Snorkeling 无法连接到你的模型服务器：
 
 1. **对于已设置 `ai:provider` 的云提供商**：确保已存储正确的 secret（例如 `OPENAI_KEY`、`OPENROUTER_KEY`）
 2. **对于本地/自定义端点**：确认服务器正在运行（Ollama 可用 `curl http://localhost:11434/v1/models` 检查）
@@ -543,8 +543,8 @@ wsh secret set OPENROUTER_KEY=sk-xxxxxxxxxxxxxxxx
 | `ai:azureresourcename` | 否 | Azure 资源名称（用于 Azure 提供商） |
 | `ai:azuredeployment` | 否 | Azure 部署名称（用于 `azure-legacy` 提供商） |
 | `ai:capabilities` | 否 | 支持的能力数组：`"tools"`、`"images"`、`"pdfs"` |
-| `waveai:cloud` | 否 | 内部字段，仅用于 Wave Cloud AI 配置 |
-| `waveai:premium` | 否 | 内部字段，仅用于 Wave Cloud AI 配置 |
+| `waveai:cloud` | 否 | 内部字段，仅用于继承的云端 AI 配置 |
+| `waveai:premium` | 否 | 内部字段，仅用于继承的云端 AI 配置 |
 
 ### AI 能力 {#ai-capabilities}
 
@@ -559,7 +559,7 @@ wsh secret set OPENROUTER_KEY=sk-xxxxxxxxxxxxxxxx
 - **OpenRouter、NanoGPT、Groq、Azure、Azure-Legacy 和 Custom 提供商**：你必须根据模型功能手动指定能力。
 
 :::warning
-如果 `ai:capabilities` 数组中不包含 `"tools"`，AI 模型将无法与你的 Wave 终端 widget 交互、读写文件或执行命令。大多数 AI 模式都应包含 `"tools"`，以获得更好的 Wave 体验。
+如果 `ai:capabilities` 数组中不包含 `"tools"`，AI 模型将无法与你的 Snorkeling 终端 widget 交互、读写文件或执行命令。大多数 AI 模式都应包含 `"tools"`，以获得更好的 Snorkeling 体验。
 :::
 
 大多数模型都支持 `tools` 并能从中受益。具备视觉能力的模型应包含 `images`。并非所有模型都支持 PDF，因此只有在模型可以处理 PDF 时才包含 `pdfs`。

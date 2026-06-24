@@ -7,7 +7,7 @@ title: "Getting Started"
 import { PlatformProvider, PlatformSelectorButton, PlatformItem } from "@site/src/components/platformcontext";
 import { Kbd } from "@site/src/components/kbd";
 
-Wave Terminal is a modern terminal that includes graphical capabilities like web browsing, file previews, and AI assistance alongside traditional terminal features. This guide will help you get started.
+Snorkeling is a modern AI coding workspace built on Wave Terminal. It includes a terminal, graphical widgets, file previews, remote connections, built-in editing, AI features, and Snorkeling-specific Agent and Sessions workflows.
 
 ## Installation
 
@@ -28,99 +28,87 @@ Wave Terminal is a modern terminal that includes graphical capabilities like web
 - Supported architectures: x64
 - Supported OS version: Windows 10 1809 or later, Windows 11
 
-:::note
-
-ARM64 is planned, but is currently blocked by upstream dependencies (see [Windows ARM Support](https://github.com/wavetermdev/waveterm/issues/928)).
-
-:::
-
 </PlatformItem>
 
 <PlatformItem platforms={["linux"]}>
 
 - Supported architectures: x64, ARM64
-- Supported OS version: must have glibc-2.28 or later (Debian >=10, RHEL >=8, Ubuntu >=20.04, etc.)
+- Supported OS version: glibc 2.28 or later, such as Debian >=10, RHEL >=8, or Ubuntu >=20.04
 
 </PlatformItem>
 
-### Package managers
+### Download from GitHub Releases
+
+Snorkeling release artifacts are published on the [Snorkeling GitHub Releases page](https://github.com/Nita121388/snorkeling/releases). Download the package that matches your platform.
 
 <PlatformItem platforms={["mac"]}>
 
-#### Homebrew
-
-```bash
-brew install --cask wave
-```
+Use the `.dmg` or `.zip` artifact for macOS. If the build is unsigned, macOS may require you to approve the app in **System Settings > Privacy & Security** before first launch.
 
 </PlatformItem>
 
 <PlatformItem platforms={["windows"]}>
 
-#### Windows Package Manager
-
-```powershell
-winget install CommandLine.Wave
-```
-
-#### Chocolatey
-
-```powershell
-choco install wave
-```
+Use the `.exe`, `.msi`, or `.zip` artifact for Windows.
 
 </PlatformItem>
 
 <PlatformItem platforms={["linux"]}>
 
-#### Snap
-
-```bash
-sudo snap install --classic waveterm
-```
-
-Other options available: [AUR package](https://aur.archlinux.org/packages/waveterm) (community maintained), [Nix package](https://search.nixos.org/packages?channel=unstable&show=waveterm) (community maintained)
+Use one of the Linux artifacts, such as `.deb`, `.rpm`, `.pacman`, `.snap`, or `.AppImage`, depending on your distribution and package preferences.
 
 </PlatformItem>
 
-You can also download installers directly from our [Downloads page](https://www.waveterm.dev/download).
+:::note
+
+The old Wave package-manager commands install upstream Wave Terminal, not Snorkeling. Use Snorkeling release artifacts unless a Snorkeling-specific package source is documented for your platform.
+
+:::
 
 ## Core Concepts
 
 ### Tabs and Blocks
 
 - **Tabs**: Like browser tabs, these help organize your work. Create new tabs with <Kbd k="Cmd:t"/>.
-- **Blocks**: The building blocks of Wave. Each block can be a terminal, web browser, file preview, or other widget.
-- **Layout**: Blocks can be dragged, dropped, and resized to create your ideal layout.
+- **Blocks**: The building blocks of Snorkeling. A block can be a terminal, web browser, file preview, editor, AI panel, Sessions view, Version Control view, or another widget.
+- **Layout**: Blocks can be dragged, dropped, resized, minimized, copied to other tabs, or moved into another window.
 
 ### Key Features
 
 1. **Terminal Features**
 
-   - Works with common shells (bash, zsh, fish)
-   - Supports standard terminal features (readline, control sequences, etc)
-   - Includes the `wsh` command for interacting with Wave's GUI features
-   - GPU accelerated (on most platforms)
+   - Works with common shells such as bash, zsh, fish, PowerShell, and Git Bash.
+   - Supports standard terminal behavior such as readline and control sequences.
+   - Includes the `wsh` command for interacting with Snorkeling's GUI features.
+   - Uses GPU acceleration on most platforms.
 
-2. **Graphical Widgets**
+2. **AI Coding Workflows**
 
-   - Preview files (images, video, markdown, code with syntax highlighting)
-   - Browse web pages
-   - Ask questions and get AI help directly from the terminal (set up multiple AI models)
-   - Basic system monitoring graphs
+   - Launch Agent blocks from the current terminal, SSH connection, or Files path.
+   - Browse local Codex and Claude Code session history in the Sessions view.
+   - Resume supported sessions into new terminal blocks.
+   - Configure Agent profiles through `settings.json`.
 
-3. **Remote Connections**
-   - Easy SSH connections with the connection button <i className="fa-sharp fa-laptop"/>
-   - WSL integration on Windows
-   - Consistent experience across local and remote sessions
+3. **Graphical Workspace**
+
+   - Preview files such as images, video, Markdown, and syntax-highlighted code.
+   - Browse web pages and use custom widgets.
+   - Use Files workflows for copy, paste, rename, delete, path copying, and Agent launch.
+   - Use Version Control blocks for Git/SVN status, diffs, history, commit, and sync actions.
+
+4. **Remote Connections**
+
+   - Connect to SSH hosts with the connection button <i className="fa-sharp fa-laptop"/>.
+   - Use WSL integration on Windows.
+   - Install the `wsh` helper on remote machines under `~/.snorkeling/bin/wsh` for richer remote widgets and commands.
 
 ## Quick Start Guide
 
 1. **Open Your First New Tab**
 
-   - New Wave tabs start with a single terminal block
-   - Use it just like your regular terminal
-   - Create additional terminal blocks with <Kbd k="Cmd:n"/>
+   - New Snorkeling tabs start with a terminal block.
+   - Use it like a regular terminal.
+   - Create additional terminal blocks with <Kbd k="Cmd:n"/>.
 
 2. **Try Some Basic Commands**
 
@@ -135,30 +123,36 @@ You can also download installers directly from our [Downloads page](https://www.
    wsh ai -m "how do I find large files in my current directory?" -s
    ```
 
-3. **Customize Your Layout**
+3. **Launch an Agent**
 
-   - Drag block headers to rearrange them
-   - Hover between blocks to resize them
-   - Right-click tab headers for background options
-   - Right-click block headers for block-specific options
+   - Use the `Agent` sidebar entry to start an Agent from the current workspace context.
+   - If several terminal or file contexts match, choose the intended one from the selector.
+   - Configure default Agent behavior with `agent:defaultprofile` and `agent:profiles` in [Configuration](./config).
 
-4. **Connect to Remote Machines**
-   - Click the <i className="fa-sharp fa-laptop"/> button
-   - Enter `username@hostname` for SSH connections
-   - Or select a WSL distribution on Windows
+4. **Browse AI Sessions**
+
+   - Open `Sessions` from the sidebar.
+   - Filter Codex and Claude Code sessions.
+   - Mark important sessions, add notes, copy session information, or resume a supported session.
+
+5. **Connect to Remote Machines**
+
+   - Click the <i className="fa-sharp fa-laptop"/> button.
+   - Enter `username@hostname` for SSH connections.
+   - Or select a WSL distribution on Windows.
 
 ## Next Steps
 
-- Explore [Key Bindings](./keybindings) to work more efficiently
-- Learn about [Tab Layouts](./layout) to organize your workspace
-- Set up [Custom Widgets](./customwidgets) for quick access to your tools
-- Configure [Wave AI](./waveai) to use your preferred AI models
-- Check out [Configuration](./config) for detailed customization options
+- Read [Snorkeling Features](./snorkeling-features) to understand what this fork adds.
+- Explore [Key Bindings](./keybindings) to work more efficiently.
+- Learn about [Tab Layouts](./layout) to organize your workspace.
+- Configure [AI](./waveai) and [AI Modes](./waveai-modes) for your preferred providers.
+- Check out [Configuration](./config) for detailed customization options.
 
 ## Getting Help
 
-- Join our [Discord community](https://discord.gg/XfvZ334gwU) for help and discussions
-- Report issues on [GitHub](https://github.com/wavetermdev/waveterm/issues)
-- Check our [FAQ](./faq) for common questions
+- Report Snorkeling issues on [GitHub](https://github.com/Nita121388/snorkeling/issues).
+- Check [FAQ](./faq) for common questions.
+- For inherited upstream behavior, the [Wave Terminal repository](https://github.com/wavetermdev/waveterm) can be useful background.
 
 </PlatformProvider>

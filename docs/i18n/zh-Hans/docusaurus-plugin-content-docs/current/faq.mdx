@@ -8,61 +8,62 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # FAQ
 
-### 如何查看块编号？
+### Snorkeling 和 Wave Terminal 是同一个东西吗？
 
-按住 Ctrl-Shift 时会显示块编号，松开后编号会消失。
+不是。Snorkeling 是基于 Wave Terminal 的二次开发版本。它继承了许多 Wave 能力，并新增 Snorkeling 专属工作流，例如 Agent 启动、AI Sessions 浏览、Files 增强、Version Control 区块和 Snorkeling 发布打包流程。
+
+### 为什么有些名称仍然叫 Wave 或 WAVETERM？
+
+当前仍有一些命令名、配置键、环境变量、包名和内部代码路径沿用上游 Wave 名称。最明显的例子是 `wsh` CLI、`WAVETERM_*` 环境变量，以及继承的 `waveai:*` 配置键。这些是当前运行时兼容事实，不是文档漏改。
+
+### 如何查看区块编号？
+
+按住 Ctrl-Shift 时会显示区块编号，松开后编号会消失。
 
 ### 如何建立远程连接？
 
-顶部有一个按钮。点击 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/>，然后输入你想连接的 `[user]@[host]`。
+顶部有一个按钮。点击 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/> 图标，然后输入你想连接的 `[user]@[host]`。
 
 ### 在 Windows 上，如何把 Git Bash 设为默认 shell？
 
-Wave 会自动检测 Git Bash 安装，并把它添加到连接下拉菜单。点击块标题中的 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/> 按钮，然后在列表中选择 "Git Bash"。
+Snorkeling 会自动检测 Git Bash 安装，并把它添加到连接下拉菜单。点击区块标题中的 <i className="fa-sharp fa-laptop"/> 或 <i className="fa-sharp fa-arrow-right-arrow-left"/> 按钮，然后在列表中选择 "Git Bash"。
 
-你也可以手动把 Git Bash 设为默认 shell：把配置变量 `term:localshellpath` 设置为 Git Bash 的 "bash.exe" 二进制文件位置。默认位置是 "C:\Program Files\Git\bin\bash.exe"。
-注意 JSON 中的反斜杠需要转义。因此请把下面内容添加到你的 [settings.json](./config) 文件：
+你也可以手动把 Git Bash 设为默认 shell：把配置变量 `term:localshellpath` 设置为 Git Bash 的 `bash.exe` 二进制文件位置。默认位置是 `C:\Program Files\Git\bin\bash.exe`。
+
+注意 JSON 中的反斜杠需要转义：
 
 ```json
 "term:localshellpath": "C:\\Program Files\\Git\\bin\\bash.exe"
 ```
 
-### 可以在 Wave 外部使用 WSH 吗？
+### 可以在 Snorkeling 外部使用 wsh 吗？
 
-`wsh` 是 Wave 内部 CLI，用来把 Wave 的控制能力扩展到命令行。你可以在 [这里](./wsh) 了解更多。为了防止其他应用误用，`wsh` 需要 Wave 提供的访问令牌，因此无法在应用外部运行。
+`wsh` 是内部 CLI，用来把 Snorkeling 的控制能力扩展到命令行。为了防止其他应用误用，大多数应用控制操作需要 Snorkeling 提供的访问令牌，因此它不能当作完全独立的通用 CLI 使用。
 
-## 为什么 Wave 启动时会提示 ARM64 转译？
+### 为什么 Snorkeling 启动时会提示 ARM64 转译？
 
-macOS 和 Windows 都有兼容层，可以让 x64 应用在 ARM 电脑上运行。这能让更多应用在这些系统上可用，同时开发者也可以逐步添加原生 ARM 支持。不过，这通常会带来明显的性能损耗。
+macOS 和 Windows 都有兼容层，可以让 x64 应用在 ARM 电脑上运行。这能让更多应用在这些系统上可用，同时开发者也可以逐步添加原生 ARM 支持。不过，这可能带来性能损耗。
 
-为了获得更好的 Wave 使用体验，建议卸载 Wave，并重新安装为你的电脑原生编译的版本。你可以查看 [安装说明](./gettingstarted#installation) 找到正确版本。
+为了获得更好的体验，请使用与你机器架构匹配的 Snorkeling 构建。可用产物位于 [Snorkeling GitHub Releases](https://github.com/Nita121388/snorkeling/releases)。
 
 你可以在 [配置](./config) 中设置 `app:dismissarchitecturewarning=true` 来关闭此提示。
 
-## 如何加入 Wave beta 构建？
+### 如何获取 Snorkeling beta 或 release 构建？
 
-Wave 发布到两个渠道：`latest` 和 `beta`。如果你通过 DEB 或 RPM 安装了 macOS、Windows 或 Linux 应用，可以在 `settings.json` 中设置以下配置。更多信息见 [配置](./config)：
+Snorkeling 构建来自 `Nita121388/snorkeling` 仓库。请在 [GitHub Releases](https://github.com/Nita121388/snorkeling/releases) 下载与你的平台匹配的产物。
 
-```json
-"autoupdate:enabled": true,
-"autoupdate:channel": "beta"
-```
+如果你想安装 Snorkeling，不要使用上游 Wave 的包管理器命令；那些命令会安装 Wave Terminal。
 
-如果你通过 Snap 安装，可以使用以下命令：
-
-```sh
-sudo snap install waveterm --classic --beta
-```
-
-## 不启用 telemetry，也可以使用 Wave AI 吗？
+### 不启用 telemetry，也可以使用继承的 Wave AI 功能吗？
 
 <VersionBadge version="v0.13.1" noLeftMargin={true}/>
 
-可以。通常情况下，未启用 telemetry 时 Wave AI 会被禁用。不过，你可以通过配置自己的自定义 AI 模型来启用 Wave AI，例如本地模型或自己的 API key。
+可以。继承的 Wave AI 云端模式可能依赖 telemetry 相关设置，但你可以配置自己的自定义 AI 模式，例如本地模型或自己的 API key。
 
-在不启用 telemetry 的情况下启用 Wave AI：
+在不启用 telemetry 的情况下使用 AI：
 
-1. 配置一个自定义 AI 模式，见 [Wave AI 文档](./waveai-modes)
-2. 在 Wave 设置中把 `waveai:defaultmode` 设为你的自定义模式 key
+1. 配置一个自定义 AI 模式，见 [AI Modes](./waveai-modes)。
+2. 在 Snorkeling 设置中把 `waveai:defaultmode` 设为你的自定义模式 key。
+3. 如果你想禁用 telemetry，设置 `telemetry:enabled=false`。
 
-完成这两步后，Wave AI 就会启用，并且可以在不使用 telemetry 的情况下完全私密地使用。你可以使用 Ollama 这样的本地模型，也可以使用 OpenAI、OpenRouter 或其他服务商的自己的 API key。
+之后，Snorkeling 可以通过你的配置使用 Ollama、OpenAI-compatible API、OpenRouter 或其他服务商。
