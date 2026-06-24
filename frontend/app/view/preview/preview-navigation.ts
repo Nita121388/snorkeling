@@ -50,6 +50,18 @@ export function resolvePreviewOpenTargetDirection(
     return normalizePreviewOpenTargetDirection(blockValue, defaultDirection);
 }
 
+export function resolvePreviewOpenTargetDirectionForBlock(
+    blockValue: any,
+    settingsValue: any,
+    fallback: PreviewOpenTargetDirection,
+    blockKind?: string | null
+): PreviewOpenTargetDirection {
+    if (blockValue == null && blockKind === "note") {
+        return "off";
+    }
+    return resolvePreviewOpenTargetDirection(blockValue, settingsValue, fallback);
+}
+
 export function applyExplorerRootForDirectoryNavigation(
     meta: Record<string, any>,
     directoryDisplayMode: PreviewDirectoryDisplayMode,
@@ -62,6 +74,25 @@ export function applyExplorerRootForDirectoryNavigation(
         ...meta,
         [PreviewExplorerRootMetaKey]: directoryPath,
     };
+}
+
+export function applyDirectoryNavigationMeta(
+    meta: Record<string, any>,
+    directoryDisplayMode: PreviewDirectoryDisplayMode,
+    directoryPath?: string | null
+): Record<string, any> {
+    if (isBlank(directoryPath)) {
+        return meta;
+    }
+    return applyExplorerRootForDirectoryNavigation(
+        {
+            ...meta,
+            edit: false,
+            "preview:searchline": null,
+        },
+        directoryDisplayMode,
+        directoryPath
+    );
 }
 
 export function resolveExplorerRootPathForOpenInCurrentBlock(entry: {

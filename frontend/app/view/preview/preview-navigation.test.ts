@@ -2,16 +2,51 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+    applyDirectoryNavigationMeta,
     applyExplorerRootForDirectoryNavigation,
     normalizePreviewDirectoryDisplayMode,
     normalizePreviewOpenTargetDirection,
     resolveExplorerRootPathForOpenInCurrentBlock,
     resolvePreviewDirectoryDisplayMode,
     resolvePreviewOpenTargetDirection,
+    resolvePreviewOpenTargetDirectionForBlock,
 } from "@/app/view/preview/preview-navigation";
 import { describe, expect, it } from "vitest";
 
 describe("preview explorer root sync", () => {
+    it("clears file-only preview state when navigating to a directory", () => {
+        const meta = applyDirectoryNavigationMeta(
+            {
+                file: "/tmp/current.md",
+                edit: true,
+                "preview:searchline": 12,
+                "preview:directory-display": "tree",
+                "preview:explorer-root": "/tmp/current",
+            },
+            "tree",
+            "/tmp"
+        );
+
+        expect(meta.edit).toBe(false);
+        expect(meta["preview:searchline"]).toBeNull();
+        expect(meta["preview:explorer-root"]).toBe("/tmp");
+    });
+
+    it("leaves file-only preview state alone when the target is not known to be a directory", () => {
+        const meta = applyDirectoryNavigationMeta(
+            {
+                file: "/tmp/current.md",
+                edit: true,
+                "preview:searchline": 12,
+            },
+            "tree",
+            null
+        );
+
+        expect(meta.edit).toBe(true);
+        expect(meta["preview:searchline"]).toBe(12);
+    });
+
     it("updates the explorer root for directory navigation in tree mode", () => {
         const meta = applyExplorerRootForDirectoryNavigation(
             {
@@ -79,5 +114,15 @@ describe("preview default setting normalization", () => {
         expect(resolvePreviewOpenTargetDirection(undefined, "right")).toBe("right");
         expect(resolvePreviewDirectoryDisplayMode("list", "tree")).toBe("list");
         expect(resolvePreviewOpenTargetDirection("off", "right")).toBe("off");
+    });
+
+    it("defaults Note blocks to current block unless the block has an explicit target", () => {
+        expect(resolvePreviewOpenTargetDirectionForBlock(undefined, "right", "right", "note")).toBe("off");
+        expect(resolvePreviewOpenTargetDirectionForBlock("right", "off", "right", "note")).toBe("right");
+    });
+
+    it("keeps regular Files blocks on the configured default target", () => {
+        expect(resolvePreviewOpenTargetDirectionForBlock(undefined, "right", "right", undefined)).toBe("right");
+        expect(resolvePreviewOpenTargetDirectionForBlock(undefined, "off", "right", undefined)).toBe("off");
     });
 });

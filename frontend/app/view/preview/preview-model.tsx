@@ -8,6 +8,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import {
     createBlock,
@@ -36,14 +37,14 @@ import {
     resolveLivePreviewBlockIdForSource,
 } from "./preview-live";
 import {
-    applyExplorerRootForDirectoryNavigation,
+    applyDirectoryNavigationMeta,
     PreviewDefaultDirectoryDisplaySettingKey,
     PreviewDirectoryDisplayMetaKey,
     PreviewDirectoryDisplayMode,
     PreviewExplorerRootMetaKey,
     PreviewOpenTargetDirection,
     resolvePreviewDirectoryDisplayMode,
-    resolvePreviewOpenTargetDirection,
+    resolvePreviewOpenTargetDirectionForBlock,
 } from "./preview-navigation";
 import {
     discardPreviewSharedDraftIfUnshared,
@@ -112,6 +113,7 @@ type PreviewOpenPathOptions = {
     forceNewBlock?: boolean;
     forceCurrentBlock?: boolean;
     editMode?: boolean;
+    directoryPath?: string | null;
 };
 
 type CopyPathStatus = "idle" | "copied" | "failed";
@@ -518,6 +520,9 @@ export class PreviewModel implements ViewModel {
             const directoryDisplayMode = get(this.directoryDisplayMode);
             const explorerActive = directoryDisplayMode === "tree" && isDirectoryView;
             const loadableFileInfo = get(this.loadableFileInfo);
+            const isKnownDirectory =
+                loadableFileInfo.state == "hasData" &&
+                (!!loadableFileInfo.data?.isdir || loadableFileInfo.data?.mimetype === "directory");
             const liveSourcePath = get(this.liveSourceFilePath);
             if (isLivePreviewView && !isBlank(liveSourcePath)) {
                 headerPath = liveSourcePath;
@@ -654,7 +659,7 @@ export class PreviewModel implements ViewModel {
                         click: () => fireAndForget(() => this.setLiveScrollSyncEnabled(!syncEnabled)),
                     });
                 }
-            } else if (!isLivePreviewView && get(this.canPreview)) {
+            } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
                 viewTextChildren.push({
                     elemtype: "iconbutton",
                     icon: "pen-to-square",
@@ -1236,7 +1241,7 @@ export class PreviewModel implements ViewModel {
         }
         const oldFileKey = globalStore.get(this.fileEditKey);
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
-        const updateMeta = applyExplorerRootForDirectoryNavigation(
+        const updateMeta = applyDirectoryNavigationMeta(
             this.applyOpenPathOptions(goHistory("file", fileName, newPath, blockMeta), options) as Record<string, any>,
             this.getDirectoryDisplayMode(),
             directoryPath
@@ -1305,10 +1310,12 @@ export class PreviewModel implements ViewModel {
 
     private getOpenTargetDirection(getFn: Getter = globalStore.get): PreviewOpenTargetDirection {
         const blockMeta = getFn(this.blockAtom)?.meta;
-        return resolvePreviewOpenTargetDirection(
+        const fallback = blockMeta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote ? "off" : "right";
+        return resolvePreviewOpenTargetDirectionForBlock(
             blockMeta?.[PreviewOpenTargetMetaKey],
             getFn(this.env.getSettingsKeyAtom(PreviewDefaultOpenTargetSettingKey)),
-            "right"
+            fallback,
+            blockMeta?.[SnorkelingBlockKindMetaKey]
         );
     }
 
@@ -1362,9 +1369,17 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         const currentPath = targetBlockData.meta?.file ?? "";
-        const updateMeta = this.applyOpenPathOptions(
-            goHistory("file", currentPath, newPath, targetBlockData.meta),
-            options
+        const updateMeta = applyDirectoryNavigationMeta(
+            this.applyOpenPathOptions(
+                goHistory("file", currentPath, newPath, targetBlockData.meta),
+                options
+            ) as Record<string, any>,
+            resolvePreviewDirectoryDisplayMode(
+                targetBlockData.meta?.[PreviewDirectoryDisplayMetaKey],
+                globalStore.get(this.env.getSettingsKeyAtom(PreviewDefaultDirectoryDisplaySettingKey)),
+                "tree"
+            ),
+            options?.directoryPath
         );
         if (updateMeta == null) {
             return false;
@@ -1381,13 +1396,17 @@ export class PreviewModel implements ViewModel {
         const currentPath = globalStore.get(this.metaFilePath);
         if (normalizePath(currentPath) === normalizePath(newPath)) {
             const blockMeta = globalStore.get(this.blockAtom)?.meta ?? {};
-            const updateMeta = this.applyOpenPathOptions(blockMeta, options);
+            const updateMeta = applyDirectoryNavigationMeta(
+                this.applyOpenPathOptions(blockMeta, options) as Record<string, any>,
+                this.getDirectoryDisplayMode(),
+                options?.directoryPath
+            );
             const blockOref = WOS.makeORef("block", this.blockId);
             await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
             refocusNode(this.blockId);
             return;
         }
-        await this.goHistory(newPath, options);
+        await this.goHistory(newPath, options, options?.directoryPath);
         refocusNode(this.blockId);
     }
 
@@ -1462,7 +1481,7 @@ export class PreviewModel implements ViewModel {
         }
         const direction = this.getOpenTargetDirection();
         if (direction === "off") {
-            await this.goHistory(newPath, options);
+            await this.goHistory(newPath, options, options?.directoryPath);
             refocusNode(this.blockId);
             return;
         }

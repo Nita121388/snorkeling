@@ -102,6 +102,7 @@ export function shouldOpenWithDefaultApp(fileInfo: FileInfo, conn: string): bool
 
 type OpenPreviewEntryOptions = {
     forceNewBlock?: boolean;
+    directoryPath?: string | null;
 };
 
 export async function openPreviewEntry(
@@ -114,5 +115,9 @@ export async function openPreviewEntry(
         getApi().openNativePath(fileInfo.path);
         return;
     }
-    await model.openPathWithTarget(fileInfo.path, options);
+    const targetIsDir = !!fileInfo.isdir || fileInfo.mimetype === "directory";
+    await model.openPathWithTarget(fileInfo.path, {
+        ...options,
+        directoryPath: targetIsDir ? fileInfo.path : options?.directoryPath,
+    });
 }
