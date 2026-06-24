@@ -13,6 +13,7 @@ import {
     PreviewDefaultDirectoryDisplaySettingKey,
     PreviewDirectoryDisplayMetaKey,
     PreviewExplorerRootMetaKey,
+    PreviewPathIsDirMetaKey,
     PreviewRevealPathMetaKey,
     PreviewRevealSeqMetaKey,
     resolvePreviewDirectoryDisplayMode,
@@ -362,7 +363,11 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
         await requestTreeReveal(treeBlock.blockId, treeBlock.block, targetPath);
         await focusTreeBlock(treeBlock.blockId);
         if (!targetIsDir) {
-            await createPreviewBlock(targetPath, connection, applyPreviewOpenOptions({}, options));
+            await createPreviewBlock(
+                targetPath,
+                connection,
+                applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+            );
         }
         return;
     }
@@ -374,11 +379,16 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
                 {
                     [PreviewDirectoryDisplayMetaKey]: "tree",
                     [PreviewExplorerRootMetaKey]: targetPath,
+                    [PreviewPathIsDirMetaKey]: true,
                 },
                 options
             )
         );
         return;
     }
-    await createPreviewBlock(targetPath, connection, applyPreviewOpenOptions({}, options));
+    await createPreviewBlock(
+        targetPath,
+        connection,
+        applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+    );
 }

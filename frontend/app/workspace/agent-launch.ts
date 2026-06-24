@@ -1,6 +1,6 @@
 import { atoms, getApi, getFocusedBlockId, globalStore } from "@/app/store/global";
 import * as WOS from "@/app/store/wos";
-import { PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
+import { PreviewExplorerRootMetaKey, PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
 import { isBlank } from "@/util/util";
 
 const DefaultAgentCommand = "codex";
@@ -326,10 +326,16 @@ function isLikelyFilePath(path: string, editMode: boolean): boolean {
     return baseName.includes(".");
 }
 
-function resolvePreviewLaunchPath(filePath: string, editMode: boolean): string | null {
+function resolvePreviewLaunchPath(filePath: string, editMode: boolean, pathIsDir?: boolean | null): string | null {
     const normalizedPath = normalizePath(filePath);
     if (normalizedPath == null) {
         return null;
+    }
+    if (pathIsDir === true) {
+        return normalizedPath;
+    }
+    if (pathIsDir === false) {
+        return getParentPath(normalizedPath);
     }
     if (isLikelyFilePath(normalizedPath, editMode)) {
         return getParentPath(normalizedPath);
@@ -388,7 +394,12 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     const explorerRootPath = normalizePath((block.meta as Record<string, unknown>)?.[PreviewExplorerRootMetaKey]);
     const filePath = explorerRootPath ?? metaFilePath;
     const launchPath = filePath;
-    const cwd = launchPath == null ? null : resolvePreviewLaunchPath(launchPath, block.meta?.edit === true);
+    const pathIsDir = (block.meta as Record<string, unknown>)?.[PreviewPathIsDirMetaKey];
+    const launchPathIsDir = explorerRootPath != null ? true : typeof pathIsDir === "boolean" ? pathIsDir : null;
+    const cwd =
+        launchPath == null
+            ? null
+            : resolvePreviewLaunchPath(launchPath, block.meta?.edit === true, launchPathIsDir);
     if (connection == null && cwd == null && filePath == null) {
         return null;
     }

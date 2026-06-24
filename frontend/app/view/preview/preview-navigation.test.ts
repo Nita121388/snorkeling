@@ -30,6 +30,7 @@ describe("preview explorer root sync", () => {
         expect(meta.edit).toBe(false);
         expect(meta["preview:searchline"]).toBeNull();
         expect(meta["preview:explorer-root"]).toBe("/tmp");
+        expect(meta["preview:pathisdir"]).toBe(true);
     });
 
     it("leaves file-only preview state alone when the target is not known to be a directory", () => {
@@ -45,6 +46,7 @@ describe("preview explorer root sync", () => {
 
         expect(meta.edit).toBe(true);
         expect(meta["preview:searchline"]).toBe(12);
+        expect(meta["preview:pathisdir"]).toBeNull();
     });
 
     it("updates the explorer root for directory navigation in tree mode", () => {

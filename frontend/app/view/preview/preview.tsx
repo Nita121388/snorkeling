@@ -6,7 +6,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { isBlank, makeConnRoute } from "@/util/util";
+import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { memo, useEffect } from "react";
 import { CSVView } from "./csvview";
@@ -16,6 +16,7 @@ import { ErrorOverlay } from "./preview-error-overlay";
 import { PreviewExplorer } from "./preview-explorer";
 import { MarkdownLivePreview, MarkdownPreview } from "./preview-markdown";
 import type { PreviewModel } from "./preview-model";
+import { PreviewPathIsDirMetaKey } from "./preview-navigation";
 import { StreamingPreview } from "./preview-streaming";
 import type { PreviewEnv } from "./previewenv";
 
@@ -122,7 +123,17 @@ function PreviewView({
             return;
         }
         setErrorMsg(null);
-    }, [connection, fileInfo]);
+        const pathIsDir = !!fileInfo.isdir || fileInfo.mimetype === "directory";
+        const blockMeta = globalStore.get(model.blockAtom)?.meta ?? {};
+        if (blockMeta[PreviewPathIsDirMetaKey] === pathIsDir) {
+            return;
+        }
+        fireAndForget(() =>
+            env.services.object.UpdateObjectMeta(`block:${model.blockId}`, {
+                [PreviewPathIsDirMetaKey]: pathIsDir,
+            } as MetaType)
+        );
+    }, [connection, env.services.object, fileInfo, model.blockAtom, model.blockId, setErrorMsg]);
 
     if (connStatus?.status != "connected") {
         return null;
@@ -136,7 +147,7 @@ function PreviewView({
             model.handleOpenFile(queryStr);
             return true;
         }
-        model.handleOpenFile(s["file:path"]);
+        model.handleOpenFile(s["file:path"], s["file:mimetype"] === "directory");
         return true;
     };
     const handleTab = (s: SuggestionType, _query: string): string => {

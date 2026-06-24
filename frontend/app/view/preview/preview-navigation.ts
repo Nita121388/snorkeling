@@ -8,6 +8,7 @@ export const PreviewDirectoryDisplayMetaKey = "preview:directory-display";
 export const PreviewDefaultDirectoryDisplaySettingKey = "preview:defaultdirectorydisplay";
 export const PreviewRevealPathMetaKey = "preview:revealpath";
 export const PreviewRevealSeqMetaKey = "preview:revealseq";
+export const PreviewPathIsDirMetaKey = "preview:pathisdir";
 
 export type PreviewDirectoryDisplayMode = "list" | "tree";
 export type PreviewOpenTargetDirection = "off" | "left" | "right" | "up" | "down";
@@ -82,13 +83,20 @@ export function applyDirectoryNavigationMeta(
     directoryPath?: string | null
 ): Record<string, any> {
     if (isBlank(directoryPath)) {
-        return meta;
+        if (Object.prototype.hasOwnProperty.call(meta, PreviewPathIsDirMetaKey)) {
+            return meta;
+        }
+        return {
+            ...meta,
+            [PreviewPathIsDirMetaKey]: null,
+        };
     }
     return applyExplorerRootForDirectoryNavigation(
         {
             ...meta,
             edit: false,
             "preview:searchline": null,
+            [PreviewPathIsDirMetaKey]: true,
         },
         directoryDisplayMode,
         directoryPath

@@ -119,5 +119,6 @@ export async function openPreviewEntry(
     await model.openPathWithTarget(fileInfo.path, {
         ...options,
         directoryPath: targetIsDir ? fileInfo.path : options?.directoryPath,
+        pathIsDir: targetIsDir,
     });
 }

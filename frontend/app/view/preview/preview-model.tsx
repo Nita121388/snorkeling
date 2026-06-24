@@ -43,6 +43,7 @@ import {
     PreviewDirectoryDisplayMode,
     PreviewExplorerRootMetaKey,
     PreviewOpenTargetDirection,
+    PreviewPathIsDirMetaKey,
     resolvePreviewDirectoryDisplayMode,
     resolvePreviewOpenTargetDirectionForBlock,
 } from "./preview-navigation";
@@ -114,6 +115,7 @@ type PreviewOpenPathOptions = {
     forceCurrentBlock?: boolean;
     editMode?: boolean;
     directoryPath?: string | null;
+    pathIsDir?: boolean | null;
 };
 
 type CopyPathStatus = "idle" | "copied" | "failed";
@@ -1231,6 +1233,9 @@ export class PreviewModel implements ViewModel {
         if (options?.editMode != null) {
             nextMeta.edit = options.editMode;
         }
+        if (options?.pathIsDir !== undefined) {
+            nextMeta[PreviewPathIsDirMetaKey] = options.pathIsDir;
+        }
         return nextMeta as MetaType;
     }
 
@@ -1427,6 +1432,9 @@ export class PreviewModel implements ViewModel {
         }
         if (options?.editMode != null) {
             blockMeta.edit = options.editMode;
+        }
+        if (options?.pathIsDir !== undefined) {
+            blockMeta[PreviewPathIsDirMetaKey] = options.pathIsDir;
         }
         const blockDef: BlockDef = {
             meta: blockMeta,
@@ -1790,14 +1798,14 @@ export class PreviewModel implements ViewModel {
         }
     }
 
-    async handleOpenFile(filePath: string) {
+    async handleOpenFile(filePath: string, pathIsDir?: boolean | null) {
         const fileInfo = await globalStore.get(this.statFile);
         this.updateOpenFileModalAndError(false);
         if (fileInfo == null) {
             return true;
         }
         try {
-            await this.openPathWithTarget(filePath);
+            await this.openPathWithTarget(filePath, { pathIsDir: pathIsDir ?? null });
         } catch (e) {
             globalStore.set(this.openFileError, e.message);
             console.error("Error opening file", filePath, e);

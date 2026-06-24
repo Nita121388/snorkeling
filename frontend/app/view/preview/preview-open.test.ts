@@ -26,7 +26,7 @@ describe("openPreviewEntry", () => {
 
         await openPreviewEntry(model as any, { path: "/tmp/project", mimetype: "directory", isdir: true }, "local");
 
-        expect(calls).toEqual([["/tmp/project", { directoryPath: "/tmp/project" }]]);
+        expect(calls).toEqual([["/tmp/project", { directoryPath: "/tmp/project", pathIsDir: true }]]);
     });
 
     it("does not mark regular files as directory navigation", async () => {
@@ -40,6 +40,6 @@ describe("openPreviewEntry", () => {
 
         await openPreviewEntry(model as any, { path: "/tmp/project/readme.md", mimetype: "text/markdown" }, "local");
 
-        expect(calls).toEqual([["/tmp/project/readme.md", { directoryPath: undefined }]]);
+        expect(calls).toEqual([["/tmp/project/readme.md", { directoryPath: undefined, pathIsDir: false }]]);
     });
 });

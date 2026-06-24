@@ -235,6 +235,67 @@ describe("agent launch context", () => {
         expectHomeLaunchTarget(targets[2]);
     });
 
+    it("keeps dotted Files directory paths as launch directories when directory metadata is known", () => {
+        const tab = makeTab(["block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects/project.v1",
+                "preview:pathisdir": true,
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects/project.v1",
+            filePath: "/Users/nita/Primary/projects/project.v1",
+        });
+    });
+
+    it("uses the parent directory for known Files file paths", () => {
+        const tab = makeTab(["block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects/project.v1/README.md",
+                "preview:pathisdir": false,
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects/project.v1",
+            filePath: "/Users/nita/Primary/projects/project.v1/README.md",
+        });
+    });
+
+    it("treats the Files explorer root as a directory even when the current file is not", () => {
+        const tab = makeTab(["block:preview"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview": makeBlock("block:preview", {
+                view: "preview",
+                file: "/Users/nita/Primary/projects/project.v1/README.md",
+                "preview:explorer-root": "/Users/nita/Primary/projects/project.v1",
+                "preview:pathisdir": false,
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview");
+
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview",
+            source: "files",
+            cwd: "/Users/nita/Primary/projects/project.v1",
+            filePath: "/Users/nita/Primary/projects/project.v1",
+        });
+    });
+
     it("keeps one target when Files and terminal context share a directory", () => {
         const tab = makeTab(["block:term", "block:preview"]);
         const blockMap: Record<string, Block> = {
