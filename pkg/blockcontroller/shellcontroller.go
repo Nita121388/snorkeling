@@ -701,6 +701,9 @@ func (bc *ShellController) manageRunningShellProcess(
 				bc.ProcExitCode = exitCode
 				return true
 			})
+			if agentRunInfo != nil {
+				clearAgentRuntimeMeta(bc.BlockId)
+			}
 			releaseAgentStatus(bc.BlockId)
 			log.Printf("[shellproc] shell process wait loop done\n")
 		}()
@@ -1114,6 +1117,35 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	}
 	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
 	return nil
+}
+
+func clearAgentRuntimeMeta(blockId string) {
+	if blockId == "" {
+		return
+	}
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	ctx = waveobj.ContextWithUpdates(ctx)
+	metaUpdate := agentRuntimeMetaClearUpdate()
+	if err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false); err != nil {
+		log.Printf("error clearing agent runtime meta (block=%s): %v", blockId, err)
+		return
+	}
+	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
+}
+
+func agentRuntimeMetaClearUpdate() map[string]any {
+	return map[string]any{
+		waveobj.MetaKey_Controller:    BlockController_Shell,
+		waveobj.MetaKey_Cmd:           nil,
+		waveobj.MetaKey_CmdArgs:       nil,
+		waveobj.MetaKey_CmdEnv:        nil,
+		waveobj.MetaKey_CmdJwt:        nil,
+		waveobj.MetaKey_CmdRunOnStart: nil,
+		MetaKey_AgentAutoResume:       nil,
+		MetaKey_AgentProvider:         nil,
+		MetaKey_AgentSessionId:        nil,
+	}
 }
 
 func isAsciiLetter(char byte) bool {

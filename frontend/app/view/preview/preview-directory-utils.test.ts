@@ -82,9 +82,16 @@ function getMenuItem(menu: ContextMenuItem[], label: string): ContextMenuItem {
     return item!;
 }
 
+async function flushVcsResolve(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
 describe("directory VCS context menus", () => {
-    it("shows file-scoped Git actions and opens the VCS block for the selected file", async () => {
-        const { makeDirectoryEntryMenuItems, createBlock, model } = await loadDirectoryMenuUtils([makeRepo("git")]);
+    it("shows a disabled VCS placeholder before the background resolve completes", async () => {
+        const { makeDirectoryEntryMenuItems, model, remoteVcsRepositories } = await loadDirectoryMenuUtils([
+            makeRepo("git"),
+        ]);
         const menu = await makeDirectoryEntryMenuItems(
             model as any,
             {
@@ -102,6 +109,31 @@ describe("directory VCS context menus", () => {
             }
         );
 
+        const detectingItem = getMenuItem(menu, "Version Control: Detecting...");
+        expect(detectingItem.enabled).toBe(false);
+        expect(remoteVcsRepositories).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows file-scoped Git actions from the resolve cache and opens the VCS block for the selected file", async () => {
+        const { makeDirectoryEntryMenuItems, createBlock, model } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        const finfo = {
+            path: "/repo/src/index.ts",
+            dir: "/repo/src",
+            name: "index.ts",
+            isdir: false,
+        } as FileInfo;
+        await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
+        await flushVcsResolve();
+
+        const menu = await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
         const gitMenu = getSubmenu(menu, "Git");
         expect(labels(gitMenu)).toEqual(["View History", "View Diff", "View Repository Log", "Open VCS Block", "Pull"]);
 
@@ -118,25 +150,26 @@ describe("directory VCS context menus", () => {
         });
     });
 
-    it("shows folder-scoped SVN actions without file diff and runs update", async () => {
+    it("shows folder-scoped SVN actions from the resolve cache without file diff and runs update", async () => {
         const { makeDirectoryEntryMenuItems, model, remoteVcsSync } = await loadDirectoryMenuUtils([makeRepo("svn")]);
-        const menu = await makeDirectoryEntryMenuItems(
-            model as any,
-            {
-                path: "/repo/src",
-                dir: "/repo",
-                name: "src",
-                isdir: true,
-            } as FileInfo,
-            "local",
-            vi.fn(),
-            {
-                newFile: vi.fn(),
-                newDirectory: vi.fn(),
-                rename: vi.fn(),
-            }
-        );
+        const finfo = {
+            path: "/repo/src",
+            dir: "/repo",
+            name: "src",
+            isdir: true,
+        } as FileInfo;
+        await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
+        await flushVcsResolve();
 
+        const menu = await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
         const svnMenu = getSubmenu(menu, "SVN");
         expect(labels(svnMenu)).toEqual(["View History", "View Repository Log", "Open VCS Block", "Update"]);
 
@@ -153,26 +186,26 @@ describe("directory VCS context menus", () => {
         );
     });
 
-    it("shows only repository-level actions in the background menu", async () => {
+    it("shows only repository-level actions in the background menu from the resolve cache", async () => {
         const { makeDirectoryBackgroundMenuItems, createBlock, model } = await loadDirectoryMenuUtils([
             makeRepo("git"),
         ]);
-        const menu = await makeDirectoryBackgroundMenuItems(
-            model as any,
-            "local",
-            {
-                path: "/repo",
-                dir: "/repo",
-                name: "repo",
-                isdir: true,
-            } as FileInfo,
-            vi.fn(),
-            {
-                newFile: vi.fn(),
-                newDirectory: vi.fn(),
-            }
-        );
+        const finfo = {
+            path: "/repo",
+            dir: "/repo",
+            name: "repo",
+            isdir: true,
+        } as FileInfo;
+        await makeDirectoryBackgroundMenuItems(model as any, "local", finfo, vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+        });
+        await flushVcsResolve();
 
+        const menu = await makeDirectoryBackgroundMenuItems(model as any, "local", finfo, vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+        });
         const gitMenu = getSubmenu(menu, "Git");
         expect(labels(gitMenu)).toEqual(["Pull", "View History"]);
 
@@ -220,28 +253,29 @@ describe("directory VCS context menus", () => {
         );
     });
 
-    it("reports repository listing failures without using the old resolve-path command", async () => {
+    it("reports repository listing failures after the background resolve completes", async () => {
         const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils(
             [],
             new Error('command not implemented "remotevcsrepositories"')
         );
-        const menu = await makeDirectoryEntryMenuItems(
-            model as any,
-            {
-                path: "/repo/src/index.ts",
-                dir: "/repo/src",
-                name: "index.ts",
-                isdir: false,
-            } as FileInfo,
-            "local",
-            vi.fn(),
-            {
-                newFile: vi.fn(),
-                newDirectory: vi.fn(),
-                rename: vi.fn(),
-            }
-        );
+        const finfo = {
+            path: "/repo/src/index.ts",
+            dir: "/repo/src",
+            name: "index.ts",
+            isdir: false,
+        } as FileInfo;
+        await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
+        await flushVcsResolve();
 
+        const menu = await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
         const vcsMenu = getSubmenu(menu, "Version Control");
         expect(labels(vcsMenu)).toEqual(["Resolve Failed", "Copy Debug Info"]);
         expect(vcsMenu[0].sublabel).toContain("remotevcsrepositories");
@@ -636,9 +670,14 @@ describe("directory VCS context menus", () => {
         expect(menuLabels).not.toContain("Delete");
         expect(menuLabels).toContain("Open Terminal Here");
         expect(menuLabels).toContain("Run Agent Here");
-        expect(addOpenMenuItems).toHaveBeenCalledWith(expect.any(Array), "local", expect.objectContaining({ path: "D:/" }), {
-            openInCurrentBlock: undefined,
-        });
+        expect(addOpenMenuItems).toHaveBeenCalledWith(
+            expect.any(Array),
+            "local",
+            expect.objectContaining({ path: "D:/" }),
+            {
+                openInCurrentBlock: undefined,
+            }
+        );
     });
 
     it("hides real directory actions on the virtual Windows drives root", async () => {

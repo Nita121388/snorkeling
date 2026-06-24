@@ -128,6 +128,23 @@ function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
     });
 }
 
+function clearManualAgentCommand(blockId: string, command: unknown): void {
+    if (resolveAgentCommandBinding(command) == null) {
+        return;
+    }
+    fireAndForget(async () => {
+        await RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: WOS.makeORef("block", blockId),
+            meta: {
+                "cmd:jwt": null,
+                "agent:provider": null,
+                "agent:autoresume": null,
+                "agent:sessionid": null,
+            },
+        }).catch((e) => console.log("error clearing manual agent command", e));
+    });
+}
+
 function handleShellIntegrationCommandStart(
     termWrap: TermWrap,
     blockId: string,
@@ -403,6 +420,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.shellIntegrationUpdatedAtAtom, now);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            clearManualAgentCommand(blockId, globalStore.get(termWrap.lastCommandAtom));
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
             } else {

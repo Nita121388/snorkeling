@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { buildSessionDetailTimeline, formatFileSize, isReadableMessage, restoreCommandForSession } from "./utils";
+import {
+    buildSessionDetailTimeline,
+    formatFileSize,
+    formatRelativeRefreshTime,
+    formatSessionRelativeTime,
+    isReadableMessage,
+    restoreCommandForSession,
+} from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -102,6 +109,25 @@ describe("AI session detail timeline", () => {
         expect(formatFileSize(999)).toBe("999 B");
         expect(formatFileSize(1536)).toBe("1.5 KB");
         expect(formatFileSize(5 * 1024 * 1024)).toBe("5 MB");
+    });
+
+    it("formats relative refresh times", () => {
+        const now = 1_800_000_000_000;
+        expect(formatRelativeRefreshTime(now - 9_000, now)).toBe("Refreshed just now");
+        expect(formatRelativeRefreshTime(now - 25_000, now)).toBe("Refreshed 25s ago");
+        expect(formatRelativeRefreshTime(now - 3 * 60_000, now)).toBe("Refreshed 3m ago");
+        expect(formatRelativeRefreshTime(now - 2 * 60 * 60_000, now)).toBe("Refreshed 2h ago");
+        expect(formatRelativeRefreshTime(now - 2 * 24 * 60 * 60_000, now)).toBe("Refreshed 2d ago");
+    });
+
+    it("formats session list times as relative age", () => {
+        const now = 1_800_000_000_000;
+        expect(formatSessionRelativeTime(now - 9_000, now)).toBe("just now");
+        expect(formatSessionRelativeTime(now - 25_000, now)).toBe("25s ago");
+        expect(formatSessionRelativeTime(now - 3 * 60_000, now)).toBe("3m ago");
+        expect(formatSessionRelativeTime(now - 2 * 60 * 60_000, now)).toBe("2h ago");
+        expect(formatSessionRelativeTime(now - 2 * 24 * 60 * 60_000, now)).toBe("2d ago");
+        expect(formatSessionRelativeTime(Math.floor((now - 45_000) / 1000), now)).toBe("45s ago");
     });
 
     it("copies Claude resume commands from the session project directory", () => {

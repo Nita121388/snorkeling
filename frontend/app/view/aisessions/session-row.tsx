@@ -13,7 +13,7 @@ import {
     sessionTagsEqual,
     sessionTagsLabel,
 } from "./session-tags";
-import { formatDateTimeToSecond, formatFileSize, restoreCommandForSession } from "./utils";
+import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -74,6 +74,7 @@ export function SessionRow({
     const nextTags = mergeSessionTags(tagDraft, parsedDraft.tags);
     const noteUnchanged = parsedDraft.note === (session.note ?? "") && sessionTagsEqual(nextTags, session.tags);
     const noteSaving = noteSaveStatus === "saving";
+    const sessionTime = session.updatedAt || session.createdAt || 0;
 
     const saveNote = useCallback(async (): Promise<boolean> => {
         if (noteSaveStatus === "saving") return false;
@@ -147,7 +148,7 @@ export function SessionRow({
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xxs text-secondary">
                         <span className="uppercase">{session.source}</span>
-                        <span>{formatDateTimeToSecond(session.updatedAt || session.createdAt || 0)}</span>
+                        <span title={formatDateTimeToSecond(sessionTime)}>{formatSessionRelativeTime(sessionTime)}</span>
                         <span>{session.messageCount ?? 0} msgs</span>
                         {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
                     </div>

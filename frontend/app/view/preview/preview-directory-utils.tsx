@@ -254,9 +254,14 @@ type DirectoryVcsResolveResult =
     | { kind: "error"; error: string };
 
 type SupportedVcsRepoType = "git" | "svn";
+type DirectoryVcsResolveCacheEntry =
+    | { state: "pending"; promise: Promise<void> }
+    | { state: "ready"; result: DirectoryVcsResolveResult };
 
 const DirectoryVcsResolveTimeoutMs = 60000;
 const DirectoryVcsSyncTimeoutMs = 150000;
+// ponytail: In-memory only; move this behind a shared VCS resolve service if repo roots need live invalidation.
+const directoryVcsResolveCache = new Map<string, DirectoryVcsResolveCacheEntry>();
 
 function getSupportedRepoType(repo: VcsRepositoryInfo): SupportedVcsRepoType | null {
     const repoType = repo.repotype?.trim().toLowerCase();
@@ -483,14 +488,51 @@ function writeClipboardLines(lines: string[]): Promise<void> {
     return navigator.clipboard.writeText(lines.join("\n"));
 }
 
-async function makeDirectoryVcsMenuItems(
+function makeDirectoryVcsResolveCacheKey(conn: string, targetPath: string): string {
+    return `${conn || "local"}\x00${targetPath}`;
+}
+
+function makeVcsDetectingMenuItem(): ContextMenuItem {
+    return {
+        label: "Version Control: Detecting...",
+        enabled: false,
+    };
+}
+
+function startDirectoryVcsResolve(model: PreviewModel, conn: string, targetPath: string): void {
+    const cacheKey = makeDirectoryVcsResolveCacheKey(conn, targetPath);
+    const existingEntry = directoryVcsResolveCache.get(cacheKey);
+    if (existingEntry?.state === "pending") {
+        return;
+    }
+    const promise = (async () => {
+        const result = await resolveRepoForPath(model, conn, targetPath);
+        directoryVcsResolveCache.set(cacheKey, { state: "ready", result });
+    })();
+    directoryVcsResolveCache.set(cacheKey, { state: "pending", promise });
+    fireAndForget(() => promise);
+}
+
+function makeDirectoryVcsMenuItems(
     model: PreviewModel,
     conn: string,
     targetPath: string,
     scope: DirectoryVcsMenuScope,
     setErrorMsg: (msg: ErrorMsg) => void
-): Promise<ContextMenuItem[]> {
-    const resolveResult = await resolveRepoForPath(model, conn, targetPath);
+): ContextMenuItem[] {
+    if (isBlank(targetPath)) {
+        return [];
+    }
+    const cacheKey = makeDirectoryVcsResolveCacheKey(conn, targetPath);
+    const cacheEntry = directoryVcsResolveCache.get(cacheKey);
+    if (cacheEntry == null) {
+        startDirectoryVcsResolve(model, conn, targetPath);
+        return [makeVcsDetectingMenuItem()];
+    }
+    if (cacheEntry.state === "pending") {
+        return [makeVcsDetectingMenuItem()];
+    }
+    const resolveResult = cacheEntry.result;
     if (resolveResult.kind === "none") {
         return [];
     }
@@ -589,7 +631,7 @@ export async function makeDirectoryEntryMenuItems(
             click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg)),
         }
     );
-    const vcsMenuItems = await makeDirectoryVcsMenuItems(
+    const vcsMenuItems = makeDirectoryVcsMenuItems(
         model,
         conn,
         finfo.path,
@@ -684,7 +726,7 @@ export async function makeDirectoryBackgroundMenuItems(
         );
     }
     if (!isWindowsDrivesPath(finfo?.path)) {
-        const vcsMenuItems = await makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
+        const vcsMenuItems = makeDirectoryVcsMenuItems(model, conn, finfo.path, "background", setErrorMsg);
         if (vcsMenuItems.length > 0) {
             menu.push({ type: "separator" }, ...vcsMenuItems);
         }

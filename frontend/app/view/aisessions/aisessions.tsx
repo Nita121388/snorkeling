@@ -24,6 +24,8 @@ import { normalizeSessionTags } from "./session-tags";
 import type { SourceFilter } from "./types";
 import {
     emptySessionsText,
+    formatDateTimeToSecond,
+    formatRelativeRefreshTime,
     getErrorMessage,
     readSortPreference,
     sortSessionsByTime,
@@ -59,6 +61,7 @@ export class AiSessionsViewModel implements ViewModel {
     errorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
+    lastSessionsRefreshAtAtom = jotai.atom<number>(0);
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
     detailLoadSeq = 0;
@@ -113,6 +116,7 @@ export class AiSessionsViewModel implements ViewModel {
             }
             const sessions = response?.sessions ?? [];
             globalStore.set(this.sessionsAtom, sessions);
+            globalStore.set(this.lastSessionsRefreshAtAtom, Date.now());
             void this.loadTags(refresh);
             const selectedKey = globalStore.get(this.selectedKeyAtom);
             const selectedStillExists = sessions.some((session) => session.key === selectedKey);
@@ -505,8 +509,7 @@ function mergeDeltaSummary(current: SessionSummary, deltaSummary?: SessionSummar
         ...current,
         source: deltaSummary.source || current.source,
         filePath: deltaSummary.filePath || current.filePath,
-        messageCount:
-            typeof deltaSummary.messageCount === "number" ? deltaSummary.messageCount : current.messageCount,
+        messageCount: typeof deltaSummary.messageCount === "number" ? deltaSummary.messageCount : current.messageCount,
     };
 }
 
@@ -568,11 +571,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const error = jotai.useAtomValue(model.errorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
+    const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [markedOnly, setMarkedOnly] = useState(false);
     const [tagsCollapsed, setTagsCollapsed] = useState(false);
+    const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
@@ -612,6 +617,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         if (loading) return;
         loadBackupStats();
     }, [loadBackupStats, loading]);
+
+    useEffect(() => {
+        if (!lastSessionsRefreshAt) return;
+        setRefreshTimeNow(Date.now());
+        const handle = window.setInterval(() => setRefreshTimeNow(Date.now()), 30_000);
+        return () => window.clearInterval(handle);
+    }, [lastSessionsRefreshAt]);
 
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
@@ -753,6 +765,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const gridTemplateColumns = sessionListCollapsed
         ? `${CollapsedSessionListWidth}px minmax(0,1fr)`
         : `${sessionListWidth}px minmax(0,1fr)`;
+    const lastRefreshLabel = lastSessionsRefreshAt
+        ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
+        : "";
+    const lastRefreshTitle = lastSessionsRefreshAt
+        ? `Last refreshed ${formatDateTimeToSecond(lastSessionsRefreshAt)}`
+        : "";
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
@@ -940,11 +958,15 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 ) : null}
                             </div>
                             <div className="flex h-5 items-center justify-between gap-2 text-[11px] text-secondary">
-                                <span>{visibleSessions.length} sessions</span>
+                                <span className="min-w-0 truncate">{visibleSessions.length} sessions</span>
                                 {loading && !filterActive ? (
-                                    <span className="flex items-center gap-1">
+                                    <span className="flex shrink-0 items-center gap-1">
                                         <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
                                         Refreshing
+                                    </span>
+                                ) : lastRefreshLabel !== "" ? (
+                                    <span className="shrink-0" title={lastRefreshTitle}>
+                                        {lastRefreshLabel}
                                     </span>
                                 ) : null}
                             </div>

@@ -236,6 +236,44 @@ func TestResolveAgentCmdAndArgs_ClaudeFirstRunUsesSessionIdNotResume(t *testing.
 	}
 }
 
+func TestAgentRuntimeMetaClearUpdateReturnsAgentCommandBlockToShell(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_View:          "term",
+		waveobj.MetaKey_Controller:    BlockController_Cmd,
+		waveobj.MetaKey_Cmd:           "codex",
+		waveobj.MetaKey_CmdArgs:       []string{"resume", "session-123"},
+		waveobj.MetaKey_CmdJwt:        true,
+		waveobj.MetaKey_CmdRunOnStart: true,
+		waveobj.MetaKey_CmdCwd:        "~/project",
+		MetaKey_AgentAutoResume:       true,
+		MetaKey_AgentProvider:         AgentProviderCodex,
+		MetaKey_AgentSessionId:        "session-123",
+	}
+
+	updated := waveobj.MergeMeta(meta, agentRuntimeMetaClearUpdate(), false)
+
+	if updated.GetString(waveobj.MetaKey_Controller, "") != BlockController_Shell {
+		t.Fatalf("expected controller to return to shell, got %q", updated.GetString(waveobj.MetaKey_Controller, ""))
+	}
+	clearedKeys := []string{
+		waveobj.MetaKey_Cmd,
+		waveobj.MetaKey_CmdArgs,
+		waveobj.MetaKey_CmdJwt,
+		waveobj.MetaKey_CmdRunOnStart,
+		MetaKey_AgentAutoResume,
+		MetaKey_AgentProvider,
+		MetaKey_AgentSessionId,
+	}
+	for _, key := range clearedKeys {
+		if updated[key] != nil {
+			t.Fatalf("expected %s to be cleared, got %#v", key, updated)
+		}
+	}
+	if updated.GetString(waveobj.MetaKey_CmdCwd, "") != "~/project" {
+		t.Fatalf("expected cwd meta to be preserved, got %q", updated.GetString(waveobj.MetaKey_CmdCwd, ""))
+	}
+}
+
 func TestStripClaudeSessionArgs(t *testing.T) {
 	in := []string{"--resume", "abc", "--model", "sonnet", "--session-id=def", "--continue"}
 	out := stripClaudeSessionArgs(in)

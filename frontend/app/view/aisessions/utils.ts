@@ -176,6 +176,33 @@ export function writeSortPreference(descending: boolean): void {
     window.localStorage.setItem(sortPreferenceStorageKey, descending ? "1" : "0");
 }
 
+export function formatRelativeRefreshTime(timestamp: number, now = Date.now()): string {
+    if (!timestamp) return "";
+    const normalized = normalizeTimestamp(timestamp);
+    if (!Number.isFinite(normalized)) return "";
+    const elapsedSeconds = Math.floor(Math.max(0, now - normalized) / 1000);
+    if (elapsedSeconds < 10) return "Refreshed just now";
+    if (elapsedSeconds < 60) return `Refreshed ${elapsedSeconds}s ago`;
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    if (elapsedMinutes < 60) return `Refreshed ${elapsedMinutes}m ago`;
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    if (elapsedHours < 24) return `Refreshed ${elapsedHours}h ago`;
+    return `Refreshed ${Math.floor(elapsedHours / 24)}d ago`;
+}
+
+export function formatSessionRelativeTime(timestamp: number, now = Date.now()): string {
+    const normalized = normalizeTimestamp(timestamp);
+    if (!normalized) return "never";
+    const elapsedSeconds = Math.floor(Math.max(0, now - normalized) / 1000);
+    if (elapsedSeconds < 10) return "just now";
+    if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    if (elapsedHours < 24) return `${elapsedHours}h ago`;
+    return `${Math.floor(elapsedHours / 24)}d ago`;
+}
+
 export async function copyText(text: string): Promise<void> {
     await writeTextToClipboard(text);
 }
@@ -211,7 +238,7 @@ export function shortSessionId(id: string): string {
 
 export function formatDateTimeToSecond(timestamp: number): string {
     if (!timestamp) return "never";
-    const normalized = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+    const normalized = normalizeTimestamp(timestamp);
     const date = new Date(normalized);
     if (Number.isNaN(date.getTime())) return "invalid time";
     const year = date.getFullYear();
@@ -237,6 +264,11 @@ export function formatFileSize(bytes: number | null | undefined): string {
 
 function pad2(value: number): string {
     return value.toString().padStart(2, "0");
+}
+
+function normalizeTimestamp(timestamp: number): number {
+    const normalized = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+    return Number.isFinite(normalized) ? normalized : 0;
 }
 
 export function getErrorMessage(error: unknown): string {

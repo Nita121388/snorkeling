@@ -29,6 +29,12 @@ type BuilderVcsResolveResult =
     | { kind: "none" }
     | { kind: "repos"; repos: VcsRepositoryInfo[] }
     | { kind: "error"; error: string };
+type BuilderVcsResolveCacheEntry =
+    | { state: "pending"; promise: Promise<void> }
+    | { state: "ready"; result: BuilderVcsResolveResult };
+
+// ponytail: Builder files are local-only today; invalidate this cache when Builder gets live repo mutation events.
+const builderVcsResolveCache = new Map<string, BuilderVcsResolveCacheEntry>();
 
 function getSupportedRepoType(repo: VcsRepositoryInfo): SupportedVcsRepoType | null {
     const repoType = repo.repotype?.trim().toLowerCase();
@@ -183,13 +189,44 @@ function makeResolveFailureMenuItem(targetPath: string, errorText: string): Cont
     };
 }
 
-async function makeBuilderVcsMenuItems(
+function makeBuilderVcsDetectingMenuItem(): ContextMenuItem {
+    return {
+        label: "Version Control: Detecting...",
+        enabled: false,
+    };
+}
+
+function startBuilderVcsResolve(targetPath: string): void {
+    const existingEntry = builderVcsResolveCache.get(targetPath);
+    if (existingEntry?.state === "pending") {
+        return;
+    }
+    const promise = (async () => {
+        const result = await resolveRepoForPath(targetPath);
+        builderVcsResolveCache.set(targetPath, { state: "ready", result });
+    })();
+    builderVcsResolveCache.set(targetPath, { state: "pending", promise });
+    fireAndForget(() => promise);
+}
+
+function makeBuilderVcsMenuItems(
     targetPath: string,
     scope: BuilderVcsMenuScope,
     setError: (error: string) => void,
     refreshFiles: () => Promise<void>
-): Promise<ContextMenuItem[]> {
-    const resolveResult = await resolveRepoForPath(targetPath);
+): ContextMenuItem[] {
+    if (isBlank(targetPath)) {
+        return [];
+    }
+    const cacheEntry = builderVcsResolveCache.get(targetPath);
+    if (cacheEntry == null) {
+        startBuilderVcsResolve(targetPath);
+        return [makeBuilderVcsDetectingMenuItem()];
+    }
+    if (cacheEntry.state === "pending") {
+        return [makeBuilderVcsDetectingMenuItem()];
+    }
+    const resolveResult = cacheEntry.result;
     if (resolveResult.kind === "none") {
         return [];
     }
@@ -497,7 +534,7 @@ const BuilderFilesTab = memo(() => {
         }
     };
 
-    const handleContextMenu = async (e: React.MouseEvent, file: FileEntry) => {
+    const handleContextMenu = (e: React.MouseEvent, file: FileEntry) => {
         e.preventDefault();
         e.stopPropagation();
 
@@ -530,7 +567,7 @@ const BuilderFilesTab = memo(() => {
             );
         }
 
-        const vcsMenuItems = await makeBuilderVcsMenuItems(
+        const vcsMenuItems = makeBuilderVcsMenuItems(
             joinAppFilePath(appAbsolutePath, file.name),
             "file",
             setError,
@@ -549,10 +586,10 @@ const BuilderFilesTab = memo(() => {
         ContextMenuModel.getInstance().showContextMenu(menu, e);
     };
 
-    const handleBackgroundContextMenu = async (e: React.MouseEvent) => {
+    const handleBackgroundContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        const menu = await makeBuilderVcsMenuItems(appAbsolutePath, "background", setError, loadFiles);
+        const menu = makeBuilderVcsMenuItems(appAbsolutePath, "background", setError, loadFiles);
         if (menu.length === 0) {
             return;
         }
