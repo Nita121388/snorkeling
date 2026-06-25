@@ -13,6 +13,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClaudeLogo, IconButton, OpenAILogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
+import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
 import {
     AiSessionNoteUpdatedEvent,
@@ -21,8 +22,10 @@ import {
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
-import type { SourceFilter } from "./types";
+import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
 import {
+    DefaultDateRange,
+    dateRangeToSinceBefore,
     emptySessionsText,
     formatDateTimeToSecond,
     formatRelativeRefreshTime,
@@ -53,6 +56,9 @@ export class AiSessionsViewModel implements ViewModel {
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
     tagFiltersAtom = jotai.atom<string[]>([]);
+    markedFilterAtom = jotai.atom<MarkedFilter>("all");
+    dateRangeAtom = jotai.atom<DateRangeFilter>(DefaultDateRange);
+    filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
     detailLoadingAtom = jotai.atom<boolean>(false);
@@ -100,6 +106,9 @@ export class AiSessionsViewModel implements ViewModel {
         const source = globalStore.get(this.sourceAtom);
         const query = globalStore.get(this.queryAtom);
         const tagFilters = globalStore.get(this.tagFiltersAtom);
+        const marked = globalStore.get(this.markedFilterAtom);
+        const dateRange = globalStore.get(this.dateRangeAtom);
+        const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
@@ -109,9 +118,12 @@ export class AiSessionsViewModel implements ViewModel {
                 connection: this.getConnection(),
                 limit: 200,
                 refresh,
+                marked,
+                since,
+                before,
                 tagFilters,
             });
-            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
+            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
                 return;
             }
             const sessions = response?.sessions ?? [];
@@ -135,22 +147,34 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
             }
         } finally {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
                 globalStore.set(this.loadingAtom, false);
             }
         }
     }
 
-    isCurrentSessionsLoad(loadSeq: number, source: SourceFilter, query: string, tagFilters: string[]): boolean {
+    isCurrentSessionsLoad(
+        loadSeq: number,
+        source: SourceFilter,
+        query: string,
+        tagFilters: string[],
+        marked: MarkedFilter,
+        dateRange: DateRangeFilter
+    ): boolean {
+        const currentDateRange = globalStore.get(this.dateRangeAtom);
         return (
             loadSeq === this.sessionsLoadSeq &&
             globalStore.get(this.sourceAtom) === source &&
             globalStore.get(this.queryAtom) === query &&
-            tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters)
+            tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters) &&
+            globalStore.get(this.markedFilterAtom) === marked &&
+            currentDateRange.preset === dateRange.preset &&
+            (currentDateRange.from ?? 0) === (dateRange.from ?? 0) &&
+            (currentDateRange.to ?? 0) === (dateRange.to ?? 0)
         );
     }
 
@@ -159,12 +183,19 @@ export class AiSessionsViewModel implements ViewModel {
             const response = await this.service.Tags({
                 source: globalStore.get(this.sourceAtom),
                 connection: this.getConnection(),
+                marked: globalStore.get(this.markedFilterAtom),
                 refresh,
             });
             globalStore.set(this.availableTagsAtom, response.tags ?? []);
         } catch (e) {
             globalStore.set(this.availableTagsAtom, []);
         }
+    }
+
+    clearAllFilters(): void {
+        globalStore.set(this.markedFilterAtom, "all");
+        globalStore.set(this.dateRangeAtom, DefaultDateRange);
+        globalStore.set(this.tagFiltersAtom, []);
     }
 
     getBoundSessionId(): string {
@@ -564,6 +595,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const query = jotai.useAtomValue(model.queryAtom);
     const tagFilters = jotai.useAtomValue(model.tagFiltersAtom);
     const availableTags = jotai.useAtomValue(model.availableTagsAtom);
+    const [markedFilter, setMarkedFilter] = jotai.useAtom(model.markedFilterAtom);
+    const [dateRange, setDateRange] = jotai.useAtom(model.dateRangeAtom);
+    const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
@@ -575,23 +609,22 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
-    const [markedOnly, setMarkedOnly] = useState(false);
-    const [tagsCollapsed, setTagsCollapsed] = useState(false);
     const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
-    const visibleSessions = useMemo(() => {
-        const filteredSessions = markedOnly ? sessions.filter((session) => session.marked) : sessions;
-        return sortSessionsByTime(filteredSessions, sortDescending);
-    }, [markedOnly, sessions, sortDescending]);
+    const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
-    const remoteFilterActive = queryActive || source !== "" || tagFilterActive;
-    const filterActive = remoteFilterActive || markedOnly;
+    const markedActive = markedFilter !== "all";
+    const dateActive = dateRange.preset !== "all";
+    const remoteFilterActive = queryActive || source !== "" || tagFilterActive || markedActive || dateActive;
+    const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
+    const activeFilterCount =
+        (markedActive ? 1 : 0) + (dateActive ? 1 : 0) + normalizedTagFilters.length;
 
     useEffect(() => {
         model.loadSessions(false, sortDescending);
@@ -628,7 +661,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source, tagFilters]);
+    }, [model, query, source, tagFilters, markedFilter, dateRange, sortDescending]);
 
     useEffect(() => {
         writeSortPreference(sortDescending);
@@ -690,11 +723,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         },
         [model]
     );
-
-    const clearTagFilters = useCallback(() => {
-        globalStore.set(model.loadingAtom, true);
-        globalStore.set(model.tagFiltersAtom, []);
-    }, [model]);
 
     const cleanupBackups = useCallback(() => {
         if (backupStats == null || backupStats.cleanupCount <= 0 || backupCleanupRunning) return;
@@ -801,11 +829,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 <div className="flex items-center gap-2">
                                     <div
                                         className={cn(
-                                            "relative min-w-0 flex-1 rounded border",
-                                            queryActive || filterBusy ? "border-accent bg-accent/5" : "border-border"
+                                            "relative min-w-0 flex-1 rounded-lg",
+                                            queryActive || filterBusy
+                                                ? "bg-accent/5 ring-1 ring-accent/40"
+                                                : "bg-surface"
                                         )}
                                     >
-                                        <i className="fa-sharp fa-solid fa-magnifying-glass absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-secondary" />
+                                        <i className="fa-sharp fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-secondary" />
                                         <input
                                             className="h-8 w-full bg-transparent pl-7 pr-7 text-sm outline-none"
                                             placeholder="Search title, note, path, tag"
@@ -818,7 +848,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             }}
                                         />
                                         {filterBusy && queryActive ? (
-                                            <i className="fa-sharp fa-solid fa-spinner absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-[11px] text-accent" />
+                                            <i className="fa-sharp fa-solid fa-spinner absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-[11px] text-accent" />
                                         ) : null}
                                     </div>
                                     <IconButton
@@ -827,8 +857,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         onClick={() => setSessionListCollapsed(true)}
                                     />
                                 </div>
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex gap-1">
+                                <div className="flex items-center gap-2">
+                                    <div className="inline-flex rounded-lg bg-surface p-0.5">
                                         <SourceButton
                                             label="All"
                                             active={source === ""}
@@ -849,91 +879,33 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             busy={filterBusy && source === "claude"}
                                             onClick={() => setSource("claude")}
                                         />
-                                        <SourceButton
-                                            label="Marked"
-                                            icon={<i className="fa-sharp fa-solid fa-star" />}
-                                            active={markedOnly}
-                                            onClick={() => setMarkedOnly((current) => !current)}
-                                        />
                                     </div>
+                                    <div className="flex-1" />
+                                    <button
+                                        type="button"
+                                        title="Filters"
+                                        aria-label="Filters"
+                                        onClick={() => setFiltersOpen((current) => !current)}
+                                        className={cn(
+                                            "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
+                                            filtersOpen
+                                                ? "bg-surface-strong text-primary ring-1 ring-accent/40"
+                                                : "bg-surface text-secondary hover:text-primary"
+                                        )}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
+                                        {activeFilterCount > 0 ? (
+                                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-black">
+                                                {activeFilterCount}
+                                            </span>
+                                        ) : (
+                                            <span>Filters</span>
+                                        )}
+                                    </button>
                                     <SortButton
                                         descending={sortDescending}
                                         onToggle={() => setSortDescending((current) => !current)}
                                     />
-                                </div>
-                                {availableTags.length > 0 ? (
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-secondary">
-                                            <button
-                                                type="button"
-                                                className="flex min-w-0 items-center gap-1 text-[10px] uppercase text-secondary hover:text-primary cursor-pointer"
-                                                aria-expanded={!tagsCollapsed}
-                                                onClick={() => setTagsCollapsed((current) => !current)}
-                                            >
-                                                <i
-                                                    className={cn(
-                                                        "fa-sharp fa-solid text-[9px]",
-                                                        tagsCollapsed ? "fa-chevron-right" : "fa-chevron-down"
-                                                    )}
-                                                />
-                                                <span>Tags</span>
-                                            </button>
-                                            {tagFilterActive ? (
-                                                <button
-                                                    type="button"
-                                                    className="text-[10px] text-secondary hover:text-primary cursor-pointer"
-                                                    onClick={clearTagFilters}
-                                                >
-                                                    Clear
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                        {!tagsCollapsed ? (
-                                            <div className="max-h-20 overflow-auto pr-1">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {availableTags.map((tagSummary) => {
-                                                        const active = normalizedTagFilters.includes(tagSummary.tag);
-                                                        return (
-                                                            <button
-                                                                key={tagSummary.tag}
-                                                                type="button"
-                                                                className={cn(
-                                                                    "inline-flex h-5 max-w-full items-center gap-1 rounded border px-1.5 text-[10px] cursor-pointer",
-                                                                    active
-                                                                        ? "border-accent bg-accent/10 text-accent"
-                                                                        : "border-border text-secondary hover:bg-hover hover:text-primary"
-                                                                )}
-                                                                title={`#${tagSummary.tag}`}
-                                                                onClick={() => toggleTagFilter(tagSummary.tag)}
-                                                            >
-                                                                <span className="truncate">#{tagSummary.tag}</span>
-                                                                <span className="text-[9px] opacity-70">
-                                                                    {tagSummary.count}
-                                                                </span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-                                <div className="flex h-5 items-center gap-2 text-[11px] text-secondary">
-                                    {filterBusy ? (
-                                        <>
-                                            <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
-                                            <span>Filtering notes, tags, titles, and paths...</span>
-                                        </>
-                                    ) : filterActive ? (
-                                        <>
-                                            <i className="fa-sharp fa-solid fa-filter text-accent" />
-                                            <span>
-                                                {visibleSessions.length} {markedOnly ? "marked " : ""}matching sessions
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <span>Search includes notes and tags.</span>
-                                    )}
                                 </div>
                                 {backupStats != null && backupStats.cleanupCount > 0 ? (
                                     <div className="rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-secondary">
@@ -957,7 +929,19 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     </div>
                                 ) : null}
                             </div>
-                            <div className="flex h-5 items-center justify-between gap-2 text-[11px] text-secondary">
+                            {filtersOpen ? (
+                                <FilterPanel
+                                    markedFilter={markedFilter}
+                                    setMarkedFilter={setMarkedFilter}
+                                    dateRange={dateRange}
+                                    setDateRange={setDateRange}
+                                    availableTags={availableTags}
+                                    tagFilters={normalizedTagFilters}
+                                    toggleTagFilter={toggleTagFilter}
+                                    onClearAll={() => model.clearAllFilters()}
+                                />
+                            ) : null}
+                            <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
                                 <span className="min-w-0 truncate">{visibleSessions.length} sessions</span>
                                 {loading && !filterActive ? (
                                     <span className="flex shrink-0 items-center gap-1">
@@ -974,7 +958,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 {loading && visibleSessions.length === 0 ? (
                                     <EmptyState text="Loading sessions..." />
                                 ) : visibleSessions.length === 0 ? (
-                                    <EmptyState text={emptySessionsText(markedOnly, remoteFilterActive)} />
+                                    <EmptyState text={emptySessionsText(markedFilter, remoteFilterActive)} />
                                 ) : (
                                     visibleSessions.map((session) => (
                                         <SessionRow

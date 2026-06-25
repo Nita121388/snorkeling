@@ -141,7 +141,7 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		Project:    opts.Project,
 		Limit:      opts.Limit,
 		Refresh:    opts.Refresh,
-		MarkedOnly: false,
+		Marked:     "",
 		TagFilters: opts.TagFilters,
 	}, opts.Query)
 }
@@ -216,7 +216,7 @@ func (m *Manager) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagS
 		Project:    opts.Project,
 		Since:      opts.Since,
 		Before:     opts.Before,
-		MarkedOnly: opts.MarkedOnly,
+		Marked:     opts.Marked,
 		Refresh:    opts.Refresh,
 		Limit:      0,
 	}, "")

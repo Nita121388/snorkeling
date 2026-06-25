@@ -16,6 +16,12 @@ import {
 } from "./session-tags";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
+function sourceDotClass(source: string): string {
+    if (source === "claude") return "bg-source-claude";
+    if (source === "codex") return "bg-source-codex";
+    return "bg-secondary";
+}
+
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
 export function SessionRow({
@@ -94,8 +100,8 @@ export function SessionRow({
     return (
         <div
             className={cn(
-                "group cursor-pointer border-b border-border px-3 py-2 text-sm hover:bg-hover",
-                selected && "bg-accent/10"
+                "group relative cursor-pointer border-b border-border px-3 py-2 text-sm hover:bg-hover",
+                selected && "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
             title={tooltip}
             onClick={onSelect}
@@ -147,8 +153,11 @@ export function SessionRow({
                             }}
                         />
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xxs text-secondary">
-                        <span className="uppercase">{session.source}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
+                        <span className="inline-flex items-center gap-1">
+                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
+                            {session.source}
+                        </span>
                         <span title={formatDateTimeToSecond(sessionTime)}>{formatSessionRelativeTime(sessionTime)}</span>
                         <span>{session.messageCount ?? 0} msgs</span>
                         {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}

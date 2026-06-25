@@ -20,7 +20,9 @@ import {
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
+    copyText,
     formatDateTimeToSecond,
+    formatSessionDate,
     formatToolCallPreview,
     isReadableMessage,
     outlinePreview,
@@ -606,28 +608,39 @@ export function SessionDetailPane({
                                 </div>
                                 <div className="flex w-full min-w-0 items-center justify-end gap-2">
                                     <span className="shrink-0 text-[10px] uppercase">Session file:</span>
-                                    <span
-                                        className="min-w-0 truncate text-right"
-                                        title={sessionFilePath || "Session file unavailable"}
-                                    >
-                                        {sessionFilePath || "No session file"}
-                                    </span>
                                     {sessionFilePath ? (
-                                        <>
-                                            <CopyIconButton
-                                                text={sessionFilePath}
-                                                label="Copy session file path"
-                                                size="xs"
-                                                className="!border-transparent"
-                                            />
-                                            <IconButton
-                                                icon="fa-up-right-from-square"
-                                                label="Open session file"
-                                                size="xs"
-                                                className="!border-transparent"
-                                                onClick={() => void model.openSessionFile(summary)}
-                                            />
-                                        </>
+                                        <Tooltip
+                                            placement="top"
+                                            openDelay={200}
+                                            divClassName="min-w-0"
+                                            content={
+                                                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                                                    <div className="text-secondary">{sessionFilePath}</div>
+                                                    <div className="mt-1 text-[10px] uppercase text-secondary">
+                                                        Click to copy
+                                                    </div>
+                                                </div>
+                                            }
+                                        >
+                                            <button
+                                                type="button"
+                                                className="cursor-pointer text-right text-secondary transition-colors hover:text-primary"
+                                                onClick={() => void copyText(sessionFilePath)}
+                                            >
+                                                {formatSessionDate(summary.updatedAt || summary.createdAt || 0)}
+                                            </button>
+                                        </Tooltip>
+                                    ) : (
+                                        <span className="text-right text-secondary">No session file</span>
+                                    )}
+                                    {sessionFilePath ? (
+                                        <IconButton
+                                            icon="fa-up-right-from-square"
+                                            label="Open session file"
+                                            size="xs"
+                                            className="!border-transparent"
+                                            onClick={() => void model.openSessionFile(summary)}
+                                        />
                                     ) : null}
                                 </div>
                             </div>

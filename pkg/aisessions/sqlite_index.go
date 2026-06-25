@@ -912,7 +912,7 @@ func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]Sessi
 		Project:    opts.Project,
 		Since:      opts.Since,
 		Before:     opts.Before,
-		MarkedOnly: opts.MarkedOnly,
+		Marked:     opts.Marked,
 		Limit:      0,
 	})
 	if err != nil {

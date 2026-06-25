@@ -141,7 +141,7 @@ type ListOptions struct {
 	Since      int64
 	Before     int64
 	Limit      int
-	MarkedOnly bool
+	Marked     string
 	TagFilters []string
 	Refresh    bool
 }

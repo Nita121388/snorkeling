@@ -31,7 +31,9 @@ type AISessionsListRequest struct {
 	Connection string   `json:"connection,omitempty"`
 	Limit      int      `json:"limit,omitempty"`
 	Refresh    bool     `json:"refresh,omitempty"`
-	MarkedOnly bool     `json:"markedOnly,omitempty"`
+	Marked     string   `json:"marked,omitempty"`
+	Since      int64    `json:"since,omitempty"`
+	Before     int64    `json:"before,omitempty"`
 	TagFilters []string `json:"tagFilters,omitempty"`
 }
 
@@ -43,7 +45,7 @@ type AISessionsTagsRequest struct {
 	Source     string `json:"source,omitempty"`
 	Project    string `json:"project,omitempty"`
 	Connection string `json:"connection,omitempty"`
-	MarkedOnly bool   `json:"markedOnly,omitempty"`
+	Marked     string `json:"marked,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 }
 
@@ -254,7 +256,9 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		Source:     request.Source,
 		Project:    request.Project,
 		Limit:      limit,
-		MarkedOnly: request.MarkedOnly,
+		Marked:     request.Marked,
+		Since:      request.Since,
+		Before:     request.Before,
 		TagFilters: request.TagFilters,
 		Refresh:    request.Refresh,
 	}, request.Query)
@@ -323,10 +327,10 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 		return nil, err
 	}
 	tags, err := manager.ListTags(ctx, aisessions.ListOptions{
-		Source:     request.Source,
-		Project:    request.Project,
-		MarkedOnly: request.MarkedOnly,
-		Refresh:    request.Refresh,
+		Source:  request.Source,
+		Project: request.Project,
+		Marked:  request.Marked,
+		Refresh: request.Refresh,
 	})
 	if err != nil {
 		return nil, err

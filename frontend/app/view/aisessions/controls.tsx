@@ -24,11 +24,11 @@ export function SourceButton({
     return (
         <button
             className={cn(
-                "flex h-7 items-center justify-center gap-1 rounded border text-xs transition-colors",
-                iconOnly ? "w-8 px-1" : "px-2",
+                "flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors",
+                iconOnly ? "w-8 px-1" : "px-2.5",
                 active
-                    ? "border-accent bg-accent/10 text-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
-                    : "border-border text-secondary hover:bg-hover hover:text-primary"
+                    ? "bg-surface-strong text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+                    : "text-secondary hover:text-primary"
             )}
             onClick={onClick}
             title={label}
@@ -67,10 +67,8 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
     return (
         <button
             className={cn(
-                "h-7 shrink-0 rounded border px-2 text-xs",
-                descending
-                    ? "border-accent bg-accent/10 text-primary"
-                    : "border-border text-secondary hover:bg-hover hover:text-primary"
+                "flex h-7 items-center gap-1.5 rounded-md bg-surface px-2.5 text-xs text-secondary transition-colors hover:text-primary",
+                descending && "text-primary"
             )}
             onClick={onToggle}
             title={descending ? "Newest first" : "Oldest first"}
@@ -104,7 +102,7 @@ export function IconButton({
     return (
         <button
             className={cn(
-                "shrink-0 rounded border border-border text-secondary hover:bg-hover hover:text-primary",
+                "shrink-0 rounded text-secondary hover:bg-hover hover:text-primary",
                 size === "xs" ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-xs",
                 disabled && "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-secondary",
                 className
