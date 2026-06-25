@@ -28,14 +28,25 @@ function mergeSessionTags(left: string[] | null | undefined, right: string[] | n
 
 function extractSessionTagsFromNote(note: string): { note: string; tags: string[] } {
     const tags: string[] = [];
-    const cleaned = note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (match, prefix, tag) => {
+    note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (match, prefix, tag) => {
         tags.push(tag);
-        return prefix;
+        return match;
     });
     return {
-        note: cleaned.trim().replace(/\s+/g, " "),
+        note: note.trim(),
         tags: normalizeSessionTags(tags),
     };
+}
+
+function removeSessionTagFromNote(note: string, tag: string): string {
+    const normalizedTag = normalizeSessionTag(tag);
+    if (normalizedTag === "") return note;
+    return note
+        .replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (match, prefix, nextTag) =>
+            normalizeSessionTag(nextTag) === normalizedTag ? prefix : match
+        )
+        .trim()
+        .replace(/[ \t]{2,}/g, " ");
 }
 
 function sessionTagsEqual(left: string[] | null | undefined, right: string[] | null | undefined): boolean {
@@ -56,6 +67,7 @@ export {
     mergeSessionTags,
     normalizeSessionTag,
     normalizeSessionTags,
+    removeSessionTagFromNote,
     sessionTagsEqual,
     sessionTagsLabel,
 };

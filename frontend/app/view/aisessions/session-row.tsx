@@ -10,6 +10,7 @@ import {
     extractSessionTagsFromNote,
     mergeSessionTags,
     normalizeSessionTags,
+    removeSessionTagFromNote,
     sessionTagsEqual,
     sessionTagsLabel,
 } from "./session-tags";
@@ -166,7 +167,12 @@ export function SessionRow({
                             <SessionTagChips
                                 tags={nextTags}
                                 removable
-                                onRemove={(tag) => setTagDraft((current) => current.filter((item) => item !== tag))}
+                                onRemove={(tag) => {
+                                    setTagDraft((current) => current.filter((item) => item !== tag));
+                                    const nextNote = removeSessionTagFromNote(noteDraft, tag);
+                                    latestDraftRef.current = nextNote;
+                                    setNoteDraft(nextNote);
+                                }}
                             />
                             <textarea
                                 className="min-h-[56px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"

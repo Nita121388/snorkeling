@@ -207,6 +207,9 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 	if err != nil {
 		version = 0
 	}
+	if version >= 2 {
+		return true, nil
+	}
 	rows := []struct {
 		Key       string `db:"session_key"`
 		Note      string `db:"note"`
@@ -215,22 +218,18 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 	if err := idx.db.SelectContext(ctx, &rows, `SELECT session_key, note, updated_at FROM ai_session_meta WHERE instr(note, '#') > 0`); err != nil {
 		return false, err
 	}
-	if version >= 2 && len(rows) == 0 {
-		return true, nil
-	}
 	type tagMigrationRow struct {
 		key       string
-		note      string
 		tags      []string
 		updatedAt int64
 	}
 	var migrations []tagMigrationRow
 	for _, row := range rows {
-		cleanNote, tags := ExtractSessionTagsFromNote(row.Note)
+		_, tags := ExtractSessionTagsFromNote(row.Note)
 		if len(tags) == 0 {
 			continue
 		}
-		migrations = append(migrations, tagMigrationRow{key: row.Key, note: cleanNote, tags: tags, updatedAt: row.UpdatedAt})
+		migrations = append(migrations, tagMigrationRow{key: row.Key, tags: tags, updatedAt: row.UpdatedAt})
 	}
 	if len(migrations) > 0 {
 		if err := idx.backupSQLiteBeforeTagMigration(); err != nil {
@@ -254,8 +253,8 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 		if updatedAt == 0 {
 			updatedAt = now
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET note = ?, updated_at = ?, source = ?, dirty = 1 WHERE session_key = ?`,
-			migration.note, updatedAt, "tag-migration", migration.key); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET updated_at = ?, source = ?, dirty = 1 WHERE session_key = ?`,
+			updatedAt, "tag-migration", migration.key); err != nil {
 			return false, err
 		}
 		for _, tag := range migration.tags {

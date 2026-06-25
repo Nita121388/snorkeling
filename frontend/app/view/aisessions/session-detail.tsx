@@ -9,7 +9,14 @@ import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
 import { SessionTagChips } from "./session-tag-chips";
-import { extractSessionTagsFromNote, mergeSessionTags, normalizeSessionTags, sessionTagsEqual } from "./session-tags";
+import {
+    extractSessionTagsFromNote,
+    mergeSessionTags,
+    normalizeSessionTags,
+    removeSessionTagFromNote,
+    sessionTagsEqual,
+    sessionTagsLabel,
+} from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
@@ -546,6 +553,7 @@ export function SessionDetailPane({
                   : "";
     const projectDirectory = summary.projectPath?.trim() ?? "";
     const sessionFilePath = summary.filePath?.trim() ?? "";
+    const notePreviewText = summary.note || sessionTagsLabel(summary.tags);
     return (
         <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 p-3">
@@ -661,12 +669,9 @@ export function SessionDetailPane({
                             {summary.note || summary.tags?.length ? (
                                 <div
                                     className="min-w-0 flex-1 truncate border-l border-accent/40 pl-2 text-xs text-secondary"
-                                    title={[summary.note, ...(summary.tags ?? []).map((tag) => `#${tag}`)]
-                                        .filter(Boolean)
-                                        .join(" ")}
+                                    title={notePreviewText}
                                 >
-                                    {summary.note}
-                                    {summary.tags?.length ? ` ${summary.tags.map((tag) => `#${tag}`).join(" ")}` : ""}
+                                    {notePreviewText}
                                 </div>
                             ) : null}
                         </div>
@@ -708,8 +713,10 @@ export function SessionDetailPane({
                                         const baseTags = normalizeSessionTags(summary?.tags ?? []).filter(
                                             (item) => item !== tag
                                         );
-                                        setNoteDraft(parsedNoteDraft.note);
-                                        void model.updateNote(summary, parsedNoteDraft.note, baseTags);
+                                        const nextNote = removeSessionTagFromNote(parsedNoteDraft.note, tag);
+                                        latestNoteDraftRef.current = nextNote;
+                                        setNoteDraft(nextNote);
+                                        void model.updateNote(summary, nextNote, baseTags);
                                     }}
                                 />
                                 <textarea
