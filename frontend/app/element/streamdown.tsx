@@ -4,15 +4,16 @@
 import { CopyButton } from "@/app/element/copybutton";
 import { IconButton } from "@/app/element/iconbutton";
 import { getFocusedBlockConnection, openFileLinkInPreview } from "@/app/view/preview/file-link-navigation";
-import { openLink } from "@/store/global";
+import { atoms, openLink } from "@/store/global";
 import { cn, useAtomValueSafe } from "@/util/util";
-import type { Atom } from "jotai";
+import { type Atom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bundledLanguages, codeToHtml } from "shiki/bundle/web";
 import { Streamdown } from "streamdown";
 import { throttle } from "throttle-debounce";
 
-const ShikiTheme = "github-dark-high-contrast";
+const DarkShikiTheme = "github-dark-high-contrast";
+const LightShikiTheme = "github-light";
 
 function extractText(node: React.ReactNode): string {
     if (node == null || typeof node === "boolean") return "";
@@ -28,14 +29,20 @@ function CodePlain({ className = "", isCodeBlock, text }: { className?: string; 
         return <code className={cn("font-mono text-[12px]", className)}>{text}</code>;
     }
 
-    return (
-        <code className={cn("text-secondary font-mono text-[12px] rounded-sm bg-zinc-800/80 px-1.5 py-0.5", className)}>
-            {text}
-        </code>
-    );
+    return <code className={cn("text-primary font-mono text-[12px] rounded-sm bg-panel px-1.5 py-0.5", className)}>{text}</code>;
 }
 
-function CodeHighlight({ className = "", lang, text }: { className?: string; lang: string; text: string }) {
+function CodeHighlight({
+    className = "",
+    lang,
+    text,
+    shikiTheme,
+}: {
+    className?: string;
+    lang: string;
+    text: string;
+    shikiTheme: string;
+}) {
     const [html, setHtml] = useState<string>("");
     const [hasError, setHasError] = useState(false);
     const codeRef = useRef<HTMLElement>(null);
@@ -44,7 +51,7 @@ function CodeHighlight({ className = "", lang, text }: { className?: string; lan
     const highlightCode = useCallback(
         async (textToHighlight: string, language: string, disposedRef: { current: boolean }, seq: number) => {
             try {
-                const full = await codeToHtml(textToHighlight, { lang: language, theme: ShikiTheme });
+                const full = await codeToHtml(textToHighlight, { lang: language, theme: shikiTheme });
                 const start = full.indexOf("<code");
                 const open = full.indexOf(">", start);
                 const end = full.lastIndexOf("</code>");
@@ -60,7 +67,7 @@ function CodeHighlight({ className = "", lang, text }: { className?: string; lan
                 console.warn(`Shiki highlight failed for ${language}`, e);
             }
         },
-        []
+        [shikiTheme]
     );
 
     const throttledHighlight = useMemo(() => throttle(300, highlightCode, { noLeading: false }), [highlightCode]);
@@ -107,14 +114,22 @@ function CodeHighlight({ className = "", lang, text }: { className?: string; lan
     );
 }
 
-export function Code({ className = "", children }: { className?: string; children: React.ReactNode }) {
+export function Code({
+    className = "",
+    children,
+    shikiTheme = DarkShikiTheme,
+}: {
+    className?: string;
+    children: React.ReactNode;
+    shikiTheme?: string;
+}) {
     const m = className?.match(/language-([\w+-]+)/i);
     const isCodeBlock = !!m;
     const lang = m?.[1] || "text";
     const text = extractText(children);
 
     if (isCodeBlock && lang in bundledLanguages) {
-        return <CodeHighlight className={className} lang={lang} text={text} />;
+        return <CodeHighlight className={className} lang={lang} text={text} shikiTheme={shikiTheme} />;
     }
 
     return <CodePlain className={className} isCodeBlock={isCodeBlock} text={text} />;
@@ -153,7 +168,7 @@ const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBloc
 
     return (
         <div
-            className={cn("rounded-lg overflow-hidden bg-black my-4", codeBlockMaxWidth && "max-w-full")}
+            className={cn("rounded-lg overflow-hidden bg-panel border border-border my-4", codeBlockMaxWidth && "max-w-full")}
             style={
                 codeBlockMaxWidth
                     ? { maxWidth: codeBlockMaxWidth, minWidth: Math.min(400, codeBlockMaxWidth) }
@@ -161,7 +176,7 @@ const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBloc
             }
         >
             <div className="flex items-center justify-between pl-3 pr-2 pt-2 pb-1.5">
-                <span className="text-[11px] text-white/50">{language}</span>
+                <span className="text-[11px] text-secondary">{language}</span>
                 <div className="flex items-center gap-2">
                     <CopyButton onClick={handleCopy} title="Copy" />
                     {onClickExecute && (
@@ -175,7 +190,7 @@ const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBloc
                     )}
                 </div>
             </div>
-            <pre className="px-4 pb-2 pt-0 overflow-x-auto m-0 text-secondary max-w-full">{children}</pre>
+            <pre className="px-4 pb-2 pt-0 overflow-x-auto m-0 text-primary max-w-full">{children}</pre>
         </div>
     );
 };
@@ -227,9 +242,12 @@ export const WaveStreamdown = ({
     onClickExecute,
     codeBlockMaxWidthAtom,
 }: WaveStreamdownProps) => {
+    const appTheme = useAtomValue(atoms.resolvedAppThemeAtom);
+    const shikiTheme = appTheme === "light" ? LightShikiTheme : DarkShikiTheme;
+    const mermaidTheme = appTheme === "light" ? "default" : "dark";
     const components = useMemo(
         () => ({
-            code: Code,
+            code: (props: { className?: string; children: React.ReactNode }) => <Code {...props} shikiTheme={shikiTheme} />,
             pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
                 <CodeBlock
                     children={props.children}
@@ -311,7 +329,7 @@ export const WaveStreamdown = ({
             ),
             em: (props: React.HTMLAttributes<HTMLElement>) => <em {...props} className="italic text-secondary" />,
         }),
-        [onClickExecute, codeBlockMaxWidthAtom]
+        [onClickExecute, codeBlockMaxWidthAtom, shikiTheme]
     );
 
     return (
@@ -321,7 +339,7 @@ export const WaveStreamdown = ({
                 "wave-streamdown text-secondary [&>*:first-child]:mt-0 [&>*:first-child>*:first-child]:mt-0 space-y-2",
                 className
             )}
-            shikiTheme={[ShikiTheme, ShikiTheme]}
+            shikiTheme={[shikiTheme, shikiTheme]}
             controls={{
                 code: false,
                 table: false,
@@ -329,8 +347,8 @@ export const WaveStreamdown = ({
             }}
             mermaid={{
                 config: {
-                    theme: "dark",
-                    darkMode: true,
+                    theme: mermaidTheme,
+                    darkMode: appTheme === "dark",
                 },
             }}
             components={components}

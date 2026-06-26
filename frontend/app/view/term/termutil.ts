@@ -1,12 +1,14 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-export const DefaultTermTheme = "default-dark";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import * as TermTypes from "@xterm/xterm";
 import base64 from "base64-js";
 import { colord } from "colord";
+
+export const DefaultTermTheme = "default-dark";
+export const DefaultLightTermTheme = "default-light";
 
 export type GenClipboardItem = { text?: string; image?: Blob };
 
@@ -51,6 +53,10 @@ export function computeTheme(
     const bgcolor = themeCopy.background;
     themeCopy.background = "#00000000";
     return [themeCopy, bgcolor];
+}
+
+export function getDefaultTermTheme(appTheme: ResolvedAppTheme): string {
+    return appTheme === "light" ? DefaultLightTermTheme : DefaultTermTheme;
 }
 
 export const MIME_TO_EXT: Record<string, string> = {

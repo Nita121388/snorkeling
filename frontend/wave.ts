@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
-import { loadMonaco } from "@/app/monaco/monaco-env";
+import { loadMonaco, setMonacoTheme } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
 import {
@@ -17,6 +17,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { makeBuilderRouteId, makeTabRouteId } from "@/app/store/wshrouter";
 import { initWshrpc, TabRpcClient } from "@/app/store/wshrpcutil";
 import { initOpenedThisLaunchTabIdsSync } from "@/app/tab/tab-open-state";
+import { applyAppTheme, resolveAppTheme } from "@/app/theme-mode";
 import { BuilderApp } from "@/builder/builder-app";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { countersClear, countersPrint } from "@/store/counters";
@@ -68,6 +69,12 @@ function syncUpdaterStatus() {
     }
 }
 
+function syncAppTheme(mode: string) {
+    const appTheme = resolveAppTheme(mode);
+    applyAppTheme(appTheme);
+    setMonacoTheme(appTheme);
+}
+
 function scheduleUpdaterStatusSync() {
     syncUpdaterStatus();
     setTimeout(syncUpdaterStatus, 1000);
@@ -76,6 +83,7 @@ function scheduleUpdaterStatusSync() {
 
 async function initBare() {
     getApi().sendLog("Init Bare");
+    syncAppTheme("system");
     document.body.style.visibility = "hidden";
     document.body.style.opacity = "0";
     document.body.classList.add("is-transparent");
@@ -213,6 +221,7 @@ async function initWave(initOpts: WaveInitOpts) {
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
     globalStore.set(atoms.fullConfigAtom, fullConfig);
+    syncAppTheme(fullConfig?.settings?.["app:theme"]);
     const waveaiModeConfig = await RpcApi.GetWaveAIModeConfigCommand(TabRpcClient);
     globalStore.set(atoms.waveaiModeConfigAtom, waveaiModeConfig.configs);
     console.log("Wave First Render");
@@ -285,6 +294,7 @@ async function initBuilder(initOpts: BuilderInitOpts) {
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
     globalStore.set(atoms.fullConfigAtom, fullConfig);
+    syncAppTheme(fullConfig?.settings?.["app:theme"]);
     const waveaiModeConfig = await RpcApi.GetWaveAIModeConfigCommand(TabRpcClient);
     globalStore.set(atoms.waveaiModeConfigAtom, waveaiModeConfig.configs);
 

@@ -1,31 +1,49 @@
 // Copyright 2024, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-:root {
-    --main-text-color: #f7f7f7;
+:root,
+[data-theme="dark"] {
     --title-font-size: 18px;
     --window-opacity: 1;
-    --secondary-text-color: rgb(195, 200, 194);
-    --grey-text-color: #666;
-    --main-bg-color: rgb(34, 34, 34);
-    --border-color: rgba(255, 255, 255, 0.16);
     --base-font: normal 14px / normal "Inter", sans-serif;
     --fixed-font: normal 12px / normal "Hack", monospace;
-    --accent-color: rgb(88, 193, 66);
-    --panel-bg-color: rgba(31, 33, 31, 0.5);
-    --highlight-bg-color: rgba(255, 255, 255, 0.2);
     --markdown-font-family:
         -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji",
         "Segoe UI Emoji";
     --markdown-font-size: 14px;
     --markdown-fixed-font-size: 12px;
+    --block-border-radius: 8px;
+    --header-font: 700 11px / normal "Inter", sans-serif;
+    --header-icon-size: 14px;
+    --header-icon-width: 16px;
+    --header-height: 30px;
+
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --accent-bg-color: rgba(88, 193, 66, 0.5);
+    --accent-color-50: rgb(236, 253, 232);
+    --accent-color-100: rgb(209, 250, 202);
+    --accent-color-200: rgb(167, 243, 168);
+    --accent-color-300: rgb(110, 231, 133);
+    --accent-color-500: rgb(63, 162, 51);
+    --accent-color-600: rgb(47, 133, 47);
+    --accent-color-700: rgb(34, 104, 43);
+    --accent-color-800: rgb(22, 81, 35);
+    --accent-color-900: rgb(15, 61, 29);
+    --panel-bg-color: rgba(31, 33, 31, 0.5);
+    --highlight-bg-color: rgba(255, 255, 255, 0.2);
     --error-color: rgb(229, 77, 46);
     --warning-color: rgb(224, 185, 86);
     --success-color: rgb(78, 154, 6);
     --hover-bg-color: rgba(255, 255, 255, 0.1);
+    --hover-bg-color-strong: rgba(255, 255, 255, 0.2);
     --block-bg-color: rgba(0, 0, 0, 0.5);
     --block-bg-solid-color: rgb(0, 0, 0);
-    --block-border-radius: 8px;
 
     --keybinding-color: #e0e0e0;
     --keybinding-bg-color: #333;
@@ -36,11 +54,6 @@
     --scrollbar-thumb-color: rgba(255, 255, 255, 0.15);
     --scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.5);
     --scrollbar-thumb-active-color: rgba(255, 255, 255, 0.6);
-
-    --header-font: 700 11px / normal "Inter", sans-serif;
-    --header-icon-size: 14px;
-    --header-icon-width: 16px;
-    --header-height: 30px;
 
     --tab-green: rgb(88, 193, 66);
 
@@ -158,4 +171,112 @@
     --button-red-outlined-color: #ff3c3c;
     --button-yellow-bg: #c4a000;
     --button-yellow-hover-bg: #fce94f;
+}
+
+[data-theme="light"] {
+    --main-text-color: #1f2937;
+    --secondary-text-color: #374151;
+    --grey-text-color: #a89274;
+    --main-bg-color: #faf7f0;
+    --border-color: #d6cfbe;
+    --accent-color: #b06535;
+    --accent-hover-color: #c27a45;
+    --accent-bg-color: rgba(245, 158, 11, 0.24);
+    --accent-color-50: #fff8e6;
+    --accent-color-100: #fef0c7;
+    --accent-color-200: #fde68a;
+    --accent-color-300: #fcd472;
+    --accent-color-500: #c27a45;
+    --accent-color-600: #b06535;
+    --accent-color-700: #8f5124;
+    --accent-color-800: #713f1d;
+    --accent-color-900: #4f2b17;
+    --panel-bg-color: rgba(243, 239, 228, 0.72);
+    --highlight-bg-color: rgba(245, 158, 11, 0.2);
+    --error-color: #d32f2f;
+    --warning-color: #e65100;
+    --success-color: #2e7d32;
+    --hover-bg-color: rgba(176, 101, 53, 0.1);
+    --hover-bg-color-strong: rgba(176, 101, 53, 0.18);
+    --block-bg-color: rgba(255, 253, 248, 0.72);
+    --block-bg-solid-color: #fffdf8;
+
+    --keybinding-color: #374151;
+    --keybinding-bg-color: #f3efe4;
+    --keybinding-border-color: #d6cfbe;
+
+    --scrollbar-thumb-color: rgba(107, 91, 68, 0.24);
+    --scrollbar-thumb-hover-color: rgba(107, 91, 68, 0.5);
+    --scrollbar-thumb-active-color: rgba(107, 91, 68, 0.62);
+
+    --tab-green: #2e7d32;
+
+    --modal-bg-color: #fffdf8;
+    --modal-header-bottom-border-color: #d6cfbe;
+    --modal-border-color: #d6cfbe;
+    --modal-shadow-color: rgba(69, 48, 30, 0.18);
+    --toggle-bg-color: #d6cfbe;
+    --toggle-thumb-color: #fffdf8;
+    --toggle-checked-bg-color: var(--accent-color);
+
+    --link-color: #b06535;
+
+    --form-element-border-color: #d6cfbe;
+    --form-element-bg-color: #fffdf8;
+    --form-element-text-color: #1f2937;
+    --form-element-primary-text-color: #1f2937;
+    --form-element-primary-color: var(--accent-color);
+    --form-element-secondary-color: rgba(176, 101, 53, 0.18);
+    --form-element-error-color: var(--error-color);
+
+    --conn-icon-color: #2563eb;
+    --conn-icon-color-1: #2563eb;
+    --conn-icon-color-2: #7c3aed;
+    --conn-icon-color-3: #be185d;
+    --conn-icon-color-4: #dc2626;
+    --conn-icon-color-5: #1d4ed8;
+    --conn-icon-color-6: #c2410c;
+    --conn-icon-color-7: #a16207;
+    --conn-icon-color-8: #2e7d32;
+    --conn-status-overlay-bg-color: rgba(245, 158, 11, 0.18);
+
+    --sysinfo-cpu-color: #2e7d32;
+    --sysinfo-mem-color: #2563eb;
+
+    --term-black: #24292f;
+    --term-red: #cf222e;
+    --term-green: #116329;
+    --term-yellow: #4d2d00;
+    --term-blue: #0969da;
+    --term-magenta: #8250df;
+    --term-cyan: #1b7c83;
+    --term-white: #6e7781;
+    --term-bright-black: #57606a;
+    --term-bright-red: #a40e26;
+    --term-bright-green: #1a7f37;
+    --term-bright-yellow: #633c01;
+    --term-bright-blue: #218bff;
+    --term-bright-magenta: #a475f9;
+    --term-bright-cyan: #3192aa;
+    --term-bright-white: #8c959f;
+    --term-gray: #8c959f;
+    --term-cmdtext: #1f2937;
+    --term-foreground: #1f2937;
+    --term-background: #faf7f0;
+    --term-selection-background: rgba(245, 158, 11, 0.24);
+    --term-cursor-accent: #faf7f0;
+
+    --button-text-color: #fffdf8;
+    --button-green-bg: #2e7d32;
+    --button-green-border-color: #1a7f37;
+    --button-grey-bg: rgba(176, 101, 53, 0.08);
+    --button-grey-hover-bg: rgba(176, 101, 53, 0.14);
+    --button-grey-border-color: #d6cfbe;
+    --button-grey-outlined-color: #6b5b44;
+    --button-red-bg: #d32f2f;
+    --button-red-hover-bg: #b71c1c;
+    --button-red-border-color: #d32f2f;
+    --button-red-outlined-color: #b71c1c;
+    --button-yellow-bg: #f59e0b;
+    --button-yellow-hover-bg: #fcd472;
 }

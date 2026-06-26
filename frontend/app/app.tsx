@@ -7,6 +7,7 @@ import {
     getBadgeAtom,
     getBlockBadgeAtom,
 } from "@/app/store/badge";
+import { setMonacoTheme } from "@/app/monaco/monaco-env";
 import { ClientModel } from "@/app/store/client-model";
 import { FocusManager } from "@/app/store/focusManager";
 import { GlobalModel } from "@/app/store/global-model";
@@ -19,6 +20,7 @@ import { getLayoutModelForStaticTab } from "@/layout/index";
 import { ContextMenuModel } from "@/store/contextmenu";
 import { atoms, createBlock, getSettingsPrefixAtom, refocusNode } from "@/store/global";
 import { appHandleKeyDown, keyboardMouseDownHandler } from "@/store/keymodel";
+import { applyAppTheme } from "@/app/theme-mode";
 import { getElemAsStr } from "@/util/focusutil";
 import * as keyutil from "@/util/keyutil";
 import { PLATFORM } from "@/util/platformutil";
@@ -145,6 +147,12 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
 function AppSettingsUpdater() {
     const windowSettingsAtom = getSettingsPrefixAtom("window");
     const windowSettings = useAtomValue(windowSettingsAtom);
+    const appTheme = useAtomValue(atoms.resolvedAppThemeAtom);
+    useEffect(() => {
+        applyAppTheme(appTheme);
+        setMonacoTheme(appTheme);
+    }, [appTheme]);
+
     useEffect(() => {
         const isTransparentOrBlur =
             (windowSettings?.["window:transparent"] || windowSettings?.["window:blur"]) ?? false;

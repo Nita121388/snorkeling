@@ -20,6 +20,10 @@ import ymlWorker from "./yamlworker?worker";
 
 let monacoConfigured = false;
 
+export function setMonacoTheme(appTheme: ResolvedAppTheme) {
+    monaco.editor.setTheme(appTheme === "light" ? "wave-theme-light" : "wave-theme-dark");
+}
+
 window.MonacoEnvironment = {
     getWorker(_, label) {
         if (label === "json") {
@@ -71,7 +75,7 @@ export function loadMonaco() {
         schemas: [],
     });
     registerMarkdownFolding(monaco);
-    monaco.editor.setTheme("wave-theme-dark");
+    setMonacoTheme("dark");
     // Disable default validation errors for typescript and javascript
     monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
         noSemanticValidation: true,

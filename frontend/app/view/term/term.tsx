@@ -811,8 +811,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
 
     const tabModel = useTabModel();
     const termFontSize = jotai.useAtomValue(model.fontSizeAtom);
-    const fullConfig = globalStore.get(atoms.fullConfigAtom);
-    const connFontFamily = fullConfig.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];
+    const termFontFamily = jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:fontfamily")) ?? "Hack";
     const isFocused = jotai.useAtomValue(model.nodeModel.isFocused);
     const isMI = jotai.useAtomValue(tabModel.isTermMultiInput);
     const isBasicTerm = termMode != "vdom" && blockData?.meta?.controller != "cmd"; // needs to match isBasicTerm
@@ -911,7 +910,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
-        const fontFamily = termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+        const fontFamily = termFontFamily;
         const useWebGl = !termSettings?.["term:disablewebgl"];
         console.log("[termwrap-lifecycle-debug] create", {
             blockId,
@@ -997,7 +996,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             setTermWrapInst(null);
             setSelectionCopyOverlay(null);
         };
-    }, [blockId, termSettings, termFontSize, connFontFamily]);
+    }, [blockId, termSettings, termFontSize, termFontFamily]);
 
     React.useEffect(() => {
         if (termModeRef.current == "vdom" && termMode == "term") {

@@ -53,8 +53,10 @@ import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder"
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
-import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
+import { computeTheme, getDefaultTermTheme, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
+
+const TerminalFontFamilies = ["Hack", "JetBrains Mono", "SF Mono", "Menlo", "Berkeley Mono"];
 
 function normalizeAgentProvider(provider: unknown): string {
     return typeof provider === "string" && provider.trim() !== "" ? provider.trim() : "agent";
@@ -275,7 +277,7 @@ export class TermViewModel implements ViewModel {
         this.termBPMAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
         this.termThemeNameAtom = useBlockAtom(blockId, "termthemeatom", () => {
             return jotai.atom<string>((get) => {
-                return get(getOverrideConfigAtom(this.blockId, "term:theme")) ?? DefaultTermTheme;
+                return get(getOverrideConfigAtom(this.blockId, "term:theme")) ?? getDefaultTermTheme(get(atoms.resolvedAppThemeAtom));
             });
         });
         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {
@@ -1161,6 +1163,11 @@ export class TermViewModel implements ViewModel {
         const transparencyMeta = globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:transparency"));
         const blockData = globalStore.get(this.blockAtom);
         const overrideFontSize = blockData?.meta?.["term:fontsize"];
+        const connFontFamily = fullConfig?.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];
+        const defaultFontFamily = connFontFamily ?? globalStore.get(getSettingsKeyAtom("term:fontfamily")) ?? "Hack";
+        const overrideFontFamily = blockData?.meta?.["term:fontfamily"];
+        const appTheme = globalStore.get(atoms.resolvedAppThemeAtom);
+        const defaultThemeName = getDefaultTermTheme(appTheme);
 
         termThemeKeys.sort((a, b) => {
             return (termThemes[a]["display:order"] ?? 0) - (termThemes[b]["display:order"] ?? 0);
@@ -1259,7 +1266,7 @@ export class TermViewModel implements ViewModel {
             };
         });
         submenu.unshift({
-            label: "Default",
+            label: "Default (" + (termThemes[defaultThemeName]?.["display:name"] ?? defaultThemeName) + ")",
             type: "checkbox",
             checked: curThemeName == null,
             click: () => this.setTerminalTheme(null),
@@ -1322,6 +1329,30 @@ export class TermViewModel implements ViewModel {
                 RpcApi.SetMetaCommand(TabRpcClient, {
                     oref: WOS.makeORef("block", this.blockId),
                     meta: { "term:fontsize": null },
+                });
+            },
+        });
+        const fontFamilySubMenu: ContextMenuItem[] = TerminalFontFamilies.map((fontFamily) => {
+            return {
+                label: fontFamily,
+                type: "checkbox",
+                checked: overrideFontFamily == fontFamily,
+                click: () => {
+                    RpcApi.SetMetaCommand(TabRpcClient, {
+                        oref: WOS.makeORef("block", this.blockId),
+                        meta: { "term:fontfamily": fontFamily },
+                    });
+                },
+            };
+        });
+        fontFamilySubMenu.unshift({
+            label: "Default (" + defaultFontFamily + ")",
+            type: "checkbox",
+            checked: overrideFontFamily == null,
+            click: () => {
+                RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef("block", this.blockId),
+                    meta: { "term:fontfamily": null },
                 });
             },
         });
@@ -1417,6 +1448,10 @@ export class TermViewModel implements ViewModel {
         fullMenu.push({
             label: "Font Size",
             submenu: fontSizeSubMenu,
+        });
+        fullMenu.push({
+            label: "Font Family",
+            submenu: fontFamilySubMenu,
         });
         fullMenu.push({
             label: "Cursor",

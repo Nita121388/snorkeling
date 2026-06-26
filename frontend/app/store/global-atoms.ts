@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { atom, Atom, PrimitiveAtom } from "jotai";
+import { getSystemAppTheme, resolveAppTheme } from "@/app/theme-mode";
 import { globalStore } from "./jotaiStore";
 import { setWaveWindowType } from "./windowtype";
 import * as WOS from "./wos";
@@ -59,6 +60,18 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
     const settingsAtom = atom((get) => {
         return get(fullConfigAtom)?.settings ?? {};
     }) as Atom<SettingsType>;
+    const systemAppThemeAtom = atom<ResolvedAppTheme>(getSystemAppTheme()) as PrimitiveAtom<ResolvedAppTheme>;
+    const resolvedAppThemeAtom = atom((get) => {
+        return resolveAppTheme(get(settingsAtom)?.["app:theme"], get(systemAppThemeAtom));
+    }) as Atom<ResolvedAppTheme>;
+
+    if (globalThis.window != null) {
+        const colorSchemeQuery = window.matchMedia?.("(prefers-color-scheme: light)");
+        globalStore.set(systemAppThemeAtom, getSystemAppTheme());
+        colorSchemeQuery?.addEventListener("change", () => {
+            globalStore.set(systemAppThemeAtom, getSystemAppTheme());
+        });
+    }
     const hasCustomAIPresetsAtom = atom((get) => {
         const fullConfig = get(fullConfigAtom);
         if (!fullConfig?.presets) {
@@ -136,6 +149,8 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         fullConfigAtom,
         waveaiModeConfigAtom,
         settingsAtom,
+        systemAppThemeAtom,
+        resolvedAppThemeAtom,
         hasCustomAIPresetsAtom,
         hasConfigErrors,
         staticTabId: staticTabIdAtom,
