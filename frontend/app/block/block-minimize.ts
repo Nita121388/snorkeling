@@ -105,11 +105,9 @@ export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, 
         return false;
     }
     removeMinimizedBlockId(tabId, blockId);
-    const existingNode = layoutModel.getNodeByBlockId(blockId);
-    const ephemeralNode = globalStore.get(layoutModel.ephemeralNode);
-    const existingNodeIsEphemeralPreview = existingNode?.id === ephemeralNode?.id;
     layoutModel.closeEphemeralNodeForBlock(blockId);
-    if (existingNode && !existingNodeIsEphemeralPreview) {
+    const existingNode = layoutModel.getNodeByBlockId(blockId);
+    if (existingNode) {
         return true;
     }
     layoutModel.treeReducer({

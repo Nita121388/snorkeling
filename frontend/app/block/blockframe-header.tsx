@@ -26,6 +26,11 @@ import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import {
+    insertBlockAtFixedLeftOrder,
+    SnorkelingBlockKindMetaKey,
+    SnorkelingBlockKindNote,
+} from "@/app/workspace/toggle-block";
 import { IconButton } from "@/element/iconbutton";
 import { getLayoutModelForTabById, NodeModel } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
@@ -69,6 +74,7 @@ export function showBlockContextMenu(
     const minimizedPreview = globalStore.get(nodeModel.isMinimizedPreview);
     const blockData = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
     const blockMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
+    const isNoteBlock = blockMeta[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
     const agentSessionId = resolveAgentSessionIdFromMeta(blockMeta).trim();
     const hasAgentMeta =
         blockMeta.view === "agent" ||
@@ -84,7 +90,7 @@ export function showBlockContextMenu(
     const menu: ContextMenuItem[] = [
         minimizedPreview
             ? {
-                  label: "Show in Tab",
+                  label: isNoteBlock ? "Collapse to Tab" : "Show in Tab",
                   click: showMinimizedPreviewInTab,
               }
             : {
@@ -244,6 +250,8 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
     const numLeafs = jotai.useAtomValue(nodeModel.numLeafs);
     const magnifyDisabled = numLeafs <= 1;
     const showSplitButtons = jotai.useAtomValue(blockEnv.getSettingsKeyAtom("term:showsplitbuttons"));
+    const blockData = jotai.useAtomValue(blockEnv.wos.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+    const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
 
     const endIconsElem: React.ReactElement[] = [];
 
@@ -289,7 +297,25 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
         click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext),
     };
     endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
-    if (minimizedPreview) {
+    if (isNoteBlock && (minimizedPreview || ephemeral)) {
+        const collapseNoteDecl: IconButtonDecl = {
+            elemtype: "iconbutton",
+            icon: "box",
+            title: "Collapse to Tab",
+            click: () => {
+                if (minimizedPreview) {
+                    const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
+                    if (restored) {
+                        setTimeout(() => refocusNode(blockId), 50);
+                    }
+                    return;
+                }
+                layoutModel?.closeEphemeralNodeForBlock(blockId);
+                insertBlockAtFixedLeftOrder(SnorkelingBlockKindNote, blockId, false);
+            },
+        };
+        endIconsElem.push(<IconButton key="collapse-note-preview" decl={collapseNoteDecl} />);
+    } else if (minimizedPreview) {
         const restoreDecl: IconButtonDecl = {
             elemtype: "iconbutton",
             icon: "arrow-up-right-from-square",

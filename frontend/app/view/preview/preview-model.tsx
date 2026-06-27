@@ -1896,6 +1896,7 @@ export class PreviewModel implements ViewModel {
         const defaultFontSize = globalStore.get(this.env.getSettingsKeyAtom("editor:fontsize")) ?? 12;
         const blockData = globalStore.get(this.blockAtom);
         const overrideFontSize = blockData?.meta?.["editor:fontsize"];
+        const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const menuItems: ContextMenuItem[] = [];
         menuItems.push({
             label: "Copy Full Path",
@@ -1915,6 +1916,18 @@ export class PreviewModel implements ViewModel {
         menuItems.push({ type: "separator" });
         const finfo = jotaiLoadableValue(globalStore.get(this.loadableFileInfo), null);
         addOpenMenuItems(menuItems, globalStore.get(this.connectionImmediate), finfo);
+        if (isNoteBlock) {
+            menuItems.push({ type: "separator" });
+            menuItems.push({
+                label: "Set Note Directory...",
+                click: () => {
+                    modalsModel.pushModal("NoteDirectoryModal", {
+                        blockId: this.blockId,
+                        initialDir: globalStore.get(this.metaFilePath),
+                    });
+                },
+            });
+        }
         const loadableSV = globalStore.get(this.loadableSpecializedView);
         const wordWrapAtom = getOverrideConfigAtom(this.blockId, "editor:wordwrap");
         const wordWrap = globalStore.get(wordWrapAtom) ?? false;
