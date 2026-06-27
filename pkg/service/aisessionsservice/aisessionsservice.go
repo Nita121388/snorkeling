@@ -46,6 +46,8 @@ type AISessionsTagsRequest struct {
 	Project    string `json:"project,omitempty"`
 	Connection string `json:"connection,omitempty"`
 	Marked     string `json:"marked,omitempty"`
+	Since      int64  `json:"since,omitempty"`
+	Before     int64  `json:"before,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 }
 
@@ -330,6 +332,8 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 		Source:  request.Source,
 		Project: request.Project,
 		Marked:  request.Marked,
+		Since:   request.Since,
+		Before:  request.Before,
 		Refresh: request.Refresh,
 	})
 	if err != nil {

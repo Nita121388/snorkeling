@@ -4,6 +4,8 @@
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock, createBlockSplitHorizontally } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
@@ -22,10 +24,9 @@ import {
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
+import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
 import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
 import {
-    DefaultDateRange,
-    dateRangeToSinceBefore,
     emptySessionsText,
     formatDateTimeToSecond,
     formatRelativeRefreshTime,
@@ -57,7 +58,7 @@ export class AiSessionsViewModel implements ViewModel {
     queryAtom = jotai.atom<string>("");
     tagFiltersAtom = jotai.atom<string[]>([]);
     markedFilterAtom = jotai.atom<MarkedFilter>("all");
-    dateRangeAtom = jotai.atom<DateRangeFilter>(DefaultDateRange);
+    dateRangeAtom = jotai.atom(DefaultDateRange) as jotai.PrimitiveAtom<DateRangeFilter>;
     filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
@@ -101,6 +102,41 @@ export class AiSessionsViewModel implements ViewModel {
         return AiSessionsView;
     }
 
+    getAutoRefreshIntervalMs(): number {
+        const blockData = globalStore.get(this.blockAtom);
+        return normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
+    }
+
+    setAutoRefreshIntervalMs(intervalMs: number): void {
+        const normalized = normalizeAutoRefreshIntervalMs(intervalMs);
+        const metaUpdate = {
+            [AutoRefreshIntervalMetaKey]: normalized === DefaultAutoRefreshIntervalMs ? null : normalized,
+        } as MetaType;
+        void RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: metaUpdate,
+        });
+    }
+
+    getSettingsMenuItems(): ContextMenuItem[] {
+        const currentInterval = this.getAutoRefreshIntervalMs();
+        return [
+            {
+                label: "Auto Refresh",
+                type: "submenu",
+                submenu: [
+                    ...AutoRefreshIntervalOptions.map((option) => ({
+                        label: option.label,
+                        type: "radio" as const,
+                        checked: currentInterval === option.value,
+                        click: () => this.setAutoRefreshIntervalMs(option.value),
+                    })),
+                    ...customAutoRefreshMenuItems(currentInterval, this),
+                ],
+            },
+        ];
+    }
+
     async loadSessions(refresh = false, sortDescending = false): Promise<void> {
         const loadSeq = ++this.sessionsLoadSeq;
         const source = globalStore.get(this.sourceAtom);
@@ -133,6 +169,10 @@ export class AiSessionsViewModel implements ViewModel {
             const selectedKey = globalStore.get(this.selectedKeyAtom);
             const selectedStillExists = sessions.some((session) => session.key === selectedKey);
             if (!selectedStillExists) {
+                const detail = globalStore.get(this.detailAtom);
+                if (selectedKey !== "" && detail?.summary?.key === selectedKey) {
+                    return;
+                }
                 const boundSessionId = selectedKey === "" ? this.getBoundSessionId() : "";
                 const boundSession = findSessionById(sessions, boundSessionId);
                 if (boundSession != null) {
@@ -180,10 +220,14 @@ export class AiSessionsViewModel implements ViewModel {
 
     async loadTags(refresh = false): Promise<void> {
         try {
+            const dateRange = globalStore.get(this.dateRangeAtom);
+            const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
             const response = await this.service.Tags({
                 source: globalStore.get(this.sourceAtom),
                 connection: this.getConnection(),
                 marked: globalStore.get(this.markedFilterAtom),
+                since,
+                before,
                 refresh,
             });
             globalStore.set(this.availableTagsAtom, response.tags ?? []);
@@ -349,6 +393,21 @@ export class AiSessionsViewModel implements ViewModel {
         });
         this.replaceSession(result.summary);
         return result;
+    }
+
+    async refreshBoundSessionSummary(): Promise<void> {
+        const boundSessionId = this.getBoundSessionId();
+        if (boundSessionId === "") return;
+        try {
+            const summary = await this.service.Summary({
+                id: boundSessionId,
+                connection: this.getConnection(),
+                refresh: false,
+            });
+            this.replaceSession(summary);
+        } catch {
+            return;
+        }
     }
 
     async loadDetailById(sessionId: string, refresh = false): Promise<boolean> {
@@ -551,6 +610,17 @@ function findSessionById(sessions: SessionSummary[], sessionId: string): Session
 }
 
 const SessionListWidthStorageKey = "aisessions.sessionListWidth";
+const AutoRefreshIntervalMetaKey = "aisessions:autorefreshintervalms";
+const DefaultAutoRefreshIntervalMs = 60_000;
+const MinAutoRefreshIntervalMs = 10_000;
+const MaxAutoRefreshIntervalMs = 60 * 60_000;
+const AutoRefreshIntervalOptions = [
+    { label: "Off", value: 0 },
+    { label: "30 seconds", value: 30_000 },
+    { label: "1 minute", value: DefaultAutoRefreshIntervalMs },
+    { label: "2 minutes", value: 120_000 },
+    { label: "5 minutes", value: 300_000 },
+] as const;
 const DefaultSessionListWidth = 320;
 const MinSessionListWidth = 240;
 const MaxSessionListWidth = 520;
@@ -561,6 +631,23 @@ const BackupMaxAgeDays = 7;
 function clampSessionListWidth(width: number): number {
     if (!Number.isFinite(width)) return DefaultSessionListWidth;
     return Math.max(MinSessionListWidth, Math.min(MaxSessionListWidth, Math.round(width)));
+}
+
+function normalizeAutoRefreshIntervalMs(value: unknown): number {
+    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : DefaultAutoRefreshIntervalMs;
+    if (!Number.isFinite(parsed)) return DefaultAutoRefreshIntervalMs;
+    if (parsed <= 0) return 0;
+    return Math.max(MinAutoRefreshIntervalMs, Math.min(MaxAutoRefreshIntervalMs, Math.round(parsed)));
+}
+
+function formatAutoRefreshInterval(intervalMs: number): string {
+    if (intervalMs <= 0) return "Off";
+    if (intervalMs % 60_000 === 0) {
+        const minutes = intervalMs / 60_000;
+        return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+    }
+    const seconds = Math.round(intervalMs / 1000);
+    return `${seconds} seconds`;
 }
 
 function readSessionListWidth(): number {
@@ -580,6 +667,33 @@ function readDefaultSessionListCollapsed(model: AiSessionsViewModel): boolean {
     return blockData?.meta?.["aisessions:sessionlistcollapsed"] === true;
 }
 
+function customAutoRefreshMenuItems(currentInterval: number, model: AiSessionsViewModel): ContextMenuItem[] {
+    const isPreset = AutoRefreshIntervalOptions.some((option) => option.value === currentInterval);
+    return [
+        ...(isPreset
+            ? []
+            : [
+                  {
+                      label: `Custom (${formatAutoRefreshInterval(currentInterval)})`,
+                      type: "radio" as const,
+                      checked: true,
+                  },
+              ]),
+        { type: "separator" as const },
+        {
+            label: "Custom...",
+            click: () => {
+                const currentSeconds = currentInterval > 0 ? String(Math.round(currentInterval / 1000)) : "0";
+                const raw = window.prompt("Auto refresh interval in seconds. Use 0 to turn off.", currentSeconds);
+                if (raw == null) return;
+                const seconds = Number(raw.trim());
+                if (!Number.isFinite(seconds)) return;
+                model.setAutoRefreshIntervalMs(seconds <= 0 ? 0 : seconds * 1000);
+            },
+        },
+    ];
+}
+
 function formatBackupSize(size: number): string {
     if (!Number.isFinite(size) || size <= 0) return "0 B";
     if (size < 1024) return `${size} B`;
@@ -588,6 +702,7 @@ function formatBackupSize(size: number): string {
 }
 
 function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
+    const blockData = jotai.useAtomValue(model.blockAtom);
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
@@ -613,7 +728,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
+    const [blockVisible, setBlockVisible] = useState(true);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
@@ -625,6 +742,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
         (markedActive ? 1 : 0) + (dateActive ? 1 : 0) + normalizedTagFilters.length;
+    const autoRefreshIntervalMs = normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
+    const autoRefreshEnabled = model.getConnection() === "";
 
     useEffect(() => {
         model.loadSessions(false, sortDescending);
@@ -659,6 +778,33 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [lastSessionsRefreshAt]);
 
     useEffect(() => {
+        const node = rootRef.current;
+        if (node == null || typeof IntersectionObserver === "undefined") {
+            setBlockVisible(true);
+            return;
+        }
+        const observer = new IntersectionObserver((entries) => {
+            setBlockVisible(entries[0]?.isIntersecting ?? true);
+        });
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        if (!autoRefreshEnabled || autoRefreshIntervalMs <= 0 || !blockVisible) return;
+        const handle = window.setInterval(() => {
+            if (document.visibilityState === "hidden") return;
+            if (globalStore.get(model.loadingAtom)) return;
+            void model.loadSessions(false, globalStore.get(model.sortDescendingAtom));
+            void model.refreshBoundSessionSummary();
+            if (globalStore.get(model.detailAtom)?.summary?.key) {
+                void model.loadDetailDelta("manual");
+            }
+        }, autoRefreshIntervalMs);
+        return () => window.clearInterval(handle);
+    }, [autoRefreshEnabled, autoRefreshIntervalMs, blockVisible, model]);
+
+    useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
     }, [model, query, source, tagFilters, markedFilter, dateRange, sortDescending]);
@@ -688,9 +834,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [activeSession, detail?.summary?.key, detailLoading, model]);
 
     useEffect(() => {
-        if (!loading && visibleSessions.length === 0 && detail != null) {
+        if (!loading && visibleSessions.length === 0 && detail == null) {
             globalStore.set(model.selectedKeyAtom, "");
-            globalStore.set(model.detailAtom, null);
         }
     }, [detail, loading, model, visibleSessions.length]);
 
@@ -801,7 +946,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         : "";
 
     return (
-        <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
+        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
             {error ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                     {error}

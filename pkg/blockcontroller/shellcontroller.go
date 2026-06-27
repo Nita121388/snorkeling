@@ -143,15 +143,16 @@ type ShellController struct {
 	Lock *sync.Mutex
 
 	// shared fields
-	ControllerType string
-	TabId          string
-	BlockId        string
-	ConnName       string
-	BlockDef       *waveobj.BlockDef
-	RunLock        *atomic.Bool
-	ProcStatus     string
-	ProcExitCode   int
-	VersionTs      utilds.VersionTs
+	ControllerType      string
+	TabId               string
+	BlockId             string
+	ConnName            string
+	BlockDef            *waveobj.BlockDef
+	RunLock             *atomic.Bool
+	ProcStatus          string
+	ProcExitCode        int
+	VersionTs           utilds.VersionTs
+	KeepAgentMetaOnExit bool
 
 	// for shell/cmd
 	ShellProc    *shellexec.ShellProc
@@ -195,6 +196,9 @@ func (sc *ShellController) Stop(graceful bool, newStatus string, destroy bool) {
 			sc.sendUpdate_nolock()
 		}
 		return
+	}
+	if !destroy {
+		sc.KeepAgentMetaOnExit = true
 	}
 
 	sc.ShellProc.Close()
@@ -701,7 +705,7 @@ func (bc *ShellController) manageRunningShellProcess(
 				bc.ProcExitCode = exitCode
 				return true
 			})
-			if agentRunInfo != nil {
+			if agentRunInfo != nil && bc.shouldClearAgentRuntimeMetaOnExit() {
 				clearAgentRuntimeMeta(bc.BlockId)
 			}
 			releaseAgentStatus(bc.BlockId)
@@ -1119,6 +1123,12 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	return nil
 }
 
+func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {
+	bc.Lock.Lock()
+	defer bc.Lock.Unlock()
+	return !bc.KeepAgentMetaOnExit
+}
+
 func clearAgentRuntimeMeta(blockId string) {
 	if blockId == "" {
 		return
@@ -1140,11 +1150,41 @@ func agentRuntimeMetaClearUpdate() map[string]any {
 		waveobj.MetaKey_Cmd:           nil,
 		waveobj.MetaKey_CmdArgs:       nil,
 		waveobj.MetaKey_CmdEnv:        nil,
+		waveobj.MetaKey_CmdShell:      nil,
 		waveobj.MetaKey_CmdJwt:        nil,
 		waveobj.MetaKey_CmdRunOnStart: nil,
 		MetaKey_AgentAutoResume:       nil,
 		MetaKey_AgentProvider:         nil,
 		MetaKey_AgentSessionId:        nil,
+	}
+}
+
+func agentShellShutdownResumeMetaUpdate(blockMeta waveobj.MetaMapType, rtInfo *waveobj.ObjRTInfo) waveobj.MetaMapType {
+	if blockMeta.GetString(waveobj.MetaKey_Controller, "") != BlockController_Shell {
+		return nil
+	}
+	if !blockMeta.GetBool(MetaKey_AgentAutoResume, false) {
+		return nil
+	}
+	if strings.TrimSpace(blockMeta.GetString(MetaKey_AgentSessionId, "")) == "" {
+		return nil
+	}
+	if rtInfo == nil || rtInfo.ShellState != "running-command" {
+		return nil
+	}
+	provider := getAgentProvider(blockMeta, blockMeta.GetString(waveobj.MetaKey_Cmd, ""))
+	if provider != AgentProviderCodex && provider != AgentProviderClaude {
+		return nil
+	}
+	return waveobj.MetaMapType{
+		waveobj.MetaKey_Controller:    BlockController_Cmd,
+		waveobj.MetaKey_Cmd:           provider,
+		waveobj.MetaKey_CmdArgs:       nil,
+		waveobj.MetaKey_CmdShell:      false,
+		waveobj.MetaKey_CmdJwt:        true,
+		waveobj.MetaKey_CmdRunOnStart: true,
+		MetaKey_AgentAutoResume:       true,
+		MetaKey_AgentProvider:         provider,
 	}
 }
 

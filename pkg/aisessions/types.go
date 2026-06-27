@@ -85,6 +85,11 @@ type Provider interface {
 	LoadMessages(ctx context.Context, filePath string) ([]Message, error)
 }
 
+type SummaryFileProvider interface {
+	ListFiles(ctx context.Context) ([]SessionFile, error)
+	ParseSummary(ctx context.Context, file SessionFile) (SessionSummary, bool)
+}
+
 type ToolCallProvider interface {
 	LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error)
 }

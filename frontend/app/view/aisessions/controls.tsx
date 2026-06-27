@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
+import { Tooltip } from "@/app/element/tooltip";
 import { cn } from "@/util/util";
 import type { MouseEventHandler, ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -117,6 +118,26 @@ export function IconButton({
     );
 }
 
+type CopyStatus = "idle" | "copied" | "failed";
+
+function useCopyStatus(text: string, label: string) {
+    const [status, setStatus] = useState<CopyStatus>("idle");
+
+    useEffect(() => {
+        if (status === "idle") return;
+        const handle = window.setTimeout(() => setStatus("idle"), status === "copied" ? 1200 : 1600);
+        return () => window.clearTimeout(handle);
+    }, [status]);
+
+    const statusLabel = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : label;
+    const handleCopy = () =>
+        copyText(text)
+            .then(() => setStatus("copied"))
+            .catch(() => setStatus("failed"));
+
+    return { status, statusLabel, handleCopy };
+}
+
 export function CopyIconButton({
     text,
     label,
@@ -128,15 +149,7 @@ export function CopyIconButton({
     className?: string;
     size?: "xs" | "sm";
 }) {
-    const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
-
-    useEffect(() => {
-        if (status === "idle") return;
-        const handle = window.setTimeout(() => setStatus("idle"), status === "copied" ? 1200 : 1600);
-        return () => window.clearTimeout(handle);
-    }, [status]);
-
-    const statusLabel = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : label;
+    const { status, statusLabel, handleCopy } = useCopyStatus(text, label);
     return (
         <IconButton
             icon={status === "copied" ? "fa-check" : status === "failed" ? "fa-triangle-exclamation" : "fa-copy"}
@@ -150,10 +163,96 @@ export function CopyIconButton({
             )}
             onClick={(e) => {
                 e.stopPropagation();
-                void copyText(text)
-                    .then(() => setStatus("copied"))
-                    .catch(() => setStatus("failed"));
+                void handleCopy();
             }}
         />
+    );
+}
+
+export function CopyTextButton({
+    text,
+    label,
+    displayText,
+    tooltipText,
+    wrapperClassName,
+    className,
+    textClassName,
+}: {
+    text: string;
+    label: string;
+    displayText?: ReactNode;
+    tooltipText?: string;
+    wrapperClassName?: string;
+    className?: string;
+    textClassName?: string;
+}) {
+    const { status, statusLabel, handleCopy } = useCopyStatus(text, label);
+    const actionText = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Click to copy";
+
+    return (
+        <Tooltip
+            placement="top"
+            forceOpen={status !== "idle"}
+            openDelay={200}
+            divClassName={wrapperClassName}
+            content={
+                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                    <div className={cn(status === "failed" ? "text-error" : "text-secondary")}>{tooltipText || text}</div>
+                    <div
+                        className={cn(
+                            "mt-1 inline-flex items-center gap-1 text-[10px] uppercase",
+                            status === "copied" && "text-accent",
+                            status === "failed" && "text-error",
+                            status === "idle" && "text-secondary"
+                        )}
+                    >
+                        {status === "copied" ? (
+                            <i className="fa-sharp fa-solid fa-check text-[9px]" />
+                        ) : status === "failed" ? (
+                            <i className="fa-sharp fa-solid fa-triangle-exclamation text-[9px]" />
+                        ) : (
+                            <span className="h-1.5 w-1.5 rounded-full bg-accent/90 ring-2 ring-accent/20" />
+                        )}
+                        <span>{actionText}</span>
+                    </div>
+                </div>
+            }
+        >
+            <button
+                type="button"
+                className={cn(
+                    "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-secondary transition-colors hover:bg-hover hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                    status === "copied" && "bg-accent/10 text-accent",
+                    status === "failed" && "bg-error/10 text-error",
+                    className
+                )}
+                title={statusLabel}
+                aria-label={statusLabel}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    void handleCopy();
+                }}
+            >
+                <span
+                    className={cn(
+                        "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-accent",
+                        status === "copied" && "bg-accent/10 text-accent",
+                        status === "failed" && "bg-error/10 text-error"
+                    )}
+                >
+                    {status === "copied" ? (
+                        <i className="fa-sharp fa-solid fa-check text-[9px]" />
+                    ) : status === "failed" ? (
+                        <i className="fa-sharp fa-solid fa-triangle-exclamation text-[9px]" />
+                    ) : (
+                        <span className="h-1.5 w-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]" />
+                    )}
+                </span>
+                <span className={cn("min-w-0", textClassName)}>{displayText || text}</span>
+                <span className="sr-only" aria-live="polite">
+                    {status === "copied" ? `${label} copied` : status === "failed" ? `${label} copy failed` : ""}
+                </span>
+            </button>
+        </Tooltip>
     );
 }

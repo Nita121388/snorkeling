@@ -77,7 +77,9 @@ declare global {
         connection?: string;
         limit?: number;
         refresh?: boolean;
-        markedOnly?: boolean;
+        marked?: string;
+        since?: number;
+        before?: number;
         tagFilters?: string[];
     };
 
@@ -132,7 +134,9 @@ declare global {
         source?: string;
         project?: string;
         connection?: string;
-        markedOnly?: boolean;
+        marked?: string;
+        since?: number;
+        before?: number;
         refresh?: boolean;
     };
 

@@ -13,7 +13,7 @@ export type DateRangeFilter = {
     to?: number;
 };
 
-export const DefaultDateRange: DateRangeFilter = { preset: "all" };
+export const DefaultDateRange: DateRangeFilter = { preset: "7d" };
 
 export function dateRangeToSinceBefore(range: DateRangeFilter, now: number): { since: number; before: number } {
     if (!range || range.preset === "all") return { since: 0, before: 0 };

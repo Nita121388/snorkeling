@@ -16,6 +16,7 @@
     --border-soft: rgba(255,255,255,0.08);
     --panel: #262826;
     --hover: rgba(255,255,255,0.06);
+    --chipsurface: rgba(255,255,255,0.04);
     --claude: #cc685c;
     --codex: #74a7cb;
     --warning: #e0b956;
@@ -90,18 +91,40 @@
   .btn-accent { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; background: var(--accent); color: #111; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .btn-accent:hover { background: #76df60; }
   .dh-meta { display: flex; align-items: center; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--muted); }
-  .details-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11px; color: var(--muted); cursor: pointer; user-select: none; }
-  .details-toggle:hover { color: var(--primary); }
-  .details-toggle .preview { color: var(--secondary); }
-  .details-toggle .chev { font-size: 9px; transition: transform .12s; }
-  .details-toggle.open .chev { transform: rotate(90deg); }
-  .details-box { margin-top: 8px; padding: 9px 11px; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 11px; color: var(--secondary); display: flex; flex-direction: column; gap: 7px; }
-  .details-box .row-d { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .details-box .lbl { color: var(--muted); width: 84px; flex-shrink: 0; }
-  .details-box .val { color: var(--primary); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-  .details-box .ops { display: inline-flex; gap: 2px; flex-shrink: 0; }
-  .details-box .ops i { color: var(--muted); font-size: 11px; cursor: pointer; padding: 2px; }
-  .details-box .ops i:hover { color: var(--primary); }
+  .context-rail { display: flex; align-items: center; gap: 6px; margin-top: 11px; min-width: 0; overflow: hidden; }
+  .context-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-width: 0; padding: 0 9px; border: 1px solid var(--border-soft); border-radius: 999px; background: rgba(255,255,255,0.035); color: var(--secondary); font-size: 11px; white-space: nowrap; cursor: pointer; transition: background .12s, color .12s, border-color .12s, transform .12s; }
+  .context-chip:hover { background: var(--hover); color: var(--primary); border-color: var(--border); transform: translateY(-1px); }
+  .context-chip i { font-size: 10px; color: var(--muted); }
+  .context-chip .path,
+  .context-chip .note-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .project-chip { max-width: 220px; color: var(--primary); cursor: copy; }
+  .note-chip { max-width: 330px; flex: 1; }
+  .note-chip .edit-glyph { margin-left: 2px; opacity: .55; }
+  .tag-cluster { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex-shrink: 0; }
+  .tag-chip { gap: 4px; height: 24px; padding: 0 8px; border-radius: 999px; font-size: 10px; }
+  .tag-chip:hover { background: var(--hover); color: var(--primary); border-color: var(--border); transform: translateY(-1px); }
+  .tag-chip.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .tag-chip .hash { opacity: .5; }
+  .meta-edit { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-soft); border-radius: 999px; background: rgba(255,255,255,0.025); color: var(--muted); cursor: pointer; transition: background .12s, color .12s, border-color .12s, transform .12s; }
+  .meta-edit:hover { background: var(--hover); color: var(--primary); border-color: var(--border); transform: translateY(-1px); }
+  .files-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--border-soft); border-radius: 999px; background: rgba(255,255,255,0.03); color: var(--secondary); font-size: 10px; cursor: pointer; flex-shrink: 0; transition: background .12s, color .12s, border-color .12s, transform .12s; }
+  .files-chip:hover { border-color: var(--border); background: rgba(255,255,255,0.05); color: var(--primary); transform: translateY(-1px); }
+  .files-chip i { font-size: 10px; }
+  .details-toggle { font-size: 16px; letter-spacing: 1px; line-height: 1; }
+  .details-toggle:hover { background: var(--hover); color: var(--primary); }
+  .details-toggle i { font-size: 14px; }
+  .details-toggle.open i { color: var(--primary); }
+  .details-box { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 8px; background: rgba(255,255,255,0.02); font-size: 11px; color: var(--secondary); display: flex; flex-direction: column; gap: 10px; }
+  .details-box .row-d { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .details-box .lbl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+  .row-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .copy-target { position: relative; display: inline-flex; align-items: center; min-width: 0; flex: 1; padding: 4px 9px; border: 1px solid transparent; border-radius: 7px; background: var(--chipsurface); color: var(--primary); text-align: left; cursor: copy; transition: background .12s, border-color .12s, transform .12s, box-shadow .12s; }
+  .copy-target:hover { border-color: var(--border); background: var(--hover); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+  .copy-target:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+  .copy-target .copy-value { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; color: var(--primary); }
+  .copy-tip { position: absolute; left: 8px; top: -19px; z-index: 1; pointer-events: none; opacity: 0; transform: translateY(3px); padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--secondary); font-size: 9.5px; white-space: nowrap; transition: opacity .12s, transform .12s; box-shadow: 0 6px 16px rgba(0,0,0,0.24); }
+  .copy-target:hover .copy-tip,
+  .copy-target:focus-visible .copy-tip { opacity: 1; transform: translateY(0); }
 
   .detail-toolbar { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: var(--panel); }
   .search-sm { position: relative; flex: 1; max-width: 320px; border: 1px solid var(--border); border-radius: 6px; height: 28px; display: flex; align-items: center; }
@@ -288,27 +311,43 @@
               <span class="num">24 messages</span>
               <span class="num">1.2 MB</span>
             </div>
-            <!-- collapsed preview line; click to expand -->
-            <div class="details-toggle open">
-              <i class="fa-solid fa-chevron-right chev"></i>
-              <span>Details</span>
-              <span class="preview">· ~/code/snorkeling</span>
+            <div class="context-rail" aria-label="Session context">
+              <button type="button" class="context-chip project-chip" title="Click to copy project dir">
+                <i class="fa-solid fa-folder"></i>
+                <span class="path">~/code/snorkeling</span>
+              </button>
+              <button type="button" class="context-chip note-chip" title="Edit note">
+                <i class="fa-regular fa-note-sticky"></i>
+                <span class="note-text">Needs test on Windows restore path</span>
+                <i class="fa-solid fa-pen edit-glyph"></i>
+              </button>
+              <div class="tag-cluster" aria-label="Tags">
+                <button type="button" class="context-chip tag-chip on"><span class="hash">#</span>restore</button>
+                <button type="button" class="context-chip tag-chip"><span class="hash">#</span>windows</button>
+                <button type="button" class="context-chip tag-chip"><span class="hash">#</span>needs-review</button>
+                <button type="button" class="meta-edit" title="Edit tags"><i class="fa-solid fa-plus"></i></button>
+              </div>
             </div>
             <div class="details-box">
               <div class="row-d">
-                <span class="lbl">Project dir</span>
-                <span class="val">~/code/snorkeling</span>
-                <span class="ops"><i class="fa-solid fa-folder-open" title="Open"></i><i class="fa-solid fa-copy" title="Copy"></i></span>
-              </div>
-              <div class="row-d">
                 <span class="lbl">Session file</span>
-                <span class="val">.claude/sessions/abc-123-def-456.jsonl</span>
-                <span class="ops"><i class="fa-solid fa-up-right-from-square" title="Open"></i><i class="fa-solid fa-copy" title="Copy"></i></span>
+                <div class="row-inline">
+                  <button type="button" class="copy-target" title="Click to copy session file path">
+                    <span class="copy-tip">Click to copy</span>
+                    <span class="copy-value">...2026-06-25...</span>
+                  </button>
+                  <button type="button" class="files-chip" title="Open in Files">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>Files</span>
+                  </button>
+                </div>
               </div>
               <div class="row-d">
                 <span class="lbl">Session ID</span>
-                <span class="val num">abc-123-def-456</span>
-                <span class="ops"><i class="fa-solid fa-copy" title="Copy"></i></span>
+                <button type="button" class="copy-target num" title="Click to copy session ID">
+                  <span class="copy-tip">Click to copy</span>
+                  <span class="copy-value num">abc-123-def-456</span>
+                </button>
               </div>
             </div>
           </div>
@@ -316,9 +355,8 @@
             <button class="btn-accent"><i class="fa-solid fa-square-terminal"></i>Resume</button>
             <button class="icon-btn" title="Mark"><i class="fa-solid fa-star" style="color:var(--accent)"></i></button>
             <button class="icon-btn" title="Delete"><i class="fa-solid fa-trash"></i></button>
-            <button class="icon-btn" title="Edit note"><i class="fa-solid fa-tag"></i></button>
-            <button class="icon-btn" title="Show tool calls"><i class="fa-solid fa-wrench"></i></button>
             <button class="icon-btn" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
+            <button class="icon-btn details-toggle open" title="Show metadata"><i class="fa-solid fa-ellipsis"></i></button>
           </div>
         </div>
       </div>
@@ -330,6 +368,7 @@
         </div>
         <span style="font-size:11px;color:var(--muted)" class="num">24 messages</span>
         <div style="margin-left:auto;display:flex;gap:4px">
+          <button class="icon-btn" title="Show tool calls"><i class="fa-solid fa-code"></i></button>
           <button class="icon-btn" title="User message list"><i class="fa-solid fa-window-restore"></i></button>
           <button class="icon-btn" title="Outline"><i class="fa-solid fa-list"></i></button>
         </div>
@@ -360,8 +399,9 @@
   <div class="li"><span class="n">3</span> Row: color dot + tabular nums, no uppercase</div>
   <div class="li"><span class="n">4</span> Selected = left accent bar</div>
   <div class="li"><span class="n">5</span> Resume/copy/tag = ghost icons (low contrast until hover)</div>
-  <div class="li"><span class="n">6</span> Detail: project/file/id behind a "Details" toggle w/ one-line preview</div>
-  <div class="li"><span class="n">7</span> Icon buttons borderless by default</div>
+  <div class="li"><span class="n">6</span> Project dir stays visible in the header; ellipsis is the hover-to-open meta trigger</div>
+  <div class="li"><span class="n">7</span> Session file is shortened and opens in Files</div>
+  <div class="li"><span class="n">8</span> Copy is text-first with a hover tip and subtle press feedback</div>
 </div>
 </body>
 </html>

@@ -203,7 +203,8 @@ func TestResolveCmdCwdForConnOnlyExpandsLocalHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve local cwd returned error: %v", err)
 	}
-	if localCwd == "~/project" || !strings.HasSuffix(localCwd, "/project") {
+	localCwdForCompare := strings.ReplaceAll(localCwd, "\\", "/")
+	if localCwd == "~/project" || !strings.HasSuffix(localCwdForCompare, "/project") {
 		t.Fatalf("expected local cwd to expand home, got %q", localCwd)
 	}
 }
@@ -242,6 +243,7 @@ func TestAgentRuntimeMetaClearUpdateReturnsAgentCommandBlockToShell(t *testing.T
 		waveobj.MetaKey_Controller:    BlockController_Cmd,
 		waveobj.MetaKey_Cmd:           "codex",
 		waveobj.MetaKey_CmdArgs:       []string{"resume", "session-123"},
+		waveobj.MetaKey_CmdShell:      false,
 		waveobj.MetaKey_CmdJwt:        true,
 		waveobj.MetaKey_CmdRunOnStart: true,
 		waveobj.MetaKey_CmdCwd:        "~/project",
@@ -258,6 +260,7 @@ func TestAgentRuntimeMetaClearUpdateReturnsAgentCommandBlockToShell(t *testing.T
 	clearedKeys := []string{
 		waveobj.MetaKey_Cmd,
 		waveobj.MetaKey_CmdArgs,
+		waveobj.MetaKey_CmdShell,
 		waveobj.MetaKey_CmdJwt,
 		waveobj.MetaKey_CmdRunOnStart,
 		MetaKey_AgentAutoResume,
@@ -271,6 +274,96 @@ func TestAgentRuntimeMetaClearUpdateReturnsAgentCommandBlockToShell(t *testing.T
 	}
 	if updated.GetString(waveobj.MetaKey_CmdCwd, "") != "~/project" {
 		t.Fatalf("expected cwd meta to be preserved, got %q", updated.GetString(waveobj.MetaKey_CmdCwd, ""))
+	}
+}
+
+func TestShellControllerKeepsAgentRuntimeMetaOnShutdownStop(t *testing.T) {
+	sc := MakeShellController("tab:test", "block:test", BlockController_Cmd, "").(*ShellController)
+	if !sc.shouldClearAgentRuntimeMetaOnExit() {
+		t.Fatalf("expected agent runtime meta to clear before shutdown stop")
+	}
+	sc.KeepAgentMetaOnExit = true
+	if sc.shouldClearAgentRuntimeMetaOnExit() {
+		t.Fatalf("expected agent runtime meta to be kept after shutdown stop")
+	}
+}
+
+func TestAgentShellShutdownResumeMetaUpdateConvertsActiveAgentShell(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_View:       "term",
+		waveobj.MetaKey_Controller: BlockController_Shell,
+		waveobj.MetaKey_CmdCwd:     "~/project",
+		MetaKey_AgentAutoResume:    true,
+		MetaKey_AgentProvider:      AgentProviderCodex,
+		MetaKey_AgentSessionId:     "session-123",
+	}
+	rtInfo := &waveobj.ObjRTInfo{ShellState: "running-command"}
+
+	updated := waveobj.MergeMeta(meta, agentShellShutdownResumeMetaUpdate(meta, rtInfo), false)
+
+	if updated.GetString(waveobj.MetaKey_Controller, "") != BlockController_Cmd {
+		t.Fatalf("expected controller cmd, got %#v", updated)
+	}
+	if updated.GetString(waveobj.MetaKey_Cmd, "") != AgentProviderCodex {
+		t.Fatalf("expected cmd codex, got %#v", updated)
+	}
+	if updated.GetBool(waveobj.MetaKey_CmdShell, true) {
+		t.Fatalf("expected cmd:shell false, got %#v", updated)
+	}
+	if !updated.GetBool(waveobj.MetaKey_CmdJwt, false) || !updated.GetBool(waveobj.MetaKey_CmdRunOnStart, false) {
+		t.Fatalf("expected run-on-start jwt command meta, got %#v", updated)
+	}
+	if updated.GetString(MetaKey_AgentSessionId, "") != "session-123" {
+		t.Fatalf("expected persisted session id to be preserved, got %#v", updated)
+	}
+	if updated.GetString(waveobj.MetaKey_CmdCwd, "") != "~/project" {
+		t.Fatalf("expected cwd to be preserved, got %#v", updated)
+	}
+}
+
+func TestAgentShellShutdownResumeMetaUpdateRequiresActiveSession(t *testing.T) {
+	baseMeta := waveobj.MetaMapType{
+		waveobj.MetaKey_View:       "term",
+		waveobj.MetaKey_Controller: BlockController_Shell,
+		MetaKey_AgentAutoResume:    true,
+		MetaKey_AgentProvider:      AgentProviderCodex,
+		MetaKey_AgentSessionId:     "session-123",
+	}
+	for name, meta := range map[string]waveobj.MetaMapType{
+		"plain-shell": {
+			waveobj.MetaKey_Controller: BlockController_Shell,
+		},
+		"already-cmd": {
+			waveobj.MetaKey_Controller: BlockController_Cmd,
+			MetaKey_AgentAutoResume:    true,
+			MetaKey_AgentProvider:      AgentProviderCodex,
+			MetaKey_AgentSessionId:     "session-123",
+		},
+		"missing-session": {
+			waveobj.MetaKey_Controller: BlockController_Shell,
+			MetaKey_AgentAutoResume:    true,
+			MetaKey_AgentProvider:      AgentProviderCodex,
+		},
+	} {
+		if update := agentShellShutdownResumeMetaUpdate(meta, &waveobj.ObjRTInfo{ShellState: "running-command"}); update != nil {
+			t.Fatalf("%s: expected no shutdown resume update, got %#v", name, update)
+		}
+	}
+	if update := agentShellShutdownResumeMetaUpdate(baseMeta, &waveobj.ObjRTInfo{ShellState: "ready"}); update != nil {
+		t.Fatalf("expected ready shell not to convert, got %#v", update)
+	}
+}
+
+func TestAgentShellShutdownResumeMetaUpdateSupportsClaude(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Controller: BlockController_Shell,
+		MetaKey_AgentAutoResume:    true,
+		MetaKey_AgentProvider:      AgentProviderClaude,
+		MetaKey_AgentSessionId:     "claude-session",
+	}
+	update := agentShellShutdownResumeMetaUpdate(meta, &waveobj.ObjRTInfo{ShellState: "running-command"})
+	if update.GetString(waveobj.MetaKey_Cmd, "") != AgentProviderClaude {
+		t.Fatalf("expected claude command update, got %#v", update)
 	}
 }
 

@@ -5,7 +5,7 @@ import { Tooltip } from "@/app/element/tooltip";
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CopyIconButton, IconButton } from "./controls";
+import { CopyIconButton, CopyTextButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
 import { SessionTagChips } from "./session-tag-chips";
@@ -15,12 +15,10 @@ import {
     normalizeSessionTags,
     removeSessionTagFromNote,
     sessionTagsEqual,
-    sessionTagsLabel,
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
     buildSessionDetailTimeline,
-    copyText,
     formatDateTimeToSecond,
     formatSessionDate,
     formatToolCallPreview,
@@ -37,6 +35,12 @@ const OutlineTooltipPreviewLength = 1800;
 const ToolCallPreviewLength = 1200;
 const UserLinesPageSize = 8;
 const UserLinesSearchLimit = 50;
+
+function sourceDotClass(source: string): string {
+    if (source === "claude") return "bg-source-claude";
+    if (source === "codex") return "bg-source-codex";
+    return "bg-secondary";
+}
 
 export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
@@ -555,7 +559,9 @@ export function SessionDetailPane({
                   : "";
     const projectDirectory = summary.projectPath?.trim() ?? "";
     const sessionFilePath = summary.filePath?.trim() ?? "";
-    const notePreviewText = summary.note || sessionTagsLabel(summary.tags);
+    const summaryTags = normalizeSessionTags(summary.tags);
+    const visibleSummaryTags = summaryTags.slice(0, 3);
+    const hasNoteInfo = Boolean(summary.note || summaryTags.length);
     return (
         <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 p-3">
@@ -565,35 +571,40 @@ export function SessionDetailPane({
                             <div className="min-w-0 truncate text-sm font-medium" title={summary.title || summary.id}>
                                 {summary.title || summary.id}
                             </div>
-                            <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-secondary">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
+                                <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
                                 {summary.source}
                             </span>
                         </div>
                         <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
                             <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
                                 <span className="shrink-0 text-[10px] uppercase">Project directory:</span>
-                                <span
-                                    className="min-w-0 truncate"
-                                    title={projectDirectory || "Project directory unavailable"}
-                                >
-                                    {projectDirectory || "No project directory"}
-                                </span>
                                 {projectDirectory ? (
-                                    <>
-                                        <CopyIconButton
-                                            text={projectDirectory}
-                                            label="Copy project directory"
-                                            size="xs"
-                                            className="!border-transparent"
-                                        />
-                                        <IconButton
-                                            icon="fa-folder-open"
-                                            label="Open project directory"
-                                            size="xs"
-                                            className="!border-transparent"
-                                            onClick={() => void model.openProjectDirectory(summary)}
-                                        />
-                                    </>
+                                    <CopyTextButton
+                                        text={projectDirectory}
+                                        label="Copy project directory"
+                                        displayText={projectDirectory}
+                                        tooltipText={projectDirectory}
+                                        wrapperClassName="min-w-0"
+                                        className="justify-start"
+                                        textClassName="truncate"
+                                    />
+                                ) : (
+                                    <span
+                                        className="min-w-0 truncate text-secondary"
+                                        title="Project directory unavailable"
+                                    >
+                                        No project directory
+                                    </span>
+                                )}
+                                {projectDirectory ? (
+                                    <IconButton
+                                        icon="fa-folder-open"
+                                        label="Open project directory"
+                                        size="xs"
+                                        className="!border-transparent"
+                                        onClick={() => void model.openProjectDirectory(summary)}
+                                    />
                                 ) : null}
                             </div>
                             <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
@@ -609,43 +620,22 @@ export function SessionDetailPane({
                                 <div className="flex w-full min-w-0 items-center justify-end gap-2">
                                     <span className="shrink-0 text-[10px] uppercase">Session file:</span>
                                     {sessionFilePath ? (
-                                        <Tooltip
-                                            placement="top"
-                                            openDelay={200}
-                                            divClassName="min-w-0"
-                                            content={
-                                                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
-                                                    <div className="text-secondary">{sessionFilePath}</div>
-                                                    <div className="mt-1 text-[10px] uppercase text-secondary">
-                                                        Click to copy
-                                                    </div>
-                                                </div>
-                                            }
-                                        >
-                                            <button
-                                                type="button"
-                                                className="cursor-pointer text-right text-secondary transition-colors hover:text-primary"
-                                                onClick={() => void copyText(sessionFilePath)}
-                                            >
-                                                {formatSessionDate(summary.updatedAt || summary.createdAt || 0)}
-                                            </button>
-                                        </Tooltip>
+                                        <CopyTextButton
+                                            text={sessionFilePath}
+                                            label="Copy session file path"
+                                            displayText={formatSessionDate(summary.updatedAt || summary.createdAt || 0)}
+                                            tooltipText={sessionFilePath}
+                                            wrapperClassName="min-w-0"
+                                            className="ml-auto justify-end text-right"
+                                            textClassName="truncate"
+                                        />
                                     ) : (
                                         <span className="text-right text-secondary">No session file</span>
                                     )}
-                                    {sessionFilePath ? (
-                                        <IconButton
-                                            icon="fa-up-right-from-square"
-                                            label="Open session file"
-                                            size="xs"
-                                            className="!border-transparent"
-                                            onClick={() => void model.openSessionFile(summary)}
-                                        />
-                                    ) : null}
                                 </div>
                             </div>
                         </div>
-                        <div className="mt-2 flex items-center gap-2 text-xs">
+                        <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
                             <button
                                 className="flex h-7 items-center gap-2 rounded border border-accent bg-accent px-2 text-white hover:bg-accent/90 disabled:opacity-60"
                                 disabled={restoring}
@@ -663,30 +653,57 @@ export function SessionDetailPane({
                                 onClick={() => setDeleteConfirmOpen(true)}
                             />
                             <IconButton
-                                icon="fa-tag"
-                                label={noteCollapsed ? "Expand note" : "Collapse note"}
-                                className={cn(
-                                    (summary.note || summary.tags?.length) &&
-                                        "border-accent/40 bg-accent/10 text-accent",
-                                    !noteCollapsed && "border-accent text-accent"
-                                )}
-                                onClick={() => setNoteCollapsed((current) => !current)}
-                            />
-                            <IconButton
                                 icon={showToolCalls && toolCallsLoading ? "fa-spinner animate-spin" : "fa-wrench"}
                                 label={showToolCalls ? "Hide tool calls" : "Show tool calls"}
                                 className={cn(showToolCalls && "border-accent bg-accent/10 text-accent")}
                                 disabled={toolCallsLoading && !toolsLoaded}
                                 onClick={toggleToolCalls}
                             />
-                            {summary.note || summary.tags?.length ? (
-                                <div
-                                    className="min-w-0 flex-1 truncate border-l border-accent/40 pl-2 text-xs text-secondary"
-                                    title={notePreviewText}
+                            {hasNoteInfo ? (
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-l-2 border-accent/50 pl-2 text-left text-xs text-primary hover:text-accent",
+                                        !noteCollapsed && "text-accent"
+                                    )}
+                                    title="Edit note and tags"
+                                    aria-label="Edit note and tags"
+                                    onClick={() => setNoteCollapsed((current) => !current)}
                                 >
-                                    {notePreviewText}
-                                </div>
-                            ) : null}
+                                    <span className="flex min-w-0 max-w-full items-center gap-1.5">
+                                        {summary.note ? (
+                                            <span className="min-w-0 truncate">{summary.note}</span>
+                                        ) : null}
+                                        {visibleSummaryTags.map((tag) => (
+                                            <span
+                                                key={tag}
+                                                className="shrink-0 rounded-md bg-surface-soft px-1.5 py-0.5 text-[10px] leading-none text-secondary"
+                                            >
+                                                <span className="opacity-50">#</span>
+                                                {tag}
+                                            </span>
+                                        ))}
+                                        {summaryTags.length > visibleSummaryTags.length ? (
+                                            <span className="shrink-0 text-[10px] text-secondary">
+                                                +{summaryTags.length - visibleSummaryTags.length}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary">
+                                        <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                    </span>
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                    title="Add note and tags"
+                                    onClick={() => setNoteCollapsed(false)}
+                                >
+                                    <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                    <span>Add note</span>
+                                </button>
+                            )}
                         </div>
                         {deleteConfirmOpen ? (
                             <div className="mt-2 flex items-center justify-between gap-3 rounded border border-error/40 bg-error/10 px-2 py-2 text-xs">
@@ -912,7 +929,7 @@ export function SessionDetailPane({
                                                     className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
                                                     onClick={loadPreviousMessages}
                                                 >
-                                                    Load previous messages
+                                                    Load more
                                                 </button>
                                             ) : (
                                                 <div className="text-xxs uppercase text-secondary">Start reached</div>
