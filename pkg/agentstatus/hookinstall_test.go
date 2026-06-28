@@ -157,6 +157,13 @@ func TestCheckCodexHooksDetectsVersionTwoScript(t *testing.T) {
 	}
 }
 
+func TestHookScriptVersionReadsWindowsBatchMarker(t *testing.T) {
+	script := "rem SNORKELING_AGENT_STATUS_INTEGRATION_VERSION=6\n"
+	if version := hookScriptVersion(script); version != 6 {
+		t.Fatalf("expected windows batch hook version 6, got %d", version)
+	}
+}
+
 func TestInstallCodexHooksPrunesLegacyManagedCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	codexDir := filepath.Join(tmpDir, ".codex")
