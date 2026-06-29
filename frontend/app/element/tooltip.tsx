@@ -25,6 +25,7 @@ interface TooltipProps {
     divStyle?: React.CSSProperties;
     divOnClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
     divOnContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+    divOnPointerEnter?: (e: React.PointerEvent<HTMLDivElement>) => void;
     divRef?: React.RefObject<HTMLDivElement>;
     hideOnClick?: boolean;
 }
@@ -39,6 +40,7 @@ function TooltipInner({
     divStyle,
     divOnClick,
     divOnContextMenu,
+    divOnPointerEnter,
     divRef,
     hideOnClick = false,
 }: Omit<TooltipProps, "disable">) {
@@ -148,6 +150,7 @@ function TooltipInner({
                 }}
                 {...getReferenceProps({ onClick: handleClick, onPointerEnter: handlePointerEnter })}
                 onContextMenu={divOnContextMenu}
+                onPointerEnter={divOnPointerEnter}
                 className={divClassName}
                 style={divStyle}
             >
@@ -186,6 +189,7 @@ export function Tooltip({
     divStyle,
     divOnClick,
     divOnContextMenu,
+    divOnPointerEnter,
     divRef,
     hideOnClick = false,
 }: TooltipProps) {
@@ -197,6 +201,7 @@ export function Tooltip({
                 style={divStyle}
                 onClick={divOnClick}
                 onContextMenu={divOnContextMenu}
+                onPointerEnter={divOnPointerEnter}
             >
                 {children}
             </div>
@@ -214,6 +219,7 @@ export function Tooltip({
             divStyle={divStyle}
             divOnClick={divOnClick}
             divOnContextMenu={divOnContextMenu}
+            divOnPointerEnter={divOnPointerEnter}
             divRef={divRef}
             hideOnClick={hideOnClick}
         />
