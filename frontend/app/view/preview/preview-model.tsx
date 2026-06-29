@@ -319,6 +319,7 @@ export class PreviewModel implements ViewModel {
     fileEditKey: Atom<string | null>;
     fileContentSaved: WritableAtom<string | null, [string | null], void>;
     fileContent: WritableAtom<Promise<string>, [string], void>;
+    fileContentLoadable: Atom<Loadable<string>>;
     newFileContent: WritableAtom<string | null, [string | null], void>;
     connectionError: PrimitiveAtom<string>;
     errorMsgAtom: PrimitiveAtom<ErrorMsg>;
@@ -912,6 +913,7 @@ export class PreviewModel implements ViewModel {
                     text: `${e}`,
                 };
                 globalStore.set(this.errorMsgAtom, errorStatus);
+                throw e;
             }
         });
 
@@ -1049,6 +1051,7 @@ export class PreviewModel implements ViewModel {
 
         this.fullFile = fullFileAtom;
         this.fileContent = fileContentAtom;
+        this.fileContentLoadable = loadable(this.fileContent);
         this.liveSourceFileContent = atom(async (get) => {
             const sourceModel = get(this.liveSourceModel);
             if (sourceModel != null) {
@@ -1860,6 +1863,7 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
+        globalStore.set(this.errorMsgAtom, null);
         const fileKey = globalStore.get(this.fileEditKey);
         const record = getPreviewSharedDraftRecord(fileKey);
         previewSharedDraftDebugLog("model:refresh", {

@@ -33,7 +33,7 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
@@ -330,36 +330,6 @@ function showLaunchError(label: string, error: unknown) {
     });
 }
 
-type TargetTabActionsProps = {
-    canCreateToExistingTab: boolean;
-    onCreateToNewTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    onCreateToExistingTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
-};
-
-function TargetTabActions({ canCreateToExistingTab, onCreateToNewTab, onCreateToExistingTab }: TargetTabActionsProps) {
-    const buttonClass =
-        "group flex min-w-[130px] flex-1 items-center justify-center gap-1.5 rounded-md border border-border/60 bg-secondarybg/35 px-2.5 py-1.5 text-[11px] font-medium text-secondary transition-colors hover:border-accent/60 hover:bg-hoverbg hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70 disabled:cursor-default disabled:border-border/35 disabled:bg-transparent disabled:text-muted disabled:opacity-55 disabled:hover:border-border/35 disabled:hover:bg-transparent disabled:hover:text-muted";
-    const iconClass = "text-[10px] text-muted transition-colors group-hover:text-inherit group-disabled:text-muted";
-
-    return (
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button type="button" className={buttonClass} onClick={onCreateToNewTab}>
-                <i className={clsx(makeIconClass("plus", true), iconClass)} aria-hidden="true" />
-                <span className="truncate">Create to New Tab</span>
-            </button>
-            <button
-                type="button"
-                className={buttonClass}
-                disabled={!canCreateToExistingTab}
-                onClick={onCreateToExistingTab}
-            >
-                <i className={clsx(makeIconClass("window-restore", true), iconClass)} aria-hidden="true" />
-                <span className="truncate">Create to Existing Tab...</span>
-            </button>
-        </div>
-    );
-}
-
 type AgentWidgetProfile = {
     name: string;
     label: string;
@@ -368,7 +338,16 @@ type AgentWidgetProfile = {
 const AgentWidgetProfiles: AgentWidgetProfile[] = [
     { name: "codex", label: "Codex" },
     { name: "claude", label: "Claude Code" },
+    { name: "gemini", label: "Gemini" },
+    { name: "opencode", label: "OpenCode" },
 ];
+
+const AgentProfileColors: Record<string, string> = {
+    codex: "#74a7cb",
+    claude: "#cc685c",
+    gemini: "#8e7cc3",
+    opencode: "#e0b956",
+};
 
 function launchTargetSourceLabel(target: AgentLaunchTarget): string {
     switch (target.source) {
@@ -393,7 +372,7 @@ const AgentTargetFloatingWindow = memo(
         magnified,
         env,
         profileName,
-        profileLabel,
+        profileLabel: _profileLabel,
         canCreateToExistingTab,
         onCreateToNewTab,
         onCreateToExistingTab,
@@ -411,6 +390,32 @@ const AgentTargetFloatingWindow = memo(
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
 
+        const [selectedProfile, setSelectedProfile] = useState(profileName ?? "codex");
+        const [searchQuery, setSearchQuery] = useState("");
+        const [selectedIdx, setSelectedIdx] = useState(0);
+
+        useEffect(() => {
+            if (profileName) {
+                setSelectedProfile(profileName);
+            }
+        }, [profileName]);
+
+        const filteredTargets = useMemo(
+            () =>
+                targets.filter((target) => {
+                    if (searchQuery === "") return true;
+                    const q = searchQuery.toLowerCase();
+                    return (
+                        target.detail.toLowerCase().includes(q) ||
+                        target.label.toLowerCase().includes(q) ||
+                        target.source.toLowerCase().includes(q)
+                    );
+                }),
+            [targets, searchQuery]
+        );
+
+        const clampedSelectedIdx = Math.min(selectedIdx, filteredTargets.length - 1);
+
         if (!isOpen) {
             return null;
         }
@@ -421,77 +426,185 @@ const AgentTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                    className="bg-modalbg border border-border rounded-lg shadow-xl z-50 min-w-[280px] max-w-[340px] overflow-hidden"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select context for {profileLabel ?? "Agent"}</div>
-                    <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => {
-                            const blockDef = createAgentBlockDefForTarget(settings, target, profileName);
-                            const createInCurrentTab = () => {
-                                fireAndForget(async () => {
-                                    try {
-                                        await env.createBlock(blockDef, magnified);
-                                        onClose();
-                                    } catch (error) {
-                                        showLaunchError("Agent", error);
-                                    }
-                                });
-                            };
+                    {/* header */}
+                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        New Agent
+                    </div>
 
-                            return (
-                                <div
-                                    key={target.blockId}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
-                                    onClick={createInCurrentTab}
-                                    onKeyDown={(event) => {
-                                        if (event.currentTarget !== event.target) {
-                                            return;
+                    {/* profile chips */}
+                    <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                        <div className="text-xxs uppercase tracking-wide text-muted mb-1.5">Agent Type</div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {AgentWidgetProfiles.map((profile) => {
+                                const isSelected = selectedProfile === profile.name;
+                                const color = AgentProfileColors[profile.name] ?? "#888";
+                                return (
+                                    <button
+                                        key={profile.name}
+                                        type="button"
+                                        className={clsx(
+                                            "inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded text-xs font-medium transition-colors cursor-pointer border-none",
+                                            isSelected
+                                                ? "text-foreground"
+                                                : "text-secondary hover:text-foreground hover:bg-hoverbg"
+                                        )}
+                                        style={
+                                            isSelected
+                                                ? {
+                                                      background: `${color}22`,
+                                                      color: color,
+                                                      boxShadow: `inset 0 0 0 1px ${color}44`,
+                                                  }
+                                                : { background: "transparent" }
                                         }
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.preventDefault();
-                                            createInCurrentTab();
-                                        }
-                                    }}
-                                >
-                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                        {launchTargetSourceLabel(target)}
-                                    </div>
-                                    <div className="text-sm text-foreground">{target.label}</div>
-                                    {!isBlank(target.detail) ? (
-                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                                    ) : null}
-                                    <TargetTabActions
-                                        canCreateToExistingTab={canCreateToExistingTab}
-                                        onCreateToNewTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
+                                        onClick={() => setSelectedProfile(profile.name)}
+                                    >
+                                        <span
+                                            className="w-[6px] h-[6px] rounded-full shrink-0"
+                                            style={{ background: color }}
+                                        />
+                                        {profile.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* search */}
+                    <div className="px-3 pt-2 pb-1">
+                        <div className="flex items-center h-7 bg-hoverbg rounded-md px-2 gap-1.5">
+                            <i className="fa-sharp fa-regular fa-magnifying-glass text-[10px] text-muted" />
+                            <input
+                                className="bg-transparent border-none outline-none text-xs text-foreground w-full placeholder:text-muted"
+                                placeholder="Search path..."
+                                value={searchQuery}
+                                onChange={(e) => {
+                                    setSearchQuery(e.target.value);
+                                    setSelectedIdx(0);
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* path list */}
+                    <div className="max-h-[260px] overflow-y-auto">
+                        {filteredTargets.length === 0 ? (
+                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                        ) : (
+                            filteredTargets.map((target, idx) => {
+                                const isSelected = idx === clampedSelectedIdx;
+                                const blockDef = createAgentBlockDefForTarget(settings, target, selectedProfile);
+                                return (
+                                    <div
+                                        key={target.blockId}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={clsx(
+                                            "w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                                            isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
+                                        )}
+                                        onClick={() => {
+                                            setSelectedIdx(idx);
                                             fireAndForget(async () => {
                                                 try {
-                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
+                                                    await env.createBlock(blockDef, magnified);
                                                     onClose();
                                                 } catch (error) {
                                                     showLaunchError("Agent", error);
                                                 }
                                             });
                                         }}
-                                        onCreateToExistingTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onCreateToExistingTab({
-                                                title: "Create Agent",
-                                                subtitle: target.detail || target.label,
-                                                blockDef,
-                                                magnified: Boolean(magnified),
-                                            });
-                                            onClose();
+                                        onKeyDown={(event) => {
+                                            if (event.currentTarget !== event.target) return;
+                                            if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                setSelectedIdx(idx);
+                                                fireAndForget(async () => {
+                                                    try {
+                                                        await env.createBlock(blockDef, magnified);
+                                                        onClose();
+                                                    } catch (error) {
+                                                        showLaunchError("Agent", error);
+                                                    }
+                                                });
+                                            }
                                         }}
-                                    />
-                                </div>
-                            );
-                        })}
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-4 shrink-0 text-center text-muted">
+                                                {target.source === "home" ? (
+                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                ) : target.source === "terminal" ? (
+                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                ) : (
+                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-foreground truncate">{target.detail || target.label}</div>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <span className="text-xxs uppercase tracking-wide text-muted bg-hoverbg px-1 py-[1px] rounded">
+                                                        {target.source}
+                                                    </span>
+                                                    {!target.isLocal ? (
+                                                        <span className="text-xxs text-secondary/70">
+                                                            {target.label}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
+
+                    {/* action buttons */}
+                    {filteredTargets.length > 0 ? (
+                        <div className="p-2 border-t border-border/60 flex gap-1.5">
+                            <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md bg-accent text-[#111] text-xs font-medium transition-colors hover:bg-accent/90 cursor-pointer border-none"
+                                onClick={() => {
+                                    const target = filteredTargets[clampedSelectedIdx];
+                                    const blockDef = createAgentBlockDefForTarget(settings, target, selectedProfile);
+                                    fireAndForget(async () => {
+                                        try {
+                                            await env.createBlock(blockDef, magnified);
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Agent", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-plus text-[10px]" />
+                                Create to New Tab
+                            </button>
+                            <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    const target = filteredTargets[clampedSelectedIdx];
+                                    const blockDef = createAgentBlockDefForTarget(settings, target, selectedProfile);
+                                    onCreateToExistingTab({
+                                        title: "Create Agent",
+                                        subtitle: target.detail || target.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
+                                Existing Tab...
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </FloatingPortal>
         );
@@ -524,6 +637,25 @@ const TerminalTargetFloatingWindow = memo(
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
 
+        const [searchQuery, setSearchQuery] = useState("");
+        const [selectedIdx, setSelectedIdx] = useState(0);
+
+        const filteredTargets = useMemo(
+            () =>
+                targets.filter((target) => {
+                    if (searchQuery === "") return true;
+                    const q = searchQuery.toLowerCase();
+                    return (
+                        target.detail.toLowerCase().includes(q) ||
+                        target.label.toLowerCase().includes(q) ||
+                        target.source.toLowerCase().includes(q)
+                    );
+                }),
+            [targets, searchQuery]
+        );
+
+        const clampedSelectedIdx = Math.min(selectedIdx, filteredTargets.length - 1);
+
         if (!isOpen) {
             return null;
         }
@@ -534,77 +666,146 @@ const TerminalTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                    className="bg-modalbg border border-border rounded-lg shadow-xl z-50 min-w-[280px] max-w-[340px] overflow-hidden"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select context for Terminal</div>
-                    <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => {
-                            const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
-                            const createInCurrentTab = () => {
-                                fireAndForget(async () => {
-                                    try {
-                                        await env.createBlock(blockDef, magnified);
-                                        onClose();
-                                    } catch (error) {
-                                        showLaunchError("Terminal", error);
-                                    }
-                                });
-                            };
+                    {/* header */}
+                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        New Terminal
+                    </div>
 
-                            return (
-                                <div
-                                    key={target.blockId}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
-                                    onClick={createInCurrentTab}
-                                    onKeyDown={(event) => {
-                                        if (event.currentTarget !== event.target) {
-                                            return;
-                                        }
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.preventDefault();
-                                            createInCurrentTab();
-                                        }
-                                    }}
-                                >
-                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                        {launchTargetSourceLabel(target)}
-                                    </div>
-                                    <div className="text-sm text-foreground">{target.label}</div>
-                                    {!isBlank(target.detail) ? (
-                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                                    ) : null}
-                                    <TargetTabActions
-                                        canCreateToExistingTab={canCreateToExistingTab}
-                                        onCreateToNewTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
+                    {/* search */}
+                    <div className="px-3 pt-2 pb-1">
+                        <div className="flex items-center h-7 bg-hoverbg rounded-md px-2 gap-1.5">
+                            <i className="fa-sharp fa-regular fa-magnifying-glass text-[10px] text-muted" />
+                            <input
+                                className="bg-transparent border-none outline-none text-xs text-foreground w-full placeholder:text-muted"
+                                placeholder="Search path..."
+                                value={searchQuery}
+                                onChange={(e) => {
+                                    setSearchQuery(e.target.value);
+                                    setSelectedIdx(0);
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* path list */}
+                    <div className="max-h-[300px] overflow-y-auto">
+                        {filteredTargets.length === 0 ? (
+                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                        ) : (
+                            filteredTargets.map((target, idx) => {
+                                const isSelected = idx === clampedSelectedIdx;
+                                const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+                                return (
+                                    <div
+                                        key={target.blockId}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={clsx(
+                                            "w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                                            isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
+                                        )}
+                                        onClick={() => {
+                                            setSelectedIdx(idx);
                                             fireAndForget(async () => {
                                                 try {
-                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
+                                                    await env.createBlock(blockDef, magnified);
                                                     onClose();
                                                 } catch (error) {
                                                     showLaunchError("Terminal", error);
                                                 }
                                             });
                                         }}
-                                        onCreateToExistingTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onCreateToExistingTab({
-                                                title: "Create Terminal",
-                                                subtitle: target.detail || target.label,
-                                                blockDef,
-                                                magnified: Boolean(magnified),
-                                            });
-                                            onClose();
+                                        onKeyDown={(event) => {
+                                            if (event.currentTarget !== event.target) return;
+                                            if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                setSelectedIdx(idx);
+                                                fireAndForget(async () => {
+                                                    try {
+                                                        await env.createBlock(blockDef, magnified);
+                                                        onClose();
+                                                    } catch (error) {
+                                                        showLaunchError("Terminal", error);
+                                                    }
+                                                });
+                                            }
                                         }}
-                                    />
-                                </div>
-                            );
-                        })}
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-4 shrink-0 text-center text-muted">
+                                                {target.source === "home" ? (
+                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                ) : target.source === "terminal" ? (
+                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                ) : (
+                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-foreground truncate">{target.detail || target.label}</div>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <span className="text-xxs uppercase tracking-wide text-muted bg-hoverbg px-1 py-[1px] rounded">
+                                                        {target.source}
+                                                    </span>
+                                                    {!target.isLocal ? (
+                                                        <span className="text-xxs text-secondary/70">
+                                                            {target.label}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
+
+                    {/* action buttons */}
+                    {filteredTargets.length > 0 ? (
+                        <div className="p-2 border-t border-border/60 flex gap-1.5">
+                            <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md bg-accent text-[#111] text-xs font-medium transition-colors hover:bg-accent/90 cursor-pointer border-none"
+                                onClick={() => {
+                                    const target = filteredTargets[clampedSelectedIdx];
+                                    const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+                                    fireAndForget(async () => {
+                                        try {
+                                            await env.createBlock(blockDef, magnified);
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Terminal", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-plus text-[10px]" />
+                                Create to New Tab
+                            </button>
+                            <button
+                                type="button"
+                                className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    const target = filteredTargets[clampedSelectedIdx];
+                                    const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
+                                    onCreateToExistingTab({
+                                        title: "Create Terminal",
+                                        subtitle: target.detail || target.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
+                                Existing Tab...
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </FloatingPortal>
         );
@@ -923,21 +1124,39 @@ const Widgets = memo(() => {
 
     const handleWidgetContextMenu = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
-            if (widgetId !== DefaultAgentWidgetId) {
+            if (widgetId === DefaultTerminalWidgetId) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                const launchTargets = getCurrentTabTerminalLaunchTargets();
+                setTerminalTargets(launchTargets);
+                setTerminalWidgetMagnified(Boolean(widget.magnified));
+                setTerminalReferenceElement(e.currentTarget);
+                setTerminalBaseBlockDef(widget.blockdef);
+                setIsTerminalTargetOpen(true);
                 return;
             }
-            e.preventDefault();
-            e.stopPropagation();
-            closeAgentTargetSelector();
-            closeTerminalTargetSelector();
-            const referenceElement = e.currentTarget;
-            const menu: ContextMenuItem[] = AgentWidgetProfiles.map((profile) => ({
-                label: profile.label,
-                click: () => launchAgentForProfile(widget, referenceElement, profile),
-            }));
-            env.showContextMenu(menu, e);
+
+            if (widgetId === DefaultAgentWidgetId) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                const launchTargets = getCurrentTabAgentLaunchTargets();
+                setAgentTargets(launchTargets);
+                setAgentWidgetMagnified(Boolean(widget.magnified));
+                setAgentReferenceElement(e.currentTarget);
+                setAgentProfileName(undefined);
+                setAgentProfileLabel(undefined);
+                setIsAgentTargetOpen(true);
+                return;
+            }
         },
-        [closeAgentTargetSelector, closeTerminalTargetSelector, env, launchAgentForProfile]
+        [
+            closeAgentTargetSelector,
+            closeTerminalTargetSelector,
+        ]
     );
 
     const checkModeNeeded = useCallback(() => {

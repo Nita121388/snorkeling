@@ -28,6 +28,7 @@ import {
     type OrderedListLineRange,
     type OrderedListMoveState,
 } from "@/app/element/markdown-ordered-list";
+import { CenteredDiv } from "@/app/element/quickelems";
 import { Search, useSearch } from "@/app/element/search";
 import {
     clampSelectionCopyOverlayPosition,
@@ -374,7 +375,7 @@ function restoreEditorMarkdownFoldSnapshot(
 }
 
 function CodeEditPreview({ model }: SpecializedViewProps) {
-    const fileContent = useAtomValue(model.fileContent);
+    const fileContentLoadable = useAtomValue(model.fileContentLoadable);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const newFileContent = useAtomValue(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
@@ -405,6 +406,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const renumberSelectedOrderedListRef = useRef<() => void>(() => {});
     const refreshMarkdownMoveStateRef = useRef<() => void>(() => {});
     const fileName = fileInfo?.path || fileInfo?.name;
+    const fileContent = fileContentLoadable.state === "hasData" ? fileContentLoadable.data : "";
 
     const language = getFileLanguage(fileName);
     const markdownListActionsEnabled = isMarkdownOrderedListPath(fileName) && !fileInfo?.readonly;
@@ -429,9 +431,18 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             fileName,
             readonly: fileInfo?.readonly,
             fileContent: summarizePreviewDraftContent(fileContent),
+            fileContentState: fileContentLoadable.state,
             newFileContent: summarizePreviewDraftContent(newFileContent),
         });
-    }, [fileContent, fileEditKey, fileInfo?.readonly, fileName, model.blockId, newFileContent]);
+    }, [
+        fileContent,
+        fileContentLoadable.state,
+        fileEditKey,
+        fileInfo?.readonly,
+        fileName,
+        model.blockId,
+        newFileContent,
+    ]);
 
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
@@ -1380,6 +1391,13 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const hideSelectionCopyOverlay = useCallback(() => {
         setSelectionCopyOverlay(null);
     }, []);
+
+    if (fileContentLoadable.state === "loading") {
+        return <CenteredDiv>Loading file...</CenteredDiv>;
+    }
+    if (fileContentLoadable.state === "hasError") {
+        return <CenteredDiv>File Read Failed: {`${fileContentLoadable.error}`}</CenteredDiv>;
+    }
 
     return (
         <div className="relative flex h-full w-full" ref={editorContainerRef}>
