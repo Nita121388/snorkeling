@@ -33,6 +33,11 @@
     border: 0.5px solid var(--modal-border-color);
     background: var(--modal-bg-color);
     box-shadow: 0px 8px 32px 0px rgba(0, 0, 0, 0.25);
+    animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &.animate-in-scale {
+        animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
 
     .modal-close-btn {
         position: absolute;
@@ -67,5 +72,16 @@
         .wave-button:last-child {
             margin-left: 8px;
         }
+    }
+}
+
+@keyframes modalScaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
     }
 }

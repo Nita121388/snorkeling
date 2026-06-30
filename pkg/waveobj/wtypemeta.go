@@ -79,6 +79,8 @@ type MetaTSType struct {
 	AiFileDiffChatId     string `json:"aifilediff:chatid,omitempty"`
 	AiFileDiffToolCallId string `json:"aifilediff:toolcallid,omitempty"`
 
+	AgentDefaultLaunchTarget string `json:"agent:defaultlaunchtarget,omitempty"`
+
 	EditorClear               bool    `json:"editor:*,omitempty"`
 	EditorMinimapEnabled      bool    `json:"editor:minimapenabled,omitempty"`
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`
@@ -113,6 +115,7 @@ type MetaTSType struct {
 	WaveAiWidgetContext *bool  `json:"waveai:widgetcontext,omitempty"` // default is true
 
 	TermClear               bool     `json:"term:*,omitempty"`
+	TermDefaultLaunchTarget string   `json:"term:defaultlaunchtarget,omitempty"`
 	TermFontSize            int      `json:"term:fontsize,omitempty"`
 	TermFontFamily          string   `json:"term:fontfamily,omitempty"`
 	TermMode                string   `json:"term:mode,omitempty"`

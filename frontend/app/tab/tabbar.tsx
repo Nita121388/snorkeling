@@ -21,7 +21,7 @@ import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
-import { markTabOpenedThisLaunch } from "./tab-open-state";
+import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -145,6 +145,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
 
+    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     let prevDelta: number;
     let prevDragDirection: string;
 
@@ -574,6 +575,12 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         }
     }, [activeTabId, markTabOpened]);
 
+    useEffect(() => {
+        if (isTabBarHovered) {
+            setSizeAndPosition();
+        }
+    }, [isTabBarHovered]);
+
     const updateScrollDebounced = useCallback(
         debounce(30, () => {
             if (scrollableRef.current) {
@@ -683,7 +690,10 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             >
                 <WorkspaceSwitcher />
             </Tooltip>
-            <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize>
+            <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize
+                onMouseEnter={() => setIsTabBarHovered(true)}
+                onMouseLeave={() => setIsTabBarHovered(false)}
+            >
                 <div
                     className="tabs-wrapper"
                     ref={tabsWrapperRef}
@@ -696,11 +706,14 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                         tabIds.map((tabId, index) => {
                             const isActive = activeTabId === tabId;
                             const showDivider = index !== 0 && !isActive && index !== activeTabIndex + 1;
+                            const openedSet = globalStore.get(openedThisLaunchTabIdsAtom);
+                            const isTabHidden = !isActive && !isTabBarHovered && !wasTabOpenedThisLaunch(openedSet, tabId);
                             return (
                                 <TabComponent
                                     key={tabId}
                                     ref={tabRefs.current[index]}
                                     id={tabId}
+                                    hidden={isTabHidden}
                                     showDivider={showDivider}
                                     onSelect={() => handleSelectTab(tabId)}
                                     active={isActive}

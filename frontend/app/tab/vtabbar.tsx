@@ -98,6 +98,7 @@ interface VTabWrapperProps {
     showDivider: boolean;
     isDragging: boolean;
     isReordering: boolean;
+    hidden: boolean;
     hoverResetVersion: number;
     index: number;
     onSelect: () => void;
@@ -116,6 +117,7 @@ function VTabWrapper({
     showDivider,
     isDragging,
     isReordering,
+    hidden: isHidden,
     hoverResetVersion,
     onSelect,
     onClose,
@@ -181,6 +183,7 @@ function VTabWrapper({
             isDragging={isDragging}
             isReordering={isReordering}
             unopenedThisLaunch={unopenedThisLaunch}
+            hidden={isHidden}
             onSelect={onSelect}
             onClose={onClose}
             onRename={onRename}
@@ -211,6 +214,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
     const [hoverResetVersion, setHoverResetVersion] = useState(0);
     const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
     const [isNewTabHovered, setIsNewTabHovered] = useState(false);
+    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const dragSourceRef = useRef<string | null>(null);
     const didResetHoverForDragRef = useRef(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -366,6 +370,8 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
             <div
                 ref={scrollContainerRef}
                 className="relative flex min-h-0 flex-col overflow-y-auto"
+                onMouseEnter={() => setIsTabBarHovered(true)}
+                onMouseLeave={() => setIsTabBarHovered(false)}
                 onDragOver={(event) => {
                     event.preventDefault();
                     updateScrollFromDragY(event.clientY);
@@ -389,6 +395,8 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                     const nextTabId = orderedTabIds[index + 1];
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
+                    const openedSet = globalStore.get(openedThisLaunchTabIdsAtom);
+                    const isHidden = !isActive && !isTabBarHovered && !wasTabOpenedThisLaunch(openedSet, tabId) && dragTabId == null;
                     return (
                         <VTabWrapper
                             key={`${tabId}:${hoverResetVersion}`}
@@ -404,6 +412,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                             isDragging={dragTabId === tabId}
                             isReordering={dragTabId != null}
                             hoverResetVersion={hoverResetVersion}
+                            hidden={isHidden}
                             index={index}
                             onSelect={() => {
                                 markTabOpened(tabId);

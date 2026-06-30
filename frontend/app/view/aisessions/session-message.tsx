@@ -84,7 +84,7 @@ export function MessageCard({
             id={`aisession-message-${message.seq}`}
             className={cn(
                 "group max-w-[92%] scroll-mt-3 rounded border p-3",
-                isUser ? "ml-auto border-accent/35 bg-accent/10" : "mr-auto border-border bg-bg",
+                isUser ? "border-accent/35 bg-accent/10 shadow-sm" : "border-border bg-surface-strong",
                 searchActive && "border-yellow-400/70 ring-2 ring-yellow-400/60"
             )}
         >

@@ -118,27 +118,41 @@ function ToolCallCard({
         <div className="rounded border border-border bg-bg/50 text-xs">
             <button
                 type="button"
-                className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-hover"
+                className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-hover"
                 onClick={onToggle}
             >
                 <i
                     className={cn(
-                        "fa-sharp fa-solid mt-0.5 shrink-0",
+                        "fa-sharp fa-solid mt-0.5 shrink-0 transition-transform duration-200",
                         expanded ? "fa-chevron-down" : "fa-chevron-right"
                     )}
                 />
-                <span className={cn("mt-0.5 h-2 w-2 shrink-0 rounded-full", hasError ? "bg-error" : "bg-accent")} />
+                <span
+                    className={cn(
+                        "mt-0.5 h-2 w-2 shrink-0 rounded-full",
+                        hasError ? "bg-error shadow-[0_0_4px_var(--color-error)]" : "bg-accent"
+                    )}
+                />
                 <span className="min-w-0 flex-1">
                     <span className="mb-1 flex flex-wrap items-center gap-2 text-[10px] uppercase text-secondary">
                         <span>#{toolCall.seq}</span>
                         <span>{toolCall.name || "tool"}</span>
-                        {hasError ? <span className="text-error">exit {toolCall.exitCode}</span> : null}
+                        {hasError ? (
+                            <span className="rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-medium text-error">
+                                exit {toolCall.exitCode}
+                            </span>
+                        ) : null}
                     </span>
                     <span className="block truncate text-primary">{formatToolCallPreview(toolCall)}</span>
                 </span>
             </button>
             {expanded ? (
-                <div className="border-t border-border px-3 py-2">
+                <div
+                    className="border-t border-border px-3 py-2"
+                    style={{
+                        animation: "slideDown 0.2s ease-out",
+                    }}
+                >
                     {detailText ? (
                         <>
                             <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
@@ -971,7 +985,7 @@ export function SessionDetailPane({
                                 )}
                             </div>
                             {deltaLoading && detailMessages.length > 0 ? (
-                                <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded border border-border bg-panel/95 px-3 py-1.5 text-xxs text-secondary shadow-sm">
+                                <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border/60 bg-panel/80 px-4 py-1.5 text-xxs text-secondary shadow-lg backdrop-blur-sm">
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
                                         Loading new messages...
@@ -1045,7 +1059,7 @@ export function SessionDetailPane({
             </div>
             {userMessageListOpen ? (
                 <Modal
-                    className="w-[min(780px,calc(100vw-32px))] max-h-[calc(100vh-72px)] overflow-hidden pt-10 pb-4"
+                    className="w-[min(780px,calc(100vw-32px))] max-h-[calc(100vh-72px)] overflow-hidden pt-10 pb-4 animate-in-scale"
                     onClose={() => setUserMessageListOpen(false)}
                     onClickBackdrop={() => setUserMessageListOpen(false)}
                 >

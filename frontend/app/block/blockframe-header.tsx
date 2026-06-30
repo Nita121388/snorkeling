@@ -189,9 +189,10 @@ type HeaderTextElemsProps = {
     blockId: string;
     preview: boolean;
     error?: Error;
+    isHovered: boolean;
 };
 
-const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error }: HeaderTextElemsProps) => {
+const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error, isHovered }: HeaderTextElemsProps) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const frameTextAtom = waveEnv.getBlockMetaKeyAtom(blockId, "frame:text");
     const frameText = jotai.useAtomValue(frameTextAtom);
@@ -224,7 +225,7 @@ const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error }: Head
         );
     }
 
-    return <div className="block-frame-textelems-wrapper">{headerTextElems}</div>;
+    return <div className={cn("block-frame-textelems-wrapper", isHovered && "is-hovered")}>{headerTextElems}</div>;
 });
 HeaderTextElems.displayName = "HeaderTextElems";
 
@@ -233,9 +234,10 @@ type HeaderEndIconsProps = {
     nodeModel: NodeModel;
     blockId: string;
     moveContext?: MoveBlockMenuContext;
+    isHovered: boolean;
 };
 
-const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext }: HeaderEndIconsProps) => {
+const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext, isHovered }: HeaderEndIconsProps) => {
     const blockEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const layoutModel = getLayoutModelForTabById(tabModel.tabId);
@@ -375,7 +377,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext 
     };
     endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close" />);
 
-    return <div className="block-frame-end-icons">{endIconsElem}</div>;
+    return <div className={cn("block-frame-end-icons", isHovered && "is-hovered")}>{endIconsElem}</div>;
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
@@ -528,6 +530,7 @@ const BlockFrame_Header = ({
     const isTerminalBlock = metaView === "term";
     viewName = metaFrameTitle ?? viewName;
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
+    const [isHovered, setIsHovered] = React.useState(false);
 
     React.useEffect(() => {
         if (magnified && !preview && !prevMagifiedState.current) {
@@ -544,6 +547,8 @@ const BlockFrame_Header = ({
             className={cn("block-frame-default-header", useTermHeader && "!pl-[2px]")}
             data-role="block-header"
             ref={dragHandleRef}
+            onPointerEnter={() => setIsHovered(true)}
+            onPointerLeave={() => setIsHovered(false)}
             onContextMenu={(e) =>
                 showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext)
             }
@@ -580,12 +585,13 @@ const BlockFrame_Header = ({
                     <i className={makeIconClass(badge.icon, true, { defaultIcon: "circle-small" })} />
                 </div>
             )}
-            <HeaderTextElems viewModel={viewModel} blockId={nodeModel.blockId} preview={preview} error={error} />
+            <HeaderTextElems viewModel={viewModel} blockId={nodeModel.blockId} preview={preview} error={error} isHovered={isHovered} />
             <HeaderEndIcons
                 viewModel={viewModel}
                 nodeModel={nodeModel}
                 blockId={nodeModel.blockId}
                 moveContext={moveContext}
+                isHovered={isHovered}
             />
         </div>
     );

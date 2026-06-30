@@ -181,6 +181,9 @@ export class ClientServiceType {
     AgreeTos(): Promise<void> {
         return callBackendService(this?.waveEnv, "client", "AgreeTos", Array.from(arguments))
     }
+    FindCommand(arg2: string): Promise<string> {
+        return callBackendService(this?.waveEnv, "client", "FindCommand", Array.from(arguments))
+    }
     FocusWindow(arg2: string): Promise<void> {
         return callBackendService(this?.waveEnv, "client", "FocusWindow", Array.from(arguments))
     }
