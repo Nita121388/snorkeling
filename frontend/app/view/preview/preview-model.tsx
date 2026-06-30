@@ -1139,9 +1139,9 @@ export class PreviewModel implements ViewModel {
         if (isStreamingType(mimeType)) {
             return { specializedView: "streaming" };
         }
-        if (!fileInfo) {
-            const fileNameStr = fileName ? " " + JSON.stringify(fileName) : "";
-            return { errorStr: "File Not Found" + fileNameStr };
+        // empty mimetype from extensionless files: show in code editor
+        if (mimeType === "" && fileInfo != null && !fileInfo.notfound) {
+            return { specializedView: "codeedit" };
         }
         if (fileInfo.size > MaxFileSize) {
             return { errorStr: "File Too Large to Preview (10 MB Max)" };

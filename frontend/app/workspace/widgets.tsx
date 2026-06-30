@@ -336,6 +336,34 @@ type CreateToExistingTabRequest = {
 
 const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
+type DefaultCheckButtonProps = {
+    checked: boolean;
+    ariaLabel: string;
+    title: string;
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    className?: string;
+};
+
+function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: DefaultCheckButtonProps) {
+    return (
+        <button
+            type="button"
+            className={clsx(
+                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer transition-opacity transition-colors",
+                checked
+                    ? "rounded-sm bg-transparent text-accent hover:bg-transparent"
+                    : "rounded-sm bg-transparent text-transparent hover:bg-muted/35",
+                className
+            )}
+            aria-label={ariaLabel}
+            title={title}
+            onClick={onClick}
+        >
+            {checked ? <i className="fa-solid fa-check text-accent text-[9px]" /> : null}
+        </button>
+    );
+}
+
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && !isBlank(error.message)) {
         return error.message;
@@ -419,7 +447,6 @@ const AgentTargetFloatingWindow = memo(
                 ? defaultProfileName
                 : (profileOptions[0]?.name ?? "");
         const [selectedProfile, setSelectedProfile] = useState(initialProfileName);
-        const [searchQuery, setSearchQuery] = useState("");
         const [selectedIdx, setSelectedIdx] = useState(0);
 
         useEffect(() => {
@@ -433,22 +460,8 @@ const AgentTargetFloatingWindow = memo(
             ? selectedProfile
             : initialProfileName;
 
-        const filteredTargets = useMemo(
-            () =>
-                targets.filter((target) => {
-                    if (searchQuery === "") return true;
-                    const q = searchQuery.toLowerCase();
-                    return (
-                        target.detail.toLowerCase().includes(q) ||
-                        target.label.toLowerCase().includes(q) ||
-                        target.source.toLowerCase().includes(q)
-                    );
-                }),
-            [targets, searchQuery]
-        );
-
-        const clampedSelectedIdx = Math.min(selectedIdx, filteredTargets.length - 1);
-        const selectedTarget = clampedSelectedIdx >= 0 ? filteredTargets[clampedSelectedIdx] : null;
+        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
+        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         if (!isOpen) {
             return null;
@@ -468,7 +481,7 @@ const AgentTargetFloatingWindow = memo(
                     </div>
 
                     <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
-                        <div className="text-xxs uppercase tracking-wide text-muted mb-1.5">Agent Type</div>
+                        <div className="text-xxs text-muted mb-1.5">Select an agent type</div>
                         {profileOptions.length === 0 ? (
                             <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
                         ) : (
@@ -481,7 +494,7 @@ const AgentTargetFloatingWindow = memo(
                                         <div
                                             key={profile.name}
                                             className={clsx(
-                                                "inline-flex items-center h-[26px] rounded transition-colors",
+                                                "group inline-flex items-center h-[26px] rounded transition-colors",
                                                 isSelected
                                                     ? "text-foreground"
                                                     : "text-secondary hover:text-foreground hover:bg-hoverbg"
@@ -493,12 +506,12 @@ const AgentTargetFloatingWindow = memo(
                                                           color,
                                                           boxShadow: `inset 0 0 0 1px ${color}44`,
                                                       }
-                                                    : { background: "transparent" }
+                                            : { background: "transparent" }
                                             }
                                         >
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l text-xs font-medium border-none bg-transparent cursor-pointer"
+                                                className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1.5 rounded-l text-xs font-medium border-none bg-transparent cursor-pointer"
                                                 onClick={() => setSelectedProfile(profile.name)}
                                             >
                                                 <span
@@ -507,23 +520,16 @@ const AgentTargetFloatingWindow = memo(
                                                 />
                                                 {profile.label}
                                             </button>
-                                            <button
-                                                type="button"
-                                                className="h-full px-1.5 rounded-r border-none bg-transparent text-[10px] text-muted hover:text-accent cursor-pointer"
-                                                aria-label={`Set ${profile.label} as default agent`}
+                                            <DefaultCheckButton
+                                                checked={isDefault}
+                                                ariaLabel={`Set ${profile.label} as default agent`}
                                                 title="Set default agent"
+                                                className="opacity-0 group-hover:opacity-100"
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onSetDefaultProfile(profile.name);
                                                 }}
-                                            >
-                                                <i
-                                                    className={clsx(
-                                                        "fa-star",
-                                                        isDefault ? "fa-solid text-accent" : "fa-regular"
-                                                    )}
-                                                />
-                                            </button>
+                                            />
                                         </div>
                                     );
                                 })}
@@ -531,68 +537,35 @@ const AgentTargetFloatingWindow = memo(
                         )}
                     </div>
 
-                    {/* search */}
-                    <div className="px-3 pt-2 pb-1">
-                        <div className="flex items-center h-7 bg-hoverbg rounded-md px-2 gap-1.5">
-                            <i className="fa-sharp fa-regular fa-magnifying-glass text-[10px] text-muted" />
-                            <input
-                                className="bg-transparent border-none outline-none text-xs text-foreground w-full placeholder:text-muted"
-                                placeholder="Search path..."
-                                value={searchQuery}
-                                onChange={(e) => {
-                                    setSearchQuery(e.target.value);
-                                    setSelectedIdx(0);
-                                }}
-                            />
-                        </div>
-                    </div>
-
                     {/* path list */}
                     <div className="max-h-[260px] overflow-y-auto">
-                        {filteredTargets.length === 0 ? (
+                        <div className="px-3 pt-2 pb-1 text-xxs text-muted">
+                            Select a path.
+                        </div>
+                        {targets.length === 0 ? (
                             <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
                         ) : (
-                            filteredTargets.map((target, idx) => {
+                            targets.map((target, idx) => {
                                 const isSelected = idx === clampedSelectedIdx;
                                 const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
                                 const canSetDefault = canSetLaunchTargetDefault(target);
-                                const createTarget = () => {
-                                    setSelectedIdx(idx);
-                                    if (isBlank(effectiveSelectedProfile)) {
-                                        showNoDetectedAgentError();
-                                        return;
-                                    }
-                                    const blockDef = createAgentBlockDefForTarget(
-                                        settings,
-                                        target,
-                                        effectiveSelectedProfile
-                                    );
-                                    fireAndForget(async () => {
-                                        try {
-                                            await createToCurrentTab(blockDef, Boolean(magnified));
-                                            onClose();
-                                        } catch (error) {
-                                            showLaunchError("Agent", error);
-                                        }
-                                    });
-                                };
                                 return (
                                     <div
                                         key={target.blockId}
                                         role="button"
                                         tabIndex={0}
                                         className={clsx(
-                                            "w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                                            "group w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
                                             isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
                                         )}
-                                        onClick={createTarget}
+                                        onClick={() => setSelectedIdx(idx)}
                                         onPointerEnter={() => setSelectedIdx(idx)}
                                         onFocus={() => setSelectedIdx(idx)}
                                         onKeyDown={(event) => {
                                             if (event.currentTarget !== event.target) return;
                                             if (event.key === "Enter" || event.key === " ") {
                                                 event.preventDefault();
-                                                createTarget();
+                                                setSelectedIdx(idx);
                                             }
                                         }}
                                     >
@@ -610,35 +583,23 @@ const AgentTargetFloatingWindow = memo(
                                                 <div className="text-xs text-foreground truncate">
                                                     {target.detail || target.label}
                                                 </div>
-                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                    <span className="text-xxs uppercase tracking-wide text-muted bg-hoverbg px-1 py-[1px] rounded">
-                                                        {launchTargetSourceLabel(target)}
-                                                    </span>
-                                                    {!target.isLocal ? (
-                                                        <span className="text-xxs text-secondary/70 truncate">
-                                                            {target.label}
-                                                        </span>
-                                                    ) : null}
-                                                </div>
+                                                {!target.isLocal ? (
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 truncate">
+                                                        {target.label}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                             {canSetDefault ? (
-                                                <button
-                                                    type="button"
-                                                    className="w-6 h-6 shrink-0 rounded border-none bg-transparent text-[11px] text-muted hover:text-accent hover:bg-hoverbg cursor-pointer"
-                                                    aria-label="Set default launch target"
+                                                <DefaultCheckButton
+                                                    checked={isDefault}
+                                                    ariaLabel="Set default launch target"
                                                     title="Set default launch target"
+                                                    className="opacity-0 group-hover:opacity-100"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
                                                         onSetDefaultTarget(target);
                                                     }}
-                                                >
-                                                    <i
-                                                        className={clsx(
-                                                            "fa-star",
-                                                            isDefault ? "fa-solid text-accent" : "fa-regular"
-                                                        )}
-                                                    />
-                                                </button>
+                                                />
                                             ) : null}
                                         </div>
                                     </div>
@@ -765,25 +726,9 @@ const TerminalTargetFloatingWindow = memo(
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
 
-        const [searchQuery, setSearchQuery] = useState("");
         const [selectedIdx, setSelectedIdx] = useState(0);
-
-        const filteredTargets = useMemo(
-            () =>
-                targets.filter((target) => {
-                    if (searchQuery === "") return true;
-                    const q = searchQuery.toLowerCase();
-                    return (
-                        target.detail.toLowerCase().includes(q) ||
-                        target.label.toLowerCase().includes(q) ||
-                        target.source.toLowerCase().includes(q)
-                    );
-                }),
-            [targets, searchQuery]
-        );
-
-        const clampedSelectedIdx = Math.min(selectedIdx, filteredTargets.length - 1);
-        const selectedTarget = clampedSelectedIdx >= 0 ? filteredTargets[clampedSelectedIdx] : null;
+        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
+        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         if (!isOpen) {
             return null;
@@ -802,60 +747,32 @@ const TerminalTargetFloatingWindow = memo(
                         New Terminal
                     </div>
 
-                    {/* search */}
-                    <div className="px-3 pt-2 pb-1">
-                        <div className="flex items-center h-7 bg-hoverbg rounded-md px-2 gap-1.5">
-                            <i className="fa-sharp fa-regular fa-magnifying-glass text-[10px] text-muted" />
-                            <input
-                                className="bg-transparent border-none outline-none text-xs text-foreground w-full placeholder:text-muted"
-                                placeholder="Search path..."
-                                value={searchQuery}
-                                onChange={(e) => {
-                                    setSearchQuery(e.target.value);
-                                    setSelectedIdx(0);
-                                }}
-                            />
-                        </div>
-                    </div>
-
                     {/* path list */}
                     <div className="max-h-[300px] overflow-y-auto">
-                        {filteredTargets.length === 0 ? (
+                        {targets.length === 0 ? (
                             <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
                         ) : (
-                            filteredTargets.map((target, idx) => {
+                            targets.map((target, idx) => {
                                 const isSelected = idx === clampedSelectedIdx;
                                 const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
                                 const canSetDefault = canSetLaunchTargetDefault(target);
-                                const createTarget = () => {
-                                    setSelectedIdx(idx);
-                                    const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
-                                    fireAndForget(async () => {
-                                        try {
-                                            await createToCurrentTab(blockDef, Boolean(magnified));
-                                            onClose();
-                                        } catch (error) {
-                                            showLaunchError("Terminal", error);
-                                        }
-                                    });
-                                };
                                 return (
                                     <div
                                         key={target.blockId}
                                         role="button"
                                         tabIndex={0}
                                         className={clsx(
-                                            "w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
+                                            "group w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
                                             isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
                                         )}
-                                        onClick={createTarget}
+                                        onClick={() => setSelectedIdx(idx)}
                                         onPointerEnter={() => setSelectedIdx(idx)}
                                         onFocus={() => setSelectedIdx(idx)}
                                         onKeyDown={(event) => {
                                             if (event.currentTarget !== event.target) return;
                                             if (event.key === "Enter" || event.key === " ") {
                                                 event.preventDefault();
-                                                createTarget();
+                                                setSelectedIdx(idx);
                                             }
                                         }}
                                     >
@@ -873,35 +790,23 @@ const TerminalTargetFloatingWindow = memo(
                                                 <div className="text-xs text-foreground truncate">
                                                     {target.detail || target.label}
                                                 </div>
-                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                    <span className="text-xxs uppercase tracking-wide text-muted bg-hoverbg px-1 py-[1px] rounded">
-                                                        {launchTargetSourceLabel(target)}
-                                                    </span>
-                                                    {!target.isLocal ? (
-                                                        <span className="text-xxs text-secondary/70 truncate">
-                                                            {target.label}
-                                                        </span>
-                                                    ) : null}
-                                                </div>
+                                                {!target.isLocal ? (
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 truncate">
+                                                        {target.label}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                             {canSetDefault ? (
-                                                <button
-                                                    type="button"
-                                                    className="w-6 h-6 shrink-0 rounded border-none bg-transparent text-[11px] text-muted hover:text-accent hover:bg-hoverbg cursor-pointer"
-                                                    aria-label="Set default launch target"
+                                                <DefaultCheckButton
+                                                    checked={isDefault}
+                                                    ariaLabel="Set default launch target"
                                                     title="Set default launch target"
+                                                    className="opacity-0 group-hover:opacity-100"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
                                                         onSetDefaultTarget(target);
                                                     }}
-                                                >
-                                                    <i
-                                                        className={clsx(
-                                                            "fa-star",
-                                                            isDefault ? "fa-solid text-accent" : "fa-regular"
-                                                        )}
-                                                    />
-                                                </button>
+                                                />
                                             ) : null}
                                         </div>
                                     </div>

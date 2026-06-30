@@ -154,7 +154,7 @@ function getFileLanguage(fileName: string | null): string | undefined {
     }
     const extensionMatch = baseName.toLowerCase().match(/(\.[^.]+)$/);
     if (!extensionMatch) {
-        return undefined;
+        return "plaintext";
     }
     if ([".md", ".markdown", ".mdx"].includes(extensionMatch[1])) {
         return "markdown";

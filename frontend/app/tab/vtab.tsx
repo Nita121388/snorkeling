@@ -166,12 +166,12 @@ export function VTab({
             onMouseEnter={() => onHoverChanged?.(true)}
             onMouseLeave={() => onHoverChanged?.(false)}
             className={cn(
-                "group relative flex h-9 w-full shrink-0 cursor-pointer items-center pl-3 text-xs transition-colors select-none",
-                "whitespace-nowrap",
+                "group relative flex w-full shrink-0 cursor-pointer items-center pl-3 text-xs transition-all duration-150 ease-in-out select-none",
+                "whitespace-nowrap overflow-hidden",
                 active ? "text-primary" : isReordering ? "text-secondary" : "text-secondary hover:text-primary",
                 unopenedThisLaunch && "opacity-45 grayscale",
                 isDragging && "opacity-50",
-                isHidden && "hidden",
+                isHidden ? "max-h-0 py-0 my-0 border-0 opacity-0 pointer-events-none" : "max-h-10 h-9",
             )}
         >
             {active && (

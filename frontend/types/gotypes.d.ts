@@ -1348,7 +1348,7 @@ declare global {
         modtime?: number;
         isdir?: boolean;
         supportsmkdir?: boolean;
-        mimetype?: string;
+        mimetype: string;
         readonly?: boolean;
     };
 

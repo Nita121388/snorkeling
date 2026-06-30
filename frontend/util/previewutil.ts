@@ -1,5 +1,6 @@
 import { createBlock, getApi } from "@/app/store/global";
 import { createDefaultAgentBlockDef } from "@/app/workspace/agent-launch";
+import { canPreviewFileInfo } from "@/app/view/preview/preview-open";
 import { isWindows, makeNativeLabel } from "./platformutil";
 import { fireAndForget, isLocalConnName } from "./util";
 import { formatRemoteUri } from "./waveutil";
@@ -18,6 +19,7 @@ export function addOpenMenuItems(
         return menu;
     }
     const isLocalConn = isLocalConnName(conn);
+    const canPreview = canPreviewFileInfo(finfo);
     menu.push({
         type: "separator",
     });
@@ -34,8 +36,8 @@ export function addOpenMenuItems(
                 getApi().openNativePath(finfo.isdir ? finfo.path : finfo.dir);
             },
         });
-        // if the entry is a file, open it in the default application
-        if (!finfo.isdir) {
+        // if the entry is a file and is not previewable, open it in the default application
+        if (!finfo.isdir && !canPreview) {
             menu.push({
                 label: makeNativeLabel(false),
                 click: () => {

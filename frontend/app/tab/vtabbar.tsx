@@ -396,71 +396,76 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
                     const openedSet = globalStore.get(openedThisLaunchTabIdsAtom);
-                    const isHidden = !isActive && !isTabBarHovered && !wasTabOpenedThisLaunch(openedSet, tabId) && dragTabId == null;
+                    const wasOpened = wasTabOpenedThisLaunch(openedSet, tabId);
+                    const isHidden = !isActive && !isTabBarHovered && !wasOpened && dragTabId == null;
+                    if (isHidden) {
+                        return null;
+                    }
                     return (
-                        <VTabWrapper
-                            key={`${tabId}:${hoverResetVersion}`}
-                            tabId={tabId}
-                            active={isActive}
-                            showDivider={
-                                !isActive &&
-                                !isNextActive &&
-                                !isHovered &&
-                                !isNextHovered &&
-                                !(isLast && isNewTabHovered)
-                            }
-                            isDragging={dragTabId === tabId}
-                            isReordering={dragTabId != null}
-                            hoverResetVersion={hoverResetVersion}
-                            hidden={isHidden}
-                            index={index}
-                            onSelect={() => {
-                                markTabOpened(tabId);
-                                env.electron.setActiveTab(tabId);
-                            }}
-                            onClose={() =>
-                                fireAndForget(async () => {
-                                    if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
-                                        return;
-                                    }
-                                    await env.electron.closeTab(workspace.oid, tabId, false);
-                                })
-                            }
-                            onRename={(newName) =>
-                                fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
-                            }
-                            onDragStart={(event) => {
-                                didResetHoverForDragRef.current = false;
-                                dragSourceRef.current = tabId;
-                                event.dataTransfer.effectAllowed = "move";
-                                event.dataTransfer.setData("text/plain", tabId);
-                                setDragTabId(tabId);
-                                setDropIndex(index);
-                                setDropLineTop(event.currentTarget.offsetTop);
-                            }}
-                            onDragOver={(event) => {
-                                event.preventDefault();
-                                const rect = event.currentTarget.getBoundingClientRect();
-                                const relativeY = event.clientY - rect.top;
-                                const midpoint = event.currentTarget.offsetHeight / 2;
-                                const insertBefore = relativeY < midpoint;
-                                setDropIndex(insertBefore ? index : index + 1);
-                                setDropLineTop(
-                                    insertBefore
-                                        ? event.currentTarget.offsetTop
-                                        : event.currentTarget.offsetTop + event.currentTarget.offsetHeight
-                                );
-                            }}
-                            onDrop={(event) => {
-                                event.preventDefault();
-                                if (dropIndex != null) {
-                                    reorder(dropIndex);
+                        <div key={tabId}>
+                            <VTabWrapper
+                                tabId={tabId}
+                                active={isActive}
+                                showDivider={
+                                    !isActive &&
+                                    !isNextActive &&
+                                    !isHovered &&
+                                    !isNextHovered &&
+                                    !(isLast && isNewTabHovered)
                                 }
-                                clearDragState();
-                            }}
-                            onDragEnd={clearDragState}
-                            onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
-                        />
+                                isDragging={dragTabId === tabId}
+                                isReordering={dragTabId != null}
+                                hoverResetVersion={hoverResetVersion}
+                                hidden={false}
+                                index={index}
+                                onSelect={() => {
+                                    markTabOpened(tabId);
+                                    env.electron.setActiveTab(tabId);
+                                }}
+                                onClose={() =>
+                                    fireAndForget(async () => {
+                                        if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                                            return;
+                                        }
+                                        await env.electron.closeTab(workspace.oid, tabId, false);
+                                    })
+                                }
+                                onRename={(newName) =>
+                                    fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
+                                }
+                                onDragStart={(event) => {
+                                    didResetHoverForDragRef.current = false;
+                                    dragSourceRef.current = tabId;
+                                    event.dataTransfer.effectAllowed = "move";
+                                    event.dataTransfer.setData("text/plain", tabId);
+                                    setDragTabId(tabId);
+                                    setDropIndex(index);
+                                    setDropLineTop(event.currentTarget.offsetTop);
+                                }}
+                                onDragOver={(event) => {
+                                    event.preventDefault();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    const relativeY = event.clientY - rect.top;
+                                    const midpoint = event.currentTarget.offsetHeight / 2;
+                                    const insertBefore = relativeY < midpoint;
+                                    setDropIndex(insertBefore ? index : index + 1);
+                                    setDropLineTop(
+                                        insertBefore
+                                            ? event.currentTarget.offsetTop
+                                            : event.currentTarget.offsetTop + event.currentTarget.offsetHeight
+                                    );
+                                }}
+                                onDrop={(event) => {
+                                    event.preventDefault();
+                                    if (dropIndex != null) {
+                                        reorder(dropIndex);
+                                    }
+                                    clearDragState();
+                                }}
+                                onDragEnd={clearDragState}
+                                onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
+                            />
+                        </div>
                     );
                 })}
                 {dragTabId != null && dropIndex != null && dropLineTop != null && (
