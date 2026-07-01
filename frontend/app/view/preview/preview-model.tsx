@@ -22,7 +22,7 @@ import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
 import { addOpenMenuItems } from "@/util/previewutil";
-import { base64ToString, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
+import { base64ToString, basename, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
 import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
@@ -539,43 +539,19 @@ export class PreviewModel implements ViewModel {
             if (!isBlank(headerPath) && headerPath != "/" && headerPath.endsWith("/")) {
                 headerPath = headerPath.slice(0, -1);
             }
-            const copyPathStatus = get(this.copyPathStatus);
+            const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
                     className: "preview-filename-shell",
                     children: [
                         {
-                            elemtype: "text",
+                            elemtype: "copytext",
                             text: headerPath,
-                            ref: this.previewTextRef,
-                            className: "preview-filename",
-                            onClick: () => this.toggleOpenFileModal(),
-                        },
-                        {
-                            elemtype: "iconbutton",
-                            icon:
-                                copyPathStatus === "copied"
-                                    ? "check"
-                                    : copyPathStatus === "failed"
-                                      ? "triangle-exclamation"
-                                      : "copy",
-                            title:
-                                copyPathStatus === "copied"
-                                    ? "Copied"
-                                    : copyPathStatus === "failed"
-                                      ? "Copy Failed"
-                                      : "Copy Full Path",
-                            iconColor:
-                                copyPathStatus === "copied"
-                                    ? "var(--success-color)"
-                                    : copyPathStatus === "failed"
-                                      ? "var(--error-color)"
-                                      : undefined,
-                            className: clsx("preview-filename-copy-button", copyPathStatus),
-                            click: () => {
-                                fireAndForget(() => this.copyCurrentPathToClipboardWithFeedback());
-                            },
+                            displayText: displayName,
+                            tooltipText: headerPath,
+                            title: "Click to copy full path",
+                            className: "preview-filename cursor-pointer",
                         },
                     ],
                 },

@@ -179,7 +179,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
         open: isOpen,
         onOpenChange: onClose,
         placement: "left-start",
-        middleware: [offset(-2), shift({ padding: 12 })],
+        middleware: [offset(8), shift({ padding: 12 })],
         whileElementsMounted: autoUpdate,
         elements: {
             reference: referenceElement,
@@ -349,17 +349,21 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
         <button
             type="button"
             className={clsx(
-                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer transition-opacity transition-colors",
+                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer transition-opacity",
                 checked
-                    ? "rounded-sm bg-transparent text-accent hover:bg-transparent"
-                    : "rounded-sm bg-transparent text-transparent hover:bg-muted/35",
+                    ? "text-accent"
+                    : "opacity-0 group-hover:opacity-100",
                 className
             )}
             aria-label={ariaLabel}
             title={title}
             onClick={onClick}
         >
-            {checked ? <i className="fa-solid fa-check text-accent text-[9px]" /> : null}
+            {checked ? (
+                <i className="fa-solid fa-check text-accent text-[9px]" />
+            ) : (
+                <span className="w-3.5 h-3.5 rounded-[2px] border border-secondary/40" />
+            )}
         </button>
     );
 }
@@ -433,7 +437,7 @@ const AgentTargetFloatingWindow = memo(
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -524,7 +528,6 @@ const AgentTargetFloatingWindow = memo(
                                                 checked={isDefault}
                                                 ariaLabel={`Set ${profile.label} as default agent`}
                                                 title="Set default agent"
-                                                className="opacity-0 group-hover:opacity-100"
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onSetDefaultProfile(profile.name);
@@ -594,7 +597,6 @@ const AgentTargetFloatingWindow = memo(
                                                     checked={isDefault}
                                                     ariaLabel="Set default launch target"
                                                     title="Set default launch target"
-                                                    className="opacity-0 group-hover:opacity-100"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
                                                         onSetDefaultTarget(target);
@@ -717,7 +719,7 @@ const TerminalTargetFloatingWindow = memo(
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -801,7 +803,6 @@ const TerminalTargetFloatingWindow = memo(
                                                     checked={isDefault}
                                                     ariaLabel="Set default launch target"
                                                     title="Set default launch target"
-                                                    className="opacity-0 group-hover:opacity-100"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
                                                         onSetDefaultTarget(target);
@@ -888,7 +889,7 @@ const SettingsFloatingWindow = memo(
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -1200,17 +1201,19 @@ const Widgets = memo(() => {
             if (!canSetLaunchTargetDefault(target)) {
                 return;
             }
+            const targetKey = getLaunchTargetDefaultKey(target);
+            const isCurrentlyDefault = targetKey === agentDefaultTargetKey;
             fireAndForget(async () => {
                 try {
                     await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
-                        [AgentDefaultLaunchTargetMetaKey]: getLaunchTargetDefaultKey(target),
+                        [AgentDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
                     } as MetaType);
                 } catch (error) {
                     showSettingsError("Agent default target", error);
                 }
             });
         },
-        [currentTabId, env]
+        [currentTabId, env, agentDefaultTargetKey]
     );
 
     const setDefaultTerminalTarget = useCallback(
@@ -1218,17 +1221,19 @@ const Widgets = memo(() => {
             if (!canSetLaunchTargetDefault(target)) {
                 return;
             }
+            const targetKey = getLaunchTargetDefaultKey(target);
+            const isCurrentlyDefault = targetKey === terminalDefaultTargetKey;
             fireAndForget(async () => {
                 try {
                     await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
-                        [TerminalDefaultLaunchTargetMetaKey]: getLaunchTargetDefaultKey(target),
+                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
                     } as MetaType);
                 } catch (error) {
                     showSettingsError("Terminal default target", error);
                 }
             });
         },
-        [currentTabId, env]
+        [currentTabId, env, terminalDefaultTargetKey]
     );
 
     const setDefaultAgentProfile = useCallback(

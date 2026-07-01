@@ -194,6 +194,7 @@ declare global {
         | IconButtonDecl
         | ToggleIconButtonDecl
         | HeaderText
+        | HeaderCopyText
         | HeaderInput
         | HeaderDiv
         | HeaderTextButton
@@ -227,6 +228,15 @@ declare global {
         className?: string;
         title?: string;
         onClick?: (e: React.MouseEvent<any>) => void;
+    };
+
+    type HeaderCopyText = {
+        elemtype: "copytext";
+        text: string;
+        displayText: string;
+        tooltipText?: string;
+        title?: string;
+        className?: string;
     };
 
     type HeaderText = {

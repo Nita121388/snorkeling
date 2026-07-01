@@ -577,7 +577,7 @@ function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
 }
 
 export function canSetLaunchTargetDefault(target: AgentLaunchTarget | null | undefined): boolean {
-    return target != null && target.source !== "home";
+    return target != null;
 }
 
 export function getSelectableLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {

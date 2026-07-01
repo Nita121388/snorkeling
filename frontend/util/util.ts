@@ -52,6 +52,14 @@ function base64ToArray(b64: string): Uint8Array<ArrayBufferLike> {
     return base64.toByteArray(cleanB64);
 }
 
+function basename(path: string): string {
+    if (!path) return path;
+    const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (normalized === "") return "/";
+    const idx = normalized.lastIndexOf("/");
+    return idx >= 0 ? normalized.slice(idx + 1) : normalized;
+}
+
 function base64ToArrayBuffer(b64: string): ArrayBuffer {
     const cleanB64 = b64.replace(/\s+/g, "");
     const u8 = base64.toByteArray(cleanB64); // Uint8Array<ArrayBufferLike>
@@ -528,6 +536,7 @@ export {
     base64ToArray,
     base64ToArrayBuffer,
     base64ToString,
+    basename,
     boundNumber,
     cn,
     countGraphemes,

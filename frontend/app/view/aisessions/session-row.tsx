@@ -178,7 +178,25 @@ export function SessionRow({
                         {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
                     </div>
                     {session.snippet ? (
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-secondary">{session.snippet}</div>
+                        <div className="mt-1 flex items-start gap-1">
+                            <div className="min-w-0 flex-1 line-clamp-2 text-xs leading-5 text-secondary">
+                                {session.snippet}
+                            </div>
+                            {!hasNoteInfo && !noteEditing ? (
+                                <button
+                                    type="button"
+                                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
+                                    title="Add note and tags"
+                                    aria-label="Add note and tags"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void toggleNoteEditor();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                </button>
+                            ) : null}
+                        </div>
                     ) : null}
                     {hasNoteInfo || noteEditing ? (
                         <button
@@ -215,23 +233,7 @@ export function SessionRow({
                                 <i className="fa-sharp fa-solid fa-pen text-[10px]" />
                             </span>
                         </button>
-                    ) : (
-                        <div className="mt-1 hidden justify-end group-hover:flex group-focus-within:flex">
-                            <button
-                                type="button"
-                                className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="Add note and tags"
-                                aria-label="Add note and tags"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    void toggleNoteEditor();
-                                }}
-                            >
-                                <i className="fa-sharp fa-solid fa-pen text-[10px]" />
-                                <span>Add note</span>
-                            </button>
-                        </div>
-                    )}
+                    ) : null}
                     {noteEditing ? (
                         <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                             <SessionTagChips
