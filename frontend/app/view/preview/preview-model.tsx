@@ -532,7 +532,7 @@ export class PreviewModel implements ViewModel {
             } else if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
                 if (headerPath == "~") {
-                    headerPath = `~ (${loadableFileInfo.data?.dir + "/" + loadableFileInfo.data?.name})`;
+                    headerPath = "~";
                 }
             }
             headerPath = getPreviewDisplayPath(headerPath);
@@ -540,6 +540,7 @@ export class PreviewModel implements ViewModel {
                 headerPath = headerPath.slice(0, -1);
             }
             const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
+            const tooltipText = headerPath == "~" ? "~ (C:/Users/chemclin)" : headerPath;
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
@@ -547,9 +548,9 @@ export class PreviewModel implements ViewModel {
                     children: [
                         {
                             elemtype: "copytext",
-                            text: headerPath,
+                            text: tooltipText,
                             displayText: displayName,
-                            tooltipText: headerPath,
+                            tooltipText: tooltipText,
                             title: "Click to copy full path",
                             className: "preview-filename cursor-pointer",
                         },
@@ -691,15 +692,6 @@ export class PreviewModel implements ViewModel {
                 return null;
             }
             const buttons: IconButtonDecl[] = [vcsButton];
-            if (mimeType == "directory") {
-                buttons.push({
-                    elemtype: "iconbutton",
-                    icon: "magnifying-glass",
-                    iconColor: directorySearchActive ? "var(--accent-color)" : undefined,
-                    title: directorySearchActive ? "Show Explorer Tree" : "Search File Contents",
-                    click: () => fireAndForget(() => this.toggleDirectorySearch()),
-                });
-            }
             if (mimeType == "directory") {
                 const showHiddenFiles = get(this.showHiddenFiles);
                 buttons.push({

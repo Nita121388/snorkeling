@@ -349,10 +349,10 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
         <button
             type="button"
             className={clsx(
-                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer transition-opacity",
+                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer",
                 checked
                     ? "text-accent"
-                    : "opacity-0 group-hover:opacity-100",
+                    : "hidden group-hover:flex",
                 className
             )}
             aria-label={ariaLabel}
@@ -360,9 +360,9 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
             onClick={onClick}
         >
             {checked ? (
-                <i className="fa-solid fa-check text-accent text-[9px]" />
+                <i className="fa-solid fa-check text-accent text-[10px]" />
             ) : (
-                <span className="w-3.5 h-3.5 rounded-[2px] border border-secondary/40" />
+                <span className="w-3 h-3 rounded-[2px] border border-border/30" />
             )}
         </button>
     );
@@ -477,7 +477,7 @@ const AgentTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl z-50 min-w-[280px] max-w-[340px] overflow-hidden"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
                 >
                     {/* header */}
                     <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
@@ -489,7 +489,7 @@ const AgentTargetFloatingWindow = memo(
                         {profileOptions.length === 0 ? (
                             <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
                         ) : (
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-0.5">
                                 {profileOptions.map((profile) => {
                                     const isSelected = effectiveSelectedProfile === profile.name;
                                     const isDefault = (defaultProfileName ?? "") === profile.name;
@@ -498,31 +498,29 @@ const AgentTargetFloatingWindow = memo(
                                         <div
                                             key={profile.name}
                                             className={clsx(
-                                                "group inline-flex items-center h-[26px] rounded transition-colors",
+                                                "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
                                                 isSelected
-                                                    ? "text-foreground"
-                                                    : "text-secondary hover:text-foreground hover:bg-hoverbg"
+                                                    ? "bg-surface"
+                                                    : "hover:bg-surface-soft"
                                             )}
-                                            style={
-                                                isSelected
-                                                    ? {
-                                                          background: `${color}22`,
-                                                          color,
-                                                          boxShadow: `inset 0 0 0 1px ${color}44`,
-                                                      }
-                                            : { background: "transparent" }
-                                            }
                                         >
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1.5 rounded-l text-xs font-medium border-none bg-transparent cursor-pointer"
+                                                className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l-md text-xs font-medium border-none bg-transparent cursor-pointer"
                                                 onClick={() => setSelectedProfile(profile.name)}
                                             >
                                                 <span
-                                                    className="w-[6px] h-[6px] rounded-full shrink-0"
+                                                    className={clsx(
+                                                        "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
+                                                        isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
+                                                    )}
                                                     style={{ background: color }}
                                                 />
-                                                {profile.label}
+                                                <span className={clsx(
+                                                    isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                                )}>
+                                                    {profile.label}
+                                                </span>
                                             </button>
                                             <DefaultCheckButton
                                                 checked={isDefault}
@@ -541,8 +539,8 @@ const AgentTargetFloatingWindow = memo(
                     </div>
 
                     {/* path list */}
-                    <div className="max-h-[260px] overflow-y-auto">
-                        <div className="px-3 pt-2 pb-1 text-xxs text-muted">
+                    <div className="px-1 pb-1">
+                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">
                             Select a path.
                         </div>
                         {targets.length === 0 ? (
@@ -558,8 +556,8 @@ const AgentTargetFloatingWindow = memo(
                                         role="button"
                                         tabIndex={0}
                                         className={clsx(
-                                            "group w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
-                                            isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
+                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
                                         )}
                                         onClick={() => setSelectedIdx(idx)}
                                         onPointerEnter={() => setSelectedIdx(idx)}
@@ -572,6 +570,9 @@ const AgentTargetFloatingWindow = memo(
                                             }
                                         }}
                                     >
+                                        {isSelected && (
+                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                        )}
                                         <div className="flex items-center gap-2.5">
                                             <div className="w-4 shrink-0 text-center text-muted">
                                                 {target.source === "home" ? (
@@ -583,11 +584,11 @@ const AgentTargetFloatingWindow = memo(
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-foreground truncate">
+                                                <div className="text-xs text-foreground whitespace-nowrap">
                                                     {target.detail || target.label}
                                                 </div>
                                                 {!target.isLocal ? (
-                                                    <div className="mt-0.5 text-xxs text-secondary/70 truncate">
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
                                                         {target.label}
                                                     </div>
                                                 ) : null}
@@ -611,10 +612,13 @@ const AgentTargetFloatingWindow = memo(
                     </div>
 
                     {selectedTarget != null ? (
-                        <div className="p-2 border-t border-border/60 flex flex-col gap-1">
+                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
+                                {(selectedTarget.detail || selectedTarget.label)}
+                            </span>
                             <button
                                 type="button"
-                                className="w-full flex items-center justify-center gap-1.5 h-7 rounded-md bg-accent text-[#111] text-xs font-medium transition-colors hover:bg-accent/90 cursor-pointer border-none"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -635,63 +639,62 @@ const AgentTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[10px]" />
-                                Current Tab
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
                             </button>
-                            <div className="flex gap-1.5">
-                                <button
-                                    type="button"
-                                    className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer"
-                                    onClick={() => {
-                                        if (isBlank(effectiveSelectedProfile)) {
-                                            showNoDetectedAgentError();
-                                            return;
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    if (isBlank(effectiveSelectedProfile)) {
+                                        showNoDetectedAgentError();
+                                        return;
+                                    }
+                                    const blockDef = createAgentBlockDefForTarget(
+                                        settings,
+                                        selectedTarget,
+                                        effectiveSelectedProfile
+                                    );
+                                    fireAndForget(async () => {
+                                        try {
+                                            await onCreateToNewTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Agent", error);
                                         }
-                                        const blockDef = createAgentBlockDefForTarget(
-                                            settings,
-                                            selectedTarget,
-                                            effectiveSelectedProfile
-                                        );
-                                        fireAndForget(async () => {
-                                            try {
-                                                await onCreateToNewTab(blockDef, Boolean(magnified));
-                                                onClose();
-                                            } catch (error) {
-                                                showLaunchError("Agent", error);
-                                            }
-                                        });
-                                    }}
-                                >
-                                    <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
-                                    New Tab
-                                </button>
-                                <button
-                                    type="button"
-                                    className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer disabled:cursor-default disabled:opacity-50"
-                                    disabled={!canCreateToExistingTab}
-                                    onClick={() => {
-                                        if (isBlank(effectiveSelectedProfile)) {
-                                            showNoDetectedAgentError();
-                                            return;
-                                        }
-                                        const blockDef = createAgentBlockDefForTarget(
-                                            settings,
-                                            selectedTarget,
-                                            effectiveSelectedProfile
-                                        );
-                                        onCreateToExistingTab({
-                                            title: "Create Agent",
-                                            subtitle: selectedTarget.detail || selectedTarget.label,
-                                            blockDef,
-                                            magnified: Boolean(magnified),
-                                        });
-                                        onClose();
-                                    }}
-                                >
-                                    <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
-                                    Existing Tab...
-                                </button>
-                            </div>
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    if (isBlank(effectiveSelectedProfile)) {
+                                        showNoDetectedAgentError();
+                                        return;
+                                    }
+                                    const blockDef = createAgentBlockDefForTarget(
+                                        settings,
+                                        selectedTarget,
+                                        effectiveSelectedProfile
+                                    );
+                                    onCreateToExistingTab({
+                                        title: "Create Agent",
+                                        subtitle: selectedTarget.detail || selectedTarget.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                Existing…
+                            </button>
                         </div>
                     ) : null}
                 </div>
@@ -742,7 +745,7 @@ const TerminalTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl z-50 min-w-[280px] max-w-[340px] overflow-hidden"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
                 >
                     {/* header */}
                     <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
@@ -750,7 +753,7 @@ const TerminalTargetFloatingWindow = memo(
                     </div>
 
                     {/* path list */}
-                    <div className="max-h-[300px] overflow-y-auto">
+                    <div className="px-1 pb-1">
                         {targets.length === 0 ? (
                             <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
                         ) : (
@@ -764,8 +767,8 @@ const TerminalTargetFloatingWindow = memo(
                                         role="button"
                                         tabIndex={0}
                                         className={clsx(
-                                            "group w-full px-3 py-2 text-left transition-colors cursor-pointer border-b border-border/30 last:border-b-0",
-                                            isSelected ? "bg-accent/10" : "hover:bg-hoverbg"
+                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
                                         )}
                                         onClick={() => setSelectedIdx(idx)}
                                         onPointerEnter={() => setSelectedIdx(idx)}
@@ -778,6 +781,9 @@ const TerminalTargetFloatingWindow = memo(
                                             }
                                         }}
                                     >
+                                        {isSelected && (
+                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                        )}
                                         <div className="flex items-center gap-2.5">
                                             <div className="w-4 shrink-0 text-center text-muted">
                                                 {target.source === "home" ? (
@@ -789,11 +795,11 @@ const TerminalTargetFloatingWindow = memo(
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-foreground truncate">
+                                                <div className="text-xs text-foreground whitespace-nowrap">
                                                     {target.detail || target.label}
                                                 </div>
                                                 {!target.isLocal ? (
-                                                    <div className="mt-0.5 text-xxs text-secondary/70 truncate">
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
                                                         {target.label}
                                                     </div>
                                                 ) : null}
@@ -817,10 +823,13 @@ const TerminalTargetFloatingWindow = memo(
                     </div>
 
                     {selectedTarget != null ? (
-                        <div className="p-2 border-t border-border/60 flex flex-col gap-1">
+                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
+                                {(selectedTarget.detail || selectedTarget.label)}
+                            </span>
                             <button
                                 type="button"
-                                className="w-full flex items-center justify-center gap-1.5 h-7 rounded-md bg-accent text-[#111] text-xs font-medium transition-colors hover:bg-accent/90 cursor-pointer border-none"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -833,47 +842,46 @@ const TerminalTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[10px]" />
-                                Current Tab
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
                             </button>
-                            <div className="flex gap-1.5">
-                                <button
-                                    type="button"
-                                    className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer"
-                                    onClick={() => {
-                                        const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
-                                        fireAndForget(async () => {
-                                            try {
-                                                await onCreateToNewTab(blockDef, Boolean(magnified));
-                                                onClose();
-                                            } catch (error) {
-                                                showLaunchError("Terminal", error);
-                                            }
-                                        });
-                                    }}
-                                >
-                                    <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
-                                    New Tab
-                                </button>
-                                <button
-                                    type="button"
-                                    className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-border/60 bg-transparent text-secondary text-xs transition-colors hover:bg-hoverbg hover:text-foreground cursor-pointer disabled:cursor-default disabled:opacity-50"
-                                    disabled={!canCreateToExistingTab}
-                                    onClick={() => {
-                                        const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
-                                        onCreateToExistingTab({
-                                            title: "Create Terminal",
-                                            subtitle: selectedTarget.detail || selectedTarget.label,
-                                            blockDef,
-                                            magnified: Boolean(magnified),
-                                        });
-                                        onClose();
-                                    }}
-                                >
-                                    <i className="fa-sharp fa-regular fa-window-restore text-[10px]" />
-                                    Existing Tab...
-                                </button>
-                            </div>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    fireAndForget(async () => {
+                                        try {
+                                            await onCreateToNewTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Terminal", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    onCreateToExistingTab({
+                                        title: "Create Terminal",
+                                        subtitle: selectedTarget.detail || selectedTarget.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                Existing…
+                            </button>
                         </div>
                     ) : null}
                 </div>

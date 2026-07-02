@@ -1217,6 +1217,19 @@ function MessageDialog({
                             <i className={makeIconClass("tag", false)} />
                         </button>
                     ) : null}
+                    <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-x-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteBlock(block);
+                            }}
+                            aria-label={`Delete block ${block.title}`}
+                        >
+                            <i className={makeIconClass("xmark", false)} />
+                        </button>
+                    </Tooltip>
                 </div>
                 <div className="session-overview-message-actions">
                     <button type="button" onClick={onJump}>
@@ -1658,7 +1671,7 @@ function CompactBlockIcon({
                     <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
-                            className="session-overview-block-action-button"
+                            className="session-overview-block-x-button"
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onDeleteBlock(block);
@@ -1728,8 +1741,8 @@ function BlockRow({
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
                 isCurrent && "is-current",
-                noteEditorOpen && "is-note-editing"
-            )}
+                noteEditorOpen && "is-note-editing",
+                )}
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
@@ -1766,6 +1779,21 @@ function BlockRow({
                         ) : null}
                     </>
                 ) : null}
+            </div>
+            <div className="session-overview-block-main-x">
+                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                    <button
+                        type="button"
+                        className="session-overview-block-x-button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteBlock(block);
+                        }}
+                        aria-label={`Delete block ${block.title}`}
+                    >
+                        <i className={makeIconClass("xmark", false)} />
+                    </button>
+                </Tooltip>
             </div>
             <div className="session-overview-block-actions">
                 {block.isAgentLike && block.sessionId ? (
@@ -1835,19 +1863,6 @@ function BlockRow({
                         </button>
                     </Tooltip>
                 ) : null}
-                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
-                    <button
-                        type="button"
-                        className="session-overview-block-action-button"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onDeleteBlock(block);
-                        }}
-                        aria-label={`Delete block ${block.title}`}
-                    >
-                        <i className={makeIconClass("xmark", false)} />
-                    </button>
-                </Tooltip>
             </div>
             {noteEditorOpen ? (
                 <OverviewSessionNoteEditor
