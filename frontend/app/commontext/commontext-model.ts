@@ -184,7 +184,7 @@ function matchesToken(item: CommonTextItem, token: string): boolean {
 export function searchCommonTextItems(
     items: CommonTextItem[],
     query: string,
-    limit = 40,
+    limit = 500,
     selectedTags: string[] = []
 ): CommonTextItem[] {
     const tokens = query.trim().split(/\s+/).filter(Boolean);

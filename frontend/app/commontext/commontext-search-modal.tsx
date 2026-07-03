@@ -5,6 +5,7 @@ import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
 import { cn, fireAndForget } from "@/util/util";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
@@ -43,13 +44,24 @@ const CommonTextSearchModal = memo(() => {
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [status, setStatus] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(items), [items]);
     const results = useMemo(
-        () => searchCommonTextItems(items, state.query, 60, selectedTags),
+        () => searchCommonTextItems(items, state.query, 500, selectedTags),
         [items, selectedTags, state.query]
     );
     const hasInsertTarget = state.insertTarget != null;
+
+    const ITEM_ESTIMATED_SIZE = 64;
+    const overscan = 5;
+
+    const virtualizer = useVirtualizer({
+        count: results.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => ITEM_ESTIMATED_SIZE,
+        overscan,
+    });
 
     useEffect(() => {
         const handleOpen = (event: Event) => {
@@ -138,12 +150,12 @@ const CommonTextSearchModal = memo(() => {
 
     return (
         <Modal
-            className="w-[min(760px,calc(100vw-32px))] max-h-[min(720px,calc(100vh-32px))] pt-8 pb-4"
+            className={"w-[min(760px,calc(100vw-32px))] max-h-[min(720px,calc(100vh-32px))] pt-8 pb-4"}
             onClose={close}
             onClickBackdrop={close}
         >
-            <div className="flex flex-col gap-3 min-h-[420px]">
-                <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 min-h-0 h-full">
+                <div className="flex items-start justify-between gap-3 pr-8">
                     <div>
                         <div className="text-lg font-semibold">Common Text</div>
                         <div className="text-xs text-muted">
@@ -154,7 +166,7 @@ const CommonTextSearchModal = memo(() => {
                     </div>
                     <button
                         type="button"
-                        className="h-8 px-2 rounded border border-border text-secondary hover:bg-hoverbg hover:text-primary transition-colors"
+                        className="h-8 px-2 rounded border border-border text-secondary hover:bg-hoverbg hover:text-primary transition-colors cursor-pointer"
                         onClick={openManager}
                         title="Manage common text"
                     >
@@ -191,7 +203,7 @@ const CommonTextSearchModal = memo(() => {
                     </div>
                 )}
                 {status && <div className="text-xs text-accent">{status}</div>}
-                <div className="min-h-0 flex-1 overflow-y-auto border border-border rounded">
+                <div className="min-h-0 flex-1 border border-border rounded overflow-hidden">
                     {results.length === 0 ? (
                         <div className="h-full min-h-[280px] flex flex-col items-center justify-center gap-2 text-secondary">
                             <i className="fa fa-regular fa-quote-left text-2xl opacity-60" />
@@ -201,56 +213,72 @@ const CommonTextSearchModal = memo(() => {
                             </button>
                         </div>
                     ) : (
-                        <div className="divide-y divide-border">
-                            {results.map((item, index) => (
-                                <div
-                                    key={item.id}
-                                    className={cn(
-                                        "flex items-start gap-3 px-3 py-2 cursor-pointer transition-colors",
-                                        selectedIndex === index ? "bg-highlightbg" : "hover:bg-hoverbg"
-                                    )}
-                                    onMouseEnter={() => setSelectedIndex(index)}
-                                    onClick={() => fireAndForget(() => handleUse(item))}
-                                >
-                                    <div className="pt-0.5 text-secondary w-4 shrink-0">
-                                        {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <div className="font-medium truncate">{item.title}</div>
-                                            {item.shortcut && (
-                                                <div className="text-[11px] font-mono text-secondary border border-border rounded px-1">
-                                                    {item.shortcut}
-                                                </div>
+                        <div ref={scrollRef} className="h-full overflow-y-auto">
+                            <div
+                                className="relative w-full"
+                                style={{ height: virtualizer.getTotalSize() }}
+                            >
+                                {virtualizer.getVirtualItems().map((virtualRow) => {
+                                    const item = results[virtualRow.index];
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className={cn(
+                                                "absolute left-0 right-0 flex items-start gap-3 px-3 py-2 cursor-pointer transition-colors",
+                                                selectedIndex === virtualRow.index
+                                                    ? "bg-highlightbg"
+                                                    : "hover:bg-hoverbg"
                                             )}
-                                        </div>
-                                        <div className="text-xs text-secondary truncate mt-0.5">
-                                            {makePreview(item.text)}
-                                        </div>
-                                        {(item.tags?.length ?? 0) > 0 && (
-                                            <div className="mt-1">
-                                                <CommonTextTagList
-                                                    tags={item.tags}
-                                                    maxVisible={4}
-                                                    selectedTags={selectedTags}
-                                                    compact
-                                                />
+                                            style={{
+                                                height: virtualRow.size,
+                                                transform: `translateY(${virtualRow.start}px)`,
+                                            }}
+                                            onMouseEnter={() => setSelectedIndex(virtualRow.index)}
+                                            onClick={() => fireAndForget(() => handleUse(item))}
+                                        >
+                                            <div className="pt-0.5 text-secondary w-4 shrink-0">
+                                                {item.pinned ? (
+                                                    <i className="fa fa-solid fa-thumbtack text-[11px]" />
+                                                ) : null}
                                             </div>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="h-7 w-7 rounded text-secondary hover:bg-hoverbg hover:text-primary"
-                                        title="Copy"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            fireAndForget(() => handleUse(item, true));
-                                        }}
-                                    >
-                                        <i className="fa fa-regular fa-copy" />
-                                    </button>
-                                </div>
-                            ))}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <div className="font-medium truncate">{item.title}</div>
+                                                    {item.shortcut && (
+                                                        <div className="text-[11px] font-mono text-secondary border border-border rounded px-1">
+                                                            {item.shortcut}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-secondary truncate mt-0.5">
+                                                    {makePreview(item.text)}
+                                                </div>
+                                                {(item.tags?.length ?? 0) > 0 && (
+                                                    <div className="mt-1">
+                                                        <CommonTextTagList
+                                                            tags={item.tags}
+                                                            maxVisible={4}
+                                                            selectedTags={selectedTags}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="h-7 w-7 rounded text-secondary hover:bg-hoverbg hover:text-primary"
+                                                title="Copy"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    fireAndForget(() => handleUse(item, true));
+                                                }}
+                                            >
+                                                <i className="fa fa-regular fa-copy" />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
