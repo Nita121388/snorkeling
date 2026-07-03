@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<title>OverViewAgentCard — X 按钮自适应布局设计</title>
+<title>OverViewAgentCard — X 按钮自适应 + Header 简化</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 <style>
   :root {
@@ -19,6 +19,9 @@
     --danger: #e05c5c;
     --danger-soft: rgba(229,77,46,.12);
     --warning: #e0b956;
+    --claude: #cc685c;
+    --codex: #74a7cb;
+    --gemini: #8e7cc3;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{
@@ -28,64 +31,119 @@
     font-size:13px;
     -webkit-font-smoothing:antialiased
   }
-  .num{font-variant-numeric:tabular-nums}
 
   .page{max-width:960px;margin:0 auto;padding:24px 20px;display:flex;flex-direction:column;gap:32px}
 
   h1{font-size:17px;font-weight:700;margin-bottom:4px}
   .sub{font-size:12px;color:var(--muted);margin-bottom:20px}
 
-  .scene{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;background:var(--panel)}
-  .scene-hd{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border-soft);font-size:12px;font-weight:600;color:var(--secondary)}
-  .scene-bd{padding:14px;font-size:12px;line-height:1.6;color:var(--secondary)}
+  .grid{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
 
-  strong{color:var(--primary)}
-  code{padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.05);color:var(--primary);font-size:11px}
   .tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:600}
   .tag.g{background:var(--accent-soft);color:var(--accent)}
   .tag.r{background:var(--danger-soft);color:var(--danger)}
-
-  .grid{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
-
-  .ann{
-    display:flex;flex-direction:column;gap:6px;
-    padding:10px 12px;border:1px dashed rgba(255,255,255,.16);border-radius:6px;
-    background:rgba(0,0,0,.2);font-size:10px;color:var(--muted);line-height:1.5
-  }
-  .ann strong{color:var(--primary)}
-  .ann .a{display:flex;align-items:flex-start;gap:6px}
-  .ann .a::before{content:"·";color:var(--muted)}
+  .tag.b{background:rgba(116,167,203,.18);color:#74a7cb}
 
   /* =============================================================
-     核心组件 — Card
+     核心组件 — Card（简化版 Header）
      ============================================================= */
   .card{
     border:1px solid rgba(255,255,255,.16);
     border-radius:8px;
     overflow:hidden;
     background:rgba(31,33,31,.5);
-    position:relative;                /* X absolute 定位锚点 */
+    position:relative;
     width:320px
   }
 
-  /* -- Header -- */
-  .ch{display:flex;align-items:center;gap:6px;padding:6px 10px 2px}
+  /* -- Header（彻底简化：只有 Icon + 悬浮 tooltip） -- */
+  .ch{
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;  /* icon 左对齐 */
+    padding:8px 10px 4px;
+    min-height:32px
+  }
+
+  /* Icon 放大 + 带 provider 色点 */
+  .ch-icon-wrap{
+    display:flex;
+    align-items:center;
+    gap:5px
+  }
   .ch-icon{
-    width:20px;height:20px;display:flex;align-items:center;justify-content:center;
-    border-radius:6px;font-size:11px;flex:0 0 20px
+    width:24px;height:24px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:6px;font-size:13px;flex:0 0 24px;
+    cursor:pointer
   }
   .ch-icon.agent{background:var(--accent-soft);color:var(--accent)}
   .ch-icon.term{background:rgba(255,255,255,.08);color:var(--secondary)}
-  .ch-title{
-    flex:1;min-width:0;font-size:11px;font-weight:600;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary)
-  }
 
-  /* -- Preview line -- */
-  .compact-preview{
-    display:flex;align-items:center;padding:0 10px 4px;
-    font-family:"Hack","SF Mono",monospace;font-size:9px;
-    color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  /* Provider 色点（仅 Agent） */
+  .provider-dot{
+    width:7px;height:7px;border-radius:50%;flex:0 0 7px;
+    opacity:.6
+  }
+  .provider-dot.claude{background:var(--claude)}
+  .provider-dot.codex{background:var(--codex)}
+  .provider-dot.gemini{background:var(--gemini)}
+
+  /* -- Tooltip 悬浮 ID -- */
+  .ch-id-tooltip{
+    display:none;
+    position:absolute;
+    left:10px;top:100%;margin-top:2px;
+    padding:3px 8px;
+    border-radius:5px;
+    font-size:10px;
+    font-family:"SF Mono","JetBrains Mono",monospace;
+    background:rgba(20,22,20,.95);
+    border:1px solid var(--border-soft);
+    color:var(--secondary);
+    white-space:nowrap;
+    z-index:10;
+    align-items:center;
+    gap:6px;
+    pointer-events:auto;
+    cursor:pointer
+  }
+  .ch-id-tooltip .copy-hint{
+    font-size:8px;color:var(--muted);
+    font-family:-apple-system,"SF Pro Text",sans-serif
+  }
+  .ch-id-tooltip .copy-hint::before{content:"📋 "}
+  .ch:hover .ch-id-tooltip{display:flex}
+  .ch-id-tooltip:hover{color:var(--accent);border-color:rgba(88,193,66,.35)}
+  .ch-id-tooltip:active{opacity:.6}
+
+  /* -- Message Squares 区域 -- */
+  .msg-area{
+    padding:0 10px 4px
+  }
+  .msg-strip{
+    display:flex;min-width:0;align-items:center;flex-wrap:wrap;gap:4px;overflow:visible
+  }
+  .msg-square{
+    width:14px;height:14px;flex:0 0 14px;
+    border:1px solid transparent;border-radius:3px;cursor:pointer
+  }
+  .msg-square.is-user{
+    border-color:rgba(88,193,66,.8);background:rgba(88,193,66,.28)
+  }
+  .msg-square.is-ai{
+    border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.12)
+  }
+  .msg-square:hover{transform:translateY(-1px)}
+  .msg-more,.msg-unread{
+    font-size:10px;color:var(--muted)
+  }
+  .msg-unread{color:var(--accent);font-weight:700}
+
+  /* -- Note 行 -- */
+  .note-line{
+    font-size:10px;color:var(--muted);padding:0 10px 4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
   }
 
   /* -- Footer / 操作栏 -- */
@@ -105,6 +163,9 @@
   .cf-st.b{
     border:1px solid rgba(224,185,86,.64);background:rgba(224,185,86,.12);color:var(--warning)
   }
+  .cf-st.d{
+    border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.06);color:var(--secondary)
+  }
   .cf-cwd{
     font-size:9px;color:var(--muted);
     font-family:"Hack","SF Mono",monospace;
@@ -112,7 +173,7 @@
   }
 
   /* =============================================================
-     操作按钮（tag/list/jump/trash）— 始终在右下操作栏
+     操作按钮 — 始终在右下操作栏
      ============================================================= */
   .cf-actions{
     display:flex;align-items:center;gap:1px;
@@ -132,132 +193,47 @@
   .ca-btn:hover{color:var(--primary);background:var(--hover)}
 
   /* =============================================================
-     X 按钮 — 始终无 border，hover 红色
-     方案：
-       - 一行能放下 → 在 cf-actions 最右边，和其他按钮排在一起（带 .ca-x）
-       - 一行放不下 → .ca-x-float 右上角 absolute
+     X 按钮 — 始终在右上角，无 border，hover 红色
      ============================================================= */
-
-  /* ✓ 方案 A：X 在操作栏内（正常一行） */
   .ca-x{
-    width:20px;height:20px;
-    display:flex;align-items:center;justify-content:center;
-    background:transparent;border:none;  /* ✗ 无 border */
-    color:var(--muted);
-    cursor:pointer;font-size:10px;
-    opacity:.3;transition:opacity .12s,color .12s
-  }
-  .card:hover .ca-x{opacity:1}
-  .ca-x:hover{color:var(--danger)!important;background:transparent!important}  /* ✗ hover 红色，无背景 */
-
-  /* ✓ 方案 B：X 浮动到右上角（折行时）*/
-  .ca-x-float{
     position:absolute;
     top:6px;right:6px;
     width:20px;height:20px;
     display:flex;align-items:center;justify-content:center;
-    background:transparent;border:none;  /* ✗ 无 border */
+    background:transparent;border:none;
     color:var(--muted);
     cursor:pointer;font-size:10px;
     opacity:.3;transition:opacity .12s,color .12s;
     border-radius:4px;
     z-index:2
   }
-  .card:hover .ca-x-float{opacity:1}
-  .ca-x-float:hover{color:var(--danger)!important;background:var(--danger-soft)}  /* ✗ hover 红色背景 */
+  .card:hover .ca-x{opacity:1}
+  .ca-x:hover{color:var(--danger)!important;background:var(--danger-soft)}
 
   /* =============================================================
-     场景演示 — 窄 card 模拟折行
+     场景切换 — 不再需要，X 始终在右上角
      ============================================================= */
-  .card.narrow{width:220px}
-  .card.medium{width:260px}
-  .card.wide{width:320px}
-
-  /* 当 card 很窄，操作栏内容放不下时 → X 浮动到右上角 */
-  .card-wrap-demo .cf-actions .ca-x{display:none}     /* 操作栏隐藏 X */
-  .card-wrap-demo .ca-x-float{display:flex}            /* 浮动 X 出现 */
-
-  /* 默认 — 操作栏在内部 */
-  .card-normal .cf-actions .ca-x{display:flex}
-  .card-normal .ca-x-float{display:none}
 
   /* =============================================================
-     标注系统 — 各部位名称标签
+     对比 & 说明
      ============================================================= */
-  .labeled{
-    position:relative
+  .comp-box{
+    display:flex;flex-direction:column;gap:10px;
+    padding:12px 14px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;
+    background:rgba(0,0,0,.2);font-size:11px;color:var(--muted);line-height:1.6
   }
-  .label-tag{
-    position:absolute;
-    z-index:20;
-    padding:2px 6px;
-    border-radius:4px;
-    font-size:9px;
-    font-weight:600;
-    line-height:1.3;
-    white-space:nowrap;
-    pointer-events:none;
-    font-family:-apple-system,"SF Pro Text","Inter","Segoe UI",sans-serif
+  .comp-box strong{color:var(--primary)}
+  .comp-box .row{display:flex;align-items:flex-start;gap:8px}
+  .arrow-wrap{
+    display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);
+    padding:3px 8px;border-radius:4px;background:rgba(255,255,255,.03)
   }
-  .label-tag.lt-green{
-    background:rgba(88,193,66,.18);
-    color:var(--accent);
-    border:1px solid rgba(88,193,66,.35)
-  }
-  .label-tag.lt-blue{
-    background:rgba(116,167,203,.18);
-    color:#74a7cb;
-    border:1px solid rgba(116,167,203,.35)
-  }
-  .label-tag.lt-orange{
-    background:rgba(224,185,86,.18);
-    color:var(--warning);
-    border:1px solid rgba(224,185,86,.35)
-  }
-  .label-tag.lt-red{
-    background:var(--danger-soft);
-    color:var(--danger);
-    border:1px solid rgba(229,77,46,.35)
-  }
-  .label-tag.lt-muted{
-    background:rgba(140,145,140,.15);
-    color:var(--muted);
-    border:1px solid rgba(140,145,140,.3)
-  }
-  .label-tag.lt-purple{
-    background:rgba(142,124,195,.18);
-    color:#8e7cc3;
-    border:1px solid rgba(142,124,195,.35)
+  .old{
+    text-decoration:line-through;opacity:.5
   }
 
-  /* 箭头 */
-  .arrow-down::after{
-    content:"";position:absolute;
-    bottom:-4px;left:50%;margin-left:-3px;
-    width:6px;height:6px;
-    border-style:solid;border-width:0 1px 1px 0;
-    transform:rotate(45deg);background:inherit;border-color:inherit
-  }
-  .arrow-up::after{
-    content:"";position:absolute;
-    top:-4px;left:50%;margin-left:-3px;
-    width:6px;height:6px;
-    border-style:solid;border-width:1px 0 0 1px;
-    transform:rotate(45deg);background:inherit;border-color:inherit
-  }
-  .arrow-left::after{
-    content:"";position:absolute;
-    left:-4px;top:50%;margin-top:-3px;
-    width:6px;height:6px;
-    border-style:solid;border-width:0 1px 1px 0;
-    transform:rotate(135deg);background:inherit;border-color:inherit
-  }
-  .arrow-right::after{
-    content:"";position:absolute;
-    right:-4px;top:50%;margin-top:-3px;
-    width:6px;height:6px;
-    border-style:solid;border-width:0 1px 1px 0;
-    transform:rotate(-45deg);background:inherit;border-color:inherit
+  .demo-header{
+    font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px
   }
 </style>
 </head>
@@ -265,350 +241,107 @@
 
 <div class="page">
 
-  <h1>OverViewAgentCard — X 按钮自适应布局</h1>
+  <h1>OverViewAgentCard — Header 简化 + X 自适应</h1>
   <div class="sub">
     <span class="tag g">优化</span>
-    ✕（delete block）根据卡片宽度自适应定位 · 各部位名称标注
+    去除标题 &amp; meta 文字，只保留 Icon + 悬浮 ID 复制 · ✕ 固定右上角
   </div>
 
   <!-- ============================================================ -->
-  <!-- 设计说明                                                       -->
+  <!-- 说明：简化了什么                                                -->
   <!-- ============================================================ -->
-  <div class="scene">
-    <div class="scene-hd"><span class="emoji">🎯</span> 设计规则</div>
-    <div class="scene-bd">
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
-        <div><strong style="color:var(--accent)">✓</strong> ✕ <strong>始终没有 border</strong> — 区别于其他操作按钮（tag/list/jump/trash 有 1px border）</div>
-        <div><strong style="color:var(--accent)">✓</strong> ✕ <strong>hover 变红色</strong> — 表示删除/关闭的危险操作</div>
-        <div><strong style="color:var(--accent)">✓</strong> <strong>其他按钮（tag/list/jump/trash）位置不变</strong> — 始终在右下操作栏 <code>.cf-actions</code></div>
-        <div><strong style="color:var(--accent)">✓</strong> <strong>自适应逻辑：</strong></div>
-        <div style="padding-left:16px;line-height:1.7">
-          • <strong>当 card 一行能放下全部内容时</strong> → ✕ 在操作栏最右边，和其他按钮正常排在一起（<code>.ca-x</code>）<br>
-          • <strong>当 card 一行放不下（折行）时</strong> → ✕ 从操作栏拿出来，放到 card 的<strong>右上角</strong>（<code>.ca-x-float</code> absolute 定位）
-        </div>
-      </div>
+  <div class="comp-box">
+    <div><strong>Header 简化内容：</strong></div>
+    <div class="row">
+      <span style="background:var(--danger-soft);color:var(--danger);padding:0 5px;border-radius:3px;font-size:10px;font-weight:600">✗ 移除</span>
+      <span class="old">block.title</span>（如 "Refactor session restore flow"）— 标题无实质区分度
+    </div>
+    <div class="row">
+      <span style="background:var(--danger-soft);color:var(--danger);padding:0 5px;border-radius:3px;font-size:10px;font-weight:600">✗ 移除</span>
+      <span class="old">meta 行</span>（"Agent · claude · abc123" / "Terminal"）— 类型由 Icon 区分
+    </div>
+    <div class="row">
+      <span style="background:var(--accent-soft);color:var(--accent);padding:0 5px;border-radius:3px;font-size:10px;font-weight:600">✓ 保留</span>
+      <strong>Type Icon</strong> — Agent = ⚡（绿色背景），Terminal = 💻（灰色背景）
+    </div>
+    <div class="row">
+      <span style="background:var(--accent-soft);color:var(--accent);padding:0 5px;border-radius:3px;font-size:10px;font-weight:600">✓ 保留</span>
+      <strong>Agent Provider 色点</strong> — claude 红 · codex 蓝 · gemini 紫（悬浮在 Icon 旁）
+    </div>
+    <div class="row">
+      <span style="background:rgba(224,185,86,.18);color:var(--warning);padding:0 5px;border-radius:3px;font-size:10px;font-weight:600">⇢ 降级</span>
+      <strong>Session ID</strong> — 默认隐藏，<strong>鼠标悬浮到卡片 header 时</strong> 显示 tooltip，点击复制
     </div>
   </div>
 
   <!-- ============================================================ -->
-  <!-- 标注图例                                                       -->
-  <!-- ============================================================ -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 14px;border:1px solid var(--border-soft);border-radius:8px;background:rgba(0,0,0,.15)">
-    <span style="font-size:10px;color:var(--muted);font-weight:600;margin-right:4px">图例：</span>
-    <span class="label-tag lt-green" style="position:static;display:inline-block">🟢 卡片结构区</span>
-    <span class="label-tag lt-blue" style="position:static;display:inline-block">🔵 操作按钮</span>
-    <span class="label-tag lt-orange" style="position:static;display:inline-block">🟠 状态信息</span>
-    <span class="label-tag lt-red" style="position:static;display:inline-block">🔴 ✕ 删除按钮</span>
-    <span class="label-tag lt-purple" style="position:static;display:inline-block">🟣 自适应逻辑</span>
-    <span class="label-tag lt-muted" style="position:static;display:inline-block">⚪ 行为规则</span>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- 场景 A：一行能放下 → X 在操作栏内（带标注）                     -->
+  <!-- 卡片展示                                                      -->
   <!-- ============================================================ -->
   <div>
-    <div style="font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-      <span class="tag g">场景 A</span> 一行能放下 → ✕ 在操作栏最右边
-      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:4px">（card 宽度 320px，内容宽松）</span>
+    <div class="demo-header">
+      <span class="tag g">统一设计</span> ✕ 固定在右上角 · Header 只显示 Icon
     </div>
     <div class="grid">
-      <!-- Agent 全按钮 — 标注版 -->
-      <div style="display:flex;flex-direction:column;gap:12px;width:320px">
-        <div class="card card-normal labeled" style="width:320px">
 
-          <!-- ═══ 标注：卡片容器 ═══ -->
-          <div class="label-tag lt-green arrow-down" style="top:-20px;left:8px">
-            .card — 卡片容器 (position: relative, border-radius: 8px)
-          </div>
-
-          <!-- ═══ 标注：card-header ═══ -->
-          <div class="label-tag lt-green arrow-left" style="top:-4px;left:-140px">
-            .ch — card header 区域 (flex: icon + title)
-          </div>
-
-          <div class="ch">
-            <div class="ch-icon agent">⚡</div>
-            <div class="ch-title">Refactor session restore flow</div>
-          </div>
-
-          <!-- ═══ 标注：preview-line ═══ -->
-          <div class="label-tag lt-green arrow-left" style="top:32px;left:-145px">
-            .compact-preview — 命令预览行
-          </div>
-
-          <div class="compact-preview"><span style="color:var(--accent)">$</span> claude — Found 3 files with issues</div>
-
-          <!-- ═══ 标注：footer ═══ -->
-          <div class="label-tag lt-green arrow-left" style="top:56px;left:-110px">
-            .cf — footer 操作栏 (border-top)
-          </div>
-
-          <div class="cf">
-            <!-- ═══ 标注：状态芯片 ═══ -->
-            <div class="label-tag lt-orange arrow-up" style="bottom:100%;left:6px">
-              .cf-st — 状态芯片 (working / blocked / done)
-            </div>
-
-            <div class="cf-st w">⏳ working</div>
-
-            <!-- ═══ 标注：工作目录 ═══ -->
-            <div class="label-tag lt-orange arrow-up" style="bottom:100%;left:70px">
-              .cf-cwd — 当前工作目录
-            </div>
-
-            <div class="cf-cwd">~/code/snorkeling</div>
-
-            <div class="cf-actions">
-              <!-- ═══ 标注：操作按钮栏 ═══ -->
-              <div class="label-tag lt-blue arrow-down" style="top:-20px;right:40px">
-                .cf-actions — 操作按钮栏 (flex, margin-left: auto)
-              </div>
-
-              <div class="ca-btn" title="Edit note">📝</div>
-              <div class="ca-btn" title="Session details">📋</div>
-              <div class="ca-btn" title="Jump to block">🎯</div>
-              <div class="ca-btn" title="Delete session">🗑</div>
-              <!-- ═══ 标注：X（方案 A）═══ -->
-              <div class="label-tag lt-red arrow-down" style="top:-20px;right:-4px">
-                .ca-x — ✗ 无 border / hover 红色
-              </div>
-              <button class="ca-x" title="Delete block">✕</button>
-            </div>
-          </div>
-          <button class="ca-x-float" title="Delete block" style="display:none">✕</button>
-
-          <!-- ═══ 标注：X 规则 ═══ -->
-          <div class="label-tag lt-muted" style="bottom:-18px;right:6px">
-            border: none / hover → var(--danger)
-          </div>
-        </div>
-
-        <!-- 标注说明 -->
-        <div class="ann" style="width:auto;margin-top:4px">
-          <div class="a"><strong>场景 A 关键点：</strong> card 宽度充足（320px），所有按钮 + 文本一行排下</div>
-          <div class="a">✕ 在 <code>.cf-actions</code> 最右边，与其他按钮同一行</div>
-          <div class="a"><strong>.ca-x</strong> 完全无 border，hover 变 <code>var(--danger)</code> 红色，无背景</div>
-          <div class="a"><strong>.ca-btn</strong> 有 1px border，hover 白字+浅背景 — 两者视觉可区分</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- 场景 B：一行放不下 → X 浮动到右上角（带标注）                   -->
-  <!-- ============================================================ -->
-  <div style="margin-top:16px">
-    <div style="font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-      <span class="tag g">场景 B</span> 一行放不下（折行）→ ✕ 浮动到 card <strong>右上角</strong>
-      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:4px">（card 宽度收窄 220px，操作栏拥挤/折行）</span>
-    </div>
-    <div class="grid">
-      <!-- Agent 折行 — 标注版 -->
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="card card-wrap-demo labeled" style="width:220px">
-          <!-- ═══ 标注：卡片容器 ═══ -->
-          <div class="label-tag lt-green arrow-down" style="top:-20px;left:8px">
-            .card — 宽度 220px（模拟折行）
-          </div>
-
-          <div class="ch">
-            <div class="ch-icon agent">⚡</div>
-            <!-- ═══ 标注：标题溢出 ═══ -->
-            <div class="label-tag lt-green arrow-down" style="top:-16px;left:80px">
-              .ch-title — 文字溢出用 ellipsis
-            </div>
-            <div class="ch-title">Refactor session restore flow with new block system</div>
-          </div>
-
-          <div class="compact-preview"><span style="color:var(--accent)">$</span> claude — working</div>
-
-          <div class="cf">
-            <div class="cf-st w">⏳ working</div>
-            <div class="cf-cwd" style="max-width:60px">~/code/snorkeling</div>
-            <div class="cf-actions">
-              <!-- ═══ 标注：操作栏拥挤 ═══ -->
-              <div class="label-tag lt-purple arrow-down" style="top:-16px;right:30px">
-                操作栏空间不足 ➔ 可能折行
-              </div>
-
-              <div class="ca-btn" title="Edit note">📝</div>
-              <div class="ca-btn" title="Session details">📋</div>
-              <div class="ca-btn" title="Jump to block">🎯</div>
-              <div class="ca-btn" title="Delete session">🗑</div>
-              <!-- ═══ 标注：操作栏内无 X ═══ -->
-              <div class="label-tag lt-purple" style="bottom:-16px;right:40px">
-                操作栏内无 .ca-x（已隐藏）
-              </div>
-            </div>
-          </div>
-
-          <!-- ═══ 标注：X 浮动 ═══ -->
-          <div class="label-tag lt-red arrow-left" style="top:0;right:-130px">
-            .ca-x-float — ✗ 浮动到右上角<br>
-            position: absolute; top:6px; right:6px
-          </div>
-          <button class="ca-x-float" title="Delete block">✕</button>
-
-          <!-- ═══ 标注：定位锚点 ═══ -->
-          <div class="label-tag lt-muted" style="bottom:-16px;left:8px">
-            .card { position: relative } — 作为 absolute 锚点
-          </div>
-        </div>
-
-        <div class="ann" style="width:auto;border-color:var(--danger)">
-          <div class="a"><strong style="color:var(--danger)">场景 B 关键点：</strong></div>
-          <div class="a">操作栏空间不足（4 按钮 + 状态 + cwd 挤在一起）→ ✕ 移到右上角</div>
-          <div class="a"><strong>.ca-x-float</strong> 用 <code>position: absolute; top: 6px; right: 6px</code></div>
-          <div class="a">hover 变红色 + 浅红色背景（区别于方案 A 的无背景）</div>
-          <div class="a">其他按钮位置<strong>始终不变</strong> — 仍在右下 <code>.cf-actions</code></div>
-        </div>
-      </div>
-
-      <!-- Terminal 窄 — 标注版 -->
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="card card-wrap-demo labeled" style="width:200px">
-          <div class="label-tag lt-green arrow-down" style="top:-20px;left:8px">
-            .card — 宽度 200px（Terminal）
-          </div>
-
-          <div class="ch">
-            <div class="ch-icon term">💻</div>
-            <!-- ═══ 标注：终端图标 ═══ -->
-            <div class="label-tag lt-green arrow-up" style="bottom:100%;left:6px">
-              .ch-icon.term — 终端图标（无 accent 背景）
-            </div>
-            <div class="ch-title">zsh — AD project with long name</div>
-          </div>
-
-          <div class="compact-preview">nita@dev:~/code/AD$ npm run dev</div>
-
-          <div class="cf">
-            <div class="cf-cwd" style="max-width:40px">~/code/AD</div>
-            <div class="cf-actions">
-              <!-- ═══ 标注：Terminal 只有 jump ═══ -->
-              <div class="label-tag lt-blue arrow-up" style="bottom:100%;left:10px">
-                Terminal 只有 🎯 jump，无 📝📋🗑
-              </div>
-
-              <div class="ca-btn" title="Jump to block">🎯</div>
-              <!-- 操作栏内没有 X -->
-            </div>
-          </div>
-          <button class="ca-x-float" title="Delete block">✕</button>
-          <div class="label-tag lt-red arrow-left" style="top:0;right:-130px">
-            .ca-x-float — Terminal 也适用
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- 左右对比：正常 vs 折行（带标注）                                -->
-  <!-- ============================================================ -->
-  <div>
-    <div style="font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-      <span class="tag g">对比</span> 正常排布 ↔ 折行浮动
-    </div>
-    <div style="display:flex;gap:24px;flex-wrap:wrap">
-      <!-- 正常 -->
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em">✓ 正常 — X 在操作栏内</div>
-        <div class="card card-normal labeled" style="width:320px">
-          <div class="label-tag lt-red arrow-down" style="top:-20px;right:20px">
-            ✗ .ca-x 在操作栏最右边
-          </div>
-          <div class="ch">
-            <div class="ch-icon agent">⚡</div>
-            <div class="ch-title">Refactor session restore flow</div>
-          </div>
-          <div class="compact-preview"><span style="color:var(--accent)">$</span> claude — Found 3 files with issues</div>
-          <div class="cf">
-            <div class="cf-st w">⏳ working</div>
-            <div class="cf-cwd">~/code/snorkeling</div>
-            <div class="cf-actions">
-              <div class="ca-btn">📝</div>
-              <div class="ca-btn">📋</div>
-              <div class="ca-btn">🎯</div>
-              <div class="ca-btn">🗑</div>
-              <button class="ca-x">✕</button>
-            </div>
-          </div>
-          <button class="ca-x-float" style="display:none">✕</button>
-        </div>
-      </div>
-
-      <!-- 折行 -->
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:10px;color:var(--danger);font-weight:600;text-transform:uppercase;letter-spacing:.04em">✗ 折行 — X 浮动到右上角</div>
-        <div class="card card-wrap-demo labeled" style="width:240px">
-          <div class="label-tag lt-red arrow-right" style="top:0;left:-130px">
-            ✗ .ca-x-float 浮动到右上角
-          </div>
-          <div class="label-tag lt-muted" style="bottom:-16px;left:60px">
-            操作栏无 ✗
-          </div>
-          <div class="ch">
-            <div class="ch-icon agent">⚡</div>
-            <div class="ch-title">Refactor session restore flow with new block system</div>
-          </div>
-          <div class="compact-preview"><span style="color:var(--accent)">$</span> claude — Found 3 files with issues</div>
-          <div class="cf">
-            <div class="cf-st w">⏳ working</div>
-            <div class="cf-cwd" style="max-width:40px">snorkeling</div>
-            <div class="cf-actions">
-              <div class="ca-btn">📝</div>
-              <div class="ca-btn">📋</div>
-              <div class="ca-btn">🎯</div>
-              <div class="ca-btn">🗑</div>
-            </div>
-          </div>
-          <button class="ca-x-float">✕</button>
-        </div>
-      </div>
-
-      <!-- Terminal 对比 -->
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em">✓ 正常 — Terminal</div>
-        <div class="card card-normal labeled" style="width:320px">
-          <div class="label-tag lt-blue arrow-down" style="top:-20px;right:35px">
-            Terminal: 只有 2 个操作按钮
-          </div>
-          <div class="ch">
-            <div class="ch-icon term">💻</div>
-            <div class="ch-title">bash — snorkeling</div>
-          </div>
-          <div class="compact-preview">nita@dev:~/code/snorkeling$</div>
-          <div class="cf">
-            <div class="cf-cwd">~/code/snorkeling</div>
-            <div class="cf-actions">
-              <div class="ca-btn">🎯</div>
-              <button class="ca-x">✕</button>
-            </div>
-          </div>
-          <button class="ca-x-float" style="display:none">✕</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================ -->
-  <!-- hover 状态特写                                                 -->
-  <!-- ============================================================ -->
-  <div>
-    <div style="font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-      <span class="tag g">Hover</span> 各按钮 hover 状态对比
-    </div>
-    <div class="grid">
-      <div class="card card-normal labeled" style="width:320px">
-        <div class="label-tag lt-blue arrow-down" style="top:-20px;right:10px">
-          📝🎯🗑 hover → 白字 + 浅背景 + border 不变
-        </div>
+      <!-- Agent + full actions -->
+      <div class="card" style="width:320px">
         <div class="ch">
-          <div class="ch-icon agent">⚡</div>
-          <div class="ch-title">Bump version to 0.0.45</div>
+          <div class="ch-icon-wrap">
+            <div class="ch-icon agent">⚡</div>
+            <span class="provider-dot claude" title="claude"></span>
+          </div>
+          <div class="ch-id-tooltip">
+            <span>abc-12345-def</span>
+            <span class="copy-hint">copy</span>
+          </div>
         </div>
-        <div class="compact-preview"><span style="color:var(--accent)">$</span> codex · ⚠ Need approval</div>
+
+        <div class="msg-area">
+          <div class="msg-strip">
+            <span class="msg-more">+3</span>
+            <span class="msg-square is-user"></span>
+            <span class="msg-square is-ai"></span>
+            <span class="msg-square is-ai"></span>
+            <span class="msg-square is-ai"></span>
+            <span class="msg-square is-user"></span>
+            <span class="msg-unread">2m ago</span>
+          </div>
+        </div>
+        <div class="note-line">📝 Fixing path normalization in session restore</div>
+
+        <div class="cf">
+          <div class="cf-st w">⏳ working</div>
+          <div class="cf-cwd">~/code/snorkeling</div>
+          <div class="cf-actions">
+            <div class="ca-btn" title="Edit note">📝</div>
+            <div class="ca-btn" title="Session details">📋</div>
+            <div class="ca-btn" title="Jump to block">🎯</div>
+            <div class="ca-btn" title="Delete session">🗑</div>
+          </div>
+        </div>
+        <button class="ca-x" title="Delete block">✕</button>
+      </div>
+
+      <!-- Agent + blocked -->
+      <div class="card" style="width:320px">
+        <div class="ch">
+          <div class="ch-icon-wrap">
+            <div class="ch-icon agent">⚡</div>
+            <span class="provider-dot codex" title="codex"></span>
+          </div>
+          <div class="ch-id-tooltip">
+            <span>codex-sess-98765</span>
+            <span class="copy-hint">copy</span>
+          </div>
+        </div>
+        <div class="msg-area">
+          <div class="msg-strip">
+            <span class="msg-square is-ai"></span>
+            <span class="msg-square is-ai"></span>
+            <span class="msg-square is-ai"></span>
+          </div>
+        </div>
+
         <div class="cf">
           <div class="cf-st b">⚠ blocked</div>
           <div class="cf-cwd">~/code/snorkeling</div>
@@ -617,105 +350,114 @@
             <div class="ca-btn" title="Session details">📋</div>
             <div class="ca-btn" title="Jump to block">🎯</div>
             <div class="ca-btn" title="Delete session">🗑</div>
-            <!-- hover 红色样板 -->
-            <button class="ca-x" title="Delete block" style="opacity:1;color:var(--danger)">✕</button>
           </div>
         </div>
-        <button class="ca-x-float" title="Delete block" style="display:none">✕</button>
-        <div class="ann" style="margin:4px 8px 8px;border-style:solid;width:auto">
-          <div class="a"><strong>hover 状态对比：</strong></div>
-          <div class="a"><strong>.ca-btn</strong> (📝📋🎯🗑) → <code>color: var(--primary); background: var(--hover)</code> + border 保持</div>
-          <div class="a"><strong>.ca-x</strong> (✕) → <code>color: var(--danger); background: transparent; border: none</code></div>
-          <div class="a"><strong>.ca-x-float</strong> (浮动 ✕) → <code>color: var(--danger); background: var(--danger-soft)</code></div>
-        </div>
+        <button class="ca-x" title="Delete block">✕</button>
       </div>
+
+      <!-- Terminal -->
+      <div class="card" style="width:320px">
+        <div class="ch">
+          <div class="ch-icon-wrap">
+            <div class="ch-icon term">💻</div>
+          </div>
+          <div class="ch-id-tooltip">
+            <span>bash-pane-3</span>
+            <span class="copy-hint">copy</span>
+          </div>
+        </div>
+
+        <div class="cf">
+          <div class="cf-cwd">~/code/snorkeling</div>
+          <div class="cf-actions">
+            <div class="ca-btn" title="Jump to block">🎯</div>
+          </div>
+        </div>
+        <button class="ca-x" title="Delete block">✕</button>
+      </div>
+
     </div>
   </div>
 
   <!-- ============================================================ -->
-  <!-- 实现映射                                                       -->
+  <!-- 上下对比：原版 vs 简化版                                       -->
   <!-- ============================================================ -->
-  <div class="scene">
-    <div class="scene-hd"><span class="emoji">⚙️</span> 实现映射</div>
-    <div class="scene-bd">
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
-        <div><strong>CSS 组件对照表：</strong></div>
-        <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11px">
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <th style="text-align:left;padding:4px 8px;color:var(--secondary)">CSS class</th>
-            <th style="text-align:left;padding:4px 8px;color:var(--secondary)">部位名称</th>
-            <th style="text-align:left;padding:4px 8px;color:var(--secondary)">标注色</th>
-            <th style="text-align:left;padding:4px 8px;color:var(--secondary)">说明</th>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.card</code></td>
-            <td style="padding:4px 8px">卡片容器</td>
-            <td style="padding:4px 8px"><span style="color:var(--accent)">🟢</span></td>
-            <td style="padding:4px 8px">border-radius: 8px, position: relative</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.ch</code></td>
-            <td style="padding:4px 8px">Header 区域</td>
-            <td style="padding:4px 8px"><span style="color:var(--accent)">🟢</span></td>
-            <td style="padding:4px 8px">flex: icon + title (ellipsis)</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.compact-preview</code></td>
-            <td style="padding:4px 8px">预览行</td>
-            <td style="padding:4px 8px"><span style="color:var(--accent)">🟢</span></td>
-            <td style="padding:4px 8px">monospace, 单行 ellipsis</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.cf</code></td>
-            <td style="padding:4px 8px">Footer 操作栏</td>
-            <td style="padding:4px 8px"><span style="color:var(--accent)">🟢</span></td>
-            <td style="padding:4px 8px">border-top, flex row</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.cf-st</code></td>
-            <td style="padding:4px 8px">状态芯片</td>
-            <td style="padding:4px 8px"><span style="color:var(--warning)">🟠</span></td>
-            <td style="padding:4px 8px">working | blocked | done 等</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.cf-cwd</code></td>
-            <td style="padding:4px 8px">工作目录</td>
-            <td style="padding:4px 8px"><span style="color:var(--warning)">🟠</span></td>
-            <td style="padding:4px 8px">monospace, 单行 ellipsis</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.cf-actions</code></td>
-            <td style="padding:4px 8px">操作按钮栏</td>
-            <td style="padding:4px 8px"><span style="color:#74a7cb">🔵</span></td>
-            <td style="padding:4px 8px">margin-left: auto, 右对齐</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.ca-btn</code></td>
-            <td style="padding:4px 8px">操作按钮 (📝📋🎯🗑)</td>
-            <td style="padding:4px 8px"><span style="color:#74a7cb">🔵</span></td>
-            <td style="padding:4px 8px">1px border, 5px radius, hover 白字</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.ca-x</code></td>
-            <td style="padding:4px 8px">X 删除（方案 A）</td>
-            <td style="padding:4px 8px"><span style="color:var(--danger)">🔴</span></td>
-            <td style="padding:4px 8px">border: none, hover 红色无背景</td>
-          </tr>
-          <tr style="border-bottom:1px solid var(--border-soft)">
-            <td style="padding:4px 8px"><code>.ca-x-float</code></td>
-            <td style="padding:4px 8px">X 删除（方案 B）</td>
-            <td style="padding:4px 8px"><span style="color:var(--danger)">🔴</span></td>
-            <td style="padding:4px 8px">absolute top/right, hover 红色+背景</td>
-          </tr>
-        </table>
-        <div style="margin-top:8px"><strong>自适应切换逻辑：</strong></div>
-        <div style="padding-left:12px">
-          检测 <code>card</code> 容器或 <code>cf-actions</code> 是否溢出 →<br>
-          <span style="color:var(--muted)">溢出</span> → 显示 <code>.ca-x-float</code>，隐藏 <code>.ca-x</code><br>
-          <span style="color:var(--muted)">未溢出</span> → 显示 <code>.ca-x</code>，隐藏 <code>.ca-x-float</code><br>
-          ⚡ 可用 <code>@container</code> query 或 <code>ResizeObserver</code> 实现
+  <div>
+    <div class="demo-header">
+      <span class="tag b">对比</span> 原版 header ↔ 简化版 header
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap">
+
+      <!-- 原版 -->
+      <div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">原版 header（信息过载）</div>
+        <div class="card" style="width:320px;background:rgba(229,77,46,.06)">
+          <div class="ch" style="flex-direction:column;align-items:stretch;gap:2px;padding:6px 10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div class="ch-icon agent" style="width:20px;height:20px;font-size:11px">⚡</div>
+              <div style="flex:1;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Refactor session restore flow</div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              Agent · claude · abc12345 <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border-radius:4px;border:1px solid rgba(88,193,66,.28);background:rgba(88,193,66,.1);color:var(--accent);font-size:9px;font-weight:600">⏳ working</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      <!-- 简化版 -->
+      <div>
+        <div style="font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">✓ 简化版 header</div>
+        <div class="card" style="width:320px">
+          <div class="ch">
+            <div class="ch-icon-wrap">
+              <div class="ch-icon agent">⚡</div>
+              <span class="provider-dot claude" title="claude"></span>
+            </div>
+            <div class="ch-id-tooltip">
+              <span>abc-12345-def</span>
+              <span class="copy-hint">copy</span>
+            </div>
+          </div>
+          <div class="msg-area">
+            <div class="msg-strip">
+              <span class="msg-square is-user"></span>
+              <span class="msg-square is-ai"></span>
+              <span class="msg-square is-ai"></span>
+              <span class="msg-square is-ai"></span>
+            </div>
+          </div>
+          <div class="cf">
+            <div class="cf-st w">⏳ working</div>
+            <div class="cf-cwd">~/code/snorkeling</div>
+            <div class="cf-actions">
+              <div class="ca-btn">📝</div>
+              <div class="ca-btn">📋</div>
+              <div class="ca-btn">🎯</div>
+              <div class="ca-btn">🗑</div>
+            </div>
+          </div>
+          <button class="ca-x">✕</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 设计规则总结                                                   -->
+  <!-- ============================================================ -->
+  <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--panel)">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border-soft);font-size:12px;font-weight:600;color:var(--secondary)">
+      <span>🎯</span> 设计规则总结
+    </div>
+    <div style="padding:14px;font-size:11px;line-height:1.8;color:var(--secondary)">
+      <div><strong style="color:var(--primary)}">Header：</strong>只显示 Type Icon + Provider 色点，无标题无 meta 文字</div>
+      <div><strong style="color:var(--primary)}">Session ID：</strong>默认隐藏，hover 到 header 时弹出 tooltip，点击可复制</div>
+      <div><strong style="color:var(--primary)}">Message Squares：</strong>保持现有设计，在 icon 下方显示</div>
+      <div><strong style="color:var(--primary)}">操作栏（footer）：</strong>📝📋🎯🗑 始终在右下，✕ <strong>已从操作栏移除</strong></div>
+      <div><strong style="color:var(--primary)}">✕ 位置：</strong>固定 card <strong>右上角</strong>（position: absolute; top: 6px; right: 6px）</div>
+      <div><strong style="color:var(--primary)}">✕ 样式：</strong>始终无 border，hover 红色 + 浅红背景</div>
+      <div><strong style="color:var(--primary)}">✕ 可见性：</strong>默认 opacity .3，hover 卡片时 opacity 1</div>
     </div>
   </div>
 
