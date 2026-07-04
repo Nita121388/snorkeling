@@ -46,6 +46,7 @@ interface TabVProps {
     tabWidth: number;
     isNew: boolean;
     unopenedThisLaunch: boolean;
+    hidden?: boolean;
     badges?: Badge[] | null;
     flagColor?: string | null;
     onClick: () => void;
@@ -67,6 +68,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         tabWidth,
         isNew,
         unopenedThisLaunch,
+        hidden: isHidden = false,
         badges,
         flagColor,
         onClick,
@@ -193,6 +195,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 dragging: isDragging,
                 "new-tab": isNew,
                 "unopened-this-launch": unopenedThisLaunch,
+                hidden: isHidden,
             })}
             onMouseDown={onDragStart}
             onClick={onClick}
@@ -235,6 +238,7 @@ interface TabProps {
     isDragging: boolean;
     tabWidth: number;
     isNew: boolean;
+    hidden?: boolean;
     onSelect: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
@@ -242,7 +246,7 @@ interface TabProps {
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart } = props;
+    const { id, active, showDivider, isDragging, tabWidth, isNew, hidden: isHidden, onLoaded, onSelect, onClose, onDragStart } = props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -313,6 +317,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             tabWidth={tabWidth}
             isNew={isNew}
             unopenedThisLaunch={unopenedThisLaunch}
+            hidden={isHidden}
             badges={badges}
             flagColor={flagColor}
             onClick={handleTabClick}

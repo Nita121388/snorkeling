@@ -10,10 +10,17 @@ import {
     extractSessionTagsFromNote,
     mergeSessionTags,
     normalizeSessionTags,
+    removeSessionTagFromNote,
     sessionTagsEqual,
     sessionTagsLabel,
 } from "./session-tags";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
+
+function sourceDotClass(source: string): string {
+    if (source === "claude") return "bg-source-claude";
+    if (source === "codex") return "bg-source-codex";
+    return "bg-secondary";
+}
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -75,6 +82,17 @@ export function SessionRow({
     const noteUnchanged = parsedDraft.note === (session.note ?? "") && sessionTagsEqual(nextTags, session.tags);
     const noteSaving = noteSaveStatus === "saving";
     const sessionTime = session.updatedAt || session.createdAt || 0;
+    const sessionTags = normalizeSessionTags(session.tags);
+    const visibleSessionTags = sessionTags.slice(0, 3);
+    const hasNoteInfo = Boolean(session.note || sessionTags.length);
+    const noteToggleLabel =
+        !hasNoteInfo && !noteEditing
+            ? "Add note and tags"
+            : noteEditing && noteUnchanged
+              ? "Collapse note and tags"
+              : noteEditing
+                ? "Save and collapse note and tags"
+                : "Edit note and tags";
 
     const saveNote = useCallback(async (): Promise<boolean> => {
         if (noteSaveStatus === "saving") return false;
@@ -90,27 +108,43 @@ export function SessionRow({
         return saved && currentDraftSaved;
     }, [noteDraft, noteSaveStatus, onNoteSave, session.note, session.tags, tagDraft]);
 
+    const toggleNoteEditor = useCallback(async () => {
+        if (!noteEditing) {
+            setNoteEditing(true);
+            return;
+        }
+        if (noteSaving) {
+            return;
+        }
+        if (!noteUnchanged) {
+            const saved = await saveNote();
+            if (!saved) {
+                return;
+            }
+        }
+        setNoteEditing(false);
+    }, [noteEditing, noteSaving, noteUnchanged, saveNote]);
+
     return (
         <div
             className={cn(
-                "group cursor-pointer border-b border-border px-3 py-2 text-sm hover:bg-hover",
-                selected && "bg-accent/10"
+                "group relative cursor-pointer border-b border-border px-3 py-2 text-sm hover:bg-hover",
+                selected &&
+                    "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
             title={tooltip}
             onClick={onSelect}
         >
             <div className="flex min-w-0 items-start gap-2">
                 <button
-                    className="mt-0.5 shrink-0 text-secondary hover:text-accent"
+                    className={cn(
+                        "mt-0.5 shrink-0 text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
+                        session.marked && "text-accent opacity-100"
+                    )}
                     title="Mark session"
                     onClick={onMark}
                 >
-                    <i
-                        className={cn(
-                            "fa-sharp",
-                            session.marked ? "fa-solid fa-star text-accent" : "fa-regular fa-star"
-                        )}
-                    />
+                    <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
                 </button>
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
@@ -131,42 +165,86 @@ export function SessionRow({
                             size="xs"
                             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                         />
-                        <IconButton
-                            icon="fa-tag"
-                            label={noteEditing ? "Close note editor" : "Edit note"}
-                            size="xs"
-                            className={cn(
-                                "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
-                                (session.note || session.tags?.length) &&
-                                    "border-accent/40 bg-accent/10 text-accent opacity-100"
-                            )}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setNoteEditing((current) => !current);
-                            }}
-                        />
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xxs text-secondary">
-                        <span className="uppercase">{session.source}</span>
-                        <span title={formatDateTimeToSecond(sessionTime)}>{formatSessionRelativeTime(sessionTime)}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
+                        <span className="inline-flex items-center gap-1">
+                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
+                            {session.source}
+                        </span>
+                        <span title={formatDateTimeToSecond(sessionTime)}>
+                            {formatSessionRelativeTime(sessionTime)}
+                        </span>
                         <span>{session.messageCount ?? 0} msgs</span>
                         {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
                     </div>
                     {session.snippet ? (
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-secondary">{session.snippet}</div>
-                    ) : null}
-                    {session.note ? (
-                        <div className="mt-1 line-clamp-1 border-l-2 border-accent/50 pl-2 text-xs text-primary">
-                            {session.note}
+                        <div className="mt-1 flex items-start gap-1">
+                            <div className="min-w-0 flex-1 line-clamp-2 text-xs leading-5 text-secondary">
+                                {session.snippet}
+                            </div>
+                            {!hasNoteInfo && !noteEditing ? (
+                                <button
+                                    type="button"
+                                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
+                                    title="Add note and tags"
+                                    aria-label="Add note and tags"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void toggleNoteEditor();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                </button>
+                            ) : null}
                         </div>
                     ) : null}
-                    <SessionTagChips tags={session.tags} className="mt-1" />
+                    {hasNoteInfo || noteEditing ? (
+                        <button
+                            type="button"
+                            className={cn(
+                                "mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded border-l-2 border-accent/50 py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors hover:bg-hover hover:text-accent",
+                                noteEditing && "bg-hover/60 text-accent"
+                            )}
+                            title={noteToggleLabel}
+                            aria-label={noteToggleLabel}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleNoteEditor();
+                            }}
+                        >
+                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                {session.note ? <span className="min-w-0 flex-1 truncate">{session.note}</span> : null}
+                                {visibleSessionTags.map((tag) => (
+                                    <span
+                                        key={tag}
+                                        className="shrink-0 rounded-md border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] leading-none text-accent"
+                                    >
+                                        <span className="opacity-50">#</span>
+                                        {tag}
+                                    </span>
+                                ))}
+                                {sessionTags.length > visibleSessionTags.length ? (
+                                    <span className="shrink-0 rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent">
+                                        +{sessionTags.length - visibleSessionTags.length}
+                                    </span>
+                                ) : null}
+                            </span>
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100">
+                                <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                            </span>
+                        </button>
+                    ) : null}
                     {noteEditing ? (
                         <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                             <SessionTagChips
                                 tags={nextTags}
                                 removable
-                                onRemove={(tag) => setTagDraft((current) => current.filter((item) => item !== tag))}
+                                onRemove={(tag) => {
+                                    setTagDraft((current) => current.filter((item) => item !== tag));
+                                    const nextNote = removeSessionTagFromNote(noteDraft, tag);
+                                    latestDraftRef.current = nextNote;
+                                    setNoteDraft(nextNote);
+                                }}
                             />
                             <textarea
                                 className="min-h-[56px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
@@ -234,15 +312,6 @@ export function SessionRow({
                                         });
                                     }}
                                 />
-                                <button
-                                    className="h-5 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary"
-                                    disabled={noteSaving}
-                                    onClick={() => {
-                                        setNoteEditing(false);
-                                    }}
-                                >
-                                    Close
-                                </button>
                                 <span
                                     className={cn(
                                         "text-[10px] text-secondary",

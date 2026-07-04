@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Detail — Redesign Mockup</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root {
+    --bg: #222222;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,0.12);
+    --border: rgba(255,255,255,0.16);
+    --border-soft: rgba(255,255,255,0.08);
+    --panel: rgba(31,33,31,0.5);
+    --panel-bg: #232323;
+    --modal-bg: #1f211f;
+    --surface: rgba(255,255,255,0.04);
+    --surface-strong: rgba(255,255,255,0.08);
+    --hover: rgba(255,255,255,0.06);
+    --hover-strong: rgba(255,255,255,0.10);
+    --error: #e54d2e;
+    --claude: #cc685c;
+    --codex: #74a7cb;
+    --shadow: 0 8px 32px rgba(0,0,0,0.5);
+    --shadow-sm: 0 2px 6px rgba(0,0,0,0.3);
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #1a1a1a;
+    color: var(--primary);
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  /* ============ Backdrop + Modal ============ */
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(21,23,21,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .modal-window {
+    width: min(1120px, calc(100vw - 40px));
+    height: min(760px, calc(100vh - 56px));
+    background: var(--modal-bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    animation: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px) scaleY(0.97); }
+    to { opacity: 1; transform: translateY(0) scaleY(1); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  @keyframes floatUp {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(-8px); opacity: 0; }
+  }
+
+  @keyframes skeletonPulse {
+    0% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+    100% { opacity: 0.4; }
+  }
+
+  /* ============ Layout ============ */
+  .modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ============ Error Bar ============ */
+  .error-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(229,77,46,0.08);
+    border-bottom: 1px solid rgba(229,77,46,0.3);
+    font-size: 11px;
+    color: var(--error);
+    animation: slideDown 0.2s ease-out;
+  }
+  .error-bar i { font-size: 12px; }
+
+  /* ============ Header ============ */
+  .header {
+    flex-shrink: 0;
+    padding: 14px 16px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .header-left { min-width: 0; flex: 1; }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .title-row h2 {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    letter-spacing: -0.01em;
+  }
+  .source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--secondary);
+    flex-shrink: 0;
+  }
+  .source-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--claude);
+  }
+  .source-dot.codex { background: var(--codex); }
+
+  /* meta row */
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 16px;
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--secondary);
+    min-width: 0;
+  }
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .meta-label {
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  .meta-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--secondary);
+  }
+  .meta-value.link {
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .meta-value.link:hover { color: var(--accent); }
+
+  .meta-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex: 0 1 360px;
+    min-width: 200px;
+  }
+  .meta-right .meta-item {
+    flex: unset;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* action buttons row */
+  .actions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: var(--hover);
+    color: var(--primary);
+    border-color: var(--border);
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+  .btn-accent {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    font-weight: 500;
+  }
+  .btn-accent:hover {
+    background: #6adf46;
+    border-color: #6adf46;
+    box-shadow: 0 2px 8px rgba(88,193,66,0.3);
+  }
+  .btn-danger {
+    color: var(--error);
+    border-color: rgba(229,77,46,0.4);
+  }
+  .btn-danger:hover {
+    background: rgba(229,77,46,0.1);
+    border-color: rgba(229,77,46,0.6);
+  }
+  .btn-icon {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+    font-size: 12px;
+  }
+  .btn-icon.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn-icon.starred {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn-icon.danger-active {
+    background: rgba(229,77,46,0.08);
+    border-color: rgba(229,77,46,0.5);
+    color: var(--error);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ============ Note ============ */
+  .note-section {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: slideDown 0.2s ease-out;
+  }
+  .note-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 0;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--secondary);
+    padding: 4px 8px 4px 12px;
+    border-left: 2px solid rgba(88,193,66,0.5);
+    border-radius: 0 4px 4px 0;
+    transition: background 0.15s;
+  }
+  .note-inline:hover { background: var(--hover); color: var(--accent); }
+  .note-inline .note-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 10px;
+    color: var(--secondary);
+    line-height: 1;
+  }
+  .tag-chip span { opacity: 0.5; }
+
+  .note-textarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--primary);
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  .note-textarea:focus { border-color: var(--accent); }
+  .note-textarea::placeholder { color: var(--muted); }
+
+  .note-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .note-status {
+    font-size: 11px;
+    min-width: 72px;
+    color: var(--secondary);
+  }
+  .note-status.saved { color: var(--accent); }
+  .note-status.error { color: var(--error); }
+
+  /* ============ Right Header Buttons ============ */
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  /* ============ Delete Confirm Bar ============ */
+  .delete-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(229,77,46,0.25);
+    background: rgba(229,77,46,0.05);
+    font-size: 12px;
+    animation: slideDown 0.2s ease-out;
+  }
+  .delete-confirm .pulse-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--error);
+    animation: pulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .delete-confirm .text { color: var(--error); min-width: 0; flex: 1; }
+  .delete-confirm .actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ============ Toolbar ============ */
+  .toolbar {
+    flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .search-wrap {
+    position: relative;
+    flex: 1 1 260px;
+    min-width: 180px;
+  }
+  .search-wrap i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--secondary);
+    pointer-events: none;
+  }
+  .search-wrap input {
+    width: 100%;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    padding: 0 28px 0 28px;
+    font-size: 12px;
+    color: var(--primary);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-wrap input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(88,193,66,0.25);
+  }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--secondary);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .search-clear:hover { color: var(--primary); }
+
+  .search-count {
+    font-size: 11px;
+    color: var(--secondary);
+    min-width: 72px;
+    text-align: center;
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  /* ============ Messages Area ============ */
+  .messages-area {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .messages-scroll {
+    height: 100%;
+    overflow-y: auto;
+    padding: 12px 16px 40px;
+  }
+  .messages-scroll::-webkit-scrollbar { width: 6px; }
+  .messages-scroll::-webkit-scrollbar-track { background: transparent; }
+  .messages-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .messages-scroll::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
+
+  .messages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .msg-counter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--secondary);
+    padding: 2px 4px;
+  }
+  .msg-counter button {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .msg-counter button:hover {
+    background: var(--hover);
+    color: var(--primary);
+  }
+  .msg-counter .start-reached {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ============ Message Card ============ */
+  .msg-card {
+    max-width: 92%;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    transition: box-shadow 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .msg-card.user {
+    border-color: rgba(88,193,66,0.35);
+    background: rgba(88,193,66,0.08);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  }
+  .msg-card.assistant {
+    background: var(--surface-strong);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .msg-card.search-active {
+    border-color: rgba(250,204,21,0.6);
+    box-shadow: 0 0 0 2px rgba(250,204,21,0.35);
+  }
+
+  .msg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 10px;
+    color: var(--secondary);
+  }
+  .msg-header .role {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .msg-header .role.user-role { color: var(--accent); }
+  .msg-header .collapser {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--secondary);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .msg-header .collapser:hover { background: var(--hover); }
+  .msg-header .search-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    border: 1px solid rgba(250,204,21,0.4);
+    background: rgba(250,204,21,0.08);
+    color: #facc15;
+  }
+  .msg-header .copy-btn {
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .msg-card:hover .copy-btn,
+  .msg-card:focus-within .copy-btn { opacity: 1; }
+
+  .msg-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.625;
+    color: var(--primary);
+  }
+  .msg-content mark {
+    border-radius: 3px;
+    padding: 1px 3px;
+  }
+  .msg-content mark.active { background: rgba(250,204,21,0.5); }
+  .msg-content mark.inactive { background: rgba(250,204,21,0.25); }
+
+  /* ============ Tool Call Card ============ */
+  .toolcall-card {
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    font-size: 12px;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+  .toolcall-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    width: 100%;
+    border: none;
+    background: none;
+    color: inherit;
+    text-align: left;
+    font-size: 12px;
+  }
+  .toolcall-header:hover { background: var(--hover); }
+  .toolcall-chevron {
+    margin-top: 2px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--secondary);
+    transition: transform 0.2s, color 0.15s;
+  }
+  .toolcall-chevron.open { transform: rotate(90deg); }
+  .toolcall-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .toolcall-dot.ok { background: var(--accent); }
+  .toolcall-dot.error { background: var(--error); }
+  .toolcall-info { min-width: 0; flex: 1; }
+  .toolcall-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    margin-bottom: 3px;
+  }
+  .toolcall-meta .exit-error { color: var(--error); }
+  .toolcall-preview {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--primary);
+  }
+  .toolcall-body {
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    animation: slideDown 0.2s ease-out;
+  }
+  .toolcall-body pre {
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--primary);
+    font-family: "Hack", "Cascadia Code", monospace;
+  }
+  .toolcall-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  /* ============ Delta Loading ============ */
+  .delta-loader {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: rgba(31,33,31,0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-size: 10px;
+    color: var(--secondary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    animation: slideDown 0.2s ease-out;
+  }
+  .delta-loader i { color: var(--accent); }
+
+  /* ============ Tool call loading stub ============ */
+  .stub-card {
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--secondary);
+  }
+
+  /* ============ Outline ============ */
+  .outline-panel {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    animation: slideInRight 0.2s ease-out;
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .outline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .outline-header span {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    letter-spacing: 0.04em;
+  }
+  .outline-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .outline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.03);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--primary);
+    transition: background 0.12s;
+    margin-bottom: 3px;
+    width: 100%;
+    text-align: left;
+    background: none;
+  }
+  .outline-item:hover { background: var(--hover); }
+  .outline-item .index {
+    flex-shrink: 0;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    margin-top: 1px;
+  }
+  .outline-item .text {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ============ User Messages Modal ============ */
+  .user-modal-wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    background: rgba(21,23,21,0.7);
+    animation: fadeIn 0.15s ease-out;
+  }
+  .user-modal {
+    width: min(700px, calc(100vw - 32px));
+    max-height: calc(100vh - 72px);
+    background: var(--modal-bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px 24px 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .user-modal h3 { font-size: 16px; font-weight: 600; }
+  .user-modal .subtitle { font-size: 12px; color: var(--secondary); }
+  .user-modal-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    padding: 8px;
+  }
+  .user-message-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    cursor: pointer;
+    transition: background 0.12s;
+    margin-bottom: 6px;
+    background: var(--panel);
+  }
+  .user-message-item:hover { background: var(--hover-strong); }
+  .user-message-item .num-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1px solid rgba(88,193,66,0.3);
+    background: rgba(88,193,66,0.08);
+    color: var(--accent);
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .user-message-item .msg-preview {
+    min-width: 0;
+    flex: 1;
+  }
+  .user-message-item .msg-preview .line1 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    margin-bottom: 3px;
+  }
+  .user-message-item .msg-preview .line1 .copy-btn {
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .user-message-item:hover .copy-btn { opacity: 1; }
+
+  .user-message-item .msg-preview .text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    color: var(--primary);
+  }
+
+  .load-more-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 6px;
+  }
+  .load-more-btn:hover { background: var(--hover); color: var(--primary); }
+
+  /* utilities */
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .items-center { align-items: center; }
+  .items-start { align-items: flex-start; }
+  .justify-between { justify-content: space-between; }
+  .justify-end { justify-content: flex-end; }
+  .gap-1 { gap: 4px; }
+  .gap-2 { gap: 6px; }
+  .gap-3 { gap: 10px; }
+  .shrink-0 { flex-shrink: 0; }
+  .min-w-0 { min-width: 0; }
+  .text-xs { font-size: 12px; }
+  .text-xxs { font-size: 10px; }
+  .text-secondary { color: var(--secondary); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- Modal Backdrop                                                -->
+<!-- ============================================================ -->
+<div class="backdrop">
+
+<div class="modal-window">
+
+  <!-- Error Bar -->
+  <div class="error-bar">
+    <i class="fa-sharp fa-solid fa-triangle-exclamation"></i>
+    <span>Failed to load session detail: network error</span>
+  </div>
+
+  <div class="modal-body">
+
+    <!-- ========================== HEADER ========================== -->
+    <div class="header">
+
+      <div class="header-left">
+
+        <!-- Title row -->
+        <div class="title-row">
+          <i class="fa-sharp fa-solid fa-robot" style="font-size:12px;color:var(--accent);flex-shrink:0;"></i>
+          <h2 title="Implement search filtering on the sessions list">Implement search filtering on the sessions list</h2>
+          <span class="source-badge">
+            <span class="source-dot"></span>
+            claude
+          </span>
+        </div>
+
+        <!-- Meta row -->
+        <div class="meta-row">
+          <div class="meta-item" style="flex:1 1 360px;">
+            <span class="meta-label">Project directory:</span>
+            <span class="meta-value link" title="/home/user/projects/snorkeling">/home/user/projects/snorkeling</span>
+            <button class="btn btn-icon" style="border:none;font-size:10px;" title="Open project directory">
+              <i class="fa-sharp fa-solid fa-folder-open"></i>
+            </button>
+          </div>
+
+          <div class="meta-right">
+            <div class="meta-item" style="justify-content:flex-end;gap:6px;">
+              <span>ID: sk_7a3f…2b1e</span>
+              <button class="btn btn-icon" style="border:none;height:20px;width:20px;" title="Copy session ID">
+                <i class="fa-sharp fa-regular fa-copy" style="font-size:10px;"></i>
+              </button>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Session file:</span>
+              <span class="meta-value link" title="~/.config/waveterm/sessions/claude_20260630.json">
+                Today 14:23
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions row -->
+        <div class="actions-row">
+          <!-- Resume - accent button with shadow -->
+          <button class="btn btn-accent">
+            <i class="fa-sharp fa-solid fa-square-terminal"></i>
+            Resume
+          </button>
+
+          <!-- Copy command -->
+          <button class="btn btn-icon" title="Copy resume command">
+            <i class="fa-sharp fa-regular fa-copy"></i>
+          </button>
+
+          <!-- Delete -->
+          <button class="btn btn-icon" title="Delete session">
+            <i class="fa-sharp fa-solid fa-trash"></i>
+          </button>
+
+          <!-- Tool calls toggle - active state -->
+          <button class="btn btn-icon active" title="Hide tool calls">
+            <i class="fa-sharp fa-solid fa-wrench"></i>
+          </button>
+
+          <!-- Note inline -->
+          <div class="note-inline" style="border-left-color:rgba(88,193,66,0.5);" title="Edit note and tags">
+            <span class="note-text">Reviewed this session, need to follow up on the API changes</span>
+            <span class="tag-chip"><span>#</span>review</span>
+            <span class="tag-chip"><span>#</span>frontend</span>
+            <span class="tag-chip" style="background:transparent;font-size:10px;color:var(--secondary);">+1</span>
+            <i class="fa-sharp fa-solid fa-pen" style="font-size:9px;opacity:0.5;flex-shrink:0;"></i>
+          </div>
+        </div>
+
+        <!-- Note section (expanded) -->
+        <div class="note-section">
+          <div class="flex" style="gap:6px;flex-wrap:wrap;">
+            <span class="tag-chip" style="background:var(--accent-soft);border:1px solid rgba(88,193,66,0.25);"><span>#</span>review</span>
+            <span class="tag-chip" style="background:var(--accent-soft);border:1px solid rgba(88,193,66,0.25);"><span>#</span>frontend</span>
+            <span class="tag-chip">#api</span>
+            <span class="tag-chip">#UX</span>
+          </div>
+          <textarea class="note-textarea" placeholder="Add a note, use #tag to add tags">Reviewed this session, need to follow up on the API changes</textarea>
+          <div class="note-actions">
+            <button class="btn" style="background:var(--accent-soft);border-color:var(--accent);color:var(--accent);">
+              <i class="fa-sharp fa-solid fa-check"></i>
+              Save
+            </button>
+            <button class="btn btn-icon" title="Clear note">
+              <i class="fa-sharp fa-solid fa-eraser"></i>
+            </button>
+            <span class="note-status saved">
+              <i class="fa-sharp fa-solid fa-check" style="margin-right:4px;"></i>Saved
+            </span>
+          </div>
+        </div>
+
+        <!-- Delete confirm bar -->
+        <div class="delete-confirm">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="pulse-dot"></span>
+            <span class="text">Delete this session? The source file will be moved to deleted storage.</span>
+          </div>
+          <div class="actions">
+            <button class="btn" style="height:26px;">Cancel</button>
+            <button class="btn" style="height:26px;background:var(--error);border-color:var(--error);color:#fff;">
+              <i class="fa-sharp fa-solid fa-trash"></i>
+              Delete
+            </button>
+          </div>
+        </div>
+
+      </div> <!-- header-left -->
+
+      <!-- Right: close, star, refresh -->
+      <div class="header-right">
+        <button class="btn btn-icon" title="Close">
+          <i class="fa-sharp fa-solid fa-xmark"></i>
+        </button>
+        <button class="btn btn-icon starred" title="Unmark session">
+          <i class="fa-sharp fa-solid fa-star"></i>
+        </button>
+        <button class="btn btn-icon active" title="Refresh session detail" style="background:var(--accent-soft);border-color:var(--accent);color:var(--accent);">
+          <i class="fa-sharp fa-solid fa-rotate"></i>
+        </button>
+      </div>
+
+    </div><!-- /header -->
+
+    <!-- ========================== TOOLBAR ========================== -->
+    <div class="toolbar">
+      <div class="search-wrap">
+        <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+        <input type="text" placeholder="Search session detail" value="API">
+        <button class="search-clear" aria-label="Clear search">
+          <i class="fa-sharp fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="search-count">2 / 5</div>
+
+      <button class="btn btn-icon" title="Previous match">
+        <i class="fa-sharp fa-solid fa-chevron-up"></i>
+      </button>
+      <button class="btn btn-icon" title="Next match">
+        <i class="fa-sharp fa-solid fa-chevron-down"></i>
+      </button>
+
+      <div class="toolbar-right">
+        <button class="btn btn-icon" title="Open user messages list">
+          <i class="fa-sharp fa-solid fa-window-restore"></i>
+        </button>
+        <button class="btn btn-icon active" title="Collapse outline">
+          <i class="fa-sharp fa-solid fa-list"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ========================== MAIN CONTENT ========================== -->
+    <div class="messages-area">
+      <div class="messages-scroll">
+        <div class="messages-list">
+
+          <!-- Counter -->
+          <div class="msg-counter">
+            <span>Showing #4-#12 of 12</span>
+            <button>Load more</button>
+          </div>
+
+          <!-- Assistant message card -->
+          <div class="msg-card assistant search-active">
+            <div class="msg-header">
+              <span class="role">Assistant</span>
+              <span>#8</span>
+              <span>14:23:45</span>
+              <span class="collapser">
+                <i class="fa-sharp fa-solid fa-chevron-up" style="font-size:8px;"></i>
+                &nbsp;Expanded
+              </span>
+              <span class="search-badge">
+                <i class="fa-sharp fa-solid fa-magnifying-glass" style="font-size:8px;"></i>
+                Current match
+              </span>
+              <button class="btn btn-icon copy-btn" style="border:none;height:20px;width:20px;" title="Copy message">
+                <i class="fa-sharp fa-regular fa-copy" style="font-size:10px;"></i>
+              </button>
+            </div>
+            <div class="msg-content">
+              I've implemented the search filtering for the sessions list. The filter supports both text search over session titles and content, as well as tag-based filtering.
+
+              Let me walk through the changes:
+
+              First, I added a <mark class="active">filter</mark> state to the sessions view model that tracks the current search query and active tags. Then I created a derived atom that applies the <mark class="inactive">filter</mark> to the sessions list.
+
+              The <mark class="active">filter</mark> component itself is a search input with a tag picker dropdown. It uses debounced input to avoid excessive re-renders.
+            </div>
+          </div>
+
+          <!-- User message card -->
+          <div class="msg-card user">
+            <div class="msg-header" style="justify-content:flex-end;">
+              <span class="role user-role">User</span>
+              <span>#7</span>
+              <span>14:22:10</span>
+              <button class="btn btn-icon copy-btn" style="border:none;height:20px;width:20px;" title="Copy message">
+                <i class="fa-sharp fa-regular fa-copy" style="font-size:10px;"></i>
+              </button>
+            </div>
+            <div class="msg-content">
+              Can you also support tag-based filtering? I want to be able to click on a tag and show only sessions with that tag.
+            </div>
+          </div>
+
+          <!-- Tool call card (collapsed) -->
+          <div class="toolcall-card">
+            <button class="toolcall-header">
+              <i class="fa-sharp fa-solid fa-chevron-right toolcall-chevron"></i>
+              <span class="toolcall-dot ok"></span>
+              <span class="toolcall-info">
+                <span class="toolcall-meta">
+                  <span>#3</span>
+                  <span>Bash</span>
+                </span>
+                <span class="toolcall-preview">npm test -- --coverage</span>
+              </span>
+            </button>
+          </div>
+
+          <!-- Tool call card (expanded) -->
+          <div class="toolcall-card">
+            <button class="toolcall-header">
+              <i class="fa-sharp fa-solid fa-chevron-down toolcall-chevron open"></i>
+              <span class="toolcall-dot error"></span>
+              <span class="toolcall-info">
+                <span class="toolcall-meta">
+                  <span>#4</span>
+                  <span>Edit</span>
+                  <span class="exit-error">exit 1</span>
+                </span>
+                <span class="toolcall-preview">Edit frontend/app/view/aisessions/sessions-filter.tsx</span>
+              </span>
+            </button>
+            <div class="toolcall-body">
+              <pre>Input:
+Edit frontend/app/view/aisessions/sessions-filter.tsx
+— Add filter state and debounced search input
+— Wire atom to filter sessions list
+
+Output:
+Changes applied successfully.
+
+Exit code: 1</pre>
+              <div class="toolcall-actions">
+                <button class="btn btn-icon" title="Copy tool call detail">
+                  <i class="fa-sharp fa-regular fa-copy"></i>
+                </button>
+                <button class="btn" style="gap:4px;">
+                  <i class="fa-sharp fa-regular fa-copy"></i>
+                  Copy output
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Assistant message -->
+          <div class="msg-card assistant">
+            <div class="msg-header">
+              <span class="role">Assistant</span>
+              <span>#6</span>
+              <span>14:21:30</span>
+              <button class="btn btn-icon copy-btn" style="border:none;height:20px;width:20px;" title="Copy message">
+                <i class="fa-sharp fa-regular fa-copy" style="font-size:10px;"></i>
+              </button>
+            </div>
+            <div class="msg-content">
+              Here's the search filter component. It uses a debounced input that updates after 300ms of inactivity.
+            </div>
+          </div>
+
+          <!-- Counter bottom -->
+          <div class="msg-counter">
+            <span></span>
+            <span class="start-reached">— Start reached —</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Delta loading indicator (frosted glass) -->
+      <div class="delta-loader">
+        <i class="fa-sharp fa-solid fa-spinner fa-spin"></i>
+        <span>Loading new messages...</span>
+      </div>
+
+    </div><!-- /messages-area -->
+
+  </div><!-- /modal-body -->
+
+</div><!-- /modal-window -->
+
+</div><!-- /backdrop -->
+
+<!-- ============================================================ -->
+<!-- Outline Panel (positioned over right side conceptually)       -->
+<!-- ============================================================ -->
+
+<!-- ============================================================ -->
+<!-- User Messages Modal (separate overlay)                        -->
+<!-- ============================================================ -->
+<div class="user-modal-wrap" style="display:none;">
+  <div class="user-modal">
+    <div>
+      <h3>User Messages</h3>
+      <div class="subtitle" style="margin-top:4px;">
+        24 messages in this session
+      </div>
+    </div>
+
+    <div class="search-wrap" style="flex:none;">
+      <i class="fa-sharp fa-solid fa-magnifying-glass"></i>
+      <input type="text" placeholder="Search user messages">
+    </div>
+
+    <div class="user-modal-list">
+      <button class="load-more-btn">
+        <i class="fa-sharp fa-solid fa-chevron-up"></i>
+        Load older user messages
+      </button>
+
+      <div class="user-message-item">
+        <span class="num-badge">1</span>
+        <div class="msg-preview">
+          <div class="line1">
+            <span>#7</span>
+            <span>14:22:10</span>
+            <button class="btn btn-icon copy-btn" style="border:none;height:18px;width:18px;">
+              <i class="fa-sharp fa-regular fa-copy" style="font-size:9px;"></i>
+            </button>
+          </div>
+          <div class="text">Can you also support tag-based filtering? I want to be able to click on a tag and show only sessions with that tag.</div>
+        </div>
+      </div>
+
+      <div class="user-message-item">
+        <span class="num-badge">2</span>
+        <div class="msg-preview">
+          <div class="line1">
+            <span>#5</span>
+            <span>14:20:45</span>
+            <button class="btn btn-icon copy-btn" style="border:none;height:18px;width:18px;">
+              <i class="fa-sharp fa-regular fa-copy" style="font-size:9px;"></i>
+            </button>
+          </div>
+          <div class="text">The filtering works but it's a bit slow. Can we debounce the input?</div>
+        </div>
+      </div>
+
+      <div class="user-message-item">
+        <span class="num-badge">3</span>
+        <div class="msg-preview">
+          <div class="line1">
+            <span>#3</span>
+            <span>14:18:22</span>
+            <button class="btn btn-icon copy-btn" style="border:none;height:18px;width:18px;">
+              <i class="fa-sharp fa-regular fa-copy" style="font-size:9px;"></i>
+            </button>
+          </div>
+          <div class="text">Can you add search filtering to the sessions list?</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Legend / style notes at bottom (not part of mockup)           -->
+<!-- ============================================================ -->
+<div style="position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);background:rgba(0,0,0,0.7);padding:6px 16px;border-radius:20px;backdrop-filter:blur(8px);pointer-events:none;z-index:200;">
+  Session Detail Redesign — Scale-in anim · Frosted loader · Tag chips · Card shadows · Buttons micro-interactions
+</div>
+
+</body>
+</html>

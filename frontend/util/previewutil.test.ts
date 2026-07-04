@@ -115,4 +115,34 @@ describe("addOpenMenuItems", () => {
         expect(revealNativePath).toHaveBeenCalledWith("E:\\Code\\AD\\docs\\model.md");
         expect(openNativePath).toHaveBeenCalledWith("E:\\Code\\AD\\docs\\model.md");
     });
+
+    it("does not add a default-app action for previewable local files", async () => {
+        vi.resetModules();
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(menu, "local", {
+            path: "C:\\Users\\nita\\.ssh\\config",
+            dir: "C:\\Users\\nita\\.ssh",
+            isdir: false,
+            name: "config",
+            mimetype: "",
+            size: 128,
+        } as FileInfo);
+
+        expect(menu.some((item) => item.label === "Open File in Default Application")).toBe(false);
+    });
 });

@@ -1,0 +1,664 @@
+<!-- @dsCard group="CommonText" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Common Text 搜索弹窗 - 虚拟滚动设计方案</title>
+    <style>
+        /* ---------- reset ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a1e;
+            color: #e3e3e8;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            padding: 40px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+        .page-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #b0b0b8;
+            text-align: center;
+            letter-spacing: 0.3px;
+        }
+        .page-title span {
+            color: #7c7c88;
+            font-weight: 400;
+            font-size: 14px;
+            display: block;
+            margin-top: 4px;
+        }
+
+        /* ---------- modal backdrop ---------- */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 100;
+        }
+
+        /* ---------- modal shell ---------- */
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 760px;
+            max-width: calc(100vw - 32px);
+            max-height: min(720px, calc(100vh - 32px));
+            background: #232327;
+            border: 1px solid #38383e;
+            border-radius: 12px;
+            z-index: 110;
+            display: flex;
+            flex-direction: column;
+            padding: 24px 20px 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        /* ---------- modal sections ---------- */
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .modal-title-group h2 {
+            font-size: 17px;
+            font-weight: 600;
+            color: #e3e3e8;
+        }
+        .modal-title-group .hint {
+            font-size: 12px;
+            color: #7c7c88;
+            margin-top: 2px;
+        }
+        .manage-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 32px;
+            padding: 0 10px;
+            border: 1px solid #38383e;
+            border-radius: 6px;
+            background: transparent;
+            color: #a0a0a8;
+            font-size: 13px;
+            cursor: pointer;
+            transition: color 0.15s, background 0.15s;
+        }
+        .manage-btn:hover {
+            color: #e3e3e8;
+            background: #2a2a2e;
+        }
+        .manage-btn i {
+            font-size: 14px;
+        }
+
+        /* search input */
+        .search-group {
+            position: relative;
+            margin-bottom: 12px;
+        }
+        .search-group input {
+            width: 100%;
+            height: 36px;
+            padding: 0 36px 0 12px;
+            background: #1e1e22;
+            border: 1px solid #38383e;
+            border-radius: 8px;
+            color: #e3e3e8;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .search-group input::placeholder {
+            color: #6c6c76;
+        }
+        .search-group input:focus {
+            border-color: #6366f1;
+        }
+        .search-icon {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c6c76;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        /* tags row */
+        .tags-row {
+            max-height: 72px;
+            overflow-y: auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .tags-row::-webkit-scrollbar {
+            width: 3px;
+        }
+        .tags-row::-webkit-scrollbar-thumb {
+            background: #38383e;
+            border-radius: 2px;
+        }
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 24px;
+            padding: 0 8px;
+            border: 1px solid #38383e;
+            border-radius: 999px;
+            background: transparent;
+            color: #a0a0a8;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.12s;
+            white-space: nowrap;
+        }
+        .tag-chip:hover {
+            border-color: #6366f1;
+            color: #e3e3e8;
+        }
+        .tag-chip.selected {
+            background: rgba(99, 102, 241, 0.18);
+            border-color: #6366f1;
+            color: #a5b4fc;
+        }
+        .tag-chip .count {
+            color: #6c6c76;
+            font-size: 10px;
+        }
+
+        /* status bar */
+        .status-bar {
+            font-size: 12px;
+            color: #6366f1;
+            min-height: 18px;
+            margin-bottom: 4px;
+        }
+
+        /* ---------- result list (virtual scroll container) ---------- */
+        .list-container {
+            flex: 1;
+            min-height: 0;
+            border: 1px solid #38383e;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .list-scroll-area {
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .list-scroll-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        .list-scroll-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .list-scroll-area::-webkit-scrollbar-thumb {
+            background: #38383e;
+            border-radius: 3px;
+        }
+        .list-scroll-area::-webkit-scrollbar-thumb:hover {
+            background: #4a4a52;
+        }
+
+        /* virtual spacer + items */
+        .virtual-spacer {
+            position: relative;
+            width: 100%;
+        }
+        .virtual-item {
+            position: absolute;
+            left: 0;
+            right: 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid transparent;
+            transition: background 0.08s;
+            border-radius: 0;
+        }
+        .virtual-item.selected {
+            background: #2a2a32;
+        }
+        .virtual-item:not(.selected):hover {
+            background: #28282e;
+        }
+
+        .item-pin {
+            width: 16px;
+            flex-shrink: 0;
+            text-align: center;
+            font-size: 11px;
+            color: #7c7c88;
+            padding-top: 3px;
+        }
+        .item-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .item-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .item-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #e3e3e8;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .item-shortcut {
+            font-size: 11px;
+            font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+            color: #7c7c88;
+            border: 1px solid #38383e;
+            border-radius: 4px;
+            padding: 0 5px;
+            flex-shrink: 0;
+        }
+        .item-preview {
+            font-size: 12px;
+            color: #7c7c88;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .item-tags {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+            flex-wrap: wrap;
+        }
+        .item-tag {
+            font-size: 10px;
+            color: #7c7c88;
+            background: #1e1e22;
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid #38383e;
+        }
+        .item-copy-btn {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #7c7c88;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            margin-top: 2px;
+            transition: color 0.12s, background 0.12s;
+        }
+        .item-copy-btn:hover {
+            color: #e3e3e8;
+            background: #2e2e34;
+        }
+
+        /* empty state */
+        .empty-state {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #7c7c88;
+            font-size: 14px;
+            text-align: center;
+            padding: 24px;
+        }
+        .empty-state i {
+            font-size: 24px;
+            opacity: 0.5;
+        }
+        .empty-state a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+        .empty-state a:hover {
+            text-decoration: underline;
+        }
+
+        /* ---------- annotations / spec ---------- */
+        .spec-box {
+            width: 760px;
+            max-width: calc(100vw - 32px);
+            background: #1e1e22;
+            border: 1px solid #38383e;
+            border-radius: 10px;
+            padding: 20px 24px;
+            font-size: 13px;
+            line-height: 1.7;
+            color: #b0b0b8;
+        }
+        .spec-box h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e3e3e8;
+            margin-bottom: 12px;
+        }
+        .spec-box ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .spec-box li {
+            display: flex;
+            gap: 8px;
+        }
+        .spec-box li::before {
+            content: "→";
+            color: #6366f1;
+            font-weight: 600;
+        }
+        .spec-box code {
+            background: #28282e;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #a5b4fc;
+        }
+        .spec-box .badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 20px;
+            margin-right: 4px;
+        }
+        .badge-new {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+        }
+        .badge-changed {
+            background: rgba(250, 204, 21, 0.15);
+            color: #fde047;
+        }
+
+        /* phantom scrollbar placeholder for mock */
+        .scroll-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 0;
+            font-size: 11px;
+            color: #6c6c76;
+            border-top: 1px solid #38383e;
+        }
+        .scroll-indicator i {
+            font-size: 9px;
+        }
+
+        /* positioning for annotation */
+        .mock-container {
+            position: relative;
+        }
+        .annotation-layer {
+            position: absolute;
+            top: -8px;
+            right: -260px;
+            width: 240px;
+            background: #1e1e22;
+            border: 1px solid #6366f1;
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: 12px;
+            color: #a0a0a8;
+            line-height: 1.6;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .annotation-layer::before {
+            content: "";
+            position: absolute;
+            left: -7px;
+            top: 20px;
+            width: 12px;
+            height: 12px;
+            background: #1e1e22;
+            border-left: 1px solid #6366f1;
+            border-bottom: 1px solid #6366f1;
+            transform: rotate(45deg);
+        }
+        .annotation-layer strong {
+            color: #e3e3e8;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .annotation-layer code {
+            background: #28282e;
+            padding: 0 4px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        @media (max-width: 1100px) {
+            .annotation-layer {
+                display: none;
+            }
+        }
+    </style>
+    <!-- Font Awesome 6.7 (free) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css" />
+</head>
+<body>
+
+<div class="page-title">
+    Common Text 搜索弹窗 · 虚拟滚动方案
+    <span>保持弹窗尺寸不变 · 列表使用 @tanstack/react-virtual 按需渲染</span>
+</div>
+
+<!-- ===================== MODAL MOCK ===================== -->
+<div class="mock-container">
+    <div class="modal-backdrop"></div>
+    <div class="modal">
+        <!-- header -->
+        <div class="modal-header">
+            <div class="modal-title-group">
+                <h2>Common Text</h2>
+                <div class="hint">Enter inserts. Cmd/Ctrl+Enter copies.</div>
+            </div>
+            <button class="manage-btn">
+                <i class="fa fa-solid fa-gear"></i>
+                Manage
+            </button>
+        </div>
+
+        <!-- search -->
+        <div class="search-group">
+            <input type="text" placeholder="Search by title, shortcut, tag, or text" value="deploy" />
+            <span class="search-icon"><i class="fa-regular fa-magnifying-glass"></i></span>
+        </div>
+
+        <!-- tags -->
+        <div class="tags-row">
+            <button class="tag-chip selected">shell <span class="count">14</span></button>
+            <button class="tag-chip">git <span class="count">8</span></button>
+            <button class="tag-chip">docker <span class="count">6</span></button>
+            <button class="tag-chip">ssh <span class="count">5</span></button>
+            <button class="tag-chip">k8s <span class="count">4</span></button>
+            <button class="tag-chip">database <span class="count">3</span></button>
+            <button class="tag-chip">reply <span class="count">3</span></button>
+            <button class="tag-chip">email <span class="count">2</span></button>
+        </div>
+
+        <!-- status -->
+        <div class="status-bar"></div>
+
+        <!-- ============ virtual list area ============ -->
+        <div class="list-container">
+            <div class="list-scroll-area" style="height: 348px;">
+                <div class="virtual-spacer" style="height: 920px;">
+                    <!-- items 1-6 (visible) -->
+                    <div class="virtual-item selected" style="top: 0; height: 64px;">
+                        <div class="item-pin"><i class="fa fa-solid fa-thumbtack"></i></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Deploy frontend to staging</span>
+                                <span class="item-shortcut">;df</span>
+                            </div>
+                            <div class="item-preview">npm run build && rsync -avz dist/ deploy@staging:/var/www/app</div>
+                            <div class="item-tags">
+                                <span class="item-tag">deploy</span>
+                                <span class="item-tag">frontend</span>
+                            </div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+
+                    <div class="virtual-item" style="top: 64px; height: 64px;">
+                        <div class="item-pin"></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Deploy backend with docker-compose</span>
+                                <span class="item-shortcut">;db</span>
+                            </div>
+                            <div class="item-preview">docker compose -f docker-compose.prod.yml up -d --build</div>
+                            <div class="item-tags">
+                                <span class="item-tag">deploy</span>
+                                <span class="item-tag">docker</span>
+                            </div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+
+                    <div class="virtual-item" style="top: 128px; height: 64px;">
+                        <div class="item-pin"></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Deploy to production (tagged)</span>
+                                <span class="item-shortcut">;dp</span>
+                            </div>
+                            <div class="item-preview">git tag prod-$(date +%Y%m%d) && git push --tags && cap production deploy</div>
+                            <div class="item-tags">
+                                <span class="item-tag">deploy</span>
+                                <span class="item-tag">git</span>
+                            </div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+
+                    <div class="virtual-item" style="top: 192px; height: 56px;">
+                        <div class="item-pin"></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Rollback previous deploy</span>
+                                <span class="item-shortcut"></span>
+                            </div>
+                            <div class="item-preview">cap production deploy:rollback</div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+
+                    <div class="virtual-item" style="top: 248px; height: 48px;">
+                        <div class="item-pin"></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Check deploy status</span>
+                                <span class="item-shortcut"></span>
+                            </div>
+                            <div class="item-preview">kubectl get pods -n production --watch</div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+
+                    <div class="virtual-item" style="top: 296px; height: 52px;">
+                        <div class="item-pin"></div>
+                        <div class="item-body">
+                            <div class="item-title-row">
+                                <span class="item-title">Deploy: restart service</span>
+                                <span class="item-shortcut"></span>
+                            </div>
+                            <div class="item-preview">systemctl restart myapp && journalctl -u myapp -n 50 -f</div>
+                        </div>
+                        <button class="item-copy-btn"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                </div>
+                <!-- scroll indicator -->
+                <div class="scroll-indicator">
+                    <i class="fa-regular fa-chevron-down"></i>
+                    Scroll to see 14 results
+                    <i class="fa-regular fa-chevron-down"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- annotation arrow -->
+        <div class="annotation-layer">
+            <strong>⬡ 虚拟滚动区</strong>
+            只渲染视口内可见的条目（~6 条），滚动时按需替换。<br><br>
+            <code>useVirtualizer({ count, getScrollElement, estimateSize, overscan: 5 })</code><br><br>
+            即使有 500 条数据，DOM 节点始终保持在 ~12-16 个，<br>
+            性能不会退化，也不会溢出弹窗边界。
+        </div>
+    </div>
+</div>
+
+<!-- ===================== SPEC ===================== -->
+<div class="spec-box">
+    <h3>📐 改动规范</h3>
+    <ul>
+        <li>
+            <span class="badge badge-new">NEW</span>
+            引入 <code>@tanstack/react-virtual</code> 的 <code>useVirtualizer</code> 替换列表区域的原生滚动
+        </li>
+        <li>
+            <span class="badge badge-changed">CHG</span>
+            搜索结果列表从 <code>&lt;div class="divide-y ..."&gt;{results.map(...)}&lt;/div&gt;</code>
+            改为虚拟滚动模式：
+            <code>&lt;div ref={scrollRef} style={{height}}&gt; → virtual spacer {virtualizer.getVirtualItems().map(...)}</code>
+        </li>
+        <li>
+            <span class="badge badge-new">NEW</span>
+            每个条目的高度通过 <code>estimateSize</code> 估算（约 56–64px，取决于标签和预览行数）。使用 <code>overscan: 5</code> 确保快速滚动时无空白。
+        </li>
+        <li>
+            <span class="badge badge-changed">CHG</span>
+            列表容器固定高度 = <code>flex-1 + min-height-0</code>（继承弹窗剩余空间），确保不溢出弹窗边界。
+        </li>
+        <li>
+            <span class="badge badge-unchanged">—</span>
+            搜索模式、标签筛选、键盘导航、点击/复制交互全部保持不变。
+        </li>
+        <li>
+            <span class="badge badge-unchanged">—</span>
+            删除 <code>searchCommonTextItems</code> 的 <code>limit=60</code> 上限（或提高至 500+），让虚拟滚动处理大数据量。
+        </li>
+        <li>
+            <span class="badge badge-changed">CHG</span>
+            列表项加入 <code>position: absolute; top; transform</code> 适配虚拟滚动样式。
+        </li>
+    </ul>
+    <p style="margin-top: 14px; color: #7c7c88; font-size: 12px;">
+        参考实现：<code>frontend/app/treeview/treeview.tsx</code> 第 438–470 行、第 809–820 行（已有 @tanstack/react-virtual 使用示例）
+    </p>
+</div>
+
+</body>
+</html>

@@ -12,6 +12,10 @@ describe("canPreviewFileInfo", () => {
             expect(canPreviewFileInfo({ path: "Component.vue", mimetype, size: 128 })).toBe(true);
         }
     });
+
+    it("allows extensionless text files", () => {
+        expect(canPreviewFileInfo({ path: "/Users/nita/.ssh/config", mimetype: "", size: 128 })).toBe(true);
+    });
 });
 
 describe("openPreviewEntry", () => {

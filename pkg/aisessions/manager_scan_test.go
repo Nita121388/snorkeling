@@ -86,7 +86,7 @@ func TestManagerScanFlowWithoutIndexStore(t *testing.T) {
 		t.Fatalf("unexpected path: %q", path)
 	}
 
-	markedOnly, err := manager.List(context.Background(), ListOptions{MarkedOnly: true, Limit: 10})
+	markedOnly, err := manager.List(context.Background(), ListOptions{Marked: "starred", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

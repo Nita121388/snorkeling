@@ -26,26 +26,45 @@ func (p *ClaudeProvider) Source() string {
 }
 
 func (p *ClaudeProvider) List(ctx context.Context) ([]SessionSummary, error) {
+	files, err := p.ListFiles(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var summaries []SessionSummary
-	for _, root := range p.roots {
-		files, err := collectJSONLFiles(root)
-		if err != nil {
-			return summaries, err
+	for _, file := range files {
+		if ctx.Err() != nil {
+			return summaries, ctx.Err()
 		}
-		for _, file := range files {
-			if ctx.Err() != nil {
-				return summaries, ctx.Err()
-			}
-			if isClaudeAgentSession(file) {
-				continue
-			}
-			summary, ok := p.parseSummary(file)
-			if ok {
-				summaries = append(summaries, summary)
-			}
+		summary, ok := p.parseSummaryFile(file)
+		if ok {
+			summaries = append(summaries, summary)
 		}
 	}
 	return summaries, nil
+}
+
+func (p *ClaudeProvider) ListFiles(ctx context.Context) ([]SessionFile, error) {
+	var paths []string
+	for _, root := range p.roots {
+		files, err := collectJSONLFiles(root)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if isClaudeAgentSession(file) {
+				continue
+			}
+			paths = append(paths, file)
+		}
+	}
+	return sessionFilesFromPaths(ctx, p.Source(), paths)
+}
+
+func (p *ClaudeProvider) ParseSummary(ctx context.Context, file SessionFile) (SessionSummary, bool) {
+	if ctx.Err() != nil {
+		return SessionSummary{}, false
+	}
+	return p.parseSummaryFile(file)
 }
 
 func (p *ClaudeProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
@@ -166,12 +185,16 @@ func (p *ClaudeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]
 }
 
 func (p *ClaudeProvider) parseSummary(path string) (SessionSummary, bool) {
-	head, tail, err := readHeadTailLines(path, 10, 30)
+	mtime, size := fileStatFields(path)
+	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: path, MTime: mtime, Size: size})
+}
+
+func (p *ClaudeProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
+	head, tail, err := readHeadTailLines(file.Path, 10, 30)
 	if err != nil {
 		return SessionSummary{}, false
 	}
-	mtime, size := fileStatFields(path)
-	return p.parseSummaryFromLines(path, head, tail, mtime, size)
+	return p.parseSummaryFromLines(file.Path, head, tail, file.MTime, file.Size)
 }
 
 func (p *ClaudeProvider) parseSummaryFromLines(

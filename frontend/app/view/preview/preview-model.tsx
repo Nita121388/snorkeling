@@ -22,7 +22,7 @@ import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
 import { addOpenMenuItems } from "@/util/previewutil";
-import { base64ToString, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
+import { base64ToString, basename, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
 import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
@@ -319,6 +319,7 @@ export class PreviewModel implements ViewModel {
     fileEditKey: Atom<string | null>;
     fileContentSaved: WritableAtom<string | null, [string | null], void>;
     fileContent: WritableAtom<Promise<string>, [string], void>;
+    fileContentLoadable: Atom<Loadable<string>>;
     newFileContent: WritableAtom<string | null, [string | null], void>;
     connectionError: PrimitiveAtom<string>;
     errorMsgAtom: PrimitiveAtom<ErrorMsg>;
@@ -531,50 +532,27 @@ export class PreviewModel implements ViewModel {
             } else if (loadableFileInfo.state == "hasData") {
                 headerPath = loadableFileInfo.data?.path;
                 if (headerPath == "~") {
-                    headerPath = `~ (${loadableFileInfo.data?.dir + "/" + loadableFileInfo.data?.name})`;
+                    headerPath = "~";
                 }
             }
             headerPath = getPreviewDisplayPath(headerPath);
             if (!isBlank(headerPath) && headerPath != "/" && headerPath.endsWith("/")) {
                 headerPath = headerPath.slice(0, -1);
             }
-            const copyPathStatus = get(this.copyPathStatus);
+            const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
+            const tooltipText = headerPath == "~" ? "~ (C:/Users/chemclin)" : headerPath;
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
                     className: "preview-filename-shell",
                     children: [
                         {
-                            elemtype: "text",
-                            text: headerPath,
-                            ref: this.previewTextRef,
-                            className: "preview-filename",
-                            onClick: () => this.toggleOpenFileModal(),
-                        },
-                        {
-                            elemtype: "iconbutton",
-                            icon:
-                                copyPathStatus === "copied"
-                                    ? "check"
-                                    : copyPathStatus === "failed"
-                                      ? "triangle-exclamation"
-                                      : "copy",
-                            title:
-                                copyPathStatus === "copied"
-                                    ? "Copied"
-                                    : copyPathStatus === "failed"
-                                      ? "Copy Failed"
-                                      : "Copy Full Path",
-                            iconColor:
-                                copyPathStatus === "copied"
-                                    ? "var(--success-color)"
-                                    : copyPathStatus === "failed"
-                                      ? "var(--error-color)"
-                                      : undefined,
-                            className: clsx("preview-filename-copy-button", copyPathStatus),
-                            click: () => {
-                                fireAndForget(() => this.copyCurrentPathToClipboardWithFeedback());
-                            },
+                            elemtype: "copytext",
+                            text: tooltipText,
+                            displayText: displayName,
+                            tooltipText: tooltipText,
+                            title: "Click to copy full path",
+                            className: "preview-filename cursor-pointer",
                         },
                     ],
                 },
@@ -714,15 +692,6 @@ export class PreviewModel implements ViewModel {
                 return null;
             }
             const buttons: IconButtonDecl[] = [vcsButton];
-            if (mimeType == "directory") {
-                buttons.push({
-                    elemtype: "iconbutton",
-                    icon: "magnifying-glass",
-                    iconColor: directorySearchActive ? "var(--accent-color)" : undefined,
-                    title: directorySearchActive ? "Show Explorer Tree" : "Search File Contents",
-                    click: () => fireAndForget(() => this.toggleDirectorySearch()),
-                });
-            }
             if (mimeType == "directory") {
                 const showHiddenFiles = get(this.showHiddenFiles);
                 buttons.push({
@@ -912,6 +881,7 @@ export class PreviewModel implements ViewModel {
                     text: `${e}`,
                 };
                 globalStore.set(this.errorMsgAtom, errorStatus);
+                throw e;
             }
         });
 
@@ -1049,6 +1019,7 @@ export class PreviewModel implements ViewModel {
 
         this.fullFile = fullFileAtom;
         this.fileContent = fileContentAtom;
+        this.fileContentLoadable = loadable(this.fileContent);
         this.liveSourceFileContent = atom(async (get) => {
             const sourceModel = get(this.liveSourceModel);
             if (sourceModel != null) {
@@ -1136,9 +1107,9 @@ export class PreviewModel implements ViewModel {
         if (isStreamingType(mimeType)) {
             return { specializedView: "streaming" };
         }
-        if (!fileInfo) {
-            const fileNameStr = fileName ? " " + JSON.stringify(fileName) : "";
-            return { errorStr: "File Not Found" + fileNameStr };
+        // empty mimetype from extensionless files: show in code editor
+        if (mimeType === "" && fileInfo != null && !fileInfo.notfound) {
+            return { specializedView: "codeedit" };
         }
         if (fileInfo.size > MaxFileSize) {
             return { errorStr: "File Too Large to Preview (10 MB Max)" };
@@ -1860,6 +1831,7 @@ export class PreviewModel implements ViewModel {
     }
 
     refresh(): void {
+        globalStore.set(this.errorMsgAtom, null);
         const fileKey = globalStore.get(this.fileEditKey);
         const record = getPreviewSharedDraftRecord(fileKey);
         previewSharedDraftDebugLog("model:refresh", {
@@ -1896,6 +1868,7 @@ export class PreviewModel implements ViewModel {
         const defaultFontSize = globalStore.get(this.env.getSettingsKeyAtom("editor:fontsize")) ?? 12;
         const blockData = globalStore.get(this.blockAtom);
         const overrideFontSize = blockData?.meta?.["editor:fontsize"];
+        const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const menuItems: ContextMenuItem[] = [];
         menuItems.push({
             label: "Copy Full Path",
@@ -1915,6 +1888,18 @@ export class PreviewModel implements ViewModel {
         menuItems.push({ type: "separator" });
         const finfo = jotaiLoadableValue(globalStore.get(this.loadableFileInfo), null);
         addOpenMenuItems(menuItems, globalStore.get(this.connectionImmediate), finfo);
+        if (isNoteBlock) {
+            menuItems.push({ type: "separator" });
+            menuItems.push({
+                label: "Set Note Directory...",
+                click: () => {
+                    modalsModel.pushModal("NoteDirectoryModal", {
+                        blockId: this.blockId,
+                        initialDir: globalStore.get(this.metaFilePath),
+                    });
+                },
+            });
+        }
         const loadableSV = globalStore.get(this.loadableSpecializedView);
         const wordWrapAtom = getOverrideConfigAtom(this.blockId, "editor:wordwrap");
         const wordWrap = globalStore.get(wordWrapAtom) ?? false;

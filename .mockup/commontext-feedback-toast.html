@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Common Text 反馈气泡 · 多种方案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --background: rgb(34, 34, 34);
+    --foreground: #f7f7f7;
+    --primary: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --error: rgb(229, 77, 46);
+    --warning: rgb(224, 185, 86);
+    --success: rgb(78, 154, 6);
+    --border: rgba(255, 255, 255, 0.16);
+    --modalbg: #2a2a2a;
+    --panel: rgba(31, 33, 31, 0.5);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    background:var(--background);
+    color:var(--primary);
+    font-family:"Inter",-apple-system,sans-serif;
+    font-size:13px;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;align-items:center;
+    padding:40px 20px
+  }
+  .page{max-width:800px;width:100%}
+  h1{font-size:16px;font-weight:600;margin-bottom:4px}
+  .sub{font-size:12px;color:var(--muted);margin-bottom:28px}
+
+  .section{margin-bottom:36px}
+  .section-title{
+    font-size:13px;font-weight:600;margin-bottom:12px;
+    display:flex;align-items:center;gap:8px
+  }
+  .tag{
+    display:inline-flex;align-items:center;padding:2px 8px;
+    border-radius:10px;font-size:10px;font-weight:500
+  }
+  .tag.g{background:rgba(88,193,66,.15);color:var(--accent)}
+  .tag.o{background:rgba(224,185,86,.15);color:var(--warning)}
+  .tag.r{background:rgba(229,77,46,.15);color:var(--error)}
+  .tag.b{background:rgba(99,102,241,.15);color:#a5b4fc}
+
+  .card-wrap{
+    display:flex;flex-direction:column;gap:10px;
+    padding:16px 20px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    background:var(--modalbg);
+  }
+
+  /** 灯泡按钮 */
+  .light-btn{
+    position:relative;
+    display:inline-flex;
+    align-items:center;justify-content:center;
+    width:24px;height:24px;
+    border:1px solid rgba(255,170,45,.8);
+    border-radius:6px;
+    background:rgba(255,170,45,.16);
+    color:rgb(255,184,66);
+    font-size:11px;
+    cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,.3);
+    flex-shrink:0
+  }
+  .light-btn:hover{
+    border-color:rgba(255,197,92,.95);
+    background:rgba(255,170,45,.26);
+    color:rgb(255,213,116)
+  }
+
+  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+  .sel-text{
+    display:inline;
+    background:rgba(88,193,66,.12);
+    color:var(--primary);
+    padding:1px 3px;border-radius:3px;
+    font-size:14px
+  }
+
+  /** ====== 方案 1：tag 胶囊样式（当前实现）====== */
+  .fb-1{
+    position:absolute;left:0;top:calc(100% + 6px);
+    display:inline-flex;align-items:center;gap:5px;
+    padding:3px 10px;
+    border-radius:999px;
+    font-size:12px;font-weight:500;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    pointer-events:none;white-space:nowrap;
+    line-height:1.4
+  }
+  .fb-1.s{background:rgba(88,193,66,.15);color:var(--accent);border:1px solid rgba(88,193,66,.3)}
+  .fb-1.w{background:rgba(224,185,86,.15);color:var(--warning);border:1px solid rgba(224,185,86,.3)}
+  .fb-1.e{background:rgba(229,77,46,.15);color:var(--error);border:1px solid rgba(229,77,46,.3)}
+
+  /** ====== 方案 2：圆角方块 + 实色背景 ====== */
+  .fb-2{
+    position:absolute;left:0;top:calc(100% + 6px);
+    display:inline-flex;align-items:center;gap:5px;
+    padding:3px 10px;
+    border-radius:6px;
+    font-size:11px;font-weight:500;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    pointer-events:none;white-space:nowrap;
+    line-height:1.4
+  }
+  .fb-2.s{background:rgb(47,133,47);color:#fff}
+  .fb-2.w{background:rgb(224,185,86);color:#000}
+  .fb-2.e{background:rgb(229,77,46);color:#fff}
+
+  /** ====== 方案 3：左侧色条 + 文字 ====== */
+  .fb-3{
+    position:absolute;left:0;top:calc(100% + 6px);
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 10px 4px 8px;
+    border-radius:6px;
+    font-size:11px;font-weight:500;
+    background:var(--modalbg);
+    border:1px solid var(--border);
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    pointer-events:none;white-space:nowrap;
+    line-height:1.4
+  }
+  .fb-3 .bar{
+    display:block;width:3px;height:14px;border-radius:2px;flex-shrink:0
+  }
+  .fb-3.s .bar{background:var(--accent)}
+  .fb-3.w .bar{background:var(--warning)}
+  .fb-3.e .bar{background:var(--error)}
+  .fb-3.s{color:var(--accent)}
+  .fb-3.w{color:var(--warning)}
+  .fb-3.e{color:var(--error)}
+
+  /** ====== 方案 4：小圆点 + 文字 ====== */
+  .fb-4{
+    position:absolute;left:0;top:calc(100% + 6px);
+    display:inline-flex;align-items:center;gap:5px;
+    padding:3px 10px;
+    border-radius:6px;
+    font-size:11px;font-weight:500;
+    background:transparent;
+    border:none;
+    pointer-events:none;white-space:nowrap;
+    line-height:1.4;
+    color:var(--secondary)
+  }
+  .fb-4 .dot{
+    display:block;width:8px;height:8px;border-radius:50%;flex-shrink:0
+  }
+  .fb-4.s .dot{background:var(--accent)}
+  .fb-4.w .dot{background:var(--warning)}
+  .fb-4.e .dot{background:var(--error)}
+
+  /** ====== 方案 5：只有 icon 无文字 ====== */
+  .fb-5{
+    position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);
+    display:inline-flex;align-items:center;justify-content:center;
+    width:20px;height:20px;
+    border-radius:50%;
+    font-size:10px;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    pointer-events:none;
+    line-height:1
+  }
+  .fb-5.s{background:rgba(88,193,66,.15);color:var(--accent);border:1px solid rgba(88,193,66,.3)}
+  .fb-5.w{background:rgba(224,185,86,.15);color:var(--warning);border:1px solid rgba(224,185,86,.3)}
+  .fb-5.e{background:rgba(229,77,46,.15);color:var(--error);border:1px solid rgba(229,77,46,.3)}
+
+  /** 对比表格 */
+  .comp-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:16px}
+  .comp-table th,.comp-table td{
+    padding:8px 12px;border:1px solid rgba(255,255,255,.08);
+    text-align:left;vertical-align:top
+  }
+  .comp-table th{
+    background:rgba(255,255,255,.04);font-size:10px;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--secondary);font-weight:600
+  }
+  .comp-table td{color:var(--secondary);line-height:1.6}
+  .comp-table td:first-child{color:var(--primary);font-weight:500}
+
+  .badge{
+    display:inline-flex;align-items:center;gap:3px;
+    padding:2px 7px;border-radius:8px;font-size:10px;font-weight:500
+  }
+  .badge.good{background:rgba(88,193,66,.15);color:var(--accent)}
+  .badge.ok{background:rgba(224,185,86,.12);color:var(--warning)}
+
+  .note{
+    margin-top:10px;padding:8px 12px;border-radius:6px;
+    font-size:11px;color:var(--muted);
+    background:rgba(255,255,255,.03);
+    display:flex;align-items:center;gap:6px
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <h1>🧩 反馈气泡 · 多种视觉方案</h1>
+  <div class="sub">点击下方按钮交互演示 · 成功 / 重复 / 失败 三种状态</div>
+
+  <!-- ============================================================ -->
+  <!-- 方案 1：tag 胶囊（当前已实现） -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="tag g">方案 1</span>
+      Tag 胶囊样式（当前已实现）
+    </div>
+    <div class="card-wrap">
+      <div class="row">
+        <span class="sel-text">selected text content</span>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-1 s"><i class="fa-solid fa-check" style="font-size:10px"></i>Saved</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-1 w"><i class="fa-solid fa-rotate" style="font-size:10px"></i>Exists</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-1 e"><i class="fa-solid fa-xmark" style="font-size:10px"></i>Failed</div>
+        </div>
+      </div>
+      <div class="note">
+        <i class="fa-solid fa-circle-check" style="color:var(--accent)"></i>
+        项目已有 tag 风格的直接复用 · 半透明底色 + 描边 · 胶囊圆角
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 方案 2：实色方块 -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="tag b">方案 2</span>
+      实色背景 · 高对比
+    </div>
+    <div class="card-wrap">
+      <div class="row">
+        <span class="sel-text">selected text content</span>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-2 s"><i class="fa-solid fa-check" style="font-size:10px"></i>Saved</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-2 w"><i class="fa-solid fa-rotate" style="font-size:10px"></i>Exists</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-2 e"><i class="fa-solid fa-xmark" style="font-size:10px"></i>Failed</div>
+        </div>
+      </div>
+      <div class="note">
+        <i class="fa-solid fa-circle-half-stroke" style="color:#a5b4fc"></i>
+        纯色背景 + 白色/黑色文字 · 视觉冲击力强 · 适合需要突出反馈的场景
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 方案 3：左侧色条 -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="tag o">方案 3</span>
+      左侧色条 · 柔和
+    </div>
+    <div class="card-wrap">
+      <div class="row">
+        <span class="sel-text">selected text content</span>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-3 s"><span class="bar"></span>Saved</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-3 w"><span class="bar"></span>Exists</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-3 e"><span class="bar"></span>Failed</div>
+        </div>
+      </div>
+      <div class="note">
+        <i class="fa-solid fa-bars" style="color:var(--warning)"></i>
+        左侧 3px 色条标识状态 · 纯文字无背景色 · 更接近 VS Code 的风格
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 方案 4：小圆点 + 文字 -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="tag" style="background:rgba(255,255,255,.06);color:var(--secondary);">方案 4</span>
+      小圆点 + 文字 · 最轻量
+    </div>
+    <div class="card-wrap">
+      <div class="row">
+        <span class="sel-text">selected text content</span>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-4 s"><span class="dot"></span>Saved</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-4 w"><span class="dot"></span>Exists</div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-4 e"><span class="dot"></span>Failed</div>
+        </div>
+      </div>
+      <div class="note">
+        <i class="fa-solid fa-circle" style="color:var(--secondary)"></i>
+        只有一个小圆点 + 灰色文字 · 最不突兀 · 适合不希望打断用户的场景
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 方案 5：纯 icon 无文字 -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="tag r">方案 5</span>
+      仅有图标（按钮右侧）
+    </div>
+    <div class="card-wrap">
+      <div class="row">
+        <span class="sel-text">selected text content</span>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-5 s"><i class="fa-solid fa-check"></i></div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-5 w"><i class="fa-solid fa-rotate"></i></div>
+        </div>
+        <div style="position:relative;display:inline-flex">
+          <div class="light-btn"><i class="fa-regular fa-lightbulb"></i></div>
+          <div class="fb-5 e"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+      </div>
+      <div class="note">
+        <i class="fa-solid fa-icons" style="color:var(--error)"></i>
+        按钮右侧出现一个彩色图标 · 无文字 · 最简洁 · 但需要用户理解图标含义
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 对比总结 -->
+  <!-- ============================================================ -->
+  <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:8px">
+    <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;font-weight:600;color:var(--secondary)">
+      📊 方案对比
+    </div>
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th style="width:14%">方案</th>
+          <th style="width:14%">视觉分量</th>
+          <th style="width:14%">实现成本</th>
+          <th style="width:58%">说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag g">1 胶囊</span></td>
+          <td><span class="badge ok">适中</span></td>
+          <td><span class="badge good">已实现</span></td>
+          <td>半透明底色 + 描边 + 文字 + icon · 复用项目 tag 样式 · 当前已实装</td>
+        </tr>
+        <tr>
+          <td><span class="tag b">2 实色</span></td>
+          <td><span class="badge good">强</span></td>
+          <td><span class="badge good">低</span></td>
+          <td>纯色背景（使用项目 accent-600/warning/error）· 高对比 · 更显眼</td>
+        </tr>
+        <tr>
+          <td><span class="tag o">3 色条</span></td>
+          <td><span class="badge ok">柔和</span></td>
+          <td><span class="badge good">低</span></td>
+          <td>左侧 3px 色条 · 类似 VS Code 错误提示风格 · 无背景色</td>
+        </tr>
+        <tr>
+          <td><span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:500;background:rgba(255,255,255,.06);color:var(--secondary)">4 圆点</span></td>
+          <td><span class="badge ok">弱</span></td>
+          <td><span class="badge good">低</span></td>
+          <td>仅彩色小圆点 + 灰色文字 · 最轻量 · 不打断操作流</td>
+        </tr>
+        <tr>
+          <td><span class="tag r">5 纯 icon</span></td>
+          <td><span class="badge ok">极弱</span></td>
+          <td><span class="badge good">低</span></td>
+          <td>按钮右侧出现 ✓ / ↻ / ✕ 彩色图标 · 最简洁但需图标识别成本</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 交互演示区 -->
+  <!-- ============================================================ -->
+  <div style="margin-top:28px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;font-weight:600;color:var(--secondary);display:flex;align-items:center;gap:8px">
+      <span>🖱</span> 交互演示 · 选择一个方案预览
+    </div>
+    <div style="padding:20px">
+      <div class="row" style="margin-bottom:16px">
+        <span class="sel-text">kubectl get pods -n production --watch</span>
+        <div style="position:relative;display:inline-flex">
+          <button class="light-btn" id="demoBtn"><i class="fa-regular fa-lightbulb"></i></button>
+          <div id="demoFb" style="display:none"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:11px" onclick="setScheme(1)" id="s1">方案 1 胶囊</button>
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:11px" onclick="setScheme(2)" id="s2">方案 2 实色</button>
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:11px" onclick="setScheme(3)" id="s3">方案 3 色条</button>
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:11px" onclick="setScheme(4)" id="s4">方案 4 圆点</button>
+        <button style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:11px" onclick="setScheme(5)" id="s5">方案 5 纯 icon</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="demo-btn" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:12px" onclick="showFeedback('success')"><span style="color:var(--accent)">●</span> 成功</button>
+        <button class="demo-btn" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:12px" onclick="showFeedback('warn')"><span style="color:var(--warning)">●</span> 重复</button>
+        <button class="demo-btn" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--secondary);cursor:pointer;font-size:12px" onclick="showFeedback('error')"><span style="color:var(--error)">●</span> 失败</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var currentScheme = 1;
+
+  function setScheme(n) {
+    currentScheme = n;
+    for (var i = 1; i <= 5; i++) {
+      var btn = document.getElementById('s' + i);
+      btn.style.borderColor = i === n ? 'rgb(88,193,66)' : 'var(--border)';
+      btn.style.color = i === n ? 'rgb(88,193,66)' : 'var(--secondary)';
+    }
+  }
+  setScheme(1);
+
+  function showFeedback(kind) {
+    var el = document.getElementById('demoFb');
+    var widgets = {
+      1: {
+        s: '<div class="fb-1 s" style="position:static;display:flex"><i class="fa-solid fa-check" style="font-size:10px"></i>Saved</div>',
+        w: '<div class="fb-1 w" style="position:static;display:flex"><i class="fa-solid fa-rotate" style="font-size:10px"></i>Exists</div>',
+        e: '<div class="fb-1 e" style="position:static;display:flex"><i class="fa-solid fa-xmark" style="font-size:10px"></i>Failed</div>'
+      },
+      2: {
+        s: '<div class="fb-2 s" style="position:static;display:flex"><i class="fa-solid fa-check" style="font-size:10px"></i>Saved</div>',
+        w: '<div class="fb-2 w" style="position:static;display:flex"><i class="fa-solid fa-rotate" style="font-size:10px"></i>Exists</div>',
+        e: '<div class="fb-2 e" style="position:static;display:flex"><i class="fa-solid fa-xmark" style="font-size:10px"></i>Failed</div>'
+      },
+      3: {
+        s: '<div class="fb-3 s" style="position:static;display:flex"><span class="bar"></span>Saved</div>',
+        w: '<div class="fb-3 w" style="position:static;display:flex"><span class="bar"></span>Exists</div>',
+        e: '<div class="fb-3 e" style="position:static;display:flex"><span class="bar"></span>Failed</div>'
+      },
+      4: {
+        s: '<div class="fb-4 s" style="position:static;display:flex"><span class="dot"></span>Saved</div>',
+        w: '<div class="fb-4 w" style="position:static;display:flex"><span class="dot"></span>Exists</div>',
+        e: '<div class="fb-4 e" style="position:static;display:flex"><span class="dot"></span>Failed</div>'
+      },
+      5: {
+        s: '<div class="fb-5 s" style="position:static;display:flex">✓</div>',
+        w: '<div class="fb-5 w" style="position:static;display:flex">↻</div>',
+        e: '<div class="fb-5 e" style="position:static;display:flex">✕</div>'
+      }
+    };
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.gap = '6px';
+    el.style.position = 'absolute';
+    el.style.left = '0';
+    el.style.top = 'calc(100% + 6px)';
+    el.style.whiteSpace = 'nowrap';
+    el.innerHTML = widgets[currentScheme][kind];
+    if (window._t) clearTimeout(window._t);
+    window._t = setTimeout(function() { el.style.display = 'none'; }, 1600);
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Snorkeling — Terminal & Agent 路径选择优化 Mockup</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #222222;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,0.14);
+    --border: rgba(255,255,255,0.12);
+    --border-soft: rgba(255,255,255,0.06);
+    --panel: #262826;
+    --hover: rgba(255,255,255,0.06);
+    --chipsurface: rgba(255,255,255,0.04);
+    --claude: #cc685c;
+    --codex: #74a7cb;
+    --gemini: #8e7cc3;
+    --opencode: #e0b956;
+    --track: rgba(255,255,255,0.06);
+    --knob: #343634;
+    --surface: #262826;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #1a1b1a; color: var(--primary); font-family: -apple-system, "SF Pro Text", "Inter", "Segoe UI", sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .stage { padding: 24px 28px; display: flex; flex-direction: column; gap: 32px; }
+
+  .section-label { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+  .row-groups { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+
+  .card { background: var(--bg); border: 1px solid var(--border-soft); border-radius: 12px; overflow: visible; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+  .card-title { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .card-title .badge { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+
+  /* ===== 左侧 Widget 侧边栏 ===== */
+  .widgets-bar { display: flex; flex-direction: column; width: 48px; background: var(--bg); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+  .widget-item { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0; color: var(--muted); cursor: pointer; transition: background .1s, color .1s; }
+  .widget-item:hover { background: var(--hover); color: var(--primary); }
+  .widget-item i { font-size: 18px; }
+  .widget-item .label { font-size: 9px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44px; }
+  .widget-item .dot { width: 7px; height: 7px; border-radius: 50%; margin-bottom: 1px; }
+
+  /* ===== FloatingWindow 样式 (对齐现有 bg-modalbg border border-border rounded-lg shadow-xl) ===== */
+  .floating-window { border: 1px solid var(--border); border-radius: 10px; background: #1e1f1e; box-shadow: 0 12px 40px rgba(0,0,0,0.5); overflow: hidden; width: 380px; }
+  .fw-head { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; }
+  .fw-head .title { font-size: 12px; font-weight: 600; color: var(--primary); }
+  .fw-head .sub { font-size: 11px; color: var(--muted); }
+
+  /* 搜索框 */
+  .fw-search { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
+  .fw-search-box { display: flex; align-items: center; height: 28px; background: rgba(255,255,255,0.05); border-radius: 7px; padding: 0 8px; }
+  .fw-search-box i { font-size: 11px; color: var(--muted); margin-right: 6px; }
+  .fw-search-box input { background: transparent; border: none; outline: none; color: var(--primary); font-size: 12px; width: 100%; }
+
+  /* Agent 类型选择 (radio chips) */
+  .fw-profile-section { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
+  .fw-profile-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  .fw-profile-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .fw-profile-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11px; background: var(--chipsurface); color: var(--secondary); cursor: pointer; transition: background .12s, color .12s; border: none; }
+  .fw-profile-chip:hover { background: var(--hover); color: var(--primary); }
+  .fw-profile-chip.selected { background: var(--accent-soft); color: var(--accent); }
+  .fw-profile-chip .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+  /* 路径列表 */
+  .fw-path-list { max-height: 240px; overflow-y: auto; }
+  .fw-path-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background .1s; border-bottom: 1px solid var(--border-soft); }
+  .fw-path-item:last-child { border-bottom: none; }
+  .fw-path-item:hover { background: var(--hover); }
+  .fw-path-item.selected { background: var(--accent-soft); position: relative; }
+  .fw-path-item.selected::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+  .fw-path-icon { width: 16px; flex-shrink: 0; text-align: center; color: var(--muted); font-size: 12px; }
+  .fw-path-body { flex: 1; min-width: 0; }
+  .fw-path-title { font-size: 12px; font-weight: 500; color: var(--primary); }
+  .fw-path-detail { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fw-path-detail .src-tag { display: inline-block; font-size: 9px; padding: 0 5px; border-radius: 4px; background: var(--chipsurface); color: var(--muted); margin-right: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .fw-path-detail .conn-tag { display: inline-block; font-size: 9px; padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+  .fw-path-detail .conn-tag.local { background: rgba(255,255,255,0.06); color: var(--muted); }
+  .fw-path-detail .conn-tag.ssh { background: rgba(116,167,203,0.12); color: var(--codex); }
+
+  /* 底部操作按钮 */
+  .fw-actions { padding: 8px 12px; border-top: 1px solid var(--border-soft); display: flex; gap: 6px; }
+  .fw-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; height: 28px; border: 1px solid var(--border-soft); border-radius: 7px; background: rgba(255,255,255,0.03); color: var(--secondary); font-size: 11px; cursor: pointer; transition: background .12s, color .12s; }
+  .fw-action-btn:hover { background: var(--hover); color: var(--primary); border-color: var(--border); }
+  .fw-action-btn.primary { background: var(--accent); color: #111; border-color: transparent; font-weight: 600; }
+  .fw-action-btn.primary:hover { background: #76df60; }
+  .fw-action-btn i { font-size: 10px; }
+
+  /* ===== Block Frame Header 增强 ===== */
+  .blockframe { display: flex; align-items: center; height: 30px; padding: 0 4px 0 6px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .blockframe .bf-icon { font-size: 12px; color: var(--muted); margin-right: 6px; }
+  .blockframe .bf-label { font-size: 11px; color: var(--muted); margin-right: 8px; }
+  .blockframe .bf-path { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--secondary); padding: 0 6px; border-radius: 4px; cursor: pointer; }
+  .blockframe .bf-path:hover { background: var(--hover); }
+  .blockframe .bf-path i { font-size: 8px; color: var(--muted); }
+  .blockframe .bf-conn { font-size: 10px; color: var(--muted); padding: 1px 6px; border-radius: 4px; background: var(--chipsurface); margin-left: auto; margin-right: 4px; display: inline-flex; align-items: center; gap: 4px; }
+  .blockframe .bf-agent { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 6px; border-radius: 4px; cursor: pointer; margin-right: 6px; }
+  .blockframe .bf-agent.codex { background: rgba(116,167,203,0.12); color: var(--codex); }
+  .blockframe .bf-agent.claude { background: rgba(204,104,92,0.12); color: var(--claude); }
+  .blockframe .bf-agent i { font-size: 8px; opacity: .7; }
+  .blockframe .bf-agent:hover { filter: brightness(1.2); }
+  .blockframe .bf-actions { margin-left: auto; display: flex; gap: 2px; }
+  .blockframe .bf-action { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--muted); cursor: pointer; font-size: 10px; background: transparent; border: none; }
+  .blockframe .bf-action:hover { background: var(--hover); color: var(--primary); }
+
+  /* Legend */
+  .legend { padding: 10px 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px; font-size: 11px; color: var(--secondary); line-height: 1.6; max-width: 100%; }
+  .legend b { color: var(--accent); }
+  .legend .n { color: var(--accent); font-weight: 700; }
+
+  .scenario-label { font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+  .floating-window-group { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ===== Title ===== -->
+  <div style="margin-bottom:-10px">
+    <div style="font-size: 15px; font-weight: 700; color: var(--primary); margin-bottom: 4px;">Terminal / Agent 路径选择优化</div>
+    <div style="font-size: 12px; color: var(--muted);">一个弹窗完成所有选择 · 点击默认 · 右键选配</div>
+  </div>
+
+  <!-- ===== Scenario 1: Agent Widget - 点击 ===== -->
+  <div>
+    <div class="scenario-label"><span style="color:var(--accent)">●</span> Agent Widget — 点击（默认快速创建）</div>
+    <div class="row-groups">
+      <div class="widgets-bar">
+        <div class="widget-item" style="background:var(--hover);color:var(--primary)">
+          <span class="dot" style="background:var(--codex)"></span>
+          <span class="label">agent</span>
+        </div>
+        <div class="widget-item"><i class="fa-regular fa-terminal"></i><span class="label">terminal</span></div>
+        <div class="widget-item"><i class="fa-regular fa-file"></i><span class="label">files</span></div>
+        <div class="widget-item"><i class="fa-regular fa-comments"></i><span class="label">sessions</span></div>
+      </div>
+
+      <div style="padding:6px 0;color:var(--muted);font-size:12px;max-width:280px;line-height:1.5">
+        点击 Agent Widget → 如果 tab 内只有一个 launch target：<b>直接创建默认 Agent（codex）</b>。
+        <br><br>
+        如果 tab 内有多个 target（文件浏览器、多个 terminal 等）：弹出下面的选择弹窗。
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Scenario 2: Agent Widget - 右键 ===== -->
+  <div>
+    <div class="scenario-label"><span style="color:var(--accent)">●</span> Agent Widget — 右键（一个弹窗选 Agent 类型 + 路径）</div>
+    <div class="floating-window-group">
+      <div class="widgets-bar">
+        <div class="widget-item" style="background:var(--hover);color:var(--primary)">
+          <span class="dot" style="background:var(--codex)"></span>
+          <span class="label">agent</span>
+        </div>
+        <div class="widget-item"><i class="fa-regular fa-terminal"></i><span class="label">terminal</span></div>
+        <div class="widget-item"><i class="fa-regular fa-file"></i><span class="label">files</span></div>
+        <div class="widget-item"><i class="fa-regular fa-comments"></i><span class="label">sessions</span></div>
+      </div>
+
+      <!-- Agent 弹窗 -->
+      <div class="floating-window" style="width:380px">
+        <div class="fw-head">
+          <span class="title">新建 Agent</span>
+        </div>
+
+        <!-- Agent 类型选择 -->
+        <div class="fw-profile-section">
+          <div class="fw-profile-label">Agent 类型</div>
+          <div class="fw-profile-chips">
+            <button class="fw-profile-chip selected"><span class="dot" style="background:var(--codex)"></span> Codex</button>
+            <button class="fw-profile-chip"><span class="dot" style="background:var(--claude)"></span> Claude</button>
+            <button class="fw-profile-chip"><span class="dot" style="background:var(--gemini)"></span> Gemini</button>
+            <button class="fw-profile-chip"><span class="dot" style="background:var(--opencode)"></span> OpenCode</button>
+          </div>
+        </div>
+
+        <!-- 搜索路径 -->
+        <div class="fw-search">
+          <div class="fw-search-box">
+            <i class="fa-regular fa-magnifying-glass"></i>
+            <input placeholder="搜索路径…" />
+          </div>
+        </div>
+
+        <!-- 路径列表 -->
+        <div class="fw-path-list">
+          <div class="fw-path-item selected">
+            <div class="fw-path-icon"><i class="fa-regular fa-folder"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~/code/snorkeling</div>
+              <div class="fw-path-detail"><span class="src-tag">files</span><span class="conn-tag local">local</span>current workspace</div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-folder"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~/code/AD</div>
+              <div class="fw-path-detail"><span class="src-tag">files</span><span class="conn-tag local">local</span></div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-terminal"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">/var/www</div>
+              <div class="fw-path-detail"><span class="src-tag">terminal</span><span class="conn-tag ssh">SSH: dev</span></div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-house"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~</div>
+              <div class="fw-path-detail"><span class="src-tag">home</span><span class="conn-tag local">local</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作 -->
+        <div class="fw-actions">
+          <button class="fw-action-btn primary"><i class="fa-regular fa-plus"></i> 创建到新 Tab</button>
+          <button class="fw-action-btn">已有 Tab…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Scenario 3: Terminal Widget - 右键 ===== -->
+  <div>
+    <div class="scenario-label"><span style="color:var(--accent)">●</span> Terminal Widget — 右键（一个弹窗选路径）</div>
+    <div class="floating-window-group">
+      <div class="widgets-bar">
+        <div class="widget-item"><span class="dot" style="background:var(--codex)"></span><span class="label">agent</span></div>
+        <div class="widget-item" style="background:var(--hover);color:var(--primary)"><i class="fa-regular fa-terminal"></i><span class="label">terminal</span></div>
+        <div class="widget-item"><i class="fa-regular fa-file"></i><span class="label">files</span></div>
+        <div class="widget-item"><i class="fa-regular fa-comments"></i><span class="label">sessions</span></div>
+      </div>
+
+      <!-- Terminal 弹窗 (无 Agent 类型区) -->
+      <div class="floating-window" style="width:380px">
+        <div class="fw-head">
+          <span class="title">新建 Terminal</span>
+        </div>
+
+        <!-- 搜索路径 -->
+        <div class="fw-search">
+          <div class="fw-search-box">
+            <i class="fa-regular fa-magnifying-glass"></i>
+            <input placeholder="搜索路径…" />
+          </div>
+        </div>
+
+        <!-- 路径列表 -->
+        <div class="fw-path-list">
+          <div class="fw-path-item selected">
+            <div class="fw-path-icon"><i class="fa-regular fa-terminal"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~/code/snorkeling</div>
+              <div class="fw-path-detail"><span class="src-tag">terminal</span><span class="conn-tag local">local</span></div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-folder"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~/code/My-Skills</div>
+              <div class="fw-path-detail"><span class="src-tag">files</span><span class="conn-tag local">local</span></div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-globe"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">/var/log</div>
+              <div class="fw-path-detail"><span class="src-tag">terminal</span><span class="conn-tag ssh">SSH: dev</span></div>
+            </div>
+          </div>
+          <div class="fw-path-item">
+            <div class="fw-path-icon"><i class="fa-regular fa-house"></i></div>
+            <div class="fw-path-body">
+              <div class="fw-path-title">~</div>
+              <div class="fw-path-detail"><span class="src-tag">home</span><span class="conn-tag local">local</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作 -->
+        <div class="fw-actions">
+          <button class="fw-action-btn primary"><i class="fa-regular fa-plus"></i> 创建到新 Tab</button>
+          <button class="fw-action-btn">已有 Tab…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Scenario 4: Block Header ===== -->
+  <div>
+    <div class="scenario-label"><span style="color:var(--accent)">●</span> Block Header — 点击路径 / Agent 名称切换</div>
+    <div class="row-groups">
+      <!-- Terminal Header -->
+      <div class="card" style="width:420px">
+        <div class="card-title">Terminal Header <span class="badge">路径可点击</span></div>
+        <div class="blockframe">
+          <i class="fa-regular fa-terminal bf-icon"></i>
+          <span class="bf-label">Terminal</span>
+          <span class="bf-path">
+            ~/code/snorkeling <i class="fa-regular fa-chevron-down"></i>
+          </span>
+          <span class="bf-conn"><i class="fa-regular fa-laptop"></i> local</span>
+          <div class="bf-actions">
+            <button class="bf-action" title="Close"><i class="fa-regular fa-xmark"></i></button>
+          </div>
+        </div>
+        <div style="padding:8px 12px;font-size:11px;color:var(--muted);line-height:1.5">
+          点击路径区域 → 弹出 Terminal 浮窗（同右键浮窗），快速切换 cwd 或 connection。
+        </div>
+      </div>
+
+      <!-- Agent Header -->
+      <div class="card" style="width:440px">
+        <div class="card-title">Agent Header <span class="badge">Agent 名称 + 路径可点击</span></div>
+        <div class="blockframe">
+          <i class="fa-regular fa-wand-sparkles bf-icon"></i>
+          <span class="bf-label">Agent</span>
+          <span class="bf-agent codex">
+            codex <i class="fa-regular fa-chevron-down"></i>
+          </span>
+          <span class="bf-path">
+            ~/code/snorkeling <i class="fa-regular fa-chevron-down"></i>
+          </span>
+          <div class="bf-actions">
+            <button class="bf-action" title="Close"><i class="fa-regular fa-xmark"></i></button>
+          </div>
+        </div>
+        <div style="padding:8px 12px;font-size:11px;color:var(--muted);line-height:1.5">
+          点击 <b>codex</b> Agent 标签 → 弹出 Agent 浮窗（同右键浮窗），可切换 provider 或路径。<br>
+          点击路径 → 同上。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Summary ===== -->
+  <div class="legend" style="border-color:var(--accent)">
+    <div style="font-weight:700;color:var(--primary);margin-bottom:6px">交互规则总结</div>
+    <div><span class="n">点击</span> Widget → 单 target 直接创建，多 target 弹出浮窗</div>
+    <div><span class="n">右键</span> Agent Widget → 弹出 Agent 浮窗（选类型 + 选路径，<b>一个弹窗完成</b>）</div>
+    <div><span class="n">右键</span> Terminal Widget → 弹出 Terminal 浮窗（只选路径）</div>
+    <div><span class="n">Header 点击</span> → 弹出对应浮窗（复用同一组件），快速切换</div>
+    <div><span class="n">改动范围</span> 全部在 FE（widgets.tsx + blockframe-header.tsx + term-model.ts），Go 后端无改动</div>
+  </div>
+
+</div>
+
+</body>
+</html>

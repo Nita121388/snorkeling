@@ -157,7 +157,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const draftSearchQuery = searchInput.trim();
     const submittedSearchQuery = searchQuery.trim();
     const searchInputPending = draftSearchQuery !== submittedSearchQuery;
-    const canSubmitSearch = draftSearchQuery.length >= SearchMinLength && !searching;
     const route = useMemo(() => makeConnRoute(connection), [connection]);
     const { refs, floatingStyles, context } = useFloating({
         open: !!entryManagerProps,
@@ -914,20 +913,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
                                 className="min-w-0 flex-1 rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
                             />
-                            <button
-                                type="button"
-                                title="Search"
-                                disabled={!canSubmitSearch}
-                                onClick={submitSearch}
-                                className={clsx(
-                                    "flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md border border-white/10 text-[11px] transition-colors",
-                                    canSubmitSearch
-                                        ? "text-white hover:border-[var(--accent-color)] hover:bg-white/5"
-                                        : "cursor-default text-muted opacity-50"
-                                )}
-                            >
-                                <i className="fa-sharp fa-solid fa-magnifying-glass" />
-                            </button>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
                             <span>

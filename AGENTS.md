@@ -39,3 +39,23 @@ Not lazy about: input validation at trust boundaries, error handling that preven
 - Keep this environment scoped to the command process. Do not persistently edit machine/user PATH, Go env, npm config, or device-debugging global variables.
 - When assigning temporary env vars inside a nested PowerShell `-Command` string, escape `$env:` as `` `$env:FOO='bar'`` so the outer shell does not expand it before the child process starts.
 - Prefer targeted package tests for the touched area first. If the toolchain is still unavailable after loading `scripts/use-local-env.ps1`, report that exact check and blocker.
+
+## Electron UI inspection
+
+- For actual Electron UI layout, style, hover/click, and modal overflow issues, inspect the running app through CDP instead of asking the user to open DevTools and report DOM details.
+- Use `node scripts/inspect-electron-ui.mjs ...` from the repo root. The app must be running with a CDP port, usually `--remote-debugging-port=9222`.
+- Use `http://127.0.0.1:9222/json/list` to verify targets when the script cannot find the app.
+- The right vertical widget strip is called `WidgetsBar`, or the right Widgets bar.
+- Do not use `opencli operate state` for this workflow; it controls OpenCLI's own automation browser and may return `about:blank`.
+
+Useful commands:
+
+```powershell
+node scripts/inspect-electron-ui.mjs state
+node scripts/inspect-electron-ui.mjs elements --limit 40
+node scripts/inspect-electron-ui.mjs style "Common Text"
+node scripts/inspect-electron-ui.mjs click 1796 296
+node scripts/inspect-electron-ui.mjs screenshot
+```
+
+For style bugs, gather both visual and layout evidence: `getBoundingClientRect()`, `clientHeight`, `scrollHeight`, computed `display`, `flex`, `minHeight`, `height`, `maxHeight`, `overflow`, `overflowY`, element text, `aria-label`, `title`, classes, and coordinates.

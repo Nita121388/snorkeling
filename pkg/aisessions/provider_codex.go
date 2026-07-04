@@ -26,7 +26,7 @@ func (p *CodexProvider) Source() string {
 }
 
 func (p *CodexProvider) List(ctx context.Context) ([]SessionSummary, error) {
-	files, err := collectJSONLFiles(p.root)
+	files, err := p.ListFiles(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -36,21 +36,32 @@ func (p *CodexProvider) List(ctx context.Context) ([]SessionSummary, error) {
 		if ctx.Err() != nil {
 			return summaries, ctx.Err()
 		}
-		summary, ok := p.parseSummary(file)
+		summary, ok := p.parseSummaryFile(file)
 		if ok {
-			if indexed, ok := titleIndex[summary.ID]; ok {
-				if indexed.Title != "" && summary.TitleSource != "first_user_message" {
-					summary.Title = indexed.Title
-					summary.TitleSource = "source_title"
-				}
-				if indexed.UpdatedAt != 0 && indexed.UpdatedAt > summary.UpdatedAt {
-					summary.UpdatedAt = indexed.UpdatedAt
-				}
-			}
+			p.applyIndexedTitle(&summary, titleIndex)
 			summaries = append(summaries, summary)
 		}
 	}
 	return summaries, nil
+}
+
+func (p *CodexProvider) ListFiles(ctx context.Context) ([]SessionFile, error) {
+	files, err := collectJSONLFiles(p.root)
+	if err != nil {
+		return nil, err
+	}
+	return sessionFilesFromPaths(ctx, p.Source(), files)
+}
+
+func (p *CodexProvider) ParseSummary(ctx context.Context, file SessionFile) (SessionSummary, bool) {
+	if ctx.Err() != nil {
+		return SessionSummary{}, false
+	}
+	summary, ok := p.parseSummaryFile(file)
+	if ok {
+		p.applyIndexedTitle(&summary, loadCodexSessionIndex(filepath.Dir(p.root)))
+	}
+	return summary, ok
 }
 
 func (p *CodexProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
@@ -176,12 +187,16 @@ func (p *CodexProvider) LoadToolCalls(ctx context.Context, filePath string) ([]T
 }
 
 func (p *CodexProvider) parseSummary(path string) (SessionSummary, bool) {
-	head, tail, err := readHeadTailLines(path, 10, 30)
+	mtime, size := fileStatFields(path)
+	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: path, MTime: mtime, Size: size})
+}
+
+func (p *CodexProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
+	head, tail, err := readHeadTailLines(file.Path, 10, 30)
 	if err != nil {
 		return SessionSummary{}, false
 	}
-	mtime, size := fileStatFields(path)
-	return p.parseSummaryFromLines(path, head, tail, mtime, size)
+	return p.parseSummaryFromLines(file.Path, head, tail, file.MTime, file.Size)
 }
 
 func (p *CodexProvider) parseSummaryFromLines(
@@ -298,6 +313,23 @@ func inferCodexID(path string) string {
 type codexIndexedTitle struct {
 	Title     string
 	UpdatedAt int64
+}
+
+func (p *CodexProvider) applyIndexedTitle(summary *SessionSummary, titleIndex map[string]codexIndexedTitle) {
+	if summary == nil || len(titleIndex) == 0 {
+		return
+	}
+	indexed, ok := titleIndex[summary.ID]
+	if !ok {
+		return
+	}
+	if indexed.Title != "" && summary.TitleSource != "first_user_message" {
+		summary.Title = indexed.Title
+		summary.TitleSource = "source_title"
+	}
+	if indexed.UpdatedAt != 0 && indexed.UpdatedAt > summary.UpdatedAt {
+		summary.UpdatedAt = indexed.UpdatedAt
+	}
 }
 
 func loadCodexSessionIndex(codexDir string) map[string]codexIndexedTitle {

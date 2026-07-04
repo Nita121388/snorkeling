@@ -180,7 +180,7 @@ function insertBlockAtDefaultLeft(
     layoutModel.treeReducer(splitAction);
 }
 
-function insertBlockAtFixedLeftOrder(kind: string, blockId: string, magnified: boolean): void {
+export function insertBlockAtFixedLeftOrder(kind: string, blockId: string, magnified: boolean): void {
     const layoutModel = getLayoutModelForStaticTab();
     if (layoutModel == null) {
         return;

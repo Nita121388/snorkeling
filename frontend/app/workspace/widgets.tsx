@@ -8,15 +8,23 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
+    AgentDefaultLaunchTargetMetaKey,
     AgentLaunchTarget,
+    AgentProfileOption,
+    canSetLaunchTargetDefault,
     createAgentBlockDefForProfile,
     createAgentBlockDefForTarget,
-    createDefaultAgentBlockDef,
     createTerminalBlockDefForTarget,
     DefaultAgentWidgetId,
     DefaultTerminalWidgetId,
+    getAgentProfileDetectionCommands,
+    getAgentProfileOptions,
     getCurrentTabAgentLaunchTargets,
     getCurrentTabTerminalLaunchTargets,
+    getLaunchCreatableTargets,
+    getLaunchTargetDefaultKey,
+    resolveDefaultLaunchTarget,
+    TerminalDefaultLaunchTargetMetaKey,
 } from "@/app/workspace/agent-launch";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
@@ -33,7 +41,7 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
@@ -43,6 +51,7 @@ export type WidgetsEnv = WaveEnvSubset<{
     };
     rpc: {
         ListAllAppsCommand: WaveEnv["rpc"]["ListAllAppsCommand"];
+        SetConfigCommand: WaveEnv["rpc"]["SetConfigCommand"];
     };
     atoms: {
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
@@ -50,9 +59,9 @@ export type WidgetsEnv = WaveEnvSubset<{
         workspaceId: WaveEnv["atoms"]["workspaceId"];
         workspace: WaveEnv["atoms"]["workspace"];
         staticTabId: WaveEnv["atoms"]["staticTabId"];
-        hasCustomAIPresetsAtom: WaveEnv["atoms"]["hasCustomAIPresetsAtom"];
     };
     services: {
+        client: WaveEnv["services"]["client"];
         object: WaveEnv["services"]["object"];
     };
     wos: WaveEnv["wos"];
@@ -82,49 +91,54 @@ type WidgetPropsType = {
     mode: "normal" | "compact" | "supercompact";
     onWidgetSelect: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
     onWidgetContextMenu?: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
+    onWidgetHover?: (widgetId: string, widget: WidgetConfigType, e: React.PointerEvent<HTMLDivElement>) => void;
 };
 
-const Widget = memo(({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu }: WidgetPropsType) => {
-    const [isTruncated, setIsTruncated] = useState(false);
-    const labelRef = useRef<HTMLDivElement>(null);
-    const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
+const Widget = memo(
+    ({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu, onWidgetHover }: WidgetPropsType) => {
+        const [isTruncated, setIsTruncated] = useState(false);
+        const labelRef = useRef<HTMLDivElement>(null);
+        const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
+        const isTargetWidget = widgetId === DefaultTerminalWidgetId || widgetId === DefaultAgentWidgetId;
 
-    useEffect(() => {
-        if (mode === "normal" && labelRef.current) {
-            const element = labelRef.current;
-            setIsTruncated(element.scrollWidth > element.clientWidth);
-        }
-    }, [mode, widget.label]);
+        useEffect(() => {
+            if (mode === "normal" && labelRef.current) {
+                const element = labelRef.current;
+                setIsTruncated(element.scrollWidth > element.clientWidth);
+            }
+        }, [mode, widget.label]);
 
-    const shouldDisableTooltip = mode !== "normal" ? false : !isTruncated;
+        const shouldDisableTooltip = mode !== "normal" ? false : !isTruncated;
 
-    return (
-        <Tooltip
-            content={widget.description || widget.label}
-            placement="left"
-            disable={shouldDisableTooltip}
-            divClassName={clsx(
-                "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer",
-                mode === "supercompact" ? "text-sm" : "text-lg",
-                widget["display:hidden"] && "hidden"
-            )}
-            divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
-            divOnContextMenu={(e) => onWidgetContextMenu?.(widgetId, widget, e)}
-        >
-            <div style={{ color: widget.color }}>
-                <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
-            </div>
-            {mode === "normal" && !isBlank(widget.label) ? (
-                <div
-                    ref={labelRef}
-                    className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis"
-                >
-                    {widget.label}
+        return (
+            <Tooltip
+                content={widget.description || widget.label}
+                placement="left"
+                disable={shouldDisableTooltip || isTargetWidget}
+                divClassName={clsx(
+                    "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer",
+                    mode === "supercompact" ? "text-sm" : "text-lg",
+                    widget["display:hidden"] && "hidden"
+                )}
+                divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
+                divOnContextMenu={(e) => onWidgetContextMenu?.(widgetId, widget, e)}
+                divOnPointerEnter={isTargetWidget ? (e) => onWidgetHover?.(widgetId, widget, e) : undefined}
+            >
+                <div style={{ color: widget.color }}>
+                    <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
                 </div>
-            ) : null}
-        </Tooltip>
-    );
-});
+                {mode === "normal" && !isBlank(widget.label) ? (
+                    <div
+                        ref={labelRef}
+                        className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                    >
+                        {widget.label}
+                    </div>
+                ) : null}
+            </Tooltip>
+        );
+    }
+);
 
 function calculateGridSize(appCount: number): number {
     if (appCount <= 4) return 2;
@@ -165,7 +179,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
         open: isOpen,
         onOpenChange: onClose,
         placement: "left-start",
-        middleware: [offset(-2), shift({ padding: 12 })],
+        middleware: [offset(8), shift({ padding: 12 })],
         whileElementsMounted: autoUpdate,
         elements: {
             reference: referenceElement,
@@ -286,12 +300,15 @@ type AgentTargetFloatingWindowProps = {
     targets: AgentLaunchTarget[];
     settings?: SettingsType;
     magnified?: boolean;
-    env: WidgetsEnv;
-    profileName?: string;
-    profileLabel?: string;
+    profileOptions: AgentProfileOption[];
+    defaultTargetKey?: string;
+    defaultProfileName?: string;
     canCreateToExistingTab: boolean;
+    createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
+    onSetDefaultTarget: (target: AgentLaunchTarget) => void;
+    onSetDefaultProfile: (profileName: string) => void;
 };
 
 type TerminalTargetFloatingWindowProps = {
@@ -299,12 +316,15 @@ type TerminalTargetFloatingWindowProps = {
     onClose: () => void;
     referenceElement: HTMLElement;
     targets: AgentLaunchTarget[];
+    settings?: SettingsType;
     magnified?: boolean;
-    env: WidgetsEnv;
     baseBlockDef?: BlockDef;
+    defaultTargetKey?: string;
     canCreateToExistingTab: boolean;
+    createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
+    onSetDefaultTarget: (target: AgentLaunchTarget) => void;
 };
 
 type CreateToExistingTabRequest = {
@@ -315,6 +335,38 @@ type CreateToExistingTabRequest = {
 };
 
 const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+
+type DefaultCheckButtonProps = {
+    checked: boolean;
+    ariaLabel: string;
+    title: string;
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    className?: string;
+};
+
+function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: DefaultCheckButtonProps) {
+    return (
+        <button
+            type="button"
+            className={clsx(
+                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer",
+                checked
+                    ? "text-accent"
+                    : "hidden group-hover:flex",
+                className
+            )}
+            aria-label={ariaLabel}
+            title={title}
+            onClick={onClick}
+        >
+            {checked ? (
+                <i className="fa-solid fa-check text-accent text-[10px]" />
+            ) : (
+                <span className="w-3 h-3 rounded-[2px] border border-border/30" />
+            )}
+        </button>
+    );
+}
 
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && !isBlank(error.message)) {
@@ -330,45 +382,25 @@ function showLaunchError(label: string, error: unknown) {
     });
 }
 
-type TargetTabActionsProps = {
-    canCreateToExistingTab: boolean;
-    onCreateToNewTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    onCreateToExistingTab: (event: React.MouseEvent<HTMLButtonElement>) => void;
-};
-
-function TargetTabActions({ canCreateToExistingTab, onCreateToNewTab, onCreateToExistingTab }: TargetTabActionsProps) {
-    const buttonClass =
-        "group flex min-w-[130px] flex-1 items-center justify-center gap-1.5 rounded-md border border-border/60 bg-secondarybg/35 px-2.5 py-1.5 text-[11px] font-medium text-secondary transition-colors hover:border-accent/60 hover:bg-hoverbg hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70 disabled:cursor-default disabled:border-border/35 disabled:bg-transparent disabled:text-muted disabled:opacity-55 disabled:hover:border-border/35 disabled:hover:bg-transparent disabled:hover:text-muted";
-    const iconClass = "text-[10px] text-muted transition-colors group-hover:text-inherit group-disabled:text-muted";
-
-    return (
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button type="button" className={buttonClass} onClick={onCreateToNewTab}>
-                <i className={clsx(makeIconClass("plus", true), iconClass)} aria-hidden="true" />
-                <span className="truncate">Create to New Tab</span>
-            </button>
-            <button
-                type="button"
-                className={buttonClass}
-                disabled={!canCreateToExistingTab}
-                onClick={onCreateToExistingTab}
-            >
-                <i className={clsx(makeIconClass("window-restore", true), iconClass)} aria-hidden="true" />
-                <span className="truncate">Create to Existing Tab...</span>
-            </button>
-        </div>
-    );
+function showSettingsError(label: string, error: unknown) {
+    console.error(`Failed to save ${label.toLowerCase()}:`, error);
+    modalsModel.pushModal("MessageModal", {
+        children: `Failed to save ${label}: ${getErrorMessage(error)}`,
+    });
 }
 
-type AgentWidgetProfile = {
-    name: string;
-    label: string;
-};
+function showNoDetectedAgentError() {
+    modalsModel.pushModal("MessageModal", {
+        children: "No detected agent command is available.",
+    });
+}
 
-const AgentWidgetProfiles: AgentWidgetProfile[] = [
-    { name: "codex", label: "Codex" },
-    { name: "claude", label: "Claude Code" },
-];
+const AgentProfileColors: Record<string, string> = {
+    codex: "#74a7cb",
+    claude: "#cc685c",
+    gemini: "#8e7cc3",
+    opencode: "#e0b956",
+};
 
 function launchTargetSourceLabel(target: AgentLaunchTarget): string {
     switch (target.source) {
@@ -391,18 +423,21 @@ const AgentTargetFloatingWindow = memo(
         targets,
         settings,
         magnified,
-        env,
-        profileName,
-        profileLabel,
+        profileOptions,
+        defaultTargetKey,
+        defaultProfileName,
         canCreateToExistingTab,
+        createToCurrentTab,
         onCreateToNewTab,
         onCreateToExistingTab,
+        onSetDefaultTarget,
+        onSetDefaultProfile,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -410,6 +445,27 @@ const AgentTargetFloatingWindow = memo(
         });
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
+
+        const initialProfileName =
+            defaultProfileName != null && profileOptions.some((profile) => profile.name === defaultProfileName)
+                ? defaultProfileName
+                : (profileOptions[0]?.name ?? "");
+        const [selectedProfile, setSelectedProfile] = useState(initialProfileName);
+        const [selectedIdx, setSelectedIdx] = useState(0);
+
+        useEffect(() => {
+            if (profileOptions.some((profile) => profile.name === selectedProfile)) {
+                return;
+            }
+            setSelectedProfile(initialProfileName);
+        }, [initialProfileName, profileOptions, selectedProfile]);
+
+        const effectiveSelectedProfile = profileOptions.some((profile) => profile.name === selectedProfile)
+            ? selectedProfile
+            : initialProfileName;
+
+        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
+        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         if (!isOpen) {
             return null;
@@ -421,77 +477,226 @@ const AgentTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select context for {profileLabel ?? "Agent"}</div>
-                    <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => {
-                            const blockDef = createAgentBlockDefForTarget(settings, target, profileName);
-                            const createInCurrentTab = () => {
-                                fireAndForget(async () => {
-                                    try {
-                                        await env.createBlock(blockDef, magnified);
-                                        onClose();
-                                    } catch (error) {
-                                        showLaunchError("Agent", error);
-                                    }
-                                });
-                            };
-
-                            return (
-                                <div
-                                    key={target.blockId}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
-                                    onClick={createInCurrentTab}
-                                    onKeyDown={(event) => {
-                                        if (event.currentTarget !== event.target) {
-                                            return;
-                                        }
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.preventDefault();
-                                            createInCurrentTab();
-                                        }
-                                    }}
-                                >
-                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                        {launchTargetSourceLabel(target)}
-                                    </div>
-                                    <div className="text-sm text-foreground">{target.label}</div>
-                                    {!isBlank(target.detail) ? (
-                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                                    ) : null}
-                                    <TargetTabActions
-                                        canCreateToExistingTab={canCreateToExistingTab}
-                                        onCreateToNewTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            fireAndForget(async () => {
-                                                try {
-                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
-                                                    onClose();
-                                                } catch (error) {
-                                                    showLaunchError("Agent", error);
-                                                }
-                                            });
-                                        }}
-                                        onCreateToExistingTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onCreateToExistingTab({
-                                                title: "Create Agent",
-                                                subtitle: target.detail || target.label,
-                                                blockDef,
-                                                magnified: Boolean(magnified),
-                                            });
-                                            onClose();
-                                        }}
-                                    />
-                                </div>
-                            );
-                        })}
+                    {/* header */}
+                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        New Agent
                     </div>
+
+                    <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                        <div className="text-xxs text-muted mb-1.5">Select an agent type</div>
+                        {profileOptions.length === 0 ? (
+                            <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
+                        ) : (
+                            <div className="flex flex-wrap gap-0.5">
+                                {profileOptions.map((profile) => {
+                                    const isSelected = effectiveSelectedProfile === profile.name;
+                                    const isDefault = (defaultProfileName ?? "") === profile.name;
+                                    const color = AgentProfileColors[profile.name] ?? "#888";
+                                    return (
+                                        <div
+                                            key={profile.name}
+                                            className={clsx(
+                                                "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
+                                                isSelected
+                                                    ? "bg-surface"
+                                                    : "hover:bg-surface-soft"
+                                            )}
+                                        >
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l-md text-xs font-medium border-none bg-transparent cursor-pointer"
+                                                onClick={() => setSelectedProfile(profile.name)}
+                                            >
+                                                <span
+                                                    className={clsx(
+                                                        "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
+                                                        isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
+                                                    )}
+                                                    style={{ background: color }}
+                                                />
+                                                <span className={clsx(
+                                                    isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                                )}>
+                                                    {profile.label}
+                                                </span>
+                                            </button>
+                                            <DefaultCheckButton
+                                                checked={isDefault}
+                                                ariaLabel={`Set ${profile.label} as default agent`}
+                                                title="Set default agent"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    onSetDefaultProfile(profile.name);
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* path list */}
+                    <div className="px-1 pb-1">
+                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">
+                            Select a path.
+                        </div>
+                        {targets.length === 0 ? (
+                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                        ) : (
+                            targets.map((target, idx) => {
+                                const isSelected = idx === clampedSelectedIdx;
+                                const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
+                                const canSetDefault = canSetLaunchTargetDefault(target);
+                                return (
+                                    <div
+                                        key={target.blockId}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={clsx(
+                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
+                                        )}
+                                        onClick={() => setSelectedIdx(idx)}
+                                        onPointerEnter={() => setSelectedIdx(idx)}
+                                        onFocus={() => setSelectedIdx(idx)}
+                                        onKeyDown={(event) => {
+                                            if (event.currentTarget !== event.target) return;
+                                            if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                setSelectedIdx(idx);
+                                            }
+                                        }}
+                                    >
+                                        {isSelected && (
+                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                        )}
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-4 shrink-0 text-center text-muted">
+                                                {target.source === "home" ? (
+                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                ) : target.source === "terminal" || target.source === "agent" ? (
+                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                ) : (
+                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-foreground whitespace-nowrap">
+                                                    {target.detail || target.label}
+                                                </div>
+                                                {!target.isLocal ? (
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
+                                                        {target.label}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            {canSetDefault ? (
+                                                <DefaultCheckButton
+                                                    checked={isDefault}
+                                                    ariaLabel="Set default launch target"
+                                                    title="Set default launch target"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onSetDefaultTarget(target);
+                                                    }}
+                                                />
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {selectedTarget != null ? (
+                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
+                                {(selectedTarget.detail || selectedTarget.label)}
+                            </span>
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    if (isBlank(effectiveSelectedProfile)) {
+                                        showNoDetectedAgentError();
+                                        return;
+                                    }
+                                    const blockDef = createAgentBlockDefForTarget(
+                                        settings,
+                                        selectedTarget,
+                                        effectiveSelectedProfile
+                                    );
+                                    fireAndForget(async () => {
+                                        try {
+                                            await createToCurrentTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Agent", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    if (isBlank(effectiveSelectedProfile)) {
+                                        showNoDetectedAgentError();
+                                        return;
+                                    }
+                                    const blockDef = createAgentBlockDefForTarget(
+                                        settings,
+                                        selectedTarget,
+                                        effectiveSelectedProfile
+                                    );
+                                    fireAndForget(async () => {
+                                        try {
+                                            await onCreateToNewTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Agent", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    if (isBlank(effectiveSelectedProfile)) {
+                                        showNoDetectedAgentError();
+                                        return;
+                                    }
+                                    const blockDef = createAgentBlockDefForTarget(
+                                        settings,
+                                        selectedTarget,
+                                        effectiveSelectedProfile
+                                    );
+                                    onCreateToExistingTab({
+                                        title: "Create Agent",
+                                        subtitle: selectedTarget.detail || selectedTarget.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                Existing…
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </FloatingPortal>
         );
@@ -505,17 +710,19 @@ const TerminalTargetFloatingWindow = memo(
         referenceElement,
         targets,
         magnified,
-        env,
         baseBlockDef,
+        defaultTargetKey,
         canCreateToExistingTab,
+        createToCurrentTab,
         onCreateToNewTab,
         onCreateToExistingTab,
+        onSetDefaultTarget,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -523,6 +730,10 @@ const TerminalTargetFloatingWindow = memo(
         });
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
+
+        const [selectedIdx, setSelectedIdx] = useState(0);
+        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
+        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         if (!isOpen) {
             return null;
@@ -534,77 +745,145 @@ const TerminalTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg border border-border rounded-lg shadow-xl p-2 z-50 min-w-[240px] max-w-[320px]"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
                 >
-                    <div className="px-2 py-1 text-xs text-secondary">Select context for Terminal</div>
-                    <div className="max-h-[280px] overflow-y-auto">
-                        {targets.map((target) => {
-                            const blockDef = createTerminalBlockDefForTarget(target, baseBlockDef);
-                            const createInCurrentTab = () => {
-                                fireAndForget(async () => {
-                                    try {
-                                        await env.createBlock(blockDef, magnified);
-                                        onClose();
-                                    } catch (error) {
-                                        showLaunchError("Terminal", error);
-                                    }
-                                });
-                            };
-
-                            return (
-                                <div
-                                    key={target.blockId}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="w-full rounded px-2 py-2 text-left transition-colors hover:bg-hoverbg cursor-pointer"
-                                    onClick={createInCurrentTab}
-                                    onKeyDown={(event) => {
-                                        if (event.currentTarget !== event.target) {
-                                            return;
-                                        }
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.preventDefault();
-                                            createInCurrentTab();
-                                        }
-                                    }}
-                                >
-                                    <div className="text-xxs uppercase tracking-wide text-muted mb-0.5">
-                                        {launchTargetSourceLabel(target)}
-                                    </div>
-                                    <div className="text-sm text-foreground">{target.label}</div>
-                                    {!isBlank(target.detail) ? (
-                                        <div className="text-xxs text-secondary mt-0.5">{target.detail}</div>
-                                    ) : null}
-                                    <TargetTabActions
-                                        canCreateToExistingTab={canCreateToExistingTab}
-                                        onCreateToNewTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            fireAndForget(async () => {
-                                                try {
-                                                    await onCreateToNewTab(blockDef, Boolean(magnified));
-                                                    onClose();
-                                                } catch (error) {
-                                                    showLaunchError("Terminal", error);
-                                                }
-                                            });
-                                        }}
-                                        onCreateToExistingTab={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onCreateToExistingTab({
-                                                title: "Create Terminal",
-                                                subtitle: target.detail || target.label,
-                                                blockDef,
-                                                magnified: Boolean(magnified),
-                                            });
-                                            onClose();
-                                        }}
-                                    />
-                                </div>
-                            );
-                        })}
+                    {/* header */}
+                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        New Terminal
                     </div>
+
+                    {/* path list */}
+                    <div className="px-1 pb-1">
+                        {targets.length === 0 ? (
+                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                        ) : (
+                            targets.map((target, idx) => {
+                                const isSelected = idx === clampedSelectedIdx;
+                                const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
+                                const canSetDefault = canSetLaunchTargetDefault(target);
+                                return (
+                                    <div
+                                        key={target.blockId}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={clsx(
+                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
+                                        )}
+                                        onClick={() => setSelectedIdx(idx)}
+                                        onPointerEnter={() => setSelectedIdx(idx)}
+                                        onFocus={() => setSelectedIdx(idx)}
+                                        onKeyDown={(event) => {
+                                            if (event.currentTarget !== event.target) return;
+                                            if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                setSelectedIdx(idx);
+                                            }
+                                        }}
+                                    >
+                                        {isSelected && (
+                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                        )}
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-4 shrink-0 text-center text-muted">
+                                                {target.source === "home" ? (
+                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                ) : target.source === "terminal" || target.source === "agent" ? (
+                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                ) : (
+                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-foreground whitespace-nowrap">
+                                                    {target.detail || target.label}
+                                                </div>
+                                                {!target.isLocal ? (
+                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
+                                                        {target.label}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            {canSetDefault ? (
+                                                <DefaultCheckButton
+                                                    checked={isDefault}
+                                                    ariaLabel="Set default launch target"
+                                                    title="Set default launch target"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onSetDefaultTarget(target);
+                                                    }}
+                                                />
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {selectedTarget != null ? (
+                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
+                                {(selectedTarget.detail || selectedTarget.label)}
+                            </span>
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    fireAndForget(async () => {
+                                        try {
+                                            await createToCurrentTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Terminal", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                onClick={() => {
+                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    fireAndForget(async () => {
+                                        try {
+                                            await onCreateToNewTab(blockDef, Boolean(magnified));
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Terminal", error);
+                                        }
+                                    });
+                                }}
+                            >
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
+                            </button>
+                            <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                disabled={!canCreateToExistingTab}
+                                onClick={() => {
+                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    onCreateToExistingTab({
+                                        title: "Create Terminal",
+                                        subtitle: selectedTarget.detail || selectedTarget.label,
+                                        blockDef,
+                                        magnified: Boolean(magnified),
+                                    });
+                                    onClose();
+                                }}
+                            >
+                                Existing…
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </FloatingPortal>
         );
@@ -618,7 +897,7 @@ const SettingsFloatingWindow = memo(
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(-2), shift({ padding: 12 })],
+            middleware: [offset(8), shift({ padding: 12 })],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -737,6 +1016,7 @@ SettingsFloatingWindow.displayName = "SettingsFloatingWindow";
 const Widgets = memo(() => {
     const env = useWaveEnv<WidgetsEnv>();
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
+    const settings = fullConfig?.settings;
     const hasConfigErrors = useAtomValue(env.atoms.hasConfigErrors);
     const workspaceId = useAtomValue(env.atoms.workspaceId);
     const workspace = useAtomValue(env.atoms.workspace);
@@ -746,7 +1026,7 @@ const Widgets = memo(() => {
     const containerRef = useRef<HTMLDivElement>(null);
     const measurementRef = useRef<HTMLDivElement>(null);
 
-    const featureWaveAppBuilder = fullConfig?.settings?.["feature:waveappbuilder"] ?? false;
+    const featureWaveAppBuilder = settings?.["feature:waveappbuilder"] ?? false;
     const widgetsMap = fullConfig?.widgets ?? {};
     const filteredWidgets = Object.fromEntries(
         Object.entries(widgetsMap).filter(([_key, widget]) => shouldIncludeWidgetForWorkspace(widget, workspaceId))
@@ -761,25 +1041,76 @@ const Widgets = memo(() => {
     const [agentTargets, setAgentTargets] = useState<AgentLaunchTarget[]>([]);
     const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
     const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
-    const [agentProfileName, setAgentProfileName] = useState<string | undefined>(undefined);
-    const [agentProfileLabel, setAgentProfileLabel] = useState<string | undefined>(undefined);
     const [isTerminalTargetOpen, setIsTerminalTargetOpen] = useState(false);
     const [terminalTargets, setTerminalTargets] = useState<AgentLaunchTarget[]>([]);
     const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
     const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
     const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
+    const agentHoverTimerRef = useRef<number | null>(null);
+    const terminalHoverTimerRef = useRef<number | null>(null);
+    const [agentCommandPaths, setAgentCommandPaths] = useState<Record<string, string | null>>({});
     const [createToExistingTabRequest, setCreateToExistingTabRequest] = useState<CreateToExistingTabRequest | null>(
         null
     );
+
+    const agentProfileOptions = useMemo(
+        () => getAgentProfileOptions(settings, agentCommandPaths),
+        [settings, agentCommandPaths]
+    );
+    const configuredAgentDefaultProfileName = isBlank(settings?.["agent:defaultprofile"])
+        ? undefined
+        : settings!["agent:defaultprofile"]!.trim().toLowerCase();
+    const agentDefaultProfileName = useMemo(() => {
+        if (
+            configuredAgentDefaultProfileName != null &&
+            agentProfileOptions.some((profile) => profile.name === configuredAgentDefaultProfileName)
+        ) {
+            return configuredAgentDefaultProfileName;
+        }
+        return agentProfileOptions[0]?.name;
+    }, [configuredAgentDefaultProfileName, agentProfileOptions]);
+    const agentDefaultTargetKey = currentTab?.meta?.[AgentDefaultLaunchTargetMetaKey];
+    const terminalDefaultTargetKey = currentTab?.meta?.[TerminalDefaultLaunchTargetMetaKey];
     const canCreateToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== currentTabId);
     const sourceTabName = currentTab?.name || "Tab";
+
+    useEffect(() => {
+        const detectionCommands = getAgentProfileDetectionCommands(settings);
+        const entries = Object.entries(detectionCommands);
+        let cancelled = false;
+        if (entries.length === 0) {
+            setAgentCommandPaths({});
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        fireAndForget(async () => {
+            const detectedEntries = await Promise.all(
+                entries.map(async ([profileName, command]) => {
+                    try {
+                        const path = await env.services.client.FindCommand(command);
+                        return [profileName, isBlank(path) ? null : path] as const;
+                    } catch (error) {
+                        console.warn(`Failed to detect agent command ${command}:`, error);
+                        return [profileName, null] as const;
+                    }
+                })
+            );
+            if (!cancelled) {
+                setAgentCommandPaths(Object.fromEntries(detectedEntries));
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [env.services.client, settings]);
 
     const closeAgentTargetSelector = useCallback(() => {
         setIsAgentTargetOpen(false);
         setAgentReferenceElement(null);
         setAgentTargets([]);
-        setAgentProfileName(undefined);
-        setAgentProfileLabel(undefined);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -788,6 +1119,11 @@ const Widgets = memo(() => {
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
     }, []);
+
+    const createBlockInCurrentTab = useCallback(
+        (blockDef: BlockDef, magnified: boolean) => env.createBlock(blockDef, magnified),
+        [env]
+    );
 
     const createBlockInNewTab = useCallback(
         async (blockDef: BlockDef, magnified: boolean) => {
@@ -820,74 +1156,132 @@ const Widgets = memo(() => {
         [env]
     );
 
-    const launchAgentForProfile = useCallback(
-        (widget: WidgetConfigType, referenceElement: HTMLElement, profile?: AgentWidgetProfile) => {
-            const launchTargets = getCurrentTabAgentLaunchTargets();
-            if (launchTargets.length > 1) {
-                setAgentTargets(launchTargets);
-                setAgentWidgetMagnified(Boolean(widget.magnified));
-                setAgentReferenceElement(referenceElement);
-                setAgentProfileName(profile?.name);
-                setAgentProfileLabel(profile?.label);
-                setIsAgentTargetOpen(true);
-                return;
-            }
+    const openCreateToExistingTabModal = useCallback((request: CreateToExistingTabRequest) => {
+        setCreateToExistingTabRequest(request);
+    }, []);
 
-            closeAgentTargetSelector();
-            const blockDef =
-                launchTargets.length === 1
-                    ? createAgentBlockDefForTarget(fullConfig?.settings, launchTargets[0], profile?.name)
-                    : profile == null
-                      ? createDefaultAgentBlockDef(fullConfig?.settings)
-                      : createAgentBlockDefForProfile(profile.name, fullConfig?.settings);
-            fireAndForget(async () => {
-                try {
-                    await env.createBlock(blockDef, widget.magnified);
-                } catch (error) {
-                    console.error("Failed to launch agent:", error);
-                    modalsModel.pushModal("MessageModal", {
-                        children: `Failed to launch Agent: ${getErrorMessage(error)}`,
-                    });
-                }
-            });
-        },
-        [closeAgentTargetSelector, env, fullConfig?.settings]
-    );
+    const closeCreateToExistingTabModal = useCallback(() => {
+        setCreateToExistingTabRequest(null);
+    }, []);
 
-    const launchTerminalWidget = useCallback(
-        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
-            const blockDef = widget.blockdef;
+    const launchTerminalTarget = useCallback(
+        (target: AgentLaunchTarget | null, baseBlockDef: BlockDef | undefined, magnified: boolean) => {
+            const blockDef = target == null ? baseBlockDef : createTerminalBlockDefForTarget(target, baseBlockDef);
             if (blockDef == null) {
                 console.warn("Terminal widget has no blockdef");
                 return;
             }
-
-            closeAgentTargetSelector();
-            const launchTargets = getCurrentTabTerminalLaunchTargets();
-            if (launchTargets.length > 1) {
-                setTerminalTargets(launchTargets);
-                setTerminalWidgetMagnified(Boolean(widget.magnified));
-                setTerminalReferenceElement(referenceElement);
-                setTerminalBaseBlockDef(blockDef);
-                setIsTerminalTargetOpen(true);
-                return;
-            }
-
-            closeTerminalTargetSelector();
-            const terminalBlockDef =
-                launchTargets.length === 1 ? createTerminalBlockDefForTarget(launchTargets[0], blockDef) : blockDef;
             fireAndForget(async () => {
                 try {
-                    await env.createBlock(terminalBlockDef, widget.magnified);
+                    await createBlockInCurrentTab(blockDef, magnified);
                 } catch (error) {
-                    console.error("Failed to launch terminal:", error);
-                    modalsModel.pushModal("MessageModal", {
-                        children: `Failed to launch Terminal: ${getErrorMessage(error)}`,
-                    });
+                    showLaunchError("Terminal", error);
                 }
             });
         },
-        [closeAgentTargetSelector, closeTerminalTargetSelector, env]
+        [createBlockInCurrentTab]
+    );
+
+    const launchAgentTarget = useCallback(
+        (target: AgentLaunchTarget | null, magnified: boolean, profileName?: string) => {
+            const selectedProfileName = profileName ?? agentDefaultProfileName;
+            if (selectedProfileName == null) {
+                showNoDetectedAgentError();
+                return;
+            }
+            const blockDef =
+                target == null
+                    ? createAgentBlockDefForProfile(selectedProfileName, settings)
+                    : createAgentBlockDefForTarget(settings, target, selectedProfileName);
+            fireAndForget(async () => {
+                try {
+                    await createBlockInCurrentTab(blockDef, magnified);
+                } catch (error) {
+                    showLaunchError("Agent", error);
+                }
+            });
+        },
+        [agentDefaultProfileName, createBlockInCurrentTab, settings]
+    );
+
+    const setDefaultAgentTarget = useCallback(
+        (target: AgentLaunchTarget) => {
+            if (!canSetLaunchTargetDefault(target)) {
+                return;
+            }
+            const targetKey = getLaunchTargetDefaultKey(target);
+            const isCurrentlyDefault = targetKey === agentDefaultTargetKey;
+            fireAndForget(async () => {
+                try {
+                    await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
+                        [AgentDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
+                    } as MetaType);
+                } catch (error) {
+                    showSettingsError("Agent default target", error);
+                }
+            });
+        },
+        [currentTabId, env, agentDefaultTargetKey]
+    );
+
+    const setDefaultTerminalTarget = useCallback(
+        (target: AgentLaunchTarget) => {
+            if (!canSetLaunchTargetDefault(target)) {
+                return;
+            }
+            const targetKey = getLaunchTargetDefaultKey(target);
+            const isCurrentlyDefault = targetKey === terminalDefaultTargetKey;
+            fireAndForget(async () => {
+                try {
+                    await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
+                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
+                    } as MetaType);
+                } catch (error) {
+                    showSettingsError("Terminal default target", error);
+                }
+            });
+        },
+        [currentTabId, env, terminalDefaultTargetKey]
+    );
+
+    const setDefaultAgentProfile = useCallback(
+        (profileName: string) => {
+            fireAndForget(async () => {
+                try {
+                    await env.rpc.SetConfigCommand(TabRpcClient, {
+                        "agent:defaultprofile": profileName,
+                    } as SettingsType);
+                } catch (error) {
+                    showSettingsError("Agent default profile", error);
+                }
+            });
+        },
+        [env]
+    );
+
+    const openAgentTargetPopup = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            closeTerminalTargetSelector();
+            const launchTargets = getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets());
+            setAgentTargets(launchTargets);
+            setAgentWidgetMagnified(Boolean(widget.magnified));
+            setAgentReferenceElement(referenceElement);
+            setIsAgentTargetOpen(true);
+        },
+        [closeTerminalTargetSelector]
+    );
+
+    const openTerminalTargetPopup = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            closeAgentTargetSelector();
+            const launchTargets = getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets());
+            setTerminalTargets(launchTargets);
+            setTerminalWidgetMagnified(Boolean(widget.magnified));
+            setTerminalReferenceElement(referenceElement);
+            setTerminalBaseBlockDef(widget.blockdef);
+            setIsTerminalTargetOpen(true);
+        },
+        [closeAgentTargetSelector]
     );
 
     const handleWidgetSelect = useCallback(
@@ -898,46 +1292,122 @@ const Widgets = memo(() => {
                 return;
             }
 
-            if (widgetId === DefaultTerminalWidgetId) {
-                launchTerminalWidget(widget, e.currentTarget);
-                return;
-            }
+            const shouldCreateDefault = isAgentTargetOpen || isTerminalTargetOpen;
 
-            if (widgetId !== DefaultAgentWidgetId) {
-                closeAgentTargetSelector();
-                closeTerminalTargetSelector();
-                const blockDef = widget.blockdef;
-                if (blockDef == null) {
-                    console.warn(`Widget ${widgetId} has no blockdef`);
+            if (widgetId === DefaultTerminalWidgetId) {
+                const launchTargets = getCurrentTabTerminalLaunchTargets();
+                const defaultTarget = resolveDefaultLaunchTarget(launchTargets, terminalDefaultTargetKey);
+                if (!shouldCreateDefault) {
+                    openTerminalTargetPopup(widget, e.currentTarget);
                     return;
                 }
-                env.createBlock(blockDef, widget.magnified);
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                launchTerminalTarget(defaultTarget, widget.blockdef, Boolean(widget.magnified));
                 return;
             }
 
+            if (widgetId === DefaultAgentWidgetId) {
+                const launchTargets = getCurrentTabAgentLaunchTargets();
+                const defaultTarget = resolveDefaultLaunchTarget(launchTargets, agentDefaultTargetKey);
+                if (agentProfileOptions.length === 0) {
+                    closeAgentTargetSelector();
+                    closeTerminalTargetSelector();
+                    showNoDetectedAgentError();
+                    return;
+                }
+                if (!shouldCreateDefault) {
+                    openAgentTargetPopup(widget, e.currentTarget);
+                    return;
+                }
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                launchAgentTarget(defaultTarget, Boolean(widget.magnified));
+                return;
+            }
+
+            closeAgentTargetSelector();
             closeTerminalTargetSelector();
-            launchAgentForProfile(widget, e.currentTarget);
+            const blockDef = widget.blockdef;
+            if (blockDef == null) {
+                console.warn(`Widget ${widgetId} has no blockdef`);
+                return;
+            }
+            fireAndForget(async () => {
+                await env.createBlock(blockDef, widget.magnified);
+            });
         },
-        [closeAgentTargetSelector, closeTerminalTargetSelector, env, launchAgentForProfile, launchTerminalWidget]
+        [
+            agentDefaultTargetKey,
+            agentProfileOptions.length,
+            closeAgentTargetSelector,
+            closeTerminalTargetSelector,
+            env,
+            isAgentTargetOpen,
+            isTerminalTargetOpen,
+            launchAgentTarget,
+            launchTerminalTarget,
+            openAgentTargetPopup,
+            openTerminalTargetPopup,
+            terminalDefaultTargetKey,
+        ]
     );
 
     const handleWidgetContextMenu = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
-            if (widgetId !== DefaultAgentWidgetId) {
+            if (widgetId === DefaultTerminalWidgetId) {
+                e.preventDefault();
+                e.stopPropagation();
+                openTerminalTargetPopup(widget, e.currentTarget);
                 return;
             }
-            e.preventDefault();
-            e.stopPropagation();
-            closeAgentTargetSelector();
-            closeTerminalTargetSelector();
-            const referenceElement = e.currentTarget;
-            const menu: ContextMenuItem[] = AgentWidgetProfiles.map((profile) => ({
-                label: profile.label,
-                click: () => launchAgentForProfile(widget, referenceElement, profile),
-            }));
-            env.showContextMenu(menu, e);
+
+            if (widgetId === DefaultAgentWidgetId) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (agentProfileOptions.length === 0) {
+                    showNoDetectedAgentError();
+                    return;
+                }
+                openAgentTargetPopup(widget, e.currentTarget);
+                return;
+            }
+
+            const widgetAny = widget as any;
+            if (widgetAny._defaultContextMenu == null) {
+                return;
+            }
+            env.showContextMenu(widgetAny._defaultContextMenu, e);
         },
-        [closeAgentTargetSelector, closeTerminalTargetSelector, env, launchAgentForProfile]
+        [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup, env]
+    );
+
+    const handleWidgetHover = useCallback(
+        (widgetId: string, widget: WidgetConfigType, e: React.PointerEvent<HTMLDivElement>) => {
+            const referenceElement = e.currentTarget;
+
+            if (widgetId === DefaultTerminalWidgetId) {
+                if (terminalHoverTimerRef.current != null) {
+                    window.clearTimeout(terminalHoverTimerRef.current);
+                }
+                terminalHoverTimerRef.current = window.setTimeout(() => {
+                    openTerminalTargetPopup(widget, referenceElement);
+                }, 150);
+                return;
+            }
+
+            if (widgetId === DefaultAgentWidgetId) {
+                if (agentHoverTimerRef.current != null) {
+                    window.clearTimeout(agentHoverTimerRef.current);
+                }
+                agentHoverTimerRef.current = window.setTimeout(() => {
+                    if (agentProfileOptions.length > 0) {
+                        openAgentTargetPopup(widget, referenceElement);
+                    }
+                }, 150);
+            }
+        },
+        [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup]
     );
 
     const checkModeNeeded = useCallback(() => {
@@ -985,6 +1455,17 @@ const Widgets = memo(() => {
         checkModeNeeded();
     }, [widgets, checkModeNeeded]);
 
+    useEffect(() => {
+        return () => {
+            if (agentHoverTimerRef.current != null) {
+                window.clearTimeout(agentHoverTimerRef.current);
+            }
+            if (terminalHoverTimerRef.current != null) {
+                window.clearTimeout(terminalHoverTimerRef.current);
+            }
+        };
+    }, []);
+
     const handleWidgetsBarContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         const menu: ContextMenuItem[] = [
@@ -1006,14 +1487,6 @@ const Widgets = memo(() => {
         env.showContextMenu(menu, e);
     };
 
-    const openCreateToExistingTabModal = useCallback((request: CreateToExistingTabRequest) => {
-        setCreateToExistingTabRequest(request);
-    }, []);
-
-    const closeCreateToExistingTabModal = useCallback(() => {
-        setCreateToExistingTabRequest(null);
-    }, []);
-
     return (
         <>
             <div
@@ -1032,6 +1505,7 @@ const Widgets = memo(() => {
                                     mode={mode}
                                     onWidgetSelect={handleWidgetSelect}
                                     onWidgetContextMenu={handleWidgetContextMenu}
+                                    onWidgetHover={handleWidgetHover}
                                 />
                             ))}
                         </div>
@@ -1080,6 +1554,7 @@ const Widgets = memo(() => {
                                 mode={mode}
                                 onWidgetSelect={handleWidgetSelect}
                                 onWidgetContextMenu={handleWidgetContextMenu}
+                                onWidgetHover={handleWidgetHover}
                             />
                         ))}
                         <div className="flex-grow" />
@@ -1162,14 +1637,17 @@ const Widgets = memo(() => {
                     onClose={closeAgentTargetSelector}
                     referenceElement={agentReferenceElement}
                     targets={agentTargets}
-                    settings={fullConfig?.settings}
+                    settings={settings}
                     magnified={agentWidgetMagnified}
-                    env={env}
-                    profileName={agentProfileName}
-                    profileLabel={agentProfileLabel}
+                    profileOptions={agentProfileOptions}
+                    defaultTargetKey={agentDefaultTargetKey}
+                    defaultProfileName={agentDefaultProfileName}
                     canCreateToExistingTab={canCreateToExistingTab}
+                    createToCurrentTab={createBlockInCurrentTab}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
+                    onSetDefaultTarget={setDefaultAgentTarget}
+                    onSetDefaultProfile={setDefaultAgentProfile}
                 />
             )}
             {terminalReferenceElement != null && (
@@ -1178,12 +1656,15 @@ const Widgets = memo(() => {
                     onClose={closeTerminalTargetSelector}
                     referenceElement={terminalReferenceElement}
                     targets={terminalTargets}
+                    settings={settings}
                     magnified={terminalWidgetMagnified}
-                    env={env}
                     baseBlockDef={terminalBaseBlockDef}
+                    defaultTargetKey={terminalDefaultTargetKey}
                     canCreateToExistingTab={canCreateToExistingTab}
+                    createToCurrentTab={createBlockInCurrentTab}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
+                    onSetDefaultTarget={setDefaultTerminalTarget}
                 />
             )}
             {createToExistingTabRequest != null ? (
@@ -1198,7 +1679,6 @@ const Widgets = memo(() => {
                     onSelect={(targetTabId) => createBlockInExistingTab(targetTabId, createToExistingTabRequest)}
                 />
             ) : null}
-
             <div
                 ref={measurementRef}
                 className="flex flex-col w-12 py-1 -ml-1 select-none absolute -z-10 opacity-0 pointer-events-none"
@@ -1211,6 +1691,7 @@ const Widgets = memo(() => {
                         mode="normal"
                         onWidgetSelect={handleWidgetSelect}
                         onWidgetContextMenu={handleWidgetContextMenu}
+                        onWidgetHover={handleWidgetHover}
                     />
                 ))}
                 <div className="flex-grow" />

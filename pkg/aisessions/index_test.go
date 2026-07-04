@@ -51,7 +51,7 @@ func TestManagerIndexesSearchesAndMarks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := manager.List(context.Background(), ListOptions{MarkedOnly: true, Limit: 10})
+	list, err := manager.List(context.Background(), ListOptions{Marked: "starred", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

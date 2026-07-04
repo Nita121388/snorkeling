@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Tag chips — before / after</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #222222;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,0.12);
+    --border: rgba(255,255,255,0.16);
+    --border-soft: rgba(255,255,255,0.08);
+    --panel: #262826;
+    --hover: rgba(255,255,255,0.06);
+    --chipsurface: rgba(255,255,255,0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--primary); font-family: "Inter", -apple-system, "Segoe UI", sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .wrap { padding: 28px 32px; display: flex; flex-direction: column; gap: 26px; width: 760px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .label .tag-cur { color: var(--muted); }
+  .label .tag-new { color: var(--accent); }
+  .panel { background: var(--bg); border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
+  .panel-head { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .panel-head .badge { font-size: 10px; padding: 1px 7px; border-radius: 999px; }
+  .badge-cur { background: rgba(255,255,255,0.06); color: var(--muted); }
+  .badge-new { background: var(--accent-soft); color: var(--accent); }
+
+  /* ===== BEFORE: current tag styles ===== */
+  .cur-row { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+  .cur-row:last-child { border-bottom: none; }
+  .cur-title { font-size: 13px; font-weight: 500; }
+  .cur-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .cur-chip { display: inline-flex; height: 20px; max-width: 100%; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-size: 10px; line-height: 1; background: rgba(31,33,31,0.4); color: var(--secondary); }
+  .cur-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .cur-chip .x { font-size: 9px; }
+
+  .cur-filter { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px; }
+  .cur-fchip { display: inline-flex; height: 20px; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-size: 10px; line-height: 1; color: var(--secondary); cursor: pointer; }
+  .cur-fchip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .cur-fchip .cnt { font-size: 9px; }
+
+  /* ===== AFTER: proposed tag styles ===== */
+  .new-row { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+  .new-row:last-child { border-bottom: none; }
+  .new-title { font-size: 13px; font-weight: 500; }
+  .new-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .new-chip { display: inline-flex; height: 24px; max-width: 100%; align-items: center; gap: 4px; border: none; border-radius: 6px; padding: 0 8px; font-size: 11px; line-height: 1; background: var(--chipsurface); color: var(--secondary); cursor: pointer; transition: background .12s, color .12s; }
+  .new-chip:hover { background: var(--hover); color: var(--primary); }
+  .new-chip.on { background: var(--accent-soft); color: var(--accent); }
+  .new-chip .hash { opacity: .5; }
+  .new-chip .x { font-size: 9px; opacity: .55; }
+  .new-chip:hover .x { opacity: 1; }
+
+  .new-filter { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px; align-items: center; }
+  .new-fchip { display: inline-flex; height: 24px; align-items: center; gap: 5px; border: none; border-radius: 6px; padding: 0 8px 0 8px; font-size: 11px; line-height: 1; background: var(--chipsurface); color: var(--secondary); cursor: pointer; transition: background .12s, color .12s; }
+  .new-fchip:hover { background: var(--hover); color: var(--primary); }
+  .new-fchip.on { background: var(--accent-soft); color: var(--accent); }
+  .new-fchip .hash { opacity: .5; }
+  .new-fchip .cnt { font-size: 10px; opacity: .6; }
+  .new-fchip .cnt-pill { font-size: 9px; background: rgba(255,255,255,0.1); color: inherit; padding: 1px 5px; border-radius: 999px; opacity: .85; }
+
+  .note { font-size: 11px; color: var(--muted); line-height: 1.55; margin-top: 4px; }
+  .note b { color: var(--accent); }
+
+  .row-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+  .row-meta .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .col-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+  .col-h.cur { color: var(--muted); }
+  .col-h.new { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== Row context: tags on a session row ===== -->
+  <div>
+    <div class="label"><span class="tag-cur">BEFORE</span><span style="opacity:.4">→</span><span class="tag-new">AFTER</span> &nbsp;tags on a session row</div>
+    <div class="compare">
+      <div>
+        <div class="col-h cur">Current</div>
+        <div class="panel">
+          <div class="cur-row">
+            <div class="cur-title">Refactor session restore flow</div>
+            <div class="row-meta"><span class="dot"></span>claude · 5m ago · 24 msgs</div>
+            <div class="cur-chips">
+              <span class="cur-chip on">#refactor</span>
+              <span class="cur-chip">#windows</span>
+              <span class="cur-chip">#needs-test</span>
+              <span class="cur-chip">#paths</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="col-h new">Proposed</div>
+        <div class="panel">
+          <div class="new-row">
+            <div class="new-title">Refactor session restore flow</div>
+            <div class="row-meta"><span class="dot"></span>claude · 5m ago · 24 msgs</div>
+            <div class="new-chips">
+              <span class="new-chip on"><span class="hash">#</span>refactor</span>
+              <span class="new-chip"><span class="hash">#</span>windows</span>
+              <span class="new-chip"><span class="hash">#</span>needs-test</span>
+              <span class="new-chip"><span class="hash">#</span>paths</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">Idle 无边框 + 极淡底色 <b>bg-white/[0.04]</b>；<b>#</b> 降为 <b>opacity-50</b> 辅助；高度 20→24；圆角 4→6；active 靠 <b>accent 底色</b>而非描边。</div>
+  </div>
+
+  <!-- ===== Removable tags (note editor) ===== -->
+  <div>
+    <div class="label"><span class="tag-cur">BEFORE</span><span style="opacity:.4">→</span><span class="tag-new">AFTER</span> &nbsp;removable tags (note editor)</div>
+    <div class="compare">
+      <div>
+        <div class="col-h cur">Current</div>
+        <div class="panel">
+          <div class="cur-row">
+            <div class="cur-chips">
+              <span class="cur-chip on">#refactor <i class="fa-solid fa-xmark x"></i></span>
+              <span class="cur-chip">#windows <i class="fa-solid fa-xmark x"></i></span>
+              <span class="cur-chip">#needs-test <i class="fa-solid fa-xmark x"></i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="col-h new">Proposed</div>
+        <div class="panel">
+          <div class="new-row">
+            <div class="new-chips">
+              <span class="new-chip on"><span class="hash">#</span>refactor <i class="fa-solid fa-xmark x"></i></span>
+              <span class="new-chip"><span class="hash">#</span>windows <i class="fa-solid fa-xmark x"></i></span>
+              <span class="new-chip"><span class="hash">#</span>needs-test <i class="fa-solid fa-xmark x"></i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">x 图标默认弱化 <b>opacity-55</b>，hover 整个 chip 时变实 —— 移除入口不抢眼但好点。</div>
+  </div>
+
+  <!-- ===== Filter tags (with counts) ===== -->
+  <div>
+    <div class="label"><span class="tag-cur">BEFORE</span><span style="opacity:.4">→</span><span class="tag-new">AFTER</span> &nbsp;filter chips with counts</div>
+    <div class="compare">
+      <div>
+        <div class="col-h cur">Current</div>
+        <div class="panel">
+          <div class="cur-filter">
+            <span class="cur-fchip on">#refactor <span class="cnt">3</span></span>
+            <span class="cur-fchip">#windows <span class="cnt">5</span></span>
+            <span class="cur-fchip">#needs-test <span class="cnt">2</span></span>
+            <span class="cur-fchip">#paths <span class="cnt">7</span></span>
+            <span class="cur-fchip">#bug <span class="cnt">11</span></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="col-h new">Proposed · pill count</div>
+        <div class="panel">
+          <div class="new-filter">
+            <span class="new-fchip on"><span class="hash">#</span>refactor <span class="cnt-pill num">3</span></span>
+            <span class="new-fchip"><span class="hash">#</span>windows <span class="cnt-pill num">5</span></span>
+            <span class="new-fchip"><span class="hash">#</span>needs-test <span class="cnt-pill num">2</span></span>
+            <span class="new-fchip"><span class="hash">#</span>paths <span class="cnt-pill num">7</span></span>
+            <span class="new-fchip"><span class="hash">#</span>bug <span class="cnt-pill num">11</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">计数做成 <b>小药丸</b>（bg-white/10, 圆角 999）比纯 9px 数字更像"数量徽标"，跟标签名区分更强；仍带 <b>tabular-nums</b>。</div>
+  </div>
+
+  <!-- ===== Filter alt: inline count ===== -->
+  <div>
+    <div class="label"><span class="tag-new">ALT</span> &nbsp;filter chips — inline count variant</div>
+    <div class="panel">
+      <div class="new-filter">
+        <span class="new-fchip on"><span class="hash">#</span>refactor<span class="cnt">·3</span></span>
+        <span class="new-fchip"><span class="hash">#</span>windows<span class="cnt">·5</span></span>
+        <span class="new-fchip"><span class="hash">#</span>needs-test<span class="cnt">·2</span></span>
+        <span class="new-fchip"><span class="hash">#</span>paths<span class="cnt">·7</span></span>
+        <span class="new-fchip"><span class="hash">#</span>bug<span class="cnt">·11</span></span>
+      </div>
+    </div>
+    <div class="note">如果你觉得药丸太重，就用 <b>·数字</b> 内联弱化版 —— 更轻、更省空间。</div>
+  </div>
+
+</div>
+</body>
+</html>

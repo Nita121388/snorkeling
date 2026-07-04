@@ -409,7 +409,10 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if opts.Before != 0 && summarySortTime(summary) > opts.Before {
 		return false
 	}
-	if opts.MarkedOnly && !summary.Marked {
+	if opts.Marked == "starred" && !summary.Marked {
+		return false
+	}
+	if opts.Marked == "unstarred" && summary.Marked {
 		return false
 	}
 	if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CopyTextButton — 弹窗溢出问题设计与方案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #222222;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,0.12);
+    --border: rgba(255,255,255,0.16);
+    --border-soft: rgba(255,255,255,0.08);
+    --panel: #262826;
+    --hover: rgba(255,255,255,0.06);
+    --surface: rgba(255,255,255,0.04);
+    --shadow: 0 8px 32px rgba(0,0,0,0.5);
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #1a1a1a;
+    color: var(--primary);
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  h1 { font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--primary); }
+  h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--primary); }
+  h3 { font-size: 13px; font-weight: 600; margin: 20px 0 8px; color: var(--accent); }
+  p  { font-size: 12px; color: var(--secondary); line-height: 1.6; margin-bottom: 12px; }
+  code { font-size: 11px; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; color: var(--primary); }
+
+  .page { max-width: 960px; width: 100%; }
+
+  /* ===== Scenario cards ===== */
+  .scenario { margin-bottom: 32px; }
+
+  .demo-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+  }
+
+  .inline-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+
+  /* ===== The button (copy-target style) ===== */
+  .copy-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    padding: 5px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.035);
+    color: var(--primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+    font-size: 12px;
+    gap: 6px;
+  }
+  .copy-btn:hover {
+    border-color: var(--border);
+    background: var(--hover);
+  }
+  .copy-btn .val {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .copy-btn i {
+    font-size: 10px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* ===== Tooltip / Popup (current: overflowing) ===== */
+  .popup-current {
+    position: relative;
+    display: inline-block;
+  }
+  .popup-current .tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #3a3a3a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--secondary);
+    /* Current behavior: no max-width/max-height, text wraps naturally */
+    max-width: none;
+    max-height: none;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  /* ===== Popup: solution A — scrollable fixed max-height ===== */
+  .popup-a {
+    position: relative;
+    display: inline-block;
+  }
+  .popup-a .tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #3a3a3a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--secondary);
+    word-break: break-all;
+    /* Solution A: capped height, scrollable */
+    max-width: 480px;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .popup-a .tip::-webkit-scrollbar { width: 4px; }
+  .popup-a .tip::-webkit-scrollbar-track { background: transparent; }
+  .popup-a .tip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ===== Popup: solution B — max-lines with ellipsis + expand ===== */
+  .popup-b {
+    position: relative;
+    display: inline-block;
+  }
+  .popup-b .tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #3a3a3a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--secondary);
+    word-break: break-all;
+    /* Solution B: line-clamp */
+    max-width: 480px;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    cursor: pointer;
+    white-space: pre-wrap;
+  }
+  .popup-b .tip.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .popup-b .tip .expand-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* ===== Popup: solution C — auto-fit with viewport-aware ===== */
+  .popup-c {
+    position: relative;
+    display: inline-block;
+  }
+  .popup-c .tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #3a3a3a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    /* Solution C: constrained with integrated scroll indicator */
+    max-width: min(520px, calc(100vw - 48px));
+    max-height: 260px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .popup-c .tip::-webkit-scrollbar { width: 5px; }
+  .popup-c .tip::-webkit-scrollbar-track { background: transparent; }
+  .popup-c .tip::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  .popup-c .tip::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+  /* Soft gradient fade at bottom when scrollable */
+  .popup-c .tip.scroll-hint {
+    mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+  }
+
+  /* ===== Comparison table ===== */
+  .comparison {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+  .comparison th,
+  .comparison td {
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    text-align: left;
+    vertical-align: top;
+  }
+  .comparison th {
+    background: rgba(255,255,255,0.04);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--secondary);
+    font-weight: 600;
+  }
+  .comparison td { color: var(--secondary); line-height: 1.5; }
+  .comparison td:first-child { font-weight: 500; color: var(--primary); }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .badge.good { background: rgba(88,193,66,0.12); color: var(--accent); }
+  .badge.ok   { background: rgba(224,185,86,0.12); color: var(--warning); }
+  .badge.bad  { background: rgba(229,77,46,0.12); color: #e54d2e; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    background: var(--surface);
+    color: var(--secondary);
+  }
+
+  /* Code block */
+  .code-block {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-family: "Hack", "Cascadia Code", monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--primary);
+    overflow-x: auto;
+    white-space: pre;
+    margin: 8px 0;
+  }
+  .code-block .hl { color: var(--accent); }
+  .code-block .cm { color: var(--muted); }
+  .code-block .str { color: #e0b956; }
+  .code-block .kw { color: #74a7cb; }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border-soft);
+    margin: 28px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <h1>🧩 CopyTextButton / Tooltip 弹窗溢出问题</h1>
+  <p>
+    <code>CopyTextButton</code> 组件使用 <code>Tooltip</code> 展示长文本（如 project directory、session file path）。
+    当前弹窗没有 <code>max-height</code>、<code>max-width</code> 和滚动限制，当文本内容过多时，弹窗超出视口边界，内容不可见。
+  </p>
+
+  <hr class="section-divider" />
+
+  <!-- 1. Current behavior -->
+  <div class="scenario">
+    <h2>❌ 现状：无限制，内容溢出</h2>
+    <div class="demo-row">
+      <span class="inline-label">Project directory</span>
+      <div class="popup-current">
+        <div class="copy-btn">
+          <span class="val">C:/Users/chemclin/projects/snorkeling/very/deeply/nested/subdirectory/that/goes/on/forever</span>
+          <i class="fa-sharp fa-regular fa-copy"></i>
+        </div>
+        <div class="tip">
+          C:/Users/chemclin/projects/snorkeling/very/deeply/nested/subdirectory/that/goes/on/forever
+          <div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-size:10px;text-transform:uppercase;color:var(--muted);">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>
+            Click to copy
+          </div>
+        </div>
+      </div>
+      <span class="badge bad">溢出</span>
+    </div>
+    <p style="margin-top:8px;">
+      文本太长时，tooltip 弹窗超出屏幕底边/右边，用户无法完整阅读，也无法滚动。
+    </p>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- 2. Solution A -->
+  <div class="scenario">
+    <h2>✅ 方案 A：固定最大高度 + 滚动</h2>
+    <div class="demo-row">
+      <span class="inline-label">Session file path</span>
+      <div class="popup-a">
+        <div class="copy-btn">
+          <span class="val">C:/Users/chemclin/.config/waveterm/sessions/codex/claude_code_session_2026-06-30T14-23-45-abc123def456.json</span>
+          <i class="fa-sharp fa-regular fa-copy"></i>
+        </div>
+        <div class="tip">
+          2026-06-30 14:23
+          <div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-size:10px;text-transform:uppercase;color:var(--muted);">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>
+            Click to copy
+          </div>
+        </div>
+      </div>
+      <span class="badge good">推荐</span>
+    </div>
+    <p>
+      弹窗固定 <code>max-height: 200px; overflow-y: auto</code>，超长内容可滚动查看。
+      优点：实现简单，改动最小，兼容性好。缺点：用户需要滚动才能看完。
+    </p>
+    <div class="code-block">
+<span class="cm">&lt;!-- Tooltip content --&gt;</span>
+&lt;div className="<span class="hl">max-w-[480px] max-h-[200px] overflow-y-auto</span> whitespace-pre-wrap break-words text-[11px] leading-4"&gt;
+    &lt;div&gt;{text}&lt;/div&gt;
+    &lt;div&gt;...&lt;/div&gt;
+&lt;/div&gt;
+    </div>
+  </div>
+
+  <!-- 3. Solution B -->
+  <div class="scenario">
+    <h2>✅ 方案 B：行数截断 + 点击展开</h2>
+    <div class="demo-row">
+      <span class="inline-label">Project directory</span>
+      <div class="popup-b">
+        <div class="copy-btn">
+          <span class="val">C:/Users/chemclin/projects/snorkeling/very/deeply/nested/subdirectory/that/goes/on/forever/and/ever/and/ever/and/ever</span>
+          <i class="fa-sharp fa-regular fa-copy"></i>
+        </div>
+        <div class="tip">
+          C:/Users/chemclin/projects/snorkeling/very/deeply/nested/subdirectory/that/goes/on/forever/and/ever/and/ever/and/ever
+          <span class="expand-hint">Click to expand</span>
+          <div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-size:10px;text-transform:uppercase;color:var(--muted);">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>
+            Click to copy
+          </div>
+        </div>
+      </div>
+      <span class="badge ok">备选</span>
+    </div>
+    <p>
+      用 <code>-webkit-line-clamp: 5</code> 截断，点击弹窗展开全部内容。
+      优点：默认不占空间，一目了然。缺点：交互更复杂，需处理点击冲突（点击弹窗 vs 点击按钮）。
+    </p>
+  </div>
+
+  <!-- 4. Solution C -->
+  <div class="scenario">
+    <h2>✅ 方案 C：视口自适应 + 渐变滚动提示</h2>
+    <div class="demo-row">
+      <span class="inline-label">Long file path</span>
+      <div class="popup-c">
+        <div class="copy-btn">
+          <span class="val">C:/Users/chemclin/.config/waveterm/sessions/claude/claude_code_session_2026-07-01T09-15-33-xyz789abcdef_session_archive_very_long_name_that_wraps_multiple_lines_in_the_tooltip_because_it_has_no_spaces_or_breaks</span>
+          <i class="fa-sharp fa-regular fa-copy"></i>
+        </div>
+        <div class="tip scroll-hint">
+          C:/Users/chemclin/.config/waveterm/sessions/claude/claude_code_session_2026-07-01T09-15-33-xyz789abcdef_session_archive_very_long_name_that_wraps_multiple_lines_in_the_tooltip_because_it_has_no_spaces_or_breaks
+          <div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-size:10px;text-transform:uppercase;color:var(--muted);">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>
+            Click to copy
+          </div>
+        </div>
+      </div>
+      <span class="badge ok">增强</span>
+    </div>
+    <p>
+      使用 <code>max-width: min(520px, calc(100vw - 48px))</code> 自适应视口宽度；
+      <code>max-height: 260px; overflow-y: auto</code> 限制高度；
+      通过 <code>mask-image</code> 渐变在底部提示"还有更多内容"。
+    </p>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Comparison -->
+  <h2>📊 方案对比</h2>
+  <table class="comparison">
+    <thead>
+      <tr>
+        <th style="width:16%">方案</th>
+        <th style="width:14%">实现成本</th>
+        <th style="width:14%">用户体验</th>
+        <th style="width:14%">可发现性</th>
+        <th style="width:42%">说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>A：固定高度+滚动</td>
+        <td><span class="badge good">低</span></td>
+        <td><span class="badge good">好</span></td>
+        <td><span class="badge ok">中</span></td>
+        <td>
+          仅需在 <code>Tooltip</code> content 上加 <code>max-h-[200px] overflow-y-auto</code>。
+          一次改动全局生效。但用户需滚动才能看完，滚动条可见性略弱。
+        </td>
+      </tr>
+      <tr>
+        <td>B：行数截断+展开</td>
+        <td><span class="badge ok">中</span></td>
+        <td><span class="badge ok">中</span></td>
+        <td><span class="badge bad">低</span></td>
+        <td>
+          需要 state 管理展开状态，与 <code>Tooltip</code> 现有 forceOpen/hideOnClick 逻辑有交互风险。
+          点击弹窗展开 vs 点击按钮复制可能冲突。
+        </td>
+      </tr>
+      <tr>
+        <td>C：视口自适应</td>
+        <td><span class="badge ok">低</span></td>
+        <td><span class="badge good">好</span></td>
+        <td><span class="badge good">好</span></td>
+        <td>
+          基于方案 A 增强，加上 <code>min()</code> 做视口自适应宽度、
+          通过 CSS <code>mask-image</code> 做渐隐滚动提示。
+          额外成本极低。
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr class="section-divider" />
+
+  <!-- Recommended implementation diff -->
+  <h2>🔧 推荐实现（方案 A + C 结合）</h2>
+  <p>改动范围：<code>frontend/app/element/tooltip.tsx</code> 的 Tooltip popup 样式</p>
+
+  <div class="code-block">
+<span class="cm">// tooltip.tsx — TooltipInner floating div 样式修改</span>
+
+<span class="cm">/* 当前 */</span>
+className={cn(
+    "<span style="color:#e54d2e">bg-zinc-800 border border-border rounded-md px-2 py-1 text-xs text-foreground shadow-xl z-50</span>"
+)}
+
+<span class="cm">/* 改为 */</span>
+className={cn(
+    "<span class="hl">bg-zinc-800 border border-border rounded-md px-2 py-1 text-xs text-foreground shadow-xl z-50
+    max-w-[min(520px,calc(100vw-48px))] max-h-[260px] overflow-y-auto whitespace-pre-wrap break-words</span>"
+)}
+  </div>
+
+  <p>
+    同时，<code>CopyTextButton</code> 的 tooltip content 中 <code>max-w-[420px]</code> 可移除（交给 Tooltip 统一控制）。
+    如果需要 scrollbar 样式定制，增加 <code>scrollbar-thin scrollbar-thumb-white/15</code> 类。
+  </p>
+
+  <hr class="section-divider" />
+
+  <!-- Additional consideration -->
+  <h2>💡 额外建议</h2>
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface);">
+      <i class="fa-sharp fa-solid fa-lightbulb" style="color:var(--accent);font-size:14px;margin-top:1px;"></i>
+      <div>
+        <strong style="font-size:12px;">统一 max-width 策略</strong>
+        <p style="margin-top:2px;">
+          在 <code>Tooltip</code> 组件层面统一设置 <code>max-width</code> 和 <code>max-height</code>，
+          所有使用 Tooltip 的地方自动受益，无需逐个修改调用方。
+        </p>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface);">
+      <i class="fa-sharp fa-solid fa-lightbulb" style="color:var(--accent);font-size:14px;margin-top:1px;"></i>
+      <div>
+        <strong style="font-size:12px;">考虑 <code>break-all</code> vs <code>break-word</code></strong>
+        <p style="margin-top:2px;">
+          长路径通常没有空格，<code>break-all</code> 确保能换行；<code>break-word</code> 优先在单词边界断开。
+          对于文件路径建议用 <code>break-all</code>，否则一行超长内容撑爆弹窗。
+        </p>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface);">
+      <i class="fa-sharp fa-solid fa-lightbulb" style="color:var(--accent);font-size:14px;margin-top:1px;"></i>
+      <div>
+        <strong style="font-size:12px;">Floating UI 的 <code>shift()</code> 已提供视口保护</strong>
+        <p style="margin-top:2px;">
+          目前 Tooltip 已配置 <code>shift({ padding: 12 })</code>，它保证弹窗不超出视口边界，
+          但如果没有 <code>max-height</code> + <code>overflow-y: auto</code>，弹窗高度仍然会撑到视口之外。
+          两者需配合使用。
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

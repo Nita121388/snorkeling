@@ -13,6 +13,8 @@ const DefaultHomeLaunchTargetCwd = "~";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
 export const DefaultTerminalWidgetId = "defwidget@terminal";
+export const AgentDefaultLaunchTargetMetaKey = "agent:defaultlaunchtarget";
+export const TerminalDefaultLaunchTargetMetaKey = "term:defaultlaunchtarget";
 
 export type AgentLaunchContext = {
     connection?: string | null;
@@ -28,6 +30,13 @@ type AgentProfileConfig = {
     model?: string;
     modelflag?: string;
     env?: Record<string, string>;
+};
+
+export type AgentProfileOption = {
+    name: string;
+    label: string;
+    cmd: string;
+    isDefault: boolean;
 };
 
 const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
@@ -47,6 +56,13 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
         cmd: "opencode",
         modelflag: "--model",
     },
+};
+
+const BuiltinAgentProfileLabels: Record<string, string> = {
+    codex: "Codex",
+    claude: "Claude Code",
+    gemini: "Gemini",
+    opencode: "OpenCode",
 };
 
 type AgentLaunchSource = "terminal" | "files" | "agent" | "home";
@@ -147,12 +163,15 @@ function normalizeProfile(rawProfile: unknown): AgentProfileConfig | null {
     return normalized;
 }
 
+function getConfiguredDefaultProfileName(settings?: SettingsType): string {
+    if (isBlank(settings?.["agent:defaultprofile"])) {
+        return DefaultAgentProfile;
+    }
+    return settings["agent:defaultprofile"]!.trim().toLowerCase();
+}
+
 function getProfileConfig(settings?: SettingsType, profileName?: string): AgentProfileConfig {
-    const selectedProfileName = isBlank(profileName)
-        ? isBlank(settings?.["agent:defaultprofile"])
-            ? DefaultAgentProfile
-            : settings["agent:defaultprofile"]?.trim()
-        : profileName.trim();
+    const selectedProfileName = isBlank(profileName) ? getConfiguredDefaultProfileName(settings) : profileName.trim();
     const builtInProfile = BuiltinAgentProfiles[selectedProfileName] ?? BuiltinAgentProfiles[DefaultAgentProfile];
     const rawProfiles = settings?.["agent:profiles"];
     const rawSelected = rawProfiles?.[selectedProfileName];
@@ -164,6 +183,106 @@ function getProfileConfig(settings?: SettingsType, profileName?: string): AgentP
         args: selectedProfile?.args ?? builtInProfile.args,
         env: selectedProfile?.env ?? builtInProfile.env,
     };
+}
+
+function getAgentProfileNames(settings?: SettingsType): string[] {
+    const names = new Set(Object.keys(BuiltinAgentProfiles));
+    const configuredProfiles = settings?.["agent:profiles"] ?? {};
+    for (const name of Object.keys(configuredProfiles).sort()) {
+        if (!isBlank(name)) {
+            names.add(name.trim().toLowerCase());
+        }
+    }
+    return Array.from(names);
+}
+
+function getAgentProfileCandidateConfig(
+    settings: SettingsType | undefined,
+    profileName: string
+): AgentProfileConfig | null {
+    const builtInProfile = BuiltinAgentProfiles[profileName];
+    const rawProfile = settings?.["agent:profiles"]?.[profileName];
+    const selectedProfile = normalizeProfile(rawProfile);
+    if (builtInProfile == null && selectedProfile?.cmd == null) {
+        return null;
+    }
+    return {
+        ...builtInProfile,
+        ...selectedProfile,
+        args: selectedProfile?.args ?? builtInProfile?.args,
+        env: selectedProfile?.env ?? builtInProfile?.env,
+    };
+}
+
+export function getAgentProfileDetectionCommands(settings?: SettingsType): Record<string, string> {
+    const commands: Record<string, string> = {};
+    for (const profileName of getAgentProfileNames(settings)) {
+        const profile = getAgentProfileCandidateConfig(settings, profileName);
+        if (!isBlank(profile?.cmd)) {
+            commands[profileName] = profile!.cmd!.trim();
+        }
+    }
+    return commands;
+}
+
+function makeDetectedAgentCommandSet(
+    availableCommands?: Record<string, string | null | undefined>
+): Set<string> | null {
+    if (availableCommands == null) {
+        return null;
+    }
+    const detectedCommands = new Set<string>();
+    for (const [name, path] of Object.entries(availableCommands)) {
+        if (isBlank(path)) {
+            continue;
+        }
+        const normalizedName = name.trim().toLowerCase();
+        const normalizedPath = path!.trim().toLowerCase();
+        detectedCommands.add(normalizedName);
+        detectedCommands.add(extractCommandBaseName(normalizedName));
+        detectedCommands.add(normalizedPath);
+        detectedCommands.add(extractCommandBaseName(normalizedPath));
+    }
+    return detectedCommands;
+}
+
+function isDetectedAgentProfile(profileName: string, cmd: string, detectedCommands: Set<string> | null): boolean {
+    if (detectedCommands == null) {
+        return true;
+    }
+    const normalizedName = profileName.trim().toLowerCase();
+    const normalizedCmd = cmd.trim().toLowerCase();
+    return (
+        detectedCommands.has(normalizedName) ||
+        detectedCommands.has(extractCommandBaseName(normalizedName)) ||
+        detectedCommands.has(normalizedCmd) ||
+        detectedCommands.has(extractCommandBaseName(normalizedCmd))
+    );
+}
+
+export function getAgentProfileOptions(
+    settings?: SettingsType,
+    availableCommands?: Record<string, string | null | undefined>
+): AgentProfileOption[] {
+    const defaultProfileName = getConfiguredDefaultProfileName(settings);
+    const detectedCommands = makeDetectedAgentCommandSet(availableCommands);
+    const options: AgentProfileOption[] = [];
+    for (const profileName of getAgentProfileNames(settings)) {
+        const profile = getAgentProfileCandidateConfig(settings, profileName);
+        if (profile == null || isBlank(profile.cmd)) {
+            continue;
+        }
+        if (!isDetectedAgentProfile(profileName, profile.cmd!, detectedCommands)) {
+            continue;
+        }
+        options.push({
+            name: profileName,
+            label: BuiltinAgentProfileLabels[profileName] ?? profileName,
+            cmd: profile.cmd!.trim(),
+            isDefault: profileName === defaultProfileName,
+        });
+    }
+    return options;
 }
 
 function resolveAgentProvider(settings?: SettingsType, cmd?: string): string {
@@ -397,9 +516,7 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     const pathIsDir = (block.meta as Record<string, unknown>)?.[PreviewPathIsDirMetaKey];
     const launchPathIsDir = explorerRootPath != null ? true : typeof pathIsDir === "boolean" ? pathIsDir : null;
     const cwd =
-        launchPath == null
-            ? null
-            : resolvePreviewLaunchPath(launchPath, block.meta?.edit === true, launchPathIsDir);
+        launchPath == null ? null : resolvePreviewLaunchPath(launchPath, block.meta?.edit === true, launchPathIsDir);
     if (connection == null && cwd == null && filePath == null) {
         return null;
     }
@@ -457,6 +574,43 @@ function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
         return false;
     }
     return getLaunchTargetPathCandidates(target).length > 0;
+}
+
+export function canSetLaunchTargetDefault(target: AgentLaunchTarget | null | undefined): boolean {
+    return target != null;
+}
+
+export function getSelectableLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
+    return targets.filter(canSetLaunchTargetDefault);
+}
+
+export function getLaunchCreatableTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
+    return targets;
+}
+
+export function getLaunchTargetDefaultKey(target: AgentLaunchTarget | null | undefined): string {
+    if (target == null) {
+        return "";
+    }
+    const connection = normalizeConnection(target.connection) ?? "local";
+    const path = normalizeDedupPathSeparators(normalizePath(target.cwd ?? target.filePath) ?? "");
+    return `${target.source}|${connection}|${path}`;
+}
+
+export function resolveDefaultLaunchTarget(
+    targets: AgentLaunchTarget[],
+    defaultTargetKey?: string | null
+): AgentLaunchTarget | null {
+    const selectableTargets = getSelectableLaunchTargets(targets);
+    if (!isBlank(defaultTargetKey)) {
+        const defaultTarget = selectableTargets.find(
+            (target) => getLaunchTargetDefaultKey(target) === defaultTargetKey
+        );
+        if (defaultTarget != null) {
+            return defaultTarget;
+        }
+    }
+    return selectableTargets[0] ?? targets[0] ?? null;
 }
 
 function makeLaunchTargetDedupKey(target: AgentLaunchTarget, homeDirs: string[]): string {

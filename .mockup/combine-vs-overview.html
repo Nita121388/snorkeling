@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Combine Dashboard 与 Overview 联动说明</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
+<style>
+  :root {
+    --bg: #222;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,.12);
+    --border: rgba(255,255,255,.16);
+    --border-soft: rgba(255,255,255,.08);
+    --panel: #262826;
+    --hover: rgba(255,255,255,.06);
+    --chip: rgba(255,255,255,.04);
+    --danger: #e05c5c;
+    --warning: #e0b956;
+    --claude: #cc685c;
+    --codex: #74a7cb;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#1a1b1a;color:var(--primary);font-family:-apple-system,"SF Pro Text","Inter","Segoe UI",sans-serif;font-size:13px;-webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums}
+
+  .stage{max-width:900px;margin:0 auto;padding:24px 20px;display:flex;flex-direction:column;gap:32px}
+
+  h1{font-size:17px;font-weight:700;margin-bottom:4px}
+  .sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+
+  h2{font-size:13px;font-weight:600;color:var(--accent);margin-top:20px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  h2::after{content:"";flex:1;height:1px;background:var(--border-soft)}
+
+  .card{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;background:var(--panel)}
+  .card-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border-soft);font-size:11px;font-weight:600;color:var(--secondary)}
+  .card-bd{padding:12px 14px;font-size:12px;line-height:1.6;color:var(--secondary);display:flex;flex-direction:column;gap:8px}
+
+  code{padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.05);color:var(--primary);font-size:11px}
+  .tag{display:inline-block;padding:0 6px;border-radius:4px;font-size:10px;font-weight:600}
+  .tag.g{background:var(--accent-soft);color:var(--accent)}
+  .tag.y{background:rgba(224,185,86,.15);color:var(--warning)}
+  .tag.r{background:rgba(224,92,92,.15);color:var(--danger)}
+  strong{color:var(--primary)}
+
+  .row{display:flex;align-items:flex-start;gap:10px;padding:6px 0}
+  .num-badge{width:22px;height:22px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+  .num-badge.r{background:rgba(224,92,92,.12);color:var(--danger)}
+  .num-badge.y{background:rgba(224,185,86,.15);color:var(--warning)}
+  .num-badge.o{background:rgba(255,255,255,.06);color:var(--muted)}
+  .row-body{flex:1;min-width:0}
+  .row-body .lbl{font-size:11px;font-weight:600;color:var(--primary);margin-bottom:2px}
+  .row-body .desc{font-size:11px;color:var(--secondary);line-height:1.5}
+
+  .flow-arrow{text-align:center;padding:4px 0;font-size:14px;color:var(--accent)}
+
+  i.fa-regular,i.fa-solid,i.fa{color:inherit}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <h1>Combine Dashboard 是什么？怎么用？</h1>
+  <div class="sub">一张图说清楚 Combine Dashboard 的定位、交互方式和与 Overview 的关系</div>
+
+  <!-- ============================================================ -->
+  <!-- 1. 为什么要有两个视图？                                        -->
+  <!-- ============================================================ -->
+  <div class="card">
+    <div class="card-hd"><i class="fa-regular fa-question-circle"></i> 为什么需要 Combine Dashboard？</div>
+    <div class="card-bd">
+      <div class="row">
+        <span class="num-badge">1</span>
+        <div class="row-body">
+          <div class="lbl">现状：SessionOverview 是跨 Tab 的全局视图</div>
+          <div class="desc">它遍历所有 tab 的所有 blocks，显示 session details、notes、tags、messages。信息丰富，但每次打开都要加载大量数据，且无法实时"瞄一眼"终端输出。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge">2</span>
+        <div class="row-body">
+          <div class="lbl">Combine Dashboard = 当前 Tab 的"实时仪表盘"</div>
+          <div class="desc"><strong>只关注当前 tab</strong> 的 terminal 和 agent，每 block 展示 <strong>实时缩略预览</strong>（通过 SubBlock 嵌入 xterm.js）。不用离开当前工作上下文就能看到所有会话的状态——哪个 agent 卡住了、哪个 terminal 在跑什么命令。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge">3</span>
+        <div class="row-body">
+          <div class="lbl">两者互补，不冲突</div>
+          <div class="desc"><span class="tag g">Combine</span> 用于实时监控当前 tab · <span class="tag y">Overview</span> 用于全局会话管理和回顾。两者通过跳转按钮互相链接。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 2. Combine Dashboard 交互流程                                  -->
+  <!-- ============================================================ -->
+  <h2><i class="fa-regular fa-table-cells-large"></i> Combine Dashboard 交互流程</h2>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag g">STEP 1</span> 打开/关闭</div>
+    <div class="card-bd">
+      <div class="row">
+        <span class="num-badge g">1</span>
+        <div class="row-body">
+          <div class="lbl">点击 Tab 栏的 Combine 按钮</div>
+          <div class="desc">按钮位于 <b>Note</b> 和 <b>Overview</b> 之间。点击后左侧 split 出一个 340px 宽的仪表盘面板，右侧原有 layout 不受影响。再次点击关闭仪表盘（block 隐藏到后台，不删除）。</div>
+        </div>
+      </div>
+      <div class="flow-arrow"><i class="fa-regular fa-arrow-down"></i></div>
+      <div class="row">
+        <span class="num-badge g">2</span>
+        <div class="row-body">
+          <div class="lbl">面板自动列出当前 Tab 的所有 Terminal 和 Agent</div>
+          <div class="desc">按 Agents / Terminals 分组。Agent 卡片显示实时状态芯片（working/blocked/done/idle），Terminal 卡片显示当前目录（CWD）。</div>
+        </div>
+      </div>
+      <div class="flow-arrow"><i class="fa-regular fa-arrow-down"></i></div>
+      <div class="row">
+        <span class="num-badge g">3</span>
+        <div class="row-body">
+          <div class="lbl">卡片主体 = 实时终端预览（SubBlock 嵌入）</div>
+          <div class="desc">通过 SubBlock 组件（现有机制，已在 <code>TermVDomNode</code> 中使用）嵌入完整的 xterm.js 实例，展示实时终端输出。预览区 <code>min-height: 60px</code>、<code>max-height: 120px</code>，内容实时刷新。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span class="tag y">STEP 2</span> 卡片操作</div>
+    <div class="card-bd">
+      <div class="row">
+        <span class="num-badge y">A</span>
+        <div class="row-body">
+          <div class="lbl">跳转到原始 Block（<i class="fa-regular fa-location-crosshairs"></i>）</div>
+          <div class="desc">点击卡片底部跳转按钮 → 原始 block 聚焦并高亮闪烁（复用现有 <code>BlockModel.setBlockHighlight()</code> + 双层 <code>refocusNode()</code> 模式）。Dashboard 保持打开。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge y">B</span>
+        <div class="row-body">
+          <div class="lbl">排除 Block（×）</div>
+          <div class="desc">hover 卡片可见右上 ×。点击后卡片从主体移到 Excluded 区，可点击恢复按钮撤回。排除列表持久化到 <code>localStorage</code>，跨重启保留。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge y">C</span>
+        <div class="row-body">
+          <div class="lbl">在 Overview 中查看（<i class="fa-regular fa-list-tree"></i>）</div>
+          <div class="desc">仅 Agent 卡片显示。点击后打开 Overview 并自动定位到对应 block（调用 <code>SessionOverviewModel.getInstance().open()</code> 后跳转）。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 3. 与 Overview 的联动                                          -->
+  <!-- ============================================================ -->
+  <h2><i class="fa-regular fa-list-tree"></i> 与 Overview 的联动</h2>
+
+  <div class="card">
+    <div class="card-hd">跳转链路</div>
+    <div class="card-bd">
+      <div style="text-align:center;padding:6px 0">
+        <span class="tag g">Combine</span>
+        <span style="margin:0 8px;color:var(--accent)">[ <i class="fa-regular fa-list-tree"></i> ]</span>
+        <span class="tag y">Overview 打开</span>
+        <span style="margin:0 8px;color:var(--muted)">→</span>
+        <span>自动定位到同一 block</span>
+      </div>
+      <div style="border-top:1px solid var(--border-soft);margin:8px 0;padding-top:8px">
+        <div class="row" style="gap:8px">
+          <span class="num-badge o" style="width:auto;padding:0 8px;font-size:10px">Combine</span>
+          <span style="font-size:11px;color:var(--secondary)">当前 Tab · 实时预览 · 轻量</span>
+        </div>
+        <div class="row" style="gap:8px">
+          <span class="num-badge o" style="width:auto;padding:0 8px;font-size:10px">Overview</span>
+          <span style="font-size:11px;color:var(--secondary)">跨 Tab · session detail · notes · tags · 全局</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd">排除状态共享</div>
+    <div class="card-bd">
+      <div class="row">
+        <span class="num-badge r">!</span>
+        <div class="row-body">
+          <div class="lbl">Overview 读取 Combine 排除列表</div>
+          <div class="desc">在 Overview 中，被 Combine 排除的 block 行会显示 "<span class="tag y">Excluded from Combine</span>" 标签。但 <strong>Overview 不强制隐藏</strong> — 用户可以在 Overview 中独立决定是否隐藏它们。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge o">i</span>
+        <div class="row-body">
+          <div class="lbl">反向不共享</div>
+          <div class="desc">Overview 内的 agents-only 过滤、hide-unopened-tabs 等设置不影响 Combine Dashboard 的显示。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 4. 两种视图快速对比                                            -->
+  <!-- ============================================================ -->
+  <h2><i class="fa-regular fa-not-equal"></i> Combine vs Overview 快速对比</h2>
+
+  <div class="card">
+    <div class="card-bd" style="padding:0">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:10px 14px;text-align:left;width:140px;color:var(--muted);font-weight:600">对比维度</th>
+            <th style="padding:10px 14px;text-align:left;color:var(--accent);font-weight:600"><i class="fa-regular fa-table-cells-large"></i> Combine Dashboard</th>
+            <th style="padding:10px 14px;text-align:left;color:var(--secondary);font-weight:600"><i class="fa-regular fa-list-tree"></i> SessionOverview</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border-soft)">
+            <td style="padding:8px 14px;color:var(--muted)">范围</td>
+            <td style="padding:8px 14px"><span class="tag g">当前 Tab 内</span></td>
+            <td style="padding:8px 14px">所有 Tab</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-soft)">
+            <td style="padding:8px 14px;color:var(--muted)">内容</td>
+            <td style="padding:8px 14px">实时终端预览 + 状态芯片</td>
+            <td style="padding:8px 14px">session detail + notes + tags + messages</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-soft)">
+            <td style="padding:8px 14px;color:var(--muted)">操作</td>
+            <td style="padding:8px 14px">跳转 / 排除 / 打开 Overview</td>
+            <td style="padding:8px 14px">编辑 note / 打 tag / 删除 session / 详细查看</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-soft)">
+            <td style="padding:8px 14px;color:var(--muted)">数据量</td>
+            <td style="padding:8px 14px">极轻量（仅 status + 实时输出）</td>
+            <td style="padding:8px 14px">较重（加载 session cache）</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;color:var(--muted)">排除持久化</td>
+            <td style="padding:8px 14px">localStorage，跨重启保留</td>
+            <td style="padding:8px 14px">隐藏 = hidden blocks（tab meta）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 5. 一个典型场景                                                -->
+  <!-- ============================================================ -->
+  <h2><i class="fa-regular fa-person-running"></i> 典型工作流</h2>
+
+  <div class="card">
+    <div class="card-bd">
+      <div class="row">
+        <span class="num-badge" style="background:var(--accent-soft);color:var(--accent)">1</span>
+        <div class="row-body">
+          <div class="lbl">你在 snorkeling tab 里开了 3 个 terminal 和 2 个 agent</div>
+          <div class="desc">左侧 terminal 在跑 dev server，右侧 terminal 在 git status，中间 agent 在重构代码。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge" style="background:var(--accent-soft);color:var(--accent)">2</span>
+        <div class="row-body">
+          <div class="lbl">你点开 Combine Dashboard"瞄一眼"</div>
+          <div class="desc">看到重构的 agent 状态是 <span class="tag y">blocked</span>（需要你 approve），dev server 正常运行。你的布局完全没变。</div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="num-badge" style="background:var(--accent-soft);color:var(--accent)">3</span>
+        <div class="row-body">
+          <div class="lbl">点击卡片跳转到 agent block，approve 之后继续</div>
+          <div class="desc">Dashboard 保持打开。之后你想回顾重构细节，点击 <i class="fa-regular fa-list-tree"></i> 跳转到 Overview 查看完整 session messages。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

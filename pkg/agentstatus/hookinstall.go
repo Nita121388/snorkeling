@@ -339,7 +339,7 @@ func hookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf(`cmd.exe /d /q /c ""%s" %s %s"`, path, action, phase)
 	}
-	return fmt.Sprintf("bash %s %s", shellSingleQuote(path), action)
+	return fmt.Sprintf("bash %s %s %s", shellSingleQuote(path), action, phase)
 }
 
 func agentStatusHookScript(provider string) string {
@@ -396,6 +396,7 @@ func agentStatusShellHookScript(provider string) string {
 # %s%d
 
 action="${1:-}"
+phase_arg="${2:-}"
 case "$action" in
   working|idle|blocked|release|unknown) ;;
   *) exit 0 ;;
@@ -418,6 +419,7 @@ cat >"$hook_input_file" 2>/dev/null || true
 
 if command -v python3 >/dev/null 2>&1; then
   SNORKELING_AGENT_ACTION="$action" \
+  SNORKELING_AGENT_PHASE="$phase_arg" \
   SNORKELING_AGENT_PROVIDER="%s" \
   SNORKELING_HOOK_INPUT_FILE="$hook_input_file" \
   SNORKELING_WSH_BIN="$wsh_bin" \
@@ -428,6 +430,7 @@ import subprocess
 import time
 
 action = os.environ.get("SNORKELING_AGENT_ACTION", "")
+phase_arg = os.environ.get("SNORKELING_AGENT_PHASE", "")
 provider = os.environ.get("SNORKELING_AGENT_PROVIDER", "")
 wsh_bin = os.environ.get("SNORKELING_WSH_BIN", "wsh")
 hook_input_file = os.environ.get("SNORKELING_HOOK_INPUT_FILE", "")
@@ -458,13 +461,14 @@ if not isinstance(session_id, str):
     session_id = ""
 session_id = session_id.strip()
 
-phase = "unknown"
-if action in ("idle", "release"):
-    phase = "none"
-elif action == "blocked":
-    phase = "approval"
-elif action == "working":
-    phase = "tool" if tool_name or hook_event_name == "PreToolUse" else "thinking"
+phase = phase_arg if phase_arg in ("thinking", "tool", "shell-command", "approval", "none", "unknown") else "unknown"
+if phase == "unknown":
+    if action in ("idle", "release"):
+        phase = "none"
+    elif action == "blocked":
+        phase = "approval"
+    elif action == "working":
+        phase = "tool" if tool_name or hook_event_name == "PreToolUse" else "thinking"
 
 cmd = [
     wsh_bin,
@@ -490,7 +494,15 @@ except Exception:
     pass
 PY
 else
-  "$wsh_bin" agentstatus "$action" --provider "%s" --source hook >/dev/null 2>&1 || true
+  case "$phase_arg" in
+    thinking|tool|shell-command|approval|none|unknown) phase="$phase_arg" ;;
+    *) phase="unknown" ;;
+  esac
+  [ "$phase" = "unknown" ] && [ "$action" = "idle" ] && phase="none"
+  [ "$phase" = "unknown" ] && [ "$action" = "release" ] && phase="none"
+  [ "$phase" = "unknown" ] && [ "$action" = "blocked" ] && phase="approval"
+  [ "$phase" = "unknown" ] && [ "$action" = "working" ] && phase="thinking"
+  "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" >/dev/null 2>&1 || true
 fi
 `, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider)
 }
@@ -634,6 +646,8 @@ func hookEntries(raw any, event string) ([]any, error) {
 func hookScriptVersion(script string) int {
 	for _, line := range strings.Split(script, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimPrefix(line, "rem"))
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, versionMarker) {
 			continue

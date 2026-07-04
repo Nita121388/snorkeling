@@ -323,6 +323,32 @@ func collectJSONLFiles(root string) ([]string, error) {
 	return files, err
 }
 
+func sessionFilesFromPaths(ctx context.Context, source string, paths []string) ([]SessionFile, error) {
+	var files []SessionFile
+	for _, path := range paths {
+		if ctx.Err() != nil {
+			return files, ctx.Err()
+		}
+		stat, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return files, err
+		}
+		if stat.IsDir() {
+			continue
+		}
+		files = append(files, SessionFile{
+			Source: source,
+			Path:   path,
+			MTime:  stat.ModTime().UnixMilli(),
+			Size:   stat.Size(),
+		})
+	}
+	return files, nil
+}
+
 func parseTimestampToMS(value any) int64 {
 	switch v := value.(type) {
 	case nil:

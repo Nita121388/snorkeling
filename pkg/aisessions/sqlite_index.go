@@ -207,6 +207,9 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 	if err != nil {
 		version = 0
 	}
+	if version >= 2 {
+		return true, nil
+	}
 	rows := []struct {
 		Key       string `db:"session_key"`
 		Note      string `db:"note"`
@@ -215,22 +218,18 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 	if err := idx.db.SelectContext(ctx, &rows, `SELECT session_key, note, updated_at FROM ai_session_meta WHERE instr(note, '#') > 0`); err != nil {
 		return false, err
 	}
-	if version >= 2 && len(rows) == 0 {
-		return true, nil
-	}
 	type tagMigrationRow struct {
 		key       string
-		note      string
 		tags      []string
 		updatedAt int64
 	}
 	var migrations []tagMigrationRow
 	for _, row := range rows {
-		cleanNote, tags := ExtractSessionTagsFromNote(row.Note)
+		_, tags := ExtractSessionTagsFromNote(row.Note)
 		if len(tags) == 0 {
 			continue
 		}
-		migrations = append(migrations, tagMigrationRow{key: row.Key, note: cleanNote, tags: tags, updatedAt: row.UpdatedAt})
+		migrations = append(migrations, tagMigrationRow{key: row.Key, tags: tags, updatedAt: row.UpdatedAt})
 	}
 	if len(migrations) > 0 {
 		if err := idx.backupSQLiteBeforeTagMigration(); err != nil {
@@ -254,8 +253,8 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 		if updatedAt == 0 {
 			updatedAt = now
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET note = ?, updated_at = ?, source = ?, dirty = 1 WHERE session_key = ?`,
-			migration.note, updatedAt, "tag-migration", migration.key); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET updated_at = ?, source = ?, dirty = 1 WHERE session_key = ?`,
+			updatedAt, "tag-migration", migration.key); err != nil {
 			return false, err
 		}
 		for _, tag := range migration.tags {
@@ -841,6 +840,75 @@ func (idx *SQLiteIndex) HasSummaryScan(ctx context.Context) (bool, error) {
 	return ok && strings.TrimSpace(value) != "", nil
 }
 
+func (idx *SQLiteIndex) ChangedFiles(ctx context.Context, files []SessionFile) ([]SessionFile, error) {
+	rows := []struct {
+		FilePath string `db:"file_path"`
+		MTime    int64  `db:"mtime"`
+		Size     int64  `db:"size"`
+	}{}
+	if err := idx.db.SelectContext(ctx, &rows, `SELECT file_path, mtime, size FROM ai_files`); err != nil {
+		return nil, err
+	}
+	existing := make(map[string]SessionFile, len(rows))
+	for _, row := range rows {
+		existing[row.FilePath] = SessionFile{Path: row.FilePath, MTime: row.MTime, Size: row.Size}
+	}
+	var changed []SessionFile
+	for _, file := range files {
+		if ctx.Err() != nil {
+			return changed, ctx.Err()
+		}
+		if strings.TrimSpace(file.Path) == "" {
+			continue
+		}
+		cached, ok := existing[file.Path]
+		if !ok || cached.MTime != file.MTime || cached.Size != file.Size {
+			changed = append(changed, file)
+		}
+	}
+	return changed, nil
+}
+
+func (idx *SQLiteIndex) MarkMissingSourceFiles(ctx context.Context, source string, files []SessionFile) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil
+	}
+	seen := make(map[string]bool, len(files))
+	for _, file := range files {
+		if strings.TrimSpace(file.Path) != "" {
+			seen[file.Path] = true
+		}
+	}
+	rows := []struct {
+		Key      string `db:"key"`
+		FilePath string `db:"file_path"`
+	}{}
+	if err := idx.db.SelectContext(ctx, &rows, `SELECT key, file_path FROM ai_sessions WHERE source = ? AND missing = 0`, source); err != nil {
+		return err
+	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	now := time.Now().UnixMilli()
+	for _, row := range rows {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if seen[row.FilePath] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE ai_sessions SET missing = 1, indexed_at = ? WHERE key = ?`, now, row.Key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (idx *SQLiteIndex) IndexAll(ctx context.Context, providers []Provider) (IndexStats, []error) {
 	stats, errs := idx.RefreshSummaries(ctx, providers)
 	summaries, err := idx.List(ctx, ListOptions{Limit: 0})
@@ -909,12 +977,12 @@ func (idx *SQLiteIndex) CountMeta(ctx context.Context) (int, error) {
 
 func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagSummary, error) {
 	summaries, err := idx.List(ctx, ListOptions{
-		Source:     opts.Source,
-		Project:    opts.Project,
-		Since:      opts.Since,
-		Before:     opts.Before,
-		MarkedOnly: opts.MarkedOnly,
-		Limit:      0,
+		Source:  opts.Source,
+		Project: opts.Project,
+		Since:   opts.Since,
+		Before:  opts.Before,
+		Marked:  opts.Marked,
+		Limit:   0,
 	})
 	if err != nil {
 		return nil, err

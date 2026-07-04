@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
@@ -43,6 +45,18 @@ func (cs *ClientService) GetAllConnStatus(ctx context.Context) ([]wshrpc.ConnSta
 	sshStatuses := conncontroller.GetAllConnStatus()
 	wslStatuses := wslconn.GetAllConnStatus()
 	return append(sshStatuses, wslStatuses...), nil
+}
+
+func (cs *ClientService) FindCommand(ctx context.Context, command string) (string, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", nil
+	}
+	path, err := exec.LookPath(command)
+	if err != nil {
+		return "", nil
+	}
+	return path, nil
 }
 
 // moves the window to the front of the windowId stack

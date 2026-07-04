@@ -46,7 +46,7 @@ import * as services from "@/store/services";
 import { copyText } from "@/util/clipboard";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
-import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
+import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
@@ -194,9 +194,12 @@ export class TermViewModel implements ViewModel {
                     noGrow: true,
                 });
                 if (typeof cmdCwd === "string" && cmdCwd.trim().length > 0) {
+                    const folderName = basename(cmdCwd);
                     rtn.push({
-                        elemtype: "text",
+                        elemtype: "copytext",
                         text: cmdCwd,
+                        displayText: folderName,
+                        title: "Click to copy full path",
                         className: "text-muted",
                     });
                 }

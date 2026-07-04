@@ -355,12 +355,37 @@ func StopAllBlockControllersForShutdown() {
 	for blockId, controller := range controllers {
 		status := controller.GetRuntimeStatus()
 		if status != nil && status.ShellProcStatus == Status_Running {
+			persistShutdownResumeMeta(blockId)
 			go func(id string, c Controller) {
 				c.Stop(true, Status_Done, false)
 				wstore.DeleteRTInfo(waveobj.MakeORef(waveobj.OType_Block, id))
 			}(blockId, controller)
 		}
 	}
+}
+
+func persistShutdownResumeMeta(blockId string) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	blockData, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+	if err != nil {
+		log.Printf("error loading block for shutdown resume meta (block=%s): %v", blockId, err)
+		return
+	}
+	if blockData == nil {
+		return
+	}
+	rtInfo := wstore.GetRTInfo(waveobj.MakeORef(waveobj.OType_Block, blockId))
+	metaUpdate := agentShellShutdownResumeMetaUpdate(blockData.Meta, rtInfo)
+	if len(metaUpdate) == 0 {
+		return
+	}
+	ctx = waveobj.ContextWithUpdates(ctx)
+	if err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false); err != nil {
+		log.Printf("error persisting shutdown resume meta (block=%s): %v", blockId, err)
+		return
+	}
+	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
 }
 
 func getBoolFromMeta(meta map[string]any, key string, def bool) bool {
