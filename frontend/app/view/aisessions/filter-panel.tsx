@@ -48,7 +48,11 @@ function dateLabel(range: DateRangeFilter): string {
 }
 
 function SegTrack({ children, className }: { children: ReactNode; className?: string }) {
-    return <div className={cn("inline-flex rounded-lg bg-surface p-0.5", className)}>{children}</div>;
+    return (
+        <div className={cn("inline-flex rounded-lg border border-border/70 bg-surface p-0.5 shadow-sm", className)}>
+            {children}
+        </div>
+    );
 }
 
 function SegButton({
@@ -70,10 +74,10 @@ function SegButton({
             aria-pressed={active}
             onClick={onClick}
             className={cn(
-                "flex h-6 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors",
+                "flex h-6 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-transparent px-2 text-xs transition-colors",
                 active
-                    ? "bg-surface-strong text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-                    : "text-secondary hover:text-primary"
+                    ? "border-border/70 bg-background text-primary shadow-sm"
+                    : "text-secondary hover:bg-hover hover:text-primary"
             )}
         >
             {children}

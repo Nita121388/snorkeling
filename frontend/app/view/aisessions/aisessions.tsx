@@ -1003,7 +1003,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="inline-flex rounded-lg bg-surface p-0.5">
+                                    <div className="inline-flex rounded-lg border border-border/70 bg-surface p-0.5 shadow-sm">
                                         <SourceButton
                                             label="All"
                                             active={source === ""}
@@ -1034,8 +1034,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         className={cn(
                                             "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
                                             filtersOpen
-                                                ? "bg-surface-strong text-primary ring-1 ring-accent/40"
-                                                : "bg-surface text-secondary hover:text-primary"
+                                                ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
+                                                : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
                                         )}
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />

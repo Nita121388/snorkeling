@@ -35,6 +35,7 @@
     --color-highlightbg: var(--highlight-bg-color);
     --color-accent: var(--accent-color);
     --color-accenthover: var(--accent-hover-color);
+    --color-overlay: var(--overlay-bg-color);
 
     --color-source-claude: #cc685c;
     --color-source-codex: #74a7cb;
@@ -105,13 +106,13 @@ svg [aria-label="tip"] g path {
 
 /* Monaco editor scrollbar styling */
 .monaco-editor .slider {
-    background: rgba(255, 255, 255, 0.4);
+    background: var(--scrollbar-thumb-color);
     border-radius: 4px;
     transition: background 0.2s ease;
 }
 
 .monaco-editor .slider:hover {
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--scrollbar-thumb-hover-color);
 }
 
 .ellipsis {

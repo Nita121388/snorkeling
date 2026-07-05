@@ -18,7 +18,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: rgba(21, 23, 21, 0.7);
+        background-color: var(--modal-backdrop-color);
         z-index: var(--zindex-modal-backdrop);
     }
 }
@@ -71,7 +71,7 @@
         justify-content: flex-end;
         width: 100%;
         padding-top: 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid var(--border-color);
 
         .wave-button:last-child {
             margin-left: 8px;

@@ -16,6 +16,15 @@ import * as keyutil from "../frontend/util/keyutil";
 // On Windows, it will store to %LOCALAPPDATA%/snorkeling/electron
 app.setName("snorkeling/electron");
 
+const WaveElectronUserDataHomeVarName = "WAVETERM_ELECTRON_USER_DATA_HOME";
+const electronUserDataHome = process.env[WaveElectronUserDataHomeVarName];
+if (electronUserDataHome) {
+    if (!existsSync(electronUserDataHome)) {
+        mkdirSync(electronUserDataHome, { recursive: true });
+    }
+    app.setPath("userData", electronUserDataHome);
+}
+
 const isDev = !app.isPackaged;
 const isDevVite = isDev && process.env.ELECTRON_RENDERER_URL;
 console.log(`Running in ${isDev ? "development" : "production"} mode`);

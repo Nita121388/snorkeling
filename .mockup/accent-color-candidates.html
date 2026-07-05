@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>品牌色候选 - Snorkeling Light Theme</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --beige-bg: #faf7f0;
+    --beige-bg-solid: #fffdf8;
+    --beige-border: #d6cfbe;
+    --beige-text: #1f2937;
+    --beige-secondary: #374151;
+    --beige-grey: #6b5b44;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--beige-bg);
+    color: var(--beige-text);
+    font-family: -apple-system, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  h1 { font-size: 22px; font-weight: 600; color: #1f2937; margin-bottom: 6px; }
+  .lead { color: #6b5b44; margin-bottom: 18px; font-size: 12.5px; line-height: 1.6; max-width: 860px; }
+
+  /* ===== 顶部并排对眼对比条 ===== */
+  .brand-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .brand-chip {
+    border: 1px solid var(--beige-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--beige-bg-solid);
+  }
+  .brand-chip-swatch { height: 56px; display: flex; align-items: flex-end; padding: 8px 10px; }
+  .brand-chip-swatch span { color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .brand-chip-meta { padding: 8px 10px; font-size: 11px; color: var(--beige-secondary); }
+  .brand-chip-meta b { color: var(--beige-text); font-weight: 600; }
+
+  /* ===== 候选卡片 ===== */
+  .card {
+    background: var(--beige-bg-solid);
+    border: 1px solid var(--beige-border);
+    border-radius: 12px;
+    margin-bottom: 22px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(69, 48, 30, 0.06);
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--beige-border);
+    background: rgba(243, 239, 228, 0.5);
+  }
+  .card-head .title { font-size: 14px; font-weight: 600; color: var(--beige-text); }
+  .card-head .verdict { font-size: 11px; color: var(--beige-grey); }
+  .card-body { padding: 18px; }
+
+  /* ===== 组件区 ===== */
+  .section { margin-bottom: 16px; }
+  .section:last-child { margin-bottom: 0; }
+  .section-title {
+    font-size: 10.5px; color: var(--beige-grey);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  /* 按钮 (套用 .bg-accent text-primary / outline / hover 三态) */
+  .btn-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; font-size: 12px;
+    border-radius: 6px; border: 1px solid transparent;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--acc); color: #fffdf8; }
+  .btn-primary:hover { background: var(--acc-hover); }
+  .btn-outline { background: transparent; color: var(--acc); border: 1px solid var(--acc); }
+  .btn-outline:hover { background: var(--acc-bg); }
+  .btn-soft { background: var(--acc-bg); color: var(--acc-700); }
+  .btn-soft:hover { background: var(--acc-bg-strong); }
+
+  /* Toggle 开关勾选态 */
+  .toggle-row { display: flex; align-items: center; gap: 14px; }
+  .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--beige-border); transition: 0.2s; border-radius: 20px;
+  }
+  .toggle-slider::before {
+    position: absolute; content: ''; height: 16px; width: 16px;
+    left: 2px; bottom: 2px; background: #fffdf8;
+    transition: 0.2s; border-radius: 50%;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--acc); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+  .toggle-label { font-size: 12px; color: var(--beige-secondary); }
+
+  /* 输入框 focus */
+  .input-field {
+    padding: 8px 10px; border: 1px solid var(--beige-border);
+    border-radius: 6px; font-size: 12px;
+    background: var(--beige-bg-solid); color: var(--beige-text);
+    width: 260px;
+  }
+  .input-field:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-bg); }
+
+  /* 链接 */
+  .link { color: var(--acc); text-decoration: none; font-size: 12px; border-bottom: 1px solid transparent; }
+  .link:hover { border-bottom-color: var(--acc); }
+
+  /* Tab 选中态 */
+  .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--beige-border); padding: 0 4px; }
+  .tab {
+    padding: 6px 12px; font-size: 12px; color: var(--beige-secondary);
+    border-bottom: 2px solid transparent; cursor: pointer;
+  }
+  .tab:hover { background: var(--acc-bg); }
+  .tab.active { color: var(--acc-700); border-bottom-color: var(--acc); background: var(--acc-bg); }
+
+  /* 图标强调色 */
+  .icon-row { display: flex; gap: 14px; align-items: center; }
+  .icon-row .icn { color: var(--acc); font-size: 15px; }
+  .icon-row .label { font-size: 11px; color: var(--beige-grey); margin-left: 5px; }
+  .icon-tile {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--acc); color: #fffdf8;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+
+  /* 进度条 */
+  .progress { width: 100%; max-width: 280px; background: var(--acc-bg); border-radius: 9999px; height: 8px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--acc); border-radius: 9999px; }
+
+  /* Tag/chip 强调态 */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 9999px; font-size: 11px;
+    background: var(--acc-bg); color: var(--acc-700);
+    border: 1px solid var(--acc-200);
+  }
+  .chip-solid { background: var(--acc); color: #fffdf8; border: none; }
+
+  /* Tooltip — 因 tooltip.tsx 在本次改动里被改了, 重点对比 */
+  .tip-wrap { position: relative; display: inline-block; }
+  .tip-trigger {
+    padding: 5px 10px; border-radius: 6px; cursor: pointer;
+    background: var(--acc-bg); color: var(--acc-700); font-size: 12px;
+  }
+  .tip-bubble {
+    position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%);
+    background: var(--beige-text); color: var(--beige-bg-solid);
+    padding: 6px 10px; border-radius: 6px; font-size: 11px; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(69, 48, 30, 0.25);
+  }
+  .tip-bubble::after {
+    content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--beige-text);
+  }
+  .tip-accent { background: var(--acc); color: #fffdf8; }
+  .tip-accent::after { border-top-color: var(--acc); }
+
+  /* 色阶展示 */
+  .ramp { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 6px; }
+  .ramp > div { height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: rgba(255,255,255,0.85); }
+  .ramp > div.dark { color: rgba(0,0,0,0.55); }
+
+  /* 元数据底栏 */
+  .meta { font-size: 10.5px; color: var(--beige-grey); line-height: 1.7; padding: 12px 18px; border-top: 1px solid var(--beige-border); background: rgba(243, 239, 228, 0.35); }
+  .meta code { background: rgba(176, 101, 53, 0.06); padding: 1px 5px; border-radius: 3px; color: var(--beige-text); }
+  .meta .ok { color: #2e7d32; font-weight: 600; }
+  .meta .no { color: #d32f2f; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>品牌色候选对比</h1>
+  <p class="lead">
+    在浅色主题<span style="font-weight:600;">米色背景 <code style="background:rgba(176,101,53,0.06);padding:1px 5px;border-radius:3px;">#faf7f0</code></span>下,替换 <code style="background:rgba(176,101,53,0.06);padding:1px 5px;border-radius:3px;">--accent-color</code> 的效果。每个候选都生成了完整派生色阶(hover / bg / 50–900)并套用到真实 UI 组件。
+    D 为当前橙棕作为对照基准,A/B/C 是替代候选。
+  </p>
+
+  <!-- ============ 顶部并排对眼 ============ -->
+  <div class="brand-bar">
+    <div class="brand-chip">
+      <div class="brand-chip-swatch" style="background:#2f6d6b;"><span>A · Teal #2f6d6b</span></div>
+      <div class="brand-chip-meta"><b>深墨青</b> · 推荐冷暖对比</div>
+    </div>
+    <div class="brand-chip">
+      <div class="brand-chip-swatch" style="background:#3d6b3a;"><span>B · Forest #3d6b3a</span></div>
+      <div class="brand-chip-meta"><b>深森林绿</b> · 与现有 tab-green 同源</div>
+    </div>
+    <div class="brand-chip">
+      <div class="brand-chip-swatch" style="background:#2d5a8b;"><span>C · Azure #2d5a8b</span></div>
+      <div class="brand-chip-meta"><b>群青蓝</b> · 最稳重但偏冷</div>
+    </div>
+    <div class="brand-chip">
+      <div class="brand-chip-swatch" style="background:#b06535;"><span>D · 当前 #b06535</span></div>
+      <div class="brand-chip-meta"><b>橙棕(基准对照)</b> · 你不喜欢</div>
+    </div>
+  </div>
+
+  <!-- ============ A · 深墨青 Teal ============ -->
+  <div class="card" style="--acc:#2f6d6b; --acc-hover:#3a8581; --acc-bg:rgba(47,109,107,0.16); --acc-bg-strong:rgba(47,109,107,0.26); --acc-200:#a8d4d2; --acc-700:#26605e;">
+    <div class="card-head">
+      <div class="title">方案 A · 深墨青 Teal <span style="color:var(--beige-grey);font-weight:400;font-size:12px;margin-left:6px;">#2f6d6b</span></div>
+      <div class="verdict">推荐 · 冷暖对比强、干净、保留复古气质</div>
+    </div>
+    <div class="card-body">
+      <div class="section">
+        <div class="section-title">按钮(主要 / soft / outline + hover)</div>
+        <div class="btn-group">
+          <button class="btn btn-primary">主要按钮</button>
+          <button class="btn btn-soft">Soft</button>
+          <button class="btn btn-outline">描边</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tab 选中态 · Toggle · 链接</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <div class="tabbar" style="flex:1; min-width:280px;">
+            <div class="tab">概览</div>
+            <div class="tab active">终端</div>
+            <div class="tab">会话</div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">自动连接</span>
+            <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+          </div>
+          <a class="link" href="#">查看文档</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">输入框 focus · 图标强调色</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <input class="input-field" placeholder="输入主机地址" />
+          <div class="icon-row">
+            <span class="icon-tile">⚙</span>
+            <i class="fa-solid fa-terminal icn"></i><span class="label">Terminal</span>
+            <i class="fa-solid fa-code icn"></i><span class="label">Editor</span>
+            <i class="fa-solid fa-wrench icn"></i><span class="label">Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">进度条 · Tag/Chip · Tooltip</div>
+        <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+          <div class="progress"><div style="width:64%"></div></div>
+          <div style="display:flex; gap:8px;">
+            <span class="chip"><i class="fa-solid fa-check" style="font-size:9px;"></i> 已连接</span>
+            <span class="chip-solid chip">主会话</span>
+          </div>
+          <div class="tip-wrap">
+            <span class="tip-trigger">悬停</span>
+            <div class="tip-bubble tip-accent">已就绪</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">完整色阶 50→900</div>
+        <div class="ramp">
+          <div class="dark" style="background:#eef5f5;">50</div>
+          <div class="dark" style="background:#d6e9e8;">100</div>
+          <div class="dark" style="background:#a8d4d2;">200</div>
+          <div style="background:#74b8b5;">300</div>
+          <div style="background:#2f6d6b;">500</div>
+          <div style="background:#285f5d;">600</div>
+          <div style="background:#26605e;">700</div>
+          <div style="background:#1c4948;">800</div>
+          <div style="background:#143333;">900</div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      主色 <code>--accent-color: #2f6d6b</code> · hover <code>#3a8581</code> · <code>--accent-bg-color rgba(47,109,107,0.16)</code> · <code>--hover-bg-color rgba(47,109,107,0.10)</code><br/>
+      对比度(主色 vs 米色): <span class="ok">5.6:1 ✓ AA</span> · 链接对比度: <span class="ok">5.6:1 ✓</span>
+    </div>
+  </div>
+
+
+  <!-- ============ B · 深森林绿 Forest ============ -->
+  <div class="card" style="--acc:#3d6b3a; --acc-hover:#4d8347; --acc-bg:rgba(61,107,58,0.15); --acc-bg-strong:rgba(61,107,58,0.24); --acc-200:#bcd9ba; --acc-700:#2e562b;">
+    <div class="card-head">
+      <div class="title">方案 B · 深森林绿 Forest <span style="color:var(--beige-grey);font-weight:400;font-size:12px;margin-left:6px;">#3d6b3a</span></div>
+      <div class="verdict">推荐 · 与现有 tab-green / success 同源,不冲突</div>
+    </div>
+    <div class="card-body">
+      <div class="section">
+        <div class="section-title">按钮(主要 / soft / outline + hover)</div>
+        <div class="btn-group">
+          <button class="btn btn-primary">主要按钮</button>
+          <button class="btn btn-soft">Soft</button>
+          <button class="btn btn-outline">描边</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tab 选中态 · Toggle · 链接</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <div class="tabbar" style="flex:1; min-width:280px;">
+            <div class="tab">概览</div>
+            <div class="tab active">终端</div>
+            <div class="tab">会话</div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">自动连接</span>
+            <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+          </div>
+          <a class="link" href="#">查看文档</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">输入框 focus · 图标强调色</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <input class="input-field" placeholder="输入主机地址" />
+          <div class="icon-row">
+            <span class="icon-tile">⚙</span>
+            <i class="fa-solid fa-terminal icn"></i><span class="label">Terminal</span>
+            <i class="fa-solid fa-code icn"></i><span class="label">Editor</span>
+            <i class="fa-solid fa-wrench icn"></i><span class="label">Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">进度条 · Tag/Chip · Tooltip</div>
+        <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+          <div class="progress"><div style="width:64%"></div></div>
+          <div style="display:flex; gap:8px;">
+            <span class="chip"><i class="fa-solid fa-check" style="font-size:9px;"></i> 已连接</span>
+            <span class="chip-solid chip">主会话</span>
+          </div>
+          <div class="tip-wrap">
+            <span class="tip-trigger">悬停</span>
+            <div class="tip-bubble tip-accent">已就绪</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">完整色阶 50→900</div>
+        <div class="ramp">
+          <div class="dark" style="background:#eef6ee;">50</div>
+          <div class="dark" style="background:#d7ebd5;">100</div>
+          <div class="dark" style="background:#bcd9ba;">200</div>
+          <div style="background:#83b87f;">300</div>
+          <div style="background:#3d6b3a;">500</div>
+          <div style="background:#345e32;">600</div>
+          <div style="background:#2e562b;">700</div>
+          <div style="background:#214020;">800</div>
+          <div style="background:#162915;">900</div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      主色 <code>--accent-color: #3d6b3a</code> · hover <code>#4d8347</code> · <code>--accent-bg-color rgba(61,107,58,0.15)</code> · <code>--hover-bg-color rgba(61,107,58,0.10)</code><br/>
+      对比度(主色 vs 米色): <span class="ok">5.9:1 ✓ AA</span> · 与 <code>--tab-green #2e7d32</code> 接近,注意会话 tab 绿与品牌绿可能拥挤
+    </div>
+  </div>
+
+
+  <!-- ============ C · 群青蓝 Azure ============ -->
+  <div class="card" style="--acc:#2d5a8b; --acc-hover:#3a6ea0; --acc-bg:rgba(45,90,139,0.14); --acc-bg-strong:rgba(45,90,139,0.22); --acc-200:#a9c5e0; --acc-700:#244974;">
+    <div class="card-head">
+      <div class="title">方案 C · 群青蓝 Azure <span style="color:var(--beige-grey);font-weight:400;font-size:12px;margin-left:6px;">#2d5a8b</span></div>
+      <div class="verdict">次推荐 · 对比度最高,但偏冷会拉低米色温度</div>
+    </div>
+    <div class="card-body">
+      <div class="section">
+        <div class="section-title">按钮(主要 / soft / outline + hover)</div>
+        <div class="btn-group">
+          <button class="btn btn-primary">主要按钮</button>
+          <button class="btn btn-soft">Soft</button>
+          <button class="btn btn-outline">描边</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tab 选中态 · Toggle · 链接</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <div class="tabbar" style="flex:1; min-width:280px;">
+            <div class="tab">概览</div>
+            <div class="tab active">终端</div>
+            <div class="tab">会话</div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">自动连接</span>
+            <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+          </div>
+          <a class="link" href="#">查看文档</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">输入框 focus · 图标强调色</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <input class="input-field" placeholder="输入主机地址" />
+          <div class="icon-row">
+            <span class="icon-tile">⚙</span>
+            <i class="fa-solid fa-terminal icn"></i><span class="label">Terminal</span>
+            <i class="fa-solid fa-code icn"></i><span class="label">Editor</span>
+            <i class="fa-solid fa-wrench icn"></i><span class="label">Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">进度条 · Tag/Chip · Tooltip</div>
+        <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+          <div class="progress"><div style="width:64%"></div></div>
+          <div style="display:flex; gap:8px;">
+            <span class="chip"><i class="fa-solid fa-check" style="font-size:9px;"></i> 已连接</span>
+            <span class="chip-solid chip">主会话</span>
+          </div>
+          <div class="tip-wrap">
+            <span class="tip-trigger">悬停</span>
+            <div class="tip-bubble tip-accent">已就绪</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">完整色阶 50→900</div>
+        <div class="ramp">
+          <div class="dark" style="background:#eaf1f8;">50</div>
+          <div class="dark" style="background:#d3e0f0;">100</div>
+          <div class="dark" style="background:#a9c5e0;">200</div>
+          <div style="background:#6f97c0;">300</div>
+          <div style="background:#2d5a8b;">500</div>
+          <div style="background:#264f7c;">600</div>
+          <div style="background:#244974;">700</div>
+          <div style="background:#193659;">800</div>
+          <div style="background:#10243c;">900</div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      主色 <code>--accent-color: #2d5a8b</code> · hover <code>#3a6ea0</code> · <code>--accent-bg-color rgba(45,90,139,0.14)</code> · <code>--hover-bg-color rgba(45,90,139,0.10)</code><br/>
+      对比度(主色 vs 米色): <span class="ok">6.4:1 ✓ AA</span> · 与 <code>--conn-icon-color #2563eb</code> 接近,连接图标可能不够区分
+    </div>
+  </div>
+
+
+  <!-- ============ D · 当前橙棕 (基准对照) ============ -->
+  <div class="card" style="--acc:#b06535; --acc-hover:#c27a45; --acc-bg:rgba(245,158,11,0.24); --acc-bg-strong:rgba(245,158,11,0.34); --acc-200:#fde68a; --acc-700:#8f5124;">
+    <div class="card-head">
+      <div class="title">方案 D · 当前橙棕 <span style="color:var(--beige-grey);font-weight:400;font-size:12px;margin-left:6px;">#b06535</span></div>
+      <div class="verdict">基准对照 · 与米色同暖向,明度差不足,易显脏</div>
+    </div>
+    <div class="card-body">
+      <div class="section">
+        <div class="section-title">按钮(主要 / soft / outline + hover)</div>
+        <div class="btn-group">
+          <button class="btn btn-primary">主要按钮</button>
+          <button class="btn btn-soft">Soft</button>
+          <button class="btn btn-outline">描边</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tab 选中态 · Toggle · 链接</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <div class="tabbar" style="flex:1; min-width:280px;">
+            <div class="tab">概览</div>
+            <div class="tab active">终端</div>
+            <div class="tab">会话</div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">自动连接</span>
+            <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+          </div>
+          <a class="link" href="#">查看文档</a>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">输入框 focus · 图标强调色</div>
+        <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+          <input class="input-field" placeholder="输入主机地址" />
+          <div class="icon-row">
+            <span class="icon-tile">⚙</span>
+            <i class="fa-solid fa-terminal icn"></i><span class="label">Terminal</span>
+            <i class="fa-solid fa-code icn"></i><span class="label">Editor</span>
+            <i class="fa-solid fa-wrench icn"></i><span class="label">Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">进度条 · Tag/Chip · Tooltip</div>
+        <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+          <div class="progress"><div style="width:64%"></div></div>
+          <div style="display:flex; gap:8px;">
+            <span class="chip"><i class="fa-solid fa-check" style="font-size:9px;"></i> 已连接</span>
+            <span class="chip-solid chip">主会话</span>
+          </div>
+          <div class="tip-wrap">
+            <span class="tip-trigger">悬停</span>
+            <div class="tip-bubble tip-accent">已就绪</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">完整色阶 50→900</div>
+        <div class="ramp">
+          <div class="dark" style="background:#fff8e6;">50</div>
+          <div class="dark" style="background:#fef0c7;">100</div>
+          <div class="dark" style="background:#fde68a;">200</div>
+          <div class="dark" style="background:#fcd472;">300</div>
+          <div style="background:#c27a45;">500</div>
+          <div style="background:#b06535;">600</div>
+          <div style="background:#8f5124;">700</div>
+          <div style="background:#713f1d;">800</div>
+          <div style="background:#4f2b17;">900</div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      主色 <code>--accent-color: #b06535</code> · 取自现有 <code>frontend/app/theme.scss</code> 浅色主题,未改动 · 仅作对照
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

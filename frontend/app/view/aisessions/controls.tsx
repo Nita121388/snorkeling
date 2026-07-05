@@ -25,11 +25,11 @@ export function SourceButton({
     return (
         <button
             className={cn(
-                "flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors",
+                "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-transparent text-xs transition-colors",
                 iconOnly ? "w-8 px-1" : "px-2.5",
                 active
-                    ? "bg-surface-strong text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-                    : "text-secondary hover:text-primary"
+                    ? "border-border/70 bg-background text-primary shadow-sm"
+                    : "text-secondary hover:bg-hover hover:text-primary"
             )}
             onClick={onClick}
             title={label}
@@ -68,8 +68,10 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
     return (
         <button
             className={cn(
-                "flex h-7 items-center gap-1.5 rounded-md bg-surface px-2.5 text-xs text-secondary transition-colors hover:text-primary",
-                descending && "text-primary"
+                "flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
+                descending
+                    ? "bg-background text-primary shadow-sm"
+                    : "bg-surface text-secondary hover:bg-hover hover:text-primary"
             )}
             onClick={onToggle}
             title={descending ? "Newest first" : "Oldest first"}

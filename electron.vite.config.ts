@@ -12,6 +12,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // from our electron build
 const CHROME = "chrome140";
 const NODE = "node22";
+const DevServerPort = Number(process.env.SNORKELING_VITE_PORT || "51740");
 const require = createRequire(import.meta.url);
 
 function hasSharpDependency(): boolean {
@@ -163,7 +164,7 @@ export default defineConfig({
         },
         server: {
             open: false,
-            port: 5173,
+            port: DevServerPort,
             strictPort: false,
             watch: {
                 ignored: [

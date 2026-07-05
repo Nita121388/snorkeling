@@ -65,6 +65,7 @@ let confirmQuit = true;
 const waveDataDir = getWaveDataDir();
 const waveConfigDir = getWaveConfigDir();
 
+// Will be updated after config loads; default to dark for splash
 electron.nativeTheme.themeSource = "dark";
 
 console.log = log;
@@ -419,6 +420,15 @@ async function appMain() {
     checkIfRunningUnderARM64Translation(fullConfig);
     if (fullConfig?.settings?.["app:confirmquit"] != null) {
         confirmQuit = fullConfig.settings["app:confirmquit"];
+    }
+    // Sync Electron native theme with app theme setting so native menus match
+    const appThemeSetting = fullConfig?.settings?.["app:theme"];
+    if (appThemeSetting === "light") {
+        electron.nativeTheme.themeSource = "light";
+    } else if (appThemeSetting === "dark") {
+        electron.nativeTheme.themeSource = "dark";
+    } else {
+        electron.nativeTheme.themeSource = "system";
     }
     ensureHotSpareTab(fullConfig);
     await relaunchBrowserWindows();

@@ -46,3 +46,8 @@ docsite/
 .superpowers
 docs/superpowers
 .claude
+
+# Local dev artifacts
+start-light.ps1
+cream-snazzy-green.jpeg
+electron-vite
