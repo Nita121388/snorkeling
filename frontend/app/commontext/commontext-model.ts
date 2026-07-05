@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { atoms, createBlock, globalStore } from "@/app/store/global";
+import { CommonTextService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 
@@ -184,7 +185,7 @@ function matchesToken(item: CommonTextItem, token: string): boolean {
 export function searchCommonTextItems(
     items: CommonTextItem[],
     query: string,
-    limit = 500,
+    limit = 40,
     selectedTags: string[] = []
 ): CommonTextItem[] {
     const tokens = query.trim().split(/\s+/).filter(Boolean);
@@ -194,6 +195,31 @@ export function searchCommonTextItems(
             ? tagFilteredItems
             : tagFilteredItems.filter((item) => tokens.every((token) => matchesToken(item, token)));
     return sortCommonTextItems(filtered).slice(0, limit);
+}
+
+export type PagedSearchResult = {
+    items: CommonTextItem[];
+    total: number;
+    hasMore: boolean;
+};
+
+const PAGE_SIZE = 20;
+
+export async function searchCommonTextItemsPaged(
+    query: string,
+    selectedTags: string[],
+    page: number
+): Promise<PagedSearchResult> {
+    const result = await CommonTextService.List({
+        query,
+        tagFilters: selectedTags,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+    });
+    const items = (result?.items ?? []).map(normalizeCommonTextItem).filter((item): item is CommonTextItem => item != null);
+    const total = items.length;
+    const hasMore = total >= PAGE_SIZE;
+    return { items, total, hasMore };
 }
 
 export function findDuplicateCommonText(

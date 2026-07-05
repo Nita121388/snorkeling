@@ -362,7 +362,7 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
             {checked ? (
                 <i className="fa-solid fa-check text-accent text-[10px]" />
             ) : (
-                <span className="w-3 h-3 rounded-[2px] border border-border/30" />
+                <span className="w-3 h-3 rounded-[2px] border border-border" />
             )}
         </button>
     );

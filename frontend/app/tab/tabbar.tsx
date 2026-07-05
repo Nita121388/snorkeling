@@ -53,6 +53,8 @@ const OSOptions = {
 interface TabBarProps {
     workspace: Workspace;
     noTabs?: boolean;
+    headerHovered?: boolean;
+    onHeaderHoverChange?: (hovered: boolean) => void;
 }
 
 const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement> }) => {
@@ -104,7 +106,7 @@ function strArrayIsEqual(a: string[], b: string[]) {
     return true;
 }
 
-const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
+const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
     const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
@@ -147,6 +149,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
 
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
+    const [isWrapperHovered, setIsWrapperHovered] = useState(false);
     let prevDelta: number;
     let prevDragDirection: string;
 
@@ -157,11 +160,13 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 return (
                     isActive ||
                     isTabBarHovered ||
+                    headerHovered ||
+                    isWrapperHovered ||
                     draggingTab != null ||
                     wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
                 );
             }),
-        [activeTabId, draggingTab, isTabBarHovered, openedThisLaunchTabIds, tabIds]
+        [activeTabId, draggingTab, headerHovered, isTabBarHovered, isWrapperHovered, openedThisLaunchTabIds, tabIds]
     );
 
     // Update refs when tabIds change
@@ -665,6 +670,16 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const tabsWrapperWidth = visibleTabIds.length * tabWidthRef.current;
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
+    const handleWrapperMouseEnter = useCallback(() => {
+        setIsWrapperHovered(true);
+        onHeaderHoverChange?.(true);
+    }, [onHeaderHoverChange]);
+
+    const handleWrapperMouseLeave = useCallback(() => {
+        setIsWrapperHovered(false);
+        onHeaderHoverChange?.(false);
+    }, [onHeaderHoverChange]);
+
     // Calculate window drag left width based on platform and state
     let windowDragLeftWidth = 10;
     if (env.isMacOS() && !isFullScreen) {
@@ -687,7 +702,12 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     }
 
     return (
-        <div ref={tabbarWrapperRef} className="tab-bar-wrapper">
+        <div
+            ref={tabbarWrapperRef}
+            className="tab-bar-wrapper"
+            onMouseEnter={handleWrapperMouseEnter}
+            onMouseLeave={handleWrapperMouseLeave}
+        >
             <div
                 ref={draggerLeftRef}
                 className="h-full shrink-0 z-window-drag"
@@ -764,8 +784,12 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             >
                 <i className="fa fa-solid fa-plus" />
             </button>
-            <div className="flex-1" />
-            <div ref={rightContainerRef} className="flex flex-row gap-1 items-end">
+            <div
+                className="flex-1 self-stretch"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                onMouseEnter={handleWrapperMouseEnter}
+            />
+            <div ref={rightContainerRef} className="flex flex-row gap-1 items-end" style={{ pointerEvents: "none" }}>
                 <UpdateStatusBanner />
                 <div
                     className="h-full shrink-0 z-window-drag"

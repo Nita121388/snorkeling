@@ -90,6 +90,7 @@ MacOSHeader.displayName = "MacOSHeader";
 interface VTabBarProps {
     workspace: Workspace;
     className?: string;
+    headerHovered?: boolean;
 }
 
 interface VTabWrapperProps {
@@ -198,7 +199,7 @@ function VTabWrapper({
     );
 }
 
-export function VTabBar({ workspace, className }: VTabBarProps) {
+export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -397,7 +398,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                     const isNextHovered = nextTabId === hoveredTabId;
                     const openedSet = globalStore.get(openedThisLaunchTabIdsAtom);
                     const wasOpened = wasTabOpenedThisLaunch(openedSet, tabId);
-                    const isHidden = !isActive && !isTabBarHovered && !wasOpened && dragTabId == null;
+                    const isHidden = !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null;
                     if (isHidden) {
                         return null;
                     }

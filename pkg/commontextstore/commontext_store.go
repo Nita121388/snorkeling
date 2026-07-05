@@ -45,6 +45,7 @@ type ListOptions struct {
 	Query      string
 	TagFilters []string
 	Limit      int
+	Offset     int
 }
 
 type TagSummary struct {
@@ -297,6 +298,7 @@ func List(ctx context.Context, opts ListOptions) ([]commonTextItem, error) {
 	for _, tag := range tagFilters {
 		normalizedTagFilters = append(normalizedTagFilters, strings.ToLower(tag))
 	}
+	collected := 0
 	var filtered []commonTextItem
 	for _, item := range items {
 		if ctx.Err() != nil {
@@ -306,6 +308,10 @@ func List(ctx context.Context, opts ListOptions) ([]commonTextItem, error) {
 			continue
 		}
 		if !commonTextItemMatchesQuery(item, queryTerms) {
+			continue
+		}
+		if collected < opts.Offset {
+			collected++
 			continue
 		}
 		filtered = append(filtered, item)

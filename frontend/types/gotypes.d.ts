@@ -1132,6 +1132,7 @@ declare global {
         query?: string;
         tagFilters?: string[];
         limit?: number;
+        offset?: number;
     };
 
     // commontextservice.CommonTextListResponse

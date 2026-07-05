@@ -25,6 +25,8 @@ type FileLinkOpenOptions = {
     openDirectoryIndex?: boolean;
     lineNumber?: number | null;
     editMode?: boolean;
+    revealInTree?: boolean;
+    revealInTreeBlockId?: string | null;
 };
 
 type PreviewTreeBlock = {
@@ -275,6 +277,40 @@ async function findTreeFilesBlock(targetPath: string, connection: string): Promi
     return null;
 }
 
+async function findExistingNonEditPreviewBlock(targetPath: string, connection: string): Promise<string | null> {
+    const tabId = globalStore.get(atoms.staticTabId);
+    if (isBlank(tabId)) {
+        return null;
+    }
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    for (const blockId of tab?.blockids ?? []) {
+        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        if (block?.meta?.view !== "preview") {
+            continue;
+        }
+        if (normalizeConnection(block.meta?.connection) !== normalizeConnection(connection)) {
+            continue;
+        }
+        if (block.meta?.edit === true) {
+            continue;
+        }
+        if (block.meta?.file !== targetPath) {
+            continue;
+        }
+        return blockId;
+    }
+    return null;
+}
+
+async function applySearchLineToBlock(blockId: string, options?: FileLinkOpenOptions): Promise<void> {
+    if (options?.lineNumber == null || !Number.isFinite(options.lineNumber)) {
+        return;
+    }
+    const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+    const nextMeta = applyPreviewOpenOptions({ ...(block?.meta ?? {}) }, options);
+    await ObjectService.UpdateObjectMeta(WOS.makeORef("block", blockId), nextMeta);
+}
+
 async function focusTreeBlock(blockId: string) {
     const tabId = globalStore.get(atoms.staticTabId);
     const layoutModel = getLayoutModelForStaticTab();
@@ -297,6 +333,7 @@ async function requestTreeReveal(blockId: string, block: Block, path: string) {
         [PreviewRevealPathMetaKey]: path,
         [PreviewRevealSeqMetaKey]: nextSeq,
     };
+    console.log("[CTREVEAL] requestTreeReveal WRITE", { blockId, path, currentSeq, nextSeq });
     await ObjectService.UpdateObjectMeta(WOS.makeORef("block", blockId), nextMeta);
 }
 
@@ -342,10 +379,12 @@ export async function openFileLinkInPreview(href: string, options?: FileLinkOpen
 
 export async function openPathInPreview(path: string, options?: FileLinkOpenOptions): Promise<void> {
     const connection = normalizeConnection(options?.connection);
+    console.log("[CTREVEAL] openPathInPreview ENTER", { path, revealInTree: options?.revealInTree, lineNumber: options?.lineNumber, connection });
     let fileInfo: FileInfo;
     try {
         fileInfo = await statPath(path, connection);
     } catch (e) {
+        console.log("[CTREVEAL] openPathInPreview: stat failed, creating fallback block");
         await createPreviewBlock(path, connection, applyPreviewOpenOptions({}, options));
         return;
     }
@@ -358,11 +397,19 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
             return;
         }
     }
-    const treeBlock = await findTreeFilesBlock(targetPath, connection);
+    const treeBlock = options?.revealInTree === false ? null : await findTreeFilesBlock(targetPath, connection);
+    console.log("[CTREVEAL] openPathInPreview treeBlock", { revealInTree: options?.revealInTree, targetPath, treeBlockId: treeBlock?.blockId ?? null, treeBlockRoot: treeBlock?.rootPath ?? null, revealInTreeBlockId: options?.revealInTreeBlockId ?? null });
     if (treeBlock != null) {
         await requestTreeReveal(treeBlock.blockId, treeBlock.block, targetPath);
         await focusTreeBlock(treeBlock.blockId);
         if (!targetIsDir) {
+            const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+            console.log("[CTREVEAL] openPathInPreview (treeBlock branch) existingId", { targetPath, existingId });
+            if (existingId != null) {
+                await focusTreeBlock(existingId);
+                await applySearchLineToBlock(existingId, options);
+                return;
+            }
             await createPreviewBlock(
                 targetPath,
                 connection,
@@ -371,7 +418,30 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
         }
         return;
     }
+    if (options?.revealInTree === true && options?.revealInTreeBlockId != null) {
+        const fallbackBlock = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", options.revealInTreeBlockId)));
+        if (fallbackBlock != null) {
+            console.log("[CTREVEAL] openPathInPreview fallback reveal in current explorer block", { blockId: options.revealInTreeBlockId, targetPath });
+            await requestTreeReveal(options.revealInTreeBlockId, fallbackBlock, targetPath);
+            await focusTreeBlock(options.revealInTreeBlockId);
+            if (!targetIsDir) {
+                const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+                if (existingId != null) {
+                    await focusTreeBlock(existingId);
+                    await applySearchLineToBlock(existingId, options);
+                    return;
+                }
+                await createPreviewBlock(
+                    targetPath,
+                    connection,
+                    applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+                );
+            }
+            return;
+        }
+    }
     if (targetIsDir) {
+        console.log("[CTREVEAL] openPathInPreview: createPreviewBlock (dir/tree, no treeBlock found)");
         await createPreviewBlock(
             targetPath,
             connection,
@@ -386,6 +456,14 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
         );
         return;
     }
+    const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+    console.log("[CTREVEAL] openPathInPreview (no treeBlock) existingId", { targetPath, existingId });
+    if (existingId != null) {
+        await focusTreeBlock(existingId);
+        await applySearchLineToBlock(existingId, options);
+        return;
+    }
+    console.log("[CTREVEAL] openPathInPreview: createPreviewBlock (new file block)");
     await createPreviewBlock(
         targetPath,
         connection,
