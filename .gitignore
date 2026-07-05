@@ -46,6 +46,4 @@ docsite/
 .superpowers
 docs/superpowers
 .claude
-
-# Local-only scripts (not to be committed)
-scripts/local-inspect-ui.mjs
+tmp/
