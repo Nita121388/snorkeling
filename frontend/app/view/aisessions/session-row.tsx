@@ -202,7 +202,7 @@ export function SessionRow({
                         <button
                             type="button"
                             className={cn(
-                                "mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded border-l-2 border-accent/50 py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors hover:bg-hover hover:text-accent",
+                                "relative mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-accent/50 before:content-[''] hover:bg-hover hover:text-accent",
                                 noteEditing && "bg-hover/60 text-accent"
                             )}
                             title={noteToggleLabel}
