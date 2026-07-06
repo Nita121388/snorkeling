@@ -42,6 +42,9 @@ const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
 const SearchAutoSubmitMs = 250;
+const SearchClickDelayMs = 350;
+const SearchRevealDelayMs = 2000;
+const SearchRevealAfterRenderMs = 50;
 
 function normalizeRootLabel(path: string): string {
     if (path === "/" || path === "~") {
@@ -127,7 +130,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
     const treeRef = useRef<TreeViewRef>(null);
     const lastRevealSeqRef = useRef<number | null>(null);
-    const lastSearchClickRef = useRef<{ path: string; t: number } | null>(null);
+    const searchClickTimerRef = useRef<number | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
@@ -266,41 +269,32 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     useEffect(() => {
         const revealPath = blockData?.meta?.[PreviewRevealPathMetaKey];
         const revealSeq = blockData?.meta?.[PreviewRevealSeqMetaKey];
-        console.log("[CTREVEAL] reveal effect run", {
-            blockId: blockData?.id,
-            revealPath,
-            revealSeq,
-            lastSeq: lastRevealSeqRef.current,
-            metaKeys: blockData?.meta ? Object.keys(blockData.meta).filter((k) => k.startsWith("preview:")) : [],
-            pathMeta: blockData?.meta?.file,
-        });
         if (typeof revealPath !== "string" || revealPath === "" || typeof revealSeq !== "number") {
-            console.log("[CTREVEAL] reveal effect: skip (no valid revealPath/Seq)");
             return;
         }
         if (lastRevealSeqRef.current === revealSeq) {
-            console.log("[CTREVEAL] reveal effect: skip (seq unchanged)");
             return;
         }
         lastRevealSeqRef.current = revealSeq;
-        setSearchActive(false);
-        console.log("[CTREVEAL] reveal effect: scheduling reveal in 2000ms", { revealPath, revealSeq });
+        let revealAfterRenderTimer: number | null = null;
         const revealTimer = window.setTimeout(() => {
-            console.log("[CTREVEAL] reveal timer FIRE", { revealPath, treeRefReady: !!treeRef.current });
-            fireAndForget(async () => {
-                const revealed = await treeRef.current?.revealId(revealPath);
-                console.log("[CTREVEAL] revealId returned", { revealPath, revealed });
-                if (!revealed) {
-                    window.setTimeout(() => {
-                        console.log("[CTREVEAL] reveal retry", { revealPath });
-                        fireAndForget(() => treeRef.current?.revealId(revealPath));
-                    }, 150);
-                }
-            });
-        }, 2000);
+            setSearchActive(false);
+            revealAfterRenderTimer = window.setTimeout(() => {
+                fireAndForget(async () => {
+                    const revealed = await treeRef.current?.revealId(revealPath);
+                    if (!revealed) {
+                        window.setTimeout(() => {
+                            fireAndForget(() => treeRef.current?.revealId(revealPath));
+                        }, 150);
+                    }
+                });
+            }, SearchRevealAfterRenderMs);
+        }, SearchRevealDelayMs);
         return () => {
-            console.log("[CTREVEAL] reveal effect cleanup (timer cleared)", { revealPath, revealSeq });
             window.clearTimeout(revealTimer);
+            if (revealAfterRenderTimer != null) {
+                window.clearTimeout(revealAfterRenderTimer);
+            }
         };
     }, [blockData?.meta, setSearchActive]);
 
@@ -785,11 +779,38 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
 
     const openSearchPath = useCallback(
         async (path: string, lineNumber?: number, openOptions?: { revealInTree?: boolean }) => {
-            console.log("[CTREVEAL] openSearchPath enter", { path, lineNumber, revealInTree: openOptions?.revealInTree, revealInTreeBlockId: blockData?.id ?? null });
-            setSearchActive(false);
             await openPathInPreview(path, { connection, lineNumber, ...openOptions, revealInTreeBlockId: blockData?.id ?? null });
         },
-        [connection, setSearchActive, blockData?.id]
+        [connection, blockData?.id]
+    );
+
+    const clearSearchClickTimer = useCallback(() => {
+        if (searchClickTimerRef.current == null) {
+            return;
+        }
+        window.clearTimeout(searchClickTimerRef.current);
+        searchClickTimerRef.current = null;
+    }, []);
+
+    useEffect(() => clearSearchClickTimer, [clearSearchClickTimer]);
+
+    const queueSearchSingleOpen = useCallback(
+        (path: string, lineNumber?: number) => {
+            clearSearchClickTimer();
+            searchClickTimerRef.current = window.setTimeout(() => {
+                searchClickTimerRef.current = null;
+                fireAndForget(() => openSearchPath(path, lineNumber, { revealInTree: false }));
+            }, SearchClickDelayMs);
+        },
+        [clearSearchClickTimer, openSearchPath]
+    );
+
+    const openSearchDouble = useCallback(
+        (path: string, lineNumber?: number) => {
+            clearSearchClickTimer();
+            fireAndForget(() => openSearchPath(path, lineNumber, { revealInTree: true }));
+        },
+        [clearSearchClickTimer, openSearchPath]
     );
 
     return (
@@ -992,16 +1013,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                 ? "bg-white/10"
                                                                 : "hover:bg-white/5"
                                                         )}
-                                                        onClick={() => {
-                                                            const now = Date.now();
-                                                            const last = lastSearchClickRef.current;
-                                                            const isDoubleClick = last != null && last.path === match.path && now - last.t < 350;
-                                                            lastSearchClickRef.current = isDoubleClick ? null : { path: match.path, t: now };
-                                                            console.log("[CTREVEAL] name-match onClick", match.path, isDoubleClick ? "(DOUBLE)" : "(single)");
-                                                            fireAndForget(() =>
-                                                                openSearchPath(match.path, undefined, { revealInTree: isDoubleClick })
-                                                            );
-                                                        }}
+                                                        onClick={() => queueSearchSingleOpen(match.path)}
+                                                        onDoubleClick={() => openSearchDouble(match.path)}
                                                         onContextMenu={(event) =>
                                                             handleNameSearchResultContextMenu(event, match)
                                                         }
@@ -1092,20 +1105,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                         ? "bg-white/10"
                                                                         : "hover:bg-white/5"
                                                                 )}
-                                                                onClick={() => {
-                                                                    const now = Date.now();
-                                                                    const last = lastSearchClickRef.current;
-                                                                    const isDoubleClick = last != null && last.path === match.path && now - last.t < 350;
-                                                                    lastSearchClickRef.current = isDoubleClick ? null : { path: match.path, t: now };
-                                                                    console.log("[CTREVEAL] content-match onClick", match.path, "line=", match.linenumber, isDoubleClick ? "(DOUBLE)" : "(single)");
-                                                                    fireAndForget(() =>
-                                                                        openSearchPath(
-                                                                            match.path,
-                                                                            isDoubleClick ? match.linenumber : undefined,
-                                                                            { revealInTree: isDoubleClick }
-                                                                        )
-                                                                    );
-                                                                }}
+                                                                onClick={() => queueSearchSingleOpen(match.path)}
+                                                                onDoubleClick={() =>
+                                                                    openSearchDouble(match.path, match.linenumber)
+                                                                }
                                                                 onContextMenu={(event) =>
                                                                     handleContentSearchMatchContextMenu(event, match)
                                                                 }

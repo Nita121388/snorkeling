@@ -33,9 +33,12 @@ async function fetchJSON(url) {
 /** Find the first page/webview target from the /json/list endpoint. */
 async function findTarget() {
   const list = await fetchJSON(`${BASE}/json/list`);
-  const target = list.find(
-    (t) => t.type === "page" && !t.url.startsWith("devtools://")
-  );
+  const pages = list.filter((t) => t.type === "page" && !t.url.startsWith("devtools://"));
+  // Prefer a real workspace tab title ("Wave Terminal - T<n>") over the bare init window.
+  const target =
+    pages.find((t) => /Wave Terminal - T\d/.test(t.title ?? "")) ||
+    pages.find((t) => (t.title ?? "").includes("Wave Terminal")) ||
+    pages[0];
   if (!target) {
     throw new Error(
       `No page target found on port ${CDP_PORT}. Is the app running with --remote-debugging-port=${CDP_PORT}?\n` +

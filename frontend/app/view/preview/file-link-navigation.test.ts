@@ -4,6 +4,7 @@
 import {
     applyPreviewOpenOptions,
     isPathWithinRoot,
+    isSamePreviewPath,
     normalizeLinkedFilePath,
 } from "@/app/view/preview/file-link-navigation";
 import { describe, expect, it } from "vitest";
@@ -44,6 +45,14 @@ describe("file link navigation helpers", () => {
         expect(isPathWithinRoot("E:/code/tpot-other/file.py", "E:/code/tpot")).toBe(false);
         expect(isPathWithinRoot("/tmp/project/src/index.ts", "/tmp/project")).toBe(true);
         expect(isPathWithinRoot("/tmp/project2/index.ts", "/tmp/project")).toBe(false);
+    });
+
+    it("compares preview paths using normalized separators and trailing slashes", () => {
+        expect(isSamePreviewPath("/tmp/project/src/index.ts", "/tmp/project/src/index.ts")).toBe(true);
+        expect(isSamePreviewPath("/tmp/project/src/", "/tmp/project/src")).toBe(true);
+        expect(isSamePreviewPath("E:\\code\\tpot\\tpot\\__init__.py", "E:/code/tpot/tpot/__init__.py")).toBe(true);
+        expect(isSamePreviewPath("/tmp/project/src/index.ts", "/tmp/project2/src/index.ts")).toBe(false);
+        expect(isSamePreviewPath("", "/tmp/project/src/index.ts")).toBe(false);
     });
 
     it("applies preview open options to newly-created preview block metadata", () => {
