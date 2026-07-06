@@ -337,6 +337,46 @@ type CreateToExistingTabRequest = {
 
 const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
+function useOutsideHoverClose(isOpen: boolean, onClose: () => void, delayMs = 1000) {
+    const closeTimerRef = useRef<number | null>(null);
+    const hasEnteredRef = useRef(false);
+
+    const clearCloseTimer = useCallback(() => {
+        if (closeTimerRef.current != null) {
+            window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            hasEnteredRef.current = false;
+            clearCloseTimer();
+        }
+    }, [isOpen, clearCloseTimer]);
+
+    useEffect(() => {
+        return () => {
+            clearCloseTimer();
+        };
+    }, [clearCloseTimer]);
+
+    const onPointerEnter = useCallback(() => {
+        hasEnteredRef.current = true;
+        clearCloseTimer();
+    }, [clearCloseTimer]);
+
+    const onPointerLeave = useCallback(() => {
+        clearCloseTimer();
+        closeTimerRef.current = window.setTimeout(() => {
+            closeTimerRef.current = null;
+            onClose();
+        }, delayMs);
+    }, [clearCloseTimer, delayMs, onClose]);
+
+    return { onPointerEnter, onPointerLeave };
+}
+
 type DefaultCheckButtonProps = {
     checked: boolean;
     ariaLabel: string;
@@ -454,6 +494,8 @@ const AgentTargetFloatingWindow = memo(
         const [selectedProfile, setSelectedProfile] = useState(initialProfileName);
         const [selectedIdx, setSelectedIdx] = useState(0);
 
+        const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
+
         useEffect(() => {
             if (profileOptions.some((profile) => profile.name === selectedProfile)) {
                 return;
@@ -478,6 +520,8 @@ const AgentTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
+                    onPointerEnter={onPointerEnter}
+                    onPointerLeave={onPointerLeave}
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
@@ -744,6 +788,8 @@ const TerminalTargetFloatingWindow = memo(
         const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
         const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
+        const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
+
         if (!isOpen) {
             return null;
         }
@@ -754,6 +800,8 @@ const TerminalTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
+                    onPointerEnter={onPointerEnter}
+                    onPointerLeave={onPointerLeave}
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
