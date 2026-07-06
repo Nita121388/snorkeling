@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { openCommonTextSearch } from "@/app/commontext/commontext-events";
+import { MiddleEllipsis } from "@/app/element/middle-ellipsis";
 import { Tooltip } from "@/app/element/tooltip";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -349,9 +350,9 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
         <button
             type="button"
             className={clsx(
-                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer",
+                "w-5 h-5 shrink-0 items-center justify-center cursor-pointer",
                 checked
-                    ? "text-accent"
+                    ? "inline-flex text-accent"
                     : "hidden group-hover:flex",
                 className
             )}
@@ -477,7 +478,7 @@ const AgentTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
                     <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
@@ -584,9 +585,17 @@ const AgentTargetFloatingWindow = memo(
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-foreground whitespace-nowrap">
-                                                    {target.detail || target.label}
-                                                </div>
+                                                <Tooltip
+                                                    content={target.detail || target.label}
+                                                    placement="top"
+                                                    disable={isBlank(target.detail) && isBlank(target.label)}
+                                                    divClassName="min-w-0"
+                                                >
+                                                    <MiddleEllipsis
+                                                        text={target.detail || target.label}
+                                                        className="text-xs text-foreground"
+                                                    />
+                                                </Tooltip>
                                                 {!target.isLocal ? (
                                                     <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
                                                         {target.label}
@@ -745,7 +754,7 @@ const TerminalTargetFloatingWindow = memo(
                     ref={refs.setFloating}
                     style={floatingStyles}
                     {...getFloatingProps()}
-                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] overflow-visible"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
                     <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
@@ -795,9 +804,17 @@ const TerminalTargetFloatingWindow = memo(
                                                 )}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-foreground whitespace-nowrap">
-                                                    {target.detail || target.label}
-                                                </div>
+                                                <Tooltip
+                                                    content={target.detail || target.label}
+                                                    placement="top"
+                                                    disable={isBlank(target.detail) && isBlank(target.label)}
+                                                    divClassName="min-w-0"
+                                                >
+                                                    <MiddleEllipsis
+                                                        text={target.detail || target.label}
+                                                        className="text-xs text-foreground"
+                                                    />
+                                                </Tooltip>
                                                 {!target.isLocal ? (
                                                     <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
                                                         {target.label}
