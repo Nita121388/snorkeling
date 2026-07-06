@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>复古无彩色 · Wave Desktop</title>
+<style>
+  :root{
+    /* 复古无彩色 Monochrome。映射 Wave 深色系统到 奶纸/烟黑/铅灰。 */
+    --main-bg-color:#e8e4dc;            /* = #222 → bone */
+    --main-text-color:#14110d;          /* = #f7f7f7 → soot */
+    --secondary-text-color:#45413a;      /* = rgb(195,200,194) */
+    --grey-text-color:#7a756c;          /* = #666 */
+    --border-color:rgba(20,17,13,.22);   /* = rgba(255,255,255,.16) */
+    --accent-color:#14110d;             /* = #58c142 → soot (无彩色强调) */
+    --accenthover:#2a2620;
+    --panel-bg-color:rgba(20,17,13,.05);
+    --hover-bg-color:rgba(20,17,13,.08);
+    --highlight-bg-color:rgba(20,17,13,.16);
+    --block-bg-color:rgba(255,255,255,.30);
+    --block-bg-solid-color:#dedacf;     /* = #000 */
+    --error-color:#5a1d10;
+    --warning-color:#7a5a1e;
+    --success-color:#3b3b30;
+    --line:#9a948a;
+    --radius:8px;
+    --serif:"Iowan Old Style","Book Antiqua",Georgia,"Times New Roman",serif;
+    --sans:"Helvetica Neue","Inter",Helvetica,Arial,sans-serif;
+    --mono:"Courier New","SFMono",ui-monospace,monospace;
+    --header-height:30px;
+    --thick-rule:#14110d;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;font:13px/1.45 var(--sans);color:var(--main-text-color);background:#3f3b35}
+  body{display:flex;justify-content:center;align-items:center}
+
+  .win{
+    width:1280px;height:800px;border-radius:10px;overflow:hidden;position:relative;background:var(--main-bg-color);
+    box-shadow:0 30px 80px rgba(0,0,0,.6),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 1px rgba(0,0,0,.15);
+    border:1px solid #1a1712;
+  }
+  /* +255 paper grain (less than eink) */
+  .win::before{
+    content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:.12;z-index:0;
+    background-image:
+      radial-gradient(circle at 12% 22%, rgba(0,0,0,.18) 0, transparent 1px),
+      radial-gradient(circle at 73% 41%, rgba(0,0,0,.14) 0, transparent 1px),
+      radial-gradient(circle at 31% 67%, rgba(0,0,0,.12) 0, transparent 1px),
+      radial-gradient(circle at 88% 80%, rgba(0,0,0,.16) 0, transparent 1px),
+      radial-gradient(circle at 50% 10%, rgba(0,0,0,.10) 0, transparent 1px);
+    background-size:6px 6px,10px 10px,5px 5px,9px 9px,13px 13px;
+  }
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.06;z-index:0;
+    background:radial-gradient(120% 70% at 50% 110%, rgba(0,0,0,.4), transparent 60%);
+  }
+  .stack{position:relative;z-index:1;display:flex;flex-direction:column;width:100%;height:100%}
+
+  /* TABBAR */
+  .tabbar{
+    display:flex;align-items:end;height:var(--header-height);padding:3px 6px 0;
+    background:rgba(0,0,0,.07);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--thick-rule);
+    flex-shrink:0;
+  }
+  .tab-breadcrumbs{display:flex;align-items:end;gap:0;height:27px;margin-bottom:1px;flex:0 0 auto}
+  .tab{
+    display:flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-radius:6px 6px 0 0;
+    border:1px solid transparent;border-bottom:0;background:transparent;color:var(--secondary-text-color);
+    font:700 11px/1 var(--sans);max-width:170px;cursor:pointer;position:relative;letter-spacing:.08em;text-transform:uppercase
+  }
+  .tab.active{background:var(--main-bg-color);border-color:var(--thick-rule);color:var(--main-text-color)}
+  .tab.active::before{content:"";position:absolute;left:8px;right:8px;top:-1px;height:2px;background:var(--main-text-color)}
+  .tab .label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  .tab .x{opacity:.5;font:700 10px/1 var(--sans);cursor:pointer;display:inline-flex}
+  .tab .x:hover{opacity:1}
+  .add-tab{width:28px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color);cursor:pointer;border-radius:6px;font-weight:700}
+  .add-tab:hover{background:var(--hover-bg-color)}
+  .tab-spacer{flex:1 1 auto}
+  .tabbar-right{display:flex;align-items:center;gap:4px;height:26px;margin-bottom:1px}
+  .icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color);border-radius:6px;cursor:pointer}
+  .icon-btn:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .ws-switcher{display:flex;align-items:center;gap:6px;padding:0 8px;height:26px;border-radius:6px;
+    border:1px solid var(--thick-rule);color:var(--main-text-color);font:700 10px/1 var(--sans);cursor:pointer;letter-spacing:.12em;text-transform:uppercase}
+  .ws-dot{width:10px;height:10px;border-radius:0;background:var(--main-text-color)}
+
+  .ws{flex:1;display:flex;min-height:0;position:relative}
+  .left-rail{width:28px;border-right:1px solid var(--thick-rule);display:flex;flex-direction:column;
+    align-items:center;padding:6px 0;gap:8px;flex-shrink:0;background:rgba(0,0,0,.04)}
+  .left-rail .pill{width:14px;height:14px;border:1px solid var(--thick-rule);border-radius:0;cursor:pointer}
+  .left-rail .pill:hover{background:var(--hover-bg-color)}
+  .left-rail .pill.on{background:var(--main-text-color);border-color:var(--main-text-color)}
+
+  .grid-area{flex:1;display:grid;grid-template-columns:1.4fr 1fr;grid-template-rows:1.1fr 1fr;gap:6px;padding:6px;min-width:0;min-height:0}
+  .block{
+    border:1px solid var(--thick-rule);border-radius:0;background:var(--block-bg-color);
+    display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;
+    box-shadow:3px 3px 0 var(--thick-rule)
+  }
+  .block-head{
+    height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;
+    border-bottom:1px solid var(--thick-rule);flex-shrink:0;font:700 10px/1 var(--sans);letter-spacing:.16em;
+    color:var(--secondary-text-color);background:rgba(0,0,0,.05);text-transform:uppercase
+  }
+  .block-head .dot-row{display:flex;gap:4px;align-items:center;margin-right:4px}
+  .block-head .d{width:7px;height:7px;border-radius:50%;border:1px solid var(--thick-rule)}
+  .block-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .block-actions{display:flex;gap:2px}
+  .block-actions i{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:0;cursor:pointer;color:var(--secondary-text-color)}
+  .block-actions i:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .block-body{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+
+  /* SESSIONS */
+  .session{display:flex;align-items:center;gap:8px;padding:8px 8px;border:1px solid transparent;cursor:pointer}
+  .session:hover{background:var(--hover-bg-color)}
+  .session.sel{background:var(--highlight-bg-color);border-color:var(--thick-rule)}
+  .session .av{width:24px;height:24px;border-radius:0;background:var(--main-text-color);color:var(--main-bg-color);
+    display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--serif);border:1px solid var(--thick-rule);box-shadow:1.5px 1.5px 0 var(--main-text-color)}
+  .session.sel .av{box-shadow:none;transform:translate(1.5px,1.5px)}
+  .session .meta{flex:1;min-width:0}
+  .session .t{font:700 11px/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em;text-transform:uppercase}
+  .session .s{font:400 10px/1.3 var(--mono);color:var(--grey-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+  .session .badge{font:700 9px/1 var(--mono);padding:2px 5px;border:1px solid var(--thick-rule);border-radius:0;color:var(--secondary-text-color);letter-spacing:.1em;text-transform:uppercase}
+  .session .badge.live{color:var(--main-text-color);background:var(--main-bg-color)}
+
+  /* AI */
+  .ai-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--thick-rule)}
+  .ai-tag{font:700 9px/1 var(--mono);letter-spacing:.18em;padding:3px 6px;border:1px solid var(--thick-rule);border-radius:0;color:var(--secondary-text-color);text-transform:uppercase}
+  .ai-msg{padding:10px 12px;border-bottom:1px dashed var(--line);font:400 13px/1.55 var(--serif);color:var(--main-text-color)}
+  .ai-msg.user{background:rgba(0,0,0,.04);font-family:var(--sans);font-size:11.5px;letter-spacing:.04em}
+  .ai-msg .role{font:700 9px/1 var(--mono);letter-spacing:.2em;color:var(--secondary-text-color);margin-bottom:6px;text-transform:uppercase}
+  .ai-input{display:flex;align-items:flex-start;gap:6px;padding:8px;border-top:1px solid var(--thick-rule);background:rgba(0,0,0,.04)}
+  .ai-input textarea{flex:1;background:transparent;border:0;outline:0;resize:none;font:700 11px/1.5 var(--sans);color:var(--main-text-color);height:30px;padding:6px 4px;letter-spacing:.06em;text-transform:uppercase}
+  .btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:0;border:1px solid var(--main-text-color);background:var(--main-bg-color);color:var(--main-text-color);font:700 10px/1 var(--sans);cursor:pointer;letter-spacing:.14em;text-transform:uppercase}
+  .btn.primary{background:var(--main-text-color);color:var(--main-bg-color)}
+  .btn.ghost{border-color:var(--line);color:var(--secondary-text-color)}
+
+  .block-body::-webkit-scrollbar{width:6px;height:6px}
+  .block-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:0;opacity:.5}
+
+  /* terminal — bone-on-soot inverted for editorial */
+  .term{margin:0;font:12px/1.6 var(--mono);color:var(--main-text-color);white-space:pre-wrap;word-break:break-word}
+  .term .c{color:var(--grey-text-color)}
+  .term .p{color:var(--main-text-color)}
+  .term .ok{color:var(--main-text-color);background:rgba(20,17,13,.10);padding:0 2px}
+  .term .warn{color:#5a1d10;background:rgba(90,29,16,.10);padding:0 2px}
+  .term .acc{color:var(--main-text-color);font-weight:700}
+  .term .cursor{display:inline-block;width:8px;height:13px;background:var(--main-text-color);vertical-align:-2px;animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .term pre{margin:0}
+
+  /* widgets */
+  .widgets{width:60px;flex-shrink:0;border-left:1px solid var(--thick-rule);background:rgba(0,0,0,.05);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+  .widget{width:54px;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:0;cursor:pointer;color:var(--secondary-text-color)}
+  .widget:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .widget.sel{background:var(--highlight-bg-color);color:var(--main-text-color)}
+  .widget.sel .w-ic{color:var(--main-text-color)}
+  .w-ic{font-size:16px;line-height:1}
+  .w-label{font:700 8px/1.1 var(--sans);max-width:50px;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.16em;text-transform:uppercase}
+
+  /* status */
+  .status{height:22px;display:flex;align-items:center;gap:14px;padding:0 12px;border-top:1px solid var(--thick-rule);
+    background:rgba(0,0,0,.05);font:700 9px/1 var(--mono);color:var(--secondary-text-color);letter-spacing:.16em;text-transform:uppercase;flex-shrink:0}
+  .status .spacer{flex:1}
+  .status .seg{display:flex;align-items:center;gap:4px}
+  .status .seg .v{color:var(--main-text-color)}
+  .led{width:7px;height:7px;border-radius:50%;background:var(--main-text-color);box-shadow:0 0 0 2px rgba(20,17,13,.2)}
+
+  /* registration corners (decorative) */
+  .reg{position:absolute;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--thick-rule);z-index:5}
+
+  /* markdown */
+  .md{font:400 13px/1.65 var(--serif);color:var(--main-text-color)}
+  .md b{font-weight:700}
+  .md em{font-style:italic;color:var(--secondary-text-color)}
+  .md ol{margin:6px 0 6px 18px;padding:0}
+  .md li{margin:3px 0}
+  .md hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+  .quote{border-left:3px solid var(--main-text-color);padding:4px 0 4px 10px;font-style:italic;color:var(--secondary-text-color)}
+  .chip{font:700 9px/1 var(--sans);padding:3px 8px;border:1px solid var(--thick-rule);border-radius:0;color:var(--secondary-text-color);letter-spacing:.16em;text-transform:uppercase}
+  .chip.solid{background:var(--main-text-color);color:var(--main-bg-color);border-color:var(--main-text-color)}
+
+  /* badge: edition stamp */
+  .stamp{position:absolute;right:14px;top:7px;border:1.5px solid var(--thick-rule);padding:3px 6px;
+    font:700 9px/1 var(--mono);letter-spacing:.2em;z-index:30;text-transform:uppercase;color:var(--thick-rule)}
+  .posted{position:absolute;right:12px;bottom:6px;font:700 8px/1 var(--mono);color:var(--grey-text-color);letter-spacing:.2em;z-index:5;text-transform:uppercase}
+
+  /* halftone photostrip */
+  .photostrip{display:flex;gap:6px;margin:4px 0 6px}
+  .photostrip i{flex:1;height:42px;background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,.2) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg,var(--main-text-color),var(--main-text-color));
+    background-blend-mode:normal;border:1px solid var(--thick-rule);opacity:.32}
+</style>
+</head>
+<body>
+
+<div class="win" style="border-radius:0">
+  <div class="reg" style="top:8px;left:8px"></div>
+  <div class="reg" style="top:8px;right:8px"></div>
+  <div class="reg" style="bottom:8px;left:8px"></div>
+  <div class="reg" style="bottom:8px;right:8px"></div>
+  <div class="stamp">VOL · XII · MMXXVI</div>
+
+  <div class="stack">
+
+    <!-- TABBAR -->
+    <div class="tabbar">
+      <div class="tab-breadcrumbs">
+        <div class="tab active"><span class="label">THE DESK</span><span class="x">×</span></div>
+        <div class="tab"><span class="label">SNORKELING/MAIN</span><span class="x">×</span></div>
+        <div class="tab"><span class="label">FIELD CARD #048</span><span class="x">×</span></div>
+        <div class="add-tab">+</div>
+      </div>
+      <div class="tab-spacer"></div>
+      <div class="tabbar-right">
+        <div class="ws-switcher"><span class="ws-dot"></span><span>WORKSPACE · THE DESK</span></div>
+        <div class="icon-btn">☷</div>
+        <div class="icon-btn">≡</div>
+        <div class="icon-btn">⚙</div>
+      </div>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="ws">
+      <div class="left-rail">
+        <div class="pill on" title="The Desk"></div>
+        <div class="pill" title="Studio"></div>
+        <div class="pill" title="Correspondence"></div>
+      </div>
+
+      <div class="grid-area">
+
+        <!-- Sessions -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Sessions · Recent</span>
+            <div class="block-actions"><i>⌕</i><i>⋯</i></div>
+          </div>
+          <div class="block-body">
+            <div class="session sel">
+              <div class="av">R</div>
+              <div class="meta"><div class="t">The Making of Things · VOL II</div><div class="s">~/library · zsh · 02:18 / 34h</div></div>
+              <span class="badge live">● LIVE</span>
+            </div>
+            <div class="session">
+              <div class="av">S</div>
+              <div class="meta"><div class="t">snorkeling @ remote</div><div class="s">wsh · zsh · 12 passed · 0 skipped</div></div>
+              <span class="badge">12:04</span>
+            </div>
+            <div class="session">
+              <div class="av">N</div>
+              <div class="meta"><div class="t">Field Notes · Jul 06</div><div class="s">markdown · 1.2 kb · unsaved</div></div>
+              <span class="badge">09:44</span>
+            </div>
+            <div class="session">
+              <div class="av">A</div>
+              <div class="meta"><div class="t">Agenda — After Rain</div><div class="s">calendar · 2 to-do · 1 done</div></div>
+              <span class="badge">09:41</span>
+            </div>
+            <div class="session">
+              <div class="av">¶</div>
+              <div class="meta"><div class="t">Typescript · after the masters</div><div class="s">~/trans · pandoc · idle</div></div>
+              <span class="badge">07:28</span>
+            </div>
+            <div class="session">
+              <div class="av">M</div>
+              <div class="meta"><div class="t">Letter Home · draft</div><div class="s">mail · draft · 2 pp</div></div>
+              <span class="badge">YDAY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">~/snorkeling · wsh</span>
+            <div class="block-actions"><i>+</i><i>▢</i><i>×</i></div>
+          </div>
+          <div class="block-body">
+            <pre class="term">
+<span class="c">┌─(</span><span class="p">~/workspace/snorkeling</span><span class="c">)──</span>
+<span class="c">└─╼</span> <span class="acc">task</span> build <span class="warn">&</span> test
+<span class="c">  ✓</span> <span class="p">generate</span>  <span class="ok">ok</span>
+<span class="c">  ✓</span> <span class="p">build</span>     <span class="ok">ok</span>  <span class="c">(2.1s)</span>
+<span class="c">  …</span> <span class="p">test</span>     <span class="warn">12 passed · 0 skipped</span>
+
+<span class="c">└─╼</span> <span class="acc">git</span> log --oneline -3
+<span class="c">545f820e</span> fix: normalize preview path comparison
+<span class="c">7eddb514</span> chore: track local-inspect-ui script
+<span class="c">85c60235</span> refactor: paged common-text search
+
+<span class="c">└─╼</span> <span class="cursor"></span>
+            </pre>
+          </div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Companion · AI</span>
+            <span class="ai-tag" style="margin-left:4px">CLAUDE</span>
+            <div class="block-actions" style="margin-left:auto"><i>↻</i><i>⋯</i></div>
+          </div>
+          <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <div class="ai-msg user"><div class="role">Ask</div>Slow monday. tier the greys — how do I keep the cast shadow a hair darker than the paper?</div>
+            <div class="ai-msg">
+              <div class="role">Answer</div>
+              Use four values: paper · bone · soot · ink.
+              Keep the cast shadow one notch below the object — its edge softer than the outline, never darker than the line.
+              <b>Underprint the shadow</b> with a half-tone screen, not a flat fill.
+              <div class="quote" style="margin-top:8px;font-size:12px">“Half the beauty of a thing lives in its shadow.” — Field Notes, Vol. XII</div>
+            </div>
+            <div class="ai-input">
+              <textarea spellcheck="false" placeholder="CONTINUE …"></textarea>
+              <div class="btn primary">SEND</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CommonText / Notes -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Common Text · Field Notes</span>
+            <span class="ai-tag" style="margin-left:4px">/12</span>
+            <div class="block-actions" style="margin-left:auto"><i>⌕</i><i>+</i></div>
+          </div>
+          <div class="block-body">
+            <div class="md">
+              <b>Slow Monday.</b> Overcast light through the blinds. Tiered greys.
+              <hr />
+              <ol>
+                <li>Stock the print tray</li>
+                <li>Set tracking <em>+0.12em</em></li>
+                <li>Cast shadow one notch below the outline</li>
+                <li>Underprint with halftone, never flat fill</li>
+              </ol>
+              <div class="photostrip"><i></i><i></i><i></i><i></i></div>
+              <div class="quote"><em>“He who makes, follows.” — after the old making.</em></div>
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <span class="chip solid">Save</span>
+                <span class="chip">Index</span>
+                <span class="chip">Print</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- WIDGETS -->
+      <div class="widgets">
+        <div class="widget sel"><span class="w-ic">≡</span><span class="w-label">Sess.</span></div>
+        <div class="widget"><span class="w-ic">▢</span><span class="w-label">Over.</span></div>
+        <div class="widget"><span class="w-ic">⌘</span><span class="w-label">Term.</span></div>
+        <div class="widget"><span class="w-ic">✦</span><span class="w-label">Agent</span></div>
+        <div class="widget"><span class="w-ic">▤</span><span class="w-label">Cmt.Tx</span></div>
+        <div class="widget"><span class="w-ic">♼</span><span class="w-label">Activ.</span></div>
+        <div class="widget" style="margin-top:auto"><span class="w-ic">⚙</span><span class="w-label">Set.</span></div>
+      </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status">
+      <div class="seg"><span class="led"></span><span class="v">WSH · CONNECTED</span></div>
+      <div class="seg"><span>TAB</span><span class="v">THE DESK</span></div>
+      <div class="seg"><span>WS</span><span class="v">4 BLOCKS · EDITION 04</span></div>
+      <div class="spacer"></div>
+      <div class="seg"><span>CPU</span><span class="v">7%</span></div>
+      <div class="seg"><span>MEM</span><span class="v">2.4 / 16 GB</span></div>
+      <div class="seg"><span>NET</span><span class="v">△1.2K ▽4.8K</span></div>
+      <div class="seg"><span class="v">QUIET HOURS</span></div>
+    </div>
+
+  </div>
+  <div class="posted">2026 · 07 · 06 · MONOCHROME · EDITION 04</div>
+</div>
+
+</body>
+</html>

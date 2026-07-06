@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>水墨屏主题 · Wave Desktop</title>
+<style>
+  :root{
+    /* 水墨 Kinwald paper。映射 Wave 的深色 token 系统到水墨色阶。 */
+    --main-bg-color:#e9e4d8;            /* = wave --main-bg-color #222 → 旧纸 */
+    --main-text-color:#1d1a14;          /* = wave --main-text-color #f7f7f7 → 墨 */
+    --secondary-text-color:#5a5546;     /* --secondary-text-color rgb(195,200,194) */
+    --grey-text-color:#9a947f;          /* --grey-text-color #666 */
+    --border-color:rgba(40,30,15,.22);   /* --border-color rgba(255,255,255,.16) */
+    --accent-color:#3b5d57;             /* --accent-color rgb(88,193,66) → 淡墨青，去饱和 */
+    --accenthover:#4c7268;
+    --panel-bg-color:rgba(31, 28, 22, 0.08);  /* --panel-bg-color rgba(31,33,31,.5) */
+    --hover-bg-color:rgba(40,30,15,.10);      /* --hover-bg-color rgba(255,255,255,.1) */
+    --highlight-bg-color:rgba(40,30,15,.18);  /* --highlight-bg-color rgba(255,255,255,.2) */
+    --block-bg-color:rgba(255,255,255,.30);   /* --block-bg-color rgba(0,0,0,.5) */
+    --block-bg-solid-color:#e2dccc;     /* --block-bg-solid-color #000 */
+    --error-color:#6f3b2e;
+    --warning-color:#8f6f2e;
+    --success-color:#3b6b4e;
+    --warn:#6f3b2e;                     /* 朱印章红，少量点缀 */
+    --line:#9a947f;
+    --radius:8px;
+    --serif:"Noto Serif SC","Songti SC","Source Han Serif SC","SimSun",Georgia,serif;
+    --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    --mono:"JetBrains Mono","SFMono","Hack",ui-monospace,monospace;
+    --header-height:30px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;font:13px/1.45 var(--sans);color:var(--main-text-color);background:#1b1813;
+    letter-spacing:.2px}
+  body{padding:0;display:flex;justify-content:center;align-items:center}
+
+  /* 桌面窗口外壳（1280×800） */
+  .win{
+    width:1280px;height:800px;border-radius:10px;overflow:hidden;position:relative;background:var(--main-bg-color);
+    box-shadow:0 30px 80px rgba(0,0,0,.6),0 4px 12px rgba(0,0,0,.4),inset 0 0 0 1px rgba(0,0,0,.15);
+    border:1px solid #2b2720;
+  }
+  /* 纸张纤维 */
+  .win::before{
+    content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:.16;z-index:0;
+    background-image:
+      radial-gradient(circle at 12% 22%, rgba(0,0,0,.18) 0, transparent 1px),
+      radial-gradient(circle at 73% 41%, rgba(0,0,0,.14) 0, transparent 1px),
+      radial-gradient(circle at 31% 67%, rgba(0,0,0,.12) 0, transparent 1px),
+      radial-gradient(circle at 88% 80%, rgba(0,0,0,.16) 0, transparent 1px),
+      radial-gradient(circle at 50% 10%, rgba(0,0,0,.10) 0, transparent 1px);
+    background-size:7px 7px,11px 11px,5px 5px,9px 9px,13px 13px;
+  }
+  /* 残影横纹 */
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.05;z-index:0;
+    background:repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.5) 3px 4px);
+  }
+  .stack{position:relative;z-index:1;display:flex;flex-direction:column;width:100%;height:100%}
+
+  /* TABBAR （app.scss / tabbar.scss） */
+  .tabbar{
+    display:flex;align-items:end;height:var(--header-height);padding:3px 6px 0;
+    background:rgba(0,0,0,.06);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border-color);
+    flex-shrink:0;
+  }
+  .tab-breadcrumbs{display:flex;align-items:end;gap:0;height:27px;margin-bottom:1px;flex:0 0 auto}
+  .tab{
+    display:flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-radius:6px 6px 0 0;
+    border:1px solid transparent;border-bottom:0;background:transparent;color:var(--secondary-text-color);
+    font:600 12px/1 var(--sans);max-width:170px;cursor:pointer;position:relative;
+  }
+  .tab.active{background:var(--main-bg-color);border-color:var(--border-color);color:var(--main-text-color)}
+  .tab.active::before{content:"";position:absolute;left:8px;right:8px;top:-1px;height:2px;background:var(--accent-color)}
+  .tab .label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  .tab .x{opacity:.5;font:600 10px/1 var(--sans);cursor:pointer;display:inline-flex}
+  .tab .x:hover{opacity:1}
+  .add-tab{width:28px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color);cursor:pointer;border-radius:6px}
+  .add-tab:hover{background:var(--hover-bg-color)}
+  .tab-spacer{flex:1 1 auto}
+  .tabbar-right{display:flex;align-items:center;gap:4px;height:26px;margin-bottom:1px}
+  .icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+    color:var(--secondary-text-color);border-radius:6px;cursor:pointer}
+  .icon-btn:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .ws-switcher{display:flex;align-items:center;gap:6px;padding:0 8px;height:26px;border-radius:6px;
+    border:1px solid var(--border-color);color:var(--main-text-color);font:600 11px/1 var(--sans);cursor:pointer}
+  .ws-dot{width:10px;height:10px;border-radius:2px;border:1px solid var(--main-text-color)}
+
+  /* WORKSPACE */
+  .ws{flex:1;display:flex;min-height:0;position:relative}
+  /* 左薄 workspaceswitcher 索引（极简） */
+  .left-rail{width:28px;border-right:1px solid var(--border-color);display:flex;flex-direction:column;
+    align-items:center;padding:6px 0;gap:8px;flex-shrink:0;background:rgba(0,0,0,.03)}
+  .left-rail .pill{width:14px;height:14px;border:1px solid var(--border-color);border-radius:3px;cursor:pointer}
+  .left-rail .pill:hover{background:var(--hover-bg-color)}
+  .left-rail .pill.on{background:var(--accent-color);border-color:var(--accent-color)}
+
+  /* workspace grid */
+  .grid-area{flex:1;display:grid;grid-template-columns:1.4fr 1fr;grid-template-rows:1.1fr 1fr;gap:6px;padding:6px;min-width:0;min-height:0}
+  .block{
+    border:1px solid var(--border-color);border-radius:var(--radius);background:var(--block-bg-color);
+    display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)
+  }
+  .block-head{
+    height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;
+    border-bottom:1px solid var(--border-color);flex-shrink:0;font:600 11px/1 var(--sans);
+    color:var(--secondary-text-color);background:rgba(0,0,0,.03)
+  }
+  .block-head .dot-row{display:flex;gap:4px;align-items:center;margin-right:4px}
+  .block-head .d{width:8px;height:8px;border-radius:50%;border:1px solid var(--border-color)}
+  .block-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.04em}
+  .block-actions{display:flex;gap:2px}
+  .block-actions i{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;cursor:pointer;color:var(--secondary-text-color)}
+  .block-actions i:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .block-body{flex:1;min-height:0;overflow:auto;padding:8px 10px}
+
+  /* SESSIONS list */
+  .session{display:flex;align-items:center;gap:8px;padding:8px 8px;border:1px solid transparent;border-radius:6px;cursor:pointer}
+  .session:hover{background:var(--hover-bg-color)}
+  .session.sel{background:var(--highlight-bg-color);border-color:var(--border-color)}
+  .session .av{width:24px;height:24px;border-radius:4px;background:var(--block-bg-solid-color);color:var(--main-text-color);
+    display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--serif);border:1px solid var(--border-color)}
+  .session .meta{flex:1;min-width:0}
+  .session .t{font:600 12px/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .session .s{font:400 10px/1.3 var(--mono);color:var(--grey-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .session .badge{font:600 9px/1 var(--mono);padding:2px 4px;border:1px solid var(--border-color);border-radius:3px;color:var(--secondary-text-color)}
+  .session .badge.live{color:var(--accent-color);border-color:var(--accent-color)}
+
+  /* AI Panel */
+  .ai-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-color)}
+  .ai-tag{font:700 10px/1 var(--mono);letter-spacing:.16em;padding:3px 6px;border:1px solid var(--border-color);border-radius:3px;color:var(--secondary-text-color)}
+  .ai-msg{padding:10px 12px;border-bottom:1px dashed var(--border-color);font:400 12.5px/1.55 var(--sans);color:var(--main-text-color)}
+  .ai-msg.user{background:rgba(0,0,0,.03)}
+  .ai-msg .role{font:700 10px/1 var(--mono);letter-spacing:.14em;color:var(--secondary-text-color);margin-bottom:4px;text-transform:uppercase}
+  .ai-input{display:flex;align-items:flex-start;gap:6px;padding:8px;border-top:1px solid var(--border-color);background:rgba(0,0,0,.03)}
+  .ai-input textarea{flex:1;background:transparent;border:0;outline:0;resize:none;font:400 12px/1.5 var(--sans);color:var(--main-text-color);height:30px;padding:6px 4px;letter-spacing:.2px}
+  .btn{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;border:1px solid var(--main-text-color);background:var(--main-bg-color);color:var(--main-text-color);font:600 11px/1 var(--sans);cursor:pointer;letter-spacing:.04em}
+  .btn.primary{background:var(--main-text-color);color:var(--main-bg-color)}
+  .btn.ghost{border-color:var(--border-color);color:var(--secondary-text-color)}
+  .btn.accent{background:var(--accent-color);color:#f3ead7;border-color:var(--accent-color)}
+
+  /* STOP scrollbars in mockup */
+  .block-body::-webkit-scrollbar{width:6px;height:6px}
+  .block-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;opacity:.5}
+
+  /* terminal */
+  .term{margin:0;font:12px/1.6 var(--mono);color:var(--main-text-color);white-space:pre-wrap;word-break:break-word}
+  .term .c{color:var(--grey-text-color)}
+  .term .p{color:var(--main-text-color)}
+  .term .ok{color:var(--success-color)}
+  .term .warn{color:var(--warning-color)}
+  .term .acc{color:var(--accent-color)}
+  .term .cursor{display:inline-block;width:7px;height:13px;background:var(--main-text-color);vertical-align:-2px;animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* widgets bar (right) */
+  .widgets{
+    width:60px;flex-shrink:0;border-left:1px solid var(--border-color);background:rgba(0,0,0,.04);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px
+  }
+  .widget{width:54px;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:6px;cursor:pointer;color:var(--secondary-text-color)}
+  .widget:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .widget.sel{background:var(--highlight-bg-color);color:var(--main-text-color)}
+  .widget.sel .w-ic{color:var(--accent-color)}
+  .w-ic{font-size:16px;line-height:1}
+  .w-label{font:600 9px/1.1 var(--sans);max-width:50px;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.04em}
+
+  /* status bar */
+  .status{height:22px;display:flex;align-items:center;gap:14px;padding:0 12px;border-top:1px solid var(--border-color);
+    background:rgba(0,0,0,.04);font:600 10px/1 var(--mono);color:var(--secondary-text-color);letter-spacing:.06em;flex-shrink:0}
+  .status .spacer{flex:1}
+  .status .seg{display:flex;align-items:center;gap:4px}
+  .status .seg .v{color:var(--main-text-color)}
+  .led{width:7px;height:7px;border-radius:50%;background:var(--accent-color);box-shadow:0 0 0 2px rgba(59,93,87,.18)}
+
+  .seal{position:absolute;right:14px;top:6px;width:34px;height:34px;border-radius:5px;background:var(--warn);color:#f3ead7;
+    display:flex;align-items:center;justify-content:center;font:700 16px/1 var(--serif);transform:rotate(-4deg);
+    box-shadow:0 0 0 1px rgba(0,0,0,.2) inset;filter:saturate(.4) contrast(.95);z-index:30}
+
+  /* markdown note */
+  .md{font:400 13px/1.65 var(--serif);color:var(--main-text-color)}
+  .md b{font-weight:700}
+  .md em{font-style:italic;color:var(--secondary-text-color)}
+  .md ol{margin:6px 0 6px 18px;padding:0}
+  .md li{margin:2px 0}
+  .md hr{border:0;border-top:1px solid var(--border-color);margin:10px 0}
+  .quote{border-left:3px solid var(--main-text-color);padding:4px 0 4px 10px;font-style:italic;color:var(--secondary-text-color)}
+  .chip{font:600 10px/1 var(--sans);padding:3px 8px;border:1px solid var(--border-color);border-radius:99px;color:var(--secondary-text-color);letter-spacing:.04em}
+  .chip.solid{background:var(--main-text-color);color:var(--main-bg-color);border-color:var(--main-text-color)}
+
+  .posted{position:absolute;right:12px;bottom:8px;font:700 9px/1 var(--mono);color:var(--grey-text-color);letter-spacing:.14em;z-index:5}
+</style>
+</head>
+<body>
+
+<div class="win">
+  <div class="seal" title="水印">墨</div>
+  <div class="stack">
+
+    <!-- TABBAR -->
+    <div class="tabbar">
+      <div class="tab-breadcrumbs">
+        <div class="tab active">
+          <span class="label">书房 · 立夏</span>
+          <span class="x">✕</span>
+        </div>
+        <div class="tab"><span class="label">snorkeling/main</span><span class="x">✕</span></div>
+        <div class="tab"><span class="label">书目卡 · 048</span><span class="x">✕</span></div>
+        <div class="add-tab">＋</div>
+      </div>
+      <div class="tab-spacer"></div>
+      <div class="tabbar-right">
+        <div class="ws-switcher"><span class="ws-dot"></span><span>Workspace · 书房</span></div>
+        <div class="icon-btn" title="Switcher">☷</div>
+        <div class="icon-btn" title="Sessions">≡</div>
+        <div class="icon-btn" title="Settings">⚙</div>
+      </div>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="ws">
+      <div class="left-rail">
+        <div class="pill on" title="书房"></div>
+        <div class="pill" title="案头"></div>
+        <div class="pill" title="通讯"></div>
+      </div>
+
+      <!-- grid: SessionsOverview | Terminal // AI Panel | CommonText (notes) -->
+      <div class="grid-area">
+
+        <!-- Sessions -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Sessions · 近 作</span>
+            <div class="block-actions"><i>⌕</i><i>⋯</i></div>
+          </div>
+          <div class="block-body">
+            <div class="session sel">
+              <div class="av">书</div>
+              <div class="meta"><div class="t">考 工 记 · 卷 中</div><div class="s">~/library · zsh · 02:18 / 34h</div></div>
+              <span class="badge live">● LIVE</span>
+            </div>
+            <div class="session">
+              <div class="av">端</div>
+              <div class="meta"><div class="t">snorkeling @ remote</div><div class="s">wsh · zsh · 14 passed · 0 skipped</div></div>
+              <span class="badge">12:04</span>
+            </div>
+            <div class="session">
+              <div class="av">笔</div>
+              <div class="meta"><div class="t">Field Notes · Jul 06</div><div class="s">markdown · 1.2kb · unsaved</div></div>
+              <span class="badge">9:44</span>
+            </div>
+            <div class="session">
+              <div class="av">历</div>
+              <div class="meta"><div class="t">立 夏 · 雨 前</div><div class="s">calendar · 2 待办 · 1 已记</div></div>
+              <span class="badge">9:41</span>
+            </div>
+            <div class="session">
+              <div class="av">译</div>
+              <div class="meta"><div class="t">译台 · 论语 / 子路</div><div class="s">~/trans · pandoc · idle</div></div>
+              <span class="badge">7:28</span>
+            </div>
+            <div class="session">
+              <div class="av">邮</div>
+              <div class="meta"><div class="t">致 友 书 · 草 稿</div><div class="s">mail · draft · 2 页</div></div>
+              <span class="badge">昨日</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">~/snorkeling · wsh</span>
+            <div class="block-actions"><i>+</i><i>□</i><i>×</i></div>
+          </div>
+          <div class="block-body">
+            <pre class="term">
+<span class="c">┌─(</span><span class="p">~/workspace/snorkeling</span><span class="c">)──</span>
+<span class="c">└─╼</span> <span class="acc">task</span> build <span class="warn">&</span> test
+<span class="c">  ✓</span> <span class="p">generate</span>  <span class="ok">ok</span>
+<span class="c">  ✓</span> <span class="p">build</span>     <span class="ok">ok</span>  <span class="c">(2.1s)</span>
+<span class="c">  …</span> <span class="p">test</span>     <span class="warn">12 passed · 0 skipped</span>
+
+<span class="c">└─╼</span> <span class="acc">git</span> log --oneline -3
+<span class="c">545f820e</span> fix: normalize preview path comparison
+<span class="c">7eddb514</span> chore: track local-inspect-ui script
+<span class="c">85c60235</span> refactor: paged common-text search
+
+<span class="c">└─╼</span> <span class="cursor"></span>
+            </pre>
+          </div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">墨 之 助 · AI Panel</span>
+            <span class="ai-tag" style="margin-left:4px">CLAUDE</span>
+            <div class="block-actions" style="margin-left:auto"><i>↻</i><i>⋯</i></div>
+          </div>
+          <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <div class="ai-msg user"><div class="role">案 · 询</div>立夏第三日，残影略深，请用淡墨铺底再以焦墨勾勒，给出步骤。</div>
+            <div class="ai-msg">
+              <div class="role">答 · 笔</div>
+              一曰研墨至浓淡适中；二曰以淡墨铺底，留白三处；
+              三曰待半干，焦墨勾斫；四曰<strong>皴擦</strong>提点，立层次而见骨。
+              <div class="quote" style="margin-top:8px;font-size:12px">“知者创物，巧者述之。” — 考工记</div>
+            </div>
+            <div class="ai-input">
+              <textarea spellcheck="false" placeholder="题 之 · 续 问 …"></textarea>
+              <div class="btn primary">送 · 出</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CommonText / Notes overview -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Common Text · Field Notes</span>
+            <span class="ai-tag" style="margin-left:4px">/12</span>
+            <div class="block-actions" style="margin-left:auto"><i>⌕</i><i>+</i></div>
+          </div>
+          <div class="block-body">
+            <div class="md">
+              <b>立 夏 后 第 三 日。</b> 雨仍未至，墨色反潮，纸纹略深。
+              <hr />
+              <ol>
+                <li>研 墨 一 池</li>
+                <li>摊 纸 · 旧 麻 纸 储 三 张</li>
+                <li>淡 墨 铺 底 · 留 白 三 处</li>
+                <li>焦 墨 勾 勒 · 皴 擦 提 点</li>
+              </ol>
+              <div class="quote"><em>“凡物之象，皆墨之淡浓之所成。”</em></div>
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <span class="chip solid">墨 色</span>
+                <span class="chip">章 节</span>
+                <span class="chip">导 出</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- WIDGETS / right bar -->
+      <div class="widgets">
+        <div class="widget sel"><span class="w-ic">≡</span><span class="w-label">Sessions</span></div>
+        <div class="widget"><span class="w-ic">□</span><span class="w-label">Overview</span></div>
+        <div class="widget"><span class="w-ic">⌘</span><span class="w-label">Terminals</span></div>
+        <div class="widget"><span class="w-ic">✦</span><span class="w-label">Agents</span></div>
+        <div class="widget"><span class="w-ic">▤</span><span class="w-label">Common Text</span></div>
+        <div class="widget"><span class="w-ic">♼</span><span class="w-label">Activity</span></div>
+        <div class="widget" style="margin-top:auto"><span class="w-ic">⚙</span><span class="w-label">Settings</span></div>
+      </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status">
+      <div class="seg"><span class="led"></span><span class="v">wsh · connected</span></div>
+      <div class="seg"><span>tab</span><span class="v">书房 · 立夏</span></div>
+      <div class="seg"><span>workspace</span><span class="v">书房 · 4 blocks</span></div>
+      <div class="spacer"></div>
+      <div class="seg"><span>cpu</span><span class="v">7%</span></div>
+      <div class="seg"><span>mem</span><span class="v">2.4 / 16 GB</span></div>
+      <div class="seg"><span>net</span><span class="v">△1.2k ▽4.8k</span></div>
+      <div class="seg"><span>立夏 +3 · 雨 前 静 默</span></div>
+    </div>
+
+  </div>
+  <div class="posted">2026 · 07 · 06 · 墨 屏 主 题</div>
+</div>
+
+</body>
+</html>
