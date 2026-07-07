@@ -605,7 +605,6 @@ const AgentTargetFloatingWindow = memo(
                                             isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
                                         )}
                                         onClick={() => setSelectedIdx(idx)}
-                                        onPointerEnter={() => setSelectedIdx(idx)}
                                         onFocus={() => setSelectedIdx(idx)}
                                         onKeyDown={(event) => {
                                             if (event.currentTarget !== event.target) return;
@@ -671,7 +670,7 @@ const AgentTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -692,13 +691,13 @@ const AgentTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                New Tab
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -719,8 +718,8 @@ const AgentTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                Current
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -828,7 +827,6 @@ const TerminalTargetFloatingWindow = memo(
                                             isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
                                         )}
                                         onClick={() => setSelectedIdx(idx)}
-                                        onPointerEnter={() => setSelectedIdx(idx)}
                                         onFocus={() => setSelectedIdx(idx)}
                                         onKeyDown={(event) => {
                                             if (event.currentTarget !== event.target) return;
@@ -894,7 +892,7 @@ const TerminalTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -907,13 +905,13 @@ const TerminalTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                New Tab
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                Current
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -926,8 +924,8 @@ const TerminalTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                Current
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                New Tab
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
