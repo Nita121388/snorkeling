@@ -577,7 +577,15 @@ function hasFilesLaunchPath(target: AgentLaunchTarget | null): boolean {
 }
 
 export function canSetLaunchTargetDefault(target: AgentLaunchTarget | null | undefined): boolean {
-    return target != null;
+    // "Home" is a creatable fallback (always launchable) but cannot be pinned as the default
+    // launch target — the default must point at a real terminal/files/agent target.
+    if (target == null) {
+        return false;
+    }
+    if (target.source === "home") {
+        return false;
+    }
+    return true;
 }
 
 export function getSelectableLaunchTargets(targets: AgentLaunchTarget[]): AgentLaunchTarget[] {
