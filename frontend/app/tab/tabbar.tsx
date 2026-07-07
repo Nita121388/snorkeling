@@ -278,17 +278,38 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             return;
         }
 
-        // Compute the ideal width per tab by dividing the available space by the number of tabs
-        let idealTabWidth = spaceForTabs / numberOfTabs;
-
-        // Apply min/max constraints
-        idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        const isDragging = draggingTab != null;
+        // Layout order: when not dragging, anchor the persistently-shown tabs (active + opened-this-launch)
+        // to the left so that hover expansion appends newly-revealed tabs to their right instead of
+        // shifting the already-shown ones. While dragging, keep the natural tabIds order so drag math
+        // (which uses visibleTabIds positions) stays unchanged.
+        let layoutOrderedIds: string[];
+        let idealTabWidth: number;
+        if (isDragging) {
+            layoutOrderedIds = visibleTabIds;
+            idealTabWidth = spaceForTabs / numberOfTabs;
+            idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        } else {
+            const pinnedIds = visibleTabIds.filter(
+                (tabId) =>
+                    activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+            );
+            const pinnedIdSet = new Set(pinnedIds);
+            const hoverRevealedIds = visibleTabIds.filter((tabId) => !pinnedIdSet.has(tabId));
+            layoutOrderedIds = [...pinnedIds, ...hoverRevealedIds];
+            // Width is sized for the pinned subset so the pinned tabs don't resize/reposition when
+            // hover reveals more tabs. If nothing is pinned (no active, none opened this launch),
+            // fall back to sizing against the full set.
+            const widthBasisCount = Math.max(1, pinnedIds.length);
+            idealTabWidth = spaceForTabs / widthBasisCount;
+            idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        }
 
         // Determine if the tab bar needs to be scrollable
         const newScrollable = idealTabWidth * numberOfTabs > spaceForTabs;
 
-        // Apply the calculated width and position to all tabs
-        visibleTabIds.forEach((tabId, index) => {
+        // Apply the calculated width and position to all tabs in layout order
+        layoutOrderedIds.forEach((tabId, index) => {
             const tabIndex = tabIds.indexOf(tabId);
             const ref = tabRefs.current[tabIndex];
             if (ref.current) {

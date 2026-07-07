@@ -83,7 +83,7 @@ export function MessageCard({
             ref={registerRef}
             id={`aisession-message-${message.seq}`}
             className={cn(
-                "group max-w-[92%] scroll-mt-3 rounded border p-3",
+                "group scroll-mt-3 rounded border p-3",
                 isUser ? "border-accent/35 bg-accent/10 shadow-sm" : "border-border bg-surface-strong",
                 searchActive && "border-yellow-400/70 ring-2 ring-yellow-400/60"
             )}
@@ -100,8 +100,19 @@ export function MessageCard({
                 <span className={cn("font-medium uppercase", isUser && "text-accent")}>
                     {displayRole(message.role)}
                 </span>
-                <span>#{message.seq}</span>
-                {message.timestamp ? <span>{formatDateTimeToSecond(message.timestamp)}</span> : null}
+                <span className="group relative cursor-help" title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}>
+                    <span className="min-w-0 truncate">{message.seq}</span>
+                    {message.timestamp ? (
+                        <span
+                            className={cn(
+                                "pointer-events-none absolute left-0 top-full z-10 hidden rounded bg-panel px-2 py-1 text-xxs text-secondary shadow-md opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100",
+                                isUser && "bg-accent/10 text-accent"
+                            )}
+                        >
+                            {formatDateTimeToSecond(message.timestamp)}
+                        </span>
+                    ) : null}
+                </span>
                 {collapsible ? (
                     <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary">
                         {collapsed ? "Collapsed" : "Expanded"}
