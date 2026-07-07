@@ -245,6 +245,7 @@ declare global {
         ref?: React.RefObject<HTMLDivElement>;
         className?: string;
         noGrow?: boolean;
+        title?: string;
         onClick?: (e: React.MouseEvent<any>) => void;
     };
 

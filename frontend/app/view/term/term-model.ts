@@ -180,15 +180,26 @@ export class TermViewModel implements ViewModel {
             const isCmd = get(this.isCmdController);
             if (isCmd) {
                 const blockMeta = get(this.blockAtom)?.meta;
-                let cmdText = blockMeta?.["cmd"];
                 const cmdArgs = blockMeta?.["cmd:args"];
                 const cmdCwd = blockMeta?.["cmd:cwd"];
-                if (cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0) {
-                    cmdText += " " + cmdArgs.join(" ");
-                }
+                const cmdRaw = blockMeta?.["cmd"];
+                const providerRaw = blockMeta?.["agent:provider"];
+                const provider =
+                    typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";
+                const hasCmdArgs = cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0;
+                const cmdArgsStr = hasCmdArgs ? cmdArgs.join(" ") : "";
+                // Agent blocks: surface the provider's short label (e.g. "Claude") instead of the raw
+                // command string, which may be an absolute path or carry args. Keep the original
+                // command text reachable via the tooltip for debugging.
+                const isAgentBlock = isAgentTerminalMeta(blockMeta) && provider !== "";
+                const headerText = isAgentBlock ? formatAgentProvider(provider) : cmdRaw;
+                const headerTitle = isAgentBlock
+                    ? `${formatAgentProvider(provider)} · ${cmdRaw ?? ""}${cmdArgsStr ? " " + cmdArgsStr : ""}`
+                    : undefined;
                 rtn.push({
                     elemtype: "text",
-                    text: cmdText,
+                    text: headerText,
+                    title: headerTitle,
                     noGrow: true,
                 });
                 if (typeof cmdCwd === "string" && cmdCwd.trim().length > 0) {
