@@ -23,6 +23,8 @@ import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import "./tabbar.scss";
+
+const TAB_HEADER_HOVER_DELAY_MS = 2000;
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
@@ -150,6 +152,38 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
 
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const [isWrapperHovered, setIsWrapperHovered] = useState(false);
+    const hideTabBarHoverTimerRef = useRef<number | null>(null);
+    const hideWrapperHoverTimerRef = useRef<number | null>(null);
+    const cancelPendingHideTabBarHover = useCallback(() => {
+        if (hideTabBarHoverTimerRef.current != null) {
+            window.clearTimeout(hideTabBarHoverTimerRef.current);
+            hideTabBarHoverTimerRef.current = null;
+        }
+    }, []);
+    const cancelPendingHideWrapperHover = useCallback(() => {
+        if (hideWrapperHoverTimerRef.current != null) {
+            window.clearTimeout(hideWrapperHoverTimerRef.current);
+            hideWrapperHoverTimerRef.current = null;
+        }
+    }, []);
+    const cancelAllPendingHideHover = useCallback(() => {
+        cancelPendingHideTabBarHover();
+        cancelPendingHideWrapperHover();
+    }, [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]);
+
+    useEffect(() => {
+        if (draggingTab != null) {
+            cancelAllPendingHideHover();
+        }
+    }, [draggingTab, cancelAllPendingHideHover]);
+
+    useEffect(
+        () => () => {
+            cancelPendingHideTabBarHover();
+            cancelPendingHideWrapperHover();
+        },
+        [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]
+    );
     let prevDelta: number;
     let prevDragDirection: string;
 
@@ -671,14 +705,19 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
     const handleWrapperMouseEnter = useCallback(() => {
+        cancelPendingHideWrapperHover();
         setIsWrapperHovered(true);
         onHeaderHoverChange?.(true);
-    }, [onHeaderHoverChange]);
+    }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
 
     const handleWrapperMouseLeave = useCallback(() => {
-        setIsWrapperHovered(false);
-        onHeaderHoverChange?.(false);
-    }, [onHeaderHoverChange]);
+        cancelPendingHideWrapperHover();
+        hideWrapperHoverTimerRef.current = window.setTimeout(() => {
+            hideWrapperHoverTimerRef.current = null;
+            setIsWrapperHovered(false);
+            onHeaderHoverChange?.(false);
+        }, TAB_HEADER_HOVER_DELAY_MS);
+    }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
 
     // Calculate window drag left width based on platform and state
     let windowDragLeftWidth = 10;
@@ -739,8 +778,17 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 className="tab-bar"
                 ref={tabBarRef}
                 data-overlayscrollbars-initialize
-                onMouseEnter={() => setIsTabBarHovered(true)}
-                onMouseLeave={() => setIsTabBarHovered(false)}
+                onMouseEnter={() => {
+                    cancelPendingHideTabBarHover();
+                    setIsTabBarHovered(true);
+                }}
+                onMouseLeave={() => {
+                    cancelPendingHideTabBarHover();
+                    hideTabBarHoverTimerRef.current = window.setTimeout(() => {
+                        hideTabBarHoverTimerRef.current = null;
+                        setIsTabBarHovered(false);
+                    }, TAB_HEADER_HOVER_DELAY_MS);
+                }}
             >
                 <div
                     className="tabs-wrapper"

@@ -531,6 +531,15 @@ const BlockFrame_Header = ({
     viewName = metaFrameTitle ?? viewName;
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
     const [isHovered, setIsHovered] = React.useState(false);
+    const hideHoverTimerRef = React.useRef<number | null>(null);
+    const cancelPendingHideHover = React.useCallback(() => {
+        if (hideHoverTimerRef.current != null) {
+            window.clearTimeout(hideHoverTimerRef.current);
+            hideHoverTimerRef.current = null;
+        }
+    }, []);
+
+    React.useEffect(() => () => cancelPendingHideHover(), [cancelPendingHideHover]);
 
     React.useEffect(() => {
         if (magnified && !preview && !prevMagifiedState.current) {
@@ -547,8 +556,17 @@ const BlockFrame_Header = ({
             className={cn("block-frame-default-header", useTermHeader && "!pl-[2px]")}
             data-role="block-header"
             ref={dragHandleRef}
-            onPointerEnter={() => setIsHovered(true)}
-            onPointerLeave={() => setIsHovered(false)}
+            onPointerEnter={() => {
+                cancelPendingHideHover();
+                setIsHovered(true);
+            }}
+            onPointerLeave={() => {
+                cancelPendingHideHover();
+                hideHoverTimerRef.current = window.setTimeout(() => {
+                    hideHoverTimerRef.current = null;
+                    setIsHovered(false);
+                }, 2000);
+            }}
             onContextMenu={(e) =>
                 showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext)
             }

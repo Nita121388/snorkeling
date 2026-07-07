@@ -4,7 +4,7 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton, CopyTextButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
@@ -200,6 +200,23 @@ export function SessionDetailPane({
     const [showToolCalls, setShowToolCalls] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
+    // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时由 ResizeObserver 自适应
+    const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
+        try {
+            const stored = localStorage.getItem("snorkeling:sessionDetail:headerCollapsed");
+            if (stored === "true") return true;
+            if (stored === "false") return false;
+            return false;
+        } catch {
+            return false;
+        }
+    });
+    // 用户在本 session 是否主动动过 Header 折叠（不写 localStorage，切 session 重置）
+    const userTouchedHeaderRef = useRef(false);
+    // 是否已有持久化偏好（影响自适应是否生效）
+    const hasStoredPreferenceRef = useRef(false);
+    // 测量 detail pane 可用高度以决定折叠态的自适应容器
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
     const [collapsedMessages, setCollapsedMessages] = useState<Record<number, boolean>>({});
     const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
@@ -215,6 +232,8 @@ export function SessionDetailPane({
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     const pendingJumpSeqRef = useRef<number | null>(null);
+    // 本 session 是否已经做过"打开时自动滚到底"（流式新消息到来不重复跟随）
+    const autoScrolledToBottomRef = useRef(false);
     const userLinesRequestSeqRef = useRef(0);
     const bottomDeltaRequestedRef = useRef(false);
     const bottomDeltaTimerRef = useRef<number | null>(null);
@@ -271,11 +290,39 @@ export function SessionDetailPane({
         setUserLinesLoading(false);
         setUserLinesError("");
         userLinesRequestSeqRef.current++;
+        // 切 session 时重置「用户在本 session 是否动过 Header」标志，让新 session 重新自适应
+        userTouchedHeaderRef.current = false;
+        // 切 session 时重置「自动滚到底已执行」标志，让新 session 重新滚到底
+        autoScrolledToBottomRef.current = false;
     }, [detail?.summary?.key]);
 
     useEffect(() => {
         bottomDeltaRequestedRef.current = false;
     }, [detail?.messages?.length, deltaLoading]);
+
+    // 初始化持久化偏好标记
+    useEffect(() => {
+        try {
+            hasStoredPreferenceRef.current =
+                localStorage.getItem("snorkeling:sessionDetail:headerCollapsed") !== null;
+        } catch {
+            hasStoredPreferenceRef.current = false;
+        }
+    }, []);
+
+    // 自适应 Header 折叠：仅在「无持久化偏好 + 用户在本 session 未动过」时按高度决定
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const el = containerRef.current;
+        const observer = new ResizeObserver((entries) => {
+            if (hasStoredPreferenceRef.current) return;
+            if (userTouchedHeaderRef.current) return;
+            const h = entries[0]?.contentRect.height ?? 0;
+            setHeaderCollapsed(h < 320);
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     const readableMessages = useMemo(
         () => (detail?.messages ?? []).filter((message) => isReadableMessage(message)),
@@ -316,17 +363,17 @@ export function SessionDetailPane({
                 ? `${activeSearchIndex + 1} / ${detailSearchMatches.length}`
                 : `${detailSearchMatches.length} match${detailSearchMatches.length === 1 ? "" : "es"}`;
 
-    const scrollToVisibleMessage = useCallback((seq: number) => {
+    const scrollToVisibleMessage = useCallback((seq: number, behavior: ScrollBehavior = "smooth") => {
         const node = messageRefs.current[seq];
         const container = detailScrollRef.current;
         if (node && container) {
             const containerRect = container.getBoundingClientRect();
             const nodeRect = node.getBoundingClientRect();
             const top = nodeRect.top - containerRect.top + container.scrollTop - 12;
-            container.scrollTo({ top, behavior: "smooth" });
+            container.scrollTo({ top, behavior });
             return;
         }
-        node?.scrollIntoView({ behavior: "smooth", block: "start" });
+        node?.scrollIntoView({ behavior, block: "start" });
     }, []);
 
     const loadPreviousMessages = useCallback(() => {
@@ -401,6 +448,26 @@ export function SessionDetailPane({
             return next;
         });
     }, [model, toolsLoaded]);
+
+    // 切换 Header 折叠/展开。展开→折叠前若有未决操作（删除确认条/Note 未保存）则阻止。
+    const toggleHeader = useCallback(() => {
+        setHeaderCollapsed((current) => {
+            if (!current) {
+                // 准备折叠：检查未决操作
+                if (deleteConfirmOpen) return current;
+                if (!noteCollapsed && !noteUnchanged) return current;
+            }
+            userTouchedHeaderRef.current = true;
+            const next = !current;
+            try {
+                localStorage.setItem("snorkeling:sessionDetail:headerCollapsed", String(next));
+                hasStoredPreferenceRef.current = true;
+            } catch {
+                // ignore storage errors (隐私模式/被禁用)
+            }
+            return next;
+        });
+    }, [deleteConfirmOpen, noteCollapsed, noteUnchanged]);
 
     const jumpToMessage = useCallback(
         (seq: number) => {
@@ -519,8 +586,21 @@ export function SessionDetailPane({
         const pendingSeq = pendingJumpSeqRef.current;
         if (pendingSeq == null || !messageRefs.current[pendingSeq]) return;
         pendingJumpSeqRef.current = null;
-        window.requestAnimationFrame(() => scrollToVisibleMessage(pendingSeq));
+        window.requestAnimationFrame(() => scrollToVisibleMessage(pendingSeq, "smooth"));
     }, [detailMessages, scrollToVisibleMessage]);
+
+    // 打开 panel / 切换 session 后自动滚到底（最新一条），流式新增不跟随
+    useLayoutEffect(() => {
+        if (autoScrolledToBottomRef.current) return;
+        if (lastVisibleMessage == null) return;
+        // 等到最后一条消息的 ref 挂上来才滚，避免在 DOM 还没渲染时就跑
+        if (!messageRefs.current[lastVisibleMessage.seq]) return;
+        autoScrolledToBottomRef.current = true;
+        const container = detailScrollRef.current;
+        if (!container) return;
+        // 直接将滚动条置底（含 pb-10 padding 都能露出来）
+        container.scrollTop = container.scrollHeight;
+    }, [lastVisibleMessage?.seq]);
 
     useEffect(() => {
         if (normalizedDetailSearchQuery === "" || detailSearchMatches.length === 0) {
@@ -577,8 +657,31 @@ export function SessionDetailPane({
     const visibleSummaryTags = summaryTags.slice(0, 3);
     const hasNoteInfo = Boolean(summary.note || summaryTags.length);
     return (
-        <div className="relative flex h-full min-h-0 flex-col">
-            <div className="shrink-0 p-3">
+        <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
+            <div className={cn("shrink-0 border-b border-border/70", headerCollapsed ? "p-1.5" : "p-3")}>
+                {headerCollapsed ? (
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleHeader}
+                            className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-hover"
+                            title="Expand session header"
+                        >
+                            <i className="fa-sharp fa-solid fa-chevron-down shrink-0 text-[10px] text-secondary" />
+                            <div
+                                className="min-w-0 flex-1 truncate text-sm font-medium"
+                                title={summary.title || summary.id}
+                            >
+                                {summary.title || summary.id}
+                            </div>
+                        </button>
+                        <IconButton
+                            icon="fa-chevron-down"
+                            label="Expand session header"
+                            onClick={toggleHeader}
+                        />
+                    </div>
+                ) : (
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-2">
@@ -826,6 +929,11 @@ export function SessionDetailPane({
                         ) : null}
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-1">
+                        <IconButton
+                            icon="fa-chevron-up"
+                            label="Collapse session header"
+                            onClick={toggleHeader}
+                        />
                         {onClose ? (
                             <button
                                 className="h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
@@ -855,6 +963,7 @@ export function SessionDetailPane({
                         />
                     </div>
                 </div>
+                )}
             </div>
             <div className="relative min-h-0 flex-1">
                 <div className={cn("flex h-full min-h-0", outlineOpen && "pr-0")}>

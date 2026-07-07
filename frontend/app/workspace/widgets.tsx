@@ -390,10 +390,8 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
         <button
             type="button"
             className={clsx(
-                "w-5 h-5 shrink-0 items-center justify-center cursor-pointer",
-                checked
-                    ? "inline-flex text-accent"
-                    : "hidden group-hover:flex",
+                "w-5 h-5 shrink-0 inline-flex items-center justify-center cursor-pointer transition-colors",
+                checked ? "text-accent" : "text-border",
                 className
             )}
             aria-label={ariaLabel}
@@ -403,7 +401,7 @@ function DefaultCheckButton({ checked, ariaLabel, title, onClick, className }: D
             {checked ? (
                 <i className="fa-solid fa-check text-accent text-[10px]" />
             ) : (
-                <span className="w-3 h-3 rounded-[2px] border border-border" />
+                <span className="w-3 h-3 rounded-[2px] border border-border opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
         </button>
     );
@@ -670,7 +668,7 @@ const AgentTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -691,13 +689,13 @@ const AgentTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                Current
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                Current Tab
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -718,8 +716,8 @@ const AgentTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                New Tab
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                New
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -892,7 +890,7 @@ const TerminalTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -905,13 +903,13 @@ const TerminalTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                Current
+                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
+                                Current Tab
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -924,8 +922,8 @@ const TerminalTargetFloatingWindow = memo(
                                     });
                                 }}
                             >
-                                <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                New Tab
+                                <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
+                                New
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button

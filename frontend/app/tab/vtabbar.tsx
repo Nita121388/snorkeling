@@ -222,6 +222,15 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const scrollAnimFrameRef = useRef<number | null>(null);
     const scrollDirectionRef = useRef<number>(0);
     const scrollSpeedRef = useRef<number>(0);
+    const hideHoverTimerRef = useRef<number | null>(null);
+    const cancelPendingHideHover = useCallback(() => {
+        if (hideHoverTimerRef.current != null) {
+            window.clearTimeout(hideHoverTimerRef.current);
+            hideHoverTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => () => cancelPendingHideHover(), [cancelPendingHideHover]);
 
     useEffect(() => {
         setOrderedTabIds(tabIds);
@@ -314,6 +323,7 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
         setDragTabId(null);
         setDropIndex(null);
         setDropLineTop(null);
+        cancelPendingHideHover();
     };
 
     const markTabOpened = useCallback((tabId: string) => {
@@ -371,8 +381,17 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
             <div
                 ref={scrollContainerRef}
                 className="relative flex min-h-0 flex-col overflow-y-auto"
-                onMouseEnter={() => setIsTabBarHovered(true)}
-                onMouseLeave={() => setIsTabBarHovered(false)}
+                onMouseEnter={() => {
+                    cancelPendingHideHover();
+                    setIsTabBarHovered(true);
+                }}
+                onMouseLeave={() => {
+                    cancelPendingHideHover();
+                    hideHoverTimerRef.current = window.setTimeout(() => {
+                        hideHoverTimerRef.current = null;
+                        setIsTabBarHovered(false);
+                    }, 2000);
+                }}
                 onDragOver={(event) => {
                     event.preventDefault();
                     updateScrollFromDragY(event.clientY);
@@ -442,6 +461,7 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                                     setDragTabId(tabId);
                                     setDropIndex(index);
                                     setDropLineTop(event.currentTarget.offsetTop);
+                                    cancelPendingHideHover();
                                 }}
                                 onDragOver={(event) => {
                                     event.preventDefault();
