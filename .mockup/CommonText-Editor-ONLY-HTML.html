@@ -1,0 +1,688 @@
+<!-- Design: Snorkeling Common Text 编辑器 – 自动联想搜索（无需 @ 符号，键盘导航）-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkeling Common Text 编辑器 – 重构版（无 @ 改为实时搜索）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind v4 不需要 @apply -->
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #222222;
+      color: #f7f7f7;
+    }
+    .kbd {
+      font-family: 'Hack', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+      font-size: 11px;
+    }
+    .tag {
+      padding: 1px 6px;
+      border-radius: 9999px;
+      font-size: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgb(195, 200, 194);
+    }
+    .tag-accent {
+      border-color: rgb(88, 193, 66);
+      color: rgb(88, 193, 66);
+      background: rgba(88, 193, 66, 0.12);
+    }
+    /* 标签筛选 chip：未选 / 已选 */
+    .tag-filter {
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .tag-filter:hover { background: rgba(255, 255, 255, 0.1); }
+    .tag-filter-active {
+      border-color: rgb(88, 193, 66);
+      color: #f7f7f7;
+      background: rgb(88, 193, 66);
+      cursor: pointer;
+    }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.06);
+      color: #f7f7f7;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.24); }
+    .btn-accent { background: rgba(88, 193, 66, 0.5); color: #f7f7f7; border-color: rgb(88, 193, 66); }
+    .btn-accent:hover { background: rgb(88, 193, 66); }
+    .btn-icon {
+      width: 28px; height: 28px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; font-size: 12px;
+    }
+    /* Pinned 图标按钮：已置顶态高亮绿，未置顶态低饱和 */
+    .btn-pinned-active {
+      background: rgba(88, 193, 66, 0.25);
+      border-color: rgb(88, 193, 66);
+      filter: drop-shadow(0 0 3px rgba(88, 193, 66, 0.6));
+    }
+    .btn-pinned-active:hover { background: rgba(88, 193, 66, 0.4); }
+    .btn-pinned-inactive {
+      background: transparent;
+      border: none;
+      opacity: 0.5;
+      cursor: pointer;
+    }
+    .btn-pinned-inactive:hover { opacity: 0.85; }
+    .mock-editor-area {
+      font-family: 'Hack', 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: auto;
+      max-height: 120px;
+      background: rgba(0, 0, 0, 0.25);
+      color: #f7f7f7;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 10px 14px;
+      outline: none;
+      overflow-y: auto;
+    }
+    .mock-editor-area:focus { border-color: rgb(88, 193, 66); }
+    .shortcut-badge { font-family: 'Hack', ui-monospace; font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: rgb(195, 200, 194); }
+    .autocomplete-panel {
+      background: #2a2a2a;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .autocomplete-item {
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .autocomplete-item:hover,
+    .autocomplete-item.active { background: rgba(255, 255, 255, 0.1); }
+    .fake-cmd {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+    .side-panel {
+      background: rgba(31, 33, 31, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .panel-surface {
+      background: rgba(31, 33, 31, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .panel-header {
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    details::-webkit-details-marker { display: none; }
+    summary {
+      list-style: none;
+      cursor: pointer;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "▼"; font-size: 10px; margin-left: 6px; }
+    details[open] summary::after { content: "▲"; }
+
+    /* Theme utility mappings (align with tailwindsetup.css @theme tokens) */
+    .text-foreground { color: #f7f7f7; }
+    .text-muted-foreground { color: rgb(195, 200, 194); }
+    .text-muted { color: rgb(140, 145, 140); }
+    .text-accent { color: rgb(88, 193, 66); }
+    .text-accenthover { color: rgb(118, 223, 96); }
+    .text-error { color: rgb(229, 77, 46); }
+    .bg-accent { background-color: rgb(88, 193, 66); }
+    .bg-hover { background-color: rgba(255, 255, 255, 0.1); }
+    .bg-hoverbg { background-color: rgba(255, 255, 255, 0.2); }
+    .border-themed { border-color: rgba(255, 255, 255, 0.16); }
+    .panel-surface {
+      background-color: rgba(31, 33, 31, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .ellipsis {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body class="p-6 max-w-5xl mx-auto">
+
+<h1 class="text-xl font-bold mb-4 text-foreground">Snorkeling Common Text 编辑器 – 重构版</h1>
+<p class="text-xs text-muted-foreground mb-6">
+  本文件含两块原型画布并排对比：<br>
+  ▸ 画布 A（理想化）：编辑器内输入联想 + 侧栏常用文本 + 「保存为 Common Text」弹窗；<br>
+  ▸ 画布 B（贴合真实产品）：<code class="kbd">commontext-manager</code> 双列管理面板形态，源自
+  <code class="kbd">frontend/app/commontext/commontext-manager.tsx</code>。
+</p>
+
+<!-- ========== 画布 A：理想化原型（编辑器内联想 + 侧栏 + 保存弹窗） ========== -->
+<h2 class="text-base font-semibold mb-3 text-accent border-b pb-1" style="border-color:rgba(255,255,255,0.16);">
+  画布 A — 理想化原型（编辑器内联想 + 侧栏 + 保存弹窗）
+</h2>
+
+<!-- 场景 A：快速测试用例 -->
+<div class="mb-8">
+  <h2 class="text-lg font-semibold mb-3 text-foreground">🧪 测试场景（点击即可实验）</h2>
+  <details class="mb-3">
+    <summary class="text-xs text-muted-foreground mb-2">点击展开场景</summary>
+    <div class="space-y-3 text-xs grid grid-cols-3 gap-4">
+      <button onclick="simulateTyping('设置环境变量并运行')"
+              class="fake-cmd text-left p-3 rounded hover:bg-hover transition-colors cursor-pointer">
+        键入：设置环境变量并运行
+      </button>
+      <button onclick="simulateSelect('环境变量')"
+              class="fake-cmd text-left p-3 rounded hover:bg-hover transition-colors cursor-pointer">
+        选中：环境变量 → 保存为 Common Text
+      </button>
+      <button onclick="showEditor()"
+              class="fake-cmd text-left p-3 rounded hover:bg-hover transition-colors cursor-pointer">
+        打开编辑器面板（焦点在输入框）
+      </button>
+    </div>
+  </details>
+</div>
+
+<!-- ===== CommonText 自动联想编辑器 ===== -->
+
+<div id="app" class="mb-12">
+  <!-- 侧栏：显示常用 CommonText 列表 -->
+  <div class="flex flex-col gap-4">
+    <!-- 中部：主编辑器面板 -->
+    <div>
+      <div id="editor-panel" class="panel-surface rounded-lg overflow-hidden">
+        <div class="p-4">
+          <textarea
+            id="commontext-input"
+            placeholder="开始输入即可联想 Common Text...
+键盘 ↓ 选择，Enter 确认，Esc 取消。"
+            class="mock-editor-area w-full focus:ring-0"
+            rows="2"
+            style="resize:none; min-height:auto; max-height:120px;"
+            spellcheck="false"
+          ></textarea>
+
+          <!-- 联想面板（实时搜索浮层） -->
+          <div id="autocomplete-panel" class="autocomplete-panel absolute w-[calc(100%-24px)] hidden mt-2 z-10">
+            <div id="autocomplete-list" class="autocomplete-panel-content"></div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="flex items-center justify-between mt-3">
+            <div class="flex items-center gap-1">
+              <button id="btn-send" title="发送到终端（Enter）" class="btn btn-icon">⬆</button>
+              <button id="btn-save-selected" title="保存选中为新 Common Text" class="btn btn-icon">➕</button>
+              <button id="btn-force-search" title="弹出完整搜索窗口" class="btn btn-icon">📋</button>
+            </div>
+            <span id="cursor-status" class="text-xs text-muted-foreground kbd">提示：输入即联想，Enter 选中</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-panel rounded-lg p-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold text-accent">常用文本</div>
+        <button id="btn-edit-commontext" title="编辑常用文本" class="text-accent text-xs ml-2" style="background:transparent; border:none; cursor:pointer; padding:2px 4px;">✏️</button>
+      </div>
+      <!-- 标签筛选条（静态原型：多选，高亮=当前筛选） -->
+      <div class="flex flex-wrap gap-1 mb-3 pb-2 border-b" style="border-color:rgba(255,255,255,0.16);">
+        <span class="tag tag-filter-active">全部</span>
+        <span class="tag tag-filter">#git</span>
+        <span class="tag tag-filter tag-filter-active">#work</span>
+        <span class="tag tag-filter">#deploy</span>
+        <span class="tag tag-filter">#template</span>
+        <span class="tag tag-filter">#workflow</span>
+        <span class="tag tag-filter">#curl</span>
+      </div>
+      <div class="space-y-2 text-xs">
+        <div class="side-panel-item hover:bg-hover rounded cursor-pointer"
+             onclick="fillText('git commit msg')" title="模板内容：Standard commit message format: feat:, fix:, chore:, docs:...">
+          <span class="font-semibold">git commit msg</span>
+          <div class="text-xs mt-1 text-muted-foreground">Standard commit format...</div>
+          <div class="mt-2 flex gap-1">
+            <span class="tag">#git</span><span class="tag">#workflow</span>
+          </div>
+        </div>
+        <div class="side-panel-item hover:bg-hover rounded cursor-pointer"
+             onclick="fillText('meeting template')" title="模板内容：meeting notes、• discuss...、references...">
+          <span class="font-semibold">meeting template</span>
+          <div class="text-xs mt-1 text-muted-foreground">Standard meeting notes...</div>
+          <div class="mt-2 flex gap-1">
+            <span class="tag tag-accent">#work</span>
+            <span class="tag">#template</span>
+          </div>
+        </div>
+        <div class="side-panel-item hover:bg-hover rounded cursor-pointer"
+             onclick="fillText('deploy cmd')"
+             title="模板内容：curl -X POST... /api/deploy">
+          <span class="font-semibold">deploy cmd</span>
+          <div class="text-xs mt-1 text-muted-foreground">快速部署命令...</div>
+          <div class="mt-2 flex gap-1"><span class="tag">#deploy</span></div>
+        </div>
+        <div class="side-panel-item hover:bg-hover rounded cursor-pointer"
+             onclick="fillText('daily standup')" title="模板内容：
+Previous:
+• task A done
+Today:
+• task B to do
+Blockers:
+• none
+">
+          <span class="font-semibold">daily standup</span>
+          <div class="text-xs mt-1 text-muted-foreground">Daily template...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 交互输出区 --> <div id="output" class="space-y-1 text-xs p-3 panel-surface rounded text-accent font-mono text-wrap max-h-60 overflow-y-auto"></div>
+
+<!-- ===== 保存为 Common Text 弹窗（右侧平铺原型展示） ===== -->
+<!-- 说明：本 HTML 为静态原型画布，不绑定点击行为，弹窗样式平铺在右侧常驻显示。
+     实际交互约定：点击工具栏 ➕ 按钮（btn-save-selected）时弹出本弹窗，
+     「内容预览」预填当前选中文本；用户填写「标题」（必填）和「标签」（可多标签）后
+     点击「保存」即添加到常用文本列表并置顶；「取消」/ 右上角 × 关闭弹窗。 -->
+<div class="flex flex-col lg:flex-row gap-4 items-start">
+  <!-- 占位：保持左侧编辑器/常用文本画布位置（实际由上方 #app 提供） -->
+  <div class="hidden lg:block flex-1"></div>
+
+  <!-- 右侧平铺的保存弹窗 -->
+  <div id="save-dialog-backdrop" class="w-full lg:w-[460px] shrink-0">
+    <div class="panel-surface rounded-lg p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-base font-semibold text-foreground">保存为 Common Text</div>
+        <button title="关闭" class="text-muted-foreground hover:text-foreground" style="background:transparent; border:none; cursor:pointer; font-size:16px; padding:2px 6px;">×</button>
+      </div>
+
+      <div class="space-y-4 text-sm">
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">标题 <span class="text-error">*</span></label>
+          <div class="flex items-center gap-2">
+            <input type="text" value="deploy cmd 副本" placeholder="为这段文本起个名字"
+                   class="flex-1 text-foreground rounded-lg px-3 py-2 text-sm outline-none"
+                   style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16);">
+            <!-- Pinned 图标按钮：挪到标题输入框的右侧，高亮=已置顶 -->
+            <button title="置顶（Pinned）：勾选后该项永远置顶于常用文本列表"
+                    class="btn-pinned-active shrink-0 flex items-center justify-center"
+                    style="height:38px; width:38px; border-radius:8px; cursor:pointer; font-size:16px;">📌</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">
+            Shortcut <span class="text-muted">(可选)</span>
+            <span class="text-muted ml-1" style="font-size:10px;">敲暗号即可展开整段内容</span>
+          </label>
+          <input type="text" value=";deploy2" placeholder="; shortcut，例如 ;deploy"
+                 class="w-full text-foreground rounded-lg px-3 py-2 text-sm outline-none"
+                 style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16); font-family:'Hack','Consolas',monospace;">
+        </div>
+
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">标签</label>
+          <input type="text" value="deploy" placeholder="输入标签后回车，多个标签以空格分隔"
+                 class="w-full text-foreground rounded-lg px-3 py-2 text-sm outline-none"
+                 style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16);">
+          <div class="mt-2 flex flex-wrap gap-1">
+            <span class="tag tag-accent inline-flex items-center gap-1">#deploy <span style="cursor:pointer; opacity:0.7;">×</span></span>
+            <span class="tag tag-accent inline-flex items-center gap-1">#curl <span style="cursor:pointer; opacity:0.7;">×</span></span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">内容预览</label>
+          <textarea rows="5" class="w-full text-foreground rounded-lg px-3 py-2 text-xs outline-none"
+                    style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16); resize:none; font-family:'Hack','Consolas',monospace;">curl -X POST https://ci.internal/api/deploy
+-H "Content-Type: application/json"
+-d '{"ref":"main"}'</textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button class="btn">取消</button>
+          <button class="btn btn-accent">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 画布 B：贴合真实产品（commontext-manager 双列管理面板） ========== -->
+<!-- 说明：本画布为静态原型，对照真实产品 commontext-manager.tsx 的双列布局：
+     左列：搜索框 + 已保存项列表（点击整行=加载到右侧表单编辑，无独立 Edit 按钮）
+     右列：Title / Shortcut / Text / Tags(逗号分隔) / Pinned + 底部 Copy / Delete / Save
+     打开方式：search-modal 头部「Manage」齿轮按钮、选区 overlay 菜单「Manage Common Text」、
+     或 openCommonTextManager() 创建 waveconfig block (file:"commontext")
+     标签：自由字符串、逗号分隔；「All tags」瓦片区点击 toggle 进 draft
+     数据：持久化于 settings 的 commontext:items 键；排序 Pinned 优先，再按 lastusedat/updatedat -->
+<h2 class="text-base font-semibold mb-3 text-accent border-b pb-1 mt-12" style="border-color:rgba(255,255,255,0.16);">
+  画布 B — 真实产品形态（commontext-manager 双列管理面板）
+</h2>
+
+<div class="panel-surface rounded-lg overflow-hidden">
+  <!-- 顶部 Header：标题 + n saved + New -->
+  <div class="flex items-center justify-between px-4 py-3 panel-header">
+    <div>
+      <div class="text-sm font-semibold text-foreground">Common Text</div>
+      <div class="text-xs text-muted-foreground">5 saved</div>
+    </div>
+    <button class="btn btn-accent text-xs">+ New</button>
+  </div>
+
+  <!-- 双列布局：左列 280px，右列 1fr -->
+  <div class="grid flex-1 min-h-0"
+       style="grid-template-columns: minmax(220px, 320px) 1fr; min-height: 460px;">
+
+    <!-- 左列：搜索 + 列表 -->
+    <div class="flex flex-col border-r"
+         style="border-color:rgba(255,255,255,0.16); background:rgba(255,255,255,0.02);">
+      <div class="p-3 border-b" style="border-color:rgba(255,255,255,0.16);">
+        <input type="text" placeholder="搜索..."
+               class="w-full text-foreground text-sm rounded-lg px-3 py-2 outline-none"
+               style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16);">
+      </div>
+      <div class="flex-1 overflow-y-auto">
+        <!-- 列表行：点击=加载到右侧编辑 -->
+        <button class="w-full text-left px-3 py-3 border-b hover:bg-hover"
+                style="border-color:rgba(255,255,255,0.08);">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground" style="font-size:11px;">📌</span>
+            <span class="font-semibold text-foreground text-sm">git commit msg</span>
+          </div>
+          <div class="text-xs mt-1 text-muted-foreground ellipsis">Standard commit message format: feat:, fix:, chore:, docs:</div>
+          <div class="mt-2 flex gap-1">
+            <span class="tag">#git</span><span class="tag">#workflow</span>
+          </div>
+        </button>
+        <!-- 选中行（高亮） -->
+        <button class="w-full text-left px-3 py-3 border-b"
+                style="border-color:rgba(255,255,255,0.08); background:rgba(255,255,255,0.12);">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground" style="font-size:11px;">&nbsp;</span>
+            <span class="font-semibold text-foreground text-sm">deploy cmd</span>
+          </div>
+          <div class="text-xs mt-1 text-muted-foreground ellipsis">curl -X POST https://ci.internal/api/deploy</div>
+          <div class="mt-2 flex gap-1"><span class="tag">#deploy</span><span class="tag">#curl</span></div>
+        </button>
+        <button class="w-full text-left px-3 py-3 border-b hover:bg-hover"
+                style="border-color:rgba(255,255,255,0.08);">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground" style="font-size:11px;">&nbsp;</span>
+            <span class="font-semibold text-foreground text-sm">meeting template</span>
+          </div>
+          <div class="text-xs mt-1 text-muted-foreground ellipsis">meeting notes • discuss API redesign...</div>
+          <div class="mt-2 flex gap-1"><span class="tag">#work</span><span class="tag">#template</span></div>
+        </button>
+        <button class="w-full text-left px-3 py-3 border-b hover:bg-hover"
+                style="border-color:rgba(255,255,255,0.08);">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground" style="font-size:11px;">&nbsp;</span>
+            <span class="font-semibold text-foreground text-sm">daily standup</span>
+          </div>
+          <div class="text-xs mt-1 text-muted-foreground ellipsis">Previous: • task A done...</div>
+          <div class="mt-2 flex gap-1"><span class="tag">#work</span></div>
+        </button>
+        <button class="w-full text-left px-3 py-3 hover:bg-hover">
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground" style="font-size:11px;">&nbsp;</span>
+            <span class="font-semibold text-foreground text-sm">常用回复</span>
+          </div>
+          <div class="text-xs mt-1 text-muted-foreground ellipsis">Thanks for the update! Looks good to me.</div>
+          <div class="mt-2 flex gap-1"><span class="tag">#phrase</span><span class="tag">#answer</span></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- 右列：编辑表单 -->
+    <div class="flex flex-col p-4 gap-4 min-w-0">
+      <!-- Title / Shortcut 行 -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">Title</label>
+          <input type="text" value="deploy cmd"
+                 class="w-full text-foreground text-sm rounded-lg px-3 py-2 outline-none"
+                 style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16);">
+        </div>
+        <div>
+          <label class="block text-xs text-muted-foreground mb-1">Shortcut</label>
+          <input type="text" value=";deploy" placeholder="; shortcut"
+                 class="w-full text-foreground text-sm rounded-lg px-3 py-2 outline-none"
+                 style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16); font-family:'Hack','Consolas',monospace;">
+        </div>
+      </div>
+
+      <!-- Text 大文本区 -->
+      <div class="flex-1 flex flex-col min-h-0">
+        <label class="block text-xs text-muted-foreground mb-1">Text</label>
+        <textarea rows="8"
+                  class="w-full text-foreground flex-1 rounded-lg px-3 py-2 text-xs outline-none"
+                  style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16); resize:none; font-family:'Hack','Consolas',monospace; min-height:160px;">curl -X POST https://ci.internal/api/deploy
+-H "Content-Type: application/json"
+-d '{"ref":"main"}'</textarea>
+      </div>
+
+      <!-- Tags + Pinned 行 -->
+      <div class="flex items-end gap-3">
+        <div class="flex-1">
+          <label class="block text-xs text-muted-foreground mb-1">Tags <span class="text-muted">(逗号分隔)</span></label>
+          <input type="text" value="deploy, curl"
+                 class="w-full text-foreground text-sm rounded-lg px-3 py-2 outline-none"
+                 style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.16);">
+        </div>
+        <label class="flex items-center gap-2 text-sm text-foreground pb-2 cursor-pointer">
+          <input type="checkbox" class="accent-current"> Pinned
+        </label>
+      </div>
+
+      <!-- All tags 瓦片区（点击 toggle 进 draft.tags） -->
+      <div>
+        <div class="text-xs text-muted-foreground mb-2">All tags (点击切换)</div>
+        <div class="flex flex-wrap gap-1">
+          <span class="tag tag-accent tag-filter-active">#deploy</span>
+          <span class="tag">#curl</span>
+          <span class="tag">#git</span>
+          <span class="tag">#workflow</span>
+          <span class="tag">#work</span>
+          <span class="tag">#template</span>
+          <span class="tag">#phrase</span>
+          <span class="tag">#answer</span>
+        </div>
+      </div>
+
+      <!-- 状态行 + 底部按钮 -->
+      <div class="flex items-center justify-between pt-2 border-t" style="border-color:rgba(255,255,255,0.16);">
+        <span class="text-xs text-muted-foreground">Updated 2026-04-28 14:32</span>
+        <div class="flex items-center gap-2">
+          <button class="btn">Copy</button>
+          <button class="btn">Delete</button>
+          <button class="btn btn-accent">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="text-xs text-muted-foreground mt-3">
+  ⚠ 真实产品中「保存为新 CommonText」<strong>不弹窗</strong>：选中文本 → 选区 overlay 菜单
+  「Add Selection to Common Text」静默调用 <code class="kbd">upsertCommonTextItem({title:"", text})</code>，
+  仅冒一个「Saved」气泡；标题随后自动取首行。要进一步编辑须打开本管理面板点行加载。
+</p>
+
+
+<script>
+// ---------- 模拟 Common Text 数据集 ----------
+const items = [
+  { id: 'ct1', title: 'git commit msg', text: 'Standard commit message format:\nfeat: add X\nfix: resolve Y\nchore: depend Z', tags: ['git','workflow'], usagecount: 12 },
+  { id: 'ct2', title: 'meeting template', text: 'meeting notes\n• discuss API redesign\n• review common text feature\n• references: PR #123', tags: ['work','template'], usagecount: 8 },
+  { id: 'ct3', title: 'deploy cmd', text: 'curl -X POST https://ci.internal/api/deploy\n-H "Content-Type: application/json"\n-d '\n{\n  "ref":"main"\n}\n', tags: ['deploy','curl'], usagecount: 6 },
+  { id: 'ct4', title: 'daily standup', text: 'Previous:\n• task A done\nToday:\n• task B to do\nBlockers:\n• none', tags: ['work'], usagecount: 4 },
+  { id: 'ct5', title: '常用回复', text: 'Thanks for the update!\nLooks good to me.\nPlease review when you have a chance.', tags: ['phrase','answer'], usagecount: 15 },
+];
+
+const log = (...args)=>{
+  const prev = output.textContent;
+  output.textContent = `[${new Date().toLocaleTimeString().slice(0,8)}]` + args.map(JSON.stringify).join(' ') +
+                     (prev? '\n\n'+prev : '');
+  output.scrollTop = output.scrollHeight;
+};
+
+const output = document.getElementById('output');
+const inputEl = document.getElementById('commontext-input');
+const panelEl = document.getElementById('autocomplete-panel');
+const listEl = document.getElementById('autocomplete-list');
+const btnSend = document.getElementById('btn-send');
+const btnSaveSel = document.getElementById('btn-save-selected');
+const btnForceSearch = document.getElementById('btn-force-search');
+const cursorStatus = document.getElementById('cursor-status');
+
+let selectedIdx = -1;
+
+// ---------- 工具函数 ----------
+function escapeHtml(t){ return t.replace(/[&<>]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+function searchItems(q){
+  if(!q) return [];
+  const ql = q.toLowerCase();
+  return items
+    .map(i=>(
+      {
+        item:i,
+        score: (i.title.toLowerCase().includes(ql) ? 0 : 100)
+               + (i.text.toLowerCase().includes(ql) ? 0 : 30)
+               + (i.tags.some(t=>t.toLowerCase().includes(ql)) ? 0 : 50)
+      })
+    )
+    .filter(({score})=>score<=60)
+    .sort((a,b)=>a.score-b.score)
+    .map(({item})=>item);
+}
+function renderList(q){
+  const res = searchItems(q);
+  if(res.length===0){
+    if(q){ listEl.innerHTML = `<div class="p-3 text-xs text-muted-foreground">未找到 "${q}"</div>`; }
+    else listEl.innerHTML = '<div class="p-3 text-xs text-muted-foreground">开始输入即可联想...</div>';
+    panelEl.classList.add('hidden');
+  } else {
+    panelEl.classList.remove('hidden');
+    listEl.innerHTML = res.map((it,idx)=>{
+        const matchedTitle = it.title.replace(new RegExp(`(${inputEl.value})`,'gi'), '<strong style="color:rgb(88, 193, 66)">$1</strong>');
+        const matchedText = it.text.replace(new RegExp(`(${inputEl.value})`,'gi'), '<em style="color:rgb(195, 200, 194)">$1</em>');
+        return `<div class="autocomplete-item ${idx===selectedIdx?'active':''}" data-idx="${idx}">
+                 <div class="font-semibold text-xs">${matchedTitle}</div>
+                 <div class="text-xs mt-1 text-muted-foreground" style="font-size:11px; line-height:1.5;">${matchedText.split('\n').slice(0,2).join('<br>')}</div>
+                 <div class="mt-2 flex gap-1 flex-wrap">${it.tags.map(t=>`<span class="tag tag-accent">#${t}</span>`).join('')}</div>
+               </div>`;
+    }).join('');
+  }
+}
+
+// ---------- 绑定输入事件 ----------
+inputEl.addEventListener('input', ()=>{
+  const q = inputEl.value;
+  log('输入','q=',q);
+  renderList(q);
+  // 清空选择状态
+  selectedIdx = -1;
+});
+
+inputEl.addEventListener('keydown', (e)=>{
+  log('按键',e.key, 'selectedIdx=',selectedIdx);
+  const res = searchItems(inputEl.value);
+  // ▲ / ▲ Up
+  if(e.key==='ArrowUp'){ e.preventDefault(); selectedIdx = Math.max(0, selectedIdx-1); renderList(inputEl.value); return; }
+  // ▼ / ▼ Down
+  if(e.key==='ArrowDown'){ e.preventDefault(); selectedIdx = Math.min(res.length-1, selectedIdx+1); renderList(inputEl.value); return; }
+  // Enter
+  if(e.key==='Enter'){
+    if(res.length && selectedIdx>=0){
+      e.preventDefault();
+      const picked = res[selectedIdx];
+      log('确认选中', picked.title );
+      insertSuggestion(picked);
+      panelEl.classList.add('hidden'); selectedIdx = -1;
+    }
+    return;
+  }
+  // Esc
+  if(e.key==='Escape'){
+    e.preventDefault();
+    panelEl.classList.add('hidden'); selectedIdx = -1;
+    log('Esc 关闭联想');
+  }
+});
+
+function insertSuggestion(item){
+  const textToInsert = item.text;
+  // 现有内容光标位置插入
+  const before = inputEl.value.substring(0, inputEl.selectionStart);
+  const after  = inputEl.value.substring(inputEl.selectionStart);
+  inputEl.value = before + textToInsert + after;
+  // 光标置后
+  inputEl.selectionStart = inputEl.selectionEnd = before.length + textToInsert.length;
+  inputEl.focus();
+  // 输出
+  log('插入模板', item.title, 'text=', item.text );
+}
+
+// Toolbar 按钮行为
+btnSend.addEventListener('click', ()=>{ sendContent(); });
+btnSaveSel.addEventListener('click', ()=>{ saveSelectionAsItem(); });
+btnForceSearch.addEventListener('click',()=>{
+  log('📋 完整搜索窗口将被调用');
+  // 本 mock 忽略复杂弹窗，仅提示
+});
+inputEl.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault(); sendContent();
+  }
+});
+function sendContent(){
+  const msg = '[' + new Date().toLocaleTimeString().slice(0,8) + '] ' + inputEl.value || '(空)';
+  log('发送到终端','content=',inputEl.value);
+  output.textContent = msg + '\n' + (output.textContent||'');
+}
+
+function saveSelectionAsItem(){
+  // 静态原型：保存交互由独立弹窗 UI 展示，此处仅打日志说明约定
+  log('保存选中为新模板','说明=本原型不实现真实保存逻辑，请在弹窗原型中查看交互');
+}
+
+// ---------- 保存为 Common Text 弹窗（静态原型，不绑定行为） ----------
+const saveDialog = document.getElementById('save-dialog-backdrop'); // 默认可见展示
+// 备注：标题为必填、标签可多标签、内容预览支持二次编辑；取消/× 关闭弹窗、保存置顶到列表
+
+// Utility / 演示小工具
+function simulateTyping(str){
+  inputEl.value = str; renderList(str); inputEl.selectionStart = str.length; inputEl.focus();
+}
+function simulateSelect(part){
+  const idx = items.findIndex(i=>i.title===part);
+  if(idx>=0){
+    const node = document.createElement('div');
+    node.appendChild(document.createTextNode(items[idx].text));
+    document.getSelection().removeAllRanges();
+    const range = document.createRange();
+    range.selectNode(node);
+    document.getSelection().addRange(range);
+    log('模拟选中', part, '并点击 ➕');
+  }
+}
+function showEditor(){ inputEl.focus(); }
+
+// 焦点切换感知：输入框获得焦点时显示联想
+inputEl.addEventListener('focus',()=>{
+  if(inputEl.value) renderList(inputEl.value); else listEl.textContent='输入即联想...';
+});
+</script>
+
+</body>
+</html>

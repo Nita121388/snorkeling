@@ -5,7 +5,6 @@ import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { CopyIconButton } from "./controls";
 import {
-    collapsedMessagePreview,
     displayRole,
     formatDateTimeToSecond,
     isCollapsibleMessage,
@@ -62,7 +61,7 @@ export function MessageCard({
     searchActive = false,
 }: {
     message: Message;
-    collapsed: boolean;
+    collapsed?: boolean;
     onToggleCollapsed: () => void;
     registerRef: (node: HTMLDivElement | null) => void;
     searchQuery?: string;
@@ -70,14 +69,15 @@ export function MessageCard({
 }) {
     const isUser = message.role === "user";
     const collapsible = isCollapsibleMessage(message.text);
-    const defaultShownText =
-        collapsed && collapsible ? collapsedMessagePreview(message.text) : trimMessageText(message.text);
+    const effectiveCollapsed = collapsed ?? collapsible;
+    const defaultShownText = trimMessageText(message.text);
     const normalizedSearchQuery = searchQuery?.trim().toLowerCase() ?? "";
     const searchMatched = normalizedSearchQuery !== "" && message.text.toLowerCase().includes(normalizedSearchQuery);
     const defaultSearchShown =
         normalizedSearchQuery !== "" && defaultShownText.toLowerCase().includes(normalizedSearchQuery);
     const shownText = searchActive && searchMatched && !defaultSearchShown ? message.text : defaultShownText;
     const searchShown = normalizedSearchQuery !== "" && shownText.toLowerCase().includes(normalizedSearchQuery);
+    const shouldClampText = effectiveCollapsed && !(searchActive && searchMatched && !defaultSearchShown);
     return (
         <div
             ref={registerRef}
@@ -94,36 +94,27 @@ export function MessageCard({
                     isUser && "justify-end",
                     collapsible && "cursor-pointer hover:text-primary"
                 )}
-                title={collapsible ? (collapsed ? "Expand message" : "Collapse message") : undefined}
+                title={collapsible ? (effectiveCollapsed ? "Expand message" : "Collapse message") : undefined}
                 onClick={collapsible ? onToggleCollapsed : undefined}
             >
-                <span className={cn("font-medium uppercase", isUser && "text-accent")}>
-                    {displayRole(message.role)}
-                </span>
-                <span className="group relative cursor-help" title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}>
-                    <span className="min-w-0 truncate">{message.seq}</span>
+                <span className="relative">
+                    <span className="min-w-0 truncate" title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}>
+                        {message.seq}
+                    </span>
                     {message.timestamp ? (
                         <span
-                            className={cn(
-                                "pointer-events-none absolute left-0 top-full z-10 hidden rounded bg-panel px-2 py-1 text-xxs text-secondary shadow-md opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100",
-                                isUser && "bg-accent/10 text-accent"
-                            )}
+                            className="pointer-events-none absolute left-full top-1/2 z-10 ml-1 -translate-y-1/2 whitespace-nowrap rounded bg-panel px-2 py-1 text-xxs leading-none text-secondary shadow-md opacity-0 transition-opacity group-hover:opacity-100"
                         >
                             {formatDateTimeToSecond(message.timestamp)}
                         </span>
                     ) : null}
                 </span>
-                {collapsible ? (
-                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary">
-                        {collapsed ? "Collapsed" : "Expanded"}
-                    </span>
-                ) : null}
                 {searchMatched ? (
                     <span className="flex items-center gap-1 rounded border border-yellow-400/40 bg-yellow-400/10 px-1.5 py-0.5 text-[10px] text-yellow-300">
                         <i className="fa-sharp fa-solid fa-magnifying-glass" />
                         {searchActive
                             ? "Current match"
-                            : collapsed && !searchShown
+                            : effectiveCollapsed && !searchShown
                               ? "Match in collapsed text"
                               : "Search match"}
                     </span>
@@ -138,8 +129,8 @@ export function MessageCard({
                     <button
                         type="button"
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-                        title={collapsed ? "Expand message" : "Collapse message"}
-                        aria-label={collapsed ? "Expand message" : "Collapse message"}
+                        title={effectiveCollapsed ? "Expand message" : "Collapse message"}
+                        aria-label={effectiveCollapsed ? "Expand message" : "Collapse message"}
                         onClick={(e) => {
                             e.stopPropagation();
                             onToggleCollapsed();
@@ -148,13 +139,19 @@ export function MessageCard({
                         <i
                             className={cn(
                                 "fa-sharp fa-solid text-[10px]",
-                                collapsed ? "fa-chevron-down" : "fa-chevron-up"
+                                effectiveCollapsed ? "fa-chevron-down" : "fa-chevron-up"
                             )}
                         />
                     </button>
                 ) : null}
             </div>
-            <div className={cn("whitespace-pre-wrap break-words text-xs leading-5", isUser && "text-primary")}>
+            <div
+                className={cn(
+                    "whitespace-pre-wrap break-words text-xs leading-5",
+                    isUser && "text-primary",
+                    shouldClampText && "line-clamp-4"
+                )}
+            >
                 <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
             </div>
         </div>

@@ -8,6 +8,7 @@ import {
     formatFileSize,
     formatRelativeRefreshTime,
     formatSessionRelativeTime,
+    isCollapsibleMessage,
     isReadableMessage,
     restoreCommandForSession,
 } from "./utils";
@@ -170,5 +171,20 @@ describe("AI session detail timeline", () => {
                 projectPath: "",
             } as SessionSummary)
         ).toBe("claude --resume session-123");
+    });
+});
+
+describe("AI session message collapse", () => {
+    it("keeps up to four lines expanded", () => {
+        expect(isCollapsibleMessage("line1\nline2\nline3\nline4")).toBe(false);
+    });
+
+    it("collapses five-line messages", () => {
+        expect(isCollapsibleMessage("line1\nline2\nline3\nline4\nline5")).toBe(true);
+    });
+
+    it("collapses long single-line messages", () => {
+        expect(isCollapsibleMessage("x".repeat(600))).toBe(true);
+        expect(isCollapsibleMessage("x".repeat(599))).toBe(false);
     });
 });

@@ -18,7 +18,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -204,6 +204,7 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
+    const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
@@ -336,6 +337,18 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
         }
     }, [activeTabId, markTabOpened]);
 
+    const renderOrderedTabIds = useMemo(() => {
+        if (dragTabId != null) {
+            return orderedTabIds;
+        }
+        const pinnedTabIds = orderedTabIds.filter(
+            (tabId) => activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+        );
+        const pinnedTabIdSet = new Set(pinnedTabIds);
+        const hoverTabIds = orderedTabIds.filter((tabId) => !pinnedTabIdSet.has(tabId));
+        return [...pinnedTabIds, ...hoverTabIds];
+    }, [activeTabId, dragTabId, openedThisLaunchTabIds, orderedTabIds]);
+
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
         if (sourceTabId == null) {
@@ -408,15 +421,14 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                     clearDragState();
                 }}
             >
-                {orderedTabIds.map((tabId, index) => {
+                {renderOrderedTabIds.map((tabId, index) => {
                     const isActive = tabId === activeTabId;
                     const isHovered = tabId === hoveredTabId;
-                    const isLast = index === orderedTabIds.length - 1;
-                    const nextTabId = orderedTabIds[index + 1];
+                    const isLast = index === renderOrderedTabIds.length - 1;
+                    const nextTabId = renderOrderedTabIds[index + 1];
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
-                    const openedSet = globalStore.get(openedThisLaunchTabIdsAtom);
-                    const wasOpened = wasTabOpenedThisLaunch(openedSet, tabId);
+                    const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
                     const isHidden = !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null;
                     if (isHidden) {
                         return null;

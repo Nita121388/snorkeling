@@ -28,6 +28,7 @@ import {
     restoreCommandForSession,
     shortSessionId,
     trimMessageText,
+    isCollapsibleMessage,
 } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -431,8 +432,12 @@ export function SessionDetailPane({
         };
     }, []);
 
-    const toggleMessageCollapsed = useCallback((seq: number) => {
-        setCollapsedMessages((current) => ({ ...current, [seq]: !current[seq] }));
+    const toggleMessageCollapsed = useCallback((seq: number, text: string) => {
+        setCollapsedMessages((current) => {
+            const currentValue = current[seq];
+            const nextValue = currentValue == null ? !isCollapsibleMessage(text) : !currentValue;
+            return { ...current, [seq]: nextValue };
+        });
     }, []);
 
     const toggleToolCallExpanded = useCallback((seq: number) => {
@@ -1073,8 +1078,8 @@ export function SessionDetailPane({
                                                 <MessageCard
                                                     key={`message-${item.message.seq}`}
                                                     message={item.message}
-                                                    collapsed={Boolean(collapsedMessages[item.message.seq])}
-                                                    onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq)}
+                                                    collapsed={collapsedMessages[item.message.seq]}
+                                                    onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq, item.message.text)}
                                                     searchQuery={detailSearchQuery}
                                                     searchActive={item.message.seq === activeSearchSeq}
                                                     registerRef={(node) => {
