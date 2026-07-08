@@ -14,6 +14,7 @@ import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
 import { DefaultNoteDirectory, normalizeNoteDirectory, NoteDirectorySettingKey } from "@/app/modals/notedirectorymodal";
+import { MagnifyIcon } from "@/app/element/magnify";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
 import { FocusManager } from "@/app/store/focusManager";
 import { atoms, createBlock, setActiveTab, WOS } from "@/app/store/global";

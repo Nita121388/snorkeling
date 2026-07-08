@@ -8,6 +8,7 @@ import {
     OptMagnifyButton,
     renderHeaderElements,
 } from "@/app/block/blockutil";
+import { MagnifyIcon } from "@/app/element/magnify";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
 import { getBlockBadgeAtom } from "@/app/store/badge";
@@ -302,7 +303,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
     if (isNoteBlock && (minimizedPreview || ephemeral)) {
         const collapseNoteDecl: IconButtonDecl = {
             elemtype: "iconbutton",
-            icon: "box",
+            icon: <MagnifyIcon enabled={false} />,
             title: "Collapse to Tab",
             click: () => {
                 if (minimizedPreview) {
@@ -316,7 +317,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 insertBlockAtFixedLeftOrder(SnorkelingBlockKindNote, blockId, false);
             },
         };
-        endIconsElem.push(<IconButton key="collapse-note-preview" decl={collapseNoteDecl} />);
+        endIconsElem.push(<IconButton key="collapse-note-preview" decl={collapseNoteDecl} className="block-frame-magnify" />);
     } else if (minimizedPreview) {
         const restoreDecl: IconButtonDecl = {
             elemtype: "iconbutton",
