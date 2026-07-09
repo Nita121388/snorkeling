@@ -239,15 +239,31 @@ export const Input = React.memo(
     }
 );
 
+type MagnifyButtonDeclOptions = {
+    magnified: boolean;
+    toggleMagnify: () => void;
+    disabled: boolean;
+    title?: string;
+};
+
+export function makeMagnifyButtonDecl({
+    magnified,
+    toggleMagnify,
+    disabled,
+    title,
+}: MagnifyButtonDeclOptions): IconButtonDecl {
+    return {
+        elemtype: "iconbutton",
+        icon: <MagnifyIcon enabled={magnified} />,
+        title: title ?? (magnified ? "Minimize" : "Magnify"),
+        click: toggleMagnify,
+        disabled,
+    };
+}
+
 export const OptMagnifyButton = React.memo(
-    ({ magnified, toggleMagnify, disabled }: { magnified: boolean; toggleMagnify: () => void; disabled: boolean }) => {
-        const magnifyDecl: IconButtonDecl = {
-            elemtype: "iconbutton",
-            icon: <MagnifyIcon enabled={magnified} />,
-            title: magnified ? "Minimize" : "Magnify",
-            click: toggleMagnify,
-            disabled,
-        };
+    ({ magnified, toggleMagnify, disabled, title }: MagnifyButtonDeclOptions) => {
+        const magnifyDecl = makeMagnifyButtonDecl({ magnified, toggleMagnify, disabled, title });
         return <IconButton key="magnify" decl={magnifyDecl} className="block-frame-magnify" />;
     }
 );

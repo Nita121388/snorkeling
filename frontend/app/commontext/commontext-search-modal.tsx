@@ -223,7 +223,7 @@ const CommonTextSearchModal = memo(() => {
 
     return (
         <Modal
-            className={"w-[min(640px,calc(100vw-32px))] max-h-[min(640px,calc(100vh-32px))] pt-6 pb-3"}
+            className={"w-[min(640px,calc(100vw-32px))] h-[min(640px,calc(100vh-32px))] pt-6 pb-3"}
             onClose={close}
             onClickBackdrop={close}
         >

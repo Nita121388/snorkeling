@@ -164,6 +164,75 @@ func TestHookScriptVersionReadsWindowsBatchMarker(t *testing.T) {
 	}
 }
 
+func TestWindowsBatchHookFallsBackWhenWshBindirIsMissing(t *testing.T) {
+	script := agentStatusBatchHookScript(HookTargetClaude)
+	for _, want := range []string{
+		`where.exe wsh.exe`,
+		`%LOCALAPPDATA%\snorkeling\Data\bin\wsh.exe`,
+		`%USERPROFILE%\.snorkeling\bin\wsh.exe`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected windows hook script to contain %q:\n%s", want, script)
+		}
+	}
+	if strings.Contains(script, `if "%WAVETERM_WSHBINDIR%"=="" exit /b 0`) {
+		t.Fatalf("windows hook script should not require WAVETERM_WSHBINDIR before resolving wsh:\n%s", script)
+	}
+}
+
+func TestInstallClaudeHooksUsesWindowsStdinSafeCommand(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows command quoting")
+	}
+	tmpDir := t.TempDir()
+	claudeDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(claudeConfigEnvVar, claudeDir)
+
+	result, err := InstallClaudeHooks()
+	if err != nil {
+		t.Fatalf("InstallClaudeHooks returned error: %v", err)
+	}
+	settingsBytes, err := os.ReadFile(result.SettingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(settingsBytes, &settings); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range hookCommands(settings) {
+		if !strings.Contains(command, `cmd.exe /d /q /c "call ""`) || !strings.Contains(command, ` <nul"`) {
+			t.Fatalf("expected Claude windows hook command to isolate stdin: %q", command)
+		}
+		if strings.Contains(command, `cmd.exe /d /q /c ""`) {
+			t.Fatalf("Claude windows hook command should not use the stdin-sensitive direct batch form: %q", command)
+		}
+	}
+}
+
+func hookCommands(settings map[string]any) []string {
+	hooks, _ := settings["hooks"].(map[string]any)
+	var commands []string
+	for _, entriesRaw := range hooks {
+		entries, _ := entriesRaw.([]any)
+		for _, entryRaw := range entries {
+			entry, _ := entryRaw.(map[string]any)
+			hookEntries, _ := entry["hooks"].([]any)
+			for _, hookRaw := range hookEntries {
+				hook, _ := hookRaw.(map[string]any)
+				command, _ := hook["command"].(string)
+				if command != "" {
+					commands = append(commands, command)
+				}
+			}
+		}
+	}
+	return commands
+}
+
 func TestInstallCodexHooksPrunesLegacyManagedCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 	codexDir := filepath.Join(tmpDir, ".codex")

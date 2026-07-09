@@ -245,21 +245,56 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
         return { summaryChildren: [], bodyChildren: [] };
     }
 
+    // 紧凑列表（tight list）里 react-markdown 不会把 li 内容包成 <p>，
+    // children 直接是 inline 序列 [text, code, text, ...]，可能夹杂 <br/>。
+    // 我们对 children 数组本身直接按第一个 <br/> 切分：
+    //   - 找到 br：br 之前是 summary，br 之后是 body（"soft break → 可折叠"语义）
+    //   - 找不到 br：整段是 summary，没有 body（不要把"第一个 inline 节点之后"
+    //     当成 body，那样会把紧跟 text 的 inline code 错误地切下去——见 repro）。
+    // 对宽松列表（li 第一个孩子是 <p>），<p>.children 同样按这个规则切，
+    // 因此先unwrap paragraph 再 split，行为统一。
     const firstChild = childArray[0];
-    if (isValidElement(firstChild)) {
-        const firstChildProps = firstChild.props as { children?: React.ReactNode };
-        const split = splitChildrenAtFirstBreak(firstChildProps.children);
-        if (split != null && split.after.some((child) => getTextContent(child).trim().length > 0)) {
-            return {
-                summaryChildren: trimBlankTextNodes([cloneWithChildren(firstChild, split.before)]),
-                bodyChildren: trimBlankTextNodes([cloneWithChildren(firstChild, split.after), ...childArray.slice(1)]),
-            };
-        }
+    let inlineChildren: React.ReactNode[];
+    let wrapper: React.ReactElement | null = null;
+    if (isValidElement(firstChild) && firstChild.type === "p") {
+        const paragraphChildren = Children.toArray((firstChild.props as { children?: React.ReactNode }).children);
+        inlineChildren = paragraphChildren;
+        wrapper = firstChild;
+    } else {
+        inlineChildren = childArray;
     }
 
+    const breakIndex = inlineChildren.findIndex(isLineBreakNode);
+    if (breakIndex < 0) {
+        // 无 br：整段做 summary，无 body。tight list 的"shell `fork` 出..."
+        // 不会被错误地从第一个 inline code 处切开。
+        const summaryChildren = wrapper != null ? [cloneWithChildren(wrapper, inlineChildren)] : inlineChildren;
+        return {
+            summaryChildren: trimBlankTextNodes(summaryChildren),
+            bodyChildren: [],
+        };
+    }
+
+    const splitAfter = inlineChildren.slice(breakIndex + 1);
+    const hasBody = splitAfter.some((child) => getTextContent(child).trim().length > 0);
+    if (!hasBody) {
+        // br 之后是空：整段做 summary。
+        const summaryChildren = wrapper != null
+            ? [cloneWithChildren(wrapper, inlineChildren.slice(0, breakIndex))]
+            : inlineChildren.slice(0, breakIndex);
+        return {
+            summaryChildren: trimBlankTextNodes(summaryChildren),
+            bodyChildren: [],
+        };
+    }
+
+    const before = inlineChildren.slice(0, breakIndex);
+    const after = inlineChildren.slice(breakIndex + 1);
+    const summaryChildren = wrapper != null ? [cloneWithChildren(wrapper, before)] : before;
+    const bodyChildren = (wrapper != null ? [cloneWithChildren(wrapper, after)] : after).concat(childArray.slice(1));
     return {
-        summaryChildren: trimBlankTextNodes([firstChild]),
-        bodyChildren: trimBlankTextNodes(childArray.slice(1)),
+        summaryChildren: trimBlankTextNodes(summaryChildren),
+        bodyChildren: trimBlankTextNodes(bodyChildren),
     };
 }
 

@@ -86,6 +86,11 @@ function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetEn
     return wlist;
 }
 
+// Hover dwell time required on the New Terminal / New Agent launch card before the
+// pick-a-target floating window opens. Sized so a quick sweep across the widget
+// doesn't trigger the popup, but a deliberate pause still feels instant.
+const WidgetHoverOpenDelayMs = 500;
+
 type WidgetPropsType = {
     widgetId: string;
     widget: WidgetConfigType;
@@ -93,10 +98,11 @@ type WidgetPropsType = {
     onWidgetSelect: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
     onWidgetContextMenu?: (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => void;
     onWidgetHover?: (widgetId: string, widget: WidgetConfigType, e: React.PointerEvent<HTMLDivElement>) => void;
+    onWidgetHoverEnd?: (widgetId: string, widget: WidgetConfigType, e: React.PointerEvent<HTMLDivElement>) => void;
 };
 
 const Widget = memo(
-    ({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu, onWidgetHover }: WidgetPropsType) => {
+    ({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu, onWidgetHover, onWidgetHoverEnd }: WidgetPropsType) => {
         const [isTruncated, setIsTruncated] = useState(false);
         const labelRef = useRef<HTMLDivElement>(null);
         const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
@@ -124,6 +130,7 @@ const Widget = memo(
                 divOnClick={(e) => onWidgetSelect(widgetId, widget, e)}
                 divOnContextMenu={(e) => onWidgetContextMenu?.(widgetId, widget, e)}
                 divOnPointerEnter={isTargetWidget ? (e) => onWidgetHover?.(widgetId, widget, e) : undefined}
+                divOnPointerLeave={isTargetWidget ? (e) => onWidgetHoverEnd?.(widgetId, widget, e) : undefined}
             >
                 <div style={{ color: widget.color }}>
                     <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
@@ -1453,7 +1460,7 @@ const Widgets = memo(() => {
                 }
                 terminalHoverTimerRef.current = window.setTimeout(() => {
                     openTerminalTargetPopup(widget, referenceElement);
-                }, 150);
+                }, WidgetHoverOpenDelayMs);
                 return;
             }
 
@@ -1465,11 +1472,25 @@ const Widgets = memo(() => {
                     if (agentProfileOptions.length > 0) {
                         openAgentTargetPopup(widget, referenceElement);
                     }
-                }, 150);
+                }, WidgetHoverOpenDelayMs);
             }
         },
         [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup]
     );
+
+    // Cancel any pending hover-open timer when the pointer leaves the launch card.
+    // Without this, a quick sweep across the widget would still fire the popup
+    // after the pointer has already moved away.
+    const handleWidgetHoverEnd = useCallback(() => {
+        if (agentHoverTimerRef.current != null) {
+            window.clearTimeout(agentHoverTimerRef.current);
+            agentHoverTimerRef.current = null;
+        }
+        if (terminalHoverTimerRef.current != null) {
+            window.clearTimeout(terminalHoverTimerRef.current);
+            terminalHoverTimerRef.current = null;
+        }
+    }, []);
 
     const checkModeNeeded = useCallback(() => {
         if (!containerRef.current || !measurementRef.current) return;
@@ -1567,6 +1588,7 @@ const Widgets = memo(() => {
                                     onWidgetSelect={handleWidgetSelect}
                                     onWidgetContextMenu={handleWidgetContextMenu}
                                     onWidgetHover={handleWidgetHover}
+                                    onWidgetHoverEnd={handleWidgetHoverEnd}
                                 />
                             ))}
                         </div>
@@ -1616,6 +1638,7 @@ const Widgets = memo(() => {
                                 onWidgetSelect={handleWidgetSelect}
                                 onWidgetContextMenu={handleWidgetContextMenu}
                                 onWidgetHover={handleWidgetHover}
+                                onWidgetHoverEnd={handleWidgetHoverEnd}
                             />
                         ))}
                         <div className="flex-grow" />
@@ -1753,6 +1776,7 @@ const Widgets = memo(() => {
                         onWidgetSelect={handleWidgetSelect}
                         onWidgetContextMenu={handleWidgetContextMenu}
                         onWidgetHover={handleWidgetHover}
+                        onWidgetHoverEnd={handleWidgetHoverEnd}
                     />
                 ))}
                 <div className="flex-grow" />

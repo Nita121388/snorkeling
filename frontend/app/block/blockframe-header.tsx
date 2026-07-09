@@ -8,7 +8,6 @@ import {
     OptMagnifyButton,
     renderHeaderElements,
 } from "@/app/block/blockutil";
-import { MagnifyIcon } from "@/app/element/magnify";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
 import { getBlockBadgeAtom } from "@/app/store/badge";
@@ -301,23 +300,25 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
     };
     endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
     if (isNoteBlock && (minimizedPreview || ephemeral)) {
-        const collapseNoteDecl: IconButtonDecl = {
-            elemtype: "iconbutton",
-            icon: <MagnifyIcon enabled={false} />,
-            title: "Collapse to Tab",
-            click: () => {
-                if (minimizedPreview) {
-                    const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
-                    if (restored) {
-                        setTimeout(() => refocusNode(blockId), 50);
+        endIconsElem.push(
+            <OptMagnifyButton
+                key="collapse-note-preview"
+                magnified={true}
+                title="Collapse to Tab"
+                disabled={false}
+                toggleMagnify={() => {
+                    if (minimizedPreview) {
+                        const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
+                        if (restored) {
+                            setTimeout(() => refocusNode(blockId), 50);
+                        }
+                        return;
                     }
-                    return;
-                }
-                layoutModel?.closeEphemeralNodeForBlock(blockId);
-                insertBlockAtFixedLeftOrder(SnorkelingBlockKindNote, blockId, false);
-            },
-        };
-        endIconsElem.push(<IconButton key="collapse-note-preview" decl={collapseNoteDecl} className="block-frame-magnify" />);
+                    layoutModel?.closeEphemeralNodeForBlock(blockId);
+                    insertBlockAtFixedLeftOrder(SnorkelingBlockKindNote, blockId, false);
+                }}
+            />
+        );
     } else if (minimizedPreview) {
         const restoreDecl: IconButtonDecl = {
             elemtype: "iconbutton",

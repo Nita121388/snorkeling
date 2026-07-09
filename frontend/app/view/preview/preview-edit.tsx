@@ -406,7 +406,19 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const renumberSelectedOrderedListRef = useRef<() => void>(() => {});
     const refreshMarkdownMoveStateRef = useRef<() => void>(() => {});
     const fileName = fileInfo?.path || fileInfo?.name;
-    const fileContent = fileContentLoadable.state === "hasData" ? fileContentLoadable.data : "";
+    // 保存上次成功读取到的文件内容。原因：fileContent 是 async atom，每次编辑都会重新求值
+    // 并返回新 Promise，期间 loadable 会进入 "loading"。如果在 loading 时卸载 CodeEditor，
+    // monaco 实例会被销毁并重建，导致光标被重置到文件开头。这里用 ref 缓存上一份内容，
+    // 让编辑器在瞬时的 loading 状态下继续挂载、内容保持不变，避免光标跳动。
+    const previousFileContentRef = useRef<string>("");
+    if (fileContentLoadable.state === "hasData") {
+        previousFileContentRef.current = fileContentLoadable.data;
+    }
+    // 取值优先级：当前数据 > 上次数据 > 空串。loading 期间使用上次内容顶住。
+    const fileContent =
+        fileContentLoadable.state === "hasData"
+            ? fileContentLoadable.data
+            : previousFileContentRef.current;
 
     const language = getFileLanguage(fileName);
     const markdownListActionsEnabled = isMarkdownOrderedListPath(fileName) && !fileInfo?.readonly;
@@ -1392,11 +1404,13 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         setSelectionCopyOverlay(null);
     }, []);
 
-    if (fileContentLoadable.state === "loading") {
-        return <CenteredDiv>Loading file...</CenteredDiv>;
-    }
     if (fileContentLoadable.state === "hasError") {
         return <CenteredDiv>File Read Failed: {`${fileContentLoadable.error}`}</CenteredDiv>;
+    }
+    // 只有从没拿到过任何内容（首次加载磁盘文件）时才整屏显示 Loading。
+    // 编辑期间的瞬时 loading 用 previousFileContentRef 顶住，编辑器不卸载，光标不跳。
+    if (fileContentLoadable.state === "loading" && previousFileContentRef.current === "") {
+        return <CenteredDiv>Loading file...</CenteredDiv>;
     }
 
     return (

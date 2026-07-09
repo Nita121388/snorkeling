@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 6
+	hookInstallVersion  = 9
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -230,7 +230,7 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 	}
 	pruneManagedCommandHooks(hooks)
 	for _, spec := range claudeHookSpecs() {
-		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action, spec.phase), 10, spec.matcher); err != nil {
+		if err := ensureCommandHook(hooks, spec.event, claudeHookCommand(hookPath, spec.action, spec.phase), 10, spec.matcher); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -342,6 +342,13 @@ func hookCommand(path string, action string, phase string) string {
 	return fmt.Sprintf("bash %s %s %s", shellSingleQuote(path), action, phase)
 }
 
+func claudeHookCommand(path string, action string, phase string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s <nul"`, path, action, phase)
+	}
+	return hookCommand(path, action, phase)
+}
+
 func agentStatusHookScript(provider string) string {
 	if runtime.GOOS == "windows" {
 		return agentStatusBatchHookScript(provider)
@@ -359,15 +366,52 @@ rem %s%d
 setlocal
 set "ACTION=%%~1"
 set "PHASE=%%~2"
+set "DEBUG_LOG="
+if not "%%LOCALAPPDATA%%"=="" set "DEBUG_LOG=%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log"
+if "%%DEBUG_LOG%%"=="" if not "%%TEMP%%"=="" set "DEBUG_LOG=%%TEMP%%\snorkeling-agentstatus-hook.log"
+call :debug_log "start provider=%s action=%%ACTION%% phase=%%PHASE%%"
 
-if "%%ACTION%%"=="" exit /b 0
-if not "%%ACTION%%"=="working" if not "%%ACTION%%"=="idle" if not "%%ACTION%%"=="blocked" if not "%%ACTION%%"=="release" if not "%%ACTION%%"=="unknown" exit /b 0
-if "%%WAVETERM_BLOCKID%%"=="" exit /b 0
-if "%%WAVETERM_JWT%%"=="" exit /b 0
-if "%%WAVETERM_WSHBINDIR%%"=="" exit /b 0
+if "%%ACTION%%"=="" (
+    call :debug_log "exit missing-action"
+    exit /b 0
+)
+if not "%%ACTION%%"=="working" if not "%%ACTION%%"=="idle" if not "%%ACTION%%"=="blocked" if not "%%ACTION%%"=="release" if not "%%ACTION%%"=="unknown" (
+    call :debug_log "exit invalid-action action=%%ACTION%%"
+    exit /b 0
+)
+if "%%WAVETERM_BLOCKID%%"=="" (
+    call :debug_log "exit missing-block"
+    exit /b 0
+)
+if "%%WAVETERM_JWT%%"=="" (
+    call :debug_log "exit missing-jwt block=%%WAVETERM_BLOCKID%%"
+    exit /b 0
+)
+set "WSH_BIN="
+if not "%%WAVETERM_WSHBINDIR%%"=="" if exist "%%WAVETERM_WSHBINDIR%%\wsh.exe" set "WSH_BIN=%%WAVETERM_WSHBINDIR%%\wsh.exe"
+if not "%%WSH_BIN%%"=="" goto wsh_ready
 
-set "WSH_BIN=%%WAVETERM_WSHBINDIR%%\wsh.exe"
-if not exist "%%WSH_BIN%%" exit /b 0
+for /f "delims=" %%%%I in ('where.exe wsh.exe 2^>nul') do (
+    set "WSH_BIN=%%%%I"
+    goto wsh_ready
+)
+
+if "%%LOCALAPPDATA%%"=="" goto check_userprofile_wsh
+if exist "%%LOCALAPPDATA%%\snorkeling\Data\bin\wsh.exe" set "WSH_BIN=%%LOCALAPPDATA%%\snorkeling\Data\bin\wsh.exe"
+if not "%%WSH_BIN%%"=="" goto wsh_ready
+
+:check_userprofile_wsh
+if "%%USERPROFILE%%"=="" (
+    call :debug_log "exit missing-userprofile"
+    exit /b 0
+)
+if exist "%%USERPROFILE%%\.snorkeling\bin\wsh.exe" set "WSH_BIN=%%USERPROFILE%%\.snorkeling\bin\wsh.exe"
+if "%%WSH_BIN%%"=="" (
+    call :debug_log "exit missing-wsh"
+    exit /b 0
+)
+
+:wsh_ready
 
 if "%%PHASE%%"=="thinking" goto report
 if "%%PHASE%%"=="tool" goto report
@@ -383,9 +427,16 @@ if "%%ACTION%%"=="working" set "PHASE=thinking"
 if "%%ACTION%%"=="unknown" set "PHASE=unknown"
 
 :report
+call :debug_log "report provider=%s action=%%ACTION%% phase=%%PHASE%% block=%%WAVETERM_BLOCKID%% wsh=%%WSH_BIN%%"
 "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" <nul >nul 2>nul
+set "WSH_EXIT=%%ERRORLEVEL%%"
+call :debug_log "done exit=%%WSH_EXIT%%"
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider)
+
+:debug_log
+if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
+exit /b 0
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {
@@ -756,7 +807,7 @@ func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
 
 func claudeHookCommandsInstalled(settingsPath string, hookPath string) bool {
 	for _, spec := range claudeHookSpecs() {
-		if !commandHookInstalled(settingsPath, spec.event, hookCommand(hookPath, spec.action, spec.phase)) {
+		if !commandHookInstalled(settingsPath, spec.event, claudeHookCommand(hookPath, spec.action, spec.phase)) {
 			return false
 		}
 	}

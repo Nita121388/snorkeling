@@ -22,7 +22,15 @@ import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
 import { addOpenMenuItems } from "@/util/previewutil";
-import { base64ToString, basename, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
+import {
+    base64ToString,
+    basename,
+    fireAndForget,
+    isBlank,
+    isLocalConnName,
+    jotaiLoadableValue,
+    stringToBase64,
+} from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
 import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
@@ -31,6 +39,7 @@ import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
+import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
 import {
     PreviewLiveScrollSyncMetaKey,
     PreviewLiveSourceBlockMetaKey,
@@ -709,6 +718,20 @@ export class PreviewModel implements ViewModel {
                     icon: "book",
                     title: "Table of Contents",
                     click: () => this.markdownShowTocToggle(),
+                });
+            }
+            const filePath = get(this.metaFilePath);
+            if (isLocalConnName(get(this.connectionImmediate)) && isOpenableForObsidian(filePath, mimeType)) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "book-open",
+                    title: "Open in Obsidian",
+                    click: () => {
+                        fireAndForget(async () => {
+                            await loadObsidianVaults();
+                            await openInObsidianWithPicker({ absPath: filePath });
+                        });
+                    },
                 });
             }
             if ((!isCeView && mimeType) || explorerActive || (isCeView && mimeType && !hasUnsavedChanges)) {

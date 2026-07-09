@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>markdown inline-code wrap repro</title>
+<style>
+  :root { --ink:#222; --paper:#fff; --soft:#f5f5f5; --line:#ddd; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px; font:15px/1.7 -apple-system,Segoe UI,"Microsoft YaHei",sans-serif; color:var(--ink); background:#fafafa; }
+  h1 { font-size:16px; font-weight:600; margin:24px 0 8px; }
+  .note { color:#666; font-size:13px; margin-bottom:16px; }
+  .case { background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:16px 20px; margin:18px 0; }
+  .case h2 { font-size:14px; font-weight:600; margin:0 0 12px; color:#0a7; }
+
+  /* minimal markdown-style typography */
+  .md p, .md li { margin:6px 0; }
+  .md ol { margin:6px 0; padding-left:24px; }
+  .md code {
+    font-family: "Cascadia Code", Consolas, Menlo, monospace;
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.92em;
+  }
+
+  /* case A: 宽容器 + 默认 inline code */
+  #case-a { width: 760px; }
+
+  /* case B: 窄容器 + 默认 inline code（模拟 Preview 面板被挤窄） */
+  #case-b { width: 220px; border-color:#e80; }
+
+  /* case C: 宽容器 + 有人给 code 加了 display:block / white-space:pre */
+  #case-c { width: 760px; }
+  #case-c .md code { display: block; white-space: pre; border-color:#e44; background:#fee; }
+
+  /* case D: 模拟 snorkeling preview 的 likely 样式（极窄 + mono code） */
+  #case-d { width: 260px; border-color:#08e; }
+</style>
+</head>
+<body>
+<h1>同一行 Markdown 在四种渲染条件下的表现</h1>
+<p class="note">原始文本：<code>1. shell `fork` 出两个进程，一个跑 `ls`，一个跑 `grep`</code></p>
+
+<div class="case" id="case-a">
+  <h2>A — 宽容器 760px + 默认 inline code（理想基线）</h2>
+  <div class="md">
+    <p>发生的事：</p>
+    <ol>
+      <li>shell <code>fork</code> 出两个进程，一个跑 <code>ls</code>，一个跑 <code>grep</code></li>
+      <li>内核新建一个 pipe，给两个 fd：一个写端、一个读端</li>
+    </ol>
+  </div>
+</div>
+
+<div class="case" id="case-b">
+  <h2>B — 窄容器 220px + 默认 inline code</h2>
+  <div class="md">
+    <p>发生的事：</p>
+    <ol>
+      <li>shell <code>fork</code> 出两个进程，一个跑 <code>ls</code>，一个跑 <code>grep</code></li>
+      <li>内核新建一个 pipe，给两个 fd：一个写端、一个读端</li>
+    </ol>
+  </div>
+</div>
+
+<div class="case" id="case-c">
+  <h2>C — 宽容器 760px + <code>code{display:block;white-space:pre}</code></h2>
+  <div class="md">
+    <p>发生的事：</p>
+    <ol>
+      <li>shell <code>fork</code> 出两个进程，一个跑 <code>ls</code>，一个跑 <code>grep</code></li>
+      <li>内核新建一个 pipe，给两个 fd：一个写端、一个读端</li>
+    </ol>
+  </div>
+</div>
+
+<div class="case" id="case-d">
+  <h2>D — 窄容器 260px + 默认 inline code（更接近真实 Preview 宽度）</h2>
+  <div class="md">
+    <p>发生的事：</p>
+    <ol>
+      <li>shell <code>fork</code> 出两个进程，一个跑 <code>ls</code>，一个跑 <code>grep</code></li>
+      <li>内核新建一个 pipe，给两个 fd：一个写端、一个读端</li>
+    </ol>
+  </div>
+</div>
+
+<hr>
+<h1>诊断面板：JS 跑出来的真实盒子数据</h1>
+<pre id="report" style="background:#111;color:#9f9;padding:16px;border-radius:6px;font:12px/1.5 monospace;overflow:auto"></pre>
+
+<script>
+  // 自检：对每个 case，找出第一个 li 里的所有 code，量它们的 display/white-space/width/parent width，
+  // 并数第一个 li 的 clientHeight vs 它里面文字的"逻辑行"是否多于 1。
+  const cases = ['case-a','case-b','case-c','case-d'];
+  const lines = [];
+  lines.push('=== inline-code 在不同容器 / 样式下的盒子诊断 ===\n');
+  for (const id of cases) {
+    const root = document.getElementById(id);
+    const md = root.querySelector('.md');
+    const li = md.querySelector('ol li');
+    const codes = li.querySelectorAll('code');
+    const liRect = li.getBoundingClientRect();
+    const cs = getComputedStyle(md.querySelector('code'));
+    lines.push(`[${id}]`);
+    lines.push(`  container width  : ${root.getBoundingClientRect().width}px`);
+    lines.push(`  <ol> width       : ${md.querySelector('ol').getBoundingClientRect().width}px`);
+    lines.push(`  <li> width       : ${liRect.width}px`);
+    lines.push(`  <li> clientHeight : ${li.clientHeight}px  (offsetHeight=${li.offsetHeight})`);
+    lines.push(`  <li> scrollHeight : ${li.scrollHeight}px`);
+    lines.push(`  code computed    : display=${cs.display} white-space=${cs.whiteSpace} width=${cs.width} font-size=${cs.fontSize}`);
+    lines.push(`  #code in first li: ${codes.length}`);
+    codes.forEach((c,i) => {
+      const r = c.getBoundingClientRect();
+      const cs2 = getComputedStyle(c);
+      lines.push(`   code[${i}] text="${c.textContent}" rect={x=${r.x.toFixed(0)},y=${r.y.toFixed(0)},w=${r.width.toFixed(0)},h=${r.height.toFixed(0)}} display=${cs2.display} white-space=${cs2.whiteSpace}`);
+    });
+    // 关键判据：第一个 li 的 clientHeight 换算成"几行"
+    // 用 line-height 估算基线行数
+    const lh = parseFloat(getComputedStyle(li).lineHeight) || 22;
+    const rowCount = (li.clientHeight / lh);
+    lines.push(`  -> line-height=${lh}px  => 第一个 li 占约 ${rowCount.toFixed(2)} 行\n`);
+  }
+  document.getElementById('report').textContent = lines.join('\n');
+</script>
+</body>
+</html>

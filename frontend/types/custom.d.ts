@@ -133,6 +133,8 @@ declare global {
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path
         revealNativePath(filePath: string): void; // reveal-native-path
+        pickDirectory: () => Promise<string | null>; // pick-directory
+        obsidianReadVaults: () => Promise<string[]>; // obsidian-read-vaults
         openInVSCode(filePath: string): Promise<boolean>; // open-in-vscode
         captureScreenshot(rect: Electron.Rectangle): Promise<string>; // capture-screenshot
         setKeyboardChordMode: () => void; // set-keyboard-chord-mode

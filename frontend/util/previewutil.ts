@@ -1,6 +1,7 @@
 import { createBlock, getApi } from "@/app/store/global";
 import { createDefaultAgentBlockDef } from "@/app/workspace/agent-launch";
 import { canPreviewFileInfo } from "@/app/view/preview/preview-open";
+import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "@/app/view/preview/obsidian";
 import { isWindows, makeNativeLabel } from "./platformutil";
 import { fireAndForget, isLocalConnName } from "./util";
 import { formatRemoteUri } from "./waveutil";
@@ -138,5 +139,19 @@ export function addOpenMenuItems(
             fireAndForget(() => createBlock(agentBlockDef));
         },
     });
+    // Open in Obsidian: only meaningful for local markdown files. We always show the entry for
+    // markdown files (even with no vaults configured) — clicking will fall back to a directory
+    // picker so the user can register a vault on the fly (see obsidian.ts openInObsidianWithPicker).
+    if (isLocalConn && !finfo.isdir && isOpenableForObsidian(finfo.path, finfo.mimetype)) {
+        menu.push({
+            label: "Open in Obsidian",
+            click: () => {
+                fireAndForget(async () => {
+                    await loadObsidianVaults();
+                    await openInObsidianWithPicker({ absPath: finfo.path });
+                });
+            },
+        });
+    }
     return menu;
 }
