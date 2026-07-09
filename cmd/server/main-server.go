@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,13 @@ const BackupCleanupTick = 2 * time.Minute
 const BackupCleanupInterval = 4 * time.Hour
 const InitialDiagnosticWait = 5 * time.Minute
 const DiagnosticTick = 10 * time.Minute
+
+var macGuiPathFallbacks = []string{
+	"/opt/homebrew/bin",
+	"/opt/homebrew/sbin",
+	"/usr/local/bin",
+	"/usr/local/sbin",
+}
 
 var shutdownOnce sync.Once
 
@@ -423,6 +431,49 @@ func grabAndRemoveEnvVars() error {
 	return nil
 }
 
+func macGuiPathFallbackCandidates(homeDir string) []string {
+	candidates := []string{}
+	if homeDir != "" && homeDir != "/" {
+		candidates = append(candidates, filepath.Join(homeDir, ".local", "bin"))
+	}
+	return append(candidates, macGuiPathFallbacks...)
+}
+
+func appendExistingPathDirs(pathValue string, candidates []string) string {
+	entries := []string{}
+	seen := make(map[string]bool)
+	for _, entry := range filepath.SplitList(pathValue) {
+		if entry == "" || seen[entry] {
+			continue
+		}
+		entries = append(entries, entry)
+		seen[entry] = true
+	}
+	for _, candidate := range candidates {
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		info, err := os.Stat(candidate)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		entries = append(entries, candidate)
+		seen[candidate] = true
+	}
+	return strings.Join(entries, string(os.PathListSeparator))
+}
+
+func applyMacGuiPathFallbacks() {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	pathValue := os.Getenv("PATH")
+	nextPathValue := appendExistingPathDirs(pathValue, macGuiPathFallbackCandidates(wavebase.GetHomeDir()))
+	if nextPathValue != pathValue {
+		os.Setenv("PATH", nextPathValue)
+	}
+}
+
 func clearTempFiles() error {
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
@@ -470,6 +521,7 @@ func main() {
 		log.Printf("[error] %v\n", err)
 		return
 	}
+	applyMacGuiPathFallbacks()
 	err = service.ValidateServiceMap()
 	if err != nil {
 		log.Printf("error validating service map: %v\n", err)
