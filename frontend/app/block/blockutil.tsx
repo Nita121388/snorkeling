@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
+import { Tooltip } from "@/app/element/tooltip";
 import { MetaKeyAtomFnType, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { IconButton, ToggleIconButton } from "@/element/iconbutton";
 import { MagnifyIcon } from "@/element/magnify";
 import { MenuButton } from "@/element/menubutton";
+import { copyText } from "@/util/clipboard";
+import { cn } from "@/util/util";
 import * as util from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
@@ -236,18 +239,111 @@ export const Input = React.memo(
     }
 );
 
+type MagnifyButtonDeclOptions = {
+    magnified: boolean;
+    toggleMagnify: () => void;
+    disabled: boolean;
+    title?: string;
+};
+
+export function makeMagnifyButtonDecl({
+    magnified,
+    toggleMagnify,
+    disabled,
+    title,
+}: MagnifyButtonDeclOptions): IconButtonDecl {
+    return {
+        elemtype: "iconbutton",
+        icon: <MagnifyIcon enabled={magnified} />,
+        title: title ?? (magnified ? "Minimize" : "Magnify"),
+        click: toggleMagnify,
+        disabled,
+    };
+}
+
 export const OptMagnifyButton = React.memo(
-    ({ magnified, toggleMagnify, disabled }: { magnified: boolean; toggleMagnify: () => void; disabled: boolean }) => {
-        const magnifyDecl: IconButtonDecl = {
-            elemtype: "iconbutton",
-            icon: <MagnifyIcon enabled={magnified} />,
-            title: magnified ? "Minimize" : "Magnify",
-            click: toggleMagnify,
-            disabled,
-        };
+    ({ magnified, toggleMagnify, disabled, title }: MagnifyButtonDeclOptions) => {
+        const magnifyDecl = makeMagnifyButtonDecl({ magnified, toggleMagnify, disabled, title });
         return <IconButton key="magnify" decl={magnifyDecl} className="block-frame-magnify" />;
     }
 );
+
+export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderCopyText; preview: boolean }) => {
+    const [status, setStatus] = React.useState<"idle" | "copied" | "failed">("idle");
+    const displayText = elem.displayText || util.basename(elem.text);
+    const tooltipText = elem.tooltipText || elem.text;
+
+    console.log("[HeaderCopyTextElem] rendering", { elemtype: elem.elemtype, text: elem.text, displayText, preview });
+
+    React.useEffect(() => {
+        if (status === "idle") return;
+        const handle = window.setTimeout(
+            () => setStatus("idle"),
+            status === "copied" ? 1200 : 1600
+        );
+        return () => window.clearTimeout(handle);
+    }, [status]);
+
+    const handleClick = (e: React.MouseEvent) => {
+        console.log("[HeaderCopyTextElem] click", { text: elem.text });
+        e.stopPropagation();
+        copyText(elem.text)
+            .then(() => {
+                console.log("[HeaderCopyTextElem] copy success");
+                setStatus("copied");
+            })
+            .catch((err) => {
+                console.log("[HeaderCopyTextElem] copy failed", err);
+                setStatus("failed");
+            });
+    };
+
+    const actionText = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Click to copy";
+
+    return (
+        <Tooltip
+            placement="top"
+            forceOpen={status !== "idle"}
+            openDelay={200}
+            content={
+                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                    <div className={cn(status === "failed" ? "text-error" : "text-secondary")}>{tooltipText}</div>
+                    <div
+                        className={cn(
+                            "mt-1 inline-flex items-center gap-1 text-[10px] uppercase",
+                            status === "copied" && "text-accent",
+                            status === "failed" && "text-error",
+                            status === "idle" && "text-secondary"
+                        )}
+                    >
+                        {status === "copied" ? (
+                            <i className="fa-sharp fa-solid fa-check text-[9px]" />
+                        ) : status === "failed" ? (
+                            <i className="fa-sharp fa-solid fa-triangle-exclamation text-[9px]" />
+                        ) : (
+                            <span className="h-1.5 w-1.5 rounded-full bg-accent/90 ring-2 ring-accent/20" />
+                        )}
+                        <span>{actionText}</span>
+                    </div>
+                </div>
+            }
+        >
+            <span
+                className={clsx(
+                    "inline-flex min-w-0 max-w-full cursor-pointer items-center rounded px-1 py-0.5 text-secondary transition-colors hover:bg-hover hover:text-primary",
+                    status === "copied" && "bg-accent/10 text-accent",
+                    status === "failed" && "bg-error/10 text-error",
+                    elem.className
+                )}
+                title={actionText}
+                onClick={handleClick}
+            >
+                <span className="min-w-0 truncate">&lrm;{displayText}</span>
+            </span>
+        </Tooltip>
+    );
+});
+HeaderCopyTextElem.displayName = "HeaderCopyTextElem";
 
 export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem; preview: boolean }) => {
     if (elem.elemtype == "iconbutton") {
@@ -258,7 +354,10 @@ export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem;
         return <Input decl={elem} className={clsx("block-frame-input", elem.className)} preview={preview} />;
     } else if (elem.elemtype == "text") {
         return (
-            <div className={clsx("block-frame-text ellipsis", elem.className, { "flex-nogrow": elem.noGrow })}>
+            <div
+                className={clsx("block-frame-text ellipsis", elem.className, { "flex-nogrow": elem.noGrow })}
+                title={elem.title}
+            >
                 <span ref={preview ? null : elem.ref} onClick={(e) => elem?.onClick(e)}>
                     &lrm;{elem.text}
                 </span>
@@ -282,11 +381,14 @@ export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem;
                 ))}
             </div>
         );
+    } else if (elem.elemtype == "copytext") {
+        return <HeaderCopyTextElem elem={elem} preview={preview} />;
     } else if (elem.elemtype == "menubutton") {
         return <MenuButton className="block-frame-menubutton" {...(elem as MenuButtonProps)} />;
     }
     return null;
 });
+HeaderTextElem.displayName = "HeaderTextElem";
 
 export function renderHeaderElements(headerTextUnion: HeaderElem[], preview: boolean): React.ReactElement[] {
     const headerTextElems: React.ReactElement[] = [];

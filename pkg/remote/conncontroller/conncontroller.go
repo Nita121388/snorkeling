@@ -62,14 +62,14 @@ const (
 )
 
 const (
-	WshInstallStatus_Checking           = "checking"
-	WshInstallStatus_DetectingPlatform  = "detecting-platform"
-	WshInstallStatus_FindingBinary      = "finding-binary"
-	WshInstallStatus_Uploading          = "uploading"
-	WshInstallStatus_Verifying          = "verifying"
-	WshInstallStatus_RestartingServer   = "restarting-server"
-	WshInstallStatus_Complete           = "complete"
-	WshInstallStatus_Failed             = "failed"
+	WshInstallStatus_Checking          = "checking"
+	WshInstallStatus_DetectingPlatform = "detecting-platform"
+	WshInstallStatus_FindingBinary     = "finding-binary"
+	WshInstallStatus_Uploading         = "uploading"
+	WshInstallStatus_Verifying         = "verifying"
+	WshInstallStatus_RestartingServer  = "restarting-server"
+	WshInstallStatus_Complete          = "complete"
+	WshInstallStatus_Failed            = "failed"
 )
 
 const (
@@ -1012,8 +1012,19 @@ func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, re
 	if client == nil {
 		return fmt.Errorf("cannot update wsh: ssh client is not connected")
 	}
-	err := remote.CpWshToRemote(ctx, client, remoteInfo.ClientOs, remoteInfo.ClientArch)
+	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
+	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
+	// "Uploading" forever. 120s leaves headroom over a healthy ~10MB upload (which finishes in
+	// single-digit seconds on any reasonable link) while being well under the 180s frontend retry.
+	uploadCtx, uploadCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer uploadCancel()
+	err := remote.CpWshToRemoteWithProgress(uploadCtx, client, remoteInfo.ClientOs, remoteInfo.ClientArch, func(written, total int64) {
+		conn.updateWshInstallState(WshInstallStatus_Uploading, fmt.Sprintf("Uploading wsh binary: %d/%d bytes", written, total), "", true)
+	})
 	if err != nil {
+		// Best-effort sweep: clear any half-written .temp residue this failed attempt may have
+		// left behind on the remote, so the next retry starts clean. See remote.CleanupRemoteWshTemp.
+		remote.CleanupRemoteWshTemp(ctx, client, remoteInfo.ClientOs)
 		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return fmt.Errorf("error installing wsh to remote: %w", err)
 	}
@@ -1096,9 +1107,20 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 		return err
 	}
 	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
-	err = remote.CpWshToRemote(ctx, client, clientOs, clientArch)
+	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
+	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
+	// "Uploading" forever. 120s leaves headroom over a healthy ~10MB upload (which finishes in
+	// single-digit seconds on any reasonable link) while being well under the 180s frontend retry.
+	uploadCtx, uploadCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer uploadCancel()
+	err = remote.CpWshToRemoteWithProgress(uploadCtx, client, clientOs, clientArch, func(written, total int64) {
+		conn.updateWshInstallState(WshInstallStatus_Uploading, fmt.Sprintf("Uploading wsh binary: %d/%d bytes", written, total), "", true)
+	})
 	if err != nil {
 		conn.Infof(ctx, "ERROR copying wsh binary to remote: %v\n", err)
+		// Best-effort sweep: clear any half-written .temp residue this failed attempt may have
+		// left behind on the remote, so the next retry starts clean. See remote.CleanupRemoteWshTemp.
+		remote.CleanupRemoteWshTemp(ctx, client, clientOs)
 		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return fmt.Errorf("error copying wsh binary to remote: %w", err)
 	}

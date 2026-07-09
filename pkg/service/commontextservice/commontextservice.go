@@ -19,6 +19,7 @@ type CommonTextListRequest struct {
 	Query      string   `json:"query,omitempty"`
 	TagFilters []string `json:"tagFilters,omitempty"`
 	Limit      int      `json:"limit,omitempty"`
+	Offset     int      `json:"offset,omitempty"`
 }
 
 type CommonTextListResponse struct {
@@ -72,6 +73,7 @@ func (svc *CommonTextService) List(ctx context.Context, request *CommonTextListR
 		Query:      request.Query,
 		TagFilters: request.TagFilters,
 		Limit:      request.Limit,
+		Offset:     request.Offset,
 	})
 	if err != nil {
 		return nil, err

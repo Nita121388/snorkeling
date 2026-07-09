@@ -513,13 +513,12 @@ func TestSQLiteIndexMigratesNoteTagsSafely(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer idx.Close()
 	summary := SessionSummary{Key: sessionKey}
 	if err := idx.ApplyMeta(context.Background(), &summary); err != nil {
 		t.Fatal(err)
 	}
-	if summary.Note != "Follow up" {
-		t.Fatalf("expected cleaned note, got %#v", summary)
+	if summary.Note != "Follow up #todo #研究" {
+		t.Fatalf("expected migrated note to keep hash text, got %#v", summary)
 	}
 	if strings.Join(summary.Tags, ",") != "todo,研究" {
 		t.Fatalf("expected migrated tags, got %#v", summary.Tags)
@@ -530,6 +529,21 @@ func TestSQLiteIndexMigratesNoteTagsSafely(t *testing.T) {
 	}
 	if len(matches) != 1 {
 		t.Fatalf("expected sqlite tag migration backup, got %#v", matches)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+	idx, err = OpenSQLiteIndex(sqlitePath, filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	matches, err = filepath.Glob(filepath.Join(dir, "index-v2.sqlite.backup-before-tags-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected tag migration to run only once, got backups %#v", matches)
 	}
 }
 
@@ -562,7 +576,7 @@ func TestManagerNoteExtractsTagsAndListFiltersByTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tagA.Note != "Needs review" || strings.Join(tagA.Tags, ",") != "review,urgent" {
+	if tagA.Note != "Needs review #review #urgent" || strings.Join(tagA.Tags, ",") != "review,urgent" {
 		t.Fatalf("unexpected tagged summary: %#v", tagA)
 	}
 	matches, err := manager.ScanList(context.Background(), ListOptions{TagFilters: []string{"review", "urgent"}}, "")
@@ -590,8 +604,8 @@ func TestManagerNoteExtractsTagsAndListFiltersByTags(t *testing.T) {
 
 func TestExtractSessionTagsFromNoteUsesHashSyntax(t *testing.T) {
 	cleanNote, tags := ExtractSessionTagsFromNote("Follow #todo and #研究")
-	if cleanNote != "Follow and" {
-		t.Fatalf("expected tags removed from note, got %q", cleanNote)
+	if cleanNote != "Follow #todo and #研究" {
+		t.Fatalf("expected note text preserved, got %q", cleanNote)
 	}
 	if strings.Join(tags, ",") != "todo,研究" {
 		t.Fatalf("expected hash tags, got %#v", tags)

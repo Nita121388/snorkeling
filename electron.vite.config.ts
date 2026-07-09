@@ -163,6 +163,8 @@ export default defineConfig({
         },
         server: {
             open: false,
+            port: 5173,
+            strictPort: false,
             watch: {
                 ignored: [
                     "dist/**",

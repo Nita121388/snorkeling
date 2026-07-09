@@ -1173,6 +1173,9 @@ export class LayoutModel {
                         const targetNode = parentNode?.children?.at(targetIndex) ?? parentNode;
                         if (targetNode) {
                             const targetBoundingRect = this.getNodeRect(targetNode);
+                            if (!targetBoundingRect) {
+                                return;
+                            }
 
                             // Placeholder should be either half the height or half the width of the targetNode, depending on the flex direction of the targetNode's parent.
                             // Default to placing the placeholder in the first half of the target node.
@@ -1217,6 +1220,9 @@ export class LayoutModel {
                     const action = pendingAction as LayoutTreeSwapNodeAction;
                     const targetNodeId = action.node1Id;
                     const targetBoundingRect = this.getNodeRectById(targetNodeId);
+                    if (!targetBoundingRect) {
+                        return;
+                    }
                     const placeholderDimensions: Dimensions = {
                         top: targetBoundingRect.top,
                         left: targetBoundingRect.left,

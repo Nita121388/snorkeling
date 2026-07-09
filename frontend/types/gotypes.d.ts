@@ -77,7 +77,9 @@ declare global {
         connection?: string;
         limit?: number;
         refresh?: boolean;
-        markedOnly?: boolean;
+        marked?: string;
+        since?: number;
+        before?: number;
         tagFilters?: string[];
     };
 
@@ -132,7 +134,9 @@ declare global {
         source?: string;
         project?: string;
         connection?: string;
-        markedOnly?: boolean;
+        marked?: string;
+        since?: number;
+        before?: number;
         refresh?: boolean;
     };
 
@@ -1128,6 +1132,7 @@ declare global {
         query?: string;
         tagFilters?: string[];
         limit?: number;
+        offset?: number;
     };
 
     // commontextservice.CommonTextListResponse
@@ -1344,7 +1349,7 @@ declare global {
         modtime?: number;
         isdir?: boolean;
         supportsmkdir?: boolean;
-        mimetype?: string;
+        mimetype: string;
         readonly?: boolean;
     };
 
@@ -1587,6 +1592,7 @@ declare global {
         "ai:timeoutms"?: number;
         "aifilediff:chatid"?: string;
         "aifilediff:toolcallid"?: string;
+        "agent:defaultlaunchtarget"?: string;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
@@ -1612,6 +1618,7 @@ declare global {
         "waveai:chatid"?: string;
         "waveai:widgetcontext"?: boolean;
         "term:*"?: boolean;
+        "term:defaultlaunchtarget"?: string;
         "term:fontsize"?: number;
         "term:fontfamily"?: string;
         "term:mode"?: string;

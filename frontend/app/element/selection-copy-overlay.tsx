@@ -12,6 +12,7 @@ import { searchSelectionInFiles } from "./selection-search-in-files";
 const SelectionCopyButtonSize = 24;
 const SelectionCopyButtonMargin = 8;
 const SelectionCopyFeedbackMs = 900;
+const CommonTextFeedbackMs = 1600;
 
 export type SelectionCopyOverlayState = {
     x: number;
@@ -60,6 +61,7 @@ export function makeSelectionQuickActionMenu(
         onCopied?: () => void;
         onHide?: () => void;
         extraMenuItems?: SelectionQuickActionItem[];
+        onCommonTextFeedback?: (msg: string, kind: string) => void;
     }
 ): ContextMenuItem[] {
     const handleCopyClick = async (): Promise<void> => {
@@ -73,13 +75,17 @@ export function makeSelectionQuickActionMenu(
         options?.onHide?.();
     };
 
-    const handleAddCommonText = async (): Promise<void> => {
-        try {
-            await addSelectionToCommonText(text);
-        } catch (e) {
-            window.alert(e instanceof Error ? e.message : String(e));
-        }
-        options?.onHide?.();
+    const handleAddCommonText = (onCommonTextFeedback: (msg: string, kind: string) => void): void => {
+        fireAndForget(async () => {
+            try {
+                await addSelectionToCommonText(text);
+                onCommonTextFeedback("Saved", "success");
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                onCommonTextFeedback(message.startsWith("Common text already exists") ? "Already exists" : "Failed to save", "error");
+            }
+            options?.onHide?.();
+        });
     };
 
     const handleFindCommonText = (): void => {
@@ -106,7 +112,7 @@ export function makeSelectionQuickActionMenu(
         {
             label: "Add Selection to Common Text",
             click: () => {
-                fireAndForget(handleAddCommonText);
+                handleAddCommonText((msg, kind) => options?.onCommonTextFeedback?.(msg, kind));
             },
         },
         {
@@ -154,16 +160,23 @@ export function SelectionCopyOverlay({
     extraMenuItems,
 }: SelectionCopyOverlayProps) {
     const [copied, setCopied] = useState(false);
+    const [commonTextFeedback, setCommonTextFeedback] = useState<{ msg: string; kind: string } | null>(null);
     const copiedTimerRef = useRef<number | null>(null);
+    const commonTextTimerRef = useRef<number | null>(null);
     const quickActionsMenuOpenRef = useRef(false);
 
     useEffect(() => {
         setCopied(false);
+        setCommonTextFeedback(null);
         quickActionsMenuOpenRef.current = false;
         return () => {
             if (copiedTimerRef.current != null) {
                 window.clearTimeout(copiedTimerRef.current);
                 copiedTimerRef.current = null;
+            }
+            if (commonTextTimerRef.current != null) {
+                window.clearTimeout(commonTextTimerRef.current);
+                commonTextTimerRef.current = null;
             }
         };
     }, [overlay?.x, overlay?.y, overlay?.text]);
@@ -185,6 +198,17 @@ export function SelectionCopyOverlay({
         }, SelectionCopyFeedbackMs);
     };
 
+    const handleCommonTextFeedback = (msg: string, kind: string) => {
+        setCommonTextFeedback({ msg, kind });
+        if (commonTextTimerRef.current != null) {
+            window.clearTimeout(commonTextTimerRef.current);
+        }
+        commonTextTimerRef.current = window.setTimeout(() => {
+            setCommonTextFeedback(null);
+            commonTextTimerRef.current = null;
+        }, CommonTextFeedbackMs);
+    };
+
     const showQuickActionsMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
         if (quickActionsMenuOpenRef.current) {
             return;
@@ -192,6 +216,7 @@ export function SelectionCopyOverlay({
         quickActionsMenuOpenRef.current = true;
         const menu = makeSelectionQuickActionMenu(overlay.text, {
             onCopied: handleCopiedFeedback,
+            onCommonTextFeedback: handleCommonTextFeedback,
             extraMenuItems,
         });
         ContextMenuModel.getInstance().showContextMenu(menu, event, {
@@ -214,18 +239,48 @@ export function SelectionCopyOverlay({
         "hover:text-[rgb(255,213,116)]",
     ].join(" ");
 
+    const feedbackBubbleClassName = commonTextFeedback != null
+        ? [
+            position,
+            "z-[1501]",
+            "whitespace-nowrap rounded-md px-3 py-1 text-xs leading-none shadow-md",
+            "pointer-events-none select-none",
+            commonTextFeedback.kind === "success"
+                ? "bg-accent/15 text-accent border border-accent/30"
+                : commonTextFeedback.kind === "warn"
+                    ? "bg-amber-600/15 text-amber-600/90 border border-amber-600/30"
+                    : "bg-error/15 text-error border border-error/30",
+        ].join(" ")
+        : null;
+
     return (
-        <button
-            type="button"
-            className={quickActionButtonClassName}
-            style={{ left: `${overlay.x}px`, top: `${overlay.y}px` }}
-            title={copied ? "Copied" : "Quick actions"}
-            tabIndex={-1}
-            onMouseDown={(e) => e.preventDefault()}
-            onMouseEnter={showQuickActionsMenu}
-            onClick={showQuickActionsMenu}
-        >
-            <i className={copied ? "fa fa-solid fa-check" : "fa fa-regular fa-lightbulb"} />
-        </button>
+        <>
+            <button
+                type="button"
+                className={quickActionButtonClassName}
+                style={{ left: `${overlay.x}px`, top: `${overlay.y}px` }}
+                title={copied ? "Copied" : "Quick actions"}
+                tabIndex={-1}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={showQuickActionsMenu}
+                onClick={showQuickActionsMenu}
+            >
+                <i className={copied ? "fa fa-solid fa-check" : "fa fa-regular fa-lightbulb"} />
+            </button>
+            {commonTextFeedback != null && (
+                <div
+                    className={feedbackBubbleClassName}
+                    style={{
+                        left: `${overlay.x}px`,
+                        top: `${overlay.y + 28}px`,
+                    }}
+                >
+                    {commonTextFeedback.kind === "success" && <i className="fa-solid fa-check mr-1" />}
+                    {commonTextFeedback.kind === "warn" && <i className="fa-solid fa-rotate mr-1" />}
+                    {commonTextFeedback.kind === "error" && <i className="fa-solid fa-xmark mr-1" />}
+                    {commonTextFeedback.msg}
+                </div>
+            )}
+        </>
     );
 }

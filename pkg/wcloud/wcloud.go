@@ -65,7 +65,10 @@ func checkEndpointVar(endpoint string, debugName string, varName string) error {
 	if !wavebase.IsDevMode() {
 		return nil
 	}
-	if endpoint == "" || !strings.HasPrefix(endpoint, "https://") {
+	if endpoint == "" {
+		return nil // in dev mode, wcloud endpoint is optional
+	}
+	if !strings.HasPrefix(endpoint, "https://") {
 		return fmt.Errorf("invalid %s, %s not set or invalid", debugName, varName)
 	}
 	return nil

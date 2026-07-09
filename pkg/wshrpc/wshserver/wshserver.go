@@ -90,15 +90,20 @@ func (ws *WshServer) AgentStatusCommand(ctx context.Context, data agentstatus.Ag
 	if handler != nil {
 		fallbackBlockId = handler.GetRpcContext().BlockId
 	}
+	log.Printf("[agentstatus] recv block=%q provider=%q state=%q phase=%q source=%q fallback=%q", data.BlockId, data.Provider, data.State, data.Phase, data.Source, fallbackBlockId)
 	report, err := agentstatus.SanitizeReport(data, fallbackBlockId)
 	if err != nil {
+		log.Printf("[agentstatus] sanitize-error block=%q provider=%q state=%q phase=%q err=%v", data.BlockId, data.Provider, data.State, data.Phase, err)
 		return nil, err
 	}
 	status, changed, err := agentstatus.Report(report, "")
 	if err != nil {
+		log.Printf("[agentstatus] report-error block=%q provider=%q state=%q phase=%q err=%v", report.BlockId, report.Provider, report.State, report.Phase, err)
 		return nil, err
 	}
+	log.Printf("[agentstatus] report-ok block=%q provider=%q state=%q phase=%q source=%q changed=%t status-nil=%t", report.BlockId, report.Provider, report.State, report.Phase, report.Source, changed, status == nil)
 	if changed {
+		log.Printf("[agentstatus] publish block=%q", report.BlockId)
 		publishAgentStatus(report.BlockId, status)
 	}
 	return status, nil

@@ -69,10 +69,7 @@ export function canPreviewFileInfo(fileInfo: FileInfo): boolean {
     if (fileInfo.notfound) {
         return true;
     }
-    const mimeType = fileInfo.mimetype;
-    if (mimeType == null) {
-        return false;
-    }
+    const mimeType = fileInfo.mimetype ?? "";
     if (isStreamingType(mimeType)) {
         return true;
     }
@@ -80,6 +77,10 @@ export function canPreviewFileInfo(fileInfo: FileInfo): boolean {
     const size = hasKnownSize ? fileInfo.size : 0;
     if (hasKnownSize && size > MaxFileSize) {
         return false;
+    }
+    // extensionless files (empty mimetype) have no recognized mimetype, but are text if reasonable size
+    if (mimeType === "" && hasKnownSize && size <= MaxFileSize) {
+        return true;
     }
     if (mimeType === "text/csv" && hasKnownSize && size > MaxCSVSize) {
         return false;

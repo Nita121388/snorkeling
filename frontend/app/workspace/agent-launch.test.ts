@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentLaunchTarget } from "./agent-launch";
 import {
+    canSetLaunchTargetDefault,
     collectAgentLaunchTargetsInTab,
     collectTerminalLaunchTargetsInTab,
     createAgentBlockDefForProfile,
@@ -11,6 +12,11 @@ import {
     createDefaultAgentBlockDef,
     createTerminalBlockDefForTarget,
     extractTerminalContextMeta,
+    getAgentProfileOptions,
+    getLaunchCreatableTargets,
+    getLaunchTargetDefaultKey,
+    getSelectableLaunchTargets,
+    resolveDefaultLaunchTarget,
     resolveWorkspaceAgentContextMeta,
 } from "./agent-launch";
 
@@ -696,5 +702,101 @@ describe("agent launch context", () => {
         expect(agentBlockDef.meta?.["cmd:cwd"]).toBe("~");
         expect(terminalBlockDef.meta?.["cmd:cwd"]).toBe("~");
         expect(terminalBlockDef.meta?.connection).toBeUndefined();
+    });
+
+    it("excludes the Home fallback from selectable launch target defaults", () => {
+        const tab = makeTab(["block:term"]);
+        const blockMap: Record<string, Block> = {
+            "block:term": makeBlock("block:term", { view: "term", "cmd:cwd": "/Users/nita/project" }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null, {
+            localHomeDir: "/Users/nita",
+        });
+
+        expect(getSelectableLaunchTargets(targets)).toHaveLength(1);
+        expect(getSelectableLaunchTargets(targets)[0]).toMatchObject({ source: "terminal" });
+        expect(canSetLaunchTargetDefault(targets[0])).toBe(true);
+        expect(canSetLaunchTargetDefault(targets[1])).toBe(false);
+    });
+
+    it("keeps Home in creatable launch targets even though it cannot be a default", () => {
+        const tab = makeTab(["block:term"]);
+        const blockMap: Record<string, Block> = {
+            "block:term": makeBlock("block:term", { view: "term", "cmd:cwd": "/Users/nita/project" }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], null, {
+            localHomeDir: "/Users/nita",
+        });
+
+        expect(getLaunchCreatableTargets(targets).map((target) => target.source)).toEqual(["terminal", "home"]);
+        expect(getSelectableLaunchTargets(targets).map((target) => target.source)).toEqual(["terminal"]);
+    });
+
+    it("resolves the stored launch target default key and falls back to the first selectable target", () => {
+        const terminalTarget: AgentLaunchTarget = {
+            blockId: "block:term",
+            connection: null,
+            cwd: "/Users/nita/project",
+            filePath: null,
+            source: "terminal",
+            isLocal: true,
+            label: "local",
+            detail: "/Users/nita/project",
+        };
+        const filesTarget: AgentLaunchTarget = {
+            blockId: "block:files",
+            connection: "ssh://server-a",
+            cwd: "/srv/app",
+            filePath: "/srv/app/package.json",
+            source: "files",
+            isLocal: false,
+            label: "ssh://server-a",
+            detail: "/srv/app/package.json -> /srv/app",
+        };
+        const homeTarget: AgentLaunchTarget = {
+            blockId: "launch-target:home",
+            connection: null,
+            cwd: "~",
+            filePath: null,
+            source: "home",
+            isLocal: true,
+            label: "local",
+            detail: "~",
+        };
+
+        expect(
+            resolveDefaultLaunchTarget(
+                [terminalTarget, filesTarget, homeTarget],
+                getLaunchTargetDefaultKey(filesTarget)
+            )
+        ).toBe(filesTarget);
+        expect(
+            resolveDefaultLaunchTarget([terminalTarget, filesTarget, homeTarget], getLaunchTargetDefaultKey(homeTarget))
+        ).toBe(terminalTarget);
+        expect(resolveDefaultLaunchTarget([homeTarget], getLaunchTargetDefaultKey(filesTarget))).toBe(homeTarget);
+    });
+
+    it("only returns detected agent profile options", () => {
+        const settings = {
+            "agent:defaultprofile": "claude",
+            "agent:profiles": {
+                claude: {
+                    cmd: "C:\\Users\\nita\\AppData\\Roaming\\npm\\claude.cmd",
+                },
+                custombot: {
+                    cmd: "custombot",
+                },
+            },
+        } as SettingsType;
+
+        const options = getAgentProfileOptions(settings, {
+            codex: "C:\\Users\\nita\\AppData\\Roaming\\npm\\codex.cmd",
+            claude: "C:\\Users\\nita\\AppData\\Roaming\\npm\\claude.cmd",
+        });
+
+        expect(options.map((option) => option.name)).toEqual(["codex", "claude"]);
+        expect(options.find((option) => option.name === "claude")?.isDefault).toBe(true);
     });
 });

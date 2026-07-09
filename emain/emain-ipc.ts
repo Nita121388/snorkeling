@@ -612,6 +612,59 @@ export function initIpcHandlers() {
         electron.shell.showItemInFolder(filePath);
     });
 
+    electron.ipcMain.handle("pick-directory", async (event) => {
+        const win = getWaveWindowByWebContentsId(event.sender.id);
+        if (win == null) {
+            console.error("pick-directory: no parent window for webContents", event.sender.id);
+            return null;
+        }
+        const result = await electron.dialog.showOpenDialog(win, {
+            properties: ["openDirectory"],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+        return result.filePaths[0];
+    });
+
+    electron.ipcMain.handle("obsidian-read-vaults", async () => {
+        try {
+            const platform = process.platform;
+            let baseDir: string;
+            if (platform === "win32") {
+                const appData = process.env.APPDATA;
+                if (!appData) return [];
+                baseDir = appData;
+            } else if (platform === "darwin") {
+                const home = process.env.HOME || electron.app.getPath("home");
+                if (!home) return [];
+                baseDir = path.join(home, "Library", "Application Support");
+            } else {
+                const home = process.env.HOME || electron.app.getPath("home");
+                if (!home) return [];
+                baseDir = path.join(home, ".config");
+            }
+            const configPath = path.join(baseDir, "obsidian", "obsidian.json");
+            const text = await fs.promises.readFile(configPath, "utf8");
+            const json = JSON.parse(text);
+            if (json == null || typeof json !== "object") return [];
+            const vaults = (json as { vaults?: Record<string, { path?: string }> }).vaults;
+            if (vaults == null) return [];
+            const out: string[] = [];
+            for (const id of Object.keys(vaults)) {
+                const v = vaults[id];
+                if (v == null) continue;
+                const p = v.path;
+                if (typeof p !== "string" || p.trim() === "") continue;
+                out.push(p);
+            }
+            return out;
+        } catch (e) {
+            // obsidian.json missing or unreadable — Obsidian likely not installed/not configured
+            return [];
+        }
+    });
+
     electron.ipcMain.handle("open-in-vscode", async (event, filePath: string) => {
         if (typeof filePath !== "string" || filePath === "") {
             console.error("open-in-vscode: invalid file path", filePath);

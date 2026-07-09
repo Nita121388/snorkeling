@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
 import {
     buildSessionDetailTimeline,
     formatFileSize,
     formatRelativeRefreshTime,
     formatSessionRelativeTime,
+    isCollapsibleMessage,
     isReadableMessage,
     restoreCommandForSession,
 } from "./utils";
@@ -131,12 +133,58 @@ describe("AI session detail timeline", () => {
     });
 
     it("copies Claude resume commands from the session project directory", () => {
+        setPlatform(PlatformMacOS);
         expect(
             restoreCommandForSession({
                 id: "session-123",
                 source: "claude",
                 projectPath: "/Users/nita/Project Files/it's-here",
             } as SessionSummary)
-        ).toBe(`cd '/Users/nita/Project Files/it'"'"'s-here' && claude --resume session-123`);
+        ).toBe(`cd '/Users/nita/Project Files/it'"'"'s-here'\nclaude --resume session-123`);
+    });
+
+    it("copies Claude resume commands with Windows-safe quoting and no shell separator", () => {
+        setPlatform(PlatformWindows);
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                projectPath: "E:\\code\\snorkeling",
+            } as SessionSummary)
+        ).toBe(`cd "E:\\code\\snorkeling"\nclaude --resume session-123`);
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                projectPath: "C:\\Program Files\\it's-here",
+            } as SessionSummary)
+        ).toBe(`cd "C:\\Program Files\\it's-here"\nclaude --resume session-123`);
+        setPlatform(PlatformMacOS);
+    });
+
+    it("copies Claude resume commands without cd when project path is missing", () => {
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                projectPath: "",
+            } as SessionSummary)
+        ).toBe("claude --resume session-123");
+    });
+});
+
+describe("AI session message collapse", () => {
+    it("keeps up to four lines expanded", () => {
+        expect(isCollapsibleMessage("line1\nline2\nline3\nline4")).toBe(false);
+    });
+
+    it("collapses five-line messages", () => {
+        expect(isCollapsibleMessage("line1\nline2\nline3\nline4\nline5")).toBe(true);
+    });
+
+    it("collapses long single-line messages", () => {
+        expect(isCollapsibleMessage("x".repeat(600))).toBe(true);
+        expect(isCollapsibleMessage("x".repeat(599))).toBe(false);
     });
 });

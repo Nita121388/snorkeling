@@ -16,7 +16,7 @@ import { Tooltip } from "@/app/element/tooltip";
 import { DefaultNoteDirectory, normalizeNoteDirectory, NoteDirectorySettingKey } from "@/app/modals/notedirectorymodal";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
 import { FocusManager } from "@/app/store/focusManager";
-import { atoms, setActiveTab, WOS } from "@/app/store/global";
+import { atoms, createBlock, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
@@ -34,6 +34,7 @@ import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import {
     makeCurrentTabBlockKindOpenAtom,
     SnorkelingBlockKindNote,
+    SnorkelingBlockKindMetaKey,
     toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
@@ -57,6 +58,18 @@ import "./session-overview.scss";
 const agentStatusLog = debug("wave:agentstatus");
 const overviewLog = debug("wave:sessionoverview");
 const NoteBlockOpenAtom = makeCurrentTabBlockKindOpenAtom(SnorkelingBlockKindNote);
+
+function getCurrentNoteBlock(fallbackDir: string): { blockId: string | null; dir: string } {
+    const tabId = globalStore.get(atoms.staticTabId);
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    for (const blockId of tab?.blockids ?? []) {
+        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        if (block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote) {
+            return { blockId, dir: normalizeNoteDirectory(block.meta?.file ?? fallbackDir) };
+        }
+    }
+    return { blockId: null, dir: fallbackDir };
+}
 
 type OverviewBlock = {
     tabId: string;
@@ -1080,39 +1093,52 @@ function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
     const open = jotai.useAtomValue(NoteBlockOpenAtom);
     const noteDir = normalizeNoteDirectory(settings?.[NoteDirectorySettingKey] ?? DefaultNoteDirectory);
 
-    const openNoteDirectorySettings = React.useCallback(
-        (event: React.MouseEvent<HTMLDivElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            modalsModel.pushModal("NoteDirectoryModal", { initialDir: noteDir });
-        },
-        [noteDir]
-    );
-
-    const toggleNoteBlock = React.useCallback(() => {
+    const makeNoteBlockDef = React.useCallback((dir = noteDir): BlockDef => {
+        const normalizedDir = normalizeNoteDirectory(dir);
         const meta = {
             view: "preview",
-            file: noteDir,
-            [PreviewExplorerRootMetaKey]: noteDir,
+            file: normalizedDir,
+            [PreviewExplorerRootMetaKey]: normalizedDir,
             [PreviewDirectoryDisplayMetaKey]: "tree",
+            [SnorkelingBlockKindMetaKey]: SnorkelingBlockKindNote,
             "frame:title": "Note",
             icon: "note-sticky",
         } as MetaType;
+        return { meta };
+    }, [noteDir]);
+
+    const openNoteFullscreen = React.useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const noteBlock = getCurrentNoteBlock(noteDir);
+            if (noteBlock.blockId != null) {
+                getLayoutModelForTabById(globalStore.get(atoms.staticTabId))?.newEphemeralNode(noteBlock.blockId, {
+                    deleteOnClose: false,
+                });
+                return;
+            }
+            void createBlock(makeNoteBlockDef(noteBlock.dir), false, true);
+        },
+        [makeNoteBlockDef, noteDir]
+    );
+
+    const toggleNoteBlock = React.useCallback(() => {
         void toggleCurrentTabBlockByKind({
             kind: SnorkelingBlockKindNote,
-            blockDef: { meta },
+            blockDef: makeNoteBlockDef(),
         });
-    }, [noteDir]);
+    }, [makeNoteBlockDef]);
 
     const icon = <i className={makeIconClass("note-sticky", false)} />;
     if (vertical) {
         return (
             <Tooltip
-                content="Open Note / Right-click to set directory"
+                content="Open Note / Right-click to open full screen"
                 placement="right"
                 hideOnClick
                 divClassName="flex"
-                divOnContextMenu={openNoteDirectorySettings}
+                divOnContextMenu={openNoteFullscreen}
             >
                 <button
                     type="button"
@@ -1128,11 +1154,11 @@ function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
     }
     return (
         <Tooltip
-            content="Open Note / Right-click to set directory"
+            content="Open Note / Right-click to open full screen"
             placement="bottom"
             hideOnClick
             divClassName="flex"
-            divOnContextMenu={openNoteDirectorySettings}
+            divOnContextMenu={openNoteFullscreen}
         >
             <button
                 type="button"
@@ -1191,6 +1217,19 @@ function MessageDialog({
                             <i className={makeIconClass("tag", false)} />
                         </button>
                     ) : null}
+                    <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                        <button
+                            type="button"
+                            className="session-overview-block-x-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteBlock(block);
+                            }}
+                            aria-label={`Delete block ${block.title}`}
+                        >
+                            <i className={makeIconClass("xmark", false)} />
+                        </button>
+                    </Tooltip>
                 </div>
                 <div className="session-overview-message-actions">
                     <button type="button" onClick={onJump}>
@@ -1632,7 +1671,7 @@ function CompactBlockIcon({
                     <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
-                            className="session-overview-block-action-button"
+                            className="session-overview-block-x-button"
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onDeleteBlock(block);
@@ -1702,8 +1741,8 @@ function BlockRow({
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
                 isCurrent && "is-current",
-                noteEditorOpen && "is-note-editing"
-            )}
+                noteEditorOpen && "is-note-editing",
+                )}
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
@@ -1740,6 +1779,21 @@ function BlockRow({
                         ) : null}
                     </>
                 ) : null}
+            </div>
+            <div className="session-overview-block-main-x">
+                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                    <button
+                        type="button"
+                        className="session-overview-block-x-button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteBlock(block);
+                        }}
+                        aria-label={`Delete block ${block.title}`}
+                    >
+                        <i className={makeIconClass("xmark", false)} />
+                    </button>
+                </Tooltip>
             </div>
             <div className="session-overview-block-actions">
                 {block.isAgentLike && block.sessionId ? (
@@ -1809,19 +1863,6 @@ function BlockRow({
                         </button>
                     </Tooltip>
                 ) : null}
-                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
-                    <button
-                        type="button"
-                        className="session-overview-block-action-button"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onDeleteBlock(block);
-                        }}
-                        aria-label={`Delete block ${block.title}`}
-                    >
-                        <i className={makeIconClass("xmark", false)} />
-                    </button>
-                </Tooltip>
             </div>
             {noteEditorOpen ? (
                 <OverviewSessionNoteEditor

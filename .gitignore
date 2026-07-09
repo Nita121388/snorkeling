@@ -46,3 +46,4 @@ docsite/
 .superpowers
 docs/superpowers
 .claude
+tmp/

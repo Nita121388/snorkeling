@@ -36,6 +36,12 @@
     --color-accent: var(--accent-color);
     --color-accenthover: var(--accent-hover-color);
 
+    --color-source-claude: #cc685c;
+    --color-source-codex: #74a7cb;
+    --color-surface-soft: rgba(255, 255, 255, 0.04);
+    --color-surface: rgba(255, 255, 255, 0.06);
+    --color-surface-strong: rgba(255, 255, 255, 0.08);
+
     --font-sans: "Inter", sans-serif;
     --font-mono: "Hack", monospace;
     --font-markdown:
@@ -123,5 +129,27 @@ svg [aria-label="tip"] g path {
     100% {
         transform: translate(-50%, -40px);
         opacity: 0;
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scaleY(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scaleY(1);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
     }
 }

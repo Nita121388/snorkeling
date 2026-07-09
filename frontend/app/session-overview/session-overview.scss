@@ -93,6 +93,48 @@
     color: var(--main-text-color);
 }
 
+/* default: hide floating X, show X inside actions */
+.session-overview-block-main-x {
+    display: none;
+}
+
+.session-overview-block-actions .session-overview-block-x-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+/* narrow / wrapped: hide X inside actions, show floating top-right */
+@container (max-width: 620px) {
+    .session-overview-header {
+        align-items: flex-start;
+    }
+
+    .session-overview-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .session-overview-block-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .session-overview-block-actions .session-overview-block-x-button {
+        display: none;
+    }
+
+    .session-overview-block-main-x {
+        display: flex;
+        position: absolute;
+        right: 6px;
+        top: 6px;
+        z-index: 2;
+    }
+
+    .session-overview-block-row:hover .session-overview-block-main-x {
+        display: flex;
+    }
+}
+
 .session-overview-header {
     display: flex;
     align-items: center;
@@ -551,6 +593,35 @@
     gap: 8px;
     color: inherit;
     text-align: left;
+}
+
+.session-overview-block-main-x {
+    display: none;
+}
+
+.session-overview-block-row {
+    position: relative;
+}
+
+.session-overview-block-x-button {
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    padding: 0;
+    font-size: 11px;
+
+    &:hover {
+        color: rgb(229 77 46);
+        background: rgb(from rgb(229 77 46) r g b / 0.12);
+    }
 }
 
 .session-overview-block-jump-wrap {
@@ -1090,8 +1161,35 @@
         grid-template-columns: 1fr auto;
     }
 
-    .session-overview-block-side {
-        grid-column: 1 / 3;
+    /* tall / narrow: move X to top-right corner, hide from actions bar */
+    .session-overview-block-main-x {
+        display: flex;
+        position: absolute;
+        right: 6px;
+        top: 6px;
+        z-index: 2;
+    }
+
+    .session-overview-block-main-x .session-overview-block-x-button {
+        display: flex;
+    }
+
+    .session-overview-block-row {
+        &:hover .session-overview-block-main-x {
+            display: flex;
+        }
+    }
+}
+
+/* single-row: X stays inline in the actions bar at the far right */
+@container (min-width: 621px) {
+    .session-overview-block-main-x {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .session-overview-block-main-x .session-overview-block-x-button {
+        margin-left: 4px;
     }
 }
 
@@ -1105,3 +1203,4 @@
         gap: 3px;
     }
 }
+

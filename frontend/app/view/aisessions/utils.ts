@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
+import { isWindows } from "@/util/platformutil";
+import type { MarkedFilter } from "./types";
 import {
     collapsedMessagePreviewLength,
     collapsibleMessageCharCount,
@@ -12,10 +14,14 @@ import {
 const ExactToolCallAnchorPattern = /^\[Tool:\s*[^\]]+\]$/;
 const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
 
-export function emptySessionsText(markedOnly: boolean, remoteFilterActive: boolean): string {
-    if (markedOnly && remoteFilterActive) return "No marked sessions match.";
-    if (markedOnly) return "No marked sessions.";
-    return "No sessions found.";
+export function emptySessionsText(markedFilter: MarkedFilter, remoteFilterActive: boolean): string {
+    if (markedFilter === "starred") {
+        return remoteFilterActive ? "No starred sessions match." : "No starred sessions.";
+    }
+    if (markedFilter === "unstarred") {
+        return remoteFilterActive ? "No unstarred sessions match." : "No unstarred sessions.";
+    }
+    return remoteFilterActive ? "No matching sessions." : "No sessions found.";
 }
 
 export function trimMessageText(text: string): string {
@@ -167,8 +173,8 @@ export function sessionSortTime(session: SessionSummary): number {
 }
 
 export function readSortPreference(): boolean {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(sortPreferenceStorageKey) === "1";
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(sortPreferenceStorageKey) !== "0";
 }
 
 export function writeSortPreference(descending: boolean): void {
@@ -222,10 +228,21 @@ function quoteShellPath(path: string): string {
     return `'${path.replace(/'/g, `'"'"'`)}'`;
 }
 
+function quoteWindowsPath(path: string): string {
+    if (/^[A-Za-z0-9_@%:,./=+-]+$/.test(path)) {
+        return path;
+    }
+    return `"${path}"`;
+}
+
 export function restoreCommandForSession(summary: SessionSummary): string {
     if (summary.source === "claude") {
         const resumeCommand = `claude --resume ${summary.id}`;
-        return summary.projectPath ? `cd ${quoteShellPath(summary.projectPath)} && ${resumeCommand}` : resumeCommand;
+        if (!summary.projectPath) return resumeCommand;
+        const quotedPath = isWindows()
+            ? quoteWindowsPath(summary.projectPath)
+            : quoteShellPath(summary.projectPath);
+        return `cd ${quotedPath}\n${resumeCommand}`;
     }
     return `codex resume ${summary.id}`;
 }
@@ -248,6 +265,17 @@ export function formatDateTimeToSecond(timestamp: number): string {
     const minute = pad2(date.getMinutes());
     const second = pad2(date.getSeconds());
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+export function formatSessionDate(timestamp: number): string {
+    if (!timestamp) return "never";
+    const normalized = normalizeTimestamp(timestamp);
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return "invalid time";
+    const year = date.getFullYear();
+    const month = pad2(date.getMonth() + 1);
+    const day = pad2(date.getDate());
+    return `${year}-${month}-${day}`;
 }
 
 export function formatFileSize(bytes: number | null | undefined): string {

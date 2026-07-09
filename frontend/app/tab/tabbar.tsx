@@ -18,11 +18,13 @@ import { isMacOSTahoeOrLater } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
-import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
+import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
-import { markTabOpenedThisLaunch } from "./tab-open-state";
+import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import "./tabbar.scss";
+
+const TAB_HEADER_HOVER_DELAY_MS = 2000;
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
@@ -53,6 +55,8 @@ const OSOptions = {
 interface TabBarProps {
     workspace: Workspace;
     noTabs?: boolean;
+    headerHovered?: boolean;
+    onHeaderHoverChange?: (hovered: boolean) => void;
 }
 
 const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement> }) => {
@@ -104,7 +108,7 @@ function strArrayIsEqual(a: string[], b: string[]) {
     return true;
 }
 
-const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
+const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
     const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
@@ -144,9 +148,60 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const confirmClose = useAtomValue(env.getSettingsKeyAtom("tab:confirmclose")) ?? false;
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
+    const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
 
+    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
+    const [isWrapperHovered, setIsWrapperHovered] = useState(false);
+    const hideTabBarHoverTimerRef = useRef<number | null>(null);
+    const hideWrapperHoverTimerRef = useRef<number | null>(null);
+    const cancelPendingHideTabBarHover = useCallback(() => {
+        if (hideTabBarHoverTimerRef.current != null) {
+            window.clearTimeout(hideTabBarHoverTimerRef.current);
+            hideTabBarHoverTimerRef.current = null;
+        }
+    }, []);
+    const cancelPendingHideWrapperHover = useCallback(() => {
+        if (hideWrapperHoverTimerRef.current != null) {
+            window.clearTimeout(hideWrapperHoverTimerRef.current);
+            hideWrapperHoverTimerRef.current = null;
+        }
+    }, []);
+    const cancelAllPendingHideHover = useCallback(() => {
+        cancelPendingHideTabBarHover();
+        cancelPendingHideWrapperHover();
+    }, [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]);
+
+    useEffect(() => {
+        if (draggingTab != null) {
+            cancelAllPendingHideHover();
+        }
+    }, [draggingTab, cancelAllPendingHideHover]);
+
+    useEffect(
+        () => () => {
+            cancelPendingHideTabBarHover();
+            cancelPendingHideWrapperHover();
+        },
+        [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]
+    );
     let prevDelta: number;
     let prevDragDirection: string;
+
+    const visibleTabIds = useMemo(
+        () =>
+            tabIds.filter((tabId) => {
+                const isActive = activeTabId === tabId;
+                return (
+                    isActive ||
+                    isTabBarHovered ||
+                    headerHovered ||
+                    isWrapperHovered ||
+                    draggingTab != null ||
+                    wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+                );
+            }),
+        [activeTabId, draggingTab, headerHovered, isTabBarHovered, isWrapperHovered, openedThisLaunchTabIds, tabIds]
+    );
 
     // Update refs when tabIds change
     useEffect(() => {
@@ -172,18 +227,20 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         const tabs = tabRefs.current;
         if (tabs === null) return;
 
-        const newStartPositions: number[] = [];
+        const newStartPositions: number[] = tabIds.map(() => 0);
         let cumulativeLeft = 0; // Start from the left edge
 
-        tabRefs.current.forEach((ref) => {
+        visibleTabIds.forEach((tabId) => {
+            const tabIndex = tabIds.indexOf(tabId);
+            const ref = tabRefs.current[tabIndex];
             if (ref.current) {
-                newStartPositions.push(cumulativeLeft);
+                newStartPositions[tabIndex] = cumulativeLeft;
                 cumulativeLeft += ref.current.getBoundingClientRect().width; // Add each tab's actual width to the cumulative position
             }
         });
 
         setDragStartPositions(newStartPositions);
-    }, []);
+    }, [tabIds, visibleTabIds]);
 
     const setSizeAndPosition = (animate?: boolean) => {
         const tabBar = tabBarRef.current;
@@ -213,19 +270,48 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             waveAIButtonWidth;
         const spaceForTabs = tabbarWrapperWidth - nonTabElementsWidth;
 
-        const numberOfTabs = tabIds.length;
+        const numberOfTabs = visibleTabIds.length;
+        if (numberOfTabs === 0) {
+            scrollableRef.current = false;
+            osInstanceRef.current?.destroy();
+            osInstanceRef.current = null;
+            return;
+        }
 
-        // Compute the ideal width per tab by dividing the available space by the number of tabs
-        let idealTabWidth = spaceForTabs / numberOfTabs;
-
-        // Apply min/max constraints
-        idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        const isDragging = draggingTab != null;
+        // Layout order: when not dragging, anchor the persistently-shown tabs (active + opened-this-launch)
+        // to the left so that hover expansion appends newly-revealed tabs to their right instead of
+        // shifting the already-shown ones. While dragging, keep the natural tabIds order so drag math
+        // (which uses visibleTabIds positions) stays unchanged.
+        let layoutOrderedIds: string[];
+        let idealTabWidth: number;
+        if (isDragging) {
+            layoutOrderedIds = visibleTabIds;
+            idealTabWidth = spaceForTabs / numberOfTabs;
+            idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        } else {
+            const pinnedIds = visibleTabIds.filter(
+                (tabId) =>
+                    activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+            );
+            const pinnedIdSet = new Set(pinnedIds);
+            const hoverRevealedIds = visibleTabIds.filter((tabId) => !pinnedIdSet.has(tabId));
+            layoutOrderedIds = [...pinnedIds, ...hoverRevealedIds];
+            // Width is sized for the pinned subset so the pinned tabs don't resize/reposition when
+            // hover reveals more tabs. If nothing is pinned (no active, none opened this launch),
+            // fall back to sizing against the full set.
+            const widthBasisCount = Math.max(1, pinnedIds.length);
+            idealTabWidth = spaceForTabs / widthBasisCount;
+            idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
+        }
 
         // Determine if the tab bar needs to be scrollable
         const newScrollable = idealTabWidth * numberOfTabs > spaceForTabs;
 
-        // Apply the calculated width and position to all tabs
-        tabRefs.current.forEach((ref, index) => {
+        // Apply the calculated width and position to all tabs in layout order
+        layoutOrderedIds.forEach((tabId, index) => {
+            const tabIndex = tabIds.indexOf(tabId);
+            const ref = tabRefs.current[tabIndex];
             if (ref.current) {
                 if (animate) {
                     ref.current.classList.add("animate");
@@ -331,7 +417,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     // update layout on changed tabIds, tabsLoaded, newTabId, hideAiButton, appUpdateStatus, or zoomFactor
     useEffect(() => {
         // Check if all tabs are loaded
-        const allLoaded = tabIds.length > 0 && tabIds.every((id) => tabsLoaded[id]);
+        const allLoaded = visibleTabIds.length > 0 && visibleTabIds.every((id) => tabsLoaded[id]);
         if (allLoaded) {
             setSizeAndPosition(false);
             saveTabsPosition();
@@ -339,7 +425,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 prevAllLoadedRef.current = true;
             }
         }
-    }, [tabIds, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
+    }, [visibleTabIds, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
 
     const getDragDirection = (currentX: number) => {
         let dragDirection: string;
@@ -358,20 +444,21 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const getNewTabIndex = (currentX: number, tabIndex: number, dragDirection: string) => {
         let newTabIndex = tabIndex;
         const tabWidth = tabWidthRef.current;
+        const visibleTabIndex = visibleTabIds.indexOf(tabIds[tabIndex]);
         if (dragDirection === "+") {
-            // Dragging to the right
-            for (let i = tabIndex + 1; i < tabIds.length; i++) {
-                const otherTabStart = dragStartPositions[i];
+            for (let i = visibleTabIndex + 1; i < visibleTabIds.length; i++) {
+                const otherTabIndex = tabIds.indexOf(visibleTabIds[i]);
+                const otherTabStart = dragStartPositions[otherTabIndex];
                 if (currentX + tabWidth > otherTabStart + tabWidth / 2) {
-                    newTabIndex = i;
+                    newTabIndex = otherTabIndex;
                 }
             }
         } else {
-            // Dragging to the left
-            for (let i = tabIndex - 1; i >= 0; i--) {
-                const otherTabEnd = dragStartPositions[i] + tabWidth;
+            for (let i = visibleTabIndex - 1; i >= 0; i--) {
+                const otherTabIndex = tabIds.indexOf(visibleTabIds[i]);
+                const otherTabEnd = dragStartPositions[otherTabIndex] + tabWidth;
                 if (currentX < otherTabEnd - tabWidth / 2) {
-                    newTabIndex = i;
+                    newTabIndex = otherTabIndex;
                 }
             }
         }
@@ -430,7 +517,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
         // Constrain movement within the container bounds
         if (tabBarRef.current) {
-            const numberOfTabs = tabIds.length;
+            const numberOfTabs = visibleTabIds.length;
             const totalDefaultTabWidth = numberOfTabs * TabDefaultWidth;
             if (totalDefaultTabWidth < tabBarRectWidth) {
                 // Set to the total default tab width if there's vacant space
@@ -470,9 +557,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             tabIds.splice(newTabIndex, 0, tabId);
 
             // Update visual positions of the tabs
-            tabIds.forEach((localTabId, index) => {
-                const ref = tabRefs.current.find((ref) => ref.current.dataset.tabId === localTabId);
-                if (ref.current && localTabId !== tabId) {
+            visibleTabIds.forEach((localTabId, index) => {
+                const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === localTabId);
+                if (ref?.current && localTabId !== tabId) {
                     ref.current.style.transform = `translate3d(${index * tabWidth}px,0,0)`;
                     ref.current.classList.add("animate");
                 }
@@ -506,9 +593,10 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         // Update the final position of the dragged tab
         const draggingTab = tabIds[tabIndex];
         const tabWidth = tabWidthRef.current;
-        const finalLeftPosition = tabIndex * tabWidth;
-        const ref = tabRefs.current.find((ref) => ref.current.dataset.tabId === draggingTab);
-        if (ref.current) {
+        const visibleTabIndex = visibleTabIds.indexOf(draggingTab);
+        const finalLeftPosition = (visibleTabIndex === -1 ? tabIndex : visibleTabIndex) * tabWidth;
+        const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === draggingTab);
+        if (ref?.current) {
             ref.current.classList.add("animate");
             ref.current.style.transform = `translate3d(${finalLeftPosition}px,0,0)`;
         }
@@ -537,7 +625,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             const tabIndex = tabIds.indexOf(tabId);
             const tabStartX = dragStartPositions[tabIndex]; // Starting X position of the tab
 
-            console.log("handleDragStart", tabId, tabIndex, tabStartX);
             if (ref.current) {
                 draggingTabDataRef.current = {
                     tabId: ref.current.dataset.tabId,
@@ -554,7 +641,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 document.addEventListener("mouseup", handleMouseUp);
             }
         },
-        [tabIds, dragStartPositions]
+        [tabIds, dragStartPositions, visibleTabIds]
     );
 
     const handleSelectTab = (tabId: string) => {
@@ -574,14 +661,19 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         }
     }, [activeTabId, markTabOpened]);
 
+    useEffect(() => {
+        setSizeAndPosition();
+        saveTabsPosition();
+    }, [visibleTabIds, saveTabsPosition]);
+
     const updateScrollDebounced = useCallback(
         debounce(30, () => {
             if (scrollableRef.current) {
                 const { viewport } = osInstanceRef.current.elements();
-                viewport.scrollLeft = tabIds.length * tabWidthRef.current;
+                viewport.scrollLeft = visibleTabIds.length * tabWidthRef.current;
             }
         }),
-        [tabIds]
+        [visibleTabIds]
     );
 
     const setNewTabIdDebounced = useCallback(
@@ -624,14 +716,29 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         });
     }, []);
 
-    const activeTabIndex = tabIds.indexOf(activeTabId);
+    const activeTabIndex = visibleTabIds.indexOf(activeTabId);
 
     function onEllipsisClick() {
         env.electron.showWorkspaceAppMenu(workspace.oid);
     }
 
-    const tabsWrapperWidth = tabIds.length * tabWidthRef.current;
+    const tabsWrapperWidth = visibleTabIds.length * tabWidthRef.current;
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
+
+    const handleWrapperMouseEnter = useCallback(() => {
+        cancelPendingHideWrapperHover();
+        setIsWrapperHovered(true);
+        onHeaderHoverChange?.(true);
+    }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
+
+    const handleWrapperMouseLeave = useCallback(() => {
+        cancelPendingHideWrapperHover();
+        hideWrapperHoverTimerRef.current = window.setTimeout(() => {
+            hideWrapperHoverTimerRef.current = null;
+            setIsWrapperHovered(false);
+            onHeaderHoverChange?.(false);
+        }, TAB_HEADER_HOVER_DELAY_MS);
+    }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
 
     // Calculate window drag left width based on platform and state
     let windowDragLeftWidth = 10;
@@ -655,7 +762,12 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     }
 
     return (
-        <div ref={tabbarWrapperRef} className="tab-bar-wrapper">
+        <div
+            ref={tabbarWrapperRef}
+            className="tab-bar-wrapper"
+            onMouseEnter={handleWrapperMouseEnter}
+            onMouseLeave={handleWrapperMouseLeave}
+        >
             <div
                 ref={draggerLeftRef}
                 className="h-full shrink-0 z-window-drag"
@@ -683,7 +795,22 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             >
                 <WorkspaceSwitcher />
             </Tooltip>
-            <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize>
+            <div
+                className="tab-bar"
+                ref={tabBarRef}
+                data-overlayscrollbars-initialize
+                onMouseEnter={() => {
+                    cancelPendingHideTabBarHover();
+                    setIsTabBarHovered(true);
+                }}
+                onMouseLeave={() => {
+                    cancelPendingHideTabBarHover();
+                    hideTabBarHoverTimerRef.current = window.setTimeout(() => {
+                        hideTabBarHoverTimerRef.current = null;
+                        setIsTabBarHovered(false);
+                    }, TAB_HEADER_HOVER_DELAY_MS);
+                }}
+            >
                 <div
                     className="tabs-wrapper"
                     ref={tabsWrapperRef}
@@ -693,18 +820,20 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                     }}
                 >
                     {!noTabs &&
-                        tabIds.map((tabId, index) => {
+                        visibleTabIds.map((tabId, visibleIndex) => {
+                            const tabIndex = tabIds.indexOf(tabId);
                             const isActive = activeTabId === tabId;
-                            const showDivider = index !== 0 && !isActive && index !== activeTabIndex + 1;
+                            const showDivider = visibleIndex !== 0 && !isActive && visibleIndex !== activeTabIndex + 1;
                             return (
                                 <TabComponent
                                     key={tabId}
-                                    ref={tabRefs.current[index]}
+                                    ref={tabRefs.current[tabIndex]}
                                     id={tabId}
+                                    hidden={false}
                                     showDivider={showDivider}
                                     onSelect={() => handleSelectTab(tabId)}
                                     active={isActive}
-                                    onDragStart={(event) => handleDragStart(event, tabId, tabRefs.current[index])}
+                                    onDragStart={(event) => handleDragStart(event, tabId, tabRefs.current[tabIndex])}
                                     onClose={(event) => handleCloseTab(event, tabId)}
                                     onLoaded={() => handleTabLoaded(tabId)}
                                     isDragging={draggingTab === tabId}
@@ -724,8 +853,12 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             >
                 <i className="fa fa-solid fa-plus" />
             </button>
-            <div className="flex-1" />
-            <div ref={rightContainerRef} className="flex flex-row gap-1 items-end">
+            <div
+                className="flex-1 self-stretch"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                onMouseEnter={handleWrapperMouseEnter}
+            />
+            <div ref={rightContainerRef} className="flex flex-row gap-1 items-end" style={{ pointerEvents: "none" }}>
                 <UpdateStatusBanner />
                 <div
                     className="h-full shrink-0 z-window-drag"

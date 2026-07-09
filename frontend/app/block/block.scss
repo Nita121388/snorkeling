@@ -123,17 +123,19 @@
                     font: var(--fixed-font);
                     font-size: 11px;
                     opacity: 0.7;
-                    flex-grow: 1;
+                    flex: 0 1 auto;
+                    min-width: 0;
 
                     &.flex-nogrow {
-                        flex-grow: 0;
+                        flex-shrink: 0;
                     }
 
                     &.agent-status-header {
                         display: inline-flex;
                         height: 18px;
                         max-width: 190px;
-                        flex: 0 1 auto;
+                        flex: 0 0 auto;
+                        margin-left: auto;
                         align-items: center;
                         border: 1px solid rgb(from var(--secondary-text-color) r g b / 0.3);
                         border-radius: 6px;
@@ -290,6 +292,12 @@
                     gap: 8px;
                     align-items: center;
 
+                    &:not(.is-hovered) .block-frame-header-iconbutton,
+                    &:not(.is-hovered) .block-frame-menubutton,
+                    &:not(.is-hovered) .compact-open-target-menubutton {
+                        display: none;
+                    }
+
                     .block-frame-div {
                         display: flex;
                         width: 100%;
@@ -391,6 +399,14 @@
                 .block-frame-end-icons {
                     display: flex;
                     flex-shrink: 0;
+
+                    .wave-iconbutton:not(.block-frame-default-close) {
+                        display: none;
+                    }
+
+                    &.is-hovered .wave-iconbutton:not(.block-frame-default-close):not(.disabled) {
+                        display: flex;
+                    }
 
                     .wave-iconbutton {
                         display: flex;

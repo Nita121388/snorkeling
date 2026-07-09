@@ -25,6 +25,8 @@ type FileLinkOpenOptions = {
     openDirectoryIndex?: boolean;
     lineNumber?: number | null;
     editMode?: boolean;
+    revealInTree?: boolean;
+    revealInTreeBlockId?: string | null;
 };
 
 type PreviewTreeBlock = {
@@ -201,6 +203,12 @@ export function isPathWithinRoot(targetPath: string, rootPath: string): boolean 
     return target.startsWith(rootWithSlash);
 }
 
+export function isSamePreviewPath(leftPath: unknown, rightPath: unknown): boolean {
+    const left = normalizePathForCompare(leftPath);
+    const right = normalizePathForCompare(rightPath);
+    return left !== "" && left === right;
+}
+
 function getCurrentSettingsDirectoryDisplayDefault(): any {
     return globalStore.get(atoms.settingsAtom)?.[PreviewDefaultDirectoryDisplaySettingKey];
 }
@@ -275,6 +283,40 @@ async function findTreeFilesBlock(targetPath: string, connection: string): Promi
     return null;
 }
 
+async function findExistingNonEditPreviewBlock(targetPath: string, connection: string): Promise<string | null> {
+    const tabId = globalStore.get(atoms.staticTabId);
+    if (isBlank(tabId)) {
+        return null;
+    }
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    for (const blockId of tab?.blockids ?? []) {
+        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        if (block?.meta?.view !== "preview") {
+            continue;
+        }
+        if (normalizeConnection(block.meta?.connection) !== normalizeConnection(connection)) {
+            continue;
+        }
+        if (block.meta?.edit === true) {
+            continue;
+        }
+        if (!isSamePreviewPath(block.meta?.file, targetPath)) {
+            continue;
+        }
+        return blockId;
+    }
+    return null;
+}
+
+async function applySearchLineToBlock(blockId: string, options?: FileLinkOpenOptions): Promise<void> {
+    if (options?.lineNumber == null || !Number.isFinite(options.lineNumber)) {
+        return;
+    }
+    const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+    const nextMeta = applyPreviewOpenOptions({ ...(block?.meta ?? {}) }, options);
+    await ObjectService.UpdateObjectMeta(WOS.makeORef("block", blockId), nextMeta);
+}
+
 async function focusTreeBlock(blockId: string) {
     const tabId = globalStore.get(atoms.staticTabId);
     const layoutModel = getLayoutModelForStaticTab();
@@ -345,7 +387,7 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
     let fileInfo: FileInfo;
     try {
         fileInfo = await statPath(path, connection);
-    } catch (e) {
+    } catch {
         await createPreviewBlock(path, connection, applyPreviewOpenOptions({}, options));
         return;
     }
@@ -358,11 +400,17 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
             return;
         }
     }
-    const treeBlock = await findTreeFilesBlock(targetPath, connection);
+    const treeBlock = options?.revealInTree === false ? null : await findTreeFilesBlock(targetPath, connection);
     if (treeBlock != null) {
         await requestTreeReveal(treeBlock.blockId, treeBlock.block, targetPath);
         await focusTreeBlock(treeBlock.blockId);
         if (!targetIsDir) {
+            const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+            if (existingId != null) {
+                await focusTreeBlock(existingId);
+                await applySearchLineToBlock(existingId, options);
+                return;
+            }
             await createPreviewBlock(
                 targetPath,
                 connection,
@@ -370,6 +418,27 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
             );
         }
         return;
+    }
+    if (options?.revealInTree === true && options?.revealInTreeBlockId != null) {
+        const fallbackBlock = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", options.revealInTreeBlockId)));
+        if (fallbackBlock != null) {
+            await requestTreeReveal(options.revealInTreeBlockId, fallbackBlock, targetPath);
+            await focusTreeBlock(options.revealInTreeBlockId);
+            if (!targetIsDir) {
+                const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+                if (existingId != null) {
+                    await focusTreeBlock(existingId);
+                    await applySearchLineToBlock(existingId, options);
+                    return;
+                }
+                await createPreviewBlock(
+                    targetPath,
+                    connection,
+                    applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+                );
+            }
+            return;
+        }
     }
     if (targetIsDir) {
         await createPreviewBlock(
@@ -384,6 +453,12 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
                 options
             )
         );
+        return;
+    }
+    const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+    if (existingId != null) {
+        await focusTreeBlock(existingId);
+        await applySearchLineToBlock(existingId, options);
         return;
     }
     await createPreviewBlock(

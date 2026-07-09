@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Snorkeling — Agent Type 选择样式优化</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: rgb(34, 34, 34);
+    --foreground: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --border-soft: rgba(255, 255, 255, 0.06);
+    --claude: #cc685c;
+    --codex: #74a7cb;
+    --gemini: #8e7cc3;
+    --opencode: #e0b956;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #1a1b1a;
+    color: var(--foreground);
+    font-family: "Inter", -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { padding: 32px 40px; display: flex; flex-direction: column; gap: 40px; }
+  .section-label { font-size: 10px; color: var(--accent); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+  .showcase { display: flex; gap: 40px; flex-wrap: wrap; }
+
+  /* ===== 弹窗框架 ===== */
+  .fw {
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    background: rgba(30, 31, 30, 0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+    overflow: hidden;
+    width: 440px;
+  }
+
+  .fw-head {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .fw-head .title { font-size: 12px; font-weight: 600; color: var(--foreground); }
+
+  .fw-profile {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .fw-profile-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px; }
+
+  /* ===== 四种 Agent Type 选择样式方案 ===== */
+
+  /* === A: 当前样式 (baseline) === */
+  .chips-a {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .chips-a .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 24px; padding: 0 9px;
+    border-radius: 6px; font-size: 11px; font-weight: 500;
+    background: rgba(255,255,255,0.04);
+    color: var(--secondary);
+    cursor: pointer; border: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .chips-a .chip:hover { background: rgba(255,255,255,0.08); color: var(--foreground); }
+  .chips-a .chip.selected {
+    background: rgba(88,193,66,0.12);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(88,193,66,0.3);
+  }
+  .chips-a .chip .dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+
+  /* === B: segmented control — 通栏等分 === */
+  .chips-b {
+    display: flex;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 1px;
+  }
+  .chips-b .chip {
+    flex: 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 11px; font-weight: 500;
+    color: var(--secondary);
+    cursor: pointer; border: none;
+    background: transparent;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    min-width: 0;
+  }
+  .chips-b .chip:hover { color: var(--foreground); }
+  .chips-b .chip.selected {
+    background: rgba(30,31,30,0.8);
+    color: var(--foreground);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .chips-b .chip .dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+
+  /* === C: 圆角 pill + dot 强调色 === */
+  .chips-c {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .chips-c .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 28px; padding: 0 12px 0 10px;
+    border-radius: 999px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(255,255,255,0.04);
+    color: var(--secondary);
+    cursor: pointer; border: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chips-c .chip:hover { background: rgba(255,255,255,0.08); color: var(--foreground); }
+  .chips-c .chip.selected {
+    background: rgba(255,255,255,0.06);
+    color: var(--foreground);
+  }
+  .chips-c .chip .dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    transition: transform 0.15s;
+  }
+  .chips-c .chip.selected .dot { transform: scale(1.2); }
+
+  /* === D: 推荐 — 极简文字 + dot放大 === */
+  .chips-d {
+    display: flex; gap: 2px; flex-wrap: wrap;
+  }
+  .chips-d .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 10px 0 8px;
+    border-radius: 6px;
+    font-size: 11px; font-weight: 500;
+    color: var(--muted);
+    cursor: pointer; border: none;
+    background: transparent;
+    transition: color 0.12s, background 0.12s;
+  }
+  .chips-d .chip:hover { color: var(--secondary); background: rgba(255,255,255,0.04); }
+  .chips-d .chip.selected {
+    color: var(--foreground);
+    background: rgba(255,255,255,0.06);
+  }
+  .chips-d .chip .dot {
+    width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+    opacity: 0.5;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+  .chips-d .chip:hover .dot { opacity: 0.8; }
+  .chips-d .chip.selected .dot { opacity: 1; transform: scale(1.15); }
+  .chips-d .chip .label-text { transition: color 0.12s; }
+
+  .annotation {
+    font-size: 11px; color: var(--muted); line-height: 1.7;
+    max-width: 300px; padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+  }
+  .annotation .hl { color: var(--accent); font-weight: 600; }
+
+  .variant-label {
+    font-size: 10px; color: var(--muted); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .variant-label .tag {
+    font-size: 9px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(88,193,66,0.1); color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .variant-label .tag.current { background: rgba(204,104,92,0.1); color: var(--claude); }
+  .variant-label .tag.rec { background: rgba(88,193,66,0.15); color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="fw-head" style="border: none; padding-left: 0;">
+    <span class="title" style="font-size: 15px;">Agent Type 选择样式 · 四种方案对比</span>
+  </div>
+
+  <!-- A: 当前 -->
+  <div>
+    <div class="variant-label"><span class="tag current">baseline</span> 当前样式 — rounded chip + bg-accent-soft 选中</div>
+    <div class="showcase">
+      <div class="fw" style="width:440px">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips-a">
+            <button class="chip selected"><span class="dot" style="background:var(--codex)"></span> Codex</button>
+            <button class="chip"><span class="dot" style="background:var(--claude)"></span> Claude</button>
+            <button class="chip"><span class="dot" style="background:var(--gemini)"></span> Gemini</button>
+            <button class="chip"><span class="dot" style="background:var(--opencode)"></span> OpenCode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: segmented control -->
+  <div>
+    <div class="variant-label"><span class="tag">B</span> segmented control — 通栏等分，选中项浮起</div>
+    <div class="showcase">
+      <div class="fw" style="width:440px">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips-b">
+            <button class="chip selected"><span class="dot" style="background:var(--codex)"></span> Codex</button>
+            <button class="chip"><span class="dot" style="background:var(--claude)"></span> Claude</button>
+            <button class="chip"><span class="dot" style="background:var(--gemini)"></span> Gemini</button>
+            <button class="chip"><span class="dot" style="background:var(--opencode)"></span> OpenCode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C: pill -->
+  <div>
+    <div class="variant-label"><span class="tag">C</span> 圆角 pill + dot 强调色放大</div>
+    <div class="showcase">
+      <div class="fw" style="width:440px">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips-c">
+            <button class="chip selected"><span class="dot" style="background:var(--codex)"></span> Codex</button>
+            <button class="chip"><span class="dot" style="background:var(--claude)"></span> Claude</button>
+            <button class="chip"><span class="dot" style="background:var(--gemini)"></span> Gemini</button>
+            <button class="chip"><span class="dot" style="background:var(--opencode)"></span> OpenCode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- D: 推荐 -->
+  <div>
+    <div class="variant-label"><span class="tag rec">★ 推荐</span> 极简文字 + 色点 + 浅色选中背景</div>
+    <div class="showcase">
+      <div class="fw" style="width:440px">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips-d">
+            <button class="chip selected">
+              <span class="dot" style="background:var(--codex)"></span>
+              <span class="label-text">Codex</span>
+            </button>
+            <button class="chip">
+              <span class="dot" style="background:var(--claude)"></span>
+              <span class="label-text">Claude</span>
+            </button>
+            <button class="chip">
+              <span class="dot" style="background:var(--gemini)"></span>
+              <span class="label-text">Gemini</span>
+            </button>
+            <button class="chip">
+              <span class="dot" style="background:var(--opencode)"></span>
+              <span class="label-text">OpenCode</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>设计要点：</b><br>
+        • 取消 chip 的 <span class="hl">border/background 盒状感</span><br>
+        • 未选中 = 无背景，<span class="hl">muted 色文字</span>，半透明 dot<br>
+        • 选中 = 极浅 surface 背景 + <span class="hl">foreground 色文字</span> + dot 放大亮起<br>
+        • 悬停 = 轻微背景 + secondary 色文字<br>
+        • 高度 30px，dot 7px，间距宽松
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -207,7 +207,7 @@ func makeWindowsAutoInstallWshCommand(remoteTempPath string, remoteWshPath strin
 	return shellutil.MakePowerShellEncodedCommand(script)
 }
 
-func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string) error {
+func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string, onProgress func(written, total int64)) error {
 	installCmd := makeWindowsAutoInstallWshCommand(remoteTempPath, remoteWshPath, inputSize)
 	session, err := client.NewSession()
 	if err != nil {
@@ -227,7 +227,11 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	go func() {
 		defer close(copyDone)
 		defer stdin.Close()
-		if _, err := io.Copy(stdin, input); err != nil && err != io.EOF {
+		var writer io.Writer = stdin
+		if onProgress != nil {
+			writer = newProgressWriter(stdin, inputSize, onProgress)
+		}
+		if _, err := io.Copy(writer, input); err != nil && err != io.EOF {
 			copyDone <- fmt.Errorf("failed to copy data: %w", err)
 		} else {
 			copyDone <- nil
@@ -296,6 +300,74 @@ func runSessionWithContext(ctx context.Context, session *ssh.Session, cmd string
 	}
 }
 
+// CleanupRemoteWshTemp removes leftover wsh upload temp files from a prior interrupted
+// install on the remote. Best-effort: ignores all errors (network, missing dir, etc.).
+//
+// Why: a half-written temp file from a previous install that was cut off mid-stream
+// (ctx timeout kill, snorkeling restart, network drop) stays on the remote forever
+// because the install script only cleans up its own temp inside its own failure
+// branches — and posix temp files live beside the wsh binary under ~/.snorkeling/bin/,
+// polluting the very directory we install into. Windows temp files live under
+// ~/.snorkeling/tmp/. Both auto-install name forms are wsh.<unixnano>.<rand>.temp
+// (and the .exe variant on windows); see getRemoteWshTempPath.
+//
+// Must run on its own SSH session BEFORE the upload session is created, so it does
+// not contend for stdin/stdout/stderr channels with the upload.
+func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs string) {
+	var cmdStr string
+	if clientOs == "windows" {
+		// Remove-Item with -ErrorAction SilentlyContinue: missing files / empty dir are not an error.
+		script := strings.Join([]string{
+			`Remove-Item -Force -LiteralPath "$HOME\.snorkeling\tmp\wsh.exe.*.temp" -ErrorAction SilentlyContinue`,
+			`Remove-Item -Force -LiteralPath "$HOME\.snorkeling\bin\wsh.exe.*.temp" -ErrorAction SilentlyContinue`,
+		}, "; ")
+		cmdStr = shellutil.MakePowerShellEncodedCommand(script)
+	} else {
+		// Posix: temp files are wsh.<nano>.<rand>.temp in ~/.snorkeling/bin/ (same dir as the wsh binary).
+		// rm -f globs are best-effort; `2>/dev/null` masks "no such file"; trailing `true` makes the
+		// session exit 0 even if rm had nothing to do.
+		cmdStr = `rm -f "$HOME/.snorkeling/bin/wsh."*".temp" 2>/dev/null; true`
+	}
+	// Short, generous deadline: this is a quick best-effort cleanup. If the remote is unreachable
+	// enough that even `rm -f` hangs for 15s, the upload itself would also hang and the install is
+	// already broken — failing here is fine; we still proceed to the upload attempt.
+	cleanupCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	blocklogger.Debugf(cleanupCtx, "[conndebug] cleanupRemoteWshTemp: %s\n", cmdStr)
+	_, _, _ = genconn.RunSimpleCommand(cleanupCtx, genconn.MakeSSHShellClient(client), genconn.CommandSpec{Cmd: cmdStr})
+}
+
+// progressWriter wraps an io.Writer and reports byte progress at most every 500ms.
+// Throttle keeps updateWshInstallState churn low; the frontend overlay doesn't need 60fps.
+// onUpdate is called from Write — it must be safe to call from the writer goroutine
+// (in our case the upload io.Copy goroutine) and should not block on slow ops.
+type progressWriter struct {
+	dest     io.Writer
+	total    int64
+	written  int64
+	last     time.Time
+	onUpdate func(written, total int64)
+}
+
+func newProgressWriter(dest io.Writer, total int64, onUpdate func(written, total int64)) *progressWriter {
+	return &progressWriter{
+		dest:     dest,
+		total:    total,
+		last:     time.Now(),
+		onUpdate: onUpdate,
+	}
+}
+
+func (p *progressWriter) Write(buf []byte) (int, error) {
+	n, err := p.dest.Write(buf)
+	p.written += int64(n)
+	if time.Since(p.last) >= 500*time.Millisecond {
+		p.onUpdate(p.written, p.total)
+		p.last = time.Now()
+	}
+	return n, err
+}
+
 func extractWshVersionLine(output string) string {
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -307,6 +379,15 @@ func extractWshVersionLine(output string) string {
 }
 
 func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, clientArch string) error {
+	return CpWshToRemoteWithProgress(ctx, client, clientOs, clientArch, nil)
+}
+
+// CpWshToRemoteWithProgress copies the bundled wsh binary to the remote, reporting byte
+// progress via onProgress (best-effort: called at most ~2Hz). onProgress may be nil.
+// It also pre-cleans any stale .temp residue from a prior interrupted upload before
+// starting, so a half-written temp file beside the wsh binary does not interfere.
+// See CleanupRemoteWshTemp for why this matters.
+func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs string, clientArch string, onProgress func(written, total int64)) error {
 	deadline, ok := ctx.Deadline()
 	if ok {
 		blocklogger.Debugf(ctx, "[conndebug] CpWshToRemote, timeout: %v\n", time.Until(deadline))
@@ -315,6 +396,10 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 	if err != nil {
 		return err
 	}
+	// Best-effort sweep of stale .temp residue from any prior interrupted install, BEFORE we
+	// create the upload session. See CleanupRemoteWshTemp for why. Done first (before os.Open)
+	// so a half-written temp file cannot sit beside the wsh binary while we install.
+	CleanupRemoteWshTemp(ctx, client, clientOs)
 	input, err := os.Open(wshLocalPath)
 	if err != nil {
 		return fmt.Errorf("cannot open local file %s: %w", wshLocalPath, err)
@@ -331,7 +416,7 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 	remoteTempPath := getRemoteWshTempPath(clientOs, remoteWshPath)
 	diagnosticsCmd := getRemoteWshInstallDiagnosticCmdForOs(clientOs)
 	if clientOs == "windows" {
-		return cpWshToWindowsRemote(ctx, client, input, inputInfo.Size(), remoteWshPath, remoteTempPath, diagnosticsCmd)
+		return cpWshToWindowsRemote(ctx, client, input, inputInfo.Size(), remoteWshPath, remoteTempPath, diagnosticsCmd, onProgress)
 	}
 	installWords := map[string]string{
 		"installDir":   filepath.ToSlash(filepath.Dir(remoteWshPath)),
@@ -367,7 +452,11 @@ func CpWshToRemote(ctx context.Context, client *ssh.Client, clientOs string, cli
 	go func() {
 		defer close(copyDone)
 		defer stdin.Close()
-		if _, err := io.Copy(stdin, input); err != nil && err != io.EOF {
+		var writer io.Writer = stdin
+		if onProgress != nil {
+			writer = newProgressWriter(stdin, inputInfo.Size(), onProgress)
+		}
+		if _, err := io.Copy(writer, input); err != nil && err != io.EOF {
 			copyDone <- fmt.Errorf("failed to copy data: %w", err)
 		} else {
 			copyDone <- nil

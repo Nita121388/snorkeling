@@ -18,7 +18,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -90,6 +90,7 @@ MacOSHeader.displayName = "MacOSHeader";
 interface VTabBarProps {
     workspace: Workspace;
     className?: string;
+    headerHovered?: boolean;
 }
 
 interface VTabWrapperProps {
@@ -98,6 +99,7 @@ interface VTabWrapperProps {
     showDivider: boolean;
     isDragging: boolean;
     isReordering: boolean;
+    hidden: boolean;
     hoverResetVersion: number;
     index: number;
     onSelect: () => void;
@@ -116,6 +118,7 @@ function VTabWrapper({
     showDivider,
     isDragging,
     isReordering,
+    hidden: isHidden,
     hoverResetVersion,
     onSelect,
     onClose,
@@ -181,6 +184,7 @@ function VTabWrapper({
             isDragging={isDragging}
             isReordering={isReordering}
             unopenedThisLaunch={unopenedThisLaunch}
+            hidden={isHidden}
             onSelect={onSelect}
             onClose={onClose}
             onRename={onRename}
@@ -195,11 +199,12 @@ function VTabWrapper({
     );
 }
 
-export function VTabBar({ workspace, className }: VTabBarProps) {
+export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
+    const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
@@ -211,12 +216,22 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
     const [hoverResetVersion, setHoverResetVersion] = useState(0);
     const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
     const [isNewTabHovered, setIsNewTabHovered] = useState(false);
+    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const dragSourceRef = useRef<string | null>(null);
     const didResetHoverForDragRef = useRef(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const scrollAnimFrameRef = useRef<number | null>(null);
     const scrollDirectionRef = useRef<number>(0);
     const scrollSpeedRef = useRef<number>(0);
+    const hideHoverTimerRef = useRef<number | null>(null);
+    const cancelPendingHideHover = useCallback(() => {
+        if (hideHoverTimerRef.current != null) {
+            window.clearTimeout(hideHoverTimerRef.current);
+            hideHoverTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => () => cancelPendingHideHover(), [cancelPendingHideHover]);
 
     useEffect(() => {
         setOrderedTabIds(tabIds);
@@ -309,6 +324,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
         setDragTabId(null);
         setDropIndex(null);
         setDropLineTop(null);
+        cancelPendingHideHover();
     };
 
     const markTabOpened = useCallback((tabId: string) => {
@@ -320,6 +336,18 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
             markTabOpened(activeTabId);
         }
     }, [activeTabId, markTabOpened]);
+
+    const renderOrderedTabIds = useMemo(() => {
+        if (dragTabId != null) {
+            return orderedTabIds;
+        }
+        const pinnedTabIds = orderedTabIds.filter(
+            (tabId) => activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+        );
+        const pinnedTabIdSet = new Set(pinnedTabIds);
+        const hoverTabIds = orderedTabIds.filter((tabId) => !pinnedTabIdSet.has(tabId));
+        return [...pinnedTabIds, ...hoverTabIds];
+    }, [activeTabId, dragTabId, openedThisLaunchTabIds, orderedTabIds]);
 
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
@@ -366,6 +394,17 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
             <div
                 ref={scrollContainerRef}
                 className="relative flex min-h-0 flex-col overflow-y-auto"
+                onMouseEnter={() => {
+                    cancelPendingHideHover();
+                    setIsTabBarHovered(true);
+                }}
+                onMouseLeave={() => {
+                    cancelPendingHideHover();
+                    hideHoverTimerRef.current = window.setTimeout(() => {
+                        hideHoverTimerRef.current = null;
+                        setIsTabBarHovered(false);
+                    }, 2000);
+                }}
                 onDragOver={(event) => {
                     event.preventDefault();
                     updateScrollFromDragY(event.clientY);
@@ -382,76 +421,84 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                     clearDragState();
                 }}
             >
-                {orderedTabIds.map((tabId, index) => {
+                {renderOrderedTabIds.map((tabId, index) => {
                     const isActive = tabId === activeTabId;
                     const isHovered = tabId === hoveredTabId;
-                    const isLast = index === orderedTabIds.length - 1;
-                    const nextTabId = orderedTabIds[index + 1];
+                    const isLast = index === renderOrderedTabIds.length - 1;
+                    const nextTabId = renderOrderedTabIds[index + 1];
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
+                    const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
+                    const isHidden = !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null;
+                    if (isHidden) {
+                        return null;
+                    }
                     return (
-                        <VTabWrapper
-                            key={`${tabId}:${hoverResetVersion}`}
-                            tabId={tabId}
-                            active={isActive}
-                            showDivider={
-                                !isActive &&
-                                !isNextActive &&
-                                !isHovered &&
-                                !isNextHovered &&
-                                !(isLast && isNewTabHovered)
-                            }
-                            isDragging={dragTabId === tabId}
-                            isReordering={dragTabId != null}
-                            hoverResetVersion={hoverResetVersion}
-                            index={index}
-                            onSelect={() => {
-                                markTabOpened(tabId);
-                                env.electron.setActiveTab(tabId);
-                            }}
-                            onClose={() =>
-                                fireAndForget(async () => {
-                                    if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
-                                        return;
-                                    }
-                                    await env.electron.closeTab(workspace.oid, tabId, false);
-                                })
-                            }
-                            onRename={(newName) =>
-                                fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
-                            }
-                            onDragStart={(event) => {
-                                didResetHoverForDragRef.current = false;
-                                dragSourceRef.current = tabId;
-                                event.dataTransfer.effectAllowed = "move";
-                                event.dataTransfer.setData("text/plain", tabId);
-                                setDragTabId(tabId);
-                                setDropIndex(index);
-                                setDropLineTop(event.currentTarget.offsetTop);
-                            }}
-                            onDragOver={(event) => {
-                                event.preventDefault();
-                                const rect = event.currentTarget.getBoundingClientRect();
-                                const relativeY = event.clientY - rect.top;
-                                const midpoint = event.currentTarget.offsetHeight / 2;
-                                const insertBefore = relativeY < midpoint;
-                                setDropIndex(insertBefore ? index : index + 1);
-                                setDropLineTop(
-                                    insertBefore
-                                        ? event.currentTarget.offsetTop
-                                        : event.currentTarget.offsetTop + event.currentTarget.offsetHeight
-                                );
-                            }}
-                            onDrop={(event) => {
-                                event.preventDefault();
-                                if (dropIndex != null) {
-                                    reorder(dropIndex);
+                        <div key={tabId}>
+                            <VTabWrapper
+                                tabId={tabId}
+                                active={isActive}
+                                showDivider={
+                                    !isActive &&
+                                    !isNextActive &&
+                                    !isHovered &&
+                                    !isNextHovered &&
+                                    !(isLast && isNewTabHovered)
                                 }
-                                clearDragState();
-                            }}
-                            onDragEnd={clearDragState}
-                            onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
-                        />
+                                isDragging={dragTabId === tabId}
+                                isReordering={dragTabId != null}
+                                hoverResetVersion={hoverResetVersion}
+                                hidden={false}
+                                index={index}
+                                onSelect={() => {
+                                    markTabOpened(tabId);
+                                    env.electron.setActiveTab(tabId);
+                                }}
+                                onClose={() =>
+                                    fireAndForget(async () => {
+                                        if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                                            return;
+                                        }
+                                        await env.electron.closeTab(workspace.oid, tabId, false);
+                                    })
+                                }
+                                onRename={(newName) =>
+                                    fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
+                                }
+                                onDragStart={(event) => {
+                                    didResetHoverForDragRef.current = false;
+                                    dragSourceRef.current = tabId;
+                                    event.dataTransfer.effectAllowed = "move";
+                                    event.dataTransfer.setData("text/plain", tabId);
+                                    setDragTabId(tabId);
+                                    setDropIndex(index);
+                                    setDropLineTop(event.currentTarget.offsetTop);
+                                    cancelPendingHideHover();
+                                }}
+                                onDragOver={(event) => {
+                                    event.preventDefault();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    const relativeY = event.clientY - rect.top;
+                                    const midpoint = event.currentTarget.offsetHeight / 2;
+                                    const insertBefore = relativeY < midpoint;
+                                    setDropIndex(insertBefore ? index : index + 1);
+                                    setDropLineTop(
+                                        insertBefore
+                                            ? event.currentTarget.offsetTop
+                                            : event.currentTarget.offsetTop + event.currentTarget.offsetHeight
+                                    );
+                                }}
+                                onDrop={(event) => {
+                                    event.preventDefault();
+                                    if (dropIndex != null) {
+                                        reorder(dropIndex);
+                                    }
+                                    clearDragState();
+                                }}
+                                onDragEnd={clearDragState}
+                                onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
+                            />
+                        </div>
                     );
                 })}
                 {dragTabId != null && dropIndex != null && dropLineTop != null && (

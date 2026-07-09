@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Snorkeling — DefaultCheckButton 样式探索</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --foreground: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.06);
+    --hover: rgba(255, 255, 255, 0.1);
+    --hoverbg: rgba(255, 255, 255, 0.2);
+    --surface: rgba(255, 255, 255, 0.06);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --modalbg: #2a2a2a;
+    --claude: #cc685c;
+    --codex: #74a7cb;
+    --gemini: #8e7cc3;
+    --opencode: #e0b956;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #1a1b1a;
+    color: var(--foreground);
+    font-family: "Inter", -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { padding: 32px 40px; display: flex; flex-direction: column; gap: 40px; }
+  .section-label { font-size: 10px; color: var(--accent); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+  .row { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* ===== 弹窗框架 ===== */
+  .fw {
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    background: rgba(30, 31, 30, 0.75);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+    overflow: hidden;
+    width: 440px;
+  }
+  .fw-head { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between; }
+  .fw-head .title { font-size: 12px; font-weight: 600; }
+
+  .fw-profile { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .fw-profile-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 8px; }
+
+  /* chips — 复用方案 D */
+  .chips { display: flex; flex-wrap: wrap; gap: 2px; }
+  .chips .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 10px 0 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    border: none; background: transparent;
+    transition: background 0.12s;
+  }
+  .chips .chip:hover { background: var(--surface-soft); }
+  .chips .chip.selected { background: var(--surface); }
+  .chips .chip .dot { width: 7px; height: 7px; border-radius: 50%; opacity: 0.5; transition: opacity 0.12s, transform 0.12s; }
+  .chips .chip:hover .dot { opacity: 0.8; }
+  .chips .chip.selected .dot { opacity: 1; transform: scale(1.15); }
+  .chips .chip .lbl { color: var(--muted); transition: color 0.12s; }
+  .chips .chip:hover .lbl { color: var(--secondary); }
+  .chips .chip.selected .lbl { color: var(--foreground); }
+
+  /* ===== DefaultCheckButton 方案 ===== */
+
+  /* 当前 */
+  .check-a-btn {
+    width: 20px; height: 20px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; border: none; background: transparent;
+    transition: opacity 0.12s;
+    opacity: 0; border-radius: 3px;
+  }
+  .check-a-btn.checked { opacity: 1; color: var(--accent); }
+  .check-a-btn .box { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.25); display: block; }
+  .chips .chip:hover .check-a-btn:not(.checked) { opacity: 1; }
+
+  /* B: 圆点 toggle */
+  .check-b-btn {
+    width: 18px; height: 18px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; border: none; background: transparent;
+    opacity: 0; transition: opacity 0.12s;
+    border-radius: 50%;
+  }
+  .check-b-btn.checked { opacity: 1; }
+  .check-b-btn .dot-off { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); display: block; }
+  .check-b-btn .dot-on { width: 8px; height: 8px; border-radius: 50%; display: block; }
+  .chips .chip:hover .check-b-btn:not(.checked) { opacity: 1; }
+
+  /* C: 星形标记 */
+  .check-c-btn {
+    width: 18px; height: 18px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; border: none; background: transparent;
+    opacity: 0; transition: opacity 0.12s, color 0.12s;
+    border-radius: 4px; font-size: 10px;
+    color: var(--muted);
+  }
+  .check-c-btn.checked { opacity: 1; color: var(--accent); }
+  .check-c-btn .star-off { font-size: 11px; color: rgba(255,255,255,0.15); }
+  .chips .chip:hover .check-c-btn:not(.checked) { opacity: 0.6; }
+  .check-c-btn:not(.checked):hover { opacity: 1 !important; color: var(--secondary); }
+
+  /* D: 微型 accent badge (推荐) */
+  .check-d-btn {
+    width: 18px; height: 18px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; border: none;
+    border-radius: 4px; font-size: 8px;
+    opacity: 0; transition: opacity 0.12s, background 0.12s;
+    background: transparent;
+    color: var(--accent);
+  }
+  .check-d-btn.checked { opacity: 1; background: rgba(88,193,66,0.1); }
+  .check-d-btn:not(.checked) .empty { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.12); display: block; }
+  .chips .chip:hover .check-d-btn:not(.checked) { opacity: 1; }
+  .check-d-btn:not(.checked):hover { background: rgba(255,255,255,0.05); }
+  .check-d-btn:not(.checked):hover .empty { border-color: rgba(255,255,255,0.25); }
+
+  .annotation {
+    font-size: 11px; color: var(--muted); line-height: 1.7;
+    max-width: 280px; padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+  }
+  .annotation .hl { color: var(--accent); font-weight: 600; }
+
+  .variant-label { font-size: 10px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .variant-label .tag { font-size: 9px; padding: 1px 6px; border-radius: 4px; background: rgba(88,193,66,0.1); color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+  .variant-label .tag.current { background: rgba(204,104,92,0.1); color: var(--claude); }
+  .variant-label .tag.rec { background: rgba(88,193,66,0.15); color: var(--accent); font-weight: 600; }
+
+  .demo-row { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: rgba(255,255,255,0.03); border-radius: 8px; width: fit-content; }
+
+  .demo-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 10px 0 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 500;
+    background: var(--surface);
+    color: var(--foreground);
+  }
+  .demo-chip .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div>
+    <span style="font-size: 15px; font-weight: 700;">DefaultCheckButton · 四种方案对比</span>
+    <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">在 Agent type chip 和 路径列表中的「设为默认」勾选框</div>
+  </div>
+
+  <!-- A: 当前 -->
+  <div>
+    <div class="variant-label"><span class="tag current">A · 当前</span> w-20px 勾号 / checkbox</div>
+    <div class="row">
+      <div class="fw" style="width: 380px;">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips">
+            <div class="chip selected">
+              <span class="dot" style="background:var(--codex)"></span>
+              <span class="lbl">Codex</span>
+              <button class="check-a-btn checked"><i class="fa-solid fa-check"></i></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--claude)"></span>
+              <span class="lbl">Claude</span>
+              <button class="check-a-btn"><span class="box"></span></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--gemini)"></span>
+              <span class="lbl">Gemini</span>
+              <button class="check-a-btn"><span class="box"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>当前方案：</b><br>
+        • 选中: green 勾号 + 无背景<br>
+        • 未选中: <code>14px</code> 空心框 + 细边框<br>
+        • hover 前完全隐藏<br>
+        • 问题: <span class="hl">选中无背景</span>，勾号单薄，空框太显眼
+      </div>
+    </div>
+  </div>
+
+  <!-- B: 圆点 -->
+  <div>
+    <div class="variant-label"><span class="tag">B</span> radio 风格 — 实心/空心圆点</div>
+    <div class="row">
+      <div class="fw" style="width: 380px;">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips">
+            <div class="chip selected">
+              <span class="dot" style="background:var(--codex)"></span>
+              <span class="lbl">Codex</span>
+              <button class="check-b-btn checked"><span class="dot-on" style="background:var(--accent)"></span></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--claude)"></span>
+              <span class="lbl">Claude</span>
+              <button class="check-b-btn"><span class="dot-off"></span></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--gemini)"></span>
+              <span class="lbl">Gemini</span>
+              <button class="check-b-btn"><span class="dot-off"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>圆点方案：</b><br>
+        • 选中: 实心 accent 圆点 8px<br>
+        • 未选中: 空心圆线框 10px<br>
+        • 与左边的 Agent type color dot <span class="hl">视觉冲突</span><br>
+        • 两个圆点并排容易混淆含义
+      </div>
+    </div>
+  </div>
+
+  <!-- C: 星形 -->
+  <div>
+    <div class="variant-label"><span class="tag">C</span> ⭐ 星形标记 — Bookmark 风格</div>
+    <div class="row">
+      <div class="fw" style="width: 380px;">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips">
+            <div class="chip selected">
+              <span class="dot" style="background:var(--codex)"></span>
+              <span class="lbl">Codex</span>
+              <button class="check-c-btn checked"><i class="fa-solid fa-star"></i></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--claude)"></span>
+              <span class="lbl">Claude</span>
+              <button class="check-c-btn"><span class="star-off"><i class="fa-regular fa-star"></i></span></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--gemini)"></span>
+              <span class="lbl">Gemini</span>
+              <button class="check-c-btn"><span class="star-off"><i class="fa-regular fa-star"></i></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>星形方案：</b><br>
+        • 选中: 实心 accent ⭐<br>
+        • 未选中: 空心 ☆ (muted)<br>
+        • 语义清晰 — "标记为收藏/默认"<br>
+        • 与功能匹配度好<br>
+        • 缺点: 星形略大，可能喧宾夺主
+      </div>
+    </div>
+  </div>
+
+  <!-- D: 推荐 -->
+  <div>
+    <div class="variant-label"><span class="tag rec">D · 推荐</span> 微型 accent badge — 轻量底色 + 勾号</div>
+    <div class="row">
+      <div class="fw" style="width: 380px;">
+        <div class="fw-head"><span class="title">New Agent</span></div>
+        <div class="fw-profile">
+          <div class="fw-profile-label">Agent Type</div>
+          <div class="chips">
+            <div class="chip selected">
+              <span class="dot" style="background:var(--codex)"></span>
+              <span class="lbl">Codex</span>
+              <button class="check-d-btn checked"><i class="fa-solid fa-check"></i></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--claude)"></span>
+              <span class="lbl">Claude</span>
+              <button class="check-d-btn"><span class="empty"></span></button>
+            </div>
+            <div class="chip">
+              <span class="dot" style="background:var(--gemini)"></span>
+              <span class="lbl">Gemini</span>
+              <button class="check-d-btn"><span class="empty"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>推荐方案：</b><br>
+        • 选中: <span class="hl">绿色微背景</span> + 白色勾号 18px<br>
+        • 未选中: 极小空心框 10px (几乎不可见)<br>
+        • 未选中 hover: 框放大变亮 + 浅背景<br>
+        • 选中时像一个小 <span class="hl">badge/pill</span>，精致不抢眼<br>
+        • 语义直接: "已设为默认" = 绿色标记
+      </div>
+    </div>
+  </div>
+
+  <!-- 路径列表中的效果预览 -->
+  <div>
+    <div class="section-label">路径列表中的效果</div>
+    <div class="row">
+      <div class="fw" style="width: 400px;">
+        <div class="fw-head"><span class="title">New Terminal</span></div>
+        <div style="padding: 4px 8px;">
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:rgba(88,193,66,0.12);position:relative;">
+            <span style="position:absolute;left:-6px;top:5px;bottom:5px;width:2px;background:var(--accent);border-radius:2px;"></span>
+            <div style="width:16px;text-align:center;color:var(--muted);font-size:12px;"><i class="fa-regular fa-terminal"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;color:var(--foreground);">~/code/snorkeling</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:1px;display:flex;gap:4px;">
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,0.04);text-transform:uppercase;">terminal</span>
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,0.04);">local</span>
+              </div>
+            </div>
+            <button class="check-d-btn checked" style="opacity:1;"><i class="fa-solid fa-check"></i></button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;">
+            <div style="width:16px;text-align:center;color:var(--muted);font-size:12px;"><i class="fa-regular fa-globe"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;color:var(--foreground);">/var/log</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:1px;display:flex;gap:4px;">
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,0.04);text-transform:uppercase;">terminal</span>
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(116,167,203,0.1);color:var(--codex);">SSH: dev</span>
+              </div>
+            </div>
+            <button class="check-d-btn"><span class="empty"></span></button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;">
+            <div style="width:16px;text-align:center;color:var(--muted);font-size:12px;"><i class="fa-regular fa-house"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;color:var(--foreground);">~</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:1px;display:flex;gap:4px;">
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,0.04);text-transform:uppercase;">home</span>
+                <span style="font-size:9px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,0.04);">local</span>
+              </div>
+            </div>
+            <button class="check-d-btn"><span class="empty"></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="annotation">
+        <b>路径列表中方案 D 的效果：</b><br>
+        • 选中项: 绿色微背景 badge<br>
+        • 未选中项: 极小空心框<br>
+        • 行 hover → 框可见<br>
+        • 不会与 <span class="hl">accent indicator bar</span> 和选中背景冲突
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

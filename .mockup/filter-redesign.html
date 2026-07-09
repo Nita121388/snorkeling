@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sessions — filter (Apple/Material, light)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #1f201f;          /* slightly deeper for material surface separation */
+    --surface: #262826;
+    --surface-2: #2c2e2c;
+    --primary: #f5f6f4;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-soft: rgba(88,193,66,0.14);
+    --border: rgba(255,255,255,0.10);
+    --border-soft: rgba(255,255,255,0.06);
+    --hover: rgba(255,255,255,0.06);
+    --chipsurface: rgba(255,255,255,0.05);
+    --track: rgba(255,255,255,0.06);
+    --knob: #343634;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #1a1b1a; color: var(--primary); font-family: -apple-system, "SF Pro Text", "Inter", "Segoe UI", sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .stage { padding: 26px 28px; display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; background: #1a1b1a; }
+  .col { width: 366px; background: var(--bg); border-radius: 12px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+  .col-label { font-size: 11px; color: var(--accent); margin: 0 0 8px 2px; font-weight: 600; }
+
+  /* header */
+  .header { padding: 12px 14px 10px; }
+  .search-row { display: flex; align-items: center; gap: 8px; }
+  .search { position: relative; flex: 1; min-width: 0; background: var(--track); border-radius: 9px; height: 32px; display: flex; align-items: center; }
+  .search:focus-within { background: rgba(255,255,255,0.09); }
+  .search i { margin: 0 9px; color: var(--muted); font-size: 12px; }
+  .search input { background: transparent; border: none; outline: none; color: var(--primary); font-size: 13px; width: 100%; padding-right: 8px; }
+  .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border-radius: 8px; cursor: pointer; border: none; background: transparent; font-size: 12px; }
+  .icon-btn:hover { background: var(--hover); color: var(--primary); }
+  .filter-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .spacer { flex: 1; }
+
+  /* Apple-style segmented control: track + raised knob */
+  .seg-track { display: inline-flex; background: var(--track); border-radius: 9px; padding: 2px; position: relative; }
+  .seg { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; padding: 0 11px; font-size: 12px; color: var(--muted); cursor: pointer; border: none; background: transparent; border-radius: 7px; position: relative; z-index: 1; transition: color .12s; }
+  .seg:hover { color: var(--secondary); }
+  .seg.active { background: var(--knob); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04); }
+  .seg-3 .seg { flex: 1; }
+  .seg-icon .seg { width: 30px; padding: 0; }
+  .row-hint { font-size: 11px; color: var(--secondary); }
+
+  .filters-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; background: var(--track); border: none; border-radius: 9px; color: var(--secondary); font-size: 12px; cursor: pointer; }
+  .filters-btn:hover { background: rgba(255,255,255,0.09); color: var(--primary); }
+  .filters-btn.active { color: var(--primary); }
+  .filters-btn .count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #0c1a08; font-size: 10px; font-weight: 700; }
+
+  .sort-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; background: var(--track); border: none; border-radius: 9px; color: var(--secondary); font-size: 12px; cursor: pointer; }
+  .sort-btn:hover { background: rgba(255,255,255,0.09); color: var(--primary); }
+
+  /* filter panel — card surface, full-bleed separators */
+  .card { margin: 10px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.18); }
+  .panel { padding: 8px 12px 10px; }
+  .panel-head { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 6px; }
+  .broom { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border-radius: 7px; cursor: pointer; border: none; background: transparent; font-size: 12px; }
+  .broom:hover { background: var(--hover); color: var(--accent); }
+  .frow { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 0; }
+  .frow + .frow { border-top: 1px solid var(--border-soft); }
+  .lead { width: 15px; text-align: center; color: var(--muted); font-size: 12px; flex-shrink: 0; }
+
+  .date-track { display: inline-flex; background: var(--track); border-radius: 9px; padding: 2px; flex: 1; }
+  .dpreset { height: 26px; padding: 0 12px; border: none; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: 7px; position: relative; z-index: 1; }
+  .dpreset:hover { color: var(--secondary); }
+  .dpreset.active { background: var(--knob); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+
+  .custom-row { padding: 7px 0 2px; }
+  .date-input { height: 28px; background: var(--track); border: none; border-radius: 8px; color: var(--primary); font-size: 12px; padding: 0 10px; width: 0; flex: 1; min-width: 92px; color-scheme: dark; }
+  .date-input:focus { outline: none; background: rgba(255,255,255,0.09); }
+  .range-sep { color: var(--muted); font-size: 11px; }
+
+  .tag-pick { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; min-width: 0; }
+  .tchip { display: inline-flex; height: 25px; align-items: center; gap: 5px; border: none; border-radius: 8px; padding: 0 9px; font-size: 11.5px; background: var(--chipsurface); color: var(--secondary); cursor: pointer; }
+  .tchip:hover { background: rgba(255,255,255,0.09); color: var(--primary); }
+  .tchip.on { background: var(--accent-soft); color: var(--accent); }
+  .tchip .hash { opacity: .5; }
+  .tchip .cnt { font-size: 9px; background: rgba(255,255,255,0.10); padding: 1px 5px; border-radius: 999px; opacity: .85; }
+
+  /* active chips — no Clear text (broom handles it) */
+  .active-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px; align-items: center; background: var(--surface); border-top: 1px solid var(--border-soft); }
+  .achip { display: inline-flex; height: 23px; align-items: center; gap: 5px; border: none; border-radius: 999px; padding: 0 5px 0 9px; font-size: 11px; background: var(--accent-soft); color: var(--accent); }
+  .achip .x { width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; cursor: pointer; font-size: 8px; opacity: .65; }
+  .achip .x:hover { opacity: 1; background: rgba(255,255,255,0.12); }
+
+  .status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 14px; font-size: 11px; color: var(--muted); }
+
+  /* list — full-bleed separators, no boxes */
+  .rows { background: var(--bg); }
+  .row { padding: 10px 14px; border-top: 1px solid var(--border-soft); }
+  .row:first-child { border-top: none; }
+  .row.sel { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .row .t { font-size: 13.5px; font-weight: 540; }
+  .row .m { font-size: 11px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+  .row .m .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  .note { font-size: 11px; color: var(--muted); line-height: 1.55; margin-top: 8px; max-width: 366px; }
+  .note b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ===== STATE 1: collapsed ===== -->
+  <div>
+    <div class="col-label">① Collapsed</div>
+    <div class="col">
+      <div class="header">
+        <div class="search-row">
+          <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search" /></div>
+          <button class="icon-btn" title="Collapse"><i class="fa-solid fa-chevron-left"></i></button>
+        </div>
+        <div class="filter-row">
+          <div class="seg-track">
+            <button class="seg active">All</button>
+            <button class="seg"><span style="width:7px;height:7px;border-radius:50%;background:#74a7cb;display:inline-block"></span>Codex</button>
+            <button class="seg"><span style="width:7px;height:7px;border-radius:50%;background:#cc685c;display:inline-block"></span>Claude</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="filters-btn"><i class="fa-solid fa-sliders" style="font-size:11px"></i>Filters</button>
+          <button class="sort-btn"><i class="fa-solid fa-arrow-down-wide-short" style="font-size:11px"></i>Newest</button>
+        </div>
+      </div>
+      <div class="status-row"><span><span class="num">142</span> sessions</span><span>5m ago</span></div>
+      <div class="rows">
+        <div class="row sel"><div class="t">Refactor session restore flow</div><div class="m"><span class="dot" style="background:#cc685c"></span>claude · <span class="num">5m ago</span> · <span class="num">24 msgs</span></div></div>
+        <div class="row"><div class="t">Fix preview directory navigation</div><div class="m"><span class="dot" style="background:#74a7cb"></span>codex · <span class="num">1h ago</span> · <span class="num">18 msgs</span></div></div>
+        <div class="row"><div class="t">Polish agent session workflows</div><div class="m"><span class="dot" style="background:#cc685c"></span>claude · <span class="num">3h ago</span> · <span class="num">42 msgs</span></div></div>
+      </div>
+    </div>
+    <div class="note">轨道式分段控件（Apple 风）；列表用<b>全出血分隔线</b>无方框；选中行左侧 2px accent 条。</div>
+  </div>
+
+  <!-- ===== STATE 2: expanded ===== -->
+  <div>
+    <div class="col-label">② Expanded</div>
+    <div class="col">
+      <div class="header">
+        <div class="search-row">
+          <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search" /></div>
+          <button class="icon-btn" title="Collapse"><i class="fa-solid fa-chevron-left"></i></button>
+        </div>
+        <div class="filter-row">
+          <div class="seg-track">
+            <button class="seg active">All</button>
+            <button class="seg"><span style="width:7px;height:7px;border-radius:50%;background:#74a7cb;display:inline-block"></span>Codex</button>
+            <button class="seg"><span style="width:7px;height:7px;border-radius:50%;background:#cc685c;display:inline-block"></span>Claude</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="filters-btn active"><i class="fa-solid fa-sliders" style="font-size:11px"></i><span class="count num">3</span></button>
+          <button class="sort-btn"><i class="fa-solid fa-arrow-down-wide-short" style="font-size:11px"></i>Newest</button>
+        </div>
+      </div>
+
+      <!-- panel + active chips as one rounded card -->
+      <div class="card">
+        <div class="panel">
+          <div class="panel-head">
+            <button class="broom" title="Clear all filters"><i class="fa-solid fa-broom"></i></button>
+          </div>
+          <div class="frow">
+            <i class="fa-solid fa-star lead"></i>
+            <div class="seg-track seg-icon">
+              <button class="seg" title="All"><i class="fa-solid fa-list" style="font-size:11px"></i></button>
+              <button class="seg active" title="Starred"><i class="fa-solid fa-star" style="font-size:11px"></i></button>
+              <button class="seg" title="Unstarred"><i class="fa-regular fa-star" style="font-size:11px"></i></button>
+            </div>
+            <span class="row-hint">Starred</span>
+          </div>
+          <div class="frow">
+            <i class="fa-regular fa-calendar lead"></i>
+            <div class="date-track">
+              <button class="dpreset">All</button>
+              <button class="dpreset active">Today</button>
+              <button class="dpreset">7d</button>
+              <button class="dpreset">30d</button>
+              <button class="dpreset">Custom</button>
+            </div>
+          </div>
+          <div class="frow custom-row">
+            <i class="fa-regular fa-calendar lead"></i>
+            <input class="date-input" type="date" value="2026-06-20" />
+            <span class="range-sep">→</span>
+            <input class="date-input" type="date" value="2026-06-25" />
+          </div>
+          <div class="frow">
+            <i class="fa-solid fa-tag lead"></i>
+            <div class="tag-pick">
+              <button class="tchip on"><span class="hash">#</span>refactor <span class="cnt num">3</span></button>
+              <button class="tchip on"><span class="hash">#</span>windows <span class="cnt num">5</span></button>
+              <button class="tchip"><span class="hash">#</span>needs-test <span class="cnt num">2</span></button>
+              <button class="tchip"><span class="hash">#</span>paths <span class="cnt num">7</span></button>
+              <button class="tchip"><span class="hash">#</span>bug <span class="cnt num">11</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="active-chips">
+          <span class="achip"><i class="fa-solid fa-star" style="font-size:9px"></i>Starred <span class="x"><i class="fa-solid fa-xmark"></i></span></span>
+          <span class="achip">Today <span class="x"><i class="fa-solid fa-xmark"></i></span></span>
+          <span class="achip"><span class="hash" style="opacity:.5">#</span>refactor <span class="x"><i class="fa-solid fa-xmark"></i></span></span>
+          <span class="achip"><span class="hash" style="opacity:.5">#</span>windows <span class="x"><i class="fa-solid fa-xmark"></i></span></span>
+        </div>
+      </div>
+
+      <div class="status-row"><span><span class="num">12</span> of <span class="num">142</span></span><span>5m ago</span></div>
+      <div class="rows">
+        <div class="row sel"><div class="t">Refactor session restore flow</div><div class="m"><span class="dot" style="background:#cc685c"></span>claude · <span class="num">5m ago</span> · <span class="num">24 msgs</span></div></div>
+        <div class="row"><div class="t">Background refresh for summaries</div><div class="m"><span class="dot" style="background:#74a7cb"></span>codex · <span class="num">2h ago</span> · <span class="num">9 msgs</span></div></div>
+      </div>
+    </div>
+    <div class="note"><b>扫把图标</b>在面板右上角，一键清空所有筛选；活动芯片条不再有"Clear"文字，单独删除靠每个芯片的 ×。accent 收敛到计数徽标 / 选中 tag / 活动芯片 / 选中行条。</div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,6 +43,20 @@ var (
 	agentStatusTtlMs     int64
 	agentStatusJSON      bool
 )
+
+func agentStatusDebugLog(format string, args ...any) {
+	baseDir := os.Getenv("LOCALAPPDATA")
+	if baseDir == "" {
+		baseDir = os.TempDir()
+	}
+	file, err := os.OpenFile(filepath.Join(baseDir, "snorkeling-agentstatus-hook.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	values := append([]any{time.Now().Format(time.RFC3339Nano)}, args...)
+	_, _ = fmt.Fprintf(file, "%s wsh "+format+"\n", values...)
+}
 
 func init() {
 	rootCmd.AddCommand(agentStatusCmd)
@@ -111,15 +126,20 @@ func agentStatusRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if strings.EqualFold(report.State, agentstatus.StateRelease) {
 		report.Phase = agentstatus.PhaseNone
 	}
+	agentStatusDebugLog("start block=%q provider=%q state=%q phase=%q source=%q session=%q", report.BlockId, report.Provider, report.State, report.Phase, report.Source, report.SessionId)
 	normalized, err := agentstatus.SanitizeReport(report, os.Getenv("WAVETERM_BLOCKID"))
 	if err != nil {
+		agentStatusDebugLog("sanitize-error block=%q provider=%q state=%q phase=%q err=%v", report.BlockId, report.Provider, report.State, report.Phase, err)
 		return err
 	}
 
+	agentStatusDebugLog("rpc-call block=%q provider=%q state=%q phase=%q source=%q seq=%d", normalized.BlockId, normalized.Provider, normalized.State, normalized.Phase, normalized.Source, normalized.Seq)
 	status, err := wshclient.AgentStatusCommand(RpcClient, normalized, &wshrpc.RpcOpts{Timeout: 2000})
 	if err != nil {
+		agentStatusDebugLog("rpc-error block=%q provider=%q err=%v", normalized.BlockId, normalized.Provider, err)
 		return fmt.Errorf("reporting agent status: %w", err)
 	}
+	agentStatusDebugLog("rpc-ok block=%q provider=%q status-nil=%t", normalized.BlockId, normalized.Provider, status == nil)
 	if agentStatusJSON {
 		barr, err := json.Marshal(status)
 		if err != nil {

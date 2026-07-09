@@ -42,6 +42,9 @@ const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
 const SearchAutoSubmitMs = 250;
+const SearchClickDelayMs = 350;
+const SearchRevealDelayMs = 2000;
+const SearchRevealAfterRenderMs = 50;
 
 function normalizeRootLabel(path: string): string {
     if (path === "/" || path === "~") {
@@ -127,6 +130,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
     const treeRef = useRef<TreeViewRef>(null);
     const lastRevealSeqRef = useRef<number | null>(null);
+    const searchClickTimerRef = useRef<number | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
@@ -157,7 +161,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const draftSearchQuery = searchInput.trim();
     const submittedSearchQuery = searchQuery.trim();
     const searchInputPending = draftSearchQuery !== submittedSearchQuery;
-    const canSubmitSearch = draftSearchQuery.length >= SearchMinLength && !searching;
     const route = useMemo(() => makeConnRoute(connection), [connection]);
     const { refs, floatingStyles, context } = useFloating({
         open: !!entryManagerProps,
@@ -273,15 +276,26 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             return;
         }
         lastRevealSeqRef.current = revealSeq;
-        setSearchActive(false);
-        fireAndForget(async () => {
-            const revealed = await treeRef.current?.revealId(revealPath);
-            if (!revealed) {
-                window.setTimeout(() => {
-                    fireAndForget(() => treeRef.current?.revealId(revealPath));
-                }, 150);
+        let revealAfterRenderTimer: number | null = null;
+        const revealTimer = window.setTimeout(() => {
+            setSearchActive(false);
+            revealAfterRenderTimer = window.setTimeout(() => {
+                fireAndForget(async () => {
+                    const revealed = await treeRef.current?.revealId(revealPath);
+                    if (!revealed) {
+                        window.setTimeout(() => {
+                            fireAndForget(() => treeRef.current?.revealId(revealPath));
+                        }, 150);
+                    }
+                });
+            }, SearchRevealAfterRenderMs);
+        }, SearchRevealDelayMs);
+        return () => {
+            window.clearTimeout(revealTimer);
+            if (revealAfterRenderTimer != null) {
+                window.clearTimeout(revealAfterRenderTimer);
             }
-        });
+        };
     }, [blockData?.meta, setSearchActive]);
 
     useEffect(() => {
@@ -764,11 +778,39 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     }, [setErrorMsg, treeExpandingAll]);
 
     const openSearchPath = useCallback(
-        async (path: string, lineNumber?: number) => {
-            setSearchActive(false);
-            await openPathInPreview(path, { connection, lineNumber });
+        async (path: string, lineNumber?: number, openOptions?: { revealInTree?: boolean }) => {
+            await openPathInPreview(path, { connection, lineNumber, ...openOptions, revealInTreeBlockId: blockData?.id ?? null });
         },
-        [connection, setSearchActive]
+        [connection, blockData?.id]
+    );
+
+    const clearSearchClickTimer = useCallback(() => {
+        if (searchClickTimerRef.current == null) {
+            return;
+        }
+        window.clearTimeout(searchClickTimerRef.current);
+        searchClickTimerRef.current = null;
+    }, []);
+
+    useEffect(() => clearSearchClickTimer, [clearSearchClickTimer]);
+
+    const queueSearchSingleOpen = useCallback(
+        (path: string, lineNumber?: number) => {
+            clearSearchClickTimer();
+            searchClickTimerRef.current = window.setTimeout(() => {
+                searchClickTimerRef.current = null;
+                fireAndForget(() => openSearchPath(path, lineNumber, { revealInTree: false }));
+            }, SearchClickDelayMs);
+        },
+        [clearSearchClickTimer, openSearchPath]
+    );
+
+    const openSearchDouble = useCallback(
+        (path: string, lineNumber?: number) => {
+            clearSearchClickTimer();
+            fireAndForget(() => openSearchPath(path, lineNumber, { revealInTree: true }));
+        },
+        [clearSearchClickTimer, openSearchPath]
     );
 
     return (
@@ -914,20 +956,6 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
                                 className="min-w-0 flex-1 rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
                             />
-                            <button
-                                type="button"
-                                title="Search"
-                                disabled={!canSubmitSearch}
-                                onClick={submitSearch}
-                                className={clsx(
-                                    "flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md border border-white/10 text-[11px] transition-colors",
-                                    canSubmitSearch
-                                        ? "text-white hover:border-[var(--accent-color)] hover:bg-white/5"
-                                        : "cursor-default text-muted opacity-50"
-                                )}
-                            >
-                                <i className="fa-sharp fa-solid fa-magnifying-glass" />
-                            </button>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
                             <span>
@@ -985,9 +1013,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                 ? "bg-white/10"
                                                                 : "hover:bg-white/5"
                                                         )}
-                                                        onClick={() => {
-                                                            fireAndForget(() => openSearchPath(match.path));
-                                                        }}
+                                                        onClick={() => queueSearchSingleOpen(match.path)}
+                                                        onDoubleClick={() => openSearchDouble(match.path)}
                                                         onContextMenu={(event) =>
                                                             handleNameSearchResultContextMenu(event, match)
                                                         }
@@ -1078,11 +1105,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                                         ? "bg-white/10"
                                                                         : "hover:bg-white/5"
                                                                 )}
-                                                                onClick={() => {
-                                                                    fireAndForget(() =>
-                                                                        openSearchPath(match.path, match.linenumber)
-                                                                    );
-                                                                }}
+                                                                onClick={() => queueSearchSingleOpen(match.path)}
+                                                                onDoubleClick={() =>
+                                                                    openSearchDouble(match.path, match.linenumber)
+                                                                }
                                                                 onContextMenu={(event) =>
                                                                     handleContentSearchMatchContextMenu(event, match)
                                                                 }

@@ -141,7 +141,7 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		Project:    opts.Project,
 		Limit:      opts.Limit,
 		Refresh:    opts.Refresh,
-		MarkedOnly: false,
+		Marked:     "",
 		TagFilters: opts.TagFilters,
 	}, opts.Query)
 }
@@ -151,6 +151,11 @@ func (m *Manager) SearchCached(ctx context.Context, opts SearchOptions) ([]Sessi
 }
 
 func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, error) {
+	if !opts.Refresh {
+		if summaries, ok, err := m.cachedScanList(ctx, opts, query); ok || err != nil {
+			return summaries, err
+		}
+	}
 	summaries, errs := ScanSummaries(ctx, m.Providers)
 	if len(errs) > 0 && len(summaries) == 0 {
 		return nil, errs[0]
@@ -196,6 +201,104 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 	return limited, nil
 }
 
+func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, bool, error) {
+	if !m.summaryFileRefreshSupported() {
+		return nil, false, nil
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.cachedScanList sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+		return nil, false, nil
+	}
+	defer sqliteIdx.Close()
+	hasScan, scanErr := sqliteIdx.HasSummaryScan(ctx)
+	if scanErr != nil {
+		debugf("Manager.cachedScanList sqlite scan marker error path=%q err=%v", m.SQLitePath, scanErr)
+		return nil, false, nil
+	}
+	if !hasScan {
+		debugf("Manager.cachedScanList sqlite has no complete summary scan path=%q", m.SQLitePath)
+		return nil, false, nil
+	}
+	if errs := m.refreshChangedSummaries(ctx, sqliteIdx); len(errs) > 0 {
+		debugf("Manager.cachedScanList changed summary refresh errors=%d firstErr=%v", len(errs), errs[0])
+	}
+	listOpts := opts
+	if strings.TrimSpace(query) != "" {
+		listOpts.Limit = 0
+	}
+	summaries, err := sqliteIdx.List(ctx, listOpts)
+	if err != nil {
+		debugf("Manager.cachedScanList sqlite list error path=%q err=%v", m.SQLitePath, err)
+		return nil, false, nil
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query != "" {
+		filtered := summaries[:0]
+		for _, summary := range summaries {
+			if ctx.Err() != nil {
+				return nil, true, ctx.Err()
+			}
+			if summaryMatchesQuery(summary, query) {
+				filtered = append(filtered, summary)
+			}
+		}
+		summaries = limitSummaries(filtered, opts.Limit)
+	}
+	m.populateMessageCounts(ctx, summaries, false)
+	return summaries, true, nil
+}
+
+func (m *Manager) summaryFileRefreshSupported() bool {
+	for _, provider := range m.Providers {
+		if _, ok := provider.(SummaryFileProvider); !ok {
+			return false
+		}
+	}
+	return len(m.Providers) > 0
+}
+
+func (m *Manager) refreshChangedSummaries(ctx context.Context, sqliteIdx *SQLiteIndex) []error {
+	var summaries []SessionSummary
+	var errs []error
+	for _, provider := range m.Providers {
+		fileProvider, ok := provider.(SummaryFileProvider)
+		if !ok {
+			errs = append(errs, fmt.Errorf("provider %q does not support summary file refresh", provider.Source()))
+			continue
+		}
+		files, err := fileProvider.ListFiles(ctx)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := sqliteIdx.MarkMissingSourceFiles(ctx, provider.Source(), files); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		changedFiles, err := sqliteIdx.ChangedFiles(ctx, files)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, file := range changedFiles {
+			if ctx.Err() != nil {
+				errs = append(errs, ctx.Err())
+				break
+			}
+			summary, ok := fileProvider.ParseSummary(ctx, file)
+			if ok {
+				summaries = append(summaries, summary)
+			}
+		}
+	}
+	if len(summaries) == 0 {
+		return errs
+	}
+	_, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, false)
+	return append(errs, saveErrs...)
+}
+
 func (m *Manager) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagSummary, error) {
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr == nil && sqliteIdx != nil {
@@ -212,13 +315,13 @@ func (m *Manager) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagS
 		debugf("Manager.ListTags sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
 	}
 	sessions, err := m.ScanList(ctx, ListOptions{
-		Source:     opts.Source,
-		Project:    opts.Project,
-		Since:      opts.Since,
-		Before:     opts.Before,
-		MarkedOnly: opts.MarkedOnly,
-		Refresh:    opts.Refresh,
-		Limit:      0,
+		Source:  opts.Source,
+		Project: opts.Project,
+		Since:   opts.Since,
+		Before:  opts.Before,
+		Marked:  opts.Marked,
+		Refresh: opts.Refresh,
+		Limit:   0,
 	}, "")
 	if err != nil {
 		return nil, err

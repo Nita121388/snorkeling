@@ -6,6 +6,8 @@ import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
+import * as WOS from "@/store/wos";
 import { isBlank } from "@/util/util";
 import { useCallback, useState } from "react";
 
@@ -18,10 +20,11 @@ export function normalizeNoteDirectory(value: string | null | undefined): string
 }
 
 type NoteDirectoryModalProps = {
+    blockId?: string;
     initialDir?: string | null;
 };
 
-function NoteDirectoryModal({ initialDir }: NoteDirectoryModalProps) {
+function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
     const [noteDir, setNoteDir] = useState(normalizeNoteDirectory(initialDir));
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -35,15 +38,27 @@ function NoteDirectoryModal({ initialDir }: NoteDirectoryModalProps) {
         const normalizedDir = normalizeNoteDirectory(noteDir);
         setSaving(true);
         setError("");
-        void RpcApi.SetConfigCommand(TabRpcClient, {
-            [NoteDirectorySettingKey]: normalizedDir,
-        } as SettingsType)
+        const saveRequest = blockId
+            ? RpcApi.SetMetaCommand(TabRpcClient, {
+                  oref: WOS.makeORef("block", blockId),
+                  meta: {
+                      file: normalizedDir,
+                      [PreviewExplorerRootMetaKey]: normalizedDir,
+                      [PreviewDirectoryDisplayMetaKey]: "tree",
+                      "frame:title": "Note",
+                      icon: "note-sticky",
+                  } as MetaType,
+              })
+            : RpcApi.SetConfigCommand(TabRpcClient, {
+                  [NoteDirectorySettingKey]: normalizedDir,
+              } as SettingsType);
+        void saveRequest
             .then(() => modalsModel.popModal())
             .catch((nextError) => {
                 setError(nextError instanceof Error ? nextError.message : String(nextError));
             })
             .finally(() => setSaving(false));
-    }, [noteDir]);
+    }, [blockId, noteDir]);
 
     return (
         <Modal
@@ -60,7 +75,9 @@ function NoteDirectoryModal({ initialDir }: NoteDirectoryModalProps) {
             <div className="space-y-3 pr-7 text-primary">
                 <div className="space-y-1">
                     <div className="text-base font-semibold">Note Directory</div>
-                    <div className="text-xs text-secondary">Set the folder opened by the Note button.</div>
+                    <div className="text-xs text-secondary">
+                        {blockId ? "Set the folder opened by this Note block." : "Set the default Note folder."}
+                    </div>
                 </div>
                 <Input
                     value={noteDir}

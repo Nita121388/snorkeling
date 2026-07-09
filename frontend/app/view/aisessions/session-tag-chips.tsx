@@ -32,8 +32,8 @@ function SessionTagChips({
                         key={tag}
                         type="button"
                         className={cn(
-                            "inline-flex h-5 max-w-full items-center gap-1 rounded border px-1.5 text-[10px] leading-none",
-                            active ? "border-accent bg-accent/10 text-accent" : "border-border bg-bg/40 text-secondary",
+                            "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] leading-none cursor-pointer",
+                            active ? "bg-accent/10 text-accent" : "bg-surface-soft text-secondary",
                             clickable && "hover:bg-hover hover:text-primary"
                         )}
                         title={`#${tag}`}
@@ -47,8 +47,13 @@ function SessionTagChips({
                             }
                         }}
                     >
-                        <span className="truncate">#{tag}</span>
-                        {removable ? <i className="fa-sharp fa-solid fa-xmark text-[9px]" /> : null}
+                        <span className="truncate">
+                            <span className="opacity-50">#</span>
+                            {tag}
+                        </span>
+                        {removable ? (
+                            <i className="fa-sharp fa-solid fa-xmark text-[9px] opacity-60" />
+                        ) : null}
                     </button>
                 );
             })}

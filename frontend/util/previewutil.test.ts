@@ -115,4 +115,108 @@ describe("addOpenMenuItems", () => {
         expect(revealNativePath).toHaveBeenCalledWith("E:\\Code\\AD\\docs\\model.md");
         expect(openNativePath).toHaveBeenCalledWith("E:\\Code\\AD\\docs\\model.md");
     });
+
+    it("does not add a default-app action for previewable local files", async () => {
+        vi.resetModules();
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(menu, "local", {
+            path: "C:\\Users\\nita\\.ssh\\config",
+            dir: "C:\\Users\\nita\\.ssh",
+            isdir: false,
+            name: "config",
+            mimetype: "",
+            size: 128,
+        } as FileInfo);
+
+        expect(menu.some((item) => item.label === "Open File in Default Application")).toBe(false);
+    });
+
+    it("adds 'Open in Obsidian' for a local markdown file and runs the picker flow on click", async () => {
+        vi.resetModules();
+        const obsidianLoadMock = vi.fn(async () => []);
+        const obsidianPickerMock = vi.fn(async (): Promise<"obsidian" | "fallback_to_picker" | "no_button"> => "obsidian");
+        vi.doMock("@/app/view/preview/obsidian", () => ({
+            loadObsidianVaults: obsidianLoadMock,
+            openInObsidianWithPicker: obsidianPickerMock,
+            isOpenableForObsidian: (path: string, _mime?: string | null) => path.endsWith(".md"),
+        }));
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(menu, "local", {
+            path: "E:\\vault\\note.md",
+            dir: "E:\\vault",
+            isdir: false,
+            name: "note.md",
+            mimetype: "text/markdown",
+        } as FileInfo);
+
+        const obsidianItem = menu.find((item) => item.label === "Open in Obsidian");
+        expect(obsidianItem).toBeDefined();
+        await obsidianItem?.click?.();
+        expect(obsidianLoadMock).toHaveBeenCalledTimes(1);
+        expect(obsidianPickerMock).toHaveBeenCalledWith({ absPath: "E:\\vault\\note.md" });
+    });
+
+    it("omits 'Open in Obsidian' for markdown files on remote connections", async () => {
+        vi.resetModules();
+        vi.doMock("@/app/view/preview/obsidian", () => ({
+            loadObsidianVaults: vi.fn(async () => []),
+            openInObsidianWithPicker: vi.fn(async () => "obsidian"),
+            isOpenableForObsidian: (_path: string, _mime?: string | null) => true,
+        }));
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(menu, "ssh://host-a", {
+            path: "/srv/repo/README.md",
+            dir: "/srv/repo",
+            isdir: false,
+            name: "README.md",
+            mimetype: "text/markdown",
+        } as FileInfo);
+
+        expect(menu.some((item) => item.label === "Open in Obsidian")).toBe(false);
+    });
 });

@@ -30,15 +30,14 @@ func MergeSessionTags(existing []string, next []string) []string {
 }
 
 func ExtractSessionTagsFromNote(note string) (string, []string) {
+	note = strings.TrimSpace(note)
 	if !strings.Contains(note, "#") {
-		return strings.TrimSpace(note), nil
+		return note, nil
 	}
-	var out strings.Builder
 	var tags []string
 	for i := 0; i < len(note); {
 		if note[i] != '#' || i+1 >= len(note) || !tagBoundaryBefore(note, i) {
-			r, size := utf8.DecodeRuneInString(note[i:])
-			out.WriteRune(r)
+			_, size := utf8.DecodeRuneInString(note[i:])
 			i += size
 			continue
 		}
@@ -52,14 +51,13 @@ func ExtractSessionTagsFromNote(note string) (string, []string) {
 			tagEnd += size
 		}
 		if tagEnd == tagStart {
-			out.WriteByte(note[i])
 			i++
 			continue
 		}
 		tags = append(tags, note[tagStart:tagEnd])
 		i = tagEnd
 	}
-	return strings.Join(strings.Fields(out.String()), " "), NormalizeSessionTags(tags)
+	return note, NormalizeSessionTags(tags)
 }
 
 func tagBoundaryBefore(text string, idx int) bool {

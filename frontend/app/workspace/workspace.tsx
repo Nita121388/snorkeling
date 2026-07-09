@@ -13,7 +13,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { atoms, getApi, getSettingsKeyAtom } from "@/store/global";
 import { isMacOS } from "@/util/platformutil";
 import { useAtomValue } from "jotai";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
     ImperativePanelGroupHandle,
     ImperativePanelHandle,
@@ -58,6 +58,11 @@ const WorkspaceElem = memo(() => {
     const panelContainerRef = useRef<HTMLDivElement>(null);
     const aiPanelWrapperRef = useRef<HTMLDivElement>(null);
     const vtabPanelWrapperRef = useRef<HTMLDivElement>(null);
+    // Tracks whether the mouse is hovering over the entire App Header region
+    // (top TabBar row on Windows/Linux, left VTabBar sidebar on macOS).
+    // Used to expand hidden (not-opened-today) Types on header hover instead of
+    // requiring a hover over each specific Type.
+    const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
     // showLeftTabBar is passed as a seed value only; subsequent changes are handled by setShowLeftTabBar below.
     // Do NOT add showLeftTabBar as a dep here — re-registering refs on config changes would redundantly re-run commitLayouts.
@@ -109,7 +114,15 @@ const WorkspaceElem = memo(() => {
 
     return (
         <div className="flex flex-col w-full flex-grow overflow-hidden">
-            {!(showLeftTabBar && isMacOS()) && <TabBar key={ws.oid} workspace={ws} noTabs={showLeftTabBar} />}
+            {!(showLeftTabBar && isMacOS()) && (
+                <TabBar
+                    key={ws.oid}
+                    workspace={ws}
+                    noTabs={showLeftTabBar}
+                    headerHovered={isHeaderHovered}
+                    onHeaderHoverChange={setIsHeaderHovered}
+                />
+            )}
             {showLeftTabBar && isMacOS() && <MacOSTabBarSpacer />}
             <div ref={panelContainerRef} className="flex flex-row flex-grow overflow-hidden">
                 <ErrorBoundary key={tabId}>
@@ -131,8 +144,13 @@ const WorkspaceElem = memo(() => {
                                     order={0}
                                     className="overflow-hidden"
                                 >
-                                    <div ref={vtabPanelWrapperRef} className="w-full h-full">
-                                        {showLeftTabBar && <VTabBar workspace={ws} />}
+                                    <div
+                                        ref={vtabPanelWrapperRef}
+                                        className="w-full h-full"
+                                        onMouseEnter={() => setIsHeaderHovered(true)}
+                                        onMouseLeave={() => setIsHeaderHovered(false)}
+                                    >
+                                        {showLeftTabBar && <VTabBar workspace={ws} headerHovered={isHeaderHovered} />}
                                     </div>
                                 </Panel>
                                 <PanelResizeHandle className={innerHandleClass} />

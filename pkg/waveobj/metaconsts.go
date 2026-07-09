@@ -77,6 +77,8 @@ const (
 	MetaKey_AiFileDiffChatId                 = "aifilediff:chatid"
 	MetaKey_AiFileDiffToolCallId             = "aifilediff:toolcallid"
 
+	MetaKey_AgentDefaultLaunchTarget         = "agent:defaultlaunchtarget"
+
 	MetaKey_EditorClear                      = "editor:*"
 	MetaKey_EditorMinimapEnabled             = "editor:minimapenabled"
 	MetaKey_EditorStickyScrollEnabled        = "editor:stickyscrollenabled"
@@ -109,6 +111,7 @@ const (
 	MetaKey_WaveAiWidgetContext              = "waveai:widgetcontext"
 
 	MetaKey_TermClear                        = "term:*"
+	MetaKey_TermDefaultLaunchTarget          = "term:defaultlaunchtarget"
 	MetaKey_TermFontSize                     = "term:fontsize"
 	MetaKey_TermFontFamily                   = "term:fontfamily"
 	MetaKey_TermMode                         = "term:mode"

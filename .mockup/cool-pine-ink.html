@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>冷松石墨绿 · Wave Desktop · #5b6e68 / #000805</title>
+<style>
+  :root{
+    /* 主题三：冷松石 + 雾纸（浅底深字）。
+       #5b6e68 → accent / 主色；#000805 → 偶尔出现的强调面（terminal、seal），不作为大面背景。
+       浅底配深字，强调色保持原指定的冷松石青灰。 */
+    --main-bg-color:#5b6e68;            /* = wave --main-bg-color #222 → 主色冷松石，stack 实底 */
+    --main-text-color:#000805;          /* = wave --main-text-color #f7f7f7 → 反相：深墨绿黑（原 bg 色） */
+    --secondary-text-color:#04130f;      /* = rgb(195,200,194) → 在 #5b6e68 上做次字，深墨绿（90% 不透） */
+    --grey-text-color:#0a2520;          /* = #666 → 深松石墨，做 muted/term 注释 */
+    --border-color:rgba(0,8,5,.32);      /* 深墨绿描边，在 #5b6e68 上清晰 */
+    --accent-color:#000805;             /* 强调反相用深墨绿，与字体同色保持高对比 */
+    --accenthover:#0a2520;
+    --panel-bg-color:transparent;
+    --hover-bg-color:rgba(0,8,5,.12);
+    --highlight-bg-color:rgba(0,8,5,.20);
+    --block-bg-color:transparent;       /* 关键：block 不再叠白，#5b6e68 主色大面积透出 */
+    --block-bg-solid-color:transparent;
+    --error-color:#9a3d33;
+    --warning-color:#8f6a26;
+    --success-color:#3d6a5b;
+    --accent-2:#41544f;
+    --line:rgba(91,110,104,.24);
+    --radius:8px;
+    --sans:"Inter","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+    --serif:"Iowan Old Style",Georgia,"Songti SC",serif;
+    --mono:"JetBrains Mono","SFMono","Hack",ui-monospace,monospace;
+    --header-height:30px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;font:13px/1.45 var(--sans);color:var(--main-text-color);background:#9da6a3;
+    letter-spacing:.2px}
+  body{display:flex;justify-content:center;align-items:center}
+
+  .win{
+    width:1280px;height:800px;border-radius:10px;overflow:hidden;position:relative;background:var(--main-bg-color);
+    box-shadow:0 30px 80px rgba(0,8,5,.28),0 4px 12px rgba(0,8,5,.18),inset 0 0 0 1px rgba(91,110,104,.30);
+    border:1px solid #c2cfcb;
+  }
+  /* 极轻冷雾纹理（multiply 才在浅底可见） */
+  .win::before{
+    content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:.10;z-index:0;
+    background-image:
+      radial-gradient(circle at 12% 22%, rgba(0,0,0,.18) 0, transparent 1px),
+      radial-gradient(circle at 73% 41%, rgba(0,0,0,.14) 0, transparent 1px),
+      radial-gradient(circle at 31% 67%, rgba(0,0,0,.12) 0, transparent 1px),
+      radial-gradient(circle at 88% 80%, rgba(0,0,0,.16) 0, transparent 1px);
+    background-size:7px 7px,11px 11px,5px 5px,9px 9px;
+  }
+  /* 顶部一抹冷松石光晕（极轻，multiply） */
+  .win::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.16;mix-blend-mode:multiply;
+    background:radial-gradient(80% 40% at 80% 0%, rgba(91,110,104,.45), transparent 60%);
+  }
+  .stack{position:relative;z-index:1;display:flex;flex-direction:column;width:100%;height:100%;background:#5b6e68}
+
+  /* TABBAR */
+  .tabbar{
+    display:flex;align-items:end;height:var(--header-height);padding:3px 6px 0;
+    background:rgba(255,255,255,.45);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border-color);
+    flex-shrink:0;
+  }
+  .tab-breadcrumbs{display:flex;align-items:end;gap:0;height:27px;margin-bottom:1px;flex:0 0 auto}
+  .tab{
+    display:flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-radius:6px 6px 0 0;
+    border:1px solid transparent;border-bottom:0;background:transparent;color:var(--secondary-text-color);
+    font:600 12px/1 var(--sans);max-width:170px;cursor:pointer;position:relative
+  }
+  .tab.active{background:var(--main-bg-color);border-color:var(--border-color);color:var(--main-text-color)}
+  .tab.active::before{content:"";position:absolute;left:8px;right:8px;top:-1px;height:2px;background:var(--accent-color)}
+  .tab .label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  .tab .x{opacity:.5;font:600 10px/1 var(--sans);cursor:pointer;display:inline-flex}
+  .tab .x:hover{opacity:1;color:var(--accent-2)}
+  .add-tab{width:28px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color);cursor:pointer;border-radius:6px}
+  .add-tab:hover{background:var(--hover-bg-color);color:var(--accent-color)}
+  .tab-spacer{flex:1 1 auto}
+  .tabbar-right{display:flex;align-items:center;gap:4px;height:26px;margin-bottom:1px}
+  .icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color);border-radius:6px;cursor:pointer}
+  .icon-btn:hover{background:var(--hover-bg-color);color:var(--accent-color)}
+  .ws-switcher{display:flex;align-items:center;gap:6px;padding:0 8px;height:26px;border-radius:6px;
+    border:1px solid var(--border-color);color:var(--main-text-color);font:600 11px/1 var(--sans);cursor:pointer}
+  .ws-dot{width:10px;height:10px;border-radius:2px;background:var(--accent-color);box-shadow:0 0 0 2px rgba(0,8,5,.18)}
+
+  .ws{flex:1;display:flex;min-height:0;position:relative}
+  .left-rail{width:28px;border-right:1px solid var(--border-color);display:flex;flex-direction:column;
+    align-items:center;padding:6px 0;gap:8px;flex-shrink:0;background:rgba(255,255,255,.35)}
+  .left-rail .pill{width:14px;height:14px;border:1px solid var(--border-color);border-radius:3px;cursor:pointer;background:transparent}
+  .left-rail .pill:hover{background:var(--hover-bg-color);border-color:var(--accent-color)}
+  .left-rail .pill.on{background:var(--accent-color);border-color:var(--accent-color)}
+
+  .grid-area{flex:1;display:grid;grid-template-columns:1.4fr 1fr;grid-template-rows:1.1fr 1fr;gap:6px;padding:6px;min-width:0;min-height:0}
+  .block{
+    border:1px solid var(--border-color);border-radius:var(--radius);background:var(--block-bg-color);
+    display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.40),0 1px 0 rgba(0,8,5,.08)
+  }
+  .block-head{
+    height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;
+    border-bottom:1px solid var(--border-color);flex-shrink:0;font:600 11px/1 var(--sans);
+    color:var(--secondary-text-color);background:rgba(255,255,255,.30)
+  }
+  .block-head .dot-row{display:flex;gap:4px;align-items:center;margin-right:4px}
+  .block-head .d{width:8px;height:8px;border-radius:50%;border:1px solid var(--border-color)}
+  .block-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.04em}
+  .block-actions{display:flex;gap:2px}
+  .block-actions i{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;cursor:pointer;color:var(--secondary-text-color)}
+  .block-actions i:hover{background:var(--hover-bg-color);color:var(--accent-color)}
+  .block-body{flex:1;min-height:0;overflow:auto;padding:8px 10px}
+
+  /* SESSIONS */
+  .session{display:flex;align-items:center;gap:8px;padding:8px 8px;border:1px solid transparent;border-radius:6px;cursor:pointer}
+  .session:hover{background:var(--hover-bg-color)}
+  .session.sel{background:var(--highlight-bg-color);border-color:var(--border-color)}
+  .session.sel .av{border-color:var(--accent-color);color:var(--accent-color)}
+  .session .av{width:24px;height:24px;border-radius:6px;background:var(--block-bg-solid-color);color:var(--secondary-text-color);
+    display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--sans);border:1px solid var(--border-color)}
+  .session .meta{flex:1;min-width:0}
+  .session .t{font:600 12px/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--main-text-color)}
+  .session .s{font:400 10px/1.3 var(--mono);color:var(--grey-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .session .badge{font:600 9px/1 var(--mono);padding:2px 5px;border:1px solid var(--border-color);border-radius:3px;color:var(--secondary-text-color);letter-spacing:.06em}
+  .session .badge.live{color:var(--accent-color);border-color:var(--accent-color);background:rgba(231,238,236,.85);box-shadow:0 0 0 2px rgba(0,8,5,.10)}
+
+  /* AI */
+  .ai-msg{padding:10px 12px;border-bottom:1px dashed var(--border-color);font:400 12.5px/1.55 var(--sans);color:var(--main-text-color)}
+  .ai-msg.user{background:rgba(91,110,104,.07);color:var(--secondary-text-color)}
+  .ai-msg .role{font:700 10px/1 var(--mono);letter-spacing:.14em;color:var(--accent-color);margin-bottom:4px;text-transform:uppercase}
+  .ai-msg.user .role{color:var(--secondary-text-color)}
+  .ai-input{display:flex;align-items:flex-start;gap:6px;padding:8px;border-top:1px solid var(--border-color);background:rgba(255,255,255,.40)}
+  .ai-input textarea{flex:1;background:transparent;border:0;outline:0;resize:none;font:400 12px/1.5 var(--sans);color:var(--main-text-color);height:30px;padding:6px 4px;letter-spacing:.2px}
+  .ai-input textarea::placeholder{color:var(--grey-text-color)}
+  .btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;border:1px solid var(--accent-color);background:transparent;color:var(--accent-color);font:600 11px/1 var(--sans);cursor:pointer;letter-spacing:.06em}
+  .btn.primary{background:var(--accent-color);color:#e7eeec;border-color:var(--accent-color)}
+  .btn.ghost{border-color:var(--border-color);color:var(--secondary-text-color)}
+
+  .block-body::-webkit-scrollbar{width:6px;height:6px}
+  .block-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;opacity:.5}
+
+  /* terminal — 雾纸底 + 墨字 + 松石 accent */
+  .term{margin:0;font:12px/1.6 var(--mono);color:var(--main-text-color);white-space:pre-wrap;word-break:break-word}
+  .term .c{color:var(--grey-text-color)}
+  .term .p{color:var(--main-text-color)}
+  .term .ok{color:var(--success-color);font-weight:600}
+  .term .warn{color:var(--warning-color)}
+  .term .acc{color:var(--accent-color);font-weight:600}
+  .term .cursor{display:inline-block;width:7px;height:13px;background:var(--accent-color);vertical-align:-2px;animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  .widgets{width:60px;flex-shrink:0;border-left:1px solid var(--border-color);background:rgba(255,255,255,.35);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+  .widget{width:54px;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:6px;cursor:pointer;color:var(--secondary-text-color)}
+  .widget:hover{background:var(--hover-bg-color);color:var(--main-text-color)}
+  .widget.sel{background:var(--highlight-bg-color);color:var(--main-text-color)}
+  .widget.sel .w-ic{color:var(--accent-color)}
+  .w-ic{font-size:16px;line-height:1}
+  .w-label{font:600 9px/1.1 var(--sans);max-width:50px;width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.04em}
+
+  .status{height:22px;display:flex;align-items:center;gap:14px;padding:0 12px;border-top:1px solid var(--border-color);
+    background:rgba(255,255,255,.40);font:600 10px/1 var(--mono);color:var(--secondary-text-color);letter-spacing:.06em;flex-shrink:0}
+  .status .spacer{flex:1}
+  .status .seg{display:flex;align-items:center;gap:4px}
+  .status .seg .v{color:var(--main-text-color)}
+  .led{width:7px;height:7px;border-radius:50%;background:#e7eeec;box-shadow:0 0 6px rgba(231,238,236,.7)}
+
+  /* swatches panel (left top-of-win) */
+  .swatches{position:absolute;left:14px;top:50px;display:flex;flex-direction:column;gap:6px;z-index:30;
+    background:rgba(255,255,255,.55);border:1px solid var(--border-color);border-radius:8px;padding:8px;
+    box-shadow:0 4px 14px rgba(0,8,5,.12)}
+  .sw{display:flex;align-items:center;gap:8px;font:600 10px/1 var(--mono);color:var(--secondary-text-color);letter-spacing:.06em}
+  .sw .chip{width:22px;height:22px;border-radius:4px;border:1px solid var(--border-color)}
+  .sw .c1{background:#5b6e68}.sw .c2{background:#000805}.sw .c3{background:#e7eeec}.sw .c4{background:#41544f}
+
+  .md{font:400 13px/1.65 var(--sans);color:var(--main-text-color)}
+  .md b{font-weight:600;color:var(--main-text-color)}
+  .md em{font-style:italic;color:var(--accent-color)}
+  .md ol{margin:6px 0 6px 18px;padding:0}
+  .md li{margin:2px 0}
+  .md hr{border:0;border-top:1px solid var(--border-color);margin:10px 0}
+  .quote{border-left:3px solid var(--accent-color);padding:4px 0 4px 10px;font-style:italic;color:var(--secondary-text-color)}
+  .chip{font:600 10px/1 var(--sans);padding:3px 8px;border:1px solid var(--border-color);border-radius:99px;color:var(--secondary-text-color);letter-spacing:.06em}
+  .chip.solid{background:var(--accent-color);color:#e7eeec;border-color:var(--accent-color)}
+
+  .posted{position:absolute;right:12px;bottom:8px;font:600 9px/1 var(--mono);color:var(--grey-text-color);letter-spacing:.14em;z-index:5}
+</style>
+</head>
+<body>
+
+<div class="win">
+  <div class="swatches" title="主题色板">
+    <div class="sw"><span class="chip c1"></span>#5b6e68 · accent</div>
+    <div class="sw"><span class="chip c2"></span>#000805 · text</div>
+    <div class="sw"><span class="chip c3"></span>#e7eeec · bg</div>
+    <div class="sw"><span class="chip c4"></span>#41544f · hover</div>
+  </div>
+
+  <div class="stack">
+
+    <!-- TABBAR -->
+    <div class="tabbar">
+      <div class="tab-breadcrumbs">
+        <div class="tab active"><span class="label">Quay · Hover</span><span class="x">✕</span></div>
+        <div class="tab"><span class="label">snorkeling/main</span><span class="x">✕</span></div>
+        <div class="tab"><span class="label">manifest · 0148</span><span class="x">✕</span></div>
+        <div class="add-tab">＋</div>
+      </div>
+      <div class="tab-spacer"></div>
+      <div class="tabbar-right">
+        <div class="ws-switcher"><span class="ws-dot"></span><span>Workspace · Quay</span></div>
+        <div class="icon-btn" title="Switcher">☷</div>
+        <div class="icon-btn" title="Sessions">≡</div>
+        <div class="icon-btn" title="Settings">⚙</div>
+      </div>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="ws">
+      <div class="left-rail">
+        <div class="pill on" title="Quay"></div>
+        <div class="pill" title="Hold"></div>
+        <div class="pill" title="Cast"></div>
+      </div>
+
+      <div class="grid-area">
+
+        <!-- Sessions -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Sessions · Berth</span>
+            <div class="block-actions"><i>⌕</i><i>⋯</i></div>
+          </div>
+          <div class="block-body">
+            <div class="session sel">
+              <div class="av">Q</div>
+              <div class="meta"><div class="t">Quay · Hover · log #0148</div><div class="s">~/quay · zsh · 02:18 / 34h</div></div>
+              <span class="badge live">● LIVE</span>
+            </div>
+            <div class="session">
+              <div class="av">S</div>
+              <div class="meta"><div class="t">snorkeling @ remote</div><div class="s">wsh · zsh · 12 passed · 0 skipped</div></div>
+              <span class="badge">12:04</span>
+            </div>
+            <div class="session">
+              <div class="av">N</div>
+              <div class="meta"><div class="t">Cold Manifest · Jul 06</div><div class="s">markdown · 1.2kb · unsaved</div></div>
+              <span class="badge">09:44</span>
+            </div>
+            <div class="session">
+              <div class="av">A</div>
+              <div class="meta"><div class="t">Incoming Tide · 14:00</div><div class="s">calendar · 2 to-do · 1 done</div></div>
+              <span class="badge">09:41</span>
+            </div>
+            <div class="session">
+              <div class="av">L</div>
+              <div class="meta"><div class="t">Log-line · draft</div><div class="s">~/trans · pandoc · idle</div></div>
+              <span class="badge">07:28</span>
+            </div>
+            <div class="session">
+              <div class="av">M</div>
+              <div class="meta"><div class="t">Manifest · home</div><div class="s">mail · draft · 2 pp</div></div>
+              <span class="badge">YDAY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">~/snorkeling · wsh</span>
+            <div class="block-actions"><i>+</i><i>□</i><i>×</i></div>
+          </div>
+          <div class="block-body">
+            <pre class="term">
+<span class="c">┌─(</span><span class="p">~/workspace/snorkeling</span><span class="c">)──</span>
+<span class="c">└─╼</span> <span class="acc">task</span> build <span class="warn">&</span> test
+<span class="c">  ✓</span> <span class="p">generate</span>  <span class="ok">ok</span>
+<span class="c">  ✓</span> <span class="p">build</span>     <span class="ok">ok</span>  <span class="c">(2.1s)</span>
+<span class="c">  …</span> <span class="p">test</span>     <span class="warn">12 passed · 0 skipped</span>
+
+<span class="c">└─╼</span> <span class="acc">git</span> log --oneline -3
+<span class="c">545f820e</span> fix: normalize preview path comparison
+<span class="c">7eddb514</span> chore: track local-inspect-ui script
+<span class="c">85c60235</span> refactor: paged common-text search
+
+<span class="c">└─╼</span> <span class="cursor"></span>
+            </pre>
+          </div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Quay · AI Companion</span>
+            <div class="block-actions" style="margin-left:auto"><i>↻</i><i>⋯</i></div>
+          </div>
+          <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+            <div class="ai-msg user"><div class="role">Ask</div>潮位 14:00，需要重排三档泊位 — 给一个稳定优先的排法。</div>
+            <div class="ai-msg">
+              <div class="role">Answer</div>
+              按 <em>吃水 → 系缆数 → 装卸时长</em> 三阶排序：先吃水深的占总泊，再分短缆给易离港的小船；最后把动臂吊的船留到涨潮峰前后。
+              <div class="quote" style="margin-top:8px;font-size:12px">“静船知潮，动船知风。” — 冷港日志 · 0148</div>
+            </div>
+            <div class="ai-input">
+              <textarea spellcheck="false" placeholder="续 询 …"></textarea>
+              <div class="btn primary">SEND</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CommonText -->
+        <div class="block">
+          <div class="block-head">
+            <div class="dot-row"><i class="d"></i><i class="d"></i><i class="d"></i></div>
+            <span class="block-title">Common Text · Cold Manifest</span>
+            <span class="badge" style="margin-left:4px;background:transparent">/12</span>
+            <div class="block-actions" style="margin-left:auto"><i>⌕</i><i>+</i></div>
+          </div>
+          <div class="block-body">
+            <div class="md">
+              <b>立 夏 后 第 三 日 · 冷 港。</b> 海雾压港；松石色天光里，墨绿水线一行。
+              <hr />
+              <ol>
+                <li>定 三 档 泊 位 · 吃 水 / 缆 数 / 时 长</li>
+                <li>涨 潮 峰 前 后 · 动 臂 吊 先 后</li>
+                <li>记 录 松 石 色 天 光 与 水 线</li>
+                <li>校 对 log #0148 — 共 12 条</li>
+              </ol>
+              <div class="quote"><em>“静船知潮，动船知风。”</em></div>
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <span class="chip solid">Save</span>
+                <span class="chip">Index</span>
+                <span class="chip">Lock</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- WIDGETS -->
+      <div class="widgets">
+        <div class="widget sel"><span class="w-ic">≡</span><span class="w-label">Sessions</span></div>
+        <div class="widget"><span class="w-ic">□</span><span class="w-label">Overview</span></div>
+        <div class="widget"><span class="w-ic">⌘</span><span class="w-label">Terminals</span></div>
+        <div class="widget"><span class="w-ic">✦</span><span class="w-label">Agents</span></div>
+        <div class="widget"><span class="w-ic">▤</span><span class="w-label">Common Text</span></div>
+        <div class="widget"><span class="w-ic">♼</span><span class="w-label">Activity</span></div>
+        <div class="widget" style="margin-top:auto"><span class="w-ic">⚙</span><span class="w-label">Settings</span></div>
+      </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status">
+      <div class="seg"><span class="led"></span><span class="v">wsh · connected</span></div>
+      <div class="seg"><span>tab</span><span class="v">Quay · Hover</span></div>
+      <div class="seg"><span>workspace</span><span class="v">Quay · 4 blocks</span></div>
+      <div class="spacer"></div>
+      <div class="seg"><span>cpu</span><span class="v">7%</span></div>
+      <div class="seg"><span>mem</span><span class="v">2.4 / 16 GB</span></div>
+      <div class="seg"><span>net</span><span class="v">△1.2k ▽4.8k</span></div>
+      <div class="seg"><span class="v">tide 14:00 · slack water</span></div>
+    </div>
+
+  </div>
+  <div class="posted">2026 · 07 · 06 · #5B6E68 / #000805</div>
+</div>
+
+</body>
+</html>

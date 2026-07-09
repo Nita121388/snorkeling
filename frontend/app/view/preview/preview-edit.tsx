@@ -28,6 +28,7 @@ import {
     type OrderedListLineRange,
     type OrderedListMoveState,
 } from "@/app/element/markdown-ordered-list";
+import { CenteredDiv } from "@/app/element/quickelems";
 import { Search, useSearch } from "@/app/element/search";
 import {
     clampSelectionCopyOverlayPosition,
@@ -153,7 +154,7 @@ function getFileLanguage(fileName: string | null): string | undefined {
     }
     const extensionMatch = baseName.toLowerCase().match(/(\.[^.]+)$/);
     if (!extensionMatch) {
-        return undefined;
+        return "plaintext";
     }
     if ([".md", ".markdown", ".mdx"].includes(extensionMatch[1])) {
         return "markdown";
@@ -374,7 +375,7 @@ function restoreEditorMarkdownFoldSnapshot(
 }
 
 function CodeEditPreview({ model }: SpecializedViewProps) {
-    const fileContent = useAtomValue(model.fileContent);
+    const fileContentLoadable = useAtomValue(model.fileContentLoadable);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const newFileContent = useAtomValue(model.newFileContent);
     const fileInfo = useAtomValue(model.statFile);
@@ -405,6 +406,19 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const renumberSelectedOrderedListRef = useRef<() => void>(() => {});
     const refreshMarkdownMoveStateRef = useRef<() => void>(() => {});
     const fileName = fileInfo?.path || fileInfo?.name;
+    // 保存上次成功读取到的文件内容。原因：fileContent 是 async atom，每次编辑都会重新求值
+    // 并返回新 Promise，期间 loadable 会进入 "loading"。如果在 loading 时卸载 CodeEditor，
+    // monaco 实例会被销毁并重建，导致光标被重置到文件开头。这里用 ref 缓存上一份内容，
+    // 让编辑器在瞬时的 loading 状态下继续挂载、内容保持不变，避免光标跳动。
+    const previousFileContentRef = useRef<string>("");
+    if (fileContentLoadable.state === "hasData") {
+        previousFileContentRef.current = fileContentLoadable.data;
+    }
+    // 取值优先级：当前数据 > 上次数据 > 空串。loading 期间使用上次内容顶住。
+    const fileContent =
+        fileContentLoadable.state === "hasData"
+            ? fileContentLoadable.data
+            : previousFileContentRef.current;
 
     const language = getFileLanguage(fileName);
     const markdownListActionsEnabled = isMarkdownOrderedListPath(fileName) && !fileInfo?.readonly;
@@ -429,9 +443,18 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
             fileName,
             readonly: fileInfo?.readonly,
             fileContent: summarizePreviewDraftContent(fileContent),
+            fileContentState: fileContentLoadable.state,
             newFileContent: summarizePreviewDraftContent(newFileContent),
         });
-    }, [fileContent, fileEditKey, fileInfo?.readonly, fileName, model.blockId, newFileContent]);
+    }, [
+        fileContent,
+        fileContentLoadable.state,
+        fileEditKey,
+        fileInfo?.readonly,
+        fileName,
+        model.blockId,
+        newFileContent,
+    ]);
 
     const searchProps = useSearch({
         anchorRef: editorContainerRef,
@@ -1380,6 +1403,15 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     const hideSelectionCopyOverlay = useCallback(() => {
         setSelectionCopyOverlay(null);
     }, []);
+
+    if (fileContentLoadable.state === "hasError") {
+        return <CenteredDiv>File Read Failed: {`${fileContentLoadable.error}`}</CenteredDiv>;
+    }
+    // 只有从没拿到过任何内容（首次加载磁盘文件）时才整屏显示 Loading。
+    // 编辑期间的瞬时 loading 用 previousFileContentRef 顶住，编辑器不卸载，光标不跳。
+    if (fileContentLoadable.state === "loading" && previousFileContentRef.current === "") {
+        return <CenteredDiv>Loading file...</CenteredDiv>;
+    }
 
     return (
         <div className="relative flex h-full w-full" ref={editorContainerRef}>
