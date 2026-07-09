@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 9
+	hookInstallVersion  = 13
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -214,8 +214,8 @@ func InstallClaudeHooks() (HookInstallResult, error) {
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return HookInstallResult{}, err
 	}
-	hookPath := filepath.Join(hooksDir, hookInstallName())
-	if err := writeHookScript(hookPath, HookTargetClaude); err != nil {
+	hookPath := filepath.Join(hooksDir, claudeHookInstallName())
+	if err := writeClaudeHookScript(hookPath); err != nil {
 		return HookInstallResult{}, err
 	}
 
@@ -256,7 +256,7 @@ func checkClaudeHooks() HookStatus {
 		status.NeedsInstall = true
 		return status
 	}
-	status.HookPath = filepath.Join(dir, "hooks", hookInstallName())
+	status.HookPath = filepath.Join(dir, "hooks", claudeHookInstallName())
 	status.SettingsPath = filepath.Join(dir, "settings.json")
 	if !isDir(dir) {
 		status.Reason = fmt.Sprintf("claude config directory not found at %s", dir)
@@ -294,7 +294,15 @@ func checkClaudeHooks() HookStatus {
 }
 
 func writeHookScript(path string, provider string) error {
-	if err := os.WriteFile(path, []byte(agentStatusHookScript(provider)), 0o755); err != nil {
+	return writeHookScriptContent(path, agentStatusHookScript(provider))
+}
+
+func writeClaudeHookScript(path string) error {
+	return writeHookScriptContent(path, agentStatusHookScript(HookTargetClaude))
+}
+
+func writeHookScriptContent(path string, content string) error {
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		return err
 	}
 	return makeExecutable(path)
@@ -305,6 +313,10 @@ func hookInstallName() string {
 		return hookInstallBaseName + ".cmd"
 	}
 	return hookInstallBaseName + ".sh"
+}
+
+func claudeHookInstallName() string {
+	return hookInstallName()
 }
 
 type agentStatusHookSpec struct {
@@ -344,7 +356,7 @@ func hookCommand(path string, action string, phase string) string {
 
 func claudeHookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s <nul"`, path, action, phase)
+		return fmt.Sprintf(`cmd.exe /d /q /c \"call \"\"%s\"\" %s %s\"`, path, action, phase)
 	}
 	return hookCommand(path, action, phase)
 }
@@ -456,13 +468,55 @@ esac
 [ -n "${WAVETERM_BLOCKID:-}" ] || exit 0
 [ -n "${WAVETERM_JWT:-}" ] || exit 0
 
-if [ -n "${WAVETERM_WSHBINDIR:-}" ] && [ -x "${WAVETERM_WSHBINDIR}/wsh" ]; then
-  wsh_bin="${WAVETERM_WSHBINDIR}/wsh"
-elif command -v wsh >/dev/null 2>&1; then
-  wsh_bin="$(command -v wsh)"
-else
-  exit 0
+resolve_hook_path() {
+  candidate="$1"
+  if [ -e "$candidate" ]; then
+    printf '%%s\n' "$candidate"
+    return 0
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    converted="$(cygpath -u "$candidate" 2>/dev/null)"
+    if [ -n "$converted" ] && [ -e "$converted" ]; then
+      printf '%%s\n' "$converted"
+      return 0
+    fi
+  fi
+  if command -v wslpath >/dev/null 2>&1; then
+    converted="$(wslpath -u "$candidate" 2>/dev/null)"
+    if [ -n "$converted" ] && [ -e "$converted" ]; then
+      printf '%%s\n' "$converted"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+check_wsh_candidate() {
+  candidate="$1"
+  [ -n "$candidate" ] || return 1
+  resolved="$(resolve_hook_path "$candidate")" || return 1
+  [ -x "$resolved" ] || return 1
+  wsh_bin="$resolved"
+  return 0
+}
+
+wsh_bin=""
+if [ -n "${WAVETERM_WSHBINDIR:-}" ]; then
+  check_wsh_candidate "${WAVETERM_WSHBINDIR}/wsh" || check_wsh_candidate "${WAVETERM_WSHBINDIR}/wsh.exe" || true
 fi
+if [ -z "$wsh_bin" ] && command -v wsh >/dev/null 2>&1; then
+  wsh_bin="$(command -v wsh)"
+fi
+if [ -z "$wsh_bin" ] && command -v wsh.exe >/dev/null 2>&1; then
+  wsh_bin="$(command -v wsh.exe)"
+fi
+if [ -z "$wsh_bin" ] && [ -n "${LOCALAPPDATA:-}" ]; then
+  check_wsh_candidate "${LOCALAPPDATA}\snorkeling\Data\bin\wsh.exe" || true
+fi
+if [ -z "$wsh_bin" ] && [ -n "${USERPROFILE:-}" ]; then
+  check_wsh_candidate "${USERPROFILE}\.snorkeling\bin\wsh.exe" || true
+fi
+[ -n "$wsh_bin" ] || exit 0
 
 hook_input_file="$(mktemp "${TMPDIR:-/tmp}/snorkeling-agent-status.XXXXXX")" || exit 0
 trap 'rm -f "$hook_input_file"' EXIT HUP INT TERM
