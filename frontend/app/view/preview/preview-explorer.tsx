@@ -820,11 +820,13 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             {...getReferenceProps()}
             onClick={() => setEntryManagerProps(null)}
         >
-            <div className="flex items-center gap-1 border-b border-white/8 px-2 py-1.5">
+            <div className="flex items-center gap-1 border-b border-border/70 px-2 py-1.5">
                 <button
                     className={clsx(
-                        "rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
-                        !searchActive ? "bg-white/10 text-white" : "text-muted hover:bg-white/5"
+                        "cursor-pointer rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
+                        !searchActive
+                            ? "bg-surface-strong text-primary shadow-sm"
+                            : "text-secondary hover:bg-hover hover:text-primary"
                     )}
                     onClick={() => setSearchActive(false)}
                 >
@@ -832,8 +834,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 </button>
                 <button
                     className={clsx(
-                        "rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
-                        searchActive ? "bg-white/10 text-white" : "text-muted hover:bg-white/5"
+                        "cursor-pointer rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
+                        searchActive
+                            ? "bg-surface-strong text-primary shadow-sm"
+                            : "text-secondary hover:bg-hover hover:text-primary"
                     )}
                     onClick={() => setSearchActive(true)}
                 >
@@ -844,7 +848,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         {supportsFileCreation && (
                             <>
                                 <button
-                                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                                    className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary"
                                     title="New File"
                                     aria-label="New File"
                                     onClick={(event) => {
@@ -855,7 +859,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                     <i className="fa-sharp fa-solid fa-file-plus text-[11px]" />
                                 </button>
                                 <button
-                                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white"
+                                    className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary"
                                     title="New Folder"
                                     aria-label="New Folder"
                                     onClick={(event) => {
@@ -868,7 +872,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             </>
                         )}
                         <button
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
+                            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-50"
                             title="Collapse All"
                             aria-label="Collapse All"
                             disabled={treeExpandingAll}
@@ -877,7 +881,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             <i className="fa-sharp fa-solid fa-angles-up text-[11px]" />
                         </button>
                         <button
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-white disabled:cursor-default disabled:opacity-50"
+                            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-50"
                             title="Expand All"
                             aria-label="Expand All"
                             disabled={treeExpandingAll}
@@ -932,7 +936,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         !searchActive && "hidden"
                     )}
                 >
-                    <div className="border-b border-white/8 px-2 py-2">
+                    <div className="border-b border-border/70 px-2 py-2">
                         <div className="flex items-center gap-1">
                             <input
                                 ref={searchInputRef}
@@ -954,7 +958,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                     }
                                 }}
                                 placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
-                                className="min-w-0 flex-1 rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
+                                className="min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
                             />
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
@@ -1008,10 +1012,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                     <button
                                                         key={match.path}
                                                         className={clsx(
-                                                            "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                                                            "flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
                                                             currentPath === match.path
-                                                                ? "bg-white/10"
-                                                                : "hover:bg-white/5"
+                                                                ? "bg-surface-strong text-primary"
+                                                                : "hover:bg-hover hover:text-primary"
                                                         )}
                                                         onClick={() => queueSearchSingleOpen(match.path)}
                                                         onDoubleClick={() => openSearchDouble(match.path)}
@@ -1060,8 +1064,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                             <div key={group.path} className="mb-3 last:mb-0">
                                                 <button
                                                     className={clsx(
-                                                        "flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors",
-                                                        currentPath === group.path ? "bg-white/10" : "hover:bg-white/5"
+                                                        "flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-colors",
+                                                        currentPath === group.path
+                                                            ? "bg-surface-strong text-primary"
+                                                            : "hover:bg-hover hover:text-primary"
                                                     )}
                                                     onClick={() => {
                                                         setCollapsedSearchPaths((prev) => {
@@ -1100,10 +1106,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                             <button
                                                                 key={`${match.path}:${match.linenumber}:${match.linetext}`}
                                                                 className={clsx(
-                                                                    "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                                                                    "flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
                                                                     currentPath === match.path
-                                                                        ? "bg-white/10"
-                                                                        : "hover:bg-white/5"
+                                                                        ? "bg-surface-strong text-primary"
+                                                                        : "hover:bg-hover hover:text-primary"
                                                                 )}
                                                                 onClick={() => queueSearchSingleOpen(match.path)}
                                                                 onDoubleClick={() =>

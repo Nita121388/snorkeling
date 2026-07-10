@@ -566,10 +566,10 @@ function RepoFileFilterBar({
     const extension = filterState.extension ?? "";
     const filtersActive = search.trim() !== "" || type !== "all" || extension.trim() !== "";
     const controlClassName =
-        "h-[24px] rounded border border-white/15 bg-[#1f211f] text-xs text-foreground outline-none " +
-        "placeholder:text-muted focus:border-accent [color-scheme:dark]";
+        "h-[24px] rounded border border-border bg-panel text-xs text-foreground outline-none " +
+        "placeholder:text-muted focus:border-accent";
     return (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-white/10 bg-[#141514] px-2 py-1.5">
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-border bg-panel/80 px-2 py-1.5">
             <div className="relative min-w-[180px] flex-1">
                 <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted" />
                 <input
@@ -624,8 +624,7 @@ function RepoFileFilterBar({
                         <option
                             key={option.value}
                             value={option.value}
-                            className="bg-[#1f211f] text-foreground"
-                            style={{ backgroundColor: "#1f211f", color: "#f7f7f7" }}
+                            className="bg-panel text-foreground"
                         >
                             {option.label}
                         </option>

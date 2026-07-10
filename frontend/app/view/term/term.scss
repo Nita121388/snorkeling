@@ -130,7 +130,7 @@
         position: relative;
         z-index: 20;
         flex: 0 0 auto;
-        border-bottom: 1px solid rgb(255 255 255 / 0.06);
+        border-bottom: 1px solid var(--border-color);
         background: transparent;
         color: var(--main-text-color);
         font-size: 12px;
@@ -260,7 +260,7 @@
 
         &:hover,
         &:focus-visible {
-            background: rgb(255 255 255 / 0.04);
+            background: var(--hover-bg-color);
         }
     }
 
@@ -288,9 +288,9 @@
         width: 100%;
         min-width: 0;
         max-width: min(520px, 100%);
-        border: 1px solid rgb(255 255 255 / 0.08);
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: rgb(from var(--main-bg-color) r g b / 0.72);
+        background: var(--block-bg-color);
         color: var(--main-text-color);
         font-size: 12px;
 
@@ -356,7 +356,7 @@
     .term-session-outline-body {
         max-height: min(280px, 38vh);
         overflow: auto;
-        border-top: 1px solid rgb(255 255 255 / 0.1);
+        border-top: 1px solid var(--border-color);
         padding: 6px 8px 8px;
     }
 
@@ -364,9 +364,9 @@
         max-height: 128px;
         overflow: auto;
         margin-top: 8px;
-        border: 1px solid rgb(255 255 255 / 0.1);
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: rgb(0 0 0 / 0.25);
+        background: var(--block-bg-color);
         color: var(--secondary-text-color);
         font-size: 11px;
         line-height: 1.55;
@@ -415,7 +415,7 @@
     .term-session-note-popover {
         border: 1px solid rgb(from var(--accent-color) r g b / 0.4);
         border-radius: 6px;
-        background: rgb(from var(--main-bg-color) r g b / 0.72);
+        background: var(--block-bg-color);
     }
 
     .term-session-note-preview {
@@ -484,7 +484,7 @@
         min-width: 0;
         min-height: 78px;
         max-height: 160px;
-        border: 1px solid rgb(255 255 255 / 0.1);
+        border: 1px solid var(--border-color);
         border-radius: 5px;
         background: transparent;
         color: var(--main-text-color);

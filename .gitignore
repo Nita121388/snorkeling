@@ -48,3 +48,7 @@ docs/superpowers
 .claude
 tmp/
 .runcfg/
+
+# Local dev artifacts
+cream-snazzy-green.jpeg
+electron-vite

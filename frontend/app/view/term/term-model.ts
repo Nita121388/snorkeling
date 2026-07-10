@@ -296,6 +296,10 @@ export class TermViewModel implements ViewModel {
         });
         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {
             return jotai.atom<number>((get) => {
+                const appTheme = get(atoms.resolvedAppThemeAtom);
+                if (appTheme === "light") {
+                    return 0;
+                }
                 const value = get(getOverrideConfigAtom(this.blockId, "term:transparency")) ?? 0.5;
                 return boundNumber(value, 0, 1);
             });

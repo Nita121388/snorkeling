@@ -131,6 +131,15 @@
 
     --bulb-color: rgb(255, 221, 51);
 
+    // overlay colors (flyout menus, popovers, entry manager overlays)
+    --overlay-bg-color: #212121;
+
+    // tab bar glassmorphism background
+    --tabbar-bg-color: rgba(0, 0, 0, 0.35);
+
+    // modal backdrop
+    --modal-backdrop-color: rgba(21, 23, 21, 0.7);
+
     // term colors (16 + 6) form the base terminal theme
     // for consistency these colors should be used by plugins/applications
     --term-black: #000000;
@@ -174,12 +183,15 @@
 }
 
 [data-theme="light"] {
-    --main-text-color: #1f2937;
-    --secondary-text-color: #374151;
-    --grey-text-color: #a89274;
+    --main-text-color: #382603;
+    --secondary-text-color: #63574b;
+    --grey-text-color: #777167;
     --main-bg-color: #faf7f0;
-    --border-color: #d6cfbe;
-    --accent-color: #b06535;
+    --border-color: #d6d3ca;
+    --color-surface-soft: #f7f7f4;
+    --color-surface: #f0ede6;
+    --color-surface-strong: #f4f0e7;
+    --accent-color: #c38057;
     --accent-hover-color: #c27a45;
     --accent-bg-color: rgba(245, 158, 11, 0.24);
     --accent-color-50: #fff8e6;
@@ -200,6 +212,10 @@
     --hover-bg-color-strong: rgba(176, 101, 53, 0.18);
     --block-bg-color: rgba(255, 253, 248, 0.72);
     --block-bg-solid-color: #fffdf8;
+
+    --overlay-bg-color: #f3efe4;
+    --tabbar-bg-color: rgba(243, 239, 228, 0.72);
+    --modal-backdrop-color: rgba(69, 48, 30, 0.28);
 
     --keybinding-color: #374151;
     --keybinding-bg-color: #f3efe4;
