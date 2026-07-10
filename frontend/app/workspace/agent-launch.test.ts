@@ -16,6 +16,7 @@ import {
     getLaunchCreatableTargets,
     getLaunchTargetDefaultKey,
     getSelectableLaunchTargets,
+    resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
     resolveWorkspaceAgentContextMeta,
 } from "./agent-launch";
@@ -798,5 +799,62 @@ describe("agent launch context", () => {
 
         expect(options.map((option) => option.name)).toEqual(["codex", "claude"]);
         expect(options.find((option) => option.name === "claude")?.isDefault).toBe(true);
+    });
+
+    it("resolves remote agent commands on the target connection before launch", async () => {
+        const blockDef = {
+            meta: {
+                view: "term",
+                controller: "cmd",
+                cmd: "claude",
+                connection: "ssh://nita@NitadeMacBook-Pro",
+                "cmd:cwd": "/Users/nita/project",
+            },
+        } as BlockDef;
+        const calls: string[][] = [];
+
+        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async (command, connection, cwd) => {
+            calls.push([command, connection, cwd]);
+            return "/Users/nita/.local/bin/claude";
+        });
+
+        expect(calls).toEqual([["claude", "ssh://nita@NitadeMacBook-Pro", "/Users/nita/project"]]);
+        expect(resolved.meta?.cmd).toBe("/Users/nita/.local/bin/claude");
+        expect(blockDef.meta?.cmd).toBe("claude");
+    });
+
+    it("does not resolve local agent commands before launch", async () => {
+        const blockDef = {
+            meta: {
+                view: "term",
+                controller: "cmd",
+                cmd: "claude",
+                connection: "local",
+            },
+        } as BlockDef;
+        let called = false;
+
+        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async () => {
+            called = true;
+            return "/should/not/run";
+        });
+
+        expect(resolved).toBe(blockDef);
+        expect(called).toBe(false);
+    });
+
+    it("reports missing remote agent commands before launch", async () => {
+        const blockDef = {
+            meta: {
+                view: "term",
+                controller: "cmd",
+                cmd: "claude",
+                connection: "ssh://nita@NitadeMacBook-Pro",
+            },
+        } as BlockDef;
+
+        await expect(resolveAgentBlockCommandForLaunch(blockDef, async () => "")).rejects.toThrow(
+            'Agent command "claude" was not found on ssh://nita@NitadeMacBook-Pro'
+        );
     });
 });

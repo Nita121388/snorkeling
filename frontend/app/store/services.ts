@@ -184,6 +184,9 @@ export class ClientServiceType {
     FindCommand(arg2: string): Promise<string> {
         return callBackendService(this?.waveEnv, "client", "FindCommand", Array.from(arguments))
     }
+    FindCommandForConnection(arg2: string, arg3: string, arg4: string): Promise<string> {
+        return callBackendService(this?.waveEnv, "client", "FindCommandForConnection", Array.from(arguments))
+    }
     FocusWindow(arg2: string): Promise<void> {
         return callBackendService(this?.waveEnv, "client", "FocusWindow", Array.from(arguments))
     }

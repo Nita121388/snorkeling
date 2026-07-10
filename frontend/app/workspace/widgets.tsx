@@ -24,11 +24,15 @@ import {
     getCurrentTabTerminalLaunchTargets,
     getLaunchCreatableTargets,
     getLaunchTargetDefaultKey,
+    moveDefaultProfileFirst,
+    moveDefaultTargetFirst,
+    resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
     TerminalDefaultLaunchTargetMetaKey,
 } from "@/app/workspace/agent-launch";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import { ClaudeLogo, GeminiLogo, OpencodeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
@@ -43,6 +47,7 @@ import {
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
@@ -312,6 +317,7 @@ type AgentTargetFloatingWindowProps = {
     defaultTargetKey?: string;
     defaultProfileName?: string;
     canCreateToExistingTab: boolean;
+    prepareAgentBlockDef: (blockDef: BlockDef) => Promise<BlockDef>;
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
@@ -448,6 +454,13 @@ const AgentProfileColors: Record<string, string> = {
     opencode: "#e0b956",
 };
 
+const AgentProfileIcons: Record<string, ReactNode> = {
+    codex: <OpenAILogo />,
+    claude: <ClaudeLogo />,
+    gemini: <GeminiLogo />,
+    opencode: <OpencodeLogo />,
+};
+
 function launchTargetSourceLabel(target: AgentLaunchTarget): string {
     switch (target.source) {
         case "files":
@@ -473,6 +486,7 @@ const AgentTargetFloatingWindow = memo(
         defaultTargetKey,
         defaultProfileName,
         canCreateToExistingTab,
+        prepareAgentBlockDef,
         createToCurrentTab,
         onCreateToNewTab,
         onCreateToExistingTab,
@@ -492,25 +506,33 @@ const AgentTargetFloatingWindow = memo(
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
 
-        const initialProfileName =
+        const defaultProfileNameOrDefault =
             defaultProfileName != null && profileOptions.some((profile) => profile.name === defaultProfileName)
                 ? defaultProfileName
                 : (profileOptions[0]?.name ?? "");
-        const [selectedProfile, setSelectedProfile] = useState(initialProfileName);
+        const [selectedProfile, setSelectedProfile] = useState(defaultProfileNameOrDefault);
         const [selectedIdx, setSelectedIdx] = useState(0);
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
 
+        // 每次打开都把选中刷新到最新默认：profile 默认不在选项里就回退第一项；
+        // path 找不到默认 index 则保留上次手选，不强行重置到 0。
         useEffect(() => {
-            if (profileOptions.some((profile) => profile.name === selectedProfile)) {
+            if (!isOpen) {
                 return;
             }
-            setSelectedProfile(initialProfileName);
-        }, [initialProfileName, profileOptions, selectedProfile]);
+            setSelectedProfile(defaultProfileNameOrDefault);
+            if (defaultTargetKey) {
+                const idx = targets.findIndex((t) => getLaunchTargetDefaultKey(t) === defaultTargetKey);
+                if (idx >= 0) {
+                    setSelectedIdx(idx);
+                }
+            }
+        }, [isOpen, defaultProfileNameOrDefault, defaultTargetKey, targets]);
 
         const effectiveSelectedProfile = profileOptions.some((profile) => profile.name === selectedProfile)
             ? selectedProfile
-            : initialProfileName;
+            : defaultProfileNameOrDefault;
 
         const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
         const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
@@ -550,22 +572,47 @@ const AgentTargetFloatingWindow = memo(
                                             className={clsx(
                                                 "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
                                                 isSelected
-                                                    ? "bg-surface"
+                                                    ? "bg-accent/12 relative"
                                                     : "hover:bg-surface-soft"
                                             )}
                                         >
+                                            {isSelected && (
+                                                <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
+                                            )}
                                             <button
                                                 type="button"
                                                 className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l-md text-xs font-medium border-none bg-transparent cursor-pointer"
                                                 onClick={() => setSelectedProfile(profile.name)}
                                             >
-                                                <span
-                                                    className={clsx(
-                                                        "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
-                                                        isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
-                                                    )}
-                                                    style={{ background: color }}
-                                                />
+                                                {(() => {
+                                                    const ProfileIcon = AgentProfileIcons[profile.name];
+                                                    if (ProfileIcon != null) {
+                                                        return (
+                                                            <span
+                                                                className={clsx(
+                                                                    "shrink-0 transition-colors",
+                                                                    isSelected
+                                                                        ? "text-foreground"
+                                                                        : "text-muted group-hover:text-secondary"
+                                                                )}
+                                                            >
+                                                                {ProfileIcon}
+                                                            </span>
+                                                        );
+                                                    }
+                                                    // 自定义 profile fallback：保留原彩色圆点
+                                                    return (
+                                                        <span
+                                                            className={clsx(
+                                                                "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
+                                                                isSelected
+                                                                    ? "opacity-100 scale-110"
+                                                                    : "opacity-50 group-hover:opacity-80"
+                                                            )}
+                                                            style={{ background: color }}
+                                                        />
+                                                    );
+                                                })()}
                                                 <span className={clsx(
                                                     isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
                                                 )}>
@@ -675,7 +722,7 @@ const AgentTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -688,7 +735,8 @@ const AgentTargetFloatingWindow = memo(
                                     );
                                     fireAndForget(async () => {
                                         try {
-                                            await createToCurrentTab(blockDef, Boolean(magnified));
+                                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                                            await createToCurrentTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
                                             showLaunchError("Agent", error);
@@ -702,7 +750,7 @@ const AgentTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -715,7 +763,8 @@ const AgentTargetFloatingWindow = memo(
                                     );
                                     fireAndForget(async () => {
                                         try {
-                                            await onCreateToNewTab(blockDef, Boolean(magnified));
+                                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                                            await onCreateToNewTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
                                             showLaunchError("Agent", error);
@@ -729,7 +778,7 @@ const AgentTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0"
                                 disabled={!canCreateToExistingTab}
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
@@ -741,13 +790,20 @@ const AgentTargetFloatingWindow = memo(
                                         selectedTarget,
                                         effectiveSelectedProfile
                                     );
-                                    onCreateToExistingTab({
-                                        title: "Create Agent",
-                                        subtitle: selectedTarget.detail || selectedTarget.label,
-                                        blockDef,
-                                        magnified: Boolean(magnified),
+                                    fireAndForget(async () => {
+                                        try {
+                                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                                            onCreateToExistingTab({
+                                                title: "Create Agent",
+                                                subtitle: selectedTarget.detail || selectedTarget.label,
+                                                blockDef: resolvedBlockDef,
+                                                magnified: Boolean(magnified),
+                                            });
+                                            onClose();
+                                        } catch (error) {
+                                            showLaunchError("Agent", error);
+                                        }
                                     });
-                                    onClose();
                                 }}
                             >
                                 Existing…
@@ -789,10 +845,24 @@ const TerminalTargetFloatingWindow = memo(
         const { getFloatingProps } = useInteractions([dismiss]);
 
         const [selectedIdx, setSelectedIdx] = useState(0);
-        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
-        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
+
+        // 每次打开把选中刷新到最新默认 path；找不到默认 index 则保留上次手选，不强行重置到 0。
+        useEffect(() => {
+            if (!isOpen) {
+                return;
+            }
+            if (defaultTargetKey) {
+                const idx = targets.findIndex((t) => getLaunchTargetDefaultKey(t) === defaultTargetKey);
+                if (idx >= 0) {
+                    setSelectedIdx(idx);
+                }
+            }
+        }, [isOpen, defaultTargetKey, targets]);
+
+        const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
+        const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
 
         if (!isOpen) {
             return null;
@@ -897,7 +967,7 @@ const TerminalTargetFloatingWindow = memo(
                             </span>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accenthover transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -916,7 +986,7 @@ const TerminalTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
                                     fireAndForget(async () => {
@@ -935,7 +1005,7 @@ const TerminalTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default bg-transparent border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0"
                                 disabled={!canCreateToExistingTab}
                                 onClick={() => {
                                     const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
@@ -1121,7 +1191,7 @@ const Widgets = memo(() => {
         null
     );
 
-    const agentProfileOptions = useMemo(
+    const rawAgentProfileOptions = useMemo(
         () => getAgentProfileOptions(settings, agentCommandPaths),
         [settings, agentCommandPaths]
     );
@@ -1131,12 +1201,17 @@ const Widgets = memo(() => {
     const agentDefaultProfileName = useMemo(() => {
         if (
             configuredAgentDefaultProfileName != null &&
-            agentProfileOptions.some((profile) => profile.name === configuredAgentDefaultProfileName)
+            rawAgentProfileOptions.some((profile) => profile.name === configuredAgentDefaultProfileName)
         ) {
             return configuredAgentDefaultProfileName;
         }
-        return agentProfileOptions[0]?.name;
-    }, [configuredAgentDefaultProfileName, agentProfileOptions]);
+        return rawAgentProfileOptions[0]?.name;
+    }, [configuredAgentDefaultProfileName, rawAgentProfileOptions]);
+    // 默认 agent 上浮到第一，传给弹窗的是重排后的顺序
+    const agentProfileOptions = useMemo(
+        () => moveDefaultProfileFirst(rawAgentProfileOptions, agentDefaultProfileName),
+        [rawAgentProfileOptions, agentDefaultProfileName]
+    );
     const agentDefaultTargetKey = currentTab?.meta?.[AgentDefaultLaunchTargetMetaKey];
     const terminalDefaultTargetKey = currentTab?.meta?.[TerminalDefaultLaunchTargetMetaKey];
     const canCreateToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== currentTabId);
@@ -1232,6 +1307,14 @@ const Widgets = memo(() => {
         setCreateToExistingTabRequest(null);
     }, []);
 
+    const prepareAgentBlockDef = useCallback(
+        (blockDef: BlockDef) =>
+            resolveAgentBlockCommandForLaunch(blockDef, (command, connection, cwd) =>
+                env.services.client.FindCommandForConnection(command, connection, cwd)
+            ),
+        [env.services.client]
+    );
+
     const launchTerminalTarget = useCallback(
         (target: AgentLaunchTarget | null, baseBlockDef: BlockDef | undefined, magnified: boolean) => {
             const blockDef = target == null ? baseBlockDef : createTerminalBlockDefForTarget(target, baseBlockDef);
@@ -1263,13 +1346,14 @@ const Widgets = memo(() => {
                     : createAgentBlockDefForTarget(settings, target, selectedProfileName);
             fireAndForget(async () => {
                 try {
-                    await createBlockInCurrentTab(blockDef, magnified);
+                    const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                    await createBlockInCurrentTab(resolvedBlockDef, magnified);
                 } catch (error) {
                     showLaunchError("Agent", error);
                 }
             });
         },
-        [agentDefaultProfileName, createBlockInCurrentTab, settings]
+        [agentDefaultProfileName, createBlockInCurrentTab, prepareAgentBlockDef, settings]
     );
 
     const setDefaultAgentTarget = useCallback(
@@ -1330,26 +1414,32 @@ const Widgets = memo(() => {
     const openAgentTargetPopup = useCallback(
         (widget: WidgetConfigType, referenceElement: HTMLElement) => {
             closeTerminalTargetSelector();
-            const launchTargets = getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets());
+            const launchTargets = moveDefaultTargetFirst(
+                getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets()),
+                agentDefaultTargetKey
+            );
             setAgentTargets(launchTargets);
             setAgentWidgetMagnified(Boolean(widget.magnified));
             setAgentReferenceElement(referenceElement);
             setIsAgentTargetOpen(true);
         },
-        [closeTerminalTargetSelector]
+        [closeTerminalTargetSelector, agentDefaultTargetKey]
     );
 
     const openTerminalTargetPopup = useCallback(
         (widget: WidgetConfigType, referenceElement: HTMLElement) => {
             closeAgentTargetSelector();
-            const launchTargets = getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets());
+            const launchTargets = moveDefaultTargetFirst(
+                getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets()),
+                terminalDefaultTargetKey
+            );
             setTerminalTargets(launchTargets);
             setTerminalWidgetMagnified(Boolean(widget.magnified));
             setTerminalReferenceElement(referenceElement);
             setTerminalBaseBlockDef(widget.blockdef);
             setIsTerminalTargetOpen(true);
         },
-        [closeAgentTargetSelector]
+        [closeAgentTargetSelector, terminalDefaultTargetKey]
     );
 
     const handleWidgetSelect = useCallback(
@@ -1727,6 +1817,7 @@ const Widgets = memo(() => {
                     defaultTargetKey={agentDefaultTargetKey}
                     defaultProfileName={agentDefaultProfileName}
                     canCreateToExistingTab={canCreateToExistingTab}
+                    prepareAgentBlockDef={prepareAgentBlockDef}
                     createToCurrentTab={createBlockInCurrentTab}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}

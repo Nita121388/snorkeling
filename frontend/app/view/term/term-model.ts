@@ -20,6 +20,7 @@ import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
+import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -65,6 +66,24 @@ function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
     if (typeof meta["agent:sessionid"] === "string" && meta["agent:sessionid"].trim() !== "") return true;
     if (typeof meta["agent:provider"] === "string" && meta["agent:provider"].trim() !== "") return true;
     return meta["agent:autoresume"] === true;
+}
+
+function getAgentLogoByProvider(
+    provider: string
+): { icon: React.ReactNode; iconColor?: string } | null {
+    switch (provider.trim().toLowerCase()) {
+        case "codex":
+            return { icon: React.createElement(OpenAILogo), iconColor: "#74a7cb" };
+        case "claude":
+            // claude-color.svg 自带橙色,不需要外部 iconColor
+            return { icon: React.createElement(ClaudeLogo) };
+        case "gemini":
+            return { icon: React.createElement(GeminiLogo), iconColor: "#8e7cc3" };
+        case "opencode":
+            return { icon: React.createElement(OpencodeLogo), iconColor: "#e0b956" };
+        default:
+            return null;
+    }
 }
 
 export class TermViewModel implements ViewModel {
@@ -137,6 +156,22 @@ export class TermViewModel implements ViewModel {
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
                 return { elemtype: "iconbutton", icon: "bolt" };
+            }
+            // agent block: 显示对应 agent 的品牌 icon 而不是通用 terminal 图标
+            const blockMeta = get(this.blockAtom)?.meta;
+            if (isAgentTerminalMeta(blockMeta)) {
+                const provider = normalizeAgentProvider(blockMeta?.["agent:provider"]);
+                if (provider !== "agent") {
+                    const logoInfo = getAgentLogoByProvider(provider);
+                    if (logoInfo != null) {
+                        return {
+                            elemtype: "iconbutton",
+                            icon: logoInfo.icon,
+                            iconColor: logoInfo.iconColor,
+                            className: "agent-brand-icon",
+                        } as IconButtonDecl;
+                    }
+                }
             }
             return { elemtype: "iconbutton", icon: "terminal" };
         });
