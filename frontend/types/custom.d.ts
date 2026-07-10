@@ -17,6 +17,7 @@ declare global {
         waveaiModeConfigAtom: jotai.PrimitiveAtom<Record<string, AIModeConfigType>>; // resolved AI mode configs -- updated via WebSocket
         settingsAtom: jotai.Atom<SettingsType>; // derrived from fullConfig
         systemAppThemeAtom: jotai.PrimitiveAtom<ResolvedAppTheme>;
+        previewThemeOverrideAtom: jotai.PrimitiveAtom<AppThemeMode | null>;
         resolvedAppThemeAtom: jotai.Atom<ResolvedAppTheme>;
         hasCustomAIPresetsAtom: jotai.Atom<boolean>; // derived from fullConfig
         hasConfigErrors: jotai.Atom<boolean>; // derived from fullConfig

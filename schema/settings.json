@@ -116,6 +116,14 @@
             "left"
           ]
         },
+        "app:theme": {
+          "type": "string",
+          "enum": [
+            "system",
+            "dark",
+            "light"
+          ]
+        },
         "feature:waveappbuilder": {
           "type": "boolean"
         },

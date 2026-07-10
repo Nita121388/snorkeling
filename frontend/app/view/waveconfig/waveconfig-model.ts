@@ -7,6 +7,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
@@ -72,6 +73,13 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "Reusable snippets",
             hasJsonView: false,
             visualComponent: CommonTextManagerContent,
+        },
+        {
+            name: "App Theme",
+            path: "apptheme",
+            description: "Light / Dark / System",
+            hasJsonView: false,
+            visualComponent: ThemePickerContent,
         },
         {
             name: "Connections",

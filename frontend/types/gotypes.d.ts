@@ -1954,6 +1954,7 @@ declare global {
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
+        "app:theme"?: string;
         "feature:waveappbuilder"?: boolean;
         "commontext:items"?: CommonTextItemType[];
         "agent:*"?: boolean;
