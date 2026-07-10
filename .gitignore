@@ -47,3 +47,4 @@ docsite/
 docs/superpowers
 .claude
 tmp/
+.runcfg/
