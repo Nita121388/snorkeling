@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/genconn"
+	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
+	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -57,6 +60,83 @@ func (cs *ClientService) FindCommand(ctx context.Context, command string) (strin
 		return "", nil
 	}
 	return path, nil
+}
+
+func (cs *ClientService) FindCommandForConnection(ctx context.Context, command string, connName string, cwd string) (string, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", nil
+	}
+	connName = strings.TrimSpace(connName)
+	if conncontroller.IsLocalConnName(connName) {
+		return cs.FindCommand(ctx, command)
+	}
+	ctx, cancelFn := context.WithTimeout(ctx, DefaultTimeout)
+	defer cancelFn()
+	if strings.HasPrefix(connName, "wsl://") {
+		wslName := strings.TrimPrefix(connName, "wsl://")
+		conn := wslconn.GetWslConn(wslName)
+		if conn == nil {
+			return "", fmt.Errorf("wsl connection not found: %s", connName)
+		}
+		if conn.DeriveConnStatus().Status != conncontroller.Status_Connected {
+			return "", fmt.Errorf("wsl connection %s not connected", connName)
+		}
+		return findCommandOnShellClient(ctx, genconn.MakeWSLShellClient(conn.GetClient()), command, cwd)
+	}
+	opts, err := remote.ParseOpts(connName)
+	if err != nil {
+		return "", fmt.Errorf("invalid ssh remote name (%s): %w", connName, err)
+	}
+	conn := conncontroller.MaybeGetConn(opts)
+	if conn == nil {
+		return "", fmt.Errorf("ssh connection not found: %s", connName)
+	}
+	if conn.DeriveConnStatus().Status != conncontroller.Status_Connected {
+		return "", fmt.Errorf("ssh connection %s not connected", connName)
+	}
+	return findCommandOnShellClient(ctx, genconn.MakeSSHShellClient(conn.GetClient()), command, cwd)
+}
+
+func findCommandOnShellClient(ctx context.Context, client genconn.ShellClient, command string, cwd string) (string, error) {
+	stdout, _, err := genconn.RunSimpleCommand(ctx, client, genconn.CommandSpec{
+		Cmd: makeFindCommandScript(command),
+		Cwd: strings.TrimSpace(cwd),
+	})
+	if err != nil {
+		return "", err
+	}
+	return firstOutputLine(stdout), nil
+}
+
+func firstOutputLine(output string) string {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return ""
+	}
+	line, _, _ := strings.Cut(output, "\n")
+	return strings.TrimSpace(line)
+}
+
+func makeFindCommandScript(command string) string {
+	quotedCommand := shellutil.HardQuote(strings.TrimSpace(command))
+	return strings.Join([]string{
+		"cmd=" + quotedCommand,
+		`if [ -z "$cmd" ]; then exit 0; fi`,
+		`case "$cmd" in`,
+		`  */*)`,
+		`    if [ -x "$cmd" ]; then printf '%s\n' "$cmd"; fi`,
+		`    exit 0`,
+		`    ;;`,
+		`esac`,
+		`found="$(command -v "$cmd" 2>/dev/null || true)"`,
+		`if [ -n "$found" ]; then printf '%s\n' "$found"; exit 0; fi`,
+		`for dir in "$HOME/.local/bin" "$HOME/bin" "$HOME/.npm-global/bin" "$HOME/.bun/bin" "$HOME/.cargo/bin" "/opt/homebrew/bin" "/usr/local/bin"; do`,
+		`  candidate="$dir/$cmd"`,
+		`  if [ -x "$candidate" ]; then printf '%s\n' "$candidate"; exit 0; fi`,
+		`done`,
+		`exit 0`,
+	}, "\n")
 }
 
 // moves the window to the front of the windowId stack

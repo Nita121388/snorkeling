@@ -1264,6 +1264,20 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
 
         const keyDownDisposer = editor.onKeyDown((e: MonacoTypes.IKeyboardEvent) => {
             const waveEvent = adaptFromReactOrNativeKeyEvent(e.browserEvent);
+            // Local Ctrl+S / Cmd+S shortcut: save the file directly here rather
+            // than relying on the global appHandleKeyDown -> focusedNode ->
+            // viewModel.keyDownHandler -> codeEditKeyDownHandler route. The route
+            // depends on layoutModel.focusedNode resolving to THIS preview block,
+            // which recent inline-tabs / ephemeral-node / fileContentLoadable
+            // changes can desync, making Ctrl+S silently no-op (the press is
+            // swallowed by `lastHandledEvent` dedup). The save button avoids this
+            // because it calls `model.handleFileSave` directly. Mirror that here.
+            if (checkKeyPressed(waveEvent, "Cmd:s") || checkKeyPressed(waveEvent, "Ctrl:s")) {
+                fireAndForget(model.handleFileSave.bind(model));
+                e.stopPropagation();
+                e.preventDefault();
+                return;
+            }
             const handled = tryReinjectKey(waveEvent);
             if (handled) {
                 e.stopPropagation();

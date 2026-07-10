@@ -18,7 +18,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 13
+	hookInstallVersion  = 14
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -120,7 +120,7 @@ func InstallCodexHooks() (HookInstallResult, error) {
 	}
 	pruneManagedCommandHooks(hooks)
 	for _, spec := range codexHookSpecs() {
-		if err := ensureCommandHook(hooks, spec.event, hookCommand(hookPath, spec.action, spec.phase), 10, ""); err != nil {
+		if err := ensureCommandHook(hooks, spec.event, codexHookCommand(hookPath, spec), 10, ""); err != nil {
 			return HookInstallResult{}, err
 		}
 	}
@@ -354,9 +354,19 @@ func hookCommand(path string, action string, phase string) string {
 	return fmt.Sprintf("bash %s %s %s", shellSingleQuote(path), action, phase)
 }
 
+func codexHookCommand(path string, spec agentStatusHookSpec) string {
+	if spec.event != "UserPromptSubmit" && spec.event != "Stop" {
+		return hookCommand(path, spec.action, spec.phase)
+	}
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & echo {^"continue^":true}"`, path, spec.action, spec.phase)
+	}
+	return fmt.Sprintf("bash %s %s %s >/dev/null 2>&1; printf '%%s\\n' '{\"continue\":true}'", shellSingleQuote(path), spec.action, spec.phase)
+}
+
 func claudeHookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`cmd.exe /d /q /c \"call \"\"%s\"\" %s %s\"`, path, action, phase)
+		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s"`, path, action, phase)
 	}
 	return hookCommand(path, action, phase)
 }
@@ -852,7 +862,7 @@ func isManagedHookCommand(command string) bool {
 
 func codexHookCommandsInstalled(hooksPath string, hookPath string) bool {
 	for _, spec := range codexHookSpecs() {
-		if !commandHookInstalled(hooksPath, spec.event, hookCommand(hookPath, spec.action, spec.phase)) {
+		if !commandHookInstalled(hooksPath, spec.event, codexHookCommand(hookPath, spec)) {
 			return false
 		}
 	}

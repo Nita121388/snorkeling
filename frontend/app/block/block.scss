@@ -104,6 +104,9 @@
                         i {
                             margin-right: 0;
                         }
+                        &.agent-brand-icon {
+                            opacity: 1;
+                        }
                     }
 
                     .block-frame-view-type {
@@ -335,6 +338,14 @@
                             align-items: center;
                             justify-content: center;
                         }
+                    }
+
+                    // preview list/tree toggle (Switch To List/Tree View) is pushed into a
+                    // .block-frame-div, so the .wave-iconbutton { display:flex } rule above would
+                    // otherwise keep it always visible. Force it to hide until the header is hovered.
+                    // Written with extra specificity (0,8,0) so it wins over the (0,7,0) rule above.
+                    &.block-frame-textelems-wrapper:not(.is-hovered) .block-frame-div .preview-list-mode-toggle {
+                        display: none;
                     }
 
                     .block-frame-div.preview-filename-shell {
@@ -667,7 +678,7 @@
         display: inline-flex;
         align-items: center;
         padding: 0 4px 0 7px;
-        opacity: 0.72;
+        opacity: 0.65;
         flex: 0 1 auto;
 
         button {
@@ -696,6 +707,7 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+                font-weight: 400;
             }
         }
 
@@ -716,7 +728,7 @@
         }
 
         &:hover {
-            opacity: 0.95;
+            opacity: 0.9;
             background: rgb(from var(--main-text-color) r g b / 0.08);
 
             .inline-tab-block-tab-close {
@@ -731,9 +743,19 @@
 
         &.active {
             opacity: 1;
-            border-color: var(--border-color);
+            border-color: transparent;
             border-bottom-color: transparent;
-            background: var(--block-bg-color);
+            background: rgb(from var(--main-text-color) r g b / 0.12);
+            color: var(--accent-color);
+
+            .inline-tab-block-tab-main {
+                span {
+                    font-weight: 600;
+                }
+                i {
+                    opacity: 1;
+                }
+            }
 
             .inline-tab-block-tab-close {
                 opacity: 0.72;

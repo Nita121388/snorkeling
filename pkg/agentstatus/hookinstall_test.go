@@ -207,7 +207,7 @@ func TestInstallClaudeHooksUsesWindowsStdinSafeCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range hookCommands(settings) {
-		if !strings.HasPrefix(command, `cmd.exe /d /q /c \"call \"\"`) {
+		if !strings.HasPrefix(command, `cmd.exe /d /q /c "call ""`) {
 			t.Fatalf("expected Claude windows hook command to call cmd hook directly: %q", command)
 		}
 		if !strings.Contains(command, hookInstallBaseName+".cmd") {

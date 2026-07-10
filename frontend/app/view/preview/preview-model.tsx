@@ -575,6 +575,7 @@ export class PreviewModel implements ViewModel {
                     click: () => {
                         fireAndForget(() => this.toggleDirectoryDisplayMode());
                     },
+                    className: "preview-list-mode-toggle",
                 });
             }
             if (isDirectoryView || explorerActive) {

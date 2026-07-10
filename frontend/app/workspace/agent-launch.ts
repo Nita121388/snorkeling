@@ -39,6 +39,8 @@ export type AgentProfileOption = {
     isDefault: boolean;
 };
 
+export type AgentCommandResolver = (command: string, connection: string, cwd: string) => Promise<string>;
+
 const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
     codex: {
         cmd: "codex",
@@ -115,7 +117,7 @@ function extractCommandBaseName(cmd: string): string {
 
 function isRemoteExecutionConnection(connection: unknown): boolean {
     const normalizedConnection = normalizeConnection(connection);
-    return normalizedConnection != null && !normalizedConnection.startsWith("local:");
+    return normalizedConnection != null && normalizedConnection !== "local" && !normalizedConnection.startsWith("local:");
 }
 
 function isWindowsShimCommand(cmd: string): boolean {
@@ -596,6 +598,34 @@ export function getLaunchCreatableTargets(targets: AgentLaunchTarget[]): AgentLa
     return targets;
 }
 
+export function moveDefaultProfileFirst(
+    options: AgentProfileOption[],
+    defaultProfileName: string | undefined
+): AgentProfileOption[] {
+    if (isBlank(defaultProfileName)) {
+        return options;
+    }
+    const idx = options.findIndex((o) => o.name === defaultProfileName);
+    if (idx <= 0) {
+        return options;
+    }
+    return [options[idx], ...options.slice(0, idx), ...options.slice(idx + 1)];
+}
+
+export function moveDefaultTargetFirst(
+    targets: AgentLaunchTarget[],
+    defaultTargetKey: string | undefined
+): AgentLaunchTarget[] {
+    if (isBlank(defaultTargetKey)) {
+        return targets;
+    }
+    const idx = targets.findIndex((t) => getLaunchTargetDefaultKey(t) === defaultTargetKey);
+    if (idx <= 0) {
+        return targets;
+    }
+    return [targets[idx], ...targets.slice(0, idx), ...targets.slice(idx + 1)];
+}
+
 export function getLaunchTargetDefaultKey(target: AgentLaunchTarget | null | undefined): string {
     if (target == null) {
         return "";
@@ -962,6 +992,35 @@ export function createAgentBlockDefForTarget(
         return createDefaultAgentBlockDef(settings, context);
     }
     return createAgentBlockDefForProfile(profileName!, settings, context);
+}
+
+export async function resolveAgentBlockCommandForLaunch(
+    blockDef: BlockDef,
+    resolveCommand: AgentCommandResolver
+): Promise<BlockDef> {
+    const meta = blockDef.meta ?? {};
+    const cmd = typeof meta.cmd === "string" ? meta.cmd.trim() : "";
+    const connection = normalizeConnection(meta.connection);
+    if (isBlank(cmd) || !isRemoteExecutionConnection(connection)) {
+        return blockDef;
+    }
+    const cwd = normalizePath(meta["cmd:cwd"]) ?? "";
+    const resolvedCmd = (await resolveCommand(cmd, connection!, cwd)).trim();
+    if (isBlank(resolvedCmd)) {
+        throw new Error(
+            `Agent command "${cmd}" was not found on ${connection}. Install it on that machine or add it to that machine's PATH.`
+        );
+    }
+    if (resolvedCmd === cmd) {
+        return blockDef;
+    }
+    return {
+        ...blockDef,
+        meta: {
+            ...meta,
+            cmd: resolvedCmd,
+        },
+    };
 }
 
 export function createTerminalBlockDefForTarget(target: AgentLaunchTarget, baseBlockDef?: BlockDef): BlockDef {
