@@ -7,9 +7,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/genconn"
 )
@@ -102,8 +105,116 @@ func TestGetRemoteWshPathUsesExeForWindows(t *testing.T) {
 
 func TestGetRemoteWshTempPathUsesTmpDirForWindows(t *testing.T) {
 	path := getRemoteWshTempPath("windows", "~/.snorkeling/bin/wsh.exe")
-	if !strings.HasPrefix(path, "~/.snorkeling/tmp/wsh.exe.") {
-		t.Fatalf("expected windows remote temp path under ~/.snorkeling/tmp, got %q", path)
+	if !strings.HasPrefix(path, "~/.snorkeling/tmp/wsh-auto/wsh.exe.") {
+		t.Fatalf("expected windows remote temp path under ~/.snorkeling/tmp/wsh-auto, got %q", path)
+	}
+	name := strings.TrimPrefix(path, "~/.snorkeling/tmp/wsh-auto/")
+	if !regexp.MustCompile(windowsWshAutoTempNamePattern).MatchString(name) {
+		t.Fatalf("expected strict windows auto temp name, got %q", name)
+	}
+}
+
+func TestWindowsWshAutoTempNamePatternHasStrictOwnershipBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(windowsWshAutoTempNamePattern)
+	valid := []string{
+		"wsh.exe.1720699200000000000.0.temp",
+		"wsh.exe.1720699200000000000.9223372036854775807.temp",
+	}
+	for _, name := range valid {
+		if !pattern.MatchString(name) {
+			t.Errorf("expected auto temp name to match: %q", name)
+		}
+	}
+	invalid := []string{
+		"snorkeling-wsh-0.0.48-windows-x64.manual.tmp",
+		"wsh.exe.172069920000000000.1.temp",
+		"wsh.exe.1720699200000000000.-1.temp",
+		"wsh.exe.1720699200000000000.1.temp.backup",
+		"prefix-wsh.exe.1720699200000000000.1.temp",
+		`..\wsh.exe.1720699200000000000.1.temp`,
+	}
+	for _, name := range invalid {
+		if pattern.MatchString(name) {
+			t.Errorf("expected non-auto temp name not to match: %q", name)
+		}
+	}
+}
+
+func TestWindowsWshQuarantineNamePatternHasStrictOwnershipBoundary(t *testing.T) {
+	pattern := regexp.MustCompile(windowsWshQuarantineNamePattern)
+	valid := "wsh.exe.1720699200000000000.1.temp.quarantine.638878916960000000"
+	if !pattern.MatchString(valid) {
+		t.Fatalf("expected quarantine name to match: %q", valid)
+	}
+	invalid := []string{
+		"wsh.exe.1720699200000000000.1.temp",
+		"wsh.exe.1720699200000000000.1.temp.quarantine.63887891696000000",
+		"snorkeling-wsh-0.0.48-windows-x64.tmp.quarantine.638878916960000000",
+		"wsh.exe.1720699200000000000.1.temp.quarantine.638878916960000000.backup",
+	}
+	for _, name := range invalid {
+		if pattern.MatchString(name) {
+			t.Errorf("expected non-quarantine name not to match: %q", name)
+		}
+	}
+}
+
+func TestMakeWindowsWshTempCleanupScriptIsBoundedAndExact(t *testing.T) {
+	now := time.Date(2026, time.July, 11, 12, 34, 56, 0, time.UTC)
+	script := makeWindowsWshTempCleanupScript(now)
+	for _, expected := range []string{
+		"2026-07-11T12:34:56Z",
+		"2026-07-10T12:34:56Z",
+		"2026-07-04T12:34:56Z",
+		`$MaxProcessed = 20`,
+		`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
+		`Assert-SafeCleanupRoot $SnorkelingRoot`,
+		`Join-Path $TempRoot "wsh-auto"`,
+		`Join-Path $TempRoot "wsh-quarantine"`,
+		`foreach ($RootPath in @($TempRoot, $AutoRoot))`,
+		`$Item -is [System.IO.FileInfo]`,
+		`[System.IO.FileAttributes]::ReparsePoint`,
+		`[System.IO.FileShare]::None`,
+		`Move-Item -LiteralPath $Item.FullName -Destination $Destination`,
+		`Remove-Item -LiteralPath $Item.FullName`,
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("expected cleanup script to contain %q", expected)
+		}
+	}
+	for _, forbidden := range []string{
+		`.snorkeling\bin`,
+		`-Force`,
+		`-Recurse`,
+		`Remove-Item -Path`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("cleanup script must not contain %q", forbidden)
+		}
+	}
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.Contains(line, "Remove-Item") {
+			continue
+		}
+		if strings.ContainsAny(line, "*?") {
+			t.Errorf("Remove-Item must not use wildcards: %q", line)
+		}
+		if !strings.Contains(line, "-LiteralPath") {
+			t.Errorf("Remove-Item must use an exact literal path: %q", line)
+		}
+	}
+}
+
+func TestWindowsAutoInstallRequiresManualSentinel(t *testing.T) {
+	wrapped := fmt.Errorf("wsh install failed: %w", ErrWindowsAutoWshInstallRequiresManual)
+	if !errors.Is(wrapped, ErrWindowsAutoWshInstallRequiresManual) {
+		t.Fatal("expected wrapped windows manual-required error to retain its classification")
+	}
+	if errors.Is(errors.New(ErrWindowsAutoWshInstallRequiresManual.Error()), ErrWindowsAutoWshInstallRequiresManual) {
+		t.Fatal("errors with only the same message must not be classified as manual-required")
+	}
+	if !strings.Contains(ErrWindowsAutoWshInstallRequiresManual.Error(), "manual install required") {
+		t.Fatalf("expected manual install guidance, got %q", ErrWindowsAutoWshInstallRequiresManual)
 	}
 }
 

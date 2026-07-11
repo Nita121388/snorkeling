@@ -11,6 +11,7 @@ import {
     clampSelectionCopyOverlayPosition,
     SelectionCopyOverlay,
     type SelectionCopyOverlayState,
+    type SelectionQuickActionItem,
 } from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -32,6 +33,7 @@ import {
 } from "@/app/view/aisessions/session-tags";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
+import { copyText } from "@/util/clipboard";
 import { PLATFORM } from "@/util/platformutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
@@ -49,7 +51,12 @@ import {
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
-import { computeTheme, normalizeCursorStyle } from "./termutil";
+import {
+    computeTheme,
+    normalizeCursorStyle,
+    terminalLogicalLinesForSelection,
+    terminalSelectionToSingleLine,
+} from "./termutil";
 import { TermWrap } from "./termwrap";
 import "./xterm.css";
 
@@ -826,6 +833,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const connectElemRef = React.useRef<HTMLDivElement>(null);
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);
     const [selectionCopyOverlay, setSelectionCopyOverlay] = React.useState<SelectionCopyOverlayState | null>(null);
+    const [selectionLogicalLineText, setSelectionLogicalLineText] = React.useState<string | null>(null);
     const lastSelectionPointerRef = React.useRef<{ x: number; y: number } | null>(null);
     const pendingTermMouseGestureRef = React.useRef<{
         startEvent: MouseEvent;
@@ -991,8 +999,15 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             const container = viewRef.current;
             if (selectionText == null || container == null) {
                 setSelectionCopyOverlay(null);
+                setSelectionLogicalLineText(null);
                 return;
             }
+            setSelectionLogicalLineText(
+                terminalLogicalLinesForSelection(
+                    termWrap.terminal.buffer.active,
+                    termWrap.terminal.getSelectionPosition()
+                )
+            );
             const pointer = lastSelectionPointerRef.current;
             const position = clampSelectionCopyOverlayPosition(
                 container.clientWidth,
@@ -1032,6 +1047,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             rszObs.disconnect();
             setTermWrapInst(null);
             setSelectionCopyOverlay(null);
+            setSelectionLogicalLineText(null);
         };
     }, [blockId, termSettings, termFontSize, termFontFamily]);
 
@@ -1101,7 +1117,36 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
 
     const hideSelectionCopyOverlay = React.useCallback(() => {
         setSelectionCopyOverlay(null);
+        setSelectionLogicalLineText(null);
     }, []);
+
+    const terminalCopyMenuItems = React.useMemo<SelectionQuickActionItem[]>(() => {
+        const selectionText = selectionCopyOverlay?.text;
+        if (selectionText == null) {
+            return [];
+        }
+        return [
+            {
+                label: "Copy Logical Line",
+                enabled: !!selectionLogicalLineText,
+                click: () => {
+                    fireAndForget(async () => {
+                        await copyText(selectionLogicalLineText);
+                        hideSelectionCopyOverlay();
+                    });
+                },
+            },
+            {
+                label: "Copy Selection as One Line",
+                click: () => {
+                    fireAndForget(async () => {
+                        await copyText(terminalSelectionToSingleLine(selectionText));
+                        hideSelectionCopyOverlay();
+                    });
+                },
+            },
+        ];
+    }, [hideSelectionCopyOverlay, selectionCopyOverlay?.text, selectionLogicalLineText]);
 
     const handleTermMouseDown = React.useCallback(() => {
         setSelectionCopyOverlay(null);
@@ -1326,7 +1371,11 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 <TermLinkTooltip termWrap={termWrapInst} />
             </NullErrorBoundary>
             <Search {...searchProps} />
-            <SelectionCopyOverlay overlay={selectionCopyOverlay} onHide={hideSelectionCopyOverlay} />
+            <SelectionCopyOverlay
+                overlay={selectionCopyOverlay}
+                onHide={hideSelectionCopyOverlay}
+                copyMenuItems={terminalCopyMenuItems}
+            />
         </div>
     );
 };

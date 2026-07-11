@@ -14,6 +14,8 @@ import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import * as React from "react";
 import { BlockEnv } from "./blockenv";
 
+const WshManualInstallRequiredErrorCode = "wsh-manual-install-required";
+
 function formatElapsedTime(elapsedMs: number): string {
     if (elapsedMs <= 0) {
         return "";
@@ -64,6 +66,20 @@ function formatWshInstallStatus(status: string): string {
         default:
             return "";
     }
+}
+
+export function resolveWshRecoveryActions(
+    wshInstallStatus: string,
+    hasWshRuntimeError: boolean,
+    wshErrorCode: string
+) {
+    const showActions = hasWshRuntimeError || wshInstallStatus == "failed";
+    const manualInstallRequired =
+        wshInstallStatus == "failed" && wshErrorCode == WshManualInstallRequiredErrorCode;
+    return {
+        showActions,
+        showAutoRetry: showActions && !manualInstallRequired,
+    };
 }
 
 const StalledOverlay = React.memo(
@@ -158,7 +174,11 @@ export const ConnStatusOverlay = React.memo(
         const wshInstallStatusText = formatWshInstallStatus(wshInstallStatus);
         const hasWshInstallProgress = wshInstallStatus != "" && wshInstallStatus != "complete";
         const hasWshRuntimeError = connStatus.status == "connected" && !!connStatus.wsherror;
-        const showWshActions = hasWshRuntimeError || wshInstallStatus == "failed";
+        const { showActions: showWshActions, showAutoRetry } = resolveWshRecoveryActions(
+            wshInstallStatus,
+            hasWshRuntimeError,
+            connStatus.wsherrorcode
+        );
 
         React.useEffect(() => {
             if (width) {
@@ -350,13 +370,15 @@ export const ConnStatusOverlay = React.memo(
                             )}
                             {showWshActions && (
                                 <div className="connstatus-inline-actions">
-                                    <Button
-                                        className={reconClassName}
-                                        disabled={isRetryingWshInstall}
-                                        onClick={handleRetryWshInstall}
-                                    >
-                                        {isRetryingWshInstall ? "Retrying..." : "Retry auto install"}
-                                    </Button>
+                                    {showAutoRetry && (
+                                        <Button
+                                            className={reconClassName}
+                                            disabled={isRetryingWshInstall}
+                                            onClick={handleRetryWshInstall}
+                                        >
+                                            {isRetryingWshInstall ? "Retrying..." : "Retry auto install"}
+                                        </Button>
+                                    )}
                                     <Button className={reconClassName} onClick={handleOpenManualWshInstall}>
                                         Manual install wsh
                                     </Button>

@@ -412,6 +412,146 @@ func TestManagerSearchFallsBackWhenSQLiteHasNoSummaries(t *testing.T) {
 	}
 }
 
+func TestManagerListDropsGuardianFromLegacySummaryCache(t *testing.T) {
+	dir := t.TempDir()
+	metaPath := filepath.Join(dir, "meta.json")
+	indexPath := filepath.Join(dir, "index.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	sessionPath := filepath.Join(dir, "guardian.jsonl")
+	if err := os.WriteFile(sessionPath, []byte(
+		`{"timestamp":"2026-07-11T01:56:40Z","type":"session_meta","payload":{"id":"guardian-id","cwd":"/tmp/project","source":{"subagent":{"other":"guardian"}},"thread_source":"subagent"}}`+"\n"+
+			`{"timestamp":"2026-07-11T01:56:41Z","type":"response_item","payload":{"type":"message","role":"user","content":"The following is the Codex agent history"}}`+"\n",
+	), 0600); err != nil {
+		t.Fatal(err)
+	}
+	legacySummary := SessionSummary{
+		Key:      StableKey(SourceCodex, "guardian-id", sessionPath),
+		ID:       "guardian-id",
+		Source:   SourceCodex,
+		Title:    "The following is the Codex agent history",
+		FilePath: sessionPath,
+	}
+	idx, err := OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{legacySummary}, true); len(errs) != 0 {
+		t.Fatalf("unexpected legacy scan errors: %v", errs)
+	}
+	if _, err := idx.db.Exec(`DELETE FROM ai_schema_meta WHERE key = ?`, summaryParserVersionKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{NewCodexProvider(dir)},
+		IndexPath:  indexPath,
+		MetaPath:   metaPath,
+		SQLitePath: sqlitePath,
+	})
+	results, err := manager.List(context.Background(), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected guardian session to be removed, got %#v", results)
+	}
+	idx, err = OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	hasScan, err := idx.HasSummaryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasScan {
+		t.Fatal("expected refreshed summary cache")
+	}
+	if _, err := idx.GetSession(context.Background(), "guardian-id"); err == nil {
+		t.Fatal("expected cached guardian session to be marked missing")
+	}
+}
+
+func TestSQLitePartialScanDoesNotSetSummaryParserVersion(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index-v2.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	if err := idx.setSchemaMeta(context.Background(), "summaries_scanned_at", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.setSchemaMeta(context.Background(), summaryParserVersionKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{{Key: "invalid"}}, true); len(errs) == 0 {
+		t.Fatal("expected invalid summary error")
+	}
+	hasScan, err := idx.HasSummaryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasScan {
+		t.Fatal("partial scan must not advance the summary parser version")
+	}
+	version, ok, err := idx.schemaMeta(context.Background(), summaryParserVersionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || version != "1" {
+		t.Fatalf("summary parser version = %q, want legacy version 1", version)
+	}
+}
+
+func TestSQLiteSummaryRefreshPreservesIndexedMessageCount(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index-v2.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	summary := SessionSummary{
+		Key:      "codex:count:/tmp/count.jsonl",
+		ID:       "count",
+		Source:   SourceCodex,
+		FilePath: "/tmp/count.jsonl",
+		MTime:    1,
+		Size:     10,
+	}
+	if err := idx.SaveMessages(context.Background(), summary, []Message{
+		{Seq: 1, Role: RoleUser, Text: "request"},
+		{Seq: 2, Role: RoleAssistant, Text: "response"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{summary}, true); len(errs) != 0 {
+		t.Fatalf("unexpected summary refresh errors: %v", errs)
+	}
+	cached, err := idx.GetSession(context.Background(), summary.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.MessageCount != 2 {
+		t.Fatalf("message count after unchanged refresh = %d, want 2", cached.MessageCount)
+	}
+
+	summary.Size++
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{summary}, true); len(errs) != 0 {
+		t.Fatalf("unexpected changed summary refresh errors: %v", errs)
+	}
+	cached, err = idx.GetSession(context.Background(), summary.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.MessageCount != 0 {
+		t.Fatalf("message count after changed refresh = %d, want 0", cached.MessageCount)
+	}
+}
+
 func TestSQLitePartialScanDoesNotMarkExistingSessionsMissing(t *testing.T) {
 	dir := t.TempDir()
 	sqlitePath := filepath.Join(dir, "index-v2.sqlite")

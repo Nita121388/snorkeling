@@ -22,7 +22,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const sqliteIndexSchemaVersion = "2"
+const (
+	sqliteIndexSchemaVersion = "2"
+	summaryParserVersionKey  = "summary_parser_version"
+	summaryParserVersion     = "2"
+)
 
 type SQLiteIndex struct {
 	path     string
@@ -818,9 +822,13 @@ func (idx *SQLiteIndex) SaveScannedSummaries(ctx context.Context, summaries []Se
 		if err := markMissingSQLiteSummaries(ctx, tx, seen); err != nil {
 			errs = append(errs, err)
 			stats.Errors++
+			scanComplete = false
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_schema_meta(key, value) VALUES(?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "summaries_scanned_at", fmt.Sprintf("%d", now)); err != nil {
+	}
+	if scanComplete {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_schema_meta(key, value) VALUES(?, ?), (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			"summaries_scanned_at", fmt.Sprintf("%d", now), summaryParserVersionKey, summaryParserVersion); err != nil {
 			errs = append(errs, err)
 			stats.Errors++
 		}
@@ -837,7 +845,14 @@ func (idx *SQLiteIndex) HasSummaryScan(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return ok && strings.TrimSpace(value) != "", nil
+	if !ok || strings.TrimSpace(value) == "" {
+		return false, nil
+	}
+	version, ok, err := idx.schemaMeta(ctx, summaryParserVersionKey)
+	if err != nil {
+		return false, err
+	}
+	return ok && strings.TrimSpace(version) == summaryParserVersion, nil
 }
 
 func (idx *SQLiteIndex) ChangedFiles(ctx context.Context, files []SessionFile) ([]SessionFile, error) {
@@ -1160,7 +1175,11 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 			project_path = excluded.project_path,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at,
-			message_count = excluded.message_count,
+			message_count = CASE
+				WHEN ? = 1 THEN excluded.message_count
+				WHEN ai_sessions.mtime != excluded.mtime OR ai_sessions.size != excluded.size THEN 0
+				ELSE ai_sessions.message_count
+			END,
 			file_path = excluded.file_path,
 			snippet = excluded.snippet,
 			mtime = excluded.mtime,
@@ -1168,7 +1187,8 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 			missing = excluded.missing,
 			indexed_at = excluded.indexed_at`,
 		summary.Key, summary.ID, summary.Source, summary.Title, summary.TitleSource, summary.ProjectPath, summary.CreatedAt, summary.UpdatedAt,
-		summary.MessageCount, summary.FilePath, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing), now)
+		summary.MessageCount, summary.FilePath, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing), now,
+		boolToInt(messageIndexed))
 	if err != nil {
 		return err
 	}

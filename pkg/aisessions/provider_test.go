@@ -117,6 +117,37 @@ func TestCodexSummarySkipsTurnAborted(t *testing.T) {
 	}
 }
 
+func TestCodexSummarySkipsGuardianButKeepsSpawnedSubagent(t *testing.T) {
+	tests := []struct {
+		name           string
+		subagentSource string
+		wantSummary    bool
+	}{
+		{name: "guardian", subagentSource: `{"other":"guardian"}`, wantSummary: false},
+		{name: "spawned", subagentSource: `{"thread_spawn":{"parent_thread_id":"parent"}}`, wantSummary: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "session.jsonl")
+			if err := os.WriteFile(path, []byte(
+				`{"timestamp":"2026-07-11T01:56:40Z","type":"session_meta","payload":{"id":"session-id","cwd":"/tmp/project","source":{"subagent":`+test.subagentSource+`},"thread_source":"subagent"}}`+"\n"+
+					`{"timestamp":"2026-07-11T01:56:41Z","type":"response_item","payload":{"type":"message","role":"user","content":"Review this session"}}`+"\n",
+			), 0600); err != nil {
+				t.Fatal(err)
+			}
+
+			summary, ok := NewCodexProvider(dir).parseSummary(path)
+			if ok != test.wantSummary {
+				t.Fatalf("summary presence = %v, want %v", ok, test.wantSummary)
+			}
+			if ok && summary.Title != "Review this session" {
+				t.Fatalf("unexpected title: %q", summary.Title)
+			}
+		})
+	}
+}
+
 func TestCodexLoadMessagesIncludesFunctionCalls(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")

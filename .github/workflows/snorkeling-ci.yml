@@ -48,7 +48,7 @@ jobs:
               run: npm exec -- eslint frontend
 
             - name: Focused frontend tests
-              run: npm exec vitest run frontend/app/workspace/agent-launch.test.ts
+              run: npm exec vitest run frontend/app/workspace/agent-launch.test.ts frontend/app/block/connstatusoverlay.test.ts
 
             - name: Go unit tests
               run: go test ./...

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -27,6 +28,16 @@ func TestIsStreamlocalForwardDeniedRejectsOtherErrors(t *testing.T) {
 	err := errors.New("unable to request connection domain socket: random failure")
 	if isStreamlocalForwardDenied(err) {
 		t.Fatalf("expected unrelated domain socket error to be rejected")
+	}
+}
+
+func TestWindowsManualInstallRequiredClassification(t *testing.T) {
+	err := fmt.Errorf("install failed: %w", remote.ErrWindowsAutoWshInstallRequiresManual)
+	if got := wshInstallErrorCode(err); got != NoWshCode_ManualInstallRequired {
+		t.Fatalf("expected manual install error code, got %q", got)
+	}
+	if got := diagnoseWshInstallError(err); !strings.Contains(got, "Manual install wsh") {
+		t.Fatalf("expected manual install guidance, got %q", got)
 	}
 }
 
