@@ -427,6 +427,9 @@ async function appMain() {
         electron.nativeTheme.themeSource = "light";
     } else if (appThemeSetting === "dark") {
         electron.nativeTheme.themeSource = "dark";
+    } else if (appThemeSetting === "monochrome") {
+        // Electron has no monochrome native theme; use light to match the white-dominant chrome.
+        electron.nativeTheme.themeSource = "light";
     } else {
         electron.nativeTheme.themeSource = "system";
     }

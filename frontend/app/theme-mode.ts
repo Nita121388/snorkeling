@@ -32,8 +32,10 @@ export function isLightResolvedTheme(theme: ResolvedAppTheme): boolean {
 }
 
 export function applyAppTheme(theme: ResolvedAppTheme) {
+    // color-scheme only accepts light/dark/normal; map monochrome to light since the chrome is white-dominant.
+    const colorScheme = theme === "monochrome" ? "light" : theme;
     document.documentElement.dataset.theme = theme;
     document.body.dataset.theme = theme;
-    document.body.dataset.colorscheme = theme;
-    document.documentElement.style.colorScheme = theme;
+    document.body.dataset.colorscheme = colorScheme;
+    document.documentElement.style.colorScheme = colorScheme;
 }

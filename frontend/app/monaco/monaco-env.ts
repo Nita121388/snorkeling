@@ -11,6 +11,7 @@ import { configureMonacoYaml } from "monaco-yaml";
 
 import { registerMarkdownFolding } from "@/app/monaco/markdown-folding";
 import { MonacoSchemas } from "@/app/monaco/schemaendpoints";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
@@ -21,7 +22,7 @@ import ymlWorker from "./yamlworker?worker";
 let monacoConfigured = false;
 
 export function setMonacoTheme(appTheme: ResolvedAppTheme) {
-    monaco.editor.setTheme(appTheme === "light" ? "wave-theme-light" : "wave-theme-dark");
+    monaco.editor.setTheme(isLightResolvedTheme(appTheme) ? "wave-theme-light" : "wave-theme-dark");
 }
 
 window.MonacoEnvironment = {

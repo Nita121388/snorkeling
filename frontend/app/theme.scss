@@ -299,6 +299,126 @@
     --button-yellow-hover-bg: #fcd472;
 }
 
+// White-dominant black-and-white theme. Black is auxiliary/contrast only.
+// Surfaces use layered soft whites (#fafafa / #f5f5f5 / #f0f0f0) so the app reads with
+// depth instead of a single flat sheet. All chromatic accents collapse to a grey ramp.
+[data-theme="monochrome"] {
+    --main-text-color: #0a0a0a;
+    --secondary-text-color: #4a4a4a;
+    --grey-text-color: #808080;
+    --main-bg-color: #fafafa;
+    --border-color: rgba(0, 0, 0, 0.14);
+    --color-surface-soft: #fafafa;
+    --color-surface: #f5f5f5;
+    --color-surface-strong: #f0f0f0;
+    --accent-color: #1a1a1a;
+    --accent-hover-color: #000000;
+    --accent-bg-color: rgba(0, 0, 0, 0.08);
+    --accent-color-50: #f5f5f5;
+    --accent-color-100: #e0e0e0;
+    --accent-color-200: #bdbdbd;
+    --accent-color-300: #9a9a9a;
+    --accent-color-500: #3a3a3a;
+    --accent-color-600: #2a2a2a;
+    --accent-color-700: #1a1a1a;
+    --accent-color-800: #101010;
+    --accent-color-900: #050505;
+    --panel-bg-color: rgba(245, 245, 245, 0.72);
+    --highlight-bg-color: rgba(0, 0, 0, 0.08);
+    --error-color: #2a2a2a;
+    --warning-color: #5a5a5a;
+    --success-color: #3a3a3a;
+    --hover-bg-color: rgba(0, 0, 0, 0.05);
+    --hover-bg-color-strong: rgba(0, 0, 0, 0.1);
+    --block-bg-color: rgba(255, 255, 255, 0.72);
+    --block-bg-solid-color: #ffffff;
+
+    --overlay-bg-color: #f5f5f5;
+    --tabbar-bg-color: rgba(245, 245, 245, 0.72);
+    --modal-backdrop-color: rgba(0, 0, 0, 0.28);
+
+    --keybinding-color: #2a2a2a;
+    --keybinding-bg-color: #f5f5f5;
+    --keybinding-border-color: rgba(0, 0, 0, 0.14);
+
+    --scrollbar-thumb-color: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover-color: rgba(0, 0, 0, 0.32);
+    --scrollbar-thumb-active-color: rgba(0, 0, 0, 0.42);
+
+    --tab-green: #3a3a3a;
+
+    --modal-bg-color: #ffffff;
+    --modal-header-bottom-border-color: rgba(0, 0, 0, 0.12);
+    --modal-border-color: rgba(0, 0, 0, 0.14);
+    --modal-shadow-color: rgba(0, 0, 0, 0.18);
+    --toggle-bg-color: rgba(0, 0, 0, 0.14);
+    --toggle-thumb-color: #ffffff;
+    --toggle-checked-bg-color: var(--accent-color);
+
+    --link-color: #0a0a0a;
+
+    --form-element-border-color: rgba(0, 0, 0, 0.14);
+    --form-element-bg-color: #ffffff;
+    --form-element-text-color: #0a0a0a;
+    --form-element-primary-text-color: #0a0a0a;
+    --form-element-primary-color: var(--accent-color);
+    --form-element-secondary-color: rgba(0, 0, 0, 0.08);
+    --form-element-error-color: var(--error-color);
+
+    --conn-icon-color: #4a4a4a;
+    --conn-icon-color-1: #4a4a4a;
+    --conn-icon-color-2: #6a6a6a;
+    --conn-icon-color-3: #2a2a2a;
+    --conn-icon-color-4: #5a5a5a;
+    --conn-icon-color-5: #3a3a3a;
+    --conn-icon-color-6: #7a7a7a;
+    --conn-icon-color-7: #808080;
+    --conn-icon-color-8: #1a1a1a;
+    --conn-status-overlay-bg-color: rgba(0, 0, 0, 0.18);
+
+    --sysinfo-cpu-color: #4a4a4a;
+    --sysinfo-mem-color: #6a6a6a;
+
+    --bulb-color: #4a4a4a;
+
+    --term-black: #0a0a0a;
+    --term-red: #3a3a3a;
+    --term-green: #4a4a4a;
+    --term-yellow: #6a6a6a;
+    --term-blue: #5a5a5a;
+    --term-magenta: #7a7a7a;
+    --term-cyan: #8a8a8a;
+    --term-white: #f0f0f0;
+    --term-bright-black: #5a5a5a;
+    --term-bright-red: #2a2a2a;
+    --term-bright-green: #3a3a3a;
+    --term-bright-yellow: #5a5a5a;
+    --term-bright-blue: #4a4a4a;
+    --term-bright-magenta: #6a6a6a;
+    --term-bright-cyan: #7a7a7a;
+    --term-bright-white: #f5f5f5;
+    --term-gray: #808080;
+    --term-cmdtext: #0a0a0a;
+    --term-foreground: #0a0a0a;
+    --term-background: #fafafa;
+    --term-selection-background: rgba(0, 0, 0, 0.14);
+    --term-cursor-accent: #fafafa;
+
+    --button-text-color: #ffffff;
+    --button-green-bg: #2a2a2a;
+    --button-green-border-color: #1a1a1a;
+    --button-grey-bg: rgba(0, 0, 0, 0.04);
+    --button-grey-hover-bg: rgba(0, 0, 0, 0.09);
+    --button-grey-border-color: rgba(0, 0, 0, 0.14);
+    --button-grey-outlined-color: #4a4a4a;
+    --button-red-bg: #2a2a2a;
+    --button-red-hover-bg: #0a0a0a;
+    --button-red-border-color: #2a2a2a;
+    --button-red-outlined-color: #2a2a2a;
+    --button-yellow-bg: #6a6a6a;
+    --button-yellow-hover-bg: #808080;
+}
+
 // Copy of the light theme variables, not yet wired into the theme resolver.
 // Intended as a standalone palette for future light-variant tuning. Selected via
 // data-theme="light2"; resolveAppTheme() still only emits "dark"|"light", so this

@@ -121,7 +121,8 @@
           "enum": [
             "system",
             "dark",
-            "light"
+            "light",
+            "monochrome"
           ]
         },
         "feature:waveappbuilder": {

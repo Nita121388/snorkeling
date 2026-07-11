@@ -9,6 +9,7 @@ import { colord } from "colord";
 
 export const DefaultTermTheme = "default-dark";
 export const DefaultLightTermTheme = "default-light";
+export const DefaultMonoTermTheme = "default-monochrome";
 
 export type GenClipboardItem = { text?: string; image?: Blob };
 
@@ -56,7 +57,13 @@ export function computeTheme(
 }
 
 export function getDefaultTermTheme(appTheme: ResolvedAppTheme): string {
-    return appTheme === "light" ? DefaultLightTermTheme : DefaultTermTheme;
+    if (appTheme === "light") {
+        return DefaultLightTermTheme;
+    }
+    if (appTheme === "monochrome") {
+        return DefaultMonoTermTheme;
+    }
+    return DefaultTermTheme;
 }
 
 export const MIME_TO_EXT: Record<string, string> = {

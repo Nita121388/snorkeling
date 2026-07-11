@@ -43,6 +43,13 @@ const CARDS: ThemeCardDef[] = [
         previewTheme: "dark",
         description: "Always dark",
     },
+    {
+        mode: "monochrome",
+        label: "Monochrome",
+        icon: "fa-solid fa-circle",
+        previewTheme: "monochrome",
+        description: "Black & white",
+    },
 ];
 
 function MiniTermPreview() {
@@ -108,7 +115,7 @@ const ThemePickerContent = memo(({ model: _model }: { model: WaveConfigViewModel
     }, []);
 
     const normalizeForCompare = (m: string | null): AppThemeMode =>
-        m === "light" || m === "dark" ? m : "system";
+        m === "light" || m === "dark" || m === "monochrome" ? m : "system";
     const activeMode = normalizeForCompare(persistedTheme);
 
     return (

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { TermViewModel } from "@/app/view/term/term-model";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import { computeTheme } from "@/app/view/term/termutil";
 import { TermWrap } from "@/app/view/term/termwrap";
 import { atoms, getSettingsKeyAtom } from "@/store/global";
@@ -30,7 +31,7 @@ const TermThemeUpdater = ({ model, termRef }: TermThemeProps) => {
             return;
         }
         // ponytail: Light mode trades WebGL throughput for clearer glyph antialiasing on Windows displays.
-        termRef.current.setTermRenderer(appTheme === "light" || disableWebGl ? "dom" : "webgl");
+        termRef.current.setTermRenderer(isLightResolvedTheme(appTheme) || disableWebGl ? "dom" : "webgl");
     }, [appTheme, disableWebGl]);
     return null;
 };

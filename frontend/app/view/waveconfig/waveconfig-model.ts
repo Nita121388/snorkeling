@@ -77,7 +77,7 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
         {
             name: "App Theme",
             path: "apptheme",
-            description: "Light / Dark / System",
+            description: "Light / Dark / Monochrome / System",
             hasJsonView: false,
             visualComponent: ThemePickerContent,
         },

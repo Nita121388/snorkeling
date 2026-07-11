@@ -12,6 +12,7 @@ import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
 import { appHandleKeyDown } from "@/app/store/keymodel";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
@@ -297,7 +298,7 @@ export class TermViewModel implements ViewModel {
         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {
             return jotai.atom<number>((get) => {
                 const appTheme = get(atoms.resolvedAppThemeAtom);
-                if (appTheme === "light") {
+                if (isLightResolvedTheme(appTheme)) {
                     return 0;
                 }
                 const value = get(getOverrideConfigAtom(this.blockId, "term:transparency")) ?? 0.5;

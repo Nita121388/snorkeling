@@ -4,6 +4,7 @@
 import { CopyButton } from "@/app/element/copybutton";
 import { IconButton } from "@/app/element/iconbutton";
 import { getFocusedBlockConnection, openFileLinkInPreview } from "@/app/view/preview/file-link-navigation";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import { atoms, openLink } from "@/store/global";
 import { cn, useAtomValueSafe } from "@/util/util";
 import { type Atom, useAtomValue } from "jotai";
@@ -243,8 +244,8 @@ export const WaveStreamdown = ({
     codeBlockMaxWidthAtom,
 }: WaveStreamdownProps) => {
     const appTheme = useAtomValue(atoms.resolvedAppThemeAtom);
-    const shikiTheme = appTheme === "light" ? LightShikiTheme : DarkShikiTheme;
-    const mermaidTheme = appTheme === "light" ? "default" : "dark";
+    const shikiTheme = isLightResolvedTheme(appTheme) ? LightShikiTheme : DarkShikiTheme;
+    const mermaidTheme = isLightResolvedTheme(appTheme) ? "default" : "dark";
     const components = useMemo(
         () => ({
             code: (props: { className?: string; children: React.ReactNode }) => <Code {...props} shikiTheme={shikiTheme} />,
