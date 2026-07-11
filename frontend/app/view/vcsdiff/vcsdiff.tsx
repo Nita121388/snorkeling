@@ -263,7 +263,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                             className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
                                 mode === "side-by-side"
                                     ? "border-accent text-accent bg-accent/10"
-                                    : "border-white/10 text-secondary hover:bg-white/5"
+                                    : "border-border text-secondary hover:bg-hoverbg"
                             }`}
                             onClick={() => setMode("side-by-side")}
                             disabled={modeSaving}
@@ -274,7 +274,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                             className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
                                 mode === "inline"
                                     ? "border-accent text-accent bg-accent/10"
-                                    : "border-white/10 text-secondary hover:bg-white/5"
+                                    : "border-border text-secondary hover:bg-hoverbg"
                             }`}
                             onClick={() => setMode("inline")}
                             disabled={modeSaving}

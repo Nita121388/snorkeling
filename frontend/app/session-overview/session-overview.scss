@@ -26,7 +26,7 @@
 
     &:hover {
         color: var(--main-text-color);
-        background: rgb(from var(--main-text-color) r g b / 0.14);
+        background: var(--hover-bg-color-strong);
     }
 
     > i {
@@ -60,7 +60,7 @@
     &:hover,
     &.is-open {
         color: var(--main-text-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 }
 
@@ -203,7 +203,7 @@
 
     &:hover {
         color: var(--main-text-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 
     &.is-active {
@@ -285,7 +285,7 @@
 
     &:hover {
         color: var(--main-text-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 }
 
@@ -327,7 +327,7 @@
 
     &:hover {
         border-color: var(--border-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 }
 
@@ -420,24 +420,37 @@
     padding: 8px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: rgb(from var(--main-text-color) r g b / 0.035);
+    background: transparent;
     box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease;
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
 
     &.has-unread {
         border-color: rgb(from var(--accent-color) r g b / 0.55);
-        background: rgb(from var(--accent-color) r g b / 0.08);
+        background: transparent;
     }
 
     &.is-current {
         border-color: rgb(from var(--accent-color) r g b / 0.48);
-        background: rgb(from var(--accent-color) r g b / 0.1);
+        background: transparent;
     }
 
     &.has-unread.is-current {
         border-color: rgb(from var(--accent-color) r g b / 0.68);
-        background: rgb(from var(--accent-color) r g b / 0.14);
+        background: transparent;
+    }
+
+    &.has-unread:hover,
+    &.is-current:hover,
+    &.has-unread.is-current:hover {
+        background: rgb(from var(--accent-color) r g b / 0.16);
     }
 
     &.is-plain-block {
@@ -493,7 +506,7 @@
     &:hover,
     &:focus-visible {
         border-color: rgb(from var(--accent-color) r g b / 0.45);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
         color: var(--main-text-color);
         outline: none;
     }
@@ -644,7 +657,7 @@
 
     &:hover {
         color: var(--main-text-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 }
 
@@ -812,7 +825,7 @@
 
     &:hover {
         color: var(--main-text-color);
-        background: var(--hover-bg-color);
+        background: var(--hover-bg-color-strong);
     }
 
     &.danger:hover {
@@ -1117,7 +1130,7 @@
         font-size: 12px;
 
         &:hover {
-            background: var(--hover-bg-color);
+            background: var(--hover-bg-color-strong);
             color: var(--main-text-color);
         }
     }
@@ -1142,7 +1155,7 @@
         cursor: pointer;
 
         &:hover {
-            background: var(--hover-bg-color);
+            background: var(--hover-bg-color-strong);
         }
     }
 }

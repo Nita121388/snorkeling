@@ -9,6 +9,7 @@
     --color-background: var(--main-bg-color);
     --color-foreground: var(--main-text-color);
     --color-white: var(--main-text-color);
+    --color-black: var(--surface-shadow-color);
     --color-primary: var(--main-text-color);
     --color-muted-foreground: var(--secondary-text-color);
     --color-secondary: var(--secondary-text-color);

@@ -4,18 +4,19 @@
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { computeTheme } from "@/app/view/term/termutil";
 import { TermWrap } from "@/app/view/term/termwrap";
-import { atoms } from "@/store/global";
+import { atoms, getSettingsKeyAtom } from "@/store/global";
 import { useAtomValue } from "jotai";
 import { useEffect } from "react";
 
 interface TermThemeProps {
-    blockId: string;
     termRef: React.RefObject<TermWrap>;
     model: TermViewModel;
 }
 
-const TermThemeUpdater = ({ blockId, model, termRef }: TermThemeProps) => {
+const TermThemeUpdater = ({ model, termRef }: TermThemeProps) => {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
+    const appTheme = useAtomValue(atoms.resolvedAppThemeAtom);
+    const disableWebGl = useAtomValue(getSettingsKeyAtom("term:disablewebgl"));
     const blockTermTheme = useAtomValue(model.termThemeNameAtom);
     const transparency = useAtomValue(model.termTransparencyAtom);
     const [theme, _] = computeTheme(fullConfig, blockTermTheme, transparency);
@@ -24,6 +25,13 @@ const TermThemeUpdater = ({ blockId, model, termRef }: TermThemeProps) => {
             termRef.current.terminal.options.theme = theme;
         }
     }, [theme]);
+    useEffect(() => {
+        if (!termRef.current) {
+            return;
+        }
+        // ponytail: Light mode trades WebGL throughput for clearer glyph antialiasing on Windows displays.
+        termRef.current.setTermRenderer(appTheme === "light" || disableWebGl ? "dom" : "webgl");
+    }, [appTheme, disableWebGl]);
     return null;
 };
 

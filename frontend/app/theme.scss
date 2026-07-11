@@ -22,6 +22,7 @@
     --secondary-text-color: rgb(195, 200, 194);
     --grey-text-color: #666;
     --main-bg-color: rgb(34, 34, 34);
+    --surface-shadow-color: #000000;
     --border-color: rgba(255, 255, 255, 0.16);
     --accent-color: rgb(88, 193, 66);
     --accent-hover-color: rgb(118, 223, 96);
@@ -183,10 +184,131 @@
 }
 
 [data-theme="light"] {
+    --main-text-color: #4c3924;
+    --secondary-text-color: #675033;
+    --grey-text-color: #777167;
+    --main-bg-color: #ebe5d9;
+    --surface-shadow-color: #ddd5c5;
+    --border-color: #ded8ca;
+    --color-surface-soft: #f7f7f4;
+    --color-surface: #f0ede6;
+    --color-surface-strong: #f4f0e7;
+    --accent-color: #a76fca;
+    --accent-hover-color: #955ab8;
+    --accent-bg-color: rgba(167, 111, 202, 0.24);
+    --accent-color-50: #faf6fd;
+    --accent-color-100: #f2e9fa;
+    --accent-color-200: #e6d2f5;
+    --accent-color-300: #d6b4e8;
+    --accent-color-500: #955ab8;
+    --accent-color-600: #7c49a1;
+    --accent-color-700: #63387f;
+    --accent-color-800: #4a285c;
+    --accent-color-900: #371d44;
+    --panel-bg-color: rgba(243, 239, 228, 0.72);
+    --highlight-bg-color: rgba(167, 111, 202, 0.2);
+    --error-color: #d32f2f;
+    --warning-color: #e65100;
+    --success-color: #2e7d32;
+    --hover-bg-color: rgba(167, 111, 202, 0.1);
+    --hover-bg-color-strong: rgba(60, 50, 40, 0.07);
+    --block-bg-color: rgba(255, 253, 248, 0.72);
+    --block-bg-solid-color: #fffdf8;
+
+    --overlay-bg-color: #f3efe4;
+    --tabbar-bg-color: rgba(243, 239, 228, 0.72);
+    --modal-backdrop-color: rgba(69, 48, 30, 0.28);
+
+    --keybinding-color: #374151;
+    --keybinding-bg-color: #f3efe4;
+    --keybinding-border-color: #d6cfbe;
+
+    --scrollbar-thumb-color: rgba(107, 91, 68, 0.24);
+    --scrollbar-thumb-hover-color: rgba(107, 91, 68, 0.5);
+    --scrollbar-thumb-active-color: rgba(107, 91, 68, 0.62);
+
+    --tab-green: #2e7d32;
+
+    --modal-bg-color: #fffdf8;
+    --modal-header-bottom-border-color: #d6cfbe;
+    --modal-border-color: #d6cfbe;
+    --modal-shadow-color: rgba(69, 48, 30, 0.18);
+    --toggle-bg-color: #d6cfbe;
+    --toggle-thumb-color: #fffdf8;
+    --toggle-checked-bg-color: var(--accent-color);
+
+    --link-color: #63387f;
+
+    --form-element-border-color: #d6cfbe;
+    --form-element-bg-color: #fffdf8;
+    --form-element-text-color: #1f2937;
+    --form-element-primary-text-color: #1f2937;
+    --form-element-primary-color: var(--accent-color);
+    --form-element-secondary-color: rgba(167, 111, 202, 0.18);
+    --form-element-error-color: var(--error-color);
+
+    --conn-icon-color: #2563eb;
+    --conn-icon-color-1: #2563eb;
+    --conn-icon-color-2: #7c3aed;
+    --conn-icon-color-3: #be185d;
+    --conn-icon-color-4: #dc2626;
+    --conn-icon-color-5: #1d4ed8;
+    --conn-icon-color-6: #c2410c;
+    --conn-icon-color-7: #a16207;
+    --conn-icon-color-8: #2e7d32;
+    --conn-status-overlay-bg-color: rgba(167, 111, 202, 0.18);
+
+    --sysinfo-cpu-color: #2e7d32;
+    --sysinfo-mem-color: #2563eb;
+
+    --term-black: #24292f;
+    --term-red: #cf222e;
+    --term-green: #116329;
+    --term-yellow: #4d2d00;
+    --term-blue: #0969da;
+    --term-magenta: #8250df;
+    --term-cyan: #1b7c83;
+    --term-white: #6e7781;
+    --term-bright-black: #57606a;
+    --term-bright-red: #a40e26;
+    --term-bright-green: #1a7f37;
+    --term-bright-yellow: #633c01;
+    --term-bright-blue: #218bff;
+    --term-bright-magenta: #a475f9;
+    --term-bright-cyan: #3192aa;
+    --term-bright-white: #8c959f;
+    --term-gray: #8c959f;
+    --term-cmdtext: #1f2937;
+    --term-foreground: #1f2937;
+    --term-background: #faf7f0;
+    --term-selection-background: rgba(167, 111, 202, 0.24);
+    --term-cursor-accent: #faf7f0;
+
+    --button-text-color: #fffdf8;
+    --button-green-bg: #2e7d32;
+    --button-green-border-color: #1a7f37;
+    --button-grey-bg: rgba(176, 101, 53, 0.08);
+    --button-grey-hover-bg: rgba(176, 101, 53, 0.14);
+    --button-grey-border-color: #d6cfbe;
+    --button-grey-outlined-color: #6b5b44;
+    --button-red-bg: #d32f2f;
+    --button-red-hover-bg: #b71c1c;
+    --button-red-border-color: #d32f2f;
+    --button-red-outlined-color: #b71c1c;
+    --button-yellow-bg: #f59e0b;
+    --button-yellow-hover-bg: #fcd472;
+}
+
+// Copy of the light theme variables, not yet wired into the theme resolver.
+// Intended as a standalone palette for future light-variant tuning. Selected via
+// data-theme="light2"; resolveAppTheme() still only emits "dark"|"light", so this
+// is a no-op until a matching AppThemeMode is added.
+[data-theme="light2"] {
     --main-text-color: #382603;
     --secondary-text-color: #63574b;
     --grey-text-color: #777167;
     --main-bg-color: #faf7f0;
+    --surface-shadow-color: #e8e1d0;
     --border-color: #d6d3ca;
     --color-surface-soft: #f7f7f4;
     --color-surface: #f0ede6;
@@ -254,7 +376,7 @@
     --conn-icon-color-6: #c2410c;
     --conn-icon-color-7: #a16207;
     --conn-icon-color-8: #2e7d32;
-    --conn-status-overlay-bg-color: rgba(245, 158, 11, 0.18);
+    --conn-icon-status-overlay-bg-color: rgba(245, 158, 11, 0.18);
 
     --sysinfo-cpu-color: #2e7d32;
     --sysinfo-mem-color: #2563eb;

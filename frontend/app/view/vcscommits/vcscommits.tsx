@@ -307,7 +307,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
             <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/25 p-2">
                 <div className="mb-2 grid grid-cols-1 gap-1.5 md:grid-cols-[1.2fr_auto_auto_auto_auto_auto] md:items-center">
                     <input
-                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-xs outline-none focus:border-accent"
+                        className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         placeholder="Keyword (hash/author/subject)"
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
@@ -319,20 +319,20 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                     />
                     <input
                         type="date"
-                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-xs outline-none focus:border-accent"
+                        className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={sinceInput}
                         onChange={(e) => setSinceInput(e.target.value)}
                         title="Since"
                     />
                     <input
                         type="date"
-                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-xs outline-none focus:border-accent"
+                        className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={untilInput}
                         onChange={(e) => setUntilInput(e.target.value)}
                         title="Until"
                     />
                     <select
-                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-xs outline-none focus:border-accent"
+                        className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={String(pageSize)}
                         onChange={(e) => {
                             const nextSize = Number(e.target.value) || 50;
@@ -351,7 +351,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                         Apply
                     </button>
                     <button
-                        className="rounded border border-white/15 px-2 py-1 text-xs text-secondary hover:bg-white/5 cursor-pointer"
+                        className="rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-hoverbg cursor-pointer"
                         onClick={resetFilters}
                     >
                         Reset
@@ -410,7 +410,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                                     {files.map((file, fileIdx) => (
                                                         <div
                                                             key={`${revision}-${file.path}-${fileIdx}`}
-                                                            className="flex items-center gap-2 border-b border-white/8 px-2 py-1 text-[11px] last:border-b-0"
+                                                            className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
                                                         >
                                                             <span className="font-mono text-secondary min-w-[20px]">
                                                                 {statusCodeLabel(file.code)}
@@ -441,7 +441,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                 {!loading && !error && (
                     <div className="mt-2 flex items-center justify-end gap-2 text-xs">
                         <button
-                            className="rounded border border-white/15 px-2 py-1 text-secondary hover:bg-white/5 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+                            className="rounded border border-border px-2 py-1 text-secondary hover:bg-hoverbg disabled:opacity-50 disabled:cursor-default cursor-pointer"
                             disabled={page <= 1}
                             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                         >
@@ -449,7 +449,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                         </button>
                         <span className="text-muted">Page {page}</span>
                         <button
-                            className="rounded border border-white/15 px-2 py-1 text-secondary hover:bg-white/5 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+                            className="rounded border border-border px-2 py-1 text-secondary hover:bg-hoverbg disabled:opacity-50 disabled:cursor-default cursor-pointer"
                             disabled={!hasMore}
                             onClick={() => setPage((prev) => prev + 1)}
                         >

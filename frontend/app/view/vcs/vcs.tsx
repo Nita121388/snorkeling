@@ -259,7 +259,7 @@ function RepoHeader({
                 <span className="flex w-[14px] items-center text-[11px] text-muted">{isExpanded ? "▾" : "▸"}</span>
                 <div className="min-w-0 flex-1 pr-2">
                     <div className="flex min-w-0 items-start gap-2">
-                        <span className="mt-[1px] shrink-0 rounded border border-white/10 px-1.5 py-[1px] text-[11px] uppercase text-secondary">
+                        <span className="mt-[1px] shrink-0 rounded border border-border px-1.5 py-[1px] text-[11px] uppercase text-secondary">
                             {repo.repotype}
                         </span>
                         <span className="min-w-0 flex-1 break-words text-sm font-medium leading-[18px]">
@@ -276,7 +276,7 @@ function RepoHeader({
             </button>
             <div className="flex shrink-0 items-center gap-1.5 self-center">
                 <button
-                    className="rounded border border-white/15 px-2 py-[3px] text-[11px] text-secondary hover:bg-white/5 cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
+                    className="rounded border border-border px-2 py-[3px] text-[11px] text-secondary hover:bg-hoverbg cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
                     title={syncLabel}
                     disabled={syncRunning}
                     onClick={onSync}
@@ -350,7 +350,7 @@ function FileStatusRow({
     onShowHistory: () => void;
 }) {
     return (
-        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
             <input type="checkbox" checked={selected} onChange={onToggleSelected} className="cursor-pointer" />
             <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
             <span className="flex-1 min-w-[180px] whitespace-nowrap pr-3">{status.path}</span>
@@ -378,7 +378,7 @@ function RemoteActionButton({ label, disabled, onClick }: { label: string; disab
 
 function RemoteCommitRow({ commit }: { commit: VcsCommitInfo }) {
     return (
-        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
             <span className="font-mono text-secondary min-w-[78px]">{shortHash(commit.hash ?? "")}</span>
             <span className="min-w-[220px] max-w-[520px] flex-1 truncate pr-3">{commit.subject || "(no subject)"}</span>
             <span className="text-muted min-w-[120px] truncate">{commit.author}</span>
@@ -407,7 +407,7 @@ function RemoteCommitList({ title, commits }: { title: string; commits: VcsCommi
 
 function RemoteFileRow({ status }: { status: VcsFileStatus }) {
     return (
-        <div className="flex w-max min-w-full items-center gap-2 border-b border-white/8 px-2 py-1.5 text-xs last:border-b-0">
+        <div className="flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
             <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
             <span className="flex-1 min-w-[220px] whitespace-nowrap pr-3">{status.path}</span>
         </div>
@@ -507,10 +507,10 @@ function RemoteSection({
                         <span className="font-mono">{isBlank(upstream) ? "Not configured" : upstream}</span>
                         {repo.repotype === "git" && (
                             <>
-                                <span className="rounded border border-white/10 px-1.5 py-[1px] text-[11px] text-secondary">
+                                <span className="rounded border border-border px-1.5 py-[1px] text-[11px] text-secondary">
                                     Behind {behind}
                                 </span>
-                                <span className="rounded border border-white/10 px-1.5 py-[1px] text-[11px] text-secondary">
+                                <span className="rounded border border-border px-1.5 py-[1px] text-[11px] text-secondary">
                                     Ahead {ahead}
                                 </span>
                             </>
@@ -845,7 +845,7 @@ function RepoPanel({
                 <>
                     <div className="mt-3 text-xs font-medium text-secondary mb-1">Commit Selected Files</div>
                     <textarea
-                        className="w-full min-h-[58px] rounded border border-white/15 bg-black/30 px-2 py-1.5 text-xs outline-none focus:border-accent"
+                        className="w-full min-h-[58px] rounded border border-border bg-panel/80 px-2 py-1.5 text-xs outline-none focus:border-accent"
                         value={commitMessage}
                         onChange={(e) => setCommitMessage(e.target.value)}
                         placeholder="Commit message..."

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 declare global {
-    type AppThemeMode = "system" | "dark" | "light";
-    type ResolvedAppTheme = "dark" | "light";
+    type AppThemeMode = "system" | "dark" | "light" | "monochrome";
+    type ResolvedAppTheme = "dark" | "light" | "monochrome";
 }
 
 export function normalizeAppThemeMode(mode: string): AppThemeMode {
-    if (mode === "dark" || mode === "light") {
+    if (mode === "dark" || mode === "light" || mode === "monochrome") {
         return mode;
     }
     return "system";
@@ -23,6 +23,12 @@ export function resolveAppTheme(mode: string, systemTheme: ResolvedAppTheme = ge
         return normalizedMode;
     }
     return systemTheme;
+}
+
+// Binary renderers (Monaco, shiki, mermaid, terminal renderer, transparency) only know
+// dark vs light. monochrome is a white-dominant theme, so it shares the light code path.
+export function isLightResolvedTheme(theme: ResolvedAppTheme): boolean {
+    return theme === "light" || theme === "monochrome";
 }
 
 export function applyAppTheme(theme: ResolvedAppTheme) {

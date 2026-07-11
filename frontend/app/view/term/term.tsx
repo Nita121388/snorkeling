@@ -911,7 +911,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
         const fontFamily = termFontFamily;
-        const useWebGl = !termSettings?.["term:disablewebgl"];
+        const useWebGl =
+            globalStore.get(atoms.resolvedAppThemeAtom) !== "light" && !termSettings?.["term:disablewebgl"];
         console.log("[termwrap-lifecycle-debug] create", {
             blockId,
             nodeId: model.nodeModel.nodeId,
@@ -1093,7 +1094,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
-            <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
+            <TermThemeUpdater model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermSessionTopBar

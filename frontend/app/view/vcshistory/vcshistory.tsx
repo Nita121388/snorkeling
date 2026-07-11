@@ -289,7 +289,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                             return (
                                 <div
                                     key={`${revision}-${idx}`}
-                                    className="rounded border border-white/10 px-2 py-1.5 bg-black/20"
+                                    className="rounded border border-border px-2 py-1.5 bg-black/20"
                                 >
                                     <div
                                         className={`flex items-center gap-2 text-xs ${
@@ -307,7 +307,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                     </div>
 
                                     {expanded && (
-                                        <div className="mt-1.5 rounded border border-white/10 bg-black/25">
+                                        <div className="mt-1.5 rounded border border-border bg-black/25">
                                             {filesLoading && (
                                                 <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
                                             )}
@@ -329,7 +329,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                                         return (
                                                             <div
                                                                 key={`${revision}-${file.path}-${fileIdx}`}
-                                                                className="flex items-center gap-2 border-b border-white/8 px-2 py-1 text-[11px] last:border-b-0"
+                                                                className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
                                                             >
                                                                 <span className="font-mono text-secondary min-w-[20px]">
                                                                     {statusCodeLabel(file.code)}
