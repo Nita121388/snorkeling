@@ -13,6 +13,7 @@ const SelectionCopyButtonSize = 24;
 const SelectionCopyButtonMargin = 8;
 const SelectionCopyFeedbackMs = 900;
 const CommonTextFeedbackMs = 1600;
+const QuickActionsHoverDelayMs = 120;
 
 export type SelectionCopyOverlayState = {
     x: number;
@@ -82,7 +83,10 @@ export function makeSelectionQuickActionMenu(
                 onCommonTextFeedback("Saved", "success");
             } catch (e) {
                 const message = e instanceof Error ? e.message : String(e);
-                onCommonTextFeedback(message.startsWith("Common text already exists") ? "Already exists" : "Failed to save", "error");
+                onCommonTextFeedback(
+                    message.startsWith("Common text already exists") ? "Already exists" : "Failed to save",
+                    "error"
+                );
             }
             options?.onHide?.();
         });
@@ -163,6 +167,7 @@ export function SelectionCopyOverlay({
     const [commonTextFeedback, setCommonTextFeedback] = useState<{ msg: string; kind: string } | null>(null);
     const copiedTimerRef = useRef<number | null>(null);
     const commonTextTimerRef = useRef<number | null>(null);
+    const quickActionsHoverTimerRef = useRef<number | null>(null);
     const quickActionsMenuOpenRef = useRef(false);
 
     useEffect(() => {
@@ -177,6 +182,10 @@ export function SelectionCopyOverlay({
             if (commonTextTimerRef.current != null) {
                 window.clearTimeout(commonTextTimerRef.current);
                 commonTextTimerRef.current = null;
+            }
+            if (quickActionsHoverTimerRef.current != null) {
+                window.clearTimeout(quickActionsHoverTimerRef.current);
+                quickActionsHoverTimerRef.current = null;
             }
         };
     }, [overlay?.x, overlay?.y, overlay?.text]);
@@ -226,6 +235,34 @@ export function SelectionCopyOverlay({
         });
     };
 
+    const clearQuickActionsHoverTimer = (): void => {
+        if (quickActionsHoverTimerRef.current == null) {
+            return;
+        }
+        window.clearTimeout(quickActionsHoverTimerRef.current);
+        quickActionsHoverTimerRef.current = null;
+    };
+
+    const handleQuickActionsMouseEnter = (event: React.MouseEvent<HTMLButtonElement>): void => {
+        if (quickActionsMenuOpenRef.current || quickActionsHoverTimerRef.current != null) {
+            return;
+        }
+        quickActionsHoverTimerRef.current = window.setTimeout(() => {
+            quickActionsHoverTimerRef.current = null;
+            showQuickActionsMenu(event);
+        }, QuickActionsHoverDelayMs);
+    };
+
+    const handleQuickActionsMouseDown = (event: React.MouseEvent<HTMLButtonElement>): void => {
+        clearQuickActionsHoverTimer();
+        event.preventDefault();
+    };
+
+    const handleQuickActionsClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+        clearQuickActionsHoverTimer();
+        showQuickActionsMenu(event);
+    };
+
     const quickActionButtonClassName = [
         position,
         "z-[1500]",
@@ -239,31 +276,34 @@ export function SelectionCopyOverlay({
         "hover:text-[rgb(255,213,116)]",
     ].join(" ");
 
-    const feedbackBubbleClassName = commonTextFeedback != null
-        ? [
-            position,
-            "z-[1501]",
-            "whitespace-nowrap rounded-md px-3 py-1 text-xs leading-none shadow-md",
-            "pointer-events-none select-none",
-            commonTextFeedback.kind === "success"
-                ? "bg-accent/15 text-accent border border-accent/30"
-                : commonTextFeedback.kind === "warn"
-                    ? "bg-amber-600/15 text-amber-600/90 border border-amber-600/30"
-                    : "bg-error/15 text-error border border-error/30",
-        ].join(" ")
-        : null;
+    const feedbackBubbleClassName =
+        commonTextFeedback != null
+            ? [
+                  position,
+                  "z-[1501]",
+                  "whitespace-nowrap rounded-md px-3 py-1 text-xs leading-none shadow-md",
+                  "pointer-events-none select-none",
+                  commonTextFeedback.kind === "success"
+                      ? "bg-accent/15 text-accent border border-accent/30"
+                      : commonTextFeedback.kind === "warn"
+                        ? "bg-amber-600/15 text-amber-600/90 border border-amber-600/30"
+                        : "bg-error/15 text-error border border-error/30",
+              ].join(" ")
+            : null;
 
     return (
         <>
             <button
                 type="button"
+                data-selection-quick-action="true"
                 className={quickActionButtonClassName}
                 style={{ left: `${overlay.x}px`, top: `${overlay.y}px` }}
                 title={copied ? "Copied" : "Quick actions"}
                 tabIndex={-1}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={showQuickActionsMenu}
-                onClick={showQuickActionsMenu}
+                onMouseEnter={handleQuickActionsMouseEnter}
+                onMouseLeave={clearQuickActionsHoverTimer}
+                onMouseDown={handleQuickActionsMouseDown}
+                onClick={handleQuickActionsClick}
             >
                 <i className={copied ? "fa fa-solid fa-check" : "fa fa-regular fa-lightbulb"} />
             </button>

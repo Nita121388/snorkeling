@@ -32,6 +32,7 @@ import {
 } from "@/app/view/aisessions/session-tags";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
+import { PLATFORM } from "@/util/platformutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
@@ -40,6 +41,11 @@ import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
+import {
+    isTermSelectionDrag,
+    shouldRoutePlainTermGesture,
+    shouldSuppressTermMouseMove,
+} from "./term-selection-gesture";
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
@@ -48,6 +54,27 @@ import { TermWrap } from "./termwrap";
 import "./xterm.css";
 
 const dlog = debug("wave:term");
+
+function cloneTermMouseEvent(type: string, event: MouseEvent, overrides: MouseEventInit = {}): MouseEvent {
+    return new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        detail: event.detail,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        button: event.button,
+        buttons: event.buttons,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+        ...overrides,
+    });
+}
 
 interface TerminalViewProps {
     blockId: string;
@@ -800,6 +827,14 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);
     const [selectionCopyOverlay, setSelectionCopyOverlay] = React.useState<SelectionCopyOverlayState | null>(null);
     const lastSelectionPointerRef = React.useRef<{ x: number; y: number } | null>(null);
+    const pendingTermMouseGestureRef = React.useRef<{
+        startEvent: MouseEvent;
+        target: EventTarget;
+        selecting: boolean;
+        activationOnly: boolean;
+        cleanup: () => void;
+    } | null>(null);
+    const routedTermMouseEventsRef = React.useRef(new WeakSet<MouseEvent>());
     const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
     const termSettingsAtom = getSettingsPrefixAtom("term");
     const termSettings = jotai.useAtomValue(termSettingsAtom);
@@ -938,6 +973,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 allowProposedApi: true, // Required by @xterm/addon-search to enable search functionality and decorations
                 ignoreBracketedPasteMode: !termAllowBPM,
                 macOptionIsMeta: termMacOptionIsMeta,
+                macOptionClickForcesSelection: true,
                 cursorStyle: termCursorStyle,
                 cursorBlink: termCursorBlink,
                 overviewRuler: { width: 6 },
@@ -1074,6 +1110,179 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         });
     }, [model]);
 
+    // ponytail: xterm has no mouse-routing hook; plain TUI drag yields to selection. Patch xterm if both need separate gestures.
+    const handleTermMouseDownCapture = React.useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            const nativeEvent = e.nativeEvent;
+            if (routedTermMouseEventsRef.current.has(nativeEvent)) {
+                return;
+            }
+            const terminal = model.termRef.current?.terminal;
+            if (
+                terminal == null ||
+                !shouldRoutePlainTermGesture(
+                    PLATFORM,
+                    terminal.modes.mouseTrackingMode,
+                    e.button,
+                    e.altKey,
+                    e.ctrlKey,
+                    e.metaKey,
+                    e.shiftKey
+                )
+            ) {
+                return;
+            }
+
+            const target = e.target;
+            const activationOnly = nativeEvent.defaultPrevented;
+            pendingTermMouseGestureRef.current?.cleanup();
+            handleTermMouseDown();
+            e.preventDefault();
+            e.stopPropagation();
+            nativeEvent.stopImmediatePropagation();
+
+            const startSelection = (gesture: NonNullable<typeof pendingTermMouseGestureRef.current>) => {
+                gesture.selecting = true;
+                const selectionMouseDown = cloneTermMouseEvent("mousedown", gesture.startEvent, {
+                    altKey: true,
+                    button: 0,
+                    buttons: 1,
+                });
+                routedTermMouseEventsRef.current.add(selectionMouseDown);
+                gesture.target.dispatchEvent(selectionMouseDown);
+            };
+            const handleMouseMove = (moveEvent: MouseEvent) => {
+                if (routedTermMouseEventsRef.current.has(moveEvent)) {
+                    return;
+                }
+                const gesture = pendingTermMouseGestureRef.current;
+                if (gesture == null) {
+                    return;
+                }
+                if (
+                    !gesture.selecting &&
+                    isTermSelectionDrag(
+                        gesture.startEvent.clientX,
+                        gesture.startEvent.clientY,
+                        moveEvent.clientX,
+                        moveEvent.clientY
+                    )
+                ) {
+                    startSelection(gesture);
+                }
+                if (gesture.selecting) {
+                    moveEvent.preventDefault();
+                    moveEvent.stopPropagation();
+                    moveEvent.stopImmediatePropagation();
+                    const selectionMouseMove = cloneTermMouseEvent("mousemove", moveEvent, {
+                        altKey: true,
+                        button: 0,
+                        buttons: 1,
+                    });
+                    routedTermMouseEventsRef.current.add(selectionMouseMove);
+                    document.dispatchEvent(selectionMouseMove);
+                    return;
+                }
+                moveEvent.preventDefault();
+                moveEvent.stopPropagation();
+                moveEvent.stopImmediatePropagation();
+            };
+            const handleMouseUp = (upEvent: MouseEvent) => {
+                const gesture = pendingTermMouseGestureRef.current;
+                if (gesture == null) {
+                    return;
+                }
+                pendingTermMouseGestureRef.current = null;
+                gesture.cleanup();
+                if (gesture.selecting) {
+                    const view = viewRef.current;
+                    if (view != null) {
+                        const rect = view.getBoundingClientRect();
+                        lastSelectionPointerRef.current = {
+                            x: upEvent.clientX - rect.left,
+                            y: upEvent.clientY - rect.top,
+                        };
+                    }
+                    upEvent.preventDefault();
+                    upEvent.stopPropagation();
+                    upEvent.stopImmediatePropagation();
+                    const selectionMouseUp = cloneTermMouseEvent("mouseup", upEvent, {
+                        altKey: true,
+                        button: 0,
+                        buttons: 0,
+                    });
+                    routedTermMouseEventsRef.current.add(selectionMouseUp);
+                    document.dispatchEvent(selectionMouseUp);
+                    return;
+                }
+
+                upEvent.preventDefault();
+                upEvent.stopPropagation();
+                upEvent.stopImmediatePropagation();
+                if (gesture.activationOnly) {
+                    return;
+                }
+                window.queueMicrotask(() => {
+                    const mouseDown = cloneTermMouseEvent("mousedown", gesture.startEvent, {
+                        button: 0,
+                        buttons: 1,
+                    });
+                    const mouseUp = cloneTermMouseEvent("mouseup", upEvent, {
+                        button: 0,
+                        buttons: 0,
+                    });
+                    routedTermMouseEventsRef.current.add(mouseDown);
+                    routedTermMouseEventsRef.current.add(mouseUp);
+                    gesture.target.dispatchEvent(mouseDown);
+                    gesture.target.dispatchEvent(mouseUp);
+                });
+            };
+            const handleWindowBlur = () => {
+                if (pendingTermMouseGestureRef.current?.startEvent !== nativeEvent) {
+                    return;
+                }
+                pendingTermMouseGestureRef.current = null;
+                cleanup();
+            };
+            const cleanup = () => {
+                document.removeEventListener("mousemove", handleMouseMove, true);
+                document.removeEventListener("mouseup", handleMouseUp, true);
+                window.removeEventListener("blur", handleWindowBlur);
+            };
+            const gesture = {
+                startEvent: nativeEvent,
+                target,
+                selecting: false,
+                activationOnly,
+                cleanup,
+            };
+            pendingTermMouseGestureRef.current = gesture;
+            document.addEventListener("mousemove", handleMouseMove, true);
+            document.addEventListener("mouseup", handleMouseUp, true);
+            window.addEventListener("blur", handleWindowBlur);
+            if (nativeEvent.detail > 1) {
+                startSelection(gesture);
+            }
+        },
+        [handleTermMouseDown, model]
+    );
+
+    const handleTermMouseMoveCapture = React.useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!shouldSuppressTermMouseMove(model.termRef.current?.terminal.hasSelection() ?? false, e.buttons)) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+        },
+        [model]
+    );
+
+    React.useEffect(() => {
+        return () => pendingTermMouseGestureRef.current?.cleanup();
+    }, []);
+
     const handleTermMouseUp = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const view = viewRef.current;
         if (view == null) {
@@ -1107,6 +1316,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 key="connect-elem"
                 className="term-connectelem"
                 ref={connectElemRef}
+                onMouseDownCapture={handleTermMouseDownCapture}
+                onMouseMoveCapture={handleTermMouseMoveCapture}
                 onMouseDown={handleTermMouseDown}
                 onMouseUp={handleTermMouseUp}
                 onWheel={handleTermWheel}

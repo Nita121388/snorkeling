@@ -22,7 +22,6 @@ type EditingState = {
     id?: string;
     title: string;
     text: string;
-    shortcut: string;
     tags: string;
     pinned: boolean;
 };
@@ -31,7 +30,6 @@ function makeEmptyDraft(): EditingState {
     return {
         title: "",
         text: "",
-        shortcut: "",
         tags: "",
         pinned: false,
     };
@@ -42,7 +40,6 @@ function makeEditingDraft(item: CommonTextItem): EditingState {
         id: item.id,
         title: item.title,
         text: item.text,
-        shortcut: item.shortcut ?? "",
         tags: (item.tags ?? []).join(", "),
         pinned: item.pinned === true,
     };
@@ -82,7 +79,6 @@ const CommonTextManagerContent = memo(() => {
                 {
                     title: editing.title,
                     text: editing.text,
-                    shortcut: editing.shortcut,
                     tags: editing.tags.split(","),
                     pinned: editing.pinned,
                 },
@@ -199,7 +195,7 @@ const CommonTextManagerContent = memo(() => {
                 </div>
                 <div className="min-h-0 overflow-y-auto p-4">
                     <div className="mx-auto flex max-w-[760px] flex-col gap-4">
-                        <div className="grid grid-cols-[1fr_160px] gap-3 @max-w600:grid-cols-1">
+                        <div className="grid grid-cols-1 gap-3">
                             <label className="flex flex-col gap-1 text-sm">
                                 <span className="text-secondary">Title</span>
                                 <input
@@ -207,15 +203,6 @@ const CommonTextManagerContent = memo(() => {
                                     value={editing.title}
                                     onChange={(e) => setEditing((cur) => ({ ...cur, title: e.target.value }))}
                                     placeholder="Display name"
-                                />
-                            </label>
-                            <label className="flex flex-col gap-1 text-sm">
-                                <span className="text-secondary">Shortcut</span>
-                                <input
-                                    className="h-9 rounded border border-border bg-background px-3 font-mono outline-none focus:border-accent"
-                                    value={editing.shortcut}
-                                    onChange={(e) => setEditing((cur) => ({ ...cur, shortcut: e.target.value }))}
-                                    placeholder=";sig"
                                 />
                             </label>
                         </div>

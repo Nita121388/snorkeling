@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { waveAIHasSelection } from "@/app/aipanel/waveai-focus-utils";
 import {
     clearBadgesForBlockOnFocus,
     clearBadgesForTabOnFocus,
@@ -31,10 +32,12 @@ import { useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
-import { CommonTextSearchModal } from "./commontext/commontext-search-modal";
+import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
+import { CommonTextSaveDialog } from "./commontext/commontext-save-dialog";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
 import { makeSelectionSearchInFilesMenuItem } from "./element/selection-copy-overlay";
+import { classifyMacOSFirstMouseTarget, shouldPassThroughMacOSFirstMouse } from "./macos-first-click";
 
 import "./app.scss";
 
@@ -243,6 +246,18 @@ const MacOSFirstClickHandler = () => {
         const handleMouseDown = (e: MouseEvent) => {
             const timeDiff = Date.now() - windowFocusTime;
             if (windowFocusTime != null && timeDiff < 50) {
+                const targetKind = classifyMacOSFirstMouseTarget(e.target, e.altKey);
+                const passThrough = shouldPassThroughMacOSFirstMouse(targetKind, e.button, e.metaKey, e.ctrlKey);
+                if (targetKind === "quick-action" && passThrough) {
+                    cancelNextClick = false;
+                    return;
+                }
+                if (targetKind === "selection-surface" && passThrough) {
+                    e.preventDefault();
+                    cancelNextClick = true;
+                    console.log("macos first-click selection mousedown allowed", timeDiff + "ms");
+                    return;
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
@@ -254,9 +269,28 @@ const MacOSFirstClickHandler = () => {
                         refocusNode(blockId);
                     }, 10);
                 } else if (isAIPanelTarget(e.target)) {
+                    // Only set the focus-type atom (without forcing refocusNode → focusInput on the
+                    // chat textarea) when there is an active selection inside the AI panel. Touching
+                    // the textarea focus here would let the native browser "editable-focus wipes the
+                    // DOM selection" behavior clear the user's selection, which in turn hides the
+                    // 💡 quick-action overlay (selection-copy-overlay). When there is no selection,
+                    // fall back to the original "force-focus the AI panel" behavior so the input gets
+                    // focused as before. This mirrors the AI panel's own handleClick selection
+                    // protection in aipanel.tsx.
+                    const hasSelection = waveAIHasSelection();
                     setTimeout(() => {
-                        console.log("macos first-click, focusing AI panel");
-                        FocusManager.getInstance().setWaveAIFocused(true);
+                        console.log(
+                            "macos first-click, focusing AI panel",
+                            hasSelection ? "(selection preserved)" : "(no selection, focus input)"
+                        );
+                        if (hasSelection) {
+                            // Only set the focus-type atom; do NOT trigger refocusNode/focusInput,
+                            // so the current DOM selection (and the 💡 overlay) survives the first
+                            // mac window-wake click.
+                            FocusManager.getInstance().requestWaveAIFocus();
+                        } else {
+                            FocusManager.getInstance().setWaveAIFocused(true);
+                        }
                     }, 10);
                 }
                 console.log("macos first-click detected, canceled", timeDiff + "ms");
@@ -392,7 +426,8 @@ const AppInner = () => {
                 <Workspace />
             </DndProvider>
             <ClipboardFloatActions />
-            <CommonTextSearchModal />
+            <CommonTextComposeModal />
+            <CommonTextSaveDialog />
         </div>
     );
 };
