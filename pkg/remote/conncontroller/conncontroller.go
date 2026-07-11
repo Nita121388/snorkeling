@@ -57,6 +57,7 @@ const (
 	NoWshCode_DomainSocketError     = "domainsocket-error"
 	NoWshCode_ConnServerStartError  = "connserver-start-error"
 	NoWshCode_InstallError          = "install-error"
+	NoWshCode_ManualInstallRequired = "wsh-manual-install-required"
 	NoWshCode_PostInstallStartError = "postinstall-start-error"
 	NoWshCode_InstallVerifyError    = "install-verify-error"
 )
@@ -1010,7 +1011,9 @@ func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, re
 	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
 	client := conn.GetClient()
 	if client == nil {
-		return fmt.Errorf("cannot update wsh: ssh client is not connected")
+		err := fmt.Errorf("cannot update wsh: ssh client is not connected")
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
+		return err
 	}
 	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
 	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
@@ -1022,10 +1025,7 @@ func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, re
 		conn.updateWshInstallState(WshInstallStatus_Uploading, fmt.Sprintf("Uploading wsh binary: %d/%d bytes", written, total), "", true)
 	})
 	if err != nil {
-		// Best-effort sweep: clear any half-written .temp residue this failed attempt may have
-		// left behind on the remote, so the next retry starts clean. See remote.CleanupRemoteWshTemp.
-		remote.CleanupRemoteWshTemp(ctx, client, remoteInfo.ClientOs)
-		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), wshInstallErrorCode(err), true)
 		return fmt.Errorf("error installing wsh to remote: %w", err)
 	}
 	conn.updateWshInstallState(WshInstallStatus_Complete, "wsh update complete", "", true)
@@ -1118,10 +1118,7 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 	})
 	if err != nil {
 		conn.Infof(ctx, "ERROR copying wsh binary to remote: %v\n", err)
-		// Best-effort sweep: clear any half-written .temp residue this failed attempt may have
-		// left behind on the remote, so the next retry starts clean. See remote.CleanupRemoteWshTemp.
-		remote.CleanupRemoteWshTemp(ctx, client, clientOs)
-		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
+		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), wshInstallErrorCode(err), true)
 		return fmt.Errorf("error copying wsh binary to remote: %w", err)
 	}
 	conn.updateWshInstallState(WshInstallStatus_Verifying, "Verifying remote wsh version", "", true)
@@ -1311,9 +1308,19 @@ type WshCheckResult struct {
 	WshError      error
 }
 
+func wshInstallErrorCode(err error) string {
+	if errors.Is(err, remote.ErrWindowsAutoWshInstallRequiresManual) {
+		return NoWshCode_ManualInstallRequired
+	}
+	return NoWshCode_InstallError
+}
+
 func diagnoseWshInstallError(err error) string {
 	if err == nil {
 		return ""
+	}
+	if errors.Is(err, remote.ErrWindowsAutoWshInstallRequiresManual) {
+		return "Windows automatic wsh install is temporarily disabled. Use Manual install wsh."
 	}
 	errStr := strings.ToLower(err.Error())
 	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(errStr, "deadline exceeded") || strings.Contains(errStr, "timeout") {
@@ -1404,8 +1411,9 @@ func (conn *SSHConn) tryEnableWsh(ctx context.Context, clientDisplayName string)
 		if err != nil {
 			conn.Infof(ctx, "ERROR installing wsh: %v\n", err)
 			err = fmt.Errorf("error installing wsh: %w", err)
-			conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
-			return WshCheckResult{NoWshReason: "error installing wsh/connserver", NoWshCode: NoWshCode_InstallError, WshError: err}
+			errorCode := wshInstallErrorCode(err)
+			conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), errorCode, true)
+			return WshCheckResult{NoWshReason: "error installing wsh/connserver", NoWshCode: errorCode, WshError: err}
 		}
 		conn.updateWshInstallState(WshInstallStatus_RestartingServer, "Restarting remote connserver", "", true)
 		needsInstall, clientVersion, _, err = conn.StartConnServer(ctx, true, connServerMode)

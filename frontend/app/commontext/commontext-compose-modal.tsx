@@ -17,7 +17,6 @@ import {
     getCommonTextTagSummaries,
     openCommonTextManager,
     recordCommonTextUse,
-    searchCommonTextItems,
     searchCommonTextItemsFuzzy,
     type CommonTextItem,
 } from "./commontext-model";
@@ -61,13 +60,19 @@ const CommonTextComposeModal = memo(() => {
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
 
     // List filtering:
-    //  - When the manual search box has text, use it verbatim (single-token AND handled by model).
-    //  - Otherwise, fuzzy-match the *entire editor body* token-by-token (OR semantics, ranked by
+    //  - When the manual search box has text, it overrides the editor (replace semantics, not
+    //    intersection): the editor's body is ignored and only the search box words drive filtering.
+    //  - Otherwise, fuzzy-match the *ent editor body* token-by-token (OR semantics, ranked by
     //    hit count). Caret position in the editor is irrelevant — only what the user has typed.
+    //  - Both paths use searchCommonTextItemsFuzzy (OR + hits ranking) so the search box and
+    //    editor-driven suggestions behave consistently: typing one keyword surfaces every item
+    //    that contains it, with multi-hit items ranked first. The previous AND semantics for the
+    //    manual search box made multi-token queries return empty whenever any token was missing
+    //    from a candidate, which felt like "the search box does nothing".
     const filteredItems = useMemo(() => {
         if (state.open !== true) return [];
         if (state.manualQuery.trim() !== "") {
-            return searchCommonTextItems(allItems, state.manualQuery, LIST_LIMIT, state.selectedTags);
+            return searchCommonTextItemsFuzzy(allItems, state.manualQuery, LIST_LIMIT, state.selectedTags);
         }
         return searchCommonTextItemsFuzzy(allItems, state.editor, LIST_LIMIT, state.selectedTags);
     }, [allItems, state]);

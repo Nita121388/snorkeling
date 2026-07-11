@@ -222,6 +222,12 @@ func (p *CodexProvider) parseSummaryFromLines(
 		if strValue(value, "type") == "session_meta" {
 			payload, _ := value["payload"].(map[string]any)
 			if payload != nil {
+				source, _ := payload["source"].(map[string]any)
+				subagent, _ := source["subagent"].(map[string]any)
+				if strValue(subagent, "other") == "guardian" {
+					// ponytail: new ignored files are reparsed until ai_files can persist exclusions.
+					return SessionSummary{}, false
+				}
 				if id == "" {
 					id = strValue(payload, "id")
 				}

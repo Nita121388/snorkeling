@@ -17,6 +17,10 @@ export function trimTerminalSelection(text: string): string {
         .join("\n");
 }
 
+export function terminalSelectionToSingleLine(text: string): string {
+    return text.replace(/(?:[ \t]*(?:\r\n?|\n)[ \t]*)+/g, " ").trim();
+}
+
 export function normalizeCursorStyle(cursorStyle: string): TermTypes.Terminal["options"]["cursorStyle"] {
     if (cursorStyle === "underline" || cursorStyle === "bar") {
         return cursorStyle;
@@ -395,6 +399,33 @@ export function bufferLinesToText(buffer: TermTypes.IBuffer, startIndex: number,
     }
 
     return lines;
+}
+
+export function terminalLogicalLinesForSelection(
+    buffer: TermTypes.IBuffer,
+    selection: ReturnType<TermTypes.Terminal["getSelectionPosition"]>
+): string {
+    if (selection == null || buffer.length === 0) {
+        return "";
+    }
+
+    let startRow = selection.start.y;
+    let endRow = selection.end.y;
+    if (selection.end.x === 0 && endRow > startRow) {
+        endRow--;
+    }
+    [startRow, endRow] = [Math.min(startRow, endRow), Math.max(startRow, endRow)];
+    startRow = Math.max(0, Math.min(startRow, buffer.length - 1));
+    endRow = Math.max(0, Math.min(endRow, buffer.length - 1));
+
+    while (startRow > 0 && buffer.getLine(startRow)?.isWrapped) {
+        startRow--;
+    }
+    while (endRow + 1 < buffer.length && buffer.getLine(endRow + 1)?.isWrapped) {
+        endRow++;
+    }
+
+    return bufferLinesToText(buffer, startRow, endRow + 1).join("\n");
 }
 
 export function quoteForPosixShell(filePath: string): string {

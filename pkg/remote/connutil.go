@@ -6,6 +6,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -27,6 +28,11 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"golang.org/x/crypto/ssh"
 )
+
+const windowsWshAutoTempNamePattern = `^wsh[.]exe[.][0-9]{19}[.][0-9]{1,19}[.]temp$`
+const windowsWshQuarantineNamePattern = `^wsh[.]exe[.][0-9]{19}[.][0-9]{1,19}[.]temp[.]quarantine[.][0-9]{18}$`
+
+var ErrWindowsAutoWshInstallRequiresManual = errors.New("windows automatic wsh install is temporarily disabled; manual install required")
 
 var userHostRe = regexp.MustCompile(`^([a-zA-Z0-9][a-zA-Z0-9._@\\-]*@)?([a-zA-Z0-9][a-zA-Z0-9.-]*)(?::([0-9]+))?$`)
 
@@ -149,7 +155,7 @@ func GetRemoteWshPath(clientOs string) string {
 
 func getRemoteWshTempPath(clientOs string, remoteWshPath string) string {
 	if clientOs == "windows" {
-		return fmt.Sprintf("~/.snorkeling/tmp/wsh.exe.%d.%d.temp", time.Now().UnixNano(), rand.Int63())
+		return fmt.Sprintf("~/.snorkeling/tmp/wsh-auto/wsh.exe.%d.%d.temp", time.Now().UnixNano(), rand.Int63())
 	}
 	return fmt.Sprintf("%s.%d.%d.temp", remoteWshPath, time.Now().UnixNano(), rand.Int63())
 }
@@ -300,28 +306,98 @@ func runSessionWithContext(ctx context.Context, session *ssh.Session, cmd string
 	}
 }
 
-// CleanupRemoteWshTemp removes leftover wsh upload temp files from a prior interrupted
-// install on the remote. Best-effort: ignores all errors (network, missing dir, etc.).
-//
-// Why: a half-written temp file from a previous install that was cut off mid-stream
-// (ctx timeout kill, snorkeling restart, network drop) stays on the remote forever
-// because the install script only cleans up its own temp inside its own failure
-// branches — and posix temp files live beside the wsh binary under ~/.snorkeling/bin/,
-// polluting the very directory we install into. Windows temp files live under
-// ~/.snorkeling/tmp/. Both auto-install name forms are wsh.<unixnano>.<rand>.temp
-// (and the .exe variant on windows); see getRemoteWshTempPath.
-//
-// Must run on its own SSH session BEFORE the upload session is created, so it does
-// not contend for stdin/stdout/stderr channels with the upload.
+func makeWindowsWshTempCleanupScript(now time.Time) string {
+	now = now.UTC()
+	uploadCutoff := now.Add(-24 * time.Hour).Format(time.RFC3339Nano)
+	quarantineCutoff := now.Add(-7 * 24 * time.Hour).Format(time.RFC3339Nano)
+	nowText := now.Format(time.RFC3339Nano)
+	return strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`$NowUtc = [DateTime]::Parse(` + shellutil.HardQuotePowerShell(nowText) + `, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()`,
+		`$UploadCutoffUtc = [DateTime]::Parse(` + shellutil.HardQuotePowerShell(uploadCutoff) + `, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()`,
+		`$QuarantineCutoffUtc = [DateTime]::Parse(` + shellutil.HardQuotePowerShell(quarantineCutoff) + `, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()`,
+		`$UploadPattern = ` + shellutil.HardQuotePowerShell(windowsWshAutoTempNamePattern),
+		`$QuarantinePattern = ` + shellutil.HardQuotePowerShell(windowsWshQuarantineNamePattern),
+		`$MaxProcessed = 20`,
+		`$Processed = 0`,
+		`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
+		`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
+		`$AutoRoot = Join-Path $TempRoot "wsh-auto"`,
+		`$QuarantineRoot = Join-Path $TempRoot "wsh-quarantine"`,
+		`function Assert-SafeCleanupRoot {`,
+		`    param([string]$Path)`,
+		`    if (!(Test-Path -LiteralPath $Path)) { return }`,
+		`    $Root = Get-Item -LiteralPath $Path -ErrorAction Stop`,
+		`    if (!$Root.PSIsContainer -or (($Root.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {`,
+		`        throw "unsafe wsh cleanup root: $Path"`,
+		`    }`,
+		`}`,
+		`function Test-ExclusiveRegularFile {`,
+		`    param([System.IO.FileInfo]$Item)`,
+		`    if ($null -eq $Item -or $Item.PSIsContainer -or (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { return $false }`,
+		`    $Stream = $null`,
+		`    try {`,
+		`        $Stream = [System.IO.File]::Open($Item.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)`,
+		`        return $true`,
+		`    } catch {`,
+		`        return $false`,
+		`    } finally {`,
+		`        if ($null -ne $Stream) { $Stream.Dispose() }`,
+		`    }`,
+		`}`,
+		`Assert-SafeCleanupRoot $SnorkelingRoot`,
+		`Assert-SafeCleanupRoot $TempRoot`,
+		`Assert-SafeCleanupRoot $AutoRoot`,
+		`Assert-SafeCleanupRoot $QuarantineRoot`,
+		`if (!(Test-Path -LiteralPath $TempRoot)) { return }`,
+		`if (!(Test-Path -LiteralPath $QuarantineRoot)) { [System.IO.Directory]::CreateDirectory($QuarantineRoot) | Out-Null }`,
+		`Assert-SafeCleanupRoot $QuarantineRoot`,
+		`$QuarantineItems = @(Get-ChildItem -LiteralPath $QuarantineRoot -ErrorAction Stop | Sort-Object -Property Name)`,
+		`foreach ($Item in $QuarantineItems) {`,
+		`    if ($Processed -ge $MaxProcessed) { break }`,
+		`    if (!($Item -is [System.IO.FileInfo]) -or $Item.Name -notmatch $QuarantinePattern) { continue }`,
+		`    [Int64]$QuarantinedAtTicks = 0`,
+		`    $TicksText = $Item.Name.Substring($Item.Name.LastIndexOf(".") + 1)`,
+		`    if (![Int64]::TryParse($TicksText, [ref]$QuarantinedAtTicks)) { continue }`,
+		`    if ($QuarantinedAtTicks -ge $QuarantineCutoffUtc.Ticks) { continue }`,
+		`    if (!(Test-ExclusiveRegularFile $Item)) { continue }`,
+		`    try {`,
+		`        Remove-Item -LiteralPath $Item.FullName -ErrorAction Stop`,
+		`        $Processed++`,
+		`    } catch { continue }`,
+		`}`,
+		`$Candidates = @()`,
+		`foreach ($RootPath in @($TempRoot, $AutoRoot)) {`,
+		`    if (!(Test-Path -LiteralPath $RootPath)) { continue }`,
+		`    try { $Items = @(Get-ChildItem -LiteralPath $RootPath -ErrorAction Stop) } catch { continue }`,
+		`    foreach ($Item in $Items) {`,
+		`        if (!($Item -is [System.IO.FileInfo])) { continue }`,
+		`        if ($Item.Name -notmatch $UploadPattern -or $Item.LastWriteTimeUtc -ge $UploadCutoffUtc) { continue }`,
+		`        if (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }`,
+		`        $Candidates += $Item`,
+		`    }`,
+		`}`,
+		`$Candidates = @($Candidates | Sort-Object -Property LastWriteTimeUtc, FullName)`,
+		`foreach ($Item in $Candidates) {`,
+		`    if ($Processed -ge $MaxProcessed) { break }`,
+		`    if (!(Test-ExclusiveRegularFile $Item)) { continue }`,
+		`    $DestinationName = $Item.Name + ".quarantine." + $NowUtc.Ticks.ToString([System.Globalization.CultureInfo]::InvariantCulture)`,
+		`    $Destination = Join-Path $QuarantineRoot $DestinationName`,
+		`    if (Test-Path -LiteralPath $Destination) { continue }`,
+		`    try {`,
+		`        Move-Item -LiteralPath $Item.FullName -Destination $Destination -ErrorAction Stop`,
+		`        $Processed++`,
+		`    } catch { continue }`,
+		`}`,
+	}, "\n")
+}
+
+// CleanupRemoteWshTemp quarantines only stale, recognizably auto-generated upload
+// files. Best-effort errors are ignored so cleanup cannot block connection repair.
 func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs string) {
 	var cmdStr string
 	if clientOs == "windows" {
-		// Remove-Item with -ErrorAction SilentlyContinue: missing files / empty dir are not an error.
-		script := strings.Join([]string{
-			`Remove-Item -Force -LiteralPath "$HOME\.snorkeling\tmp\wsh.exe.*.temp" -ErrorAction SilentlyContinue`,
-			`Remove-Item -Force -LiteralPath "$HOME\.snorkeling\bin\wsh.exe.*.temp" -ErrorAction SilentlyContinue`,
-		}, "; ")
-		cmdStr = shellutil.MakePowerShellEncodedCommand(script)
+		cmdStr = shellutil.MakePowerShellEncodedCommand(makeWindowsWshTempCleanupScript(time.Now()))
 	} else {
 		// Posix: temp files are wsh.<nano>.<rand>.temp in ~/.snorkeling/bin/ (same dir as the wsh binary).
 		// rm -f globs are best-effort; `2>/dev/null` masks "no such file"; trailing `true` makes the
@@ -391,6 +467,10 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 	deadline, ok := ctx.Deadline()
 	if ok {
 		blocklogger.Debugf(ctx, "[conndebug] CpWshToRemote, timeout: %v\n", time.Until(deadline))
+	}
+	if clientOs == "windows" {
+		CleanupRemoteWshTemp(ctx, client, clientOs)
+		return ErrWindowsAutoWshInstallRequiresManual
 	}
 	wshLocalPath, err := shellutil.GetLocalWshBinaryPath(wavebase.WaveVersion, clientOs, clientArch)
 	if err != nil {

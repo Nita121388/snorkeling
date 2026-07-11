@@ -18,9 +18,9 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
+import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
-import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -54,7 +54,13 @@ import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder"
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
-import { computeTheme, DefaultTermTheme, trimTerminalSelection } from "./termutil";
+import {
+    computeTheme,
+    DefaultTermTheme,
+    terminalLogicalLinesForSelection,
+    terminalSelectionToSingleLine,
+    trimTerminalSelection,
+} from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
 function normalizeAgentProvider(provider: unknown): string {
@@ -68,9 +74,7 @@ function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
     return meta["agent:autoresume"] === true;
 }
 
-function getAgentLogoByProvider(
-    provider: string
-): { icon: React.ReactNode; iconColor?: string } | null {
+function getAgentLogoByProvider(provider: string): { icon: React.ReactNode; iconColor?: string } | null {
     switch (provider.trim().toLowerCase()) {
         case "codex":
             return { icon: React.createElement(OpenAILogo), iconColor: "#74a7cb" };
@@ -219,8 +223,7 @@ export class TermViewModel implements ViewModel {
                 const cmdCwd = blockMeta?.["cmd:cwd"];
                 const cmdRaw = blockMeta?.["cmd"];
                 const providerRaw = blockMeta?.["agent:provider"];
-                const provider =
-                    typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";
+                const provider = typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";
                 const hasCmdArgs = cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0;
                 const cmdArgsStr = hasCmdArgs ? cmdArgs.join(" ") : "";
                 // Agent blocks: surface the provider's short label (e.g. "Claude") instead of the raw
@@ -956,8 +959,12 @@ export class TermViewModel implements ViewModel {
 
     getContextMenuItems(): ContextMenuItem[] {
         const menu: ContextMenuItem[] = [];
-        const hasSelection = this.termRef.current?.terminal?.hasSelection();
-        const selection = hasSelection ? this.termRef.current?.terminal.getSelection() : null;
+        const terminal = this.termRef.current?.terminal;
+        const hasSelection = terminal?.hasSelection();
+        const selection = hasSelection ? terminal.getSelection() : null;
+        const logicalLineText = hasSelection
+            ? terminalLogicalLinesForSelection(terminal.buffer.active, terminal.getSelectionPosition())
+            : null;
         const sessionMenuItems = this.getSessionMenuItems();
 
         if (hasSelection) {
@@ -970,6 +977,23 @@ export class TermViewModel implements ViewModel {
                                 ? trimTerminalSelection(selection)
                                 : selection;
                         fireAndForget(() => copyText(text));
+                    }
+                },
+            });
+            menu.push({
+                label: "Copy Logical Line",
+                enabled: !!logicalLineText,
+                click: () => {
+                    if (logicalLineText) {
+                        fireAndForget(() => copyText(logicalLineText));
+                    }
+                },
+            });
+            menu.push({
+                label: "Copy Selection as One Line",
+                click: () => {
+                    if (selection) {
+                        fireAndForget(() => copyText(terminalSelectionToSingleLine(selection)));
                     }
                 },
             });

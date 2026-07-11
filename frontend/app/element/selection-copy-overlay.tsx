@@ -53,6 +53,7 @@ type SelectionCopyOverlayProps = {
     position?: "absolute" | "fixed";
     onHide?: () => void;
     onCopied?: () => void;
+    copyMenuItems?: SelectionQuickActionItem[];
     extraMenuItems?: SelectionQuickActionItem[];
 };
 
@@ -61,6 +62,7 @@ export function makeSelectionQuickActionMenu(
     options?: {
         onCopied?: () => void;
         onHide?: () => void;
+        copyMenuItems?: SelectionQuickActionItem[];
         extraMenuItems?: SelectionQuickActionItem[];
         onCommonTextFeedback?: (msg: string, kind: string) => void;
     }
@@ -106,6 +108,7 @@ export function makeSelectionQuickActionMenu(
                 fireAndForget(handleCopyClick);
             },
         },
+        ...(options?.copyMenuItems ?? []),
         {
             label: "Search In Files",
             click: () => {
@@ -161,6 +164,7 @@ export function SelectionCopyOverlay({
     position = "absolute",
     onHide,
     onCopied,
+    copyMenuItems,
     extraMenuItems,
 }: SelectionCopyOverlayProps) {
     const [copied, setCopied] = useState(false);
@@ -226,6 +230,7 @@ export function SelectionCopyOverlay({
         const menu = makeSelectionQuickActionMenu(overlay.text, {
             onCopied: handleCopiedFeedback,
             onCommonTextFeedback: handleCommonTextFeedback,
+            copyMenuItems,
             extraMenuItems,
         });
         ContextMenuModel.getInstance().showContextMenu(menu, event, {
