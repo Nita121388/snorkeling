@@ -197,55 +197,170 @@ export function searchCommonTextItems(
     return sortCommonTextItems(filtered).slice(0, limit);
 }
 
-/**
- * Fuzzy multi-token search for the Compose Modal's editor-driven suggestions.
- *
- * Splits the entire editor text into normalized tokens, then OR-matches: any
- * item that contains at least one token in its title/text/shortcut/tags is a
- * candidate. Candidates are ranked by hit count (descending) so items matching
- * more tokens surface first, and ties fall back to the standard pin/recency
- * ordering. The caret position in the editor is irrelevant — only the words
- * the user has typed so far matter.
- */
-export function searchCommonTextItemsFuzzy(
-    items: CommonTextItem[],
+const WordSegmenter =
+    typeof (Intl as any).Segmenter === "function"
+        ? new (Intl as any).Segmenter(undefined, { granularity: "word" })
+        : null;
+
+export function tokenizeCommonTextQuery(
     query: string,
-    limit = 40,
-    selectedTags: string[] = []
-): CommonTextItem[] {
-    const tokens = tokenizeCommonTextQuery(query);
-    const tagFilteredItems = filterCommonTextItemsByTags(items, selectedTags);
-    if (tokens.length === 0) {
-        return sortCommonTextItems(tagFilteredItems).slice(0, limit);
+    minTokenLength = 2,
+    segmentedMinTokenLength = minTokenLength
+): string[] {
+    const normalized = query.normalize("NFKC").trim().toLowerCase();
+    if (normalized === "") {
+        return [];
     }
-    const scored: { item: CommonTextItem; hits: number }[] = [];
-    for (const item of tagFilteredItems) {
-        let hits = 0;
-        for (const token of tokens) {
-            if (matchesToken(item, token)) hits++;
+    const tokens = new Set<string>();
+    const addToken = (token: string, minLength: number) => {
+        const normalizedToken = token.trim();
+        if (Array.from(normalizedToken).length >= minLength) {
+            tokens.add(normalizedToken);
         }
-        if (hits > 0) scored.push({ item, hits });
+    };
+    normalized.split(/\s+/).forEach((token) => addToken(token, minTokenLength));
+    if (WordSegmenter != null) {
+        for (const segment of WordSegmenter.segment(normalized)) {
+            if (segment.isWordLike) {
+                addToken(segment.segment, segmentedMinTokenLength);
+            }
+        }
     }
-    scored.sort((a, b) => {
-        if (b.hits !== a.hits) return b.hits - a.hits;
-        // Tie-break: standard pin/recency/title ordering between the two items.
-        const sorted = sortCommonTextItems([a.item, b.item]);
-        return sorted[0] === a.item ? -1 : 1;
-    });
-    return scored.slice(0, limit).map((s) => s.item);
+    return Array.from(tokens);
 }
 
-/**
- * Tokenize a free-form editor query into normalized lowercase search tokens.
- * Splits on any run of whitespace. Drops tokens that are too short to be
- * meaningful (single chars) to keep noise down when composing natural prose.
- */
-export function tokenizeCommonTextQuery(query: string): string[] {
-    return query
-        .trim()
-        .split(/\s+/)
-        .filter((t) => t.length >= 2)
-        .map((t) => t.toLowerCase());
+export type CommonTextComposeSearchOptions = {
+    limit?: number;
+    selectedTags?: string[];
+    caret?: number;
+    insertedIds?: string[];
+};
+
+type CommonTextSearchFields = {
+    title: string;
+    text: string;
+    shortcut: string;
+    tags: string[];
+};
+
+function addWeightedTokens(
+    tokens: Map<string, number>,
+    text: string,
+    contextTier: number,
+    minTokenLength: number,
+    segmentedMinTokenLength = minTokenLength
+): void {
+    for (const token of tokenizeCommonTextQuery(text, minTokenLength, segmentedMinTokenLength)) {
+        tokens.set(token, Math.max(contextTier, tokens.get(token) ?? 0));
+    }
+}
+
+function getCaretFragments(editor: string, caret: number): string[] {
+    const boundedCaret = Math.max(0, Math.min(caret, editor.length));
+    let start = boundedCaret;
+    let end = boundedCaret;
+    while (start > 0 && !/\s/.test(editor[start - 1])) start--;
+    while (end < editor.length && !/\s/.test(editor[end])) end++;
+    const rawFragment = editor.slice(start, end);
+    const fragments = WordSegmenter == null || !/[\u3400-\u9fff]/.test(rawFragment) ? [rawFragment] : [];
+    if (WordSegmenter == null) {
+        return fragments;
+    }
+    for (const segment of WordSegmenter.segment(editor)) {
+        const segmentEnd = segment.index + segment.segment.length;
+        if (segment.isWordLike && segment.index <= boundedCaret && boundedCaret <= segmentEnd) {
+            fragments.push(segment.segment);
+            break;
+        }
+    }
+    return fragments;
+}
+
+function getEditorTokenWeights(editor: string, caret: number): Map<string, number> {
+    const tokens = new Map<string, number>();
+    addWeightedTokens(tokens, editor, 1, 2);
+    const boundedCaret = Math.max(0, Math.min(caret, editor.length));
+    const lineStart = editor.lastIndexOf("\n", Math.max(0, boundedCaret - 1)) + 1;
+    const nextNewline = editor.indexOf("\n", boundedCaret);
+    const lineEnd = nextNewline === -1 ? editor.length : nextNewline;
+    addWeightedTokens(tokens, editor.slice(lineStart, lineEnd), 2, 2);
+    for (const fragment of getCaretFragments(editor, boundedCaret)) {
+        addWeightedTokens(tokens, fragment, 3, 2);
+    }
+    return tokens;
+}
+
+function makeCommonTextSearchFields(item: CommonTextItem): CommonTextSearchFields {
+    return {
+        title: item.title.normalize("NFKC").toLowerCase(),
+        text: item.text.normalize("NFKC").toLowerCase(),
+        shortcut: (item.shortcut ?? "").normalize("NFKC").toLowerCase(),
+        tags: (item.tags ?? []).map((tag) => tag.normalize("NFKC").toLowerCase()),
+    };
+}
+
+function scoreCommonTextToken(fields: CommonTextSearchFields, token: string): number {
+    if (fields.shortcut === token) return 12;
+    if (fields.shortcut.includes(token)) return 10;
+    if (fields.title === token) return 8;
+    if (fields.title.includes(token)) return 6;
+    if (fields.tags.some((tag) => tag === token)) return 5;
+    if (fields.tags.some((tag) => tag.includes(token))) return 4;
+    if (fields.text.includes(token)) return 2;
+    return 0;
+}
+
+export function searchCommonTextComposeItems(
+    items: CommonTextItem[],
+    editor: string,
+    manualQuery: string,
+    options: CommonTextComposeSearchOptions = {}
+): CommonTextItem[] {
+    const { limit = 40, selectedTags = [], caret = editor.length, insertedIds = [] } = options;
+    const isManualSearch = manualQuery.trim() !== "";
+    const tokenWeights = new Map<string, number>();
+    if (isManualSearch) {
+        addWeightedTokens(tokenWeights, manualQuery, 1, 1, 2);
+    } else {
+        for (const [token, weight] of getEditorTokenWeights(editor, caret)) {
+            tokenWeights.set(token, weight);
+        }
+    }
+    const baseItems = sortCommonTextItems(filterCommonTextItemsByTags(items, selectedTags));
+    if (tokenWeights.size === 0) {
+        return baseItems.slice(0, limit);
+    }
+    const baseOrder = new Map(baseItems.map((item, index) => [item.id, index]));
+    const insertedIdSet = new Set(insertedIds);
+    const scored: { item: CommonTextItem; contextScores: [number, number, number]; hits: number; inserted: boolean }[] =
+        [];
+    // ponytail: A local O(items * tokens) scan is enough for the <=500-item modal; add an index only if that ceiling changes.
+    for (const item of baseItems) {
+        const fields = makeCommonTextSearchFields(item);
+        const contextScores: [number, number, number] = [0, 0, 0];
+        let hits = 0;
+        for (const [token, contextTier] of tokenWeights) {
+            const fieldScore = scoreCommonTextToken(fields, token);
+            if (fieldScore === 0) continue;
+            contextScores[contextTier - 1] += fieldScore;
+            hits++;
+        }
+        if (hits === 0) {
+            continue;
+        }
+        scored.push({ item, contextScores, hits, inserted: !isManualSearch && insertedIdSet.has(item.id) });
+    }
+    scored.sort((a, b) => {
+        if (b.contextScores[2] !== a.contextScores[2]) return b.contextScores[2] - a.contextScores[2];
+        if (b.contextScores[1] !== a.contextScores[1]) return b.contextScores[1] - a.contextScores[1];
+        if (a.inserted !== b.inserted) return a.inserted ? 1 : -1;
+        if (b.contextScores[0] !== a.contextScores[0]) return b.contextScores[0] - a.contextScores[0];
+        if (b.hits !== a.hits) return b.hits - a.hits;
+        const baseDiff = (baseOrder.get(a.item.id) ?? 0) - (baseOrder.get(b.item.id) ?? 0);
+        if (baseDiff !== 0) return baseDiff;
+        return a.item.id.localeCompare(b.item.id);
+    });
+    return scored.slice(0, limit).map(({ item }) => item);
 }
 
 export type PagedSearchResult = {
@@ -267,7 +382,9 @@ export async function searchCommonTextItemsPaged(
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
     });
-    const items = (result?.items ?? []).map(normalizeCommonTextItem).filter((item): item is CommonTextItem => item != null);
+    const items = (result?.items ?? [])
+        .map(normalizeCommonTextItem)
+        .filter((item): item is CommonTextItem => item != null);
     const total = items.length;
     const hasMore = total >= PAGE_SIZE;
     return { items, total, hasMore };
