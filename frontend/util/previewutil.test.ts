@@ -116,14 +116,15 @@ describe("addOpenMenuItems", () => {
         expect(openNativePath).toHaveBeenCalledWith("E:\\Code\\AD\\docs\\model.md");
     });
 
-    it("does not add a default-app action for previewable local files", async () => {
+    it("adds a default-app action for any local non-directory file", async () => {
         vi.resetModules();
+        const openNativePath = vi.fn();
         vi.doMock("@/app/store/global", () => ({
             createBlock: vi.fn(),
             getApi: vi.fn(() => ({
                 downloadFile: vi.fn(),
                 openInVSCode: vi.fn(),
-                openNativePath: vi.fn(),
+                openNativePath,
                 revealNativePath: vi.fn(),
             })),
         }));
@@ -143,7 +144,10 @@ describe("addOpenMenuItems", () => {
             size: 128,
         } as FileInfo);
 
-        expect(menu.some((item) => item.label === "Open File in Default Application")).toBe(false);
+        const openFileItem = menu.find((item) => item.label === "Open File in Default Application");
+        expect(openFileItem).toBeDefined();
+        openFileItem?.click?.();
+        expect(openNativePath).toHaveBeenCalledWith("C:\\Users\\nita\\.ssh\\config");
     });
 
     it("adds 'Open in Obsidian' for a local markdown file and runs the picker flow on click", async () => {

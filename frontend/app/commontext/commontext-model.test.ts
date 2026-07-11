@@ -10,6 +10,8 @@ import {
     normalizeCommonTextTags,
     normalizeCommonTextTitle,
     searchCommonTextItems,
+    searchCommonTextItemsFuzzy,
+    tokenizeCommonTextQuery,
     type CommonTextItem,
 } from "./commontext-model";
 
@@ -97,5 +99,63 @@ describe("commontext-model", () => {
         const items = [makeItem({ id: "a", text: "same" }), makeItem({ id: "b", text: "other" })];
         expect(findDuplicateCommonText(items, " same ")?.id).toBe("a");
         expect(findDuplicateCommonText(items, " same ", "a")).toBeNull();
+    });
+
+    describe("tokenizeCommonTextQuery", () => {
+        it("drops single-char and whitespace-only tokens", () => {
+            expect(tokenizeCommonTextQuery("  a  bb   ccc  ")).toEqual(["bb", "ccc"]);
+        });
+        it("lowercases tokens so matching is case-insensitive", () => {
+            expect(tokenizeCommonTextQuery("Deploy SERVER")).toEqual(["deploy", "server"]);
+        });
+        it("returns empty array for blank queries", () => {
+            expect(tokenizeCommonTextQuery("   ")).toEqual([]);
+        });
+    });
+
+    describe("searchCommonTextItemsFuzzy", () => {
+        const items = [
+            makeItem({ title: "Deploy", text: "kubectl apply -f deploy.yaml" }),
+            makeItem({ title: "Email refund", text: "Refund processed for prod order 123" }),
+            makeItem({ title: "Standup notes", text: "sprint daily team sync" }),
+        ];
+
+        it("ORs tokens: an item matching one of several words surfaces without needing all of them", () => {
+            const titles = searchCommonTextItemsFuzzy(items, "deploy refund", 40).map((i) => i.title);
+            // Both Deploy and Email refund match exactly one token each; Standup notes matches none.
+            expect(titles).toEqual(expect.arrayContaining(["Deploy", "Email refund"]));
+            expect(titles).not.toContain("Standup notes");
+        });
+
+        it("ranks items matching more tokens above items matching fewer", () => {
+            const multiMatch = [
+                makeItem({ title: "Deploy prod refund", text: "prod deploy refund flow" }),
+                makeItem({ title: "Deploy only", text: "kubectl deploy" }),
+            ];
+            const titles = searchCommonTextItemsFuzzy(multiMatch, "deploy refund", 40).map((i) => i.title);
+            expect(titles[0]).toBe("Deploy prod refund");
+        });
+
+        it("returns all items (no query filter) when the editor is empty, sorted by pin/recency", () => {
+            const titles = searchCommonTextItemsFuzzy(items, "", 40).map((i) => i.title);
+            expect(titles).toEqual(expect.arrayContaining(["Deploy", "Email refund", "Standup notes"]));
+        });
+
+        it("still respects selected tags as a hard filter on top of fuzzy matching", () => {
+            const tagged = [
+                makeItem({ title: "Ops deploy", text: "kubectl deploy", tags: ["ops"] }),
+                makeItem({ title: "Personal deploy", text: "kubectl deploy", tags: ["personal"] }),
+            ];
+            const titles = searchCommonTextItemsFuzzy(tagged, "deploy", 40, ["ops"]).map((i) => i.title);
+            expect(titles).toEqual(["Ops deploy"]);
+        });
+
+        it("ignores caret position — only the editor's contents matter", () => {
+            // Two queries with identical tokens in different positions/sizes should return the same set.
+            const a = searchCommonTextItemsFuzzy(items, "deploy kubectl yaml", 40).map((i) => i.title);
+            const b = searchCommonTextItemsFuzzy(items, "yaml kubectl deploy", 40).map((i) => i.title);
+            // Order may differ, but the set should be identical.
+            expect(a.sort()).toEqual(b.sort());
+        });
     });
 });

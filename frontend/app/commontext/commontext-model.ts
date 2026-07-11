@@ -197,6 +197,57 @@ export function searchCommonTextItems(
     return sortCommonTextItems(filtered).slice(0, limit);
 }
 
+/**
+ * Fuzzy multi-token search for the Compose Modal's editor-driven suggestions.
+ *
+ * Splits the entire editor text into normalized tokens, then OR-matches: any
+ * item that contains at least one token in its title/text/shortcut/tags is a
+ * candidate. Candidates are ranked by hit count (descending) so items matching
+ * more tokens surface first, and ties fall back to the standard pin/recency
+ * ordering. The caret position in the editor is irrelevant — only the words
+ * the user has typed so far matter.
+ */
+export function searchCommonTextItemsFuzzy(
+    items: CommonTextItem[],
+    query: string,
+    limit = 40,
+    selectedTags: string[] = []
+): CommonTextItem[] {
+    const tokens = tokenizeCommonTextQuery(query);
+    const tagFilteredItems = filterCommonTextItemsByTags(items, selectedTags);
+    if (tokens.length === 0) {
+        return sortCommonTextItems(tagFilteredItems).slice(0, limit);
+    }
+    const scored: { item: CommonTextItem; hits: number }[] = [];
+    for (const item of tagFilteredItems) {
+        let hits = 0;
+        for (const token of tokens) {
+            if (matchesToken(item, token)) hits++;
+        }
+        if (hits > 0) scored.push({ item, hits });
+    }
+    scored.sort((a, b) => {
+        if (b.hits !== a.hits) return b.hits - a.hits;
+        // Tie-break: standard pin/recency/title ordering between the two items.
+        const sorted = sortCommonTextItems([a.item, b.item]);
+        return sorted[0] === a.item ? -1 : 1;
+    });
+    return scored.slice(0, limit).map((s) => s.item);
+}
+
+/**
+ * Tokenize a free-form editor query into normalized lowercase search tokens.
+ * Splits on any run of whitespace. Drops tokens that are too short to be
+ * meaningful (single chars) to keep noise down when composing natural prose.
+ */
+export function tokenizeCommonTextQuery(query: string): string[] {
+    return query
+        .trim()
+        .split(/\s+/)
+        .filter((t) => t.length >= 2)
+        .map((t) => t.toLowerCase());
+}
+
 export type PagedSearchResult = {
     items: CommonTextItem[];
     total: number;
@@ -306,4 +357,19 @@ export async function openCommonTextManager(): Promise<void> {
         false,
         true
     );
+}
+
+/**
+ * Returns the "current word" immediately before the caret in an input/textarea.
+ * Used by the Compose Modal editor to drive the auto-association of the
+ * Common Text list below it. Returns "" when the element has no caret info.
+ */
+export function getInlineQuery(target: HTMLInputElement | HTMLTextAreaElement): string {
+    const text = target.value;
+    const cursor = target.selectionStart ?? text.length;
+    let start = cursor;
+    while (start > 0 && !/\s/.test(text[start - 1])) {
+        start--;
+    }
+    return text.slice(start, cursor).trim();
 }
