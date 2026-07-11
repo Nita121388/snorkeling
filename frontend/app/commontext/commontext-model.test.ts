@@ -9,8 +9,8 @@ import {
     normalizeCommonTextItem,
     normalizeCommonTextTags,
     normalizeCommonTextTitle,
+    searchCommonTextComposeItems,
     searchCommonTextItems,
-    searchCommonTextItemsFuzzy,
     tokenizeCommonTextQuery,
     type CommonTextItem,
 } from "./commontext-model";
@@ -111,51 +111,130 @@ describe("commontext-model", () => {
         it("returns empty array for blank queries", () => {
             expect(tokenizeCommonTextQuery("   ")).toEqual([]);
         });
+        it("keeps command tokens while also segmenting Chinese and punctuation", () => {
+            expect(tokenizeCommonTextQuery(";Daily -f feature/foo 部署服务器")).toEqual(
+                expect.arrayContaining([";daily", "-f", "feature/foo", "daily", "feature", "foo", "部署"])
+            );
+        });
+        it("can retain a single-character manual search token", () => {
+            expect(tokenizeCommonTextQuery("测", 1, 2)).toEqual(["测"]);
+            expect(tokenizeCommonTextQuery("-f", 1, 2)).toEqual(["-f"]);
+        });
+        it("deduplicates repeated tokens", () => {
+            expect(tokenizeCommonTextQuery("deploy deploy")).toEqual(["deploy"]);
+        });
     });
 
-    describe("searchCommonTextItemsFuzzy", () => {
+    describe("searchCommonTextComposeItems", () => {
         const items = [
-            makeItem({ title: "Deploy", text: "kubectl apply -f deploy.yaml" }),
-            makeItem({ title: "Email refund", text: "Refund processed for prod order 123" }),
-            makeItem({ title: "Standup notes", text: "sprint daily team sync" }),
+            makeItem({ id: "deploy", title: "Deploy server", text: "kubectl apply production" }),
+            makeItem({ id: "refund", title: "Refund reply", text: "refund processed" }),
+            makeItem({ id: "other", title: "Standup", text: "daily team sync" }),
         ];
 
-        it("ORs tokens: an item matching one of several words surfaces without needing all of them", () => {
-            const titles = searchCommonTextItemsFuzzy(items, "deploy refund", 40).map((i) => i.title);
-            // Both Deploy and Email refund match exactly one token each; Standup notes matches none.
-            expect(titles).toEqual(expect.arrayContaining(["Deploy", "Email refund"]));
-            expect(titles).not.toContain("Standup notes");
+        it("lets a non-empty manual query fully override editor suggestions", () => {
+            expect(searchCommonTextComposeItems(items, "deploy", "refund").map((item) => item.id)).toEqual(["refund"]);
+            expect(searchCommonTextComposeItems(items, "standup", "deploy refund").map((item) => item.id)).toEqual([
+                "deploy",
+                "refund",
+            ]);
+            expect(searchCommonTextComposeItems(items, "deploy", "").map((item) => item.id)).toEqual(["deploy"]);
         });
 
-        it("ranks items matching more tokens above items matching fewer", () => {
-            const multiMatch = [
-                makeItem({ title: "Deploy prod refund", text: "prod deploy refund flow" }),
-                makeItem({ title: "Deploy only", text: "kubectl deploy" }),
+        it("ORs editor tokens to keep all matching candidates", () => {
+            const ids = searchCommonTextComposeItems(items, "deploy refund", "").map((item) => item.id);
+            expect(ids).toEqual(expect.arrayContaining(["deploy", "refund"]));
+            expect(ids).not.toContain("other");
+        });
+
+        it("supports a single Chinese character in manual search", () => {
+            const chineseItems = [
+                makeItem({ id: "test", title: "测试命令", text: "运行测试" }),
+                makeItem({ id: "deploy", title: "部署命令", text: "运行部署" }),
             ];
-            const titles = searchCommonTextItemsFuzzy(multiMatch, "deploy refund", 40).map((i) => i.title);
-            expect(titles[0]).toBe("Deploy prod refund");
+            expect(searchCommonTextComposeItems(chineseItems, "", "测").map((item) => item.id)).toEqual(["test"]);
         });
 
-        it("returns all items (no query filter) when the editor is empty, sorted by pin/recency", () => {
-            const titles = searchCommonTextItemsFuzzy(items, "", 40).map((i) => i.title);
-            expect(titles).toEqual(expect.arrayContaining(["Deploy", "Email refund", "Standup notes"]));
-        });
-
-        it("still respects selected tags as a hard filter on top of fuzzy matching", () => {
-            const tagged = [
-                makeItem({ title: "Ops deploy", text: "kubectl deploy", tags: ["ops"] }),
-                makeItem({ title: "Personal deploy", text: "kubectl deploy", tags: ["personal"] }),
+        it("does not broaden a manual command token into one-letter matches", () => {
+            const commandItems = [
+                makeItem({ id: "flag", title: "Flag", text: "use the flag", shortcut: "-f" }),
+                makeItem({ id: "letter", title: "Letter", text: "contains the letter f" }),
             ];
-            const titles = searchCommonTextItemsFuzzy(tagged, "deploy", 40, ["ops"]).map((i) => i.title);
-            expect(titles).toEqual(["Ops deploy"]);
+            expect(searchCommonTextComposeItems(commandItems, "", "-f").map((item) => item.id)).toEqual(["flag"]);
         });
 
-        it("ignores caret position — only the editor's contents matter", () => {
-            // Two queries with identical tokens in different positions/sizes should return the same set.
-            const a = searchCommonTextItemsFuzzy(items, "deploy kubectl yaml", 40).map((i) => i.title);
-            const b = searchCommonTextItemsFuzzy(items, "yaml kubectl deploy", 40).map((i) => i.title);
-            // Order may differ, but the set should be identical.
-            expect(a.sort()).toEqual(b.sort());
+        it("ranks the current caret line above older editor text", () => {
+            const ids = searchCommonTextComposeItems(items, "deploy\nrefund", "", {
+                caret: "deploy\nrefund".length,
+            }).map((item) => item.id);
+            expect(ids.slice(0, 2)).toEqual(["refund", "deploy"]);
+        });
+
+        it("ranks the word nearest the caret within one line", () => {
+            const editor = "deploy refund";
+            expect(searchCommonTextComposeItems(items, editor, "", { caret: 2 })[0].id).toBe("deploy");
+            expect(searchCommonTextComposeItems(items, editor, "", { caret: 10 })[0].id).toBe("refund");
+        });
+
+        it("uses Chinese word segmentation for caret ranking", () => {
+            const chineseItems = [
+                makeItem({ id: "deploy", title: "部署操作", text: "发布应用" }),
+                makeItem({ id: "service", title: "服务检查", text: "检查进程" }),
+            ];
+            const editor = "请部署服务";
+            expect(searchCommonTextComposeItems(chineseItems, editor, "", { caret: 2 })[0].id).toBe("deploy");
+            expect(searchCommonTextComposeItems(chineseItems, editor, "", { caret: 4 })[0].id).toBe("service");
+        });
+
+        it("ranks shortcut, title, tag, and body matches in that order", () => {
+            const weightedItems = [
+                makeItem({ id: "body", title: "Body match", text: "run needle now" }),
+                makeItem({ id: "tag", title: "Tag match", text: "run it", tags: ["needle"] }),
+                makeItem({ id: "title", title: "Needle", text: "run it" }),
+                makeItem({ id: "shortcut", title: "Shortcut match", text: "run it", shortcut: "needle" }),
+            ];
+            expect(searchCommonTextComposeItems(weightedItems, "", "needle").map((item) => item.id)).toEqual([
+                "shortcut",
+                "title",
+                "tag",
+                "body",
+            ]);
+        });
+
+        it("demotes an already inserted suggestion without hiding it", () => {
+            const repeatedItems = [
+                makeItem({ id: "first", title: "Deploy first", text: "deploy", pinned: true }),
+                makeItem({ id: "second", title: "Deploy second", text: "deploy" }),
+            ];
+            expect(
+                searchCommonTextComposeItems(repeatedItems, "deploy", "", { insertedIds: ["first"] }).map(
+                    (item) => item.id
+                )
+            ).toEqual(["second", "first"]);
+        });
+
+        it("keeps selected tags as a hard filter", () => {
+            const taggedItems = [
+                makeItem({ id: "ops", title: "Deploy ops", text: "deploy", tags: ["ops"] }),
+                makeItem({ id: "personal", title: "Deploy personal", text: "deploy", tags: ["personal"] }),
+            ];
+            expect(
+                searchCommonTextComposeItems(taggedItems, "deploy", "", { selectedTags: ["ops"] }).map(
+                    (item) => item.id
+                )
+            ).toEqual(["ops"]);
+        });
+
+        it("uses the standard stable order and limit when the editor is empty", () => {
+            const defaultItems = [
+                makeItem({ id: "old", title: "Old", updatedat: 1 }),
+                makeItem({ id: "recent", title: "Recent", updatedat: 3 }),
+                makeItem({ id: "pinned", title: "Pinned", updatedat: 2, pinned: true }),
+            ];
+            expect(searchCommonTextComposeItems(defaultItems, "", "", { limit: 2 }).map((item) => item.id)).toEqual([
+                "pinned",
+                "recent",
+            ]);
         });
     });
 });

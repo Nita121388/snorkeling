@@ -4,121 +4,147 @@
 import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
+import { atoms } from "@/app/store/global";
 import { fireAndForget } from "@/util/util";
+import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import {
-    OpenCommonTextSearchEvent,
-    openCommonTextSaveDialog,
-    type CommonTextSearchDetail,
-} from "./commontext-events";
+import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
 import { copyCommonText, insertTextIntoFocused } from "./commontext-insert";
 import {
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     openCommonTextManager,
     recordCommonTextUse,
-    searchCommonTextItemsFuzzy,
+    searchCommonTextComposeItems,
     type CommonTextItem,
 } from "./commontext-model";
 import { CommonTextTagChip } from "./commontext-tags";
-import { atoms } from "@/app/store/global";
-import { useAtomValue } from "jotai";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
 
-type ComposeState =
-    | { open: false }
-    | {
-          open: true;
-          editor: string;
-          manualQuery: string;
-          selectedTags: string[];
-          selectedIndex: number;
-          status: string;
-          statusKind: "info" | "ok" | "err";
-      };
+type ComposeState = {
+    open: boolean;
+    editor: string;
+    editorCaret: number;
+    manualQuery: string;
+    selectedTags: string[];
+    selectedIndex: number;
+    insertedIds: string[];
+    status: string;
+    statusKind: "info" | "ok" | "err";
+};
 
-const initialOpenState = (): Extract<ComposeState, { open: true }> => ({
+const initialOpenState = (manualQuery = ""): ComposeState => ({
     open: true,
     editor: "",
-    manualQuery: "",
+    editorCaret: 0,
+    manualQuery,
     selectedTags: [],
     selectedIndex: 0,
+    insertedIds: [],
     status: "",
     statusKind: "info",
 });
 
 const CommonTextComposeModal = memo(() => {
-    const [state, setState] = useState<ComposeState>({ open: false });
+    const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     const settings = useAtomValue(atoms.settingsAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
+    const isComposingRef = useRef(false);
+    const compositionEndTimerRef = useRef<number>(null);
 
     const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
 
-    // List filtering:
-    //  - When the manual search box has text, it overrides the editor (replace semantics, not
-    //    intersection): the editor's body is ignored and only the search box words drive filtering.
-    //  - Otherwise, fuzzy-match the *ent editor body* token-by-token (OR semantics, ranked by
-    //    hit count). Caret position in the editor is irrelevant — only what the user has typed.
-    //  - Both paths use searchCommonTextItemsFuzzy (OR + hits ranking) so the search box and
-    //    editor-driven suggestions behave consistently: typing one keyword surfaces every item
-    //    that contains it, with multi-hit items ranked first. The previous AND semantics for the
-    //    manual search box made multi-token queries return empty whenever any token was missing
-    //    from a candidate, which felt like "the search box does nothing".
     const filteredItems = useMemo(() => {
-        if (state.open !== true) return [];
-        if (state.manualQuery.trim() !== "") {
-            return searchCommonTextItemsFuzzy(allItems, state.manualQuery, LIST_LIMIT, state.selectedTags);
-        }
-        return searchCommonTextItemsFuzzy(allItems, state.editor, LIST_LIMIT, state.selectedTags);
-    }, [allItems, state]);
+        if (!state.open) return [];
+        return searchCommonTextComposeItems(allItems, state.editor, state.manualQuery, {
+            limit: LIST_LIMIT,
+            selectedTags: state.selectedTags,
+            caret: state.editorCaret,
+            insertedIds: state.insertedIds,
+        });
+    }, [
+        allItems,
+        state.editor,
+        state.editorCaret,
+        state.insertedIds,
+        state.manualQuery,
+        state.open,
+        state.selectedTags,
+    ]);
 
     // Compose Modal open/close wiring.
     useEffect(() => {
         const handleOpen = (event: Event) => {
             const detail = (event as CustomEvent<CommonTextSearchDetail>).detail ?? {};
-            void detail; // backward-compat: Compose ignores insertTarget/onSelect from the old API
-            setState((cur) => ({ ...initialOpenState(), ...(cur.open === true ? {} : {}) }));
-            requestAnimationFrame(() => editorRef.current?.focus());
+            const manualQuery = detail.query ?? "";
+            if (compositionEndTimerRef.current != null) {
+                window.clearTimeout(compositionEndTimerRef.current);
+                compositionEndTimerRef.current = null;
+            }
+            isComposingRef.current = false;
+            setState(initialOpenState(manualQuery));
+            requestAnimationFrame(() =>
+                (manualQuery.trim() === "" ? editorRef.current : searchInputRef.current)?.focus()
+            );
         };
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
     }, []);
 
-    // Reset selectedIndex when filteredItems shrinks. Must be declared before any early return
-    // to keep hook order stable across open/closed renders.
     useEffect(() => {
-        if (state.open !== true) return;
+        if (!state.open) return;
         if (state.selectedIndex >= filteredItems.length) {
-            setState((cur) =>
-                cur.open === true
-                    ? { ...cur, selectedIndex: Math.max(0, filteredItems.length - 1) }
-                    : cur
-            );
+            setState((cur) => ({ ...cur, selectedIndex: Math.max(0, filteredItems.length - 1) }));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filteredItems.length, state]);
+    }, [filteredItems.length, state.open, state.selectedIndex]);
 
-    if (state.open !== true) return null;
+    useEffect(() => {
+        if (!state.open) return;
+        listScrollRef.current?.scrollTo({ top: 0 });
+    }, [state.editor, state.editorCaret, state.insertedIds, state.manualQuery, state.open, state.selectedTags]);
 
-    const close = () => setState({ open: false });
+    useEffect(() => {
+        if (!state.open) return;
+        listScrollRef.current
+            ?.querySelector(`[data-common-text-index="${state.selectedIndex}"]`)
+            ?.scrollIntoView({ block: "nearest" });
+    }, [state.open, state.selectedIndex]);
 
-    const update = (patch: Partial<Extract<ComposeState, { open: true }>>) =>
-        setState((cur) => (cur.open === true ? { ...cur, ...patch } : cur));
+    useEffect(() => {
+        return () => {
+            if (compositionEndTimerRef.current != null) {
+                window.clearTimeout(compositionEndTimerRef.current);
+            }
+        };
+    }, []);
 
-    const setEditor = (editor: string) => {
-        update({ editor });
+    if (!state.open) return null;
+
+    const close = () => {
+        if (compositionEndTimerRef.current != null) {
+            window.clearTimeout(compositionEndTimerRef.current);
+            compositionEndTimerRef.current = null;
+        }
+        isComposingRef.current = false;
+        setState((cur) => ({ ...cur, open: false }));
     };
+
+    const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
+
+    const setEditor = (editor: string, editorCaret: number) => update({ editor, editorCaret, selectedIndex: 0 });
 
     const setManualQuery = (manualQuery: string) => update({ manualQuery, selectedIndex: 0 });
 
+    const updateEditorCaret = (target: HTMLTextAreaElement) =>
+        update({ editorCaret: target.selectionStart ?? target.value.length, selectedIndex: 0 });
+
     const toggleTag = (tag: string) => {
         setState((cur) => {
-            if (cur.open !== true) return cur;
             const present = cur.selectedTags.some((t) => t.toLowerCase() === tag.toLowerCase());
             const selectedTags = present
                 ? cur.selectedTags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
@@ -127,22 +153,42 @@ const CommonTextComposeModal = memo(() => {
         });
     };
 
-    const setStatus = (status: string, statusKind: "info" | "ok" | "err" = "info") =>
-        update({ status, statusKind });
+    const setStatus = (status: string, statusKind: "info" | "ok" | "err" = "info") => update({ status, statusKind });
 
     const handleListItemSelected = (item: CommonTextItem) => {
         const editor = editorRef.current;
+        const manualSearchActive = state.manualQuery.trim() !== "";
+        const insertedIds = state.insertedIds.includes(item.id) ? state.insertedIds : [...state.insertedIds, item.id];
         if (editor == null) {
-            update({ editor: state.editor + item.text });
+            const newEditor = state.editor + item.text;
+            update({
+                editor: newEditor,
+                editorCaret: newEditor.length,
+                selectedIndex: 0,
+                insertedIds,
+            });
+            if (manualSearchActive) {
+                requestAnimationFrame(() => searchInputRef.current?.focus());
+            }
+            fireAndForget(() => recordCommonTextUse(item.id));
             return;
         }
         const start = editor.selectionStart ?? editor.value.length;
         const end = editor.selectionEnd ?? start;
         const newEditor = editor.value.slice(0, start) + item.text + editor.value.slice(end);
-        editor.focus();
+        if (!manualSearchActive) {
+            editor.focus();
+        }
         editor.setRangeText(item.text, start, end, "end");
-        // Sync React state with the textarea's value without an extra input event.
-        update({ editor: newEditor });
+        update({
+            editor: newEditor,
+            editorCaret: start + item.text.length,
+            selectedIndex: 0,
+            insertedIds,
+        });
+        if (manualSearchActive) {
+            requestAnimationFrame(() => searchInputRef.current?.focus());
+        }
         fireAndForget(() => recordCommonTextUse(item.id));
     };
 
@@ -212,8 +258,41 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
+    const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        const isComposing =
+            isComposingRef.current || event.nativeEvent?.isComposing || event.keyCode == 229 || event.key === "Process";
+        if (isComposing) return;
+        if (event.key === "Escape") {
+            event.preventDefault();
+            if (state.manualQuery.trim() === "") {
+                close();
+                return;
+            }
+            setManualQuery("");
+            requestAnimationFrame(() => editorRef.current?.focus());
+            return;
+        }
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            update({ selectedIndex: Math.min(state.selectedIndex + 1, Math.max(0, filteredItems.length - 1)) });
+            return;
+        }
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            update({ selectedIndex: Math.max(0, state.selectedIndex - 1) });
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            const selected = filteredItems[state.selectedIndex];
+            if (selected != null) handleListItemSelected(selected);
+        }
+    };
+
     const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        // Escape closes regardless. Enter without modifiers inserts the highlighted list item.
+        const isComposing =
+            isComposingRef.current || event.nativeEvent?.isComposing || event.keyCode == 229 || event.key === "Process";
+        if (isComposing) return;
         if (event.key === "Escape") {
             event.preventDefault();
             close();
@@ -226,6 +305,24 @@ const CommonTextComposeModal = memo(() => {
                 handleListItemSelected(selected);
             }
         }
+    };
+
+    const handleCompositionStart = () => {
+        if (compositionEndTimerRef.current != null) {
+            window.clearTimeout(compositionEndTimerRef.current);
+            compositionEndTimerRef.current = null;
+        }
+        isComposingRef.current = true;
+    };
+
+    const handleCompositionEnd = () => {
+        if (compositionEndTimerRef.current != null) {
+            window.clearTimeout(compositionEndTimerRef.current);
+        }
+        compositionEndTimerRef.current = window.setTimeout(() => {
+            isComposingRef.current = false;
+            compositionEndTimerRef.current = null;
+        }, 0);
     };
 
     return (
@@ -254,13 +351,20 @@ const CommonTextComposeModal = memo(() => {
                     </button>
                 </div>
 
-                {/* Editor — typing here drives the fuzzy list below (whole-text, multi-token OR). */}
                 <textarea
                     ref={editorRef}
                     className="shrink-0 min-h-[120px] max-h-[280px] resize-y rounded border border-border bg-background text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed"
                     value={state.editor}
-                    onChange={(e) => setEditor(e.target.value)}
+                    onChange={(event) =>
+                        setEditor(
+                            event.currentTarget.value,
+                            event.currentTarget.selectionStart ?? event.currentTarget.value.length
+                        )
+                    }
+                    onSelect={(event) => updateEditorCaret(event.currentTarget)}
                     onKeyDown={handleEditorKeyDown}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
                     placeholder="Compose here. The list below suggests common text matching what you type."
                     autoFocus
                     spellCheck={false}
@@ -275,7 +379,11 @@ const CommonTextComposeModal = memo(() => {
                         <i className="fa fa-solid fa-terminal mr-1" />
                         Send
                     </Button>
-                    <Button className="grey" onClick={handleSaveDialog} title="Save editor content as a Common Text item">
+                    <Button
+                        className="grey"
+                        onClick={handleSaveDialog}
+                        title="Save editor content as a Common Text item"
+                    >
                         <i className="fa fa-solid fa-plus" />
                     </Button>
                     {state.status && (
@@ -284,8 +392,8 @@ const CommonTextComposeModal = memo(() => {
                                 state.statusKind === "err"
                                     ? "text-xs text-red-500"
                                     : state.statusKind === "ok"
-                                    ? "text-xs text-accent"
-                                    : "text-xs text-muted"
+                                      ? "text-xs text-accent"
+                                      : "text-xs text-muted"
                             }
                         >
                             {state.status}
@@ -295,21 +403,17 @@ const CommonTextComposeModal = memo(() => {
 
                 {/* List area */}
                 <div className="min-h-0 flex-1 border border-border rounded flex flex-col overflow-hidden">
-                    <div className="shrink-0 p-2 border-b border-border">
+                    <div
+                        className="shrink-0 p-2 border-b border-border"
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
+                    >
                         <InputGroup>
                             <Input
                                 ref={searchInputRef}
                                 value={state.manualQuery}
                                 onChange={setManualQuery}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Escape") {
-                                        event.preventDefault();
-                                        close();
-                                    } else if (event.key === "ArrowDown") {
-                                        event.preventDefault();
-                                        editorRef.current?.focus();
-                                    }
-                                }}
+                                onKeyDown={handleSearchKeyDown}
                                 placeholder={
                                     state.editor.trim() !== ""
                                         ? "Type to override editor-based suggestions"
@@ -337,15 +441,16 @@ const CommonTextComposeModal = memo(() => {
                             </div>
                         )}
                     </div>
-                    <div ref={listScrollRef} className="flex-1 overflow-y-auto flex flex-col" tabIndex={0} onKeyDown={handleListKeyDown}>
+                    <div
+                        ref={listScrollRef}
+                        className="flex-1 overflow-y-auto flex flex-col"
+                        tabIndex={0}
+                        onKeyDown={handleListKeyDown}
+                    >
                         {filteredItems.length === 0 ? (
                             <div className="flex flex-1 min-h-[80px] items-center justify-center gap-2 text-secondary text-sm">
                                 <i className="fa fa-regular fa-quote-left text-xl opacity-60" />
-                                <div>
-                                    {state.manualQuery.trim() !== "" || state.editor.trim() !== ""
-                                        ? "No matching text"
-                                        : "No common text yet"}
-                                </div>
+                                <div>{allItems.length === 0 ? "No common text yet" : "No matching text"}</div>
                                 <button type="button" className="text-accent hover:underline" onClick={openManager}>
                                     Manage
                                 </button>
@@ -354,6 +459,7 @@ const CommonTextComposeModal = memo(() => {
                             filteredItems.map((item, index) => (
                                 <div
                                     key={item.id}
+                                    data-common-text-index={index}
                                     className={
                                         "flex items-start gap-1.5 px-2 py-1 cursor-pointer transition-colors " +
                                         (state.selectedIndex === index ? "bg-highlightbg" : "hover:bg-hoverbg")
@@ -366,7 +472,9 @@ const CommonTextComposeModal = memo(() => {
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="text-xs font-medium truncate">{item.title}</div>
-                                        <div className="text-[11px] text-secondary truncate">{makePreview(item.text)}</div>
+                                        <div className="text-[11px] text-secondary truncate">
+                                            {makePreview(item.text)}
+                                        </div>
                                         {(item.tags?.length ?? 0) > 0 && (
                                             <div className="mt-0 flex flex-wrap gap-1">
                                                 {item.tags!.slice(0, 4).map((tag) => (
