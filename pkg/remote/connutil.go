@@ -6,6 +6,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -194,30 +195,64 @@ fi;
 `)
 var installTemplate = template.Must(template.New("wsh-install-template").Parse(installTemplateRawDefault))
 
-func makeWindowsAutoInstallWshCommand(remoteTempPath string, remoteWshPath string, expectedSize int64) string {
+func makeWindowsStreamToTempCommand(remoteTempPath string) string {
 	relativeTempPath := strings.ReplaceAll(strings.TrimPrefix(remoteTempPath, "~/"), "/", `\`)
 	script := strings.Join([]string{
 		`$ErrorActionPreference = "Stop"`,
 		`$ProgressPreference = "SilentlyContinue"`,
-		`New-Item -ItemType Directory -Force "$HOME\.snorkeling\tmp", "$HOME\.snorkeling\bin" | Out-Null`,
 		`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(relativeTempPath),
-		`$WshPath = Join-Path $HOME ".snorkeling\bin\wsh.exe"`,
 		`$InputStream = [Console]::OpenStandardInput()`,
 		`$OutputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)`,
 		`try { $InputStream.CopyTo($OutputStream) } finally { $OutputStream.Close() }`,
-		`$ActualSize = (Get-Item -LiteralPath $TempPath).Length`,
-		fmt.Sprintf(`if ($ActualSize -ne %d) { throw "wsh install size mismatch: expected %d, got $ActualSize" }`, expectedSize, expectedSize),
-		`Move-Item -Force -LiteralPath $TempPath -Destination $WshPath`,
-		`if (!(Test-Path -LiteralPath $WshPath)) { throw "final wsh binary missing after install: $WshPath" }`,
-	}, "; ")
+	}, "\n")
 	return shellutil.MakePowerShellEncodedCommand(script)
 }
 
+// cpWshToWindowsRemote installs the bundled wsh.exe on a Windows remote using the
+// hardened install path shared with the manual install flow.
+//
+// Steps (each over its own ssh session):
+//  1. Compute the local wsh.exe size + SHA-256 by seeking through `input`.
+//  2. Run prepareCmd (creates ~/.snorkeling/{tmp,bin}, asserts they are safe dirs).
+//  3. Stream `input` over ssh into $TempPath via a stdin-receiving PowerShell command.
+//  4. Run installCmd: verifies uploaded size+SHA-256, takes the install lock, atomically
+//     replaces the existing wsh.exe (with a backup), runs `wsh version` to confirm the
+//     exact expected version line, rolls back to the backup on any failure, and cleans
+//     up the temp file in a finally block.
+//  5. On any failure in steps 2-4, run cleanupCmd (best-effort) to remove the half-written
+//     temp file so a later install is not blocked by it.
+//
+// Because installCmd already runs `wsh version` and refuses to commit the swap unless
+// the exact expected version line is produced, no separate post-install verify step is
+// needed here (the legacy single-shot path did one; the hardened path does it under the
+// lock, which is strictly safer).
 func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string, onProgress func(written, total int64)) error {
-	installCmd := makeWindowsAutoInstallWshCommand(remoteTempPath, remoteWshPath, inputSize)
+	// 1. SHA-256 the local binary by streaming `input` once, then rewind so the upload
+	//    copy below sees the file from the start.
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("cannot seek local wsh binary for hashing: %w", err)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, input); err != nil {
+		return fmt.Errorf("cannot hash local wsh binary: %w", err)
+	}
+	expectedSHA256 := fmt.Sprintf("%x", hash.Sum(nil))
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("cannot rewind local wsh binary after hashing: %w", err)
+	}
+	expectedVersion := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
+	prepareCmd, installCmd, cleanupCmd := shellutil.BuildWindowsWshInstallScripts(remoteTempPath, remoteWshPath, inputSize, expectedSHA256, expectedVersion)
+
+	// 2. prepare: make sure remote tmp/bin dirs exist and are plain directories.
+	if err := runRemoteCommandQuiet(ctx, client, prepareCmd); err != nil {
+		return fmt.Errorf("remote wsh prepare failed: %w", err)
+	}
+
+	// 3. stream the wsh.exe bytes into $TempPath over stdin.
+	streamCmd := makeWindowsStreamToTempCommand(remoteTempPath)
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create remote command: %w", err)
+		return fmt.Errorf("failed to create remote upload session: %w", err)
 	}
 	defer session.Close()
 	stdin, err := session.StdinPipe()
@@ -226,8 +261,8 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	}
 	stderrBuf := syncbuf.MakeSyncBuffer()
 	session.Stderr = stderrBuf
-	if err := session.Start(installCmd); err != nil {
-		return fmt.Errorf("failed to start remote command: %w", err)
+	if err := session.Start(streamCmd); err != nil {
+		return fmt.Errorf("failed to start remote upload command: %w", err)
 	}
 	copyDone := make(chan error, 1)
 	go func() {
@@ -246,22 +281,33 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	procErr := runSessionWaitWithContext(ctx, session)
 	copyErr := <-copyDone
 	if procErr != nil {
-		return fmt.Errorf("remote command failed: %w (stderr: %s)", procErr, stderrBuf.String())
+		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		return fmt.Errorf("remote upload command failed: %w (stderr: %s)", procErr, stderrBuf.String())
 	}
 	if copyErr != nil {
+		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
 		return fmt.Errorf("failed to copy data: %w (stderr: %s)", copyErr, stderrBuf.String())
 	}
-	verifyStdout, verifyStderr, err := runRemoteCommandOutput(ctx, client, shellutil.MakePowerShellEncodedCommand(`& (Join-Path $HOME ".snorkeling\bin\wsh.exe") version`))
+
+	// 4. install: size + SHA-256 + atomic replace + version verify + rollback, under lock.
+	installStdout, installStderr, err := runRemoteCommandOutput(ctx, client, installCmd)
 	if err != nil {
-		diagStdout, diagStderr, _ := runRemoteCommandOutput(ctx, client, diagnosticsCmd)
-		return fmt.Errorf("installed wsh version check failed for %s: %w (stderr: %s; diagnostics stdout: %s; diagnostics stderr: %s)",
-			remoteWshPath, err, strings.TrimSpace(verifyStderr), strings.TrimSpace(diagStdout), strings.TrimSpace(diagStderr))
-	}
-	expectedVersionLine := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
-	if extractWshVersionLine(verifyStdout) != expectedVersionLine {
-		return fmt.Errorf("installed wsh version mismatch: expected %q, got stdout %q stderr %q", expectedVersionLine, strings.TrimSpace(verifyStdout), strings.TrimSpace(verifyStderr))
+		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		return fmt.Errorf("remote wsh install failed: %w (stdout: %s; stderr: %s)",
+			err, strings.TrimSpace(installStdout), strings.TrimSpace(installStderr))
 	}
 	return nil
+}
+
+// runRemoteCommandQuiet runs cmd on client, discarding stdout/stderr. Used for
+// prepare/cleanup where we don't care about the output, only the exit status.
+func runRemoteCommandQuiet(ctx context.Context, client *ssh.Client, cmd string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return runSessionWithContext(ctx, session, cmd)
 }
 
 func runSessionWaitWithContext(ctx context.Context, session *ssh.Session) error {
@@ -469,8 +515,11 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 		blocklogger.Debugf(ctx, "[conndebug] CpWshToRemote, timeout: %v\n", time.Until(deadline))
 	}
 	if clientOs == "windows" {
+		// Best-effort sweep of any stale .temp residue from a prior interrupted upload.
+		// The hardened cpWshToWindowsRemote path below also runs a cleanup command on
+		// its own failures, but this pre-clean avoids a half-written temp sitting next
+		// to the wsh binary before we even start. See CleanupRemoteWshTemp for details.
 		CleanupRemoteWshTemp(ctx, client, clientOs)
-		return ErrWindowsAutoWshInstallRequiresManual
 	}
 	wshLocalPath, err := shellutil.GetLocalWshBinaryPath(wavebase.WaveVersion, clientOs, clientArch)
 	if err != nil {

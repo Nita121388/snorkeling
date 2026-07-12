@@ -5,10 +5,7 @@ package wshserver
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	"io"
-	"os"
 	"runtime"
 	"strings"
 
@@ -74,27 +71,7 @@ func (ws *WshServer) ConnPrepareManualWshInstallCommand(ctx context.Context, dat
 }
 
 func manualWshFileMetadata(path string) (int64, string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, "", fmt.Errorf("cannot open local wsh binary %s: %w", path, err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return 0, "", fmt.Errorf("cannot stat local wsh binary %s: %w", path, err)
-	}
-	if !info.Mode().IsRegular() {
-		return 0, "", fmt.Errorf("local wsh binary is not a regular file: %s", path)
-	}
-	hash := sha256.New()
-	bytesRead, err := io.Copy(hash, file)
-	if err != nil {
-		return 0, "", fmt.Errorf("cannot hash local wsh binary %s: %w", path, err)
-	}
-	if bytesRead != info.Size() {
-		return 0, "", fmt.Errorf("local wsh binary changed while hashing: %s", path)
-	}
-	return info.Size(), fmt.Sprintf("%x", hash.Sum(nil)), nil
+	return shellutil.WshFileMetadata(path)
 }
 
 func manualSshTarget(opts *remote.SSHOpts) string {
@@ -129,116 +106,12 @@ func buildManualWshInstallCommand(localGoos string, clientOs string, connName st
 
 func buildManualRemoteInstallCommands(clientOs string, remoteTempPath string, remoteWshPath string, expectedSize int64, expectedSHA256 string, expectedVersion string) (string, string, string) {
 	if clientOs == "windows" {
-		remoteTempPath = strings.ReplaceAll(remoteTempPath, "/", `\`)
-		remotePrepareScript := strings.Join([]string{
-			`$ErrorActionPreference = "Stop"`,
-			`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
-			`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
-			`$BinRoot = Join-Path $SnorkelingRoot "bin"`,
-			`function Assert-SafeInstallDirectory {`,
-			`    param([string]$Path)`,
-			`    if (!(Test-Path -LiteralPath $Path)) { return }`,
-			`    $Item = Get-Item -LiteralPath $Path -ErrorAction Stop`,
-			`    if (!$Item.PSIsContainer -or (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "unsafe wsh install directory: $Path" }`,
-			`}`,
-			`Assert-SafeInstallDirectory $SnorkelingRoot`,
-			`Assert-SafeInstallDirectory $TempRoot`,
-			`Assert-SafeInstallDirectory $BinRoot`,
-			`[System.IO.Directory]::CreateDirectory($TempRoot) | Out-Null`,
-			`[System.IO.Directory]::CreateDirectory($BinRoot) | Out-Null`,
-			`Assert-SafeInstallDirectory $SnorkelingRoot`,
-			`Assert-SafeInstallDirectory $TempRoot`,
-			`Assert-SafeInstallDirectory $BinRoot`,
-		}, "\n")
-		remoteInstallScript := strings.Join([]string{
-			remotePrepareScript,
-			`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(remoteTempPath),
-			`$WshPath = Join-Path $HOME ".snorkeling\bin\wsh.exe"`,
-			fmt.Sprintf(`$ExpectedSize = [Int64]%d`, expectedSize),
-			`$ExpectedHash = ` + shellutil.HardQuotePowerShell(expectedSHA256),
-			`$ExpectedVersion = ` + shellutil.HardQuotePowerShell(expectedVersion),
-			`$BackupPath = $null`,
-			`$InstalledWithoutBackup = $false`,
-			`$InstallLockPath = Join-Path $BinRoot ".wsh-manual-install.lock"`,
-			`$InstallLockStream = $null`,
-			`try {`,
-			`    if (-not (Test-Path -LiteralPath $TempPath -PathType Leaf)) { throw "uploaded wsh temp file is missing" }`,
-			`    $TempFile = Get-Item -LiteralPath $TempPath -Force`,
-			`    if (($TempFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "uploaded wsh temp path is a reparse point" }`,
-			`    if ($TempFile.Length -ne $ExpectedSize) { throw ("uploaded wsh size mismatch: expected {0}, got {1}" -f $ExpectedSize, $TempFile.Length) }`,
-			`    $ActualHash = (Get-FileHash -LiteralPath $TempPath -Algorithm SHA256).Hash`,
-			`    if (-not [string]::Equals($ActualHash, $ExpectedHash, [System.StringComparison]::OrdinalIgnoreCase)) { throw ("uploaded wsh SHA-256 mismatch: expected {0}, got {1}" -f $ExpectedHash, $ActualHash) }`,
-			`    if (Test-Path -LiteralPath $InstallLockPath) {`,
-			`        $InstallLockItem = Get-Item -LiteralPath $InstallLockPath -Force`,
-			`        if ($InstallLockItem.PSIsContainer -or (($InstallLockItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "wsh install lock path is not a regular file" }`,
-			`    }`,
-			`    try {`,
-			`        $InstallLockStream = [System.IO.File]::Open($InstallLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)`,
-			`    } catch { throw ("another manual wsh install is running or the install lock is unavailable: {0}" -f $_.Exception.Message) }`,
-			`    if (Test-Path -LiteralPath $WshPath) {`,
-			`        $WshFile = Get-Item -LiteralPath $WshPath -Force`,
-			`        if ($WshFile.PSIsContainer -or (($WshFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "existing wsh path is not a regular file" }`,
-			`        $BackupPath = $WshPath + ".backup-" + [Guid]::NewGuid().ToString("N")`,
-			`        [System.IO.File]::Replace($TempPath, $WshPath, $BackupPath, $true)`,
-			`    } else {`,
-			`        Move-Item -LiteralPath $TempPath -Destination $WshPath`,
-			`        $InstalledWithoutBackup = $true`,
-			`    }`,
-			`    $VersionLines = @(& $WshPath version)`,
-			`    $VersionExitCode = $LASTEXITCODE`,
-			`    $VersionOutput = ($VersionLines | Out-String).Trim()`,
-			`    if ($VersionExitCode -ne 0) { throw ("installed wsh version command failed with exit code {0}" -f $VersionExitCode) }`,
-			`    $VersionMatches = @($VersionLines | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ceq $ExpectedVersion })`,
-			`    if ($VersionMatches.Count -eq 0) { throw ("installed wsh version mismatch: expected exact line '{0}', got '{1}'" -f $ExpectedVersion, $VersionOutput) }`,
-			`    if (($null -ne $BackupPath) -and (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {`,
-			`        try { Remove-Item -LiteralPath $BackupPath -ErrorAction Stop } catch { Write-Warning ("installed wsh is valid, but backup cleanup failed: {0}" -f $_.Exception.Message) }`,
-			`    }`,
-			`} catch {`,
-			`    $InstallError = $_`,
-			`    $RollbackError = $null`,
-			`    if (($null -ne $BackupPath) -and (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {`,
-			`        try { [System.IO.File]::Replace($BackupPath, $WshPath, $null, $true) } catch { $RollbackError = $_ }`,
-			`    } elseif ($InstalledWithoutBackup -and (Test-Path -LiteralPath $WshPath -PathType Leaf)) {`,
-			`        try { Remove-Item -LiteralPath $WshPath -ErrorAction Stop } catch { $RollbackError = $_ }`,
-			`    }`,
-			`    if ($null -ne $RollbackError) {`,
-			`        $BackupMessage = if ($null -ne $BackupPath) { "; backup preserved at " + $BackupPath } else { "" }`,
-			`        throw ("wsh install failed: {0}; rollback failed{1}: {2}" -f $InstallError.Exception.Message, $BackupMessage, $RollbackError.Exception.Message)`,
-			`    }`,
-			`    throw $InstallError`,
-			`} finally {`,
-			`    try {`,
-			`        if (Test-Path -LiteralPath $TempPath) {`,
-			`            $TempItem = Get-Item -LiteralPath $TempPath -Force`,
-			`            if ($TempItem.PSIsContainer -or (($TempItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "refusing to clean non-regular wsh temp path" }`,
-			`            Remove-Item -LiteralPath $TempPath -ErrorAction Stop`,
-			`        }`,
-			`    } catch { Write-Warning ("exact temp cleanup failed: {0}" -f $_.Exception.Message) }`,
-			`    if ($null -ne $InstallLockStream) {`,
-			`        try { $InstallLockStream.Dispose() } catch { Write-Warning ("wsh install lock release failed: {0}" -f $_.Exception.Message) }`,
-			`    }`,
-			`}`,
-		}, "\n")
-		remoteCleanupScript := strings.Join([]string{
-			`$ErrorActionPreference = "Stop"`,
-			`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
-			`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
-			`function Assert-SafeCleanupDirectory {`,
-			`    param([string]$Path)`,
-			`    if (!(Test-Path -LiteralPath $Path)) { return }`,
-			`    $Item = Get-Item -LiteralPath $Path -ErrorAction Stop`,
-			`    if (!$Item.PSIsContainer -or (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "unsafe wsh cleanup directory: $Path" }`,
-			`}`,
-			`Assert-SafeCleanupDirectory $SnorkelingRoot`,
-			`Assert-SafeCleanupDirectory $TempRoot`,
-			`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(remoteTempPath),
-			`if (Test-Path -LiteralPath $TempPath) {`,
-			`    $TempItem = Get-Item -LiteralPath $TempPath -Force`,
-			`    if ($TempItem.PSIsContainer -or (($TempItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "refusing to clean non-regular wsh temp path" }`,
-			`    Remove-Item -LiteralPath $TempPath -ErrorAction Stop`,
-			`}`,
-		}, "\n")
-		return makeRemotePowerShellCommand(remotePrepareScript), makeRemotePowerShellCommand(remoteInstallScript), makeRemotePowerShellCommand(remoteCleanupScript)
+		// Windows branch shares the hardened install scripts (size + SHA-256 verify,
+		// atomic replace with backup, version verify, rollback, install lock) with the
+		// automatic install path via shellutil.BuildWindowsWshInstallScripts. Keeping a
+		// single source of truth for the PowerShell install script means manual and
+		// automatic installs cannot drift in hardening.
+		return shellutil.BuildWindowsWshInstallScripts(remoteTempPath, remoteWshPath, expectedSize, expectedSHA256, expectedVersion)
 	}
 	remotePrepareCmd := strings.Join([]string{
 		`set -eu`,
@@ -341,10 +214,6 @@ func buildManualRemoteInstallCommands(clientOs string, remoteTempPath string, re
 		`if [ -f "$temp_path" ]; then rm -f "$temp_path"; fi`,
 	}, "\n")
 	return remotePrepareCmd, remoteInstallCmd, remoteCleanupCmd
-}
-
-func makeRemotePowerShellCommand(script string) string {
-	return shellutil.MakePowerShellEncodedCommand(script)
 }
 
 func buildManualWshInstallPowerShellCommand(connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remotePrepareCmd string, remoteInstallCmd string, remoteCleanupCmd string) string {

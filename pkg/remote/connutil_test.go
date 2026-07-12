@@ -218,16 +218,20 @@ func TestWindowsAutoInstallRequiresManualSentinel(t *testing.T) {
 	}
 }
 
-func TestMakeWindowsAutoInstallWshCommandUsesEncodedPowerShell(t *testing.T) {
-	cmd := makeWindowsAutoInstallWshCommand("~/.snorkeling/tmp/wsh.exe.tmp", "~/.snorkeling/bin/wsh.exe", 123)
+func TestMakeWindowsStreamToTempCommandUsesEncodedPowerShell(t *testing.T) {
+	cmd := makeWindowsStreamToTempCommand("~/.snorkeling/tmp/wsh.exe.tmp")
 	if !strings.Contains(cmd, "powershell -NoProfile -NonInteractive") {
-		t.Fatalf("expected windows auto install to use powershell")
+		t.Fatalf("expected windows stream-to-temp command to use powershell")
 	}
 	if !strings.Contains(cmd, "-EncodedCommand") {
-		t.Fatalf("expected windows auto install powershell command to be encoded")
+		t.Fatalf("expected windows stream-to-temp command to be encoded")
 	}
-	if strings.Contains(cmd, "Move-Item") || strings.Contains(cmd, "chmod") || strings.Contains(cmd, "cat >") {
-		t.Fatalf("expected raw install script to be encoded")
+	// The raw PowerShell (CopyTo, OpenStandardInput, FileShare::None) must not appear
+	// verbatim in the command — it should be base64-encoded inside -EncodedCommand.
+	for _, forbidden := range []string{"CopyTo", "OpenStandardInput", "FileShare"} {
+		if strings.Contains(cmd, forbidden) {
+			t.Fatalf("expected raw stream script to be encoded, but found %q", forbidden)
+		}
 	}
 }
 
