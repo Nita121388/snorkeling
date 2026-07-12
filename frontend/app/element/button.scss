@@ -48,7 +48,7 @@
         &.red {
             background-color: var(--button-red-bg);
             border: 1px solid var(--button-red-border-color);
-            color: var(--main-text-color);
+            color: var(--button-text-color);
             &:hover {
                 background-color: var(--button-red-hover-bg);
             }
