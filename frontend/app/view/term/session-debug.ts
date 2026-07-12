@@ -1,7 +1,37 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AISessionsServiceType } from "@/app/store/services";
 import type { AgentCommandResolution, AgentSessionIdResolution } from "./agent-session";
+
+type AISessionsRpcProbe = {
+    summary: {
+        requested: boolean;
+        ok: boolean;
+        error: string | null;
+        // presence-only fields so we never leak session contents into a copied debug blob
+        hasSummary: boolean;
+        id: string | null;
+        idMatches: boolean | null;
+        source: string | null;
+        key: string | null;
+        title: string | null;
+        titleSource: string | null;
+        projectPath: string | null;
+        messageCount: number | null;
+        missing: boolean | null;
+        filePath: string | null;
+    };
+    outline: {
+        requested: boolean;
+        ok: boolean;
+        error: string | null;
+        userMessageCount: number | null;
+        returnedMessageCount: number | null;
+        summaryTitle: string | null;
+        summaryId: string | null;
+    };
+};
 
 type TerminalSessionDebugInput = {
     blockId: string;
@@ -23,6 +53,7 @@ type TerminalSessionDebugInput = {
         renderer?: string;
         hasSelection?: boolean;
     };
+    rpcProbe?: AISessionsRpcProbe;
 };
 
 function redactSensitiveText(value: string): string {
@@ -162,11 +193,88 @@ function makeTerminalSessionDebugInfo(input: TerminalSessionDebugInput): Record<
             blockJobStatus: blockJobStatusDebug(input.blockJobStatus),
             terminal: input.terminal,
         },
+        rpcProbe: input.rpcProbe ?? null,
     };
 }
 
 function formatTerminalSessionDebugInfo(input: TerminalSessionDebugInput): string {
     return JSON.stringify(makeTerminalSessionDebugInfo(input), null, 2);
+}
+
+/**
+ * Run the same AISessions RPCs the TermSessionNoteEditor and TermSessionUserOutlineOverlay fire at mount,
+ * capturing whether they resolve/reject and what shape the returned payload has (presence-only — no
+ * snippet/text contents leaked into the copied debug blob). Mirrors the TermSessionTopBar wiring so the
+ * probe exercises the real code path used to render the note/outline widgets.
+ */
+export async function runAISessionsRpcProbe(
+    sessionId: string,
+    connection: string | null | undefined
+): Promise<AISessionsRpcProbe> {
+    const result: AISessionsRpcProbe = {
+        summary: {
+            requested: false,
+            ok: false,
+            error: null,
+            hasSummary: false,
+            id: null,
+            idMatches: null,
+            source: null,
+            key: null,
+            title: null,
+            titleSource: null,
+            projectPath: null,
+            messageCount: null,
+            missing: null,
+            filePath: null,
+        },
+        outline: {
+            requested: false,
+            ok: false,
+            error: null,
+            userMessageCount: null,
+            returnedMessageCount: null,
+            summaryTitle: null,
+            summaryId: null,
+        },
+    };
+    if (sessionId === "") {
+        return result;
+    }
+    const service = new AISessionsServiceType();
+    const connArg: string | undefined = typeof connection === "string" && connection !== "" ? connection : undefined;
+    result.summary.requested = true;
+    try {
+        const s = await service.Summary({ id: sessionId, connection: connArg });
+        result.summary.ok = true;
+        result.summary.hasSummary = s != null;
+        result.summary.id = typeof s?.id === "string" ? s.id : null;
+        result.summary.idMatches = typeof s?.id === "string" ? s.id === sessionId : null;
+        result.summary.source = typeof s?.source === "string" ? s.source : null;
+        result.summary.key = typeof s?.key === "string" ? s.key : null;
+        result.summary.title = typeof s?.title === "string" ? debugPreview(s.title, 80) : null;
+        result.summary.titleSource = typeof s?.titleSource === "string" ? s.titleSource : null;
+        result.summary.projectPath = typeof s?.projectPath === "string" ? debugPreview(s.projectPath, 200) : null;
+        result.summary.messageCount = typeof s?.messageCount === "number" ? s.messageCount : null;
+        result.summary.missing = typeof s?.missing === "boolean" ? s.missing : null;
+        result.summary.filePath = typeof s?.filePath === "string" ? debugPreview(s.filePath, 200) : null;
+    } catch (e) {
+        result.summary.ok = false;
+        result.summary.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    }
+    result.outline.requested = true;
+    try {
+        const u = await service.UserOutline({ id: sessionId, connection: connArg, limit: 20, refresh: false });
+        result.outline.ok = true;
+        result.outline.userMessageCount = typeof u?.userMessageCount === "number" ? u.userMessageCount : null;
+        result.outline.returnedMessageCount = Array.isArray(u?.messages) ? u.messages.length : null;
+        result.outline.summaryTitle = typeof u?.summary?.title === "string" ? debugPreview(u.summary.title, 80) : null;
+        result.outline.summaryId = typeof u?.summary?.id === "string" ? u.summary.id : null;
+    } catch (e) {
+        result.outline.ok = false;
+        result.outline.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    }
+    return result;
 }
 
 export {

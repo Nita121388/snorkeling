@@ -52,7 +52,7 @@ import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
-import { formatTerminalSessionDebugInfo, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
+import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
@@ -1132,7 +1132,8 @@ export class TermViewModel implements ViewModel {
             jobStatus: jobStatus?.status,
             shellProcStatus,
         });
-        const debugText = () =>
+        const connectionForProbe = typeof meta.connection === "string" ? meta.connection : null;
+        const debugText = async (): Promise<string> =>
             formatTerminalSessionDebugInfo({
                 blockId: this.blockId,
                 tabId: this.tabModel?.tabId ?? globalStore.get(atoms.staticTabId) ?? "",
@@ -1153,11 +1154,12 @@ export class TermViewModel implements ViewModel {
                     renderer: termWrap?.getTermRenderer?.(),
                     hasSelection: termWrap?.terminal?.hasSelection?.() ?? false,
                 },
+                rpcProbe: await runAISessionsRpcProbe(agentSessionId, connectionForProbe),
             });
         const debugMenuItem: ContextMenuItem = {
             label: "Copy Session Debug Info",
             click: () => {
-                fireAndForget(() => copyText(debugText()));
+                fireAndForget(async () => copyText(await debugText()));
             },
         };
         const agentFolderMenuItem: ContextMenuItem = {
