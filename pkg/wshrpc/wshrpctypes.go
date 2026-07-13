@@ -91,6 +91,7 @@ type WshRpcInterface interface {
 	GetVarCommand(ctx context.Context, data CommandVarData) (*CommandVarResponseData, error)
 	GetAllVarsCommand(ctx context.Context, data CommandVarData) ([]CommandVarResponseData, error)
 	SetVarCommand(ctx context.Context, data CommandVarData) error
+	GetBlockEnvCommand(ctx context.Context, data CommandGetBlockEnvData) (*CommandGetBlockEnvRtnData, error)
 	PathCommand(ctx context.Context, data PathCommandData) (string, error)
 	SendTelemetryCommand(ctx context.Context) error
 	FetchSuggestionsCommand(ctx context.Context, data FetchSuggestionsData) (*FetchSuggestionsResponse, error)
@@ -563,6 +564,15 @@ type CommandVarResponseData struct {
 	Key    string `json:"key"`
 	Val    string `json:"val"`
 	Exists bool   `json:"exists"`
+}
+
+type CommandGetBlockEnvData struct {
+	BlockId  string `json:"blockid"`
+	ConnName string `json:"connname,omitempty"`
+}
+
+type CommandGetBlockEnvRtnData struct {
+	Env map[string]string `json:"env"`
 }
 
 type CommandDebugTermData struct {

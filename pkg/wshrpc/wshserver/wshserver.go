@@ -225,6 +225,7 @@ func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetM
 	}
 	wcore.SendWaveObjUpdate(oref)
 	maybeCaptureManualCodexSessionId(oref, data.Meta)
+	maybeCaptureManualClaudeSessionId(oref, data.Meta)
 	return nil
 }
 
@@ -244,6 +245,31 @@ func maybeCaptureManualCodexSessionId(oref waveobj.ORef, meta waveobj.MetaMapTyp
 	}
 	startedAt := time.Now()
 	go blockcontroller.CaptureManualCodexSessionIdForBlock(oref.OID, startedAt)
+}
+
+// maybeCaptureManualClaudeSessionId is the SetMetaCommand rider for claude blocks.
+// Mirrors the codex rider above. Fires when a SetMeta patch lands on a claude+autoresume
+// block whose sessionid is still empty (the stale-block-restart case where the original
+// 921 persist gave up). Unlike codex (which scans disk for a CLI-written id), claude
+// has nothing to recover — CaptureManualClaudeSessionIdForBlock mints a fresh UUID so the
+// next spawn will use `claude --session-id <newUuid>`. Two-layer safety: this early-out
+// uses the incoming meta patch for a cheap reject; CaptureManualClaudeSessionIdForBlock
+// re-checks the canonical block meta from the DB before persisting.
+func maybeCaptureManualClaudeSessionId(oref waveobj.ORef, meta waveobj.MetaMapType) {
+	if oref.OType != waveobj.OType_Block {
+		return
+	}
+	provider := strings.TrimSpace(strings.ToLower(meta.GetString(blockcontroller.MetaKey_AgentProvider, "")))
+	if provider != blockcontroller.AgentProviderClaude {
+		return
+	}
+	if !meta.GetBool(blockcontroller.MetaKey_AgentAutoResume, false) {
+		return
+	}
+	if strings.TrimSpace(meta.GetString(blockcontroller.MetaKey_AgentSessionId, "")) != "" {
+		return
+	}
+	go blockcontroller.CaptureManualClaudeSessionIdForBlock(oref.OID, time.Now())
 }
 
 func (ws *WshServer) GetRTInfoCommand(ctx context.Context, data wshrpc.CommandGetRTInfoData) (*waveobj.ObjRTInfo, error) {
@@ -1478,6 +1504,17 @@ func (ws *WshServer) SetVarCommand(ctx context.Context, data wshrpc.CommandVarDa
 	}
 	envStr := envutil.MapToEnv(envMap)
 	return filestore.WFS.WriteFile(ctx, data.ZoneId, data.FileName, []byte(envStr))
+}
+
+func (ws *WshServer) GetBlockEnvCommand(ctx context.Context, data wshrpc.CommandGetBlockEnvData) (*wshrpc.CommandGetBlockEnvRtnData, error) {
+	if data.BlockId == "" {
+		return nil, fmt.Errorf("blockid is required")
+	}
+	env, err := blockcontroller.ResolveBlockEnvMap(data.BlockId, data.ConnName)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving block env: %w", err)
+	}
+	return &wshrpc.CommandGetBlockEnvRtnData{Env: env}, nil
 }
 
 func (ws *WshServer) PathCommand(ctx context.Context, data wshrpc.PathCommandData) (string, error) {

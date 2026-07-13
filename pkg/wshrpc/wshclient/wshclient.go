@@ -419,6 +419,12 @@ func GetAllVarsCommand(w *wshutil.WshRpc, data wshrpc.CommandVarData, opts *wshr
 	return resp, err
 }
 
+// command "getblockenv", wshserver.GetBlockEnvCommand
+func GetBlockEnvCommand(w *wshutil.WshRpc, data wshrpc.CommandGetBlockEnvData, opts *wshrpc.RpcOpts) (*wshrpc.CommandGetBlockEnvRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandGetBlockEnvRtnData](w, "getblockenv", data, opts)
+	return resp, err
+}
+
 // command "getbuilderoutput", wshserver.GetBuilderOutputCommand
 func GetBuilderOutputCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) ([]string, error) {
 	resp, err := sendRpcRequestCallHelper[[]string](w, "getbuilderoutput", data, opts)

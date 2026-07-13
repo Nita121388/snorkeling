@@ -420,6 +420,12 @@ export class RpcApiType {
         return client.wshRpcCall("getallvars", data, opts);
     }
 
+    // command "getblockenv" [call]
+    GetBlockEnvCommand(client: WshClient, data: CommandGetBlockEnvData, opts?: RpcOpts): Promise<CommandGetBlockEnvRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "getblockenv", data, opts);
+        return client.wshRpcCall("getblockenv", data, opts);
+    }
+
     // command "getbuilderoutput" [call]
     GetBuilderOutputCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<string[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "getbuilderoutput", data, opts);

@@ -35,6 +35,11 @@ type ComposeState = {
     statusKind: "info" | "ok" | "err";
 };
 
+// 进程内草稿暂存：弹窗关闭后保留 editor 内容，下次无 query 打开时还原；重启进程即丢。
+// 带 detail.query 的外部触发（如选区 overlay 复制场景）不取草稿，避免与外部文本冲突。
+type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "manualQuery" | "selectedTags" | "insertedIds">;
+let composeDraft: ComposeDraft | null = null;
+
 const initialOpenState = (manualQuery = ""): ComposeState => ({
     open: true,
     editor: "",
@@ -46,6 +51,14 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     status: "",
     statusKind: "info",
 });
+
+const restoreOpenState = (): ComposeState => {
+    if (composeDraft == null) return initialOpenState();
+    return {
+        ...initialOpenState(),
+        ...composeDraft,
+    };
+};
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
@@ -81,13 +94,15 @@ const CommonTextComposeModal = memo(() => {
     useEffect(() => {
         const handleOpen = (event: Event) => {
             const detail = (event as CustomEvent<CommonTextSearchDetail>).detail ?? {};
+            const hasExternalQuery = (detail.query ?? "").trim() !== "";
             const manualQuery = detail.query ?? "";
             if (compositionEndTimerRef.current != null) {
                 window.clearTimeout(compositionEndTimerRef.current);
                 compositionEndTimerRef.current = null;
             }
             isComposingRef.current = false;
-            setState(initialOpenState(manualQuery));
+            // 外部带入 query（选区 overlay 找条目）走全新状态；纯打开尝试还原上次草稿。
+            setState(hasExternalQuery ? initialOpenState(manualQuery) : restoreOpenState());
             requestAnimationFrame(() =>
                 (manualQuery.trim() === "" ? editorRef.current : searchInputRef.current)?.focus()
             );
@@ -131,7 +146,16 @@ const CommonTextComposeModal = memo(() => {
             compositionEndTimerRef.current = null;
         }
         isComposingRef.current = false;
-        setState((cur) => ({ ...cur, open: false }));
+        setState((cur) => {
+            composeDraft = {
+                editor: cur.editor,
+                editorCaret: cur.editorCaret,
+                manualQuery: cur.manualQuery,
+                selectedTags: cur.selectedTags,
+                insertedIds: cur.insertedIds,
+            };
+            return { ...cur, open: false };
+        });
     };
 
     const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
@@ -217,6 +241,15 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Sent to focused terminal", "ok");
         } else {
             setStatus("Focus a terminal first", "err");
+        }
+    };
+
+    const handleListItemCopy = async (item: CommonTextItem) => {
+        try {
+            await copyCommonText(item.text);
+            setStatus("Copied", "ok");
+        } catch (err) {
+            setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
         }
     };
 
@@ -461,7 +494,7 @@ const CommonTextComposeModal = memo(() => {
                                     key={item.id}
                                     data-common-text-index={index}
                                     className={
-                                        "flex items-start gap-1.5 px-2 py-1 cursor-pointer transition-colors " +
+                                        "group flex items-start gap-1.5 px-2 py-1 cursor-pointer transition-colors " +
                                         (state.selectedIndex === index ? "bg-highlightbg" : "hover:bg-hoverbg")
                                     }
                                     onMouseEnter={() => update({ selectedIndex: index })}
@@ -493,6 +526,17 @@ const CommonTextComposeModal = memo(() => {
                                             </div>
                                         )}
                                     </div>
+                                    <button
+                                        type="button"
+                                        title="Copy this text"
+                                        className="shrink-0 self-start pt-0.5 bg-transparent border-0 text-secondary hover:text-accent transition-[color,opacity] duration-150 cursor-pointer opacity-0 group-hover:opacity-100"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            fireAndForget(handleListItemCopy(item));
+                                        }}
+                                    >
+                                        <i className="fa fa-regular fa-copy text-[12px]" />
+                                    </button>
                                 </div>
                             ))
                         )}

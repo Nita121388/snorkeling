@@ -3,6 +3,7 @@
 
 import { AISessionsServiceType } from "@/app/store/services";
 import type { AgentCommandResolution, AgentSessionIdResolution } from "./agent-session";
+import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 
 type AISessionsRpcProbe = {
     summary: {
@@ -54,6 +55,14 @@ type TerminalSessionDebugInput = {
         hasSelection?: boolean;
     };
     rpcProbe?: AISessionsRpcProbe;
+    /**
+     * Render-time snapshots of TermSessionUserOutlineOverlay / TermSessionNoteEditor, captured live
+     * by the React component during its render and unmount. These reflect *the last time the
+     * component rendered*, which may differ from the right-click moment — treat as a hint.
+     * Null means the component has not yet mounted for this block (or already unmounted and cleared).
+     */
+    outlineRender?: ReturnType<typeof getOutlineRenderSnapshot>;
+    noteRender?: ReturnType<typeof getNoteRenderSnapshot>;
 };
 
 function redactSensitiveText(value: string): string {
@@ -194,6 +203,8 @@ function makeTerminalSessionDebugInfo(input: TerminalSessionDebugInput): Record<
             terminal: input.terminal,
         },
         rpcProbe: input.rpcProbe ?? null,
+        outlineRender: input.outlineRender ?? null,
+        noteRender: input.noteRender ?? null,
     };
 }
 

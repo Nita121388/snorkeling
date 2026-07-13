@@ -81,10 +81,10 @@ func TestInstallCodexHooksWritesScriptHooksAndConfig(t *testing.T) {
 	if _, ok := hooks["PreToolUse"].([]any); !ok {
 		t.Fatalf("expected PreToolUse hook in %#v", hooks)
 	}
-	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking, PhaseTool)) {
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", codexHookCommand(result.HookPath, agentStatusHookSpec{event: "PreToolUse", action: StateWorking, phase: PhaseTool})) {
 		t.Fatalf("expected PreToolUse hook command to include tool phase")
 	}
-	if runtime.GOOS == "windows" && strings.Contains(hookCommand(result.HookPath, StateWorking, PhaseTool), "powershell.exe") {
+	if runtime.GOOS == "windows" && strings.Contains(codexHookCommand(result.HookPath, agentStatusHookSpec{event: "PreToolUse", action: StateWorking, phase: PhaseTool}), "powershell.exe") {
 		t.Fatalf("windows hook command must not use PowerShell")
 	}
 	config, err := os.ReadFile(result.ConfigPath)
@@ -289,7 +289,7 @@ func TestInstallCodexHooksPrunesLegacyManagedCommands(t *testing.T) {
 	if !commandHookInstalled(result.HooksPath, "PreToolUse", "echo keep-me") {
 		t.Fatalf("unmanaged hook command should be preserved")
 	}
-	if !commandHookInstalled(result.HooksPath, "PreToolUse", hookCommand(result.HookPath, StateWorking, PhaseTool)) {
+	if !commandHookInstalled(result.HooksPath, "PreToolUse", codexHookCommand(result.HookPath, agentStatusHookSpec{event: "PreToolUse", action: StateWorking, phase: PhaseTool})) {
 		t.Fatalf("new managed hook command missing")
 	}
 }

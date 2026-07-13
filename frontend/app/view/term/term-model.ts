@@ -22,6 +22,7 @@ import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/ais
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
+import { EnvModalView } from "@/app/view/term/envmodal";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import {
@@ -53,6 +54,7 @@ import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
+import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
@@ -63,18 +65,18 @@ import {
 } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
-function normalizeAgentProvider(provider: unknown): string {
+export function normalizeAgentProvider(provider: unknown): string {
     return typeof provider === "string" && provider.trim() !== "" ? provider.trim() : "agent";
 }
 
-function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
+export function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
     if (meta == null) return false;
     if (typeof meta["agent:sessionid"] === "string" && meta["agent:sessionid"].trim() !== "") return true;
     if (typeof meta["agent:provider"] === "string" && meta["agent:provider"].trim() !== "") return true;
     return meta["agent:autoresume"] === true;
 }
 
-function getAgentLogoByProvider(provider: string): { icon: React.ReactNode; iconColor?: string } | null {
+export function getAgentLogoByProvider(provider: string): { icon: React.ReactNode; iconColor?: string } | null {
     switch (provider.trim().toLowerCase()) {
         case "codex":
             return { icon: React.createElement(OpenAILogo), iconColor: "#74a7cb" };
@@ -230,7 +232,7 @@ export class TermViewModel implements ViewModel {
                 // command string, which may be an absolute path or carry args. Keep the original
                 // command text reachable via the tooltip for debugging.
                 const isAgentBlock = isAgentTerminalMeta(blockMeta) && provider !== "";
-                const headerText = isAgentBlock ? formatAgentProvider(provider) : cmdRaw;
+                const headerText = isAgentBlock ? "" : cmdRaw;
                 const headerTitle = isAgentBlock
                     ? `${formatAgentProvider(provider)} · ${cmdRaw ?? ""}${cmdArgsStr ? " " + cmdArgsStr : ""}`
                     : undefined;
@@ -1155,11 +1157,25 @@ export class TermViewModel implements ViewModel {
                     hasSelection: termWrap?.terminal?.hasSelection?.() ?? false,
                 },
                 rpcProbe: await runAISessionsRpcProbe(agentSessionId, connectionForProbe),
+                outlineRender: getOutlineRenderSnapshot(this.blockId),
+                noteRender: getNoteRenderSnapshot(this.blockId),
             });
         const debugMenuItem: ContextMenuItem = {
             label: "Copy Session Debug Info",
             click: () => {
                 fireAndForget(async () => copyText(await debugText()));
+            },
+        };
+        const connection = typeof meta.connection === "string" ? meta.connection : "";
+        const envMenuItem: ContextMenuItem = {
+            label: "Show Terminal Environment…",
+            click: () => {
+                modalsModel.pushModal("MessageModal", {
+                    children: React.createElement(EnvModalView, {
+                        blockId: this.blockId,
+                        connection: connection,
+                    }),
+                });
             },
         };
         const agentFolderMenuItem: ContextMenuItem = {
@@ -1198,10 +1214,11 @@ export class TermViewModel implements ViewModel {
                     },
                 },
                 debugMenuItem,
+                envMenuItem,
             ];
         }
         if (canOpenAgentFolder(blockData ?? null, "")) {
-            return [agentFolderMenuItem, debugMenuItem];
+            return [agentFolderMenuItem, debugMenuItem, envMenuItem];
         }
         if (jobId === "") {
             console.log("[term-session-copy] no session id available for terminal block", {
@@ -1213,7 +1230,7 @@ export class TermViewModel implements ViewModel {
                 shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),
                 hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",
             });
-            return [debugMenuItem];
+            return [debugMenuItem, envMenuItem];
         }
         return [
             {
@@ -1223,6 +1240,7 @@ export class TermViewModel implements ViewModel {
                 },
             },
             debugMenuItem,
+            envMenuItem,
         ];
     }
 

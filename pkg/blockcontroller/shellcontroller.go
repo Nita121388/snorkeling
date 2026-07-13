@@ -100,6 +100,23 @@ const (
 
 const ManualCodexSessionCaptureAttempts = 120
 
+const (
+	// claudeSessionCaptureMaxAttempts + claudeSessionCapturePollInterval cap the
+	// async retry loop for persistAgentSessionId on the claude main path. claude id
+	// is minted by the backend (resolveAgentCmdAndArgs:919) and pushed into claude
+	// args unconditionally; the only failure mode is persistAgentSessionId's 2s ctx
+	// losing a race with sqlite busy_timeout under concurrent writes. retry must
+	// reuse the SAME sessionId so block meta stays aligned with the running claude
+	// process's conversation history.
+	claudeSessionCaptureMaxAttempts  = 30
+	claudeSessionCapturePollInterval = 400 * time.Millisecond
+
+	// claudeManualCaptureMaxAttempts / PollInterval for the SetMetaCommand rider
+	// path (stale block restart case). mirrors codex manual rider timing.
+	claudeManualCaptureMaxAttempts  = 30
+	claudeManualCapturePollInterval = 400 * time.Millisecond
+)
+
 var codexOptionValueFlags = map[string]bool{
 	"-a":                      true,
 	"--add-dir":               true,
@@ -920,6 +937,11 @@ func resolveAgentCmdAndArgs(
 		agentRunInfo.SessionId = sessionId
 		if err := persistAgentSessionId(blockId, sessionId); err != nil {
 			log.Printf("error persisting claude agent session id (block=%s): %v", blockId, err)
+			// Async retry: persist may fail under sqlite busy (single conn + 5s busy_timeout
+			// vs 2s ctx). Retry must reuse the SAME sessionId so block meta stays aligned
+			// with the running claude process's conversation history. Without this retry,
+			// Outline/Note stays blank until a coincidental second resync re-runs 918.
+			go captureClaudeSessionIdForBlock(blockId, sessionId)
 		}
 		cmdArgs = ensureClaudeSessionIdArg(cmdArgs, sessionId)
 	}
@@ -1121,6 +1143,47 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	}
 	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
 	return nil
+}
+
+// captureClaudeSessionIdForBlock retries persistAgentSessionId when the synchronous
+// persist at resolveAgentCmdAndArgs:921 failed (typically sqlite busy_timeout racing
+// the 2s ctx under concurrent writes). It reuses the SAME sessionId that was minted
+// at :919 and pushed into claude args at :924 — retrying with a different id would
+// desync block meta from the running claude process's conversation history.
+//
+// Loop:
+//   - on each attempt, DBGet the block; if it's gone (destroyed) → abdicate
+//   - if block meta already has agent:sessionid (second resync or rider won the race)
+//     → abdicate (first-writer-wins; no sync.Once needed)
+//   - else persistAgentSessionId and stop on success
+//
+// Up to claudeSessionCaptureMaxAttempts × claudeSessionCapturePollInterval (12s)
+// gives enough headroom for a coincidental second resync to also fail and recover;
+// retry doesn't scan disk (claude id is in backend memory, not in CLI-written files
+// like codex).
+func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
+	if blockId == "" || sessionId == "" {
+		return
+	}
+	for i := 0; i < claudeSessionCaptureMaxAttempts; i++ {
+		if i > 0 {
+			time.Sleep(claudeSessionCapturePollInterval)
+		}
+		ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+		cancelFn()
+		if err != nil || block == nil {
+			return // block gone (destroyed)
+		}
+		if block.Meta.GetString(MetaKey_AgentSessionId, "") != "" {
+			return // second resync or rider already persisted
+		}
+		if err := persistAgentSessionId(blockId, sessionId); err == nil {
+			log.Printf("claude agent session id retry persisted (block=%s, attempt=%d)", blockId, i+1)
+			return
+		}
+	}
+	log.Printf("claude agent session id retry gave up (block=%s, attempts=%d)", blockId, claudeSessionCaptureMaxAttempts)
 }
 
 func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {
@@ -1453,6 +1516,46 @@ func CaptureManualCodexSessionIdForBlock(blockId string, startedAt time.Time) {
 	bc.captureCodexSessionIdForBlockWithAttempts(agentRunInfo, ManualCodexSessionCaptureAttempts)
 }
 
+// CaptureManualClaudeSessionIdForBlock is the SetMetaCommand rider entry for claude.
+// Triggered by maybeCaptureManualClaudeSessionId in wshserver when a SetMeta patch
+// hits a stale claude block (no sessionid, agent:autoresume=true, provider=claude).
+// Unlike codex (which scans disk for a CLI-written session_meta), claude has no
+// in-flight id to recover — we mint a fresh one and persist it, so the next spawn
+// of this block will use `claude --session-id <newUuid>`. Aborts if block is gone,
+// already has an id (race against the main path or manual user patch), or no longer
+// matches the claude+autoresume shape.
+func CaptureManualClaudeSessionIdForBlock(blockId string, startedAt time.Time) {
+	_ = startedAt // kept for symmetry with codex signature; claude doesn't need it
+	if blockId == "" {
+		return
+	}
+	for i := 0; i < claudeManualCaptureMaxAttempts; i++ {
+		if i > 0 {
+			time.Sleep(claudeManualCapturePollInterval)
+		}
+		ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+		cancelFn()
+		if err != nil || block == nil {
+			return // block gone
+		}
+		blockMeta := block.Meta
+		if blockMeta.GetString(MetaKey_AgentSessionId, "") != "" {
+			return // already persisted by main path or manual patch
+		}
+		if getAgentProvider(blockMeta, blockMeta.GetString(waveobj.MetaKey_Cmd, "")) != AgentProviderClaude {
+			return
+		}
+		if !blockMeta.GetBool(MetaKey_AgentAutoResume, false) {
+			return
+		}
+		if err := persistAgentSessionId(blockId, uuid.NewString()); err == nil {
+			log.Printf("manual claude agent session id persisted (block=%s, attempt=%d)", blockId, i+1)
+			return
+		}
+	}
+}
+
 func (bc *ShellController) getBlockData_noErr() *waveobj.Block {
 	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancelFn()
@@ -1502,6 +1605,64 @@ func resolveEnvMap(blockId string, blockMeta waveobj.MetaMapType, connName strin
 			continue
 		}
 		rtn[k] = resolveEnvReference(v)
+	}
+	return rtn, nil
+}
+
+// ResolveBlockEnvMap fetches the block's meta from the store and returns the env map that
+// the shell process actually receives on startup.
+//
+// For local connections: the env is built from the OS environ baseline, the wave-injected
+// local env vars, and the per-block command-env deltas resolved by resolveEnvMap
+// (connection cmd:env + runtime BlockFile_Env + block meta cmd:env + connection override cmd:env)
+// honoring MetaMap_DeleteSentinel as unset.
+//
+// For remote connections: only the per-block command-env deltas are returned — the OS baseline
+// belongs to the local wshserver process, not the remote host, so synthesizing it would
+// misrepresent the remote shell's PATH/HOME/etc. Such blocks visibly have fewer vars; the
+// modal title indicates a remote connection so users know what they're looking at.
+func ResolveBlockEnvMap(blockId string, connName string) (map[string]string, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	blockData, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+	if err != nil {
+		return nil, fmt.Errorf("error getting block data: %w", err)
+	}
+	if blockData == nil {
+		return nil, fmt.Errorf("block not found: %s", blockId)
+	}
+	delta, err := resolveEnvMap(blockId, blockData.Meta, connName)
+	if err != nil {
+		return nil, err
+	}
+	if !conncontroller.IsLocalConnName(connName) {
+		// Remote: drop delete-sentinels; the caller expects a flat KEY->value map.
+		rtn := make(map[string]string, len(delta))
+		for k, v := range delta {
+			if v == waveobj.MetaMap_DeleteSentinel {
+				continue
+			}
+			rtn[k] = v
+		}
+		return rtn, nil
+	}
+	rtn := make(map[string]string)
+	for _, envStr := range os.Environ() {
+		key, val, ok := strings.Cut(envStr, "=")
+		if !ok || key == "" {
+			continue
+		}
+		rtn[key] = val
+	}
+	for k, v := range shellutil.WaveshellLocalEnvVars(shellutil.DefaultTermType) {
+		rtn[k] = v
+	}
+	for k, v := range delta {
+		if v == waveobj.MetaMap_DeleteSentinel {
+			delete(rtn, k)
+			continue
+		}
+		rtn[k] = v
 	}
 	return rtn, nil
 }

@@ -4,6 +4,7 @@
 package agentstatus
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,7 +19,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 14
+	hookInstallVersion  = 15
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -302,7 +303,14 @@ func writeClaudeHookScript(path string) error {
 }
 
 func writeHookScriptContent(path string, content string) error {
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+	data := []byte(content)
+	if runtime.GOOS == "windows" {
+		// Normalize to CRLF so cmd.exe parses if/goto blocks reliably even
+		// when the file is edited or rewritten by tooling that strips CR.
+		data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+		data = bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
+	}
+	if err := os.WriteFile(path, data, 0o755); err != nil {
 		return err
 	}
 	return makeExecutable(path)
@@ -355,9 +363,6 @@ func hookCommand(path string, action string, phase string) string {
 }
 
 func codexHookCommand(path string, spec agentStatusHookSpec) string {
-	if spec.event != "UserPromptSubmit" && spec.event != "Stop" {
-		return hookCommand(path, spec.action, spec.phase)
-	}
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & echo {^"continue^":true}"`, path, spec.action, spec.phase)
 	}
@@ -391,6 +396,7 @@ set "PHASE=%%~2"
 set "DEBUG_LOG="
 if not "%%LOCALAPPDATA%%"=="" set "DEBUG_LOG=%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log"
 if "%%DEBUG_LOG%%"=="" if not "%%TEMP%%"=="" set "DEBUG_LOG=%%TEMP%%\snorkeling-agentstatus-hook.log"
+call :debug_log "alive provider=%s action=%%ACTION%% phase=%%PHASE%% block=%%WAVETERM_BLOCKID%% localappdata-set=%%LOCALAPPDATA%%-nonempty jwt-set=%%WAVETERM_JWT%%-nonempty cwd=%%CD%% wshbindir=%%WAVETERM_WSHBINDIR%%"
 call :debug_log "start provider=%s action=%%ACTION%% phase=%%PHASE%%"
 
 if "%%ACTION%%"=="" (
@@ -458,7 +464,7 @@ exit /b 0
 :debug_log
 if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {
