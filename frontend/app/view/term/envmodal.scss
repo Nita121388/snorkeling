@@ -1,0 +1,177 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+.env-modal-view {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 600px;
+    max-width: 800px;
+    width: 800px;
+    max-height: 70vh;
+
+    .env-modal-header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--ts3-border);
+
+        .env-modal-title {
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .env-modal-tag-remote {
+                font-size: 10px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                color: var(--ts3-fg-muted);
+                background: var(--ts3-bg-accent);
+                border: 1px solid var(--ts3-border);
+                border-radius: 4px;
+                padding: 1px 6px;
+            }
+        }
+
+        .env-modal-subtitle {
+            color: var(--ts3-fg-muted);
+            font-size: 12px;
+        }
+    }
+
+    .env-modal-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .env-modal-search {
+            flex: 1 1 auto;
+            min-width: 200px;
+            padding: 5px 10px;
+            font-size: 13px;
+            background: var(--ts3-input-bg);
+            border: 1px solid var(--ts3-border);
+            border-radius: 4px;
+            color: var(--ts3-fg);
+            outline: none;
+
+            &:focus {
+                border-color: var(--ts3-accent);
+            }
+        }
+
+        .env-modal-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 10px;
+            font-size: 12px;
+            background: var(--ts3-btn-bg);
+            color: var(--ts3-btn-fg);
+            border: 1px solid var(--ts3-border);
+            border-radius: 4px;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: var(--ts3-btn-hover-bg);
+            }
+
+            &:disabled {
+                opacity: 0.5;
+                cursor: default;
+            }
+        }
+    }
+
+    .env-modal-error,
+    .env-modal-loading,
+    .env-modal-empty {
+        padding: 20px;
+        text-align: center;
+        color: var(--ts3-fg-muted);
+        font-size: 13px;
+    }
+
+    .env-modal-error {
+        color: var(--ts3-error-fg);
+    }
+
+    .env-modal-table {
+        flex: 1 1 auto;
+        overflow: auto;
+        border: 1px solid var(--ts3-border);
+        border-radius: 4px;
+        min-height: 120px;
+
+        .env-modal-row {
+            display: grid;
+            grid-template-columns: minmax(140px, 30%) 1fr;
+            border-bottom: 1px solid var(--ts3-border-light);
+
+            &:last-child {
+                border-bottom: none;
+            }
+
+            &.env-modal-row-header {
+                position: sticky;
+                top: 0;
+                background: var(--ts3-tab-bg);
+                font-weight: 600;
+                font-size: 12px;
+                z-index: 1;
+            }
+
+            .env-modal-key,
+            .env-modal-value {
+                padding: 5px 10px;
+                font-size: 12px;
+                word-break: break-all;
+                font-family: var(--ts3-mono-font);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .env-modal-key {
+                border-right: 1px solid var(--ts3-border-light);
+                background: var(--ts3-tab-bg);
+            }
+
+            .env-modal-tag {
+                margin-left: 6px;
+                padding: 1px 5px;
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                background: var(--ts3-error-fg);
+                color: #fff;
+                border-radius: 3px;
+            }
+
+            .env-modal-value {
+                .env-modal-value-text {
+                    flex: 1 1 auto;
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                }
+
+                .env-modal-reveal {
+                    flex: 0 0 auto;
+                    background: transparent;
+                    border: none;
+                    cursor: pointer;
+                    color: var(--ts3-fg-muted);
+                    padding: 0 4px;
+
+                    &:hover {
+                        color: var(--ts3-accent);
+                    }
+                }
+            }
+        }
+    }
+}

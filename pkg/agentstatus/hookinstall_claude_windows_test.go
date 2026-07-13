@@ -4,6 +4,7 @@
 package agentstatus
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -80,7 +81,10 @@ func TestCodexStructuredHookCommandsReturnContinueJSONOnWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []agentStatusHookSpec{
+		{event: "SessionStart", action: StateIdle, phase: PhaseNone},
 		{event: "UserPromptSubmit", action: StateWorking, phase: PhaseThinking},
+		{event: "PreToolUse", action: StateWorking, phase: PhaseTool},
+		{event: "PermissionRequest", action: StateBlocked, phase: PhaseApproval},
 		{event: "Stop", action: StateIdle, phase: PhaseNone},
 	}
 	for _, test := range tests {
@@ -106,4 +110,71 @@ func runWindowsHookCommand(command string) ([]byte, error) {
 	cmd := exec.Command("cmd.exe")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: "cmd.exe /d /q /c " + command}
 	return cmd.CombinedOutput()
+}
+
+// TestBatchScriptHasUnconditionalProbe asserts the installed .cmd writes an "alive"
+// debug line before any early-exit gate (missing-action / invalid-action /
+// missing-block / missing-jwt / missing-wsh), so a hook that fails to reach the
+// body is observable in the log. Benign DEBUG_LOG-assigning ifs are allowed before it.
+func TestBatchScriptHasUnconditionalProbe(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows batch script")
+	}
+	script := agentStatusBatchHookScript(HookTargetClaude)
+	probeIdx := strings.Index(script, `alive provider=`)
+	if probeIdx < 0 {
+		t.Fatalf("batch hook script is missing the unconditional alive probe:\n%s", script)
+	}
+	startIdx := strings.Index(script, `start provider=`)
+	if startIdx < 0 {
+		t.Fatalf("batch hook script is missing the start debug line:\n%s", script)
+	}
+	if probeIdx > startIdx {
+		t.Fatalf("alive probe must precede the start debug line")
+	}
+	// None of the early-exit gates may appear before the alive probe.
+	for _, gate := range []string{
+		`exit missing-action`,
+		`exit invalid-action`,
+		`exit missing-block`,
+		`exit missing-jwt`,
+		`exit missing-wsh`,
+		`exit missing-userprofile`,
+	} {
+		if gateIdx := strings.Index(script, gate); gateIdx >= 0 && gateIdx < probeIdx {
+			t.Fatalf("alive probe at %d must precede early-exit gate %q at %d", probeIdx, gate, gateIdx)
+		}
+	}
+}
+
+// TestHooksScriptHasCRLFWindows asserts the installed .cmd uses CRLF line endings
+// so cmd.exe parses if/goto blocks reliably.
+func TestHooksScriptHasCRLFWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows CRLF")
+	}
+	tmpDir := t.TempDir()
+	claudeDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(claudeConfigEnvVar, claudeDir)
+
+	result, err := InstallClaudeHooks()
+	if err != nil {
+		t.Fatalf("InstallClaudeHooks returned error: %v", err)
+	}
+	script, err := os.ReadFile(result.HookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(script, []byte("\r\n")) {
+		t.Fatalf("installed windows .cmd must use CRLF line endings")
+	}
+	// No bare LF should remain after CRLF normalization. Confirm every \n is preceded by \r.
+	for i, b := range script {
+		if b == '\n' && (i == 0 || script[i-1] != '\r') {
+			t.Fatalf("installed windows .cmd has bare LF at byte %d (should be CRLF)", i)
+		}
+	}
 }

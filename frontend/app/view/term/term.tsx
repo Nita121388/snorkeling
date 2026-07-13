@@ -44,6 +44,13 @@ import * as jotai from "jotai";
 import * as React from "react";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import {
+    __debugPreviewId,
+    clearNoteRenderSnapshot,
+    clearOutlineRenderSnapshot,
+    setNoteRenderSnapshot,
+    setOutlineRenderSnapshot,
+} from "./term-session-render-snapshot";
+import {
     isTermSelectionDrag,
     shouldRoutePlainTermGesture,
     shouldSuppressTermMouseMove,
@@ -279,7 +286,12 @@ function agentSessionConnection(blockData: Block | null): string | undefined {
 type TermSessionTopBarMode = "expanded" | "collapsed" | "pinned-panel" | "pinned-sticky";
 
 const TermSessionTopBar = React.memo(
-    ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+    ({
+        blockId,
+        blockData,
+        dimmed,
+        termWrap,
+    }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const [mode, setMode] = React.useState<TermSessionTopBarMode>("pinned-sticky");
         const [isCollapsedRevealed, setIsCollapsedRevealed] = React.useState(false);
@@ -319,8 +331,13 @@ const TermSessionTopBar = React.memo(
             >
                 <div className="term-session-topbar-content">
                     <div className="term-session-topbar-main">
-                        <TermSessionNoteEditor blockData={blockData} termWrap={termWrap} />
-                        <TermSessionUserOutlineOverlay blockData={blockData} dimmed={dimmed} termWrap={termWrap} />
+                        <TermSessionNoteEditor blockId={blockId} blockData={blockData} termWrap={termWrap} />
+                        <TermSessionUserOutlineOverlay
+                            blockId={blockId}
+                            blockData={blockData}
+                            dimmed={dimmed}
+                            termWrap={termWrap}
+                        />
                     </div>
                     <div className="term-session-topbar-actions">
                         <button
@@ -372,7 +389,12 @@ const TermSessionTopBar = React.memo(
 TermSessionTopBar.displayName = "TermSessionTopBar";
 
 const TermSessionUserOutlineOverlay = React.memo(
-    ({ blockData, dimmed, termWrap }: { blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+    ({
+        blockId,
+        blockData,
+        dimmed,
+        termWrap,
+    }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const connection = agentSessionConnection(blockData);
@@ -386,8 +408,9 @@ const TermSessionUserOutlineOverlay = React.memo(
         React.useEffect(() => {
             return () => {
                 requestSeqRef.current++;
+                clearOutlineRenderSnapshot(blockId);
             };
-        }, []);
+        }, [blockId]);
 
         const loadOutline = React.useCallback(
             (refresh = false, showLoading = true) => {
@@ -460,12 +483,36 @@ const TermSessionUserOutlineOverlay = React.memo(
         }, [isOpen]);
 
         if (sessionId === "") {
+            setOutlineRenderSnapshot(blockId, {
+                blockId,
+                sessionIdEmpty: true,
+                sessionIdPreview: "",
+                hasOutline: outline != null,
+                userMessageCount: outline?.userMessageCount ?? null,
+                userMessagesLength: userOutlineMessages(outline).length,
+                loading,
+                error: error || null,
+                isOpen,
+                earlyReturn: "sessionId-empty",
+            });
             return null;
         }
 
         const userMessages = userOutlineMessages(outline);
         const userMessageCount = outline?.userMessageCount ?? userMessages.length;
         if (!isOpen && userMessages.length === 0 && !loading) {
+            setOutlineRenderSnapshot(blockId, {
+                blockId,
+                sessionIdEmpty: false,
+                sessionIdPreview: __debugPreviewId(sessionId),
+                hasOutline: outline != null,
+                userMessageCount,
+                userMessagesLength: userMessages.length,
+                loading,
+                error: error || null,
+                isOpen,
+                earlyReturn: "no-user-messages-collapsed",
+            });
             return null;
         }
 
@@ -475,6 +522,19 @@ const TermSessionUserOutlineOverlay = React.memo(
             activeSeq == null ? null : (userMessages.find((message) => message.seq === activeSeq) ?? null);
         const hiddenCount = Math.max(0, userMessageCount - visibleMessages.length);
         const title = outline?.summary?.title || outline?.summary?.id || sessionId;
+
+        setOutlineRenderSnapshot(blockId, {
+            blockId,
+            sessionIdEmpty: false,
+            sessionIdPreview: __debugPreviewId(sessionId),
+            hasOutline: outline != null,
+            userMessageCount,
+            userMessagesLength: userMessages.length,
+            loading,
+            error: error || null,
+            isOpen,
+            earlyReturn: "none",
+        });
 
         const toggleOpen = () => {
             const nextOpen = !isOpen;
@@ -575,7 +635,11 @@ type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const TermSessionNoteAutoSaveDelayMs = 3000;
 
 const TermSessionNoteEditor = React.memo(
-    ({ blockData, termWrap }: { blockData: Block | null; termWrap: TermWrap | null }) => {
+    ({
+        blockId,
+        blockData,
+        termWrap,
+    }: { blockId: string; blockData: Block | null; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const connection = agentSessionConnection(blockData);
@@ -735,10 +799,25 @@ const TermSessionNoteEditor = React.memo(
                     saveTimerRef.current = null;
                 }
                 saveSeqRef.current++;
+                clearNoteRenderSnapshot(blockId);
             };
         }, []);
 
         if (sessionId === "" || summary == null) {
+            setNoteRenderSnapshot(blockId, {
+                blockId,
+                sessionIdEmpty: sessionId === "",
+                sessionIdPreview: sessionId === "" ? "" : __debugPreviewId(sessionId),
+                hasSummary: summary != null,
+                summaryTitlePreview:
+                    typeof summary?.title === "string" && summary.title.trim() !== ""
+                        ? summary.title.trim().slice(0, 40)
+                        : null,
+                isEditing,
+                saveStatus,
+                error: error || null,
+                earlyReturn: sessionId === "" ? "sessionId-empty" : "no-summary",
+            });
             return null;
         }
         const title = summary?.title || summary?.id || sessionId;
@@ -751,6 +830,21 @@ const TermSessionNoteEditor = React.memo(
                 ?.trim() ||
             tagText ||
             "Note";
+
+        setNoteRenderSnapshot(blockId, {
+            blockId,
+            sessionIdEmpty: false,
+            sessionIdPreview: __debugPreviewId(sessionId),
+            hasSummary: true,
+            summaryTitlePreview:
+                typeof summary?.title === "string" && summary.title.trim() !== ""
+                    ? summary.title.trim().slice(0, 40)
+                    : null,
+            isEditing,
+            saveStatus,
+            error: error || null,
+            earlyReturn: "none",
+        });
         const statusIcon =
             saveStatus === "saving"
                 ? "fa-spinner animate-spin"
@@ -1352,6 +1446,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermSessionTopBar
+                blockId={blockId}
                 blockData={blockData ?? null}
                 dimmed={selectionCopyOverlay != null || searchIsOpen}
                 termWrap={termWrapInst}

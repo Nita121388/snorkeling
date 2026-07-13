@@ -597,6 +597,17 @@ declare global {
         streammeta: StreamMeta;
     };
 
+    // wshrpc.CommandGetBlockEnvData
+    type CommandGetBlockEnvData = {
+        blockid: string;
+        connname?: string;
+    };
+
+    // wshrpc.CommandGetBlockEnvRtnData
+    type CommandGetBlockEnvRtnData = {
+        env: {[key: string]: string};
+    };
+
     // wshrpc.CommandGetMetaData
     type CommandGetMetaData = {
         oref: ORef;

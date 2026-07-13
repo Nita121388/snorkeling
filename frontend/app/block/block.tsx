@@ -30,6 +30,7 @@ import { BlockEnv } from "./blockenv";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
+import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
 
 function getViewElem(
     blockId: string,
@@ -52,7 +53,9 @@ function basename(path: string): string {
     if (isBlank(path)) {
         return "";
     }
-    const normalized = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
+    // 兼容 Windows 反斜杠路径,统一按 POSIX 风格切分
+    const posixPath = path.replace(/\\/g, "/");
+    const normalized = posixPath.endsWith("/") && posixPath.length > 1 ? posixPath.slice(0, -1) : posixPath;
     return normalized.split("/").pop() || normalized;
 }
 
@@ -83,6 +86,15 @@ const InlineTabLabel = memo(
             if (!isBlank(frameTitle)) {
                 return frameTitle;
             }
+            // agent 类 Block: 显示项目文件夹最后一段名(本地); 远端拼 connection
+            const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
+            if (agentMeta != null) {
+                const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
+                const folderName = basename(cwd);
+                if (!isBlank(folderName)) {
+                    return isBlank(connection) ? folderName : `${folderName} · ${connection}`;
+                }
+            }
             if (blockView === "preview" && !isBlank(filePath)) {
                 return basename(filePath);
             }
@@ -90,11 +102,19 @@ const InlineTabLabel = memo(
                 return connection;
             }
             return blockViewToName(blockView) || blockId.slice(0, 8);
-        }, [blockId, blockView, connection, filePath, frameTitle]);
+        }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta]);
         const title = customTitle || defaultTitle;
         const displayTitle =
             duplicateIndex != null && duplicateIndex > 1 && !customTitle ? `${title} ${duplicateIndex}` : title;
         const iconClass = makeIconClass(blockViewToIcon(blockView), true);
+        // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo 而不是通用 terminal 图标
+        const agentLogo = useMemo(() => {
+            const meta = blockData?.meta;
+            if (!isAgentTerminalMeta(meta)) return null;
+            const provider = normalizeAgentProvider(meta?.["agent:provider"]);
+            if (provider === "agent") return null;
+            return getAgentLogoByProvider(provider);
+        }, [blockData?.meta]);
 
         useEffect(() => {
             if (isEditing) {
@@ -138,7 +158,16 @@ const InlineTabLabel = memo(
                     onClick={onActivate}
                     onDoubleClick={() => setIsEditing(true)}
                 >
-                    <i className={iconClass} />
+                    {agentLogo != null ? (
+                        <span
+                            className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                            style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
+                        >
+                            {agentLogo.icon}
+                        </span>
+                    ) : (
+                        <i className={iconClass} />
+                    )}
                     <span>{displayTitle}</span>
                 </button>
                 <button
