@@ -375,12 +375,11 @@ const CommonTextComposeModal = memo(() => {
                     </div>
                     <button
                         type="button"
-                        className="h-8 px-2 rounded border border-border text-secondary hover:bg-hoverbg hover:text-primary transition-colors cursor-pointer"
+                        className="w-8 h-8 flex items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-primary transition-colors cursor-pointer"
                         onClick={openManager}
                         title="Manage common text"
                     >
-                        <i className="fa fa-solid fa-gear mr-1" />
-                        Manage
+                        <i className="fa fa-solid fa-gear" />
                     </button>
                 </div>
 
