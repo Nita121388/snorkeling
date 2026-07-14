@@ -34,6 +34,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/utilds"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -1131,6 +1132,8 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	if blockId == "" || sessionId == "" {
 		return nil
 	}
+	log.Printf("[ps-persist] enter block=%s sid=%s", blockId, sessionId)
+	pslog.Append("ps-persist", "stage", "enter", "block", blockId, "sid", sessionId)
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
 	ctx = waveobj.ContextWithUpdates(ctx)
@@ -1139,9 +1142,13 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	}
 	err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
 	if err != nil {
+		log.Printf("[ps-persist] FAIL block=%s err=%v", blockId, err)
+		pslog.Append("ps-persist", "stage", "fail", "block", blockId, "err", err.Error())
 		return err
 	}
 	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
+	log.Printf("[ps-persist] SENT block=%s sid=%s", blockId, sessionId)
+	pslog.Append("ps-persist", "stage", "sent", "block", blockId, "sid", sessionId)
 	return nil
 }
 
@@ -1179,7 +1186,8 @@ func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 			return // second resync or rider already persisted
 		}
 		if err := persistAgentSessionId(blockId, sessionId); err == nil {
-			log.Printf("claude agent session id retry persisted (block=%s, attempt=%d)", blockId, i+1)
+			log.Printf("[ps-capture] retry-persisted block=%s attempt=%d", blockId, i+1)
+			pslog.Append("ps-capture", "stage", "retry-persisted", "block", blockId, "attempt", i+1)
 			return
 		}
 	}

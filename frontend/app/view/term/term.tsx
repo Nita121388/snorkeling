@@ -293,6 +293,34 @@ const TermSessionTopBar = React.memo(
         termWrap,
     }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+        // [agent-sessionid-debug] temporary TopBar render trace
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        console.log("[agent-sessionid-debug] TopBar render", {
+            blockId,
+            blockVer: blockData?.version ?? null,
+            blockMetaRef: meta,
+            hasSid: meta["agent:sessionid"] != null,
+            resolvedSid: sessionId,
+            willReturnNull: sessionId === "",
+        });
+        // [agent-sessionid-debug] TopBar-level atom subscription (independent of parent re-render)
+        React.useEffect(() => {
+            if (blockId == null) return;
+            const oref = WOS.makeORef("block", blockId);
+            const dataAtom = WOS.getWaveObjectAtom<Block>(oref);
+            const logSnapshot = () => {
+                const val = globalStore.get(dataAtom);
+                console.log("[agent-sessionid-debug] TopBar dataAtom notify", {
+                    blockId,
+                    blockVer: val?.version ?? null,
+                    hasSid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
+                    sid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
+                });
+            };
+            logSnapshot();
+            const unsub = globalStore.sub(dataAtom, logSnapshot);
+            return () => { unsub(); };
+        }, [blockId]);
         const [mode, setMode] = React.useState<TermSessionTopBarMode>("pinned-sticky");
         const [isCollapsedRevealed, setIsCollapsedRevealed] = React.useState(false);
         const isCollapsed = mode === "collapsed";
@@ -938,6 +966,35 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     } | null>(null);
     const routedTermMouseEventsRef = React.useRef(new WeakSet<MouseEvent>());
     const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
+    // [agent-sessionid-debug] temporary TerminalView render trace + current atom value
+    React.useEffect(() => {
+        console.log("[agent-sessionid-debug] TerminalView mounted", { blockId });
+        return () => console.log("[agent-sessionid-debug] TerminalView unmounted", { blockId });
+    }, [blockId]);
+    console.log("[agent-sessionid-debug] TerminalView render", {
+        blockId,
+        blockVer: blockData?.version ?? null,
+        hasSid: (blockData?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
+        sid: (blockData?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
+    });
+    // [agent-sessionid-debug] subscribe to the raw dataAtom derived atom to bypass React memo gating
+    React.useEffect(() => {
+        if (blockId == null) return;
+        const oref = WOS.makeORef("block", blockId);
+        const dataAtom = WOS.getWaveObjectAtom<Block>(oref);
+        const logSnapshot = () => {
+            const val = globalStore.get(dataAtom);
+            console.log("[agent-sessionid-debug] TerminalView dataAtom notify", {
+                blockId,
+                blockVer: val?.version ?? null,
+                hasSid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
+                sid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
+            });
+        };
+        logSnapshot();
+        const unsub = globalStore.sub(dataAtom, logSnapshot);
+        return () => { unsub(); };
+    }, [blockId]);
     const termSettingsAtom = getSettingsPrefixAtom("term");
     const termSettings = jotai.useAtomValue(termSettingsAtom);
     let termMode = blockData?.meta?.["term:mode"] ?? "term";

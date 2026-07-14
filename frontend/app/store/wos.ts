@@ -269,11 +269,68 @@ function updateWaveObject(update: WaveObjUpdate) {
             return;
         }
         const curValue: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+        // [ps-recv] trace whether waveobj updates arrive at the client (paired with [ps-publish]/[ps-route] on backend)
+        if (update.otype === "block") {
+            const curVer = curValue.value?.version ?? null;
+            const newVer = update.obj?.version ?? null;
+            const curSid = (curValue.value as any)?.meta?.["agent:sessionid"] ?? null;
+            const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
+            const willSkip = curValue.value != null && curVer != null && newVer != null && curVer >= newVer;
+            const line = `[ps-recv] oref=block:${update.oid} curVer=${curVer} newVer=${newVer} curSid=${curSid ?? ""} newSid=${newSid ?? ""} willSkip=${willSkip}`;
+            console.log(line);
+            // mirror to /wave/pslog so the line lands in the backend ps-log file (cross-chain grep)
+            try {
+                const url = getWebServerEndpoint() + "/wave/pslog";
+                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-recv " + line }).catch(() => {}));
+            } catch {}
+            try {
+                const bufKey = "ps-recv-buf";
+                const MAX = 500;
+                let buf: string[] = [];
+                const raw = (window as any).localStorage?.getItem(bufKey);
+                if (raw) {
+                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
+                }
+                buf.push(`${new Date().toISOString()} ${line}`);
+                if (buf.length > MAX) buf = buf.slice(buf.length - MAX);
+                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
+                (window as any).__psRecvBuf = buf;
+            } catch {}
+        }
         if (curValue.value != null && curValue.value.version >= update.obj.version) {
+            console.log("[agent-sessionid-debug] wos.ts:272 SKIP", {
+                oref,
+                curVer: curValue.value.version,
+                newVer: update.obj.version,
+            });
             return;
         }
         console.log("WaveObj updated", oref);
         globalStore.set(wov.dataAtom, { value: update.obj, loading: false });
+        // [ps-set] confirm atom.set was actually called (after the version-guard at line 300 did NOT skip)
+        if (update.otype === "block") {
+            const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
+            const newVer = update.obj?.version ?? null;
+            const line = `[ps-set] oref=block:${update.oid} newVer=${newVer} newSid=${newSid ?? ""}`;
+            console.log(line);
+            try {
+                const url = getWebServerEndpoint() + "/wave/pslog";
+                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-set " + line }).catch(() => {}));
+            } catch {}
+            try {
+                const bufKey = "ps-set-buf";
+                const MAX = 500;
+                let buf: string[] = [];
+                const raw = (window as any).localStorage?.getItem(bufKey);
+                if (raw) {
+                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
+                }
+                buf.push(`${new Date().toISOString()} ${line}`);
+                if (buf.length > MAX) buf = buf.length - MAX > 0 ? buf.slice(buf.length - MAX) : buf;
+                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
+                (window as any).__psSetBuf = buf;
+            } catch {}
+        }
     }
     return;
 }

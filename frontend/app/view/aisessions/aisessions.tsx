@@ -1040,7 +1040,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
                                         {activeFilterCount > 0 ? (
-                                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-black">
+                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black">
                                                 {activeFilterCount}
                                             </span>
                                         ) : (

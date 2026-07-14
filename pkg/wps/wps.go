@@ -5,11 +5,14 @@
 package wps
 
 import (
+	"fmt"
+	"log"
 	"strings"
 	"sync"
 
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 )
 
 // this broker interface is mostly generic
@@ -229,10 +232,28 @@ func (b *BrokerType) Publish(event WaveEvent) {
 		b.persistEvent(event)
 	}
 	client := b.GetClient()
+	// [ps-publish] trace whether broker publishes reach any subscribed route
+	if event.Event == Event_WaveObjUpdate {
+		if data, ok := event.Data.(waveobj.WaveObjUpdate); ok {
+			var verStr string
+			if data.Obj != nil {
+				verStr = fmt.Sprintf(" ver=%d", waveobj.GetVersion(data.Obj))
+			}
+			log.Printf("[ps-publish] event=waveobj:update otype=%s oid=%s%s client=%v scopes=%v",
+				data.OType, data.OID, verStr, client != nil, event.Scopes)
+			pslog.Append("ps-publish", "otype", data.OType, "oid", data.OID, "ver", verStr, "client", client != nil, "scopes", fmt.Sprintf("%v", event.Scopes))
+		}
+	}
 	if client == nil {
+		log.Printf("[ps-publish] DROP client=nil event=%v", event.Event)
+		pslog.Append("ps-publish", "stage", "drop", "reason", "client-nil", "event", event.Event)
 		return
 	}
 	routeIds := b.getMatchingRouteIds(event)
+	if event.Event == Event_WaveObjUpdate {
+		log.Printf("[ps-route] event=waveobj:update routes=%d", len(routeIds))
+		pslog.Append("ps-route", "event", "waveobj:update", "routes", len(routeIds))
+	}
 	for _, routeId := range routeIds {
 		client.SendEvent(routeId, event)
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/authkey"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/schema"
 	"github.com/wavetermdev/waveterm/pkg/service"
@@ -146,6 +147,32 @@ func marshalReturnValue(data any, err error) []byte {
 		return marshalReturnValue(nil, fmt.Errorf("error serializing response: %v", err))
 	}
 	return rtn
+}
+
+func handlePslog(w http.ResponseWriter, r *http.Request) {
+	// Frontend renderer can't touch the fs; this endpoint lets it append
+	// one line into the same ps-log file backend Go code is writing to.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	line := strings.TrimRight(string(body), "\r\n")
+	if line == "" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// accept an optional "tag=" prefix in the body so updates carry channel context
+	tag := "ps-recv"
+	rest := line
+	if strings.HasPrefix(line, "tag=") {
+		if idx := strings.IndexByte(line, ' '); idx > 0 {
+			tag = line[4:idx]
+			rest = line[idx+1:]
+		}
+	}
+	pslog.AppendRaw(tag, "client "+rest)
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleWaveFile(w http.ResponseWriter, r *http.Request) {
@@ -464,6 +491,7 @@ func RunWebServer(listener net.Listener) {
 	// Non-streaming /wave/ routes get timeout protection
 	waveRouter := mux.NewRouter()
 	waveRouter.HandleFunc("/wave/file", WebFnWrap(WebFnOpts{AllowCaching: false}, handleWaveFile))
+	waveRouter.HandleFunc("/wave/pslog", WebFnWrap(WebFnOpts{JsonErrors: true, AllowCaching: false}, handlePslog))
 	waveRouter.HandleFunc("/wave/service", WebFnWrap(WebFnOpts{JsonErrors: true}, handleService))
 	waveRouter.HandleFunc("/wave/aichat", WebFnWrap(WebFnOpts{JsonErrors: true, AllowCaching: false}, aiusechat.WaveAIGetChatHandler))
 
