@@ -163,6 +163,7 @@ export default defineConfig({
             include: ["monaco-yaml/yaml.worker.js"],
         },
         server: {
+            host: "127.0.0.1",
             open: false,
             port: DevServerPort,
             strictPort: false,

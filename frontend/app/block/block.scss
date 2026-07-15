@@ -696,6 +696,17 @@
             min-width: 0;
             cursor: pointer;
 
+            // Tooltip 包裹后, button 成为 inline-flex 子项, 需显式 min-width:0 + flex-shrink 才能 ellipsis
+            button {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                min-width: 0;
+                flex: 1 1 auto;
+                overflow: hidden;
+                white-space: nowrap;
+            }
+
             i {
                 flex: 0 0 auto;
                 font-size: 11px;

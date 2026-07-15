@@ -15,6 +15,7 @@ import {
     normalizeSessionTags,
     removeSessionTagFromNote,
     sessionTagsEqual,
+    stripSessionTagHashes,
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import {
@@ -794,7 +795,7 @@ export function SessionDetailPane({
                                 >
                                     <span className="flex min-w-0 max-w-full items-center gap-1.5">
                                         {summary.note ? (
-                                            <span className="min-w-0 truncate">{summary.note}</span>
+                                            <span className="min-w-0 truncate">{stripSessionTagHashes(summary.note)}</span>
                                         ) : null}
                                         {visibleSummaryTags.map((tag) => (
                                             <span

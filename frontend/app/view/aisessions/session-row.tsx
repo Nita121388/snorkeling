@@ -13,6 +13,7 @@ import {
     removeSessionTagFromNote,
     sessionTagsEqual,
     sessionTagsLabel,
+    stripSessionTagHashes,
 } from "./session-tags";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
@@ -213,7 +214,7 @@ export function SessionRow({
                             }}
                         >
                             <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                {session.note ? <span className="min-w-0 flex-1 truncate">{session.note}</span> : null}
+                                {session.note ? <span className="min-w-0 flex-1 truncate">{stripSessionTagHashes(session.note)}</span> : null}
                                 {visibleSessionTags.map((tag) => (
                                     <span
                                         key={tag}

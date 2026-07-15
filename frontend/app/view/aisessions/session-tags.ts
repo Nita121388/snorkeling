@@ -38,6 +38,13 @@ function extractSessionTagsFromNote(note: string): { note: string; tags: string[
     };
 }
 
+function stripSessionTagHashes(note: string): string {
+    return note
+        .replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+}
+
 function removeSessionTagFromNote(note: string, tag: string): string {
     const normalizedTag = normalizeSessionTag(tag);
     if (normalizedTag === "") return note;
@@ -70,4 +77,5 @@ export {
     removeSessionTagFromNote,
     sessionTagsEqual,
     sessionTagsLabel,
+    stripSessionTagHashes,
 };

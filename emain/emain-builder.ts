@@ -71,7 +71,10 @@ export async function createBuilderWindow(appId: string): Promise<BuilderWindowT
     });
 
     if (isDevVite) {
-        await builderWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/index.html`);
+        // dev workaround: on some Windows machines Chromium fails to resolve `localhost` (DNS err vs ::1 / DoH),
+        // causing appMain to crash with ERR_NAME_NOT_RESOLVED. Force IPv4 loopback so no DNS is involved.
+        const devUrl = (process.env.ELECTRON_RENDERER_URL || "").replace(/\/\/localhost(?=[:/]|$)/, "//127.0.0.1");
+        await builderWindow.loadURL(`${devUrl}/index.html`);
     } else {
         await builderWindow.loadFile(path.join(getElectronAppBasePath(), "frontend", "index.html"));
     }

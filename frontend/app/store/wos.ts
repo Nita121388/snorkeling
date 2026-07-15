@@ -17,6 +17,23 @@ type WaveObjectDataItemType<T extends WaveObj> = {
     loading: boolean;
 };
 
+// [ps-init] module-level probe: this runs once per module evaluation.
+// If you see this line >1 time in pslog, vite HMR has hot-replaced wos.ts
+// (which resets waveObjectValueCache = new Map()) — that's the suspected
+// cause of "atom value regresses from v2 (with sid) back to v1 (no sid)".
+(() => {
+    if (globalThis.window == null) {
+        return;
+    }
+    try {
+        const line = `[ps-init] wos module loaded at ${new Date().toISOString()}`;
+        console.log(line);
+        fireAndForget(
+            fetch(getWebServerEndpoint() + "/wave/pslog", { method: "POST", body: "tag=ps-init " + line }).catch(() => {})
+        );
+    } catch {}
+})();
+
 type WaveObjectValue<T extends WaveObj> = {
     pendingPromise: Promise<T>;
     dataAtom: PrimitiveAtom<WaveObjectDataItemType<T>>;
@@ -251,6 +268,34 @@ function isWaveObjectNullAtom(oref: string): Atom<boolean> {
 function useWaveObjectValue<T extends WaveObj>(oref: string): [T, boolean] {
     const wov = getWaveObjectValue<T>(oref);
     const atomVal = useAtomValue(wov.dataAtom);
+    // [ps-use] confirm React subscriber actually re-ran and read this atom (paired with [ps-set])
+    try {
+        if (typeof oref === "string" && oref.startsWith("block:")) {
+            const blockId = oref.slice("block:".length);
+            const readVer = (atomVal.value as any)?.version ?? null;
+            const readSid = (atomVal.value as any)?.meta?.["agent:sessionid"] ?? null;
+            const line = `[ps-use] oref=block:${blockId} readVer=${readVer} readSid=${readSid ?? ""}`;
+            console.log(line);
+            try {
+                const url = getWebServerEndpoint() + "/wave/pslog";
+                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-use " + line }).catch(() => {}));
+            } catch {}
+            try {
+                const stackLine = new Error().stack?.split("\n")[2] ?? "";
+                const bufKey = "ps-use-buf";
+                const MAX = 500;
+                let buf: string[] = [];
+                const raw = (window as any).localStorage?.getItem(bufKey);
+                if (raw) {
+                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
+                }
+                buf.push(`${new Date().toISOString()} ${line} stack=${stackLine.trim().slice(0, 120)}`);
+                if (buf.length > MAX) buf = buf.length - MAX > 0 ? buf.slice(buf.length - MAX) : buf;
+                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
+                (window as any).__psUseBuf = buf;
+            } catch {}
+        }
+    } catch {}
     return [atomVal.value, atomVal.loading];
 }
 
