@@ -450,6 +450,9 @@
         "debug:webglstatus": {
           "type": "boolean"
         },
+        "debug:pslog": {
+          "type": "boolean"
+        },
         "tsunami:*": {
           "type": "boolean"
         },

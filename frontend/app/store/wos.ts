@@ -17,12 +17,35 @@ type WaveObjectDataItemType<T extends WaveObj> = {
     loading: boolean;
 };
 
+// pslog FE traces (the four POSTs to /wave/pslog below) mirror the backend
+// ps-publish/ps-route chain into one file. They are gated by the `debug:pslog`
+// setting (parallels debug:webglstatus). wos cannot import global.ts for the
+// atom reader (global.ts imports wos — import cycle), so the gate function is
+// injected from global.ts init via setPslogEnabledFn; until then it's a no-op
+// returning false (traces stay off by default, matching the setting default).
+let pslogEnabledFn: (() => boolean) | null = null;
+
+export function setPslogEnabledFn(fn: () => boolean) {
+    pslogEnabledFn = fn;
+}
+
+function pslogEnabled(): boolean {
+    try {
+        return pslogEnabledFn?.() === true;
+    } catch {
+        return false;
+    }
+}
+
 // [ps-init] module-level probe: this runs once per module evaluation.
 // If you see this line >1 time in pslog, vite HMR has hot-replaced wos.ts
 // (which resets waveObjectValueCache = new Map()) — that's the suspected
 // cause of "atom value regresses from v2 (with sid) back to v1 (no sid)".
 (() => {
     if (globalThis.window == null) {
+        return;
+    }
+    if (!pslogEnabled()) {
         return;
     }
     try {
@@ -270,7 +293,7 @@ function useWaveObjectValue<T extends WaveObj>(oref: string): [T, boolean] {
     const atomVal = useAtomValue(wov.dataAtom);
     // [ps-use] confirm React subscriber actually re-ran and read this atom (paired with [ps-set])
     try {
-        if (typeof oref === "string" && oref.startsWith("block:")) {
+        if (pslogEnabled() && typeof oref === "string" && oref.startsWith("block:")) {
             const blockId = oref.slice("block:".length);
             const readVer = (atomVal.value as any)?.version ?? null;
             const readSid = (atomVal.value as any)?.meta?.["agent:sessionid"] ?? null;
@@ -315,7 +338,7 @@ function updateWaveObject(update: WaveObjUpdate) {
         }
         const curValue: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
         // [ps-recv] trace whether waveobj updates arrive at the client (paired with [ps-publish]/[ps-route] on backend)
-        if (update.otype === "block") {
+        if (pslogEnabled() && update.otype === "block") {
             const curVer = curValue.value?.version ?? null;
             const newVer = update.obj?.version ?? null;
             const curSid = (curValue.value as any)?.meta?.["agent:sessionid"] ?? null;
@@ -353,7 +376,7 @@ function updateWaveObject(update: WaveObjUpdate) {
         console.log("WaveObj updated", oref);
         globalStore.set(wov.dataAtom, { value: update.obj, loading: false });
         // [ps-set] confirm atom.set was actually called (after the version-guard at line 300 did NOT skip)
-        if (update.otype === "block") {
+        if (pslogEnabled() && update.otype === "block") {
             const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
             const newVer = update.obj?.version ?? null;
             const line = `[ps-set] oref=block:${update.oid} newVer=${newVer} newSid=${newSid ?? ""}`;

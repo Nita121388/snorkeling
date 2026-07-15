@@ -24,6 +24,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
@@ -192,6 +193,19 @@ func setupTelemetryConfigHandler() {
 			currentTelemetryEnabled = newTelemetryEnabled
 			wcore.GoSendNoTelemetryUpdate(newTelemetryEnabled)
 		}
+	})
+}
+
+// setupPslogConfigHandler mirrors the debug:pslog setting onto pslog.SetEnabled.
+// pslog cannot import wconfig itself (import cycle), so the bootstrap owns the bridge.
+func setupPslogConfigHandler() {
+	watcher := wconfig.GetWatcher()
+	if watcher == nil {
+		return
+	}
+	pslog.SetEnabled(watcher.GetFullConfig().Settings.DebugPslog)
+	watcher.RegisterUpdateHandler(func(newConfig wconfig.FullConfigType) {
+		pslog.SetEnabled(newConfig.Settings.DebugPslog)
 	})
 }
 
@@ -630,6 +644,7 @@ func main() {
 	go telemetryLoop()
 	go diagnosticLoop()
 	setupTelemetryConfigHandler()
+	setupPslogConfigHandler()
 	go updateTelemetryCountsLoop()
 	go backupCleanupLoop()
 	go startupActivityUpdate(firstLaunch) // must be after startConfigWatcher()
