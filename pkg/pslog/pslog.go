@@ -13,17 +13,34 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 )
 
+// enabledFlag is the live value of the `debug:pslog` setting, pushed in by the
+// process bootstrap (cmd/server) via SetEnabled. pslog must not import wconfig
+// directly because wconfig already depends (transitively) on pslog — reading
+// the setting inside this package would close an import cycle. Default false,
+// matching the setting default: nothing is written and no file is opened.
+var enabledFlag atomic.Bool
+
+// SetEnabled is called by the process bootstrap when the debug:pslog setting
+// changes (also at startup). Safe to call from any goroutine.
+func SetEnabled(b bool) {
+	enabledFlag.Store(b)
+}
+
+func enabled() bool {
+	return enabledFlag.Load()
+}
+
 var (
-	once      sync.Once
-	fileMu    sync.Mutex
-	file      *os.File
-	initErr   error
-	enabledKV = true // false disables formatting; kept for future toggling
+	once   sync.Once
+	fileMu sync.Mutex
+	file   *os.File
+	initErr error
 )
 
 // open lazily creates the log file. Once-per-process; a fresh launch makes a fresh file.
@@ -52,6 +69,9 @@ func open() {
 // Safe to call from any goroutine. Fails silently after first open error.
 // Example: pslog.Append("ps-persist", "block", blockId, "sid", sessionId)
 func Append(tag string, kv ...any) {
+	if !enabled() {
+		return
+	}
 	open()
 	if initErr != nil {
 		return
@@ -72,13 +92,13 @@ func Append(tag string, kv ...any) {
 	fileMu.Lock()
 	defer fileMu.Unlock()
 	file.WriteString(line)
-	if !enabledKV {
-		return
-	}
 }
 
 // AppendRaw is for callers that have already formatted their own line content (excluding timestamp/tag).
 func AppendRaw(tag string, content string) {
+	if !enabled() {
+		return
+	}
 	open()
 	if initErr != nil {
 		return

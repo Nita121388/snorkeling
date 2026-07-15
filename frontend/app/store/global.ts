@@ -43,6 +43,8 @@ function initGlobal(initOpts: GlobalInitOptions) {
     globalPrimaryTabStartup = initOpts.primaryTabStartup ?? false;
     setPlatform(initOpts.platform);
     initGlobalAtoms(initOpts);
+    // Inject the debug:pslog gate into wos (wos can't import global — cycle).
+    WOS.setPslogEnabledFn(() => globalStore.get(getSettingsKeyAtom("debug:pslog")) === true);
     try {
         getApi().onMenuItemAbout(() => {
             modalsModel.pushModal("AboutModal");
