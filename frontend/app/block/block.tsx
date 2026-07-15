@@ -31,6 +31,7 @@ import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
 import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
+import { Tooltip } from "@/app/element/tooltip";
 
 function getViewElem(
     blockId: string,
@@ -75,7 +76,7 @@ const InlineTabLabel = memo(
         const blockData = useAtomValue(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
         const blockView = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "view")) ?? "";
         const frameTitle = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "frame:title"));
-        const filePath = typeof blockData?.meta?.["file:path"] === "string" ? blockData.meta["file:path"] : "";
+        const filePath = typeof blockData?.meta?.["file"] === "string" ? blockData.meta["file"] : "";
         const connection = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "connection"));
         const customTitle = layoutData.blockTabTitles?.[blockId];
         const [isEditing, setIsEditing] = useState(false);
@@ -103,7 +104,30 @@ const InlineTabLabel = memo(
             }
             return blockViewToName(blockView) || blockId.slice(0, 8);
         }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta]);
+        // 完整路径(供 hover tooltip 用): 仅 preview 读 meta.file, agent/term 读 cmd:cwd, 远端附 connection
+        const fullPath = useMemo(() => {
+            const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
+            if (agentMeta != null) {
+                const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
+                return isBlank(cwd)
+                    ? ""
+                    : isBlank(connection)
+                        ? cwd
+                        : `${cwd} · ${connection}`;
+            }
+            if (blockView === "preview" && !isBlank(filePath)) {
+                return isBlank(connection) ? filePath : `${filePath} · ${connection}`;
+            }
+            return "";
+        }, [blockId, blockView, connection, filePath, blockData?.meta]);
         const title = customTitle || defaultTitle;
+        // hover tooltip: 优先展示完整路径(包含远程 connection 后缀); 用户已重命名时附 defaultTitle 表明归属
+        const tooltip = useMemo(() => {
+            if (!isBlank(fullPath)) {
+                return customTitle ? `${customTitle} (${fullPath})` : fullPath;
+            }
+            return customTitle ? `${customTitle} (${defaultTitle})` : defaultTitle;
+        }, [customTitle, defaultTitle, fullPath]);
         const displayTitle =
             duplicateIndex != null && duplicateIndex > 1 && !customTitle ? `${title} ${duplicateIndex}` : title;
         const iconClass = makeIconClass(blockViewToIcon(blockView), true);
@@ -151,25 +175,36 @@ const InlineTabLabel = memo(
 
         return (
             <div className={clsx("inline-tab-block-tab", { active: isActive })}>
-                <button
-                    type="button"
-                    className="inline-tab-block-tab-main"
-                    title={customTitle ? `${customTitle} (${defaultTitle})` : defaultTitle}
-                    onClick={onActivate}
-                    onDoubleClick={() => setIsEditing(true)}
+                <Tooltip
+                    content={
+                        <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
+                            {tooltip}
+                        </div>
+                    }
+                    placement="top"
+                    openDelay={300}
+                    disable={isBlank(tooltip)}
+                    divClassName="inline-tab-block-tab-main"
                 >
-                    {agentLogo != null ? (
-                        <span
-                            className="agent-brand-icon inline-tab-block-tab-agentlogo"
-                            style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
-                        >
-                            {agentLogo.icon}
-                        </span>
-                    ) : (
-                        <i className={iconClass} />
-                    )}
-                    <span>{displayTitle}</span>
-                </button>
+                    <button
+                        type="button"
+                        className="inline-tab-block-tab-button"
+                        onClick={onActivate}
+                        onDoubleClick={() => setIsEditing(true)}
+                    >
+                        {agentLogo != null ? (
+                            <span
+                                className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                                style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
+                            >
+                                {agentLogo.icon}
+                            </span>
+                        ) : (
+                            <i className={iconClass} />
+                        )}
+                        <span>{displayTitle}</span>
+                    </button>
+                </Tooltip>
                 <button
                     type="button"
                     className="inline-tab-block-tab-close"

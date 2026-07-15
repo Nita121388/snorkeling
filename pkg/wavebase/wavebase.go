@@ -35,6 +35,7 @@ const (
 	WaveDevViteVarName             = "WAVETERM_DEV_VITE"
 	WaveWshForceUpdateVarName      = "WAVETERM_WSHFORCEUPDATE"
 	WaveNoConfirmQuitVarName       = "WAVETERM_NOCONFIRMQUIT"
+	WavePsLogVarName               = "WAVETERM_PSLOG" // pslog pubsub-chain trace switch; "1"/"true" to enable; default off
 
 	WaveJwtTokenVarName  = "WAVETERM_JWT"
 	WaveSwapTokenVarName = "WAVETERM_SWAPTOKEN"
