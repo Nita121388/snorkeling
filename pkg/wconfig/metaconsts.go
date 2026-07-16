@@ -19,6 +19,8 @@ const (
 	ConfigKey_AppFocusFollowsCursor          = "app:focusfollowscursor"
 	ConfigKey_AppTabBar                      = "app:tabbar"
 
+	ConfigKey_UiLocale                       = "ui:locale"
+
 	ConfigKey_FeatureWaveAppBuilder          = "feature:waveappbuilder"
 
 	ConfigKey_CommonTextItems                = "commontext:items"
