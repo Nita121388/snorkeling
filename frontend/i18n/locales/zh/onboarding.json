@@ -1,0 +1,97 @@
+{
+  "init": {
+    "welcomeTitle": "Welcome to Snorkeling",
+    "repoTitle": "Project source and repositories",
+    "repoIntro": "Snorkeling is a personalized customization project based on Wave Terminal upstream.",
+    "mainRepoLabel": "Main project repository:",
+    "mainRepoLink": "GitHub (Nita121388/snorkeling)",
+    "upstreamRepoLabel": "Upstream repository:",
+    "upstreamRepoLink": "GitHub (wavetermdev/waveterm)",
+    "communityTitle": "Join our Community",
+    "communityIntro": "Get help, submit feature requests, report bugs, or just chat with fellow terminal enthusiasts.",
+    "communityLink": "Join the Wave Discord Channel",
+    "telemetryIntro": "Anonymous usage data helps us improve features you use.",
+    "privacyLink": "Privacy Policy",
+    "telemetryEnabled": "Enabled",
+    "telemetryDisabled": "Disabled",
+    "continueButton": "Continue"
+  },
+  "noTelemetryStar": {
+    "title": "Telemetry Disabled ✓",
+    "introLine1": "No problem, we respect your privacy.",
+    "introLine2": "Snorkeling is a customized project based on Wave Terminal. If this customization is useful, starring the Snorkeling repository helps us keep maintaining it.",
+    "starButton": "⭐ Star Snorkeling",
+    "maybeLaterButton": "Maybe Later"
+  },
+  "features": {
+    "waveai": {
+      "title": "Wave AI",
+      "intro": "Wave AI is your terminal assistant with context. I can read your terminal output, analyze widgets, read/write files, and help you solve problems faster.",
+      "toggleWithButton": "Toggle the Wave AI panel with the <AiButton /> button in the header (top left)",
+      "shortcutIntro": "Or use the keyboard shortcut <Shortcut /> to quickly toggle",
+      "apiKeyIntro": "Bring your own API keys or run local models with Ollama, LM Studio, and other OpenAI-compatible providers"
+    },
+    "magnify": {
+      "title": "Magnify Blocks",
+      "intro1": "Magnify any block to focus on what matters. Expand terminals, editors, and previews for a better view.",
+      "intro2": "Use the magnify feature to work with complex outputs and large files more efficiently.",
+      "iconHint": "You can also magnify a block by clicking on the <Icon /> icon in the block header.",
+      "shortcutBadgeTitle": "<Shortcut />-M",
+      "shortcutHint": "A quick <Shortcut /> to magnify and another <Shortcut /> to unmagnify"
+    },
+    "files": {
+      "title": "Viewing/Editing Files",
+      "intro": "Wave can preview markdown, images, and video files on both local <Italic>and remote</Italic> machines.",
+      "viewHint": "Use <Code>wsh view [filename]</Code> to preview files in Wave's graphical viewer",
+      "editHint": "Use <Code>wsh edit [filename]</Code> to open config files or code files in Wave's graphical editor",
+      "remoteSummary": "These commands work seamlessly on both local and remote machines, making it easy to view and edit files wherever they are."
+    },
+    "footer": {
+      "getStarted": "Get Started",
+      "next": "Next",
+      "prev": "Prev",
+      "step": "{{current}} of {{total}}",
+      "skip": "Skip Feature Tour >"
+    },
+    "durable": {
+      "title": "持久 SSH 会话",
+      "subtitle": "受保护的 SSH 会话",
+      "intro": "合上笔记本、切换网络、重启 Wave —— 你的远程会话依然在运行。",
+      "preserve": "Shell 状态、运行中的程序和终端历史都将被保留",
+      "reconnect": "连接恢复时会话会自动重新连接",
+      "buffer": "缓冲输出会回流进来，一行都不会错过",
+      "footnote": "tmux 的全部持久能力，内置到你的终端里。在任意 SSH 会话上找到盾牌图标即可开启持久。"
+    }
+  },
+  "starAsk": {
+    "title": "支持开源。给 Snorkeling 加星 ⭐",
+    "intro": "Snorkeling 是基于 Wave Terminal 上游构建的自定义项目。",
+    "intro2": "如果这项定制对你的工作流有用，请给 Snorkeling 仓库加星。",
+    "snorkelingRepo": "Nita121388/snorkeling",
+    "upstreamRepo": "wavetermdev/waveterm (上游)",
+    "alreadyStarred": "🙏 已加星",
+    "starButton": "⭐ 给 Snorkeling 加星",
+    "maybeLater": "稍后再说"
+  },
+  "upgradeMinor": {
+    "title": "欢迎使用 Wave v0.14！",
+    "waveAiPill": "Wave AI",
+    "durablePill": "持久 SSH 会话",
+    "intro1": "Wave AI 是你的全上下文终端助手。它可以读取你的终端输出、分析部件、读写文件，帮你更快地解决问题。",
+    "newInV013": "v0.13 新增：",
+    "newInV013Detail": " Wave AI 现已支持本地模型和自带 API key！可使用 Ollama、LM Studio、vLLM、OpenRouter 或任何 OpenAI 兼容的服务。",
+    "newInV014": "v0.14 新增：",
+    "newInV014Detail": " 持久 SSH 会话可在网络掉线、笔记本睡眠、重启后存活 —— 不需要 tmux 或 screen。",
+    "thanksLine": "感谢你作为早期 Wave 采用者！⭐",
+    "starPitch": "在 GitHub 给 Wave（以及开源）加星，能让我们触达更多开发者。",
+    "alreadyStarred": "🙏 已加星",
+    "starButton": "⭐ 立即加星",
+    "maybeLater": "稍后再说"
+  },
+  "upgradePatch": {
+    "title": "Wave {{version}} 更新",
+    "prevButton": "上一个 ({{version}})",
+    "nextButton": "下一个 ({{version}})",
+    "continue": "继续"
+  }
+}

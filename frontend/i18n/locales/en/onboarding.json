@@ -1,0 +1,97 @@
+{
+  "init": {
+    "welcomeTitle": "Welcome to Snorkeling",
+    "repoTitle": "Project source and repositories",
+    "repoIntro": "Snorkeling is a personalized customization project based on Wave Terminal upstream.",
+    "mainRepoLabel": "Main project repository:",
+    "mainRepoLink": "GitHub (Nita121388/snorkeling)",
+    "upstreamRepoLabel": "Upstream repository:",
+    "upstreamRepoLink": "GitHub (wavetermdev/waveterm)",
+    "communityTitle": "Join our Community",
+    "communityIntro": "Get help, submit feature requests, report bugs, or just chat with fellow terminal enthusiasts.",
+    "communityLink": "Join the Wave Discord Channel",
+    "telemetryIntro": "Anonymous usage data helps us improve features you use.",
+    "privacyLink": "Privacy Policy",
+    "telemetryEnabled": "Enabled",
+    "telemetryDisabled": "Disabled",
+    "continueButton": "Continue"
+  },
+  "noTelemetryStar": {
+    "title": "Telemetry Disabled ✓",
+    "introLine1": "No problem, we respect your privacy.",
+    "introLine2": "Snorkeling is a customized project based on Wave Terminal. If this customization is useful, starring the Snorkeling repository helps us keep maintaining it.",
+    "starButton": "⭐ Star Snorkeling",
+    "maybeLaterButton": "Maybe Later"
+  },
+  "features": {
+    "waveai": {
+      "title": "Wave AI",
+      "intro": "Wave AI is your terminal assistant with context. I can read your terminal output, analyze widgets, read/write files, and help you solve problems faster.",
+      "toggleWithButton": "Toggle the Wave AI panel with the <AiButton /> button in the header (top left)",
+      "shortcutIntro": "Or use the keyboard shortcut <Shortcut /> to quickly toggle",
+      "apiKeyIntro": "Bring your own API keys or run local models with Ollama, LM Studio, and other OpenAI-compatible providers"
+    },
+    "magnify": {
+      "title": "Magnify Blocks",
+      "intro1": "Magnify any block to focus on what matters. Expand terminals, editors, and previews for a better view.",
+      "intro2": "Use the magnify feature to work with complex outputs and large files more efficiently.",
+      "iconHint": "You can also magnify a block by clicking on the <Icon /> icon in the block header.",
+      "shortcutBadgeTitle": "<Shortcut />-M",
+      "shortcutHint": "A quick <Shortcut /> to magnify and another <Shortcut /> to unmagnify"
+    },
+    "files": {
+      "title": "Viewing/Editing Files",
+      "intro": "Wave can preview markdown, images, and video files on both local <Italic>and remote</Italic> machines.",
+      "viewHint": "Use <Code>wsh view [filename]</Code> to preview files in Wave's graphical viewer",
+      "editHint": "Use <Code>wsh edit [filename]</Code> to open config files or code files in Wave's graphical editor",
+      "remoteSummary": "These commands work seamlessly on both local and remote machines, making it easy to view and edit files wherever they are."
+    },
+    "footer": {
+      "getStarted": "Get Started",
+      "next": "Next",
+      "prev": "Prev",
+      "step": "{{current}} of {{total}}",
+      "skip": "Skip Feature Tour >"
+    },
+    "durable": {
+      "title": "Durable SSH Sessions",
+      "subtitle": "SSH Sessions, Protected",
+      "intro": "Close your laptop, switch networks, restart Wave — your remote sessions keep running.",
+      "preserve": "Shell state, running programs, and terminal history are all preserved",
+      "reconnect": "Sessions automatically reconnect when your connection is restored",
+      "buffer": "Buffered output streams back in, never miss a line",
+      "footnote": "All the persistence of tmux, built into your terminal. Look for the shield icon to enable durability on any SSH session."
+    }
+  },
+  "starAsk": {
+    "title": "Support open-source. Star Snorkeling. ⭐",
+    "intro": "Snorkeling is a custom project built on top of Wave Terminal upstream.",
+    "intro2": "If this customization is useful for your workflow, please star the Snorkeling repository.",
+    "snorkelingRepo": "Nita121388/snorkeling",
+    "upstreamRepo": "wavetermdev/waveterm (upstream)",
+    "alreadyStarred": "🙏 Already Starred",
+    "starButton": "⭐ Star Snorkeling",
+    "maybeLater": "Maybe Later"
+  },
+  "upgradeMinor": {
+    "title": "Welcome to Wave v0.14!",
+    "waveAiPill": "Wave AI",
+    "durablePill": "Durable SSH Sessions",
+    "intro1": "Wave AI is your terminal assistant with full context. It can read your terminal output, analyze widgets, read and write files, and help you solve problems faster.",
+    "newInV013": "New in v0.13:",
+    "newInV013Detail": " Wave AI now supports local models and bring-your-own-key! Use Ollama, LM Studio, vLLM, OpenRouter, or any OpenAI-compatible provider.",
+    "newInV014": "New in v0.14:",
+    "newInV014Detail": " Durable SSH sessions survive network drops, laptop sleep, and restarts — all without tmux or screen.",
+    "thanksLine": "Thanks for being an early Wave adopter! ⭐",
+    "starPitch": "A GitHub star shows your support for Wave (and open-source) and helps us reach more developers.",
+    "alreadyStarred": "🙏 Already Starred",
+    "starButton": "⭐ Star Now",
+    "maybeLater": "Maybe Later"
+  },
+  "upgradePatch": {
+    "title": "Wave {{version}} Update",
+    "prevButton": "Prev ({{version}})",
+    "nextButton": "Next ({{version}})",
+    "continue": "Continue"
+  }
+}
