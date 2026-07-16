@@ -60,6 +60,11 @@ import { configureAutoUpdater, isQuittingForUpdate, updater } from "./updater";
 
 const electronApp = electron.app;
 
+// TEMP-CDP (remove before commit): enable --remote-debugging-port when SNORKELING_CDP_PORT set in dev
+if (isDev && process.env.SNORKELING_CDP_PORT) {
+    electronApp.commandLine.appendSwitch("remote-debugging-port", process.env.SNORKELING_CDP_PORT);
+}
+
 let confirmQuit = true;
 
 const waveDataDir = getWaveDataDir();

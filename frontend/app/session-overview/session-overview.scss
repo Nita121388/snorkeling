@@ -93,46 +93,19 @@
     color: var(--main-text-color);
 }
 
-/* default: hide floating X, show X inside actions */
+/* default (wide): X inline at row tail, X inside actions hidden */
 .session-overview-block-main-x {
-    display: none;
+    display: inline-flex;
+    align-items: center;
 }
 
 .session-overview-block-actions .session-overview-block-x-button {
-    display: inline-flex;
-    flex: 0 0 auto;
+    display: none;
 }
 
-/* narrow / wrapped: hide X inside actions, show floating top-right */
-@container (max-width: 620px) {
-    .session-overview-header {
-        align-items: flex-start;
-    }
-
-    .session-overview-header-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
-    .session-overview-block-row {
-        grid-template-columns: 1fr auto;
-    }
-
-    .session-overview-block-actions .session-overview-block-x-button {
-        display: none;
-    }
-
-    .session-overview-block-main-x {
-        display: flex;
-        position: absolute;
-        right: 6px;
-        top: 6px;
-        z-index: 2;
-    }
-
-    .session-overview-block-row:hover .session-overview-block-main-x {
-        display: flex;
-    }
+/* 宽屏顶层 block-note 不渲染，note 仍由 block-side 内的 note-line 承担 */
+.session-overview-block-note {
+    display: none;
 }
 
 .session-overview-header {
@@ -415,7 +388,9 @@
 .session-overview-block-row {
     display: grid;
     width: 100%;
-    grid-template-columns: minmax(150px, 0.78fr) minmax(230px, 1.12fr) minmax(max-content, auto);
+    grid-template-columns: minmax(150px, 0.78fr) minmax(230px, 1.12fr) auto auto;
+    grid-template-areas: "main side actions x";
+    align-items: center;
     gap: 10px;
     padding: 8px;
     border: 1px solid var(--border-color);
@@ -455,14 +430,72 @@
 
     &.is-plain-block {
         grid-template-columns: minmax(150px, 1fr) minmax(max-content, auto);
+        grid-template-areas: none;
 
-        .session-overview-block-side {
+        .session-overview-block-side,
+        .session-overview-block-note {
+            display: none;
+        }
+
+        /* 普通行 actions 走 auto-placement 进第 2 列；main-x 仍隐藏（普通行 X 由 actions 内 row 末位承担） */
+        .session-overview-block-main {
+            grid-area: auto;
+        }
+
+        .session-overview-block-main-x {
             display: none;
         }
     }
 
     &.is-note-editing {
         border-color: rgb(from var(--accent-color) r g b / 0.42);
+    }
+}
+
+/* narrow / wrapped: three-segment stack — 上:main+X / 中:side(message-strip) / 下:note+actions
+   必须放在默认 .session-overview-block-row 之后，同特异性下后写胜出，让窄屏规则真正覆盖默认 4 列布局。
+   阈值 520：当前 WaveLayout 实际可给到 panel 的最大宽约 616px，留 ≤520 为窄屏三段栈，
+   区间 521–616 仍走宽屏 4 列，确保用户宽态可见。 */
+@container (max-width: 520px) {
+    .session-overview-header {
+        align-items: flex-start;
+    }
+
+    .session-overview-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .session-overview-block-row {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "main main x"
+            "side side side"
+            "note note actions";
+        align-items: start;
+        gap: 6px;
+    }
+
+    /* 中窄屏：启用顶层 block-note，关闭 block-side 内 note-line */
+    .session-overview-block-note {
+        display: flex;
+        grid-area: note;
+        align-self: center;
+        min-width: 0;
+    }
+
+    .session-overview-block-side .session-overview-note-line {
+        display: none;
+    }
+
+    .session-overview-block-actions {
+        grid-area: actions;
+        justify-self: end;
+        align-self: center;
+    }
+
+    .session-overview-block-actions .session-overview-block-x-button {
+        display: none;
     }
 }
 
@@ -606,10 +639,12 @@
     gap: 8px;
     color: inherit;
     text-align: left;
+    grid-area: main;
 }
 
 .session-overview-block-main-x {
-    display: none;
+    grid-area: x;
+    justify-self: end;
 }
 
 .session-overview-block-row {
@@ -671,6 +706,23 @@
     border-radius: 6px;
     background: rgb(from var(--main-text-color) r g b / 0.08);
     color: var(--secondary-text-color);
+}
+
+.session-overview-block-icon.is-agent-brand {
+    background: transparent;
+}
+
+.session-overview-block-agent-logo {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
 }
 
 .session-overview-block-text {
@@ -807,6 +859,7 @@
     justify-content: flex-end;
     gap: 4px;
     min-width: max-content;
+    grid-area: actions;
 }
 
 .session-overview-block-action-button {
@@ -847,6 +900,7 @@
     flex-direction: column;
     justify-content: center;
     gap: 6px;
+    grid-area: side;
 }
 
 .session-overview-message-strip {
@@ -1160,56 +1214,28 @@
     }
 }
 
-@container (max-width: 620px) {
-    .session-overview-header {
-        align-items: flex-start;
-    }
-
-    .session-overview-header-actions {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
-    .session-overview-block-row {
-        grid-template-columns: 1fr auto;
-    }
-
-    /* tall / narrow: move X to top-right corner, hide from actions bar */
+@container (max-width: 520px) {
+    /* X 浮到右上角，hover 才显示（保留原有 main-x 浮动行为） */
     .session-overview-block-main-x {
-        display: flex;
-        position: absolute;
-        right: 6px;
-        top: 6px;
-        z-index: 2;
+        display: none;
     }
 
-    .session-overview-block-main-x .session-overview-block-x-button {
+    .session-overview-block-row:hover .session-overview-block-main-x {
         display: flex;
-    }
-
-    .session-overview-block-row {
-        &:hover .session-overview-block-main-x {
-            display: flex;
-        }
     }
 }
 
-/* single-row: X stays inline in the actions bar at the far right */
-@container (min-width: 621px) {
-    .session-overview-block-main-x {
-        display: inline-flex;
-        align-items: center;
-    }
-
-    .session-overview-block-main-x .session-overview-block-x-button {
-        margin-left: 4px;
-    }
-}
-
+/* very narrow: 缩小间距与 action icon 尺寸 */
 @container (max-width: 360px) {
     .session-overview-block-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 8px;
+        gap: 5px;
+        padding: 6px;
+    }
+
+    .session-overview-block-action-button {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
     }
 
     .session-overview-block-actions {

@@ -10,6 +10,7 @@ import { fetch } from "@/util/fetchutil";
 import { fireAndForget } from "@/util/util";
 import { atom, Atom, Getter, PrimitiveAtom, Setter, useAtomValue } from "jotai";
 import { globalStore } from "./jotaiStore";
+import { pslogEnabled, pslogTrace } from "./pslog-trace";
 import { ObjectService } from "./services";
 
 type WaveObjectDataItemType<T extends WaveObj> = {
@@ -17,25 +18,11 @@ type WaveObjectDataItemType<T extends WaveObj> = {
     loading: boolean;
 };
 
-// pslog FE traces (the four POSTs to /wave/pslog below) mirror the backend
-// ps-publish/ps-route chain into one file. They are gated by the `debug:pslog`
-// setting (parallels debug:webglstatus). wos cannot import global.ts for the
-// atom reader (global.ts imports wos — import cycle), so the gate function is
-// injected from global.ts init via setPslogEnabledFn; until then it's a no-op
-// returning false (traces stay off by default, matching the setting default).
-let pslogEnabledFn: (() => boolean) | null = null;
-
-export function setPslogEnabledFn(fn: () => boolean) {
-    pslogEnabledFn = fn;
-}
-
-function pslogEnabled(): boolean {
-    try {
-        return pslogEnabledFn?.() === true;
-    } catch {
-        return false;
-    }
-}
+// pslog FE traces (the four pslogTrace calls below) mirror the backend
+// ps-publish/ps-route chain into one file. Gated by the `debug:pslog` setting,
+// injected via setPslogEnabledFn (see pslog-trace.ts). All trace sites funnel
+// through pslogTrace() so the console.log + POST /wave/pslog + localStorage
+// buffer pattern lives in one place.
 
 // [ps-init] module-level probe: this runs once per module evaluation.
 // If you see this line >1 time in pslog, vite HMR has hot-replaced wos.ts
@@ -45,16 +32,7 @@ function pslogEnabled(): boolean {
     if (globalThis.window == null) {
         return;
     }
-    if (!pslogEnabled()) {
-        return;
-    }
-    try {
-        const line = `[ps-init] wos module loaded at ${new Date().toISOString()}`;
-        console.log(line);
-        fireAndForget(
-            fetch(getWebServerEndpoint() + "/wave/pslog", { method: "POST", body: "tag=ps-init " + line }).catch(() => {})
-        );
-    } catch {}
+    pslogTrace("ps-init", `[ps-init] wos module loaded at ${new Date().toISOString()}`);
 })();
 
 type WaveObjectValue<T extends WaveObj> = {
@@ -298,25 +276,9 @@ function useWaveObjectValue<T extends WaveObj>(oref: string): [T, boolean] {
             const readVer = (atomVal.value as any)?.version ?? null;
             const readSid = (atomVal.value as any)?.meta?.["agent:sessionid"] ?? null;
             const line = `[ps-use] oref=block:${blockId} readVer=${readVer} readSid=${readSid ?? ""}`;
-            console.log(line);
-            try {
-                const url = getWebServerEndpoint() + "/wave/pslog";
-                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-use " + line }).catch(() => {}));
-            } catch {}
-            try {
-                const stackLine = new Error().stack?.split("\n")[2] ?? "";
-                const bufKey = "ps-use-buf";
-                const MAX = 500;
-                let buf: string[] = [];
-                const raw = (window as any).localStorage?.getItem(bufKey);
-                if (raw) {
-                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
-                }
-                buf.push(`${new Date().toISOString()} ${line} stack=${stackLine.trim().slice(0, 120)}`);
-                if (buf.length > MAX) buf = buf.length - MAX > 0 ? buf.slice(buf.length - MAX) : buf;
-                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
-                (window as any).__psUseBuf = buf;
-            } catch {}
+            pslogTrace("ps-use", line, { bufferKey: "ps-use-buf" });
+            // keep the legacy global name alive for DevTools/test observers
+            (window as any).__psUseBuf = (window as any)["ps-use-buf"];
         }
     } catch {}
     return [atomVal.value, atomVal.loading];
@@ -345,25 +307,9 @@ function updateWaveObject(update: WaveObjUpdate) {
             const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
             const willSkip = curValue.value != null && curVer != null && newVer != null && curVer >= newVer;
             const line = `[ps-recv] oref=block:${update.oid} curVer=${curVer} newVer=${newVer} curSid=${curSid ?? ""} newSid=${newSid ?? ""} willSkip=${willSkip}`;
-            console.log(line);
-            // mirror to /wave/pslog so the line lands in the backend ps-log file (cross-chain grep)
-            try {
-                const url = getWebServerEndpoint() + "/wave/pslog";
-                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-recv " + line }).catch(() => {}));
-            } catch {}
-            try {
-                const bufKey = "ps-recv-buf";
-                const MAX = 500;
-                let buf: string[] = [];
-                const raw = (window as any).localStorage?.getItem(bufKey);
-                if (raw) {
-                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
-                }
-                buf.push(`${new Date().toISOString()} ${line}`);
-                if (buf.length > MAX) buf = buf.slice(buf.length - MAX);
-                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
-                (window as any).__psRecvBuf = buf;
-            } catch {}
+            pslogTrace("ps-recv", line, { bufferKey: "ps-recv-buf" });
+            // keep the legacy global name alive for DevTools/test observers
+            (window as any).__psRecvBuf = (window as any)["ps-recv-buf"];
         }
         if (curValue.value != null && curValue.value.version >= update.obj.version) {
             console.log("[agent-sessionid-debug] wos.ts:272 SKIP", {
@@ -375,29 +321,14 @@ function updateWaveObject(update: WaveObjUpdate) {
         }
         console.log("WaveObj updated", oref);
         globalStore.set(wov.dataAtom, { value: update.obj, loading: false });
-        // [ps-set] confirm atom.set was actually called (after the version-guard at line 300 did NOT skip)
+        // [ps-set] confirm atom.set was actually called (after the version-guard above did NOT skip)
         if (pslogEnabled() && update.otype === "block") {
             const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
             const newVer = update.obj?.version ?? null;
             const line = `[ps-set] oref=block:${update.oid} newVer=${newVer} newSid=${newSid ?? ""}`;
-            console.log(line);
-            try {
-                const url = getWebServerEndpoint() + "/wave/pslog";
-                fireAndForget(fetch(url, { method: "POST", body: "tag=ps-set " + line }).catch(() => {}));
-            } catch {}
-            try {
-                const bufKey = "ps-set-buf";
-                const MAX = 500;
-                let buf: string[] = [];
-                const raw = (window as any).localStorage?.getItem(bufKey);
-                if (raw) {
-                    try { buf = JSON.parse(raw) as string[]; } catch { buf = []; }
-                }
-                buf.push(`${new Date().toISOString()} ${line}`);
-                if (buf.length > MAX) buf = buf.length - MAX > 0 ? buf.slice(buf.length - MAX) : buf;
-                (window as any).localStorage?.setItem(bufKey, JSON.stringify(buf));
-                (window as any).__psSetBuf = buf;
-            } catch {}
+            pslogTrace("ps-set", line, { bufferKey: "ps-set-buf" });
+            // keep the legacy global name alive for DevTools/test observers
+            (window as any).__psSetBuf = (window as any)["ps-set-buf"];
         }
     }
     return;

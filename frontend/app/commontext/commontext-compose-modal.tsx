@@ -4,9 +4,10 @@
 import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
-import { atoms } from "@/app/store/global";
+import { getBlockComponentModel, atoms } from "@/app/store/global";
+import { getLayoutModelForStaticTab } from "@/layout/index";
 import { fireAndForget } from "@/util/util";
-import { useAtomValue } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
 import { copyCommonText, insertTextIntoFocused } from "./commontext-insert";
@@ -60,9 +61,22 @@ const restoreOpenState = (): ComposeState => {
     };
 };
 
+// true when the layout's focused block is a term view. Drives the Send button's
+// availability so users see it disabled up-front instead of clicking first.
+const focusedTermAvailableAtom = atom<boolean>((get) => {
+    const layoutModel = getLayoutModelForStaticTab();
+    if (layoutModel == null) return false;
+    const focusedNode = get(layoutModel.focusedNode);
+    const blockId = focusedNode?.data?.blockId;
+    if (blockId == null) return false;
+    const bcm = getBlockComponentModel(blockId);
+    return bcm?.viewModel?.viewType === "term";
+});
+
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     const settings = useAtomValue(atoms.settingsAtom);
+    const canSendToTerm = useAtomValue(focusedTermAvailableAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -239,8 +253,6 @@ const CommonTextComposeModal = memo(() => {
         const ok = insertTextIntoFocused(text);
         if (ok) {
             setStatus("Sent to focused terminal", "ok");
-        } else {
-            setStatus("Focus a terminal first", "err");
         }
     };
 
@@ -407,10 +419,19 @@ const CommonTextComposeModal = memo(() => {
                     <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
                         <i className="fa fa-regular fa-copy" />
                     </Button>
-                    <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
-                        <i className="fa fa-solid fa-terminal mr-1" />
-                        Send
-                    </Button>
+                    {canSendToTerm ? (
+                        <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
+                            <i className="fa fa-solid fa-terminal mr-1" />
+                            Send
+                        </Button>
+                    ) : (
+                        <span title="Focus a terminal to enable Send" className="inline-flex">
+                            <Button className="grey" disabled>
+                                <i className="fa fa-solid fa-terminal mr-1" />
+                                Send
+                            </Button>
+                        </span>
+                    )}
                     <Button
                         className="grey"
                         onClick={handleSaveDialog}

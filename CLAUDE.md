@@ -23,6 +23,29 @@ node scripts/inspect-electron-ui.mjs screenshot
 
 For style bugs, gather both visual and layout evidence: `getBoundingClientRect()`, `clientHeight`, `scrollHeight`, computed `display`, `flex`, `minHeight`, `height`, `maxHeight`, `overflow`, `overflowY`, element text, `aria-label`, `title`, classes, and coordinates.
 
+### Launching `task dev` with a CDP port
+
+`task dev` (= `electron-vite dev`) does **not** read `ELECTRON_EXTRA_LAUNCH_ARGS`, so setting that env var alone won't open `--remote-debugging-port=9222` on the launched Electron — the main process command line stays `electron.exe .` with no CDP switch. Two reliable ways to get CDP in dev:
+
+1. **One-shot env override (preferred, no code change):** set `SNORKELING_CDP_PORT=9222` *before* launching `task dev`, and ensure the main process reads it. As of this writing there is no built-in hook for that env var; option 2 is the documented path.
+2. **Temporary main-process switch:** add, in `emain/emain.ts` right after `const electronApp = electron.app;`:
+   ```ts
+   if (isDev && process.env.SNORKELING_CDP_PORT) {
+       electronApp.commandLine.appendSwitch("remote-debugging-port", process.env.SNORKELING_CDP_PORT);
+   }
+   ```
+   `isDev` (from `emain/emain-platform.ts`) is a **boolean const** (`!app.isPackaged`), not a function — don't call it. Remove this snippet before committing.
+
+To run dev detached from a background shell (so the Bash `&` exit doesn't kill the dev process tree), launch via `Start-Process` in a PowerShell script — `Start-Process powershell -ArgumentList ...local-task.ps1,dev -WindowStyle Minimized`. Killing prior dev instances safely: filter `Get-CimInstance Win32_Process` by `CommandLine -like '*Snorkeling (Dev)*'` (matches the dev user-data-dir) before `Stop-Process`.
+
+After main rebuild, verify with `curl -s http://127.0.0.1:9222/json/version`. Two page targets are normal — pick the one titled `Wave Terminal - T<id>` (the real UI; the bare `Wave` target is a spare/empty window).
+
+## `session.note` semantics — tags live *inside* the note string
+
+In `frontend/app/view/aisessions/`, `session.note` is a **single freeform string that may contain `#tag` tokens inline** (e.g. `"#fix #snorkeling\nnext: hook"` or just `"#减熵"`). It is *not* a structured `{ body, tags }` object, and pure-tags notes are stored as the literal `"#tag1 #tag2"` string — non-empty even though there's no prose.
+
+This means **`Boolean(session.note)` is not "has note content"**. To check whether a note has real prose (text beyond tags), use `stripSessionTagHashes(session.note).trim().length > 0` (helper in `session-tags.ts`). Tag extraction is `extractSessionTagsFromNote`, hash-stripping for display is `stripSessionTagHashes`. Treat any visual decoration that should mean "this session has a note" (e.g. the accent stripe on the row) as a *prose* check, not a *note field present* check — pure-tag notes will otherwise wrongly light up the decoration.
+
 ## Sinking implementation details (user-triggered)
 
 When the user says something like *"记一笔" / "把这次细节沉淀一下" / "落到开发细节"* after a code change, sink a `devdoc` note into the Obsidian vault at `E:\File\NitaFile\Obsidians\Obsidian\My Projects\Snorkling\开发细节\<业务模块>\` — **do not ask for confirmation; just write it**. The full rule set (when to sink, business module list, frontmatter, six-section body, file naming, README indexing) lives in `开发细节/README.md` in that vault; read it before the first sink. Subdirectory names mirror the `方案/` subdirs (`UI布局与Block`, `Sessions与列表`, `Common Text`, `Agent状态与识别`, `Agent数据与标签`, `wsh安装与上传`, `架构与文档`, `竞品与生态调研`). Do **not** sink unless asked — this is user-triggered, not hook-driven.

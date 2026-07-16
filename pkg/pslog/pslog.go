@@ -2,9 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package pslog writes a single append-only log file under <wave data dir>/pslog/
-// for tracing the pubsub chain: persist -> publish -> route -> recv.
-// Both backend Go code and frontend (via /wave/pslog POST) write into the same file
-// so the entire chain can be grep'd in one place.
+// for tracing cross-process causal chains (today: the pubsub chain
+// persist -> publish -> route -> recv; future domains appended on demand).
+// Both backend Go code and frontend (via /wave/pslog POST) write into the
+// same file so an entire chain can be grep'd in one place.
+//
+// Tag naming: lowercase, dash-separated, "<domain>-<event>". Known domain
+// today is "ps" (pubsub chain: ps-init/ps-recv/ps-use/ps-set/ps-route/ps-publish).
+// New domains add their own prefix (e.g. "as" for agent-status) only when
+// introduced by a concrete tracing need — do not pre-register domains.
+//
+// traceId: a process-wide monotonically-increasing id (NewTraceId) lets a
+// single causal chain be grep'd across multiple AppendWithTrace lines. The id
+// is *not* auto-propagated across processes; callers thread it explicitly
+// (env var, RPC envelope, hook arg) when they wire a new chain. Infrastructure
+// only provides the id generator and the append API; it does not call them.
 package pslog
 
 import (
@@ -36,6 +48,17 @@ func enabled() bool {
 	return enabledFlag.Load()
 }
 
+// traceCounter is a process-wide monotonic counter used by NewTraceId so that
+// every id is globally unique within the process. Cross-process unlinkability
+// is broken by pid prefix; per-process uniqueness is broken by the counter.
+var traceCounter atomic.Uint64
+
+// NewTraceId returns a process-unique id of the form "<pid>-<counter>". Callers
+// thread it across processes/env/RPC themselves; pslog never does that.
+func NewTraceId() string {
+	return fmt.Sprintf("%d-%d", os.Getpid(), traceCounter.Add(1))
+}
+
 var (
 	once   sync.Once
 	fileMu sync.Mutex
@@ -43,10 +66,40 @@ var (
 	initErr error
 )
 
+// dirOverride, when set, replaces wavebase.GetWaveDataDir() in open(). It is
+// a test-only seam (see resetForTesting) — production never sets it; it must
+// remain nil in non-test builds so open() resolves to the shared data dir.
+var dirOverride string
+
+// resetForTesting resets the lazy-open state so a test can open a fresh file
+// in a temp dir. Tests pass t.TempDir() via SetDataDirForTesting.
+//
+// ForTesting only. Production code must not call this.
+func resetForTesting() {
+	fileMu.Lock()
+	defer fileMu.Unlock()
+	once = sync.Once{}
+	if file != nil {
+		_ = file.Close()
+	}
+	file = nil
+	initErr = nil
+	traceCounter.Store(0)
+}
+
+// SetDataDirForTesting points pslog at dir for the next open().
+// ForTesting only. Pair with resetForTesting() in t.Cleanup.
+func SetDataDirForTesting(dir string) {
+	dirOverride = dir
+}
+
 // open lazily creates the log file. Once-per-process; a fresh launch makes a fresh file.
 func open() {
 	once.Do(func() {
-		dir := filepath.Join(wavebase.GetWaveDataDir(), "pslog")
+		dir := dirOverride
+		if dir == "" {
+			dir = filepath.Join(wavebase.GetWaveDataDir(), "pslog")
+		}
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			initErr = fmt.Errorf("pslog mkdir: %w", err)
 			return
@@ -69,6 +122,13 @@ func open() {
 // Safe to call from any goroutine. Fails silently after first open error.
 // Example: pslog.Append("ps-persist", "block", blockId, "sid", sessionId)
 func Append(tag string, kv ...any) {
+	AppendWithTrace("", tag, kv...)
+}
+
+// AppendWithTrace is like Append but appends " trace=<traceId>" at line end
+// when traceId is non-empty, letting a causal chain be grep'd across calls.
+// Empty traceId preserves the original Append byte-for-byte output.
+func AppendWithTrace(traceId string, tag string, kv ...any) {
 	if !enabled() {
 		return
 	}
@@ -87,6 +147,10 @@ func Append(tag string, kv ...any) {
 		sb.WriteString("=")
 		sb.WriteString(fmt.Sprintf("%v", kv[i+1]))
 	}
+	if traceId != "" {
+		sb.WriteString(" trace=")
+		sb.WriteString(traceId)
+	}
 	sb.WriteString("\n")
 	line := sb.String()
 	fileMu.Lock()
@@ -96,6 +160,12 @@ func Append(tag string, kv ...any) {
 
 // AppendRaw is for callers that have already formatted their own line content (excluding timestamp/tag).
 func AppendRaw(tag string, content string) {
+	AppendRawWithTrace("", tag, content)
+}
+
+// AppendRawWithTrace is like AppendRaw but appends " trace=<traceId>" at line
+// end when traceId is non-empty (see AppendWithTrace).
+func AppendRawWithTrace(traceId string, tag string, content string) {
 	if !enabled() {
 		return
 	}
@@ -103,7 +173,11 @@ func AppendRaw(tag string, content string) {
 	if initErr != nil {
 		return
 	}
-	line := time.Now().Format("2006-01-02T15:04:05.000") + " [" + tag + "] " + content + "\n"
+	line := time.Now().Format("2006-01-02T15:04:05.000") + " [" + tag + "] " + content
+	if traceId != "" {
+		line += " trace=" + traceId
+	}
+	line += "\n"
 	fileMu.Lock()
 	defer fileMu.Unlock()
 	file.WriteString(line)

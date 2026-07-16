@@ -35,6 +35,7 @@ import { modalsModel } from "./modalmodel";
 import { ClientService, ObjectService } from "./services";
 import { isPreviewWindow } from "./windowtype";
 import * as WOS from "./wos";
+import { setPslogEnabledFn as setPslogEnabledFnGate } from "./pslog-trace";
 import { getFileSubject, waveEventSubscribeSingle } from "./wps";
 
 let globalPrimaryTabStartup: boolean = false;
@@ -43,8 +44,8 @@ function initGlobal(initOpts: GlobalInitOptions) {
     globalPrimaryTabStartup = initOpts.primaryTabStartup ?? false;
     setPlatform(initOpts.platform);
     initGlobalAtoms(initOpts);
-    // Inject the debug:pslog gate into wos (wos can't import global — cycle).
-    WOS.setPslogEnabledFn(() => globalStore.get(getSettingsKeyAtom("debug:pslog")) === true);
+    // Inject the debug:pslog gate (pslog-trace owns the gate state; wos just consumes it via pslogEnabled()).
+    setPslogEnabledFnGate(() => globalStore.get(getSettingsKeyAtom("debug:pslog")) === true);
     try {
         getApi().onMenuItemAbout(() => {
             modalsModel.pushModal("AboutModal");
