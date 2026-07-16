@@ -1,0 +1,26 @@
+{
+  "app": {
+    "menuOpen": "Open Menu",
+    "title": "Config Files"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "edit": "Edit",
+    "ok": "OK",
+    "save": "Save"
+  },
+  "settings": {
+    "defaultFile": "Default Configuration",
+    "discarded": "Changes discarded",
+    "searchPlaceholder": "Search settings",
+    "unsavedWarn": "You have unsaved changes",
+    "userFile": "User Configuration"
+  },
+  "docs": {
+    "viewDocs": "View documentation",
+    "save": "Save",
+    "saving": "Saving..."
+  }
+}

@@ -116,6 +116,13 @@
             "left"
           ]
         },
+        "ui:locale": {
+          "type": "string",
+          "enum": [
+            "en",
+            "zh"
+          ]
+        },
         "feature:waveappbuilder": {
           "type": "boolean"
         },

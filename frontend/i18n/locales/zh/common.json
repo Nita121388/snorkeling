@@ -1,0 +1,26 @@
+{
+  "app": {
+    "menuOpen": "打开菜单",
+    "title": "配置文件"
+  },
+  "common": {
+    "cancel": "取消",
+    "close": "关闭",
+    "delete": "删除",
+    "edit": "编辑",
+    "ok": "确定",
+    "save": "保存"
+  },
+  "settings": {
+    "defaultFile": "默认配置",
+    "discarded": "更改已放弃",
+    "searchPlaceholder": "搜索设置",
+    "unsavedWarn": "有未保存的更改",
+    "userFile": "用户配置"
+  },
+  "docs": {
+    "viewDocs": "查看文档",
+    "save": "保存",
+    "saving": "保存中..."
+  }
+}
