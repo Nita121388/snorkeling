@@ -762,7 +762,7 @@ function registerGlobalKeys() {
         void SessionOverviewModel.getInstance().open();
         return true;
     });
-    globalKeyMap.set("Ctrl:Shift:Space", () => {
+    globalKeyMap.set("Cmd:Shift:Space", () => {
         openCommonTextSearch();
         return true;
     });

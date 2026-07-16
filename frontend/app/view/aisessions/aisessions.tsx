@@ -27,7 +27,7 @@ import { normalizeSessionTags } from "./session-tags";
 import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
 import { useSessionsRunning } from "./use-sessions-running";
 import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
-import "../session-overview/session-overview.scss";
+import "../../session-overview/session-overview.scss";
 import {
     emptySessionsText,
     formatDateTimeToSecond,

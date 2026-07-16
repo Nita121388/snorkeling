@@ -35,18 +35,23 @@ function sourceDotClass(source: string): string {
 }
 
 /**
- * Small badge shown on a session row when the session has a live block in the app.
+ * Four-dot spinner shown beneath the mark button when the session has a live block.
+ * Four dots sit at the top/right/bottom/left of a small box and the whole box rotates,
+ * so the dots appear to chase each other around a square path.
  * Returns null for any non-running state so callers can drop it straight into JSX.
  */
-export function RunningBadge({ runningState }: { runningState: SessionRunningState | null }): ReactElement | null {
+export function RunningDot({ runningState }: { runningState: SessionRunningState | null }): ReactElement | null {
     if (runningState !== "running") return null;
+    const dotClass = "absolute rounded-full bg-accent";
     return (
         <span
-            className="session-overview-agent-status is-working shrink-0"
+            className="relative mt-0.5 block h-4 w-4 shrink-0 animate-spin"
             title="This session has a live block in the app"
         >
-            <i className="fa-solid fa-circle-dot" />
-            <span className="session-overview-agent-status-label">running</span>
+            <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />
+            <span className={cn(dotClass, "right-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+            <span className={cn(dotClass, "bottom-0 left-1/2 h-1 w-1 -translate-x-1/2")} />
+            <span className={cn(dotClass, "left-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
         </span>
     );
 }
@@ -167,20 +172,22 @@ export function SessionRow({
             onClick={onSelect}
         >
             <div className="flex min-w-0 items-start gap-2">
-                <button
-                    className={cn(
-                        "mt-0.5 shrink-0 text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
-                        session.marked && "text-accent opacity-100"
-                    )}
-                    title="Mark session"
-                    onClick={onMark}
-                >
-                    <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
-                </button>
+                <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1">
+                    <button
+                        className={cn(
+                            "text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
+                            session.marked && "text-accent opacity-100"
+                        )}
+                        title="Mark session"
+                        onClick={onMark}
+                    >
+                        <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
+                    </button>
+                    <RunningDot runningState={runningState} />
+                </div>
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
-                        <RunningBadge runningState={runningState} />
                         <button
                             type="button"
                             className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
