@@ -1,0 +1,66 @@
+{
+  "agentStatus": {
+    "enable": "Enable Agent Status",
+    "enabledFor": "Agent status enabled for {{provider}}.",
+    "enabling": "Enabling...",
+    "failedToEnable": "Failed to enable Agent Status.",
+    "updated": "Updated: {{path}}"
+  },
+  "block": {
+    "deleteBlock": "Delete block",
+    "deleteBlockAriaLabel": "Delete block",
+    "jumpToBlock": "Jump to block",
+    "jumpToBlockBtn": "Jump to Block",
+    "noBlocks": "No blocks",
+    "noPreview": "No preview"
+  },
+  "common": {
+    "agent": "Agent",
+    "ai": "AI",
+    "close": "Close",
+    "openOverview": "Open Overview",
+    "overview": "Overview",
+    "overviewFilters": "Overview filters",
+    "refreshOverview": "Refresh overview",
+    "untitled": "Untitled"
+  },
+  "filters": {
+    "agents": "Agents",
+    "hideTabsNotOpened": "Hide tabs not opened this launch",
+    "messages": "Messages",
+    "noAgentBlocksMatch": "No agent blocks match the current filters.",
+    "noTabsInWorkspace": "No tabs in this workspace.",
+    "noTabsMatch": "No tabs match the current filters.",
+    "openedTabs": "Opened Tabs",
+    "showOnlyAgent": "Show only agent and agent terminal blocks"
+  },
+  "message": {
+    "noteHint": "Message note is not stored yet. Use the session note for this version."
+  },
+  "note": {
+    "addPlaceholder": "Add a note",
+    "deleteSessionFile": "Delete session file",
+    "editSessionNote": "Edit session note",
+    "loadingNote": "Loading note...",
+    "noteLabel": "Note",
+    "openNote": "Open Note",
+    "openNoteFullscreen": "Open Note",
+    "openSessionDetails": "Open session details",
+    "saveFailed": "Save failed",
+    "saved": "Saved",
+    "saving": "Saving...",
+    "sessionNotFound": "Session not found.",
+    "unsavedChanges": "Unsaved changes"
+  },
+  "session": {
+    "loadingSession": "Loading session...",
+    "noSessionId": "No session id",
+    "notification": "Notification"
+  },
+  "tab": {
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "tab": "tab",
+    "tabAriaLabel": "{{action}} tab {{tabName}}"
+  }
+}
