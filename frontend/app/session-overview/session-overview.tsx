@@ -31,6 +31,7 @@ import {
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
+import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import {
     makeCurrentTabBlockKindOpenAtom,
     SnorkelingBlockKindNote,
@@ -1733,6 +1734,10 @@ function BlockRow({
     const unread = block.isAgentLike && updatedAtMs > 0 && updatedAtMs > viewedAt;
     const isCurrent = block.blockId === currentBlockId;
     const iconClass = makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" });
+    // Agent-like row collapses to "agent brand icon + status chip" only.
+    // Reuses getAgentLogoByProvider so the icon stays consistent with the term block header (term-model.viewIcon);
+    // falls back to the project's shared "robot" generic-agent icon when provider is unknown.
+    const agentLogo = block.isAgentLike ? getAgentLogoByProvider(block.agentProvider) : null;
 
     return (
         <div
@@ -1746,19 +1751,29 @@ function BlockRow({
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
-                <span className="session-overview-block-icon">
-                    <i className={iconClass} />
+                <span className={cn("session-overview-block-icon", block.isAgentLike && "is-agent-brand")}>
+                    {block.isAgentLike ? (
+                        <span
+                            className="session-overview-block-agent-logo"
+                            style={agentLogo?.iconColor ? { color: agentLogo.iconColor } : undefined}
+                        >
+                            {agentLogo ? agentLogo.icon : <i className={makeIconClass("robot", false)} />}
+                        </span>
+                    ) : (
+                        <i className={iconClass} />
+                    )}
                 </span>
                 <span className="session-overview-block-text">
-                    <span className="session-overview-block-title">{block.title}</span>
-                    <span className="session-overview-block-meta">
-                        {block.isAgentLike ? "Agent" : blockViewToName(block.view)}
-                        {block.isAgentLike && block.agentProvider
-                            ? ` · ${formatAgentProvider(block.agentProvider)}`
-                            : ""}
-                        {block.sessionId ? ` · ${block.sessionId.slice(0, 8)}` : ""}
-                        {agentStatus ? <AgentStatusChip status={agentStatus} now={now} /> : null}
-                    </span>
+                    {block.isAgentLike ? (
+                        <>{agentStatus ? <AgentStatusChip status={agentStatus} now={now} /> : null}</>
+                    ) : (
+                        <>
+                            <span className="session-overview-block-title">{block.title}</span>
+                            <span className="session-overview-block-meta">
+                                {blockViewToName(block.view)}
+                            </span>
+                        </>
+                    )}
                 </span>
                 <SessionOverviewBadgeIcon badge={badge} className="session-overview-block-badge" />
             </div>
@@ -1862,6 +1877,13 @@ function BlockRow({
                             <i className={makeIconClass("trash", false)} />
                         </button>
                     </Tooltip>
+                ) : null}
+            </div>
+            <div className="session-overview-block-note">
+                {block.isAgentLike && summary?.note ? (
+                    <div className="session-overview-note-line">
+                        <span>{summary.note}</span>
+                    </div>
                 ) : null}
             </div>
             {noteEditorOpen ? (

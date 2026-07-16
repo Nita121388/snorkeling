@@ -18,7 +18,6 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
-import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
@@ -52,6 +51,7 @@ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/uti
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
+import { getAgentLogoByProvider } from "./agent-logo";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
 import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
@@ -76,21 +76,7 @@ export function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean 
     return meta["agent:autoresume"] === true;
 }
 
-export function getAgentLogoByProvider(provider: string): { icon: React.ReactNode; iconColor?: string } | null {
-    switch (provider.trim().toLowerCase()) {
-        case "codex":
-            return { icon: React.createElement(OpenAILogo), iconColor: "#74a7cb" };
-        case "claude":
-            // claude-color.svg 自带橙色,不需要外部 iconColor
-            return { icon: React.createElement(ClaudeLogo) };
-        case "gemini":
-            return { icon: React.createElement(GeminiLogo), iconColor: "#8e7cc3" };
-        case "opencode":
-            return { icon: React.createElement(OpencodeLogo), iconColor: "#e0b956" };
-        default:
-            return null;
-    }
-}
+export { getAgentLogoByProvider };
 
 export class TermViewModel implements ViewModel {
     viewType: string;

@@ -1132,8 +1132,9 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	if blockId == "" || sessionId == "" {
 		return nil
 	}
-	log.Printf("[ps-persist] enter block=%s sid=%s", blockId, sessionId)
-	pslog.Append("ps-persist", "stage", "enter", "block", blockId, "sid", sessionId)
+	tid := pslog.NewTraceId()
+	log.Printf("[ps-persist] enter block=%s sid=%s trace=%s", blockId, sessionId, tid)
+	pslog.AppendWithTrace(tid, "ps-persist", "stage", "enter", "block", blockId, "sid", sessionId)
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
 	ctx = waveobj.ContextWithUpdates(ctx)
@@ -1142,13 +1143,13 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	}
 	err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
 	if err != nil {
-		log.Printf("[ps-persist] FAIL block=%s err=%v", blockId, err)
-		pslog.Append("ps-persist", "stage", "fail", "block", blockId, "err", err.Error())
+		log.Printf("[ps-persist] FAIL block=%s err=%v trace=%s", blockId, err, tid)
+		pslog.AppendWithTrace(tid, "ps-persist", "stage", "fail", "block", blockId, "err", err.Error())
 		return err
 	}
 	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
-	log.Printf("[ps-persist] SENT block=%s sid=%s", blockId, sessionId)
-	pslog.Append("ps-persist", "stage", "sent", "block", blockId, "sid", sessionId)
+	log.Printf("[ps-persist] SENT block=%s sid=%s trace=%s", blockId, sessionId, tid)
+	pslog.AppendWithTrace(tid, "ps-persist", "stage", "sent", "block", blockId, "sid", sessionId)
 	return nil
 }
 
@@ -1168,10 +1169,16 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 // gives enough headroom for a coincidental second resync to also fail and recover;
 // retry doesn't scan disk (claude id is in backend memory, not in CLI-written files
 // like codex).
+//
+// trace: one traceId per capture call (ps-capture), emitted at every branch so the
+// "Windows claude agent 状态不更新" chain can be grep'd end-to-end. This is the
+// suspected silent-abdicate site — every return was previously mute.
 func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 	if blockId == "" || sessionId == "" {
 		return
 	}
+	tid := pslog.NewTraceId()
+	pslog.AppendWithTrace(tid, "ps-capture", "stage", "enter", "block", blockId, "sid", sessionId)
 	for i := 0; i < claudeSessionCaptureMaxAttempts; i++ {
 		if i > 0 {
 			time.Sleep(claudeSessionCapturePollInterval)
@@ -1180,18 +1187,23 @@ func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
 		cancelFn()
 		if err != nil || block == nil {
+			pslog.AppendWithTrace(tid, "ps-capture", "stage", "abdicate-gone", "block", blockId, "attempt", i+1, "err", fmt.Sprintf("%v", err))
 			return // block gone (destroyed)
 		}
-		if block.Meta.GetString(MetaKey_AgentSessionId, "") != "" {
+		if existingSid := block.Meta.GetString(MetaKey_AgentSessionId, ""); existingSid != "" {
+			pslog.AppendWithTrace(tid, "ps-capture", "stage", "abdicate-existing", "block", blockId, "attempt", i+1, "existingSid", existingSid)
 			return // second resync or rider already persisted
 		}
 		if err := persistAgentSessionId(blockId, sessionId); err == nil {
-			log.Printf("[ps-capture] retry-persisted block=%s attempt=%d", blockId, i+1)
-			pslog.Append("ps-capture", "stage", "retry-persisted", "block", blockId, "attempt", i+1)
+			log.Printf("[ps-capture] retry-persisted block=%s attempt=%d trace=%s", blockId, i+1, tid)
+			pslog.AppendWithTrace(tid, "ps-capture", "stage", "retry-persisted", "block", blockId, "attempt", i+1)
 			return
+		} else {
+			pslog.AppendWithTrace(tid, "ps-capture", "stage", "retry-fail", "block", blockId, "attempt", i+1)
 		}
 	}
-	log.Printf("claude agent session id retry gave up (block=%s, attempts=%d)", blockId, claudeSessionCaptureMaxAttempts)
+	log.Printf("claude agent session id retry gave up (block=%s, attempts=%d, trace=%s)", blockId, claudeSessionCaptureMaxAttempts, tid)
+	pslog.AppendWithTrace(tid, "ps-capture", "stage", "giveup", "block", blockId, "attempts", claudeSessionCaptureMaxAttempts)
 }
 
 func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {

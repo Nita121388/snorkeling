@@ -17,6 +17,16 @@ import {
 } from "./session-tags";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
+/**
+ * A note's *real* content is whatever survives stripping `#tag` hash-tags.
+ * A note like "#fix #snorkeling" has empty body but still passes `Boolean(session.note)`,
+ * which would wrongly render the accent stripe. Use this for visual decorations that
+ * should only appear when there's prose, not when only tags are present.
+ */
+function noteHasProse(note: string | null | undefined): boolean {
+    return Boolean(note) && stripSessionTagHashes(note).trim().length > 0;
+}
+
 function sourceDotClass(source: string): string {
     if (source === "claude") return "bg-source-claude";
     if (source === "codex") return "bg-source-codex";
@@ -203,7 +213,9 @@ export function SessionRow({
                         <button
                             type="button"
                             className={cn(
-                                "relative mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-accent/50 before:content-[''] hover:bg-hover hover:text-accent",
+                                "relative mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors hover:bg-hover hover:text-accent",
+                                noteHasProse(session.note) &&
+                                    "before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-accent/50 before:content-['']",
                                 noteEditing && "bg-hover/60 text-accent"
                             )}
                             title={noteToggleLabel}

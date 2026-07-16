@@ -13,6 +13,7 @@ import {
     WOS,
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
+import { genFrontendTraceId, pslogTrace } from "@/store/pslog-trace";
 import debug from "debug";
 import { resolveAgentCommandBinding } from "./agent-session";
 import type { TermWrap } from "./termwrap";
@@ -109,6 +110,7 @@ function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
     if (binding == null) {
         return;
     }
+    const tid = genFrontendTraceId();
     const meta: MetaType = {
         "agent:provider": binding.provider,
         "agent:autoresume": true,
@@ -120,11 +122,23 @@ function bindManualAgentCommand(blockId: string, decodedCmd: string): void {
     } else {
         metaRecord["agent:sessionid"] = null;
     }
+    pslogTrace(
+        "as-osc",
+        `[as-osc] bind block=${blockId} provider=${binding.provider} sid=${binding.sessionId ?? "(null)"}`,
+        { bufferKey: "ps-as-osc-buf", tid }
+    );
     fireAndForget(async () => {
         await RpcApi.SetMetaCommand(TabRpcClient, {
             oref: WOS.makeORef("block", blockId),
             meta,
-        }).catch((e) => console.log("error binding manual agent command", e));
+        }).catch((e) => {
+            console.log("error binding manual agent command", e);
+            pslogTrace(
+                "as-osc",
+                `[as-osc] bind FAIL block=${blockId} err=${String(e)}`,
+                { bufferKey: "ps-as-osc-buf", tid }
+            );
+        });
     });
 }
 
@@ -132,6 +146,12 @@ function clearManualAgentCommand(blockId: string, command: unknown): void {
     if (resolveAgentCommandBinding(command) == null) {
         return;
     }
+    const tid = genFrontendTraceId();
+    pslogTrace(
+        "as-osc",
+        `[as-osc] clear block=${blockId}`,
+        { bufferKey: "ps-as-osc-buf", tid }
+    );
     fireAndForget(async () => {
         await RpcApi.SetMetaCommand(TabRpcClient, {
             oref: WOS.makeORef("block", blockId),
@@ -140,8 +160,15 @@ function clearManualAgentCommand(blockId: string, command: unknown): void {
                 "agent:provider": null,
                 "agent:autoresume": null,
                 "agent:sessionid": null,
-            },
-        }).catch((e) => console.log("error clearing manual agent command", e));
+            } as MetaType,
+        }).catch((e) => {
+            console.log("error clearing manual agent command", e);
+            pslogTrace(
+                "as-osc",
+                `[as-osc] clear FAIL block=${blockId} err=${String(e)}`,
+                { bufferKey: "ps-as-osc-buf", tid }
+            );
+        });
     });
 }
 
