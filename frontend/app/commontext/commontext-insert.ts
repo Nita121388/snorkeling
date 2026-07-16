@@ -102,3 +102,22 @@ export function insertTextIntoFocused(text: string): boolean {
     }
     return false;
 }
+
+/**
+ * Send `text` straight to a specifically-chosen terminal block, bypassing any
+ * input/textarea that currently holds DOM focus (e.g. the Compose modal's own
+ * editor). The caller resolves the focused block id (see `focusedTermBlockIdAtom`
+ * in `commontext-compose-modal`) via `getLayoutDataActiveBlockId`, which works
+ * inside inline-tabs containers where the layout node carries `blockIds` +
+ * `activeBlockId` instead of a single `blockId`. Returns false when the block
+ * isn't a term.
+ */
+export function sendTextToFocusedTerm(text: string, blockId: string | null): boolean {
+    if (blockId == null) return false;
+    const bcm = getBlockComponentModel(blockId);
+    const viewModel = bcm?.viewModel;
+    if (viewModel != null && viewModel.viewType === "term") {
+        return insertTextIntoTerm(viewModel as TermViewModel, text);
+    }
+    return false;
+}

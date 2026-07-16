@@ -25,7 +25,9 @@ import {
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
 import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
+import { useSessionsRunning } from "./use-sessions-running";
 import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
+import "../session-overview/session-overview.scss";
 import {
     emptySessionsText,
     formatDateTimeToSecond,
@@ -729,6 +731,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const [blockVisible, setBlockVisible] = useState(true);
+    const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
@@ -1121,6 +1124,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 void model.restoreSession(session);
                                             }}
                                             resumeDisabled={restoring}
+                                            runningState={sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null}
                                         />
                                     ))
                                 )}

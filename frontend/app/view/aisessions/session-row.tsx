@@ -3,7 +3,7 @@
 
 import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -15,6 +15,7 @@ import {
     sessionTagsLabel,
     stripSessionTagHashes,
 } from "./session-tags";
+import type { SessionRunningState } from "./use-sessions-running";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
 /**
@@ -33,6 +34,23 @@ function sourceDotClass(source: string): string {
     return "bg-secondary";
 }
 
+/**
+ * Small badge shown on a session row when the session has a live block in the app.
+ * Returns null for any non-running state so callers can drop it straight into JSX.
+ */
+export function RunningBadge({ runningState }: { runningState: SessionRunningState | null }): ReactElement | null {
+    if (runningState !== "running") return null;
+    return (
+        <span
+            className="session-overview-agent-status is-working shrink-0"
+            title="This session has a live block in the app"
+        >
+            <i className="fa-solid fa-circle-dot" />
+            <span className="session-overview-agent-status-label">running</span>
+        </span>
+    );
+}
+
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
 export function SessionRow({
@@ -43,6 +61,7 @@ export function SessionRow({
     onNoteSave,
     onResume,
     resumeDisabled = false,
+    runningState = null,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -51,6 +70,7 @@ export function SessionRow({
     onNoteSave: (note: string, tags: string[]) => Promise<boolean>;
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
+    runningState?: SessionRunningState | null;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
@@ -160,6 +180,7 @@ export function SessionRow({
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
+                        <RunningBadge runningState={runningState} />
                         <button
                             type="button"
                             className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"

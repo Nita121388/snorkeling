@@ -6,11 +6,12 @@ import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { getBlockComponentModel, atoms } from "@/app/store/global";
 import { getLayoutModelForStaticTab } from "@/layout/index";
+import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
-import { copyCommonText, insertTextIntoFocused } from "./commontext-insert";
+import { copyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
@@ -61,22 +62,30 @@ const restoreOpenState = (): ComposeState => {
     };
 };
 
-// true when the layout's focused block is a term view. Drives the Send button's
-// availability so users see it disabled up-front instead of clicking first.
-const focusedTermAvailableAtom = atom<boolean>((get) => {
+// Resolves the truly-active block of the focused layout node. Layout nodes use
+// either `blockId` (single-block) or `blockIds` + `activeBlockId` (inline-tabs
+// container holding several blocks) — `data.blockId` alone misses the latter, so
+// we go through `getLayoutDataActiveBlockId`, the same helper `closeFocusedNode`
+// / `keymodel` use. Returns the blockId only when it's a term view, else null.
+// Drives the Send button's availability so users see it disabled up-front
+// instead of clicking first, and feeds `sendTextToFocusedTerm` so Send doesn't
+// route through the modal's own textarea.
+const focusedTermBlockIdAtom = atom<string | null>((get) => {
     const layoutModel = getLayoutModelForStaticTab();
-    if (layoutModel == null) return false;
+    if (layoutModel == null) return null;
     const focusedNode = get(layoutModel.focusedNode);
-    const blockId = focusedNode?.data?.blockId;
-    if (blockId == null) return false;
+    const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
+    if (blockId == null) return null;
     const bcm = getBlockComponentModel(blockId);
-    return bcm?.viewModel?.viewType === "term";
+    if (bcm?.viewModel?.viewType !== "term") return null;
+    return blockId;
 });
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     const settings = useAtomValue(atoms.settingsAtom);
-    const canSendToTerm = useAtomValue(focusedTermAvailableAtom);
+    const focusedTermBlockId = useAtomValue(focusedTermBlockIdAtom);
+    const canSendToTerm = focusedTermBlockId != null;
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -250,7 +259,11 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Nothing to send", "err");
             return;
         }
-        const ok = insertTextIntoFocused(text);
+        // Routes straight to the focused term, bypassing the modal's own
+        // textarea (which holds DOM focus while the user is editing here).
+        // `focusedTermBlockId` is the same atom feeding `canSendToTerm`, so the
+        // disabled button and the click path agree on the target.
+        const ok = sendTextToFocusedTerm(text, focusedTermBlockId);
         if (ok) {
             setStatus("Sent to focused terminal", "ok");
         }
