@@ -19,6 +19,7 @@ import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
@@ -109,6 +110,7 @@ function strArrayIsEqual(a: string[], b: string[]) {
 }
 
 const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: TabBarProps) => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
     const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
@@ -846,7 +848,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             </div>
             <button
                 ref={addBtnRef}
-                title="Add Tab"
+                title={t("tab:tab.addTab")}
                 className={`flex h-[22px] px-2 mb-1 mx-1 items-center rounded-md box-border cursor-pointer hover:bg-hoverbg transition-colors text-[12px] text-secondary hover:text-primary${noTabs ? " invisible" : ""}`}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={handleAddTab}

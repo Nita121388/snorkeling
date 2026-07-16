@@ -17,6 +17,7 @@ import { atom, PrimitiveAtom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { splitAtom } from "jotai/utils";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import { CSSProperties, forwardRef, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import WorkspaceSVG from "../asset/workspace.svg";
 import { IconButton } from "../element/iconbutton";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -50,6 +51,7 @@ const workspaceMapAtom = atom<WorkspaceList>([]);
 const workspaceSplitAtom = splitAtom(workspaceMapAtom);
 const editingWorkspaceAtom = atom<string>();
 const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<WorkspaceSwitcherEnv>();
     const setWorkspaceList = useSetAtom(workspaceMapAtom);
     const activeWorkspace = useAtomValueSafe(env.atoms.workspace);
@@ -138,14 +140,14 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
                             <ExpandableMenuItemLeftElement>
                                 <i className="fa-sharp fa-solid fa-plus"></i>
                             </ExpandableMenuItemLeftElement>
-                            <div className="content">Create new workspace</div>
+                            <div className="content">{t("tab:workspace.createNew")}</div>
                         </ExpandableMenuItem>
                     ) : (
                         <ExpandableMenuItem onClick={() => saveWorkspace()}>
                             <ExpandableMenuItemLeftElement>
                                 <i className="fa-sharp fa-solid fa-floppy-disk"></i>
                             </ExpandableMenuItemLeftElement>
-                            <div className="content">Save workspace</div>
+                            <div className="content">{t("tab:workspace.save")}</div>
                         </ExpandableMenuItem>
                     )}
                 </div>
