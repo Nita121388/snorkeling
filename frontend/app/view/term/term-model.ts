@@ -59,7 +59,6 @@ import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-
 import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
-    DefaultTermTheme,
     getDefaultTermTheme,
     terminalLogicalLinesForSelection,
     terminalSelectionToSingleLine,
