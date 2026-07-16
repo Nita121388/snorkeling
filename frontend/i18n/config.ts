@@ -9,12 +9,18 @@ import { initReactI18next } from "react-i18next";
 
 import enCommon from "./locales/en/common.json";
 import zhCommon from "./locales/zh/common.json";
+import enOnboarding from "./locales/en/onboarding.json";
+import zhOnboarding from "./locales/zh/onboarding.json";
+import enSessionOverview from "./locales/en/session-overview.json";
+import zhSessionOverview from "./locales/zh/session-overview.json";
+import enTab from "./locales/en/tab.json";
+import zhTab from "./locales/zh/tab.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common"] as const;
+export const NS = ["common", "onboarding", "session-overview", "tab"] as const;
 
 /**
  * Initialize i18next.
@@ -41,8 +47,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
             defaultNS: "common",
             partialBundledLanguages: true,
             resources: {
-                en: { common: enCommon },
-                zh: { common: zhCommon },
+                en: { common: enCommon, onboarding: enOnboarding, "session-overview": enSessionOverview, tab: enTab },
+                zh: { common: zhCommon, onboarding: zhOnboarding, "session-overview": zhSessionOverview, tab: zhTab },
             },
             backend: {
                 loadPath: "i18n/locales/{{lng}}/{{ns}}.json",
