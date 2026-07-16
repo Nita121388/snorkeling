@@ -48,6 +48,14 @@ export class I18nModel {
         i18n.changeLanguage(locale).catch((err) => {
             console.error("[i18n] changeLanguage failed", err);
         });
+        // Push the change to the Electron main process so its i18n instance and
+        // native (application/dock) menus follow. Best-effort: the preload `api`
+        // is only present in the real Electron environment, not in vite preview.
+        try {
+            (window as any).api?.setLocale?.(locale);
+        } catch (err) {
+            console.error("[i18n] main locale sync failed", err);
+        }
     }
 }
 

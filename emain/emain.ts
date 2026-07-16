@@ -26,6 +26,7 @@ import {
     setWasActive,
     setWasInFg,
 } from "./emain-activity";
+import { initI18nMain } from "./emain-i18n";
 import { initIpcHandlers } from "./emain-ipc";
 import { log } from "./emain-log";
 import { initMenuEventSubscriptions, makeAndSetAppMenu, makeDockTaskbar } from "./emain-menu";
@@ -384,6 +385,10 @@ async function appMain() {
         console.log("disabling hardware acceleration, per launch settings");
         electronApp.disableHardwareAcceleration();
     }
+    // Initialize main-process i18n as early as possible — `makeAndSetAppMenu()`
+    // below reads translated strings via `getI18nMain()/tmew()`. See
+    // `emain/emain-i18n.ts` (Phase 4 infrastructure).
+    initI18nMain(launchSettings?.["ui:locale"]);
     const startTs = Date.now();
     const instanceLock = electronApp.requestSingleInstanceLock();
     if (!instanceLock) {
