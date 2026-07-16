@@ -58,6 +58,7 @@ const previewElectronApi: ElectronApi = {
     showWorkspaceAppMenu: (_workspaceId: string) => {},
     showBuilderAppMenu: (_builderId: string) => {},
     showContextMenu: (_workspaceId: string, _menu: ElectronContextMenuItem[]) => {},
+    setLocale: (_locale: string) => {},
     onContextMenuClick: (_callback: (id: string | null) => void) => {},
     onNavigate: (_callback: (url: string) => void) => {},
     onIframeNavigate: (_callback: (url: string) => void) => {},

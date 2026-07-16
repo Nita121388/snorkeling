@@ -382,6 +382,22 @@ function saveImageFileWithNativeDialog(
 }
 
 export function initIpcHandlers() {
+    // Renderer pushes a `ui:locale` change (from I18nModel.setActiveLocale).
+    // Switches the main-process i18n instance, then rebuilds the application
+    // menu so native menu text follows the new locale. See `emain-i18n.ts`.
+    electron.ipcMain.on("set-locale", (_event, locale: string) => {
+        const { setMainLocale, coerceLocale } = require("./emain-i18n") as typeof import("./emain-i18n");
+        const { makeAndSetAppMenu } = require("./emain-menu") as typeof import("./emain-menu");
+        const normalized = coerceLocale(locale);
+        fireAndForget(async () => {
+            await setMainLocale(normalized);
+            try {
+                makeAndSetAppMenu();
+            } catch (err) {
+                console.error("[i18n:main] menu rebuild after locale change failed", err);
+            }
+        });
+    });
     electron.ipcMain.on("open-external", (event, url) => {
         if (url && typeof url === "string") {
             fireAndForget(() =>

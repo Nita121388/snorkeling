@@ -1,0 +1,379 @@
+---
+sidebar_position: 99
+id: "i18n"
+title: "Internationalization (i18n)"
+---
+
+# Internationalization (i18n)
+
+Wave (and the Snorkeling fork) uses [`i18next`](https://www.i18next.com/) +
+[`react-i18next`](https://react.i18next.com/) for UI string translation. This
+document is the **single source of truth for the i18n rollout** — it records
+the established migration patterns, the architecture coordinates, the per-module
+progress, and the inventory of pre-existing TypeScript errors that **must not**
+be touched during migration (so future contributors and agents don't mislabel
+them as i18n regressions).
+
+> **Status:** Phase 0 (infrastructure) complete. Phase 1 (onboarding) complete.
+> Phase 2 (session-overview) complete. Phase 3 (tab/tabcontextmenu) complete.
+> Phase 4 (main-process i18n infrastructure) complete.
+> Other modules pending. See the [Progress](#progress) table.
+
+---
+
+## Architecture
+
+| Path | Purpose |
+|---|---|
+| `frontend/i18n/config.ts` | i18next instance + initialization. Imports resources, sets `defaultNS: "common"`, exposes `i18n` singleton and `initI18n()`. |
+| `frontend/i18n/i18next.d.ts` | Module augmentation for i18next's `CustomTypeOptions`. Every namespace must be added to `resources` here so `t("ns:key...")` keys are type-checked against the bundled English JSON. |
+| `frontend/i18n/locales/en/{ns}.json` | English resources (single source of truth for keys + types). |
+| `frontend/i18n/locales/zh/{ns}.json` | Chinese resources. Kept key-for-key in sync with `en/`. |
+| `frontend/i18n/i18next-cli.config.ts` | `i18next-cli` extraction/sync config (if/when wired in `Taskfile.yml`). |
+| `docs/docs/config.mdx` → `ui:locale` | User-facing doc for the `ui:locale` setting (`"en"` default, `"zh"` supported). |
+
+- `defaultNS: "common"` — bare `t("foo")` resolves to `common:foo`. To reach
+  another namespace, use the `ns:` prefix: `t("onboarding:init.welcomeTitle")`
+  or `useTranslation("onboarding")` then `t("init.welcomeTitle")`.
+- Translations are **eagerly bundled** (static imports of the JSON), no async
+  loading is required at runtime.
+
+---
+
+## Migration Patterns
+
+The patterns below were validated during the onboarding migration (phase 1).
+Use them verbatim for the remaining modules to keep diffs consistent and to
+keep TypeScript happy.
+
+### Pattern A — Plain literal string
+
+```tsx
+import { useTranslation } from "react-i18next";
+
+// at top of component:
+const { t } = useTranslation("onboarding");  // or useTranslation() and the "ns:" prefix
+
+// in JSX:
+{t("onboarding:init.welcomeTitle")}
+```
+
+### Pattern B — String with interpolation (REQUIRED: `<Trans>`)
+
+i18next's strict TypeScript overloads reject the 2-arg `t(key, options)` form —
+the type checker resolves it to the `t(key, defaultValue: string)` overload and
+complains the options object isn't a string. **Use `<Trans>` instead.** This is
+the canonical workaround found in `onboarding-features-footer.tsx` and
+`onboarding-upgrade-patch.tsx`:
+
+```tsx
+import { Trans, useTranslation } from "react-i18next";
+
+const { t } = useTranslation("onboarding");
+
+<Trans
+    ns={"onboarding" as const}
+    i18nKey={"onboarding:features.footer.step" as never}
+    t={t}
+    values={{ current: currentStep, total: totalSteps }}
+/>
+```
+
+Notes:
+
+- `ns={"onboarding" as const}` — narrows the namespace literal for TS.
+- `i18nKey={"onboarding:..." as never}` — the `as never` is what silences the
+  overload mismatch; it is required for *any* key with `values`.
+- `t={t}` — reuses the bound `t` from `useTranslation("onboarding")`.
+
+### Pattern C — Configuration arrays with embedded display strings
+
+Don't bury translated substrings inside data structures. Refactor the data
+to hold the **structural** values only, and let `<Trans values={{...}}/>` do the
+interpolation at render time. Concretely, from `onboarding-upgrade-patch.tsx`:
+
+```tsx
+// ❌ BEFORE: translation baked into config; `prevText` would need per-locale arrays.
+interface VersionConfig { prevText?: string; nextText?: string; ... }
+{ prevText: "Prev (v0.12.1)", nextText: "Next (v0.12.2)", ... }
+
+// ✅ AFTER: structural versions; render-time interpolation via <Trans>.
+interface VersionConfig { prevVersion?: string; nextVersion?: string; ... }
+{ prevVersion: "v0.12.1", nextVersion: "v0.12.2", ... }
+
+// render:
+< <Trans  // ← in source: written as '&lt;'
+    ns={"onboarding" as const}
+    i18nKey={"onboarding:upgradePatch.prevButton" as never}
+    t={t}
+    values={{ version: prevVersion }}
+/>
+```
+
+### Pattern D — JSX angle brackets must remain HTML entities
+
+When angle brackets appear as literal text in JSX (e.g. a `Prev` button prefixed with `<`), they must stay as HTML **entities** (`<` / `>`), not bare `<` / `>` characters. Bare angle brackets make the JSX parser treat them as tag delimiters — `error TS1003: Identifier expected.` Preserve the entities the original file used.
+This bites when programmatically rewriting strings: see the Tooling Notes
+below.
+
+### Pattern E — `aria-label` / string-attribute interpolation (template literal)
+
+For string HTML attributes like `aria-label` you can't use `<Trans>` — it
+returns JSX, not a string. Use a **template literal** of bare `t(...)`
+calls instead. The strict i18next overloads are happy here because each
+`t(key)` is the 1-arg form (no options object), which resolves to the
+returning-string overload directly. From `session-overview.tsx`:
+
+```tsx
+aria-label={`${collapsed ? t("session-overview:tab.expand") : t("session-overview:tab.collapse")} ${t("session-overview:tab.tab")} ${group.tabName}`}
+```
+
+For a single-key string attr with no interpolation tokens, just `t("ns:key")`
+suffices. The 2-arg `t(key, { interpol: ... })` form remains problematic in
+*expression-position* contexts too — when you need interpolation in a string
+attribute, prefer storing the result in a `const` first (which also satisfies
+the overloads) or refactor so `<Trans>` can render the JSX.
+
+### Pattern F — Plain `.ts` files (no React component): use the `i18n` singleton
+
+Files that aren't React components — context-menu builders, model code, pure
+TS modules — can't call `useTranslation()`. Import the `i18n` singleton from
+`@/i18n/config` and call `i18n.t("ns:key")` directly. From
+`frontend/app/tab/tabcontextmenu.ts`:
+
+```ts
+import { i18n } from "@/i18n/config";
+
+// ...
+menu.push({ label: i18n.t("tab:tab.rename"), click: () => ... });
+
+const FlagColors = [
+    { labelKey: "tab:flagColor.green", value: "#58C142" },
+    // ...
+] as const;  // ★ `as const` so labelKey is a literal union, not `string`
+
+// ...i18n.t(fc.labelKey) — type-checks against the `tab` resource shape.
+```
+
+Notes:
+- `i18n` is a **named** export (`export { i18n }`), not the default export.
+- For dynamic keys stored in a config tuple, mark the tuple `as const` so
+  TypeScript narrows the key to a literal union; otherwise `string` is
+  rejected by i18next's strict overloads (Pattern A's 1-arg form requires a
+  literal key, not `string`).
+- The singleton reads whichever locale `initI18n()` activated, so it stays
+  in sync with `useTranslation()` consumers.
+
+### Pattern G — Main process (Electron `emain/*`): separate i18next instance
+
+The renderer's `frontend/i18n/config.ts` instance pulls in `initReactI18next`,
+`i18next-http-backend`, and `i18next-browser-languagedetector` — none of which
+belong in the Electron main process (no React, no fetch, no browser). The main
+process uses a **separate** i18next instance built with `i18next.createInstance()`,
+with the **same** locale JSON files statically imported (single source of truth —
+no duplicate translations to maintain). From `emain/emain-i18n.ts`:
+
+```ts
+import { createInstance } from "i18next";
+import enCommon from "../frontend/i18n/locales/en/common.json";
+
+const instance = createInstance();
+instance.init({
+    lng: "en",
+    defaultNS: "common",
+    resources: { en: { common: enCommon } } as any,
+    initImmediate: false,
+} as any);
+
+// call site (no React):
+import { getI18nMain } from "./emain-i18n";
+getI18nMain().t("common:menu.file");
+```
+
+Notes:
+- **Synchronous init.** `initImmediate: false` + static resources = no promise.
+  `makeAndSetAppMenu()` can call `t(...)` immediately after `initI18nMain()`.
+- **Don't `init` twice.** i18next rejects a second `init` on the same instance.
+  `initI18nMain` is idempotent — repeat calls switch language via
+  `changeLanguage`, never re-init.
+- **Locale sync is push, not pull.** The renderer owns the persisted locale
+  (`ui:locale`); when it changes, `I18nModel.setActiveLocale` calls the
+  `set-locale` IPC channel via the preload `api.setLocale` bridge. The main
+  `set-locale` handler calls `setMainLocale()` then rebuilds the relevant
+  native menus (`makeAndSetAppMenu()`) — see `emain-ipc.ts`.
+- **No `useTranslation` in main.** Use `getI18nMain().t(...)` directly, or
+  the `tmew(key)` convenience wrapper.
+
+---
+
+## Main-process i18n (Phase 4)
+
+Phase 4 installs the main-process i18n infrastructure **without migrating
+any user-facing strings yet**. Goal: when later phases translate the
+application menu, dock menu, updater dialogs, etc., the runtime is already
+in place and the IPC contract is documented.
+
+Architecture (Phase 4):
+
+| Path | Role |
+|---|---|
+| `emain/emain-i18n.ts` | `initI18nMain()`, `setMainLocale()`, `getI18nMain()`, `tmew()`, `coerceLocale()`. Builds the main-process `i18next` instance from `frontend/i18n/locales/**`. |
+| `emain/emain.ts` | Calls `initI18nMain(launchSettings["ui:locale"])` early in `appMain()`, before `makeAndSetAppMenu()`. |
+| `emain/emain-ipc.ts` | `set-locale` IPC handler: `setMainLocale()` then rebuilds native menus. |
+| `emain/preload.ts` | Exposes `api.setLocale(locale)` to the renderer. |
+| `frontend/types/custom.d.ts` | `ElectronApi.setLocale` type slot. |
+| `frontend/preview/mock/preview-electron-api.ts` | Mock `setLocale` no-op for vite preview. |
+| `frontend/i18n/i18nmodel.ts` | `I18nModel.setActiveLocale` pushes to main via `window.api.setLocale`. |
+
+String migration in `emain/*` is **Phase 4b+** and follows Pattern G. The
+first expected string-bearing site is `makeAndSetAppMenu()` in
+`emain/emain-menu.ts` — left for a separate, focused commit.
+
+---
+
+## Standard steps for migrating a new module
+
+1. **Register the namespace** in `frontend/i18n/i18next.d.ts` — add
+   `import type <ns> from "./locales/en/<ns>.json";` and add
+   `<ns>: typeof <ns>` to the `resources` map in `CustomTypeOptions`.
+2. **Create resource files** `frontend/i18n/locales/en/<ns>.json` and
+   `frontend/i18n/locales/zh/<ns>.json`, keyed by section/function (e.g.
+   `{"upgradePatch": {"prevButton": "Previous ({{version}})", ...}}`).
+3. **In each target `.tsx`**, add at the top:
+   `import { Trans, useTranslation } from "react-i18next";` and inside the
+   component `const { t } = useTranslation("<ns>");`.
+4. **Replace strings**:
+   - Plain → `t("ns:section.key")` (Pattern A).
+   - With interpolation → `<Trans ... values={{...}} />` (Pattern B).
+   - Strings buried in data → refactor first, then i18n the render site
+     (Pattern C).
+   - Preserve `<` / `>` entities in JSX (Pattern D).
+5. **Update sibling artifacts**: tests, `*.preview.tsx` fixtures, mock data
+   that reference renamed fields. (Phase 1 caught `previews/onboarding.preview.tsx`
+   still passing the old `prevText` prop.)
+6. **Typecheck**: `npx tsc --noEmit -p tsconfig.json` and diff the error set
+   against the [Known baseline TS errors](#known-baseline-ts-errors) below.
+   Any *new* error not on the baseline list is an i18n regression — fix it
+   before committing. Errors that *disappear* from the baseline list are
+   bonus fixes; report them but don't bundle unrelated cleanups into the migration
+   commit.
+
+---
+
+## Known baseline TS errors
+
+These TypeScript errors predate the i18n rollout (snapshot at the start of
+Phase 1) and are **not caused by i18n migration**. Don't try to fix them as
+part of an i18n PR — file separate issues for them. The migration is complete
+for a module when its only remaining error set is a subset of this baseline.
+
+Total: **55 errors** as of phase 1 kickoff.
+
+### `FileInfo.mimetype` missing (TS2741) — 30 occurrences
+The `FileInfo` type requires `mimetype` but many call sites construct `{ path }`
+only. Affected files:
+- `frontend/app/aipanel/waveai-model.tsx` (209, 227)
+- `frontend/app/element/selection-search-in-files.ts` (235, 250)
+- `frontend/app/view/preview/file-link-navigation.ts` (226)
+- `frontend/app/view/preview/preview-directory.tsx` (905, 927)
+- `frontend/app/view/preview/preview-explorer.tsx` (358, 380)
+- `frontend/app/view/preview/preview-model.tsx` (784, 897, 1060, 1218, 1649)
+- `frontend/app/view/waveconfig/waveconfig-model.ts` (221, 326, 365, 407)
+- `frontend/preview/mock/mockfilesystem.ts` (388)
+- `frontend/preview/mock/mockwaveenv.test.ts` (36, 42, 59)
+
+### `processviewer.preview.tsx` — `numthreads` missing on `ProcessInfo` (TS2741) — 15 occurrences
+All at lines 13–27 of `frontend/preview/previews/processviewer.preview.tsx`.
+
+### `MetaType` unknown meta keys (TS2353) — 2 occurrences
+- `emain/emain-window.ts` (737): `[TabReturnWorkspaceIdMetaKey]`
+- `frontend/app/view/term/osc-handlers.ts` (140): `"agent:provider"`
+
+### `TEventProps` unknown telemetry key (TS2353) — 2 occurrences
+- `frontend/app/onboarding/onboarding-starask.tsx` (62, 74): `"onboarding:repo"`.
+  Added by the Snorkeling fork's telemetry tracking; never registered in
+  `TEventProps`. *Pre-existing, unrelated to i18n.*
+
+### `tab:returnworkspaceid` not a key of `MetaType` (TS2345) — 1 occurrence
+- `frontend/app/tab/tabcontextmenu.ts` (57)
+
+### `wos.ts` Promise type mismatch (TS2345) — 4 occurrences
+- `frontend/app/store/wos.ts` (32, 281, 329, 363): `Promise<void | Response>`
+  not assignable to `() => Promise<any>`.
+
+### `block.tsx` Ref type (TS2322) — 1 occurrence
+- `frontend/app/block/block.tsx` (315): `ConnectDropTarget` not assignable to
+  `Ref<HTMLDivElement>`.
+
+### `session-overview.tsx` undefined name (TS2304) — 1 occurrence
+- `frontend/app/session-overview/session-overview.tsx` (1250): `onDeleteBlock`
+  is referenced inside `MessageDialog` but not in its props (only `BlockRow` /
+  `TabGroupSection` declare it). The body has referenced the undefined symbol
+  since before the i18n rollout — appears to be dead/never-clicked UI since
+  the delete button lives upstream of a guard that fails open. *Pre-existing,
+  unrelated to i18n.*
+
+### `commontext-compose-modal.tsx` Promise type (TS2345) — 1 occurrence
+- `frontend/app/commontext/commontext-compose-modal.tsx` (534)
+
+### `preview-explorer.tsx` `Block.id` not in union (TS2339) — 2 occurrences
+- `frontend/app/view/preview/preview-explorer.tsx` (782, 784)
+
+### `preview-model.test.ts` `Block.title` not in union (TS2339) — 2 occurrences
+- `frontend/app/view/preview/preview-model.test.ts` (32 ×2)
+
+### `session-debug.test.ts` Block conversion (TS2352) — 1 occurrence
+- `frontend/app/view/term/session-debug.test.ts` (24)
+
+### `defaultconfig.ts` missing `version`/`buildtime` (TS2739) — 1 occurrence
+- `frontend/preview/mock/defaultconfig.ts` (12)
+
+---
+
+## Progress
+
+A module is **done** when each user-facing English string in its `.tsx` files
+flows through `t(...)` or `<Trans>`, both `en/` and `zh/` resource files are
+updated, and the only tsc errors remaining in those files are on the baseline
+list above. Update this table as you complete modules.
+
+| Module / Namespace | Status | Notes |
+|---|---|---|
+| `common` | ✓ done (Phase 0) | Bootstrap minimal; shared keys land here as they're found. |
+| `settings` | ✓ done (Phase 0) | Sample migration; documented in `docs/docs/config.mdx`. |
+| `onboarding` | ✓ done (Phase 1) | All `frontend/app/onboarding/*.tsx` + `frontend/preview/previews/onboarding.preview.tsx`. |
+| `preview/*` | ☐ pending | Preview fixtures; onboarding.preview already partly done. |
+| `emain` | ✓ Phase 4 infra (no strings migrated) | Main-process i18n instance booted from `ui:locale`; `set-locale` IPC channel + `api.setLocale` preload bridge; renderer `I18nModel.setActiveLocale` pushes to main + triggers menu rebuild. See [Main-process i18n](#main-process-i18n-phase-4). |
+| `commontext` | ☐ pending | |
+| `aipanel` / `waveai` | ☐ pending | |
+| `block` | ☐ pending | |
+| `store` | ☐ pending | |
+| `tab` / `tabcontextmenu` | ✓ done (Phase 3) | `frontend/app/tab/tab.tsx`, `tabbar.tsx`, `vtab.tsx`, `vtabbar.tsx`, `tabcontent.tsx`, `workspaceswitcher.tsx`, `tabcontextmenu.ts`. `tabcontextmenu.ts` is plain TS — uses `i18n.t(...)` (singleton import), not `useTranslation`. One flag-color menu uses a `Tuple` (`as const`) so `i18n.t(fc.labelKey)` resolves to a literal key. One baseline error persists (see baseline list). |
+| `session-overview` | ✓ done (Phase 2) | `frontend/app/session-overview/session-overview.tsx`. One baseline error persists (see baseline list). |
+| `view/preview` (model/directory/explorer) | ☐ pending | |
+| `view/term` | ☐ pending | |
+| `view/waveconfig` (model) | ☐ pending | |
+| `view/*` (others) | ☐ pending | |
+
+---
+
+## Tooling notes (gotchas encountered)
+
+- **`<` / `>` are literal ASCII entities in the source file**, even though
+  the Read tool and most editors render them as `<` / `>`. Editing with `Edit`
+  / `sed` against the *rendered* character (`<`) won't match the bytes (`<`
+  is 4 chars). When scripting replacements programmatically, build the entity
+  string with `chr(0x26) + "lt;"` rather than writing the `<` entity inline — some
+  shells and Perl invocations will otherwise interpret `&` `;` as metacharacters
+  and produce mangled text like `&{lt};`. Verified workflow:
+
+  ```python
+  amp = chr(0x26)  # '&'
+  lt = amp + "lt;"
+  src = src.replace("< {t(\"ns:key\", x)}", lt + " {t(\"ns:key\", x)}")
+  ```
+
+- **`Trans` `i18nKey="...:..." as never` is required** whenever `values` are
+  passed; the `as never` is the documented escape hatch from i18next's strict
+  typed `t()` overloads. See Pattern B above and
+  `frontend/app/onboarding/onboarding-features-footer.tsx` for a reference impl.
