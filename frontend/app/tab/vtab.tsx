@@ -5,6 +5,7 @@ import { refocusNode } from "@/app/store/global";
 import { validateCssColor } from "@/util/color-validator";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { TabBadges } from "./tabbadges";
 
 const RenameFocusDelayMs = 50;
@@ -56,6 +57,7 @@ export function VTab({
     onHoverChanged,
     renameRef,
 }: VTabProps) {
+    const { t } = useTranslation("tab");
     const [originalName, setOriginalName] = useState(tab.name);
     const [isEditable, setIsEditable] = useState(false);
     const editableRef = useRef<HTMLDivElement>(null);
@@ -200,7 +202,7 @@ export function VTab({
                 )}
                 contentEditable={isEditable}
                 role="textbox"
-                aria-label="Tab name"
+                aria-label={t("tab:tab.nameAria")}
                 aria-readonly={!isEditable}
                 onBlur={handleBlur}
                 onKeyDown={handleKeyDown}
@@ -219,7 +221,7 @@ export function VTab({
                         event.stopPropagation();
                         onClose();
                     }}
-                    aria-label="Close tab"
+                    aria-label={t("tab:tab.closeAria")}
                 >
                     <i className="fa fa-solid fa-xmark" />
                 </button>

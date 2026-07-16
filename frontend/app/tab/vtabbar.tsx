@@ -19,6 +19,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -200,6 +201,7 @@ function VTabWrapper({
 }
 
 export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -514,11 +516,11 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                 onClick={() => env.electron.createTab()}
                 onMouseEnter={() => setIsNewTabHovered(true)}
                 onMouseLeave={() => setIsNewTabHovered(false)}
-                aria-label="New Tab"
+                aria-label={t("tab:tab.newTab")}
             >
                 <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-transparent transition-colors group-hover:bg-hover" />
                 <i className="fa fa-solid fa-plus" style={{ fontSize: "10px" }} />
-                <span>New Tab</span>
+                <span>{t("tab:tab.newTab")}</span>
             </button>
         </div>
     );

@@ -13,6 +13,7 @@ import * as WOS from "@/store/wos";
 import { atom, useAtomValue } from "jotai";
 import * as React from "react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 const tileGapSizeAtom = atom((get) => {
     const settings = get(atoms.settingsAtom);
@@ -20,6 +21,7 @@ const tileGapSizeAtom = atom((get) => {
 });
 
 const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPadding?: boolean }) => {
+    const { t } = useTranslation("tab");
     const oref = useMemo(() => WOS.makeORef("tab", tabId), [tabId]);
     const loadingAtom = useMemo(() => WOS.getWaveObjectLoadingAtom(oref), [oref]);
     const tabLoading = useAtomValue(loadingAtom);
@@ -54,9 +56,9 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
     let innerContent;
 
     if (tabLoading) {
-        innerContent = <CenteredDiv>Tab Loading</CenteredDiv>;
+        innerContent = <CenteredDiv>{t("tab:tab.loading")}</CenteredDiv>;
     } else if (!tabData) {
-        innerContent = <CenteredDiv>Tab Not Found</CenteredDiv>;
+        innerContent = <CenteredDiv>{t("tab:tab.notFound")}</CenteredDiv>;
     } else if (tabData?.blockids?.length == 0) {
         innerContent = null;
     } else {

@@ -1,0 +1,37 @@
+{
+    "flagColor": {
+        "blue": "Blue",
+        "green": "Green",
+        "orange": "Orange",
+        "purple": "Purple",
+        "red": "Red",
+        "teal": "Teal",
+        "yellow": "Yellow"
+    },
+    "tab": {
+        "addTab": "Add Tab",
+        "backgroundDefault": "Default",
+        "backgrounds": "Backgrounds",
+        "closeTab": "Close Tab",
+        "copyTabId": "Copy TabId",
+        "flagNone": "None",
+        "flagTab": "Flag Tab",
+        "loading": "Tab Loading",
+        "moveTabBack": "Move Tab Back",
+        "moveToNewWindow": "Move Tab to New Window",
+        "nameAria": "Tab name",
+        "closeAria": "Close tab",
+        "newTab": "New Tab",
+        "notFound": "Tab Not Found",
+        "rename": "Rename Tab"
+    },
+    "tabBar": {
+        "left": "Left",
+        "position": "Tab Bar Position",
+        "top": "Top"
+    },
+    "workspace": {
+        "createNew": "Create new workspace",
+        "save": "Save workspace"
+    }
+}
