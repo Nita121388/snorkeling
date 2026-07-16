@@ -1,0 +1,37 @@
+{
+    "flagColor": {
+        "blue": "蓝色",
+        "green": "绿色",
+        "orange": "橙色",
+        "purple": "紫色",
+        "red": "红色",
+        "teal": "青色",
+        "yellow": "黄色"
+    },
+    "tab": {
+        "addTab": "添加标签页",
+        "backgroundDefault": "默认",
+        "backgrounds": "背景",
+        "closeTab": "关闭标签页",
+        "copyTabId": "复制标签页 ID",
+        "flagNone": "无",
+        "flagTab": "标记标签页",
+        "loading": "标签页加载中",
+        "moveTabBack": "移回标签页",
+        "moveToNewWindow": "将标签页移至新窗口",
+        "nameAria": "标签页名称",
+        "closeAria": "关闭标签页",
+        "newTab": "新建标签页",
+        "notFound": "未找到标签页",
+        "rename": "重命名标签页"
+    },
+    "tabBar": {
+        "left": "左侧",
+        "position": "标签栏位置",
+        "top": "顶部"
+    },
+    "workspace": {
+        "createNew": "创建新工作区",
+        "save": "保存工作区"
+    }
+}

@@ -1,0 +1,66 @@
+{
+  "agentStatus": {
+    "enable": "启用 Agent 状态",
+    "enabledFor": "已为 {{provider}} 启用 Agent 状态。",
+    "enabling": "正在启用…",
+    "failedToEnable": "启用 Agent 状态失败。",
+    "updated": "已更新：{{path}}"
+  },
+  "block": {
+    "deleteBlock": "删除区块",
+    "deleteBlockAriaLabel": "删除区块",
+    "jumpToBlock": "跳转到区块",
+    "jumpToBlockBtn": "跳转到区块",
+    "noBlocks": "无区块",
+    "noPreview": "无预览"
+  },
+  "common": {
+    "agent": "Agent",
+    "ai": "AI",
+    "close": "关闭",
+    "openOverview": "打开概览",
+    "overview": "概览",
+    "overviewFilters": "概览筛选",
+    "refreshOverview": "刷新概览",
+    "untitled": "未命名"
+  },
+  "filters": {
+    "agents": "Agent",
+    "hideTabsNotOpened": "隐藏本次启动未打开的标签页",
+    "messages": "消息",
+    "noAgentBlocksMatch": "没有符合当前筛选条件的 Agent 区块。",
+    "noTabsInWorkspace": "此工作区中没有标签页。",
+    "noTabsMatch": "没有符合当前筛选条件的标签页。",
+    "openedTabs": "已打开的标签页",
+    "showOnlyAgent": "仅显示 Agent 与 Agent 终端区块"
+  },
+  "message": {
+    "noteHint": "暂未存储消息备注。此版本请使用会话备注。"
+  },
+  "note": {
+    "addPlaceholder": "添加备注",
+    "deleteSessionFile": "删除会话文件",
+    "editSessionNote": "编辑会话备注",
+    "loadingNote": "正在加载备注…",
+    "noteLabel": "备注",
+    "openNote": "打开备注",
+    "openNoteFullscreen": "打开备注",
+    "openSessionDetails": "打开会话详情",
+    "saveFailed": "保存失败",
+    "saved": "已保存",
+    "saving": "正在保存…",
+    "sessionNotFound": "未找到会话。",
+    "unsavedChanges": "有未保存的更改"
+  },
+  "session": {
+    "loadingSession": "正在加载会话…",
+    "noSessionId": "无会话 ID",
+    "notification": "通知"
+  },
+  "tab": {
+    "collapse": "折叠",
+    "expand": "展开",
+    "tab": "标签页",
+    "tabAriaLabel": "{{action}} 标签页 {{tabName}}"
+  }
+}

@@ -42,6 +42,8 @@ import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { agentStatusHookProvidersForBlocks } from "./session-overview-agent-status";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
@@ -244,6 +246,7 @@ function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
 }
 
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
+    const { t } = useTranslation("session-overview");
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
     const overviewAtom = useMemo(
@@ -263,7 +266,7 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
                         const sessionId = resolveAgentSessionIdFromMeta(meta).trim();
                         result.push({
                             tabId,
-                            tabName: tab.name ?? "Untitled",
+                            tabName: tab.name ?? t("session-overview:common.untitled"),
                             blockId,
                             block,
                             view,
@@ -459,6 +462,7 @@ function isTransientFetchErrorMessage(message: string): boolean {
 }
 
 function useAgentStatusHookInstallState(providers: string[], active: boolean) {
+    const { t } = useTranslation("session-overview");
     const service = useMemo(() => new BlockServiceType(), []);
     const providersKey = providers.join("\n");
     const providersForHook = useMemo(() => providersKey.split("\n").filter(Boolean), [providersKey]);
@@ -519,8 +523,24 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
                 modalsModel.pushModal("MessageModal", {
                     children: (
                         <div>
-                            <div>Agent status enabled for {formatAgentProvider(provider)}.</div>
-                            {updatedPath ? <div>Updated: {updatedPath}</div> : null}
+                            <div>
+                                <Trans
+                                    ns={"session-overview" as const}
+                                    i18nKey={"session-overview:agentStatus.enabledFor" as never}
+                                    t={t}
+                                    values={{ provider: formatAgentProvider(provider) }}
+                                />
+                            </div>
+                            {updatedPath ? (
+                                <div>
+                                    <Trans
+                                        ns={"session-overview" as const}
+                                        i18nKey={"session-overview:agentStatus.updated" as never}
+                                        t={t}
+                                        values={{ path: updatedPath }}
+                                    />
+                                </div>
+                            ) : null}
                         </div>
                     ),
                 });
@@ -536,7 +556,7 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
                 modalsModel.pushModal("MessageModal", {
                     children: (
                         <div>
-                            <div>Failed to enable Agent Status.</div>
+                            <div>{t("session-overview:agentStatus.failedToEnable")}</div>
                             <div>{errorMessage}</div>
                         </div>
                     ),
@@ -939,12 +959,13 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
 }
 
 function SessionOverviewBadgeIcon({ badge, className }: { badge: Badge | null; className?: string }) {
+    const { t } = useTranslation("session-overview");
     if (badge == null) return null;
     return (
         <span
             className={cn("session-overview-badge-icon", className)}
             style={{ color: badge.color || "#fbbf24" }}
-            title="Notification"
+            title={t("session-overview:session.notification")}
         >
             <i className={makeIconClass(badge.icon, true, { defaultIcon: "circle-small" })} />
         </span>
@@ -1022,6 +1043,7 @@ function useCurrentOverviewBlockVisible(blockId: string | null | undefined): boo
 }
 
 function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean }) {
+    const { t } = useTranslation("session-overview");
     const model = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
     const focused = jotai.useAtomValue(model.isFocusedAtom);
@@ -1058,28 +1080,28 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
 
     if (vertical) {
         return (
-            <Tooltip content="Open Overview" placement="right" hideOnClick divClassName="flex">
+            <Tooltip content={t("session-overview:common.openOverview")} placement="right" hideOnClick divClassName="flex">
                 <button
                     type="button"
                     className={cn("session-overview-vbutton", focused && "is-open")}
                     onClick={() => void model.open()}
-                    aria-label="Open Overview"
+                    aria-label={t("session-overview:common.openOverview")}
                 >
                     {icon}
-                    <span>Overview</span>
+                    <span>{t("session-overview:common.overview")}</span>
                     {badge}
                 </button>
             </Tooltip>
         );
     }
     return (
-        <Tooltip content="Open Overview" placement="bottom" hideOnClick divClassName="flex">
+        <Tooltip content={t("session-overview:common.openOverview")} placement="bottom" hideOnClick divClassName="flex">
             <button
                 type="button"
                 className={cn("session-overview-tabbutton", focused && "is-open")}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={() => void model.open()}
-                aria-label="Open Overview"
+                aria-label={t("session-overview:common.openOverview")}
             >
                 {icon}
                 {badge}
@@ -1089,6 +1111,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
 }
 
 function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
+    const { t } = useTranslation("session-overview");
     const settings = jotai.useAtomValue(atoms.settingsAtom);
     const open = jotai.useAtomValue(NoteBlockOpenAtom);
     const noteDir = normalizeNoteDirectory(settings?.[NoteDirectorySettingKey] ?? DefaultNoteDirectory);
@@ -1144,10 +1167,10 @@ function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
                     type="button"
                     className={cn("session-overview-vbutton", open && "is-open")}
                     onClick={toggleNoteBlock}
-                    aria-label="Open Note"
+                    aria-label={t("session-overview:note.openNote")}
                 >
                     {icon}
-                    <span>Note</span>
+                    <span>{t("session-overview:note.noteLabel")}</span>
                 </button>
             </Tooltip>
         );
@@ -1165,7 +1188,7 @@ function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
                 className={cn("session-overview-tabbutton", open && "is-open")}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={toggleNoteBlock}
-                aria-label="Open Note"
+                aria-label={t("session-overview:note.openNote")}
             >
                 {icon}
             </button>
@@ -1186,6 +1209,7 @@ function MessageDialog({
     onJump: () => void;
     onEditSessionNote: (block: OverviewBlock) => void;
 }) {
+    const { t } = useTranslation("session-overview");
     if (message == null || block == null) return null;
     return (
         <div className="session-overview-message-backdrop" onClick={onClose}>
@@ -1193,31 +1217,31 @@ function MessageDialog({
                 <div className="session-overview-message-header">
                     <div className="min-w-0">
                         <div className="session-overview-message-title">
-                            {message.role === "assistant" ? "AI" : message.role}
+                            {message.role === "assistant" ? t("session-overview:common.ai") : message.role}
                         </div>
                         <div className="session-overview-message-subtitle">
                             {block.title} · #{message.seq}
                         </div>
                     </div>
-                    <button type="button" className="session-overview-icon-button" onClick={onClose} aria-label="Close">
+                    <button type="button" className="session-overview-icon-button" onClick={onClose} aria-label={t("session-overview:common.close")}>
                         <i className={makeIconClass("xmark", false)} />
                     </button>
                 </div>
                 <div className="session-overview-message-body">{message.text}</div>
                 <div className="session-overview-message-note">
                     <i className={makeIconClass("tag", false)} />
-                    <span>Message note is not stored yet. Use the session note for this version.</span>
+                    <span>{t("session-overview:message.noteHint")}</span>
                     {block.sessionId ? (
                         <button
                             type="button"
                             onClick={() => onEditSessionNote(block)}
-                            aria-label="Edit session note"
-                            title="Edit session note"
+                            aria-label={t("session-overview:note.editSessionNote")}
+                            title={t("session-overview:note.editSessionNote")}
                         >
                             <i className={makeIconClass("tag", false)} />
                         </button>
                     ) : null}
-                    <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip content={t("session-overview:block.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
                             className="session-overview-block-x-button"
@@ -1225,7 +1249,7 @@ function MessageDialog({
                                 event.stopPropagation();
                                 onDeleteBlock(block);
                             }}
-                            aria-label={`Delete block ${block.title}`}
+                            aria-label={`${t("session-overview:block.deleteBlockAriaLabel")} ${block.title}`}
                         >
                             <i className={makeIconClass("xmark", false)} />
                         </button>
@@ -1234,7 +1258,7 @@ function MessageDialog({
                 <div className="session-overview-message-actions">
                     <button type="button" onClick={onJump}>
                         <i className={makeIconClass("location-crosshairs", false)} />
-                        <span>Jump to Block</span>
+                        <span>{t("session-overview:block.jumpToBlockBtn")}</span>
                     </button>
                 </div>
             </div>
@@ -1255,13 +1279,14 @@ function MessageSquares({
     unreadText: string;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
+    const { t } = useTranslation("session-overview");
     if (!block.sessionId) {
-        return <div className="session-overview-muted">No session id</div>;
+        return <div className="session-overview-muted">{t("session-overview:session.noSessionId")}</div>;
     }
     if (detailState == null) {
         return (
             <div className="session-overview-message-strip">
-                <span className="session-overview-muted">Loading session...</span>
+                <span className="session-overview-muted">{t("session-overview:session.loadingSession")}</span>
                 <i className={cn(makeIconClass("spinner", false), "session-overview-loading-icon")} />
             </div>
         );
@@ -1271,14 +1296,14 @@ function MessageSquares({
             return <div className="session-overview-muted">{detailState.error}</div>;
         }
         if (isSessionTransientFetchPendingMessage(detailState.error)) {
-            return <div className="session-overview-muted">Loading session...</div>;
+            return <div className="session-overview-muted">{t("session-overview:session.loadingSession")}</div>;
         }
         return <div className="session-overview-error">{detailState.error}</div>;
     }
     const messages = readableMessages(detailState?.detail);
     const visibleMessages = messages.slice(-limit);
     if (messages.length === 0 && !detailState?.loading) {
-        return <div className="session-overview-muted">{unreadText || "No preview"}</div>;
+        return <div className="session-overview-muted">{unreadText || t("session-overview:block.noPreview")}</div>;
     }
     return (
         <div className="session-overview-message-strip">
@@ -1308,6 +1333,7 @@ function MessageSquares({
 
 const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHandle, OverviewSessionNoteEditorProps>(
     function OverviewSessionNoteEditor({ block, initialSummary, onClose }, ref) {
+        const { t } = useTranslation("session-overview");
         const service = useMemo(() => new AISessionsServiceType(), []);
         const hydratedSummary =
             initialSummary != null && sessionMatchesSummary(block.sessionId, initialSummary) ? initialSummary : null;
@@ -1517,13 +1543,13 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
         const title = summary?.title || summary?.id || block.title;
         const statusText =
             saveStatus === "saving"
-                ? "Saving..."
+                ? t("session-overview:note.saving")
                 : saveStatus === "saved"
-                  ? "Saved"
+                  ? t("session-overview:note.saved")
                   : saveStatus === "error"
-                    ? "Save failed"
+                    ? t("session-overview:note.saveFailed")
                     : !noteUnchanged
-                      ? "Unsaved changes"
+                      ? t("session-overview:note.unsavedChanges")
                       : "";
 
         return (
@@ -1537,17 +1563,17 @@ const OverviewSessionNoteEditor = React.forwardRef<OverviewSessionNoteEditorHand
                 {loading && summary == null ? (
                     <div className="session-overview-note-editor-loading">
                         <i className={makeIconClass("spinner", false)} />
-                        <span>Loading note...</span>
+                        <span>{t("session-overview:note.loadingNote")}</span>
                     </div>
                 ) : summary == null ? (
-                    <div className="session-overview-note-editor-error">{error || "Session not found."}</div>
+                    <div className="session-overview-note-editor-error">{error || t("session-overview:note.sessionNotFound")}</div>
                 ) : (
                     <>
                         {error ? <div className="session-overview-note-editor-error">{error}</div> : null}
                         <textarea
                             ref={inputRef}
                             className="session-overview-note-editor-input"
-                            placeholder="Add a note"
+                            placeholder={t("session-overview:note.addPlaceholder")}
                             value={noteDraft}
                             spellCheck={false}
                             onChange={(event) => {
@@ -1606,6 +1632,7 @@ function CompactBlockIcon({
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
 }) {
+    const { t } = useTranslation("session-overview");
     const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
     const isCurrent = block.blockId === currentBlockId;
     const viewName = blockViewToName(block.view);
@@ -1636,7 +1663,7 @@ function CompactBlockIcon({
                 </div>
                 <div className="session-overview-compact-actions">
                     <Tooltip
-                        content="Jump to block"
+                        content={t("session-overview:block.jumpToBlock")}
                         placement="top"
                         hideOnClick
                         divClassName="session-overview-block-jump-wrap"
@@ -1654,7 +1681,7 @@ function CompactBlockIcon({
                         </button>
                     </Tooltip>
                     {block.sessionId ? (
-                        <Tooltip content="Delete session file" placement="top" hideOnClick divClassName="inline-flex">
+                        <Tooltip content={t("session-overview:note.deleteSessionFile")} placement="top" hideOnClick divClassName="inline-flex">
                             <button
                                 type="button"
                                 className="session-overview-block-action-button danger"
@@ -1668,7 +1695,7 @@ function CompactBlockIcon({
                             </button>
                         </Tooltip>
                     ) : null}
-                    <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip content={t("session-overview:block.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
                             className="session-overview-block-x-button"
@@ -1676,7 +1703,7 @@ function CompactBlockIcon({
                                 event.stopPropagation();
                                 onDeleteBlock(block);
                             }}
-                            aria-label={`Delete block ${block.title}`}
+                            aria-label={`${t("session-overview:block.deleteBlockAriaLabel")} ${block.title}`}
                         >
                             <i className={makeIconClass("xmark", false)} />
                         </button>
@@ -1726,6 +1753,7 @@ function BlockRow({
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
+    const { t } = useTranslation("session-overview");
     const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
     const detail = detailState?.detail;
     const summary = noteSummary ?? detail?.summary ?? null;
@@ -1752,7 +1780,7 @@ function BlockRow({
                 <span className="session-overview-block-text">
                     <span className="session-overview-block-title">{block.title}</span>
                     <span className="session-overview-block-meta">
-                        {block.isAgentLike ? "Agent" : blockViewToName(block.view)}
+                        {block.isAgentLike ? t("session-overview:common.agent") : blockViewToName(block.view)}
                         {block.isAgentLike && block.agentProvider
                             ? ` · ${formatAgentProvider(block.agentProvider)}`
                             : ""}
@@ -1781,7 +1809,7 @@ function BlockRow({
                 ) : null}
             </div>
             <div className="session-overview-block-main-x">
-                <Tooltip content="Delete block" placement="top" hideOnClick divClassName="inline-flex">
+                <Tooltip content={t("session-overview:block.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
                     <button
                         type="button"
                         className="session-overview-block-x-button"
@@ -1797,7 +1825,7 @@ function BlockRow({
             </div>
             <div className="session-overview-block-actions">
                 {block.isAgentLike && block.sessionId ? (
-                    <Tooltip content="Edit session note" placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip content={t("session-overview:note.editSessionNote")} placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
                             className={cn(
@@ -1816,7 +1844,7 @@ function BlockRow({
                     </Tooltip>
                 ) : null}
                 {block.isAgentLike && block.sessionId ? (
-                    <Tooltip content="Open session details" placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip content={t("session-overview:note.openSessionDetails")} placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
                             className="session-overview-block-action-button"
@@ -1831,7 +1859,7 @@ function BlockRow({
                     </Tooltip>
                 ) : null}
                 <Tooltip
-                    content="Jump to block"
+                    content={t("session-overview:block.jumpToBlock")}
                     placement="top"
                     hideOnClick
                     divClassName="session-overview-block-jump-wrap"
@@ -1849,7 +1877,7 @@ function BlockRow({
                     </button>
                 </Tooltip>
                 {block.sessionId ? (
-                    <Tooltip content="Delete session file" placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip content={t("session-overview:note.deleteSessionFile")} placement="top" hideOnClick divClassName="inline-flex">
                         <button
                             type="button"
                             className="session-overview-block-action-button danger"
@@ -1919,6 +1947,7 @@ function TabGroupSection({
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
 }) {
+    const { t } = useTranslation("session-overview");
     const tabBadges = jotai.useAtomValue(getTabBadgeAtom(group.tabId));
     const groupAgentStatuses = group.blocks
         .map((block) => agentStatuses[block.blockId])
@@ -1931,7 +1960,7 @@ function TabGroupSection({
                     className="session-overview-tab-toggle"
                     onClick={onToggleCollapsed}
                     aria-expanded={!collapsed}
-                    aria-label={`${collapsed ? "Expand" : "Collapse"} tab ${group.tabName}`}
+                    aria-label={`${collapsed ? t("session-overview:tab.expand") : t("session-overview:tab.collapse")} ${t("session-overview:tab.tab")} ${group.tabName}`}
                 >
                     <i
                         className={cn(
@@ -1957,7 +1986,7 @@ function TabGroupSection({
             {!collapsed ? (
                 <div className="session-overview-block-list">
                     {group.blocks.length === 0 ? (
-                        <div className="session-overview-muted">No blocks</div>
+                        <div className="session-overview-muted">{t("session-overview:block.noBlocks")}</div>
                     ) : (
                         group.blocks.map((block) =>
                             shouldShowFullOverviewBlock(block) ? (
@@ -2006,6 +2035,7 @@ function TabGroupSection({
 }
 
 function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): TabGroup[] {
+    const { t } = useTranslation("session-overview");
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
     const tabGroupsAtom = useMemo(
@@ -2015,7 +2045,7 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
                     const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
                     return {
                         tabId,
-                        tabName: tab?.name ?? "Untitled",
+                        tabName: tab?.name ?? t("session-overview:common.untitled"),
                         blocks: blocks.filter((block) => block.tabId === tabId),
                     };
                 })
@@ -2026,6 +2056,7 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
 }
 
 function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOverviewViewModel>) {
+    const { t } = useTranslation("session-overview");
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
     const activeTabId = jotai.useAtomValue(atoms.staticTabId);
@@ -2287,18 +2318,18 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         return block.isAgentLike && updatedAtMs > 0 && updatedAtMs > (viewedAt[block.blockId] ?? 0);
     }).length;
     const emptyMessage = agentsOnly
-        ? "No agent blocks match the current filters."
-        : "No tabs match the current filters.";
+        ? t("session-overview:filters.noAgentBlocksMatch")
+        : t("session-overview:filters.noTabsMatch");
     const agentSummary = !shouldShowAgentAggregate(workspaceAgentStatuses)
         ? ""
         : ` · ${aggregateStatusLabel(workspaceAgentAggregate)}`;
 
     return (
         <>
-            <div className="session-overview-panel" aria-label="Overview">
+            <div className="session-overview-panel" aria-label={t("session-overview:common.overview")}>
                 <div className="session-overview-header">
                     <div>
-                        <div className="session-overview-title">Overview</div>
+                        <div className="session-overview-title">{t("session-overview:common.overview")}</div>
                         <div className="session-overview-subtitle">
                             {displayedBlockCount} of {blocks.length} blocks · {unreadCount} unread{agentSummary}
                             {agentStatusHookInstall.error ? (
@@ -2325,33 +2356,33 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                         false
                                     )}
                                 />
-                                <span>{agentStatusHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
+                                <span>{agentStatusHookInstall.installing ? t("session-overview:agentStatus.enabling") : t("session-overview:agentStatus.enable")}</span>
                             </button>
                         ) : null}
-                        <div className="session-overview-filter-group" aria-label="Overview filters">
+                        <div className="session-overview-filter-group" aria-label={t("session-overview:common.overviewFilters")}>
                             <button
                                 type="button"
                                 className={cn("session-overview-filter-button", hideUnopenedTabs && "is-active")}
                                 onClick={() => overviewModel.setHideUnopenedTabs(!hideUnopenedTabs)}
                                 aria-pressed={hideUnopenedTabs}
-                                title="Hide tabs not opened this launch"
+                                title={t("session-overview:filters.hideTabsNotOpened")}
                             >
                                 <i className={makeIconClass("eye-slash", false)} />
-                                <span>Opened Tabs</span>
+                                <span>{t("session-overview:filters.openedTabs")}</span>
                             </button>
                             <button
                                 type="button"
                                 className={cn("session-overview-filter-button", agentsOnly && "is-active")}
                                 onClick={() => overviewModel.setAgentsOnly(!agentsOnly)}
                                 aria-pressed={agentsOnly}
-                                title="Show only agent and agent terminal blocks"
+                                title={t("session-overview:filters.showOnlyAgent")}
                             >
                                 <i className={makeIconClass("robot", false)} />
-                                <span>Agents</span>
+                                <span>{t("session-overview:filters.agents")}</span>
                             </button>
                         </div>
                         <label className="session-overview-limit">
-                            <span>Messages</span>
+                            <span>{t("session-overview:filters.messages")}</span>
                             <input
                                 type="number"
                                 min={5}
@@ -2365,7 +2396,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 <div className="session-overview-body">
                     {displayedTabGroups.length === 0 ? (
                         <div className="session-overview-empty">
-                            {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}
+                            {tabGroups.length === 0 ? t("session-overview:filters.noTabsInWorkspace") : emptyMessage}
                         </div>
                     ) : (
                         displayedTabGroups.map((group) => (
@@ -2499,7 +2530,7 @@ export class SessionOverviewViewModel implements ViewModel {
             {
                 elemtype: "iconbutton",
                 icon: "rotate-right",
-                title: "Refresh overview",
+                title: i18n.t("session-overview:common.refreshOverview"),
                 click: (e) => {
                     e.stopPropagation();
                     this.refresh();

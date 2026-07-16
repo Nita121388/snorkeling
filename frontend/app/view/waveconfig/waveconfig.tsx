@@ -13,12 +13,14 @@ import { cn } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import { memo, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ConfigSidebarProps {
     model: WaveConfigViewModel;
 }
 
 const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
+    const { t } = useTranslation("common");
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const setIsMenuOpen = useSetAtom(model.isMenuOpenAtom);
     const configFiles = model.getConfigFiles();
@@ -35,7 +37,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
     return (
         <div className="flex flex-col w-48 border-r border-border @w600:h-full @max-w600:absolute @max-w600:left-0.5 @max-w600:top-0 @max-w600:bottom-0.5 @max-w600:z-10 @max-w600:bg-background @max-w600:shadow-xl @max-w600:rounded-bl">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border @w600:hidden">
-                <span className="font-semibold">Config Files</span>
+                <span className="font-semibold">{t("common:app.title")}</span>
                 <button
                     onClick={() => setIsMenuOpen(false)}
                     className="hover:bg-secondary/50 rounded p-1 cursor-pointer transition-colors"
@@ -100,6 +102,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
 ConfigSidebar.displayName = "ConfigSidebar";
 
 const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigViewModel>) => {
+    const { t } = useTranslation("common");
     const env = useWaveEnv<WaveConfigEnv>();
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const [fileContent, setFileContent] = useAtom(model.fileContentAtom);
@@ -190,7 +193,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                         {selectedFile.name}
                                     </div>
                                     {selectedFile.docsUrl && (
-                                        <Tooltip content="View documentation">
+                                        <Tooltip content={t("common:docs.viewDocs")}>
                                             <a
                                                 href={`${selectedFile.docsUrl}?ref=waveconfig`}
                                                 target="_blank"
@@ -223,7 +226,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                                             : "bg-accent/80 text-primary hover:bg-accent cursor-pointer"
                                                     }`}
                                                 >
-                                                    {isSaving ? "Saving..." : "Save"}
+                                                    {isSaving ? t("common:docs.saving") : t("common:docs.save")}
                                                 </button>
                                             </Tooltip>
                                         </>

@@ -12,6 +12,7 @@ import { fireAndForget } from "@/util/util";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { makeORef } from "../store/wos";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import "./tab.scss";
@@ -59,6 +60,7 @@ interface TabVProps {
 }
 
 const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
+    const { t } = useTranslation("tab");
     const {
         tabId,
         tabName,
@@ -220,7 +222,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                     className="ghost grey close"
                     onClick={onClose}
                     onMouseDown={handleMouseDownOnClose}
-                    title="Close Tab"
+                    title={t("tab:tab.closeTab")}
                 >
                     <i className="fa fa-solid fa-xmark" />
                 </Button>

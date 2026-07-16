@@ -380,6 +380,14 @@ tasks:
             - "pkg/**/*.go"
         # don't add generates key (otherwise will always execute)
 
+    i18n:scan:
+        desc: Scan source for i18next keys and report missing ones in resources.
+        cmd: cd frontend && node ../node_modules/.bin/i18next-cli scan --config i18n/i18next-cli.config.ts || echo "(i18next-cli scan is best-effort)"
+
+    i18n:sync:
+        desc: Sync extracted i18next keys into locale resources (en/zh).
+        cmd: cd frontend && node ../node_modules/.bin/i18next-cli sync --config i18n/i18next-cli.config.ts
+
     outdated:
         desc: Check for outdated packages using npm-check-updates.
         cmd: npx npm-check-updates@latest
