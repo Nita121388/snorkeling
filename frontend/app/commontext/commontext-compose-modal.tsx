@@ -278,6 +278,38 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
+    const handleListItemEdit = (item: CommonTextItem) => {
+        openCommonTextSaveDialog({
+            existingId: item.id,
+            text: item.text,
+            title: item.title,
+        });
+    };
+
+    const handleListItemSend = (item: CommonTextItem) => {
+        if (focusedTermBlockId == null) {
+            setStatus("No terminal focused", "err");
+            return;
+        }
+        const ok = sendTextToFocusedTerm(item.text, focusedTermBlockId);
+        if (ok) {
+            setStatus("Sent to focused terminal", "ok");
+            fireAndForget(() => recordCommonTextUse(item.id));
+        }
+    };
+
+    const handleListItemDelete = async (item: CommonTextItem) => {
+        if (!window.confirm("Delete this common text?")) {
+            return;
+        }
+        try {
+            await deleteCommonTextItem(item.id);
+            setStatus("Deleted", "ok");
+        } catch (err) {
+            setStatus(`Delete failed: ${(err as Error).message ?? "unknown"}`, "err");
+        }
+    };
+
     const handleSaveDialog = () => {
         const text = state.editor;
         if (text.trim() === "") {
@@ -559,17 +591,62 @@ const CommonTextComposeModal = memo(() => {
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        type="button"
-                                        title="Copy this text"
-                                        className="shrink-0 self-start pt-0.5 bg-transparent border-0 text-secondary hover:text-accent transition-[color,opacity] duration-150 cursor-pointer opacity-0 group-hover:opacity-100"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            fireAndForget(handleListItemCopy(item));
-                                        }}
-                                    >
-                                        <i className="fa fa-regular fa-copy text-[12px]" />
-                                    </button>
+                                    <div className="shrink-0 self-start pt-0.5 flex items-start gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                        <button
+                                            type="button"
+                                            title="Edit this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-[#6366f1] transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleListItemEdit(item);
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-pen-to-square text-[11px]" />
+                                        </button>
+                                        {canSendToTerm ? (
+                                            <button
+                                                type="button"
+                                                title="Send to terminal"
+                                                className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-accent transition-colors duration-150 cursor-pointer"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    fireAndForget(async () => handleListItemSend(item));
+                                                }}
+                                            >
+                                                <i className="fa fa-regular fa-paper-plane text-[11px]" />
+                                            </button>
+                                        ) : (
+                                            <span
+                                                title="Focus a terminal to enable Send"
+                                                className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] opacity-40 text-muted pointer-events-none"
+                                            >
+                                                <i className="fa fa-regular fa-paper-plane text-[11px]" />
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            title="Copy this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-accent transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                fireAndForget(async () => handleListItemCopy(item));
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-copy text-[11px]" />
+                                        </button>
+                                        <div className="w-px h-[14px] bg-border self-center mx-[2px]" />
+                                        <button
+                                            type="button"
+                                            title="Delete this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-[#e54d2e] hover:bg-[rgba(229,77,46,0.12)] transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                fireAndForget(async () => handleListItemDelete(item));
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-trash-can text-[11px]" />
+                                        </button>
+                                    </div>
                                 </div>
                             ))
                         )}

@@ -19,7 +19,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 15
+	hookInstallVersion  = 16
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -389,6 +389,8 @@ rem installed by Snorkeling
 rem managed by Snorkeling; reinstalling the integration overwrites this file.
 rem %s%s
 rem %s%d
+rem ENTER line written before setlocal to distinguish cmd-not-started from call-parse-failure
+if not "%%LOCALAPPDATA%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log" 2>nul) else if not "%%TEMP%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%TEMP%%\snorkeling-agentstatus-hook.log" 2>nul)
 
 setlocal
 set "ACTION=%%~1"
@@ -464,7 +466,7 @@ exit /b 0
 :debug_log
 if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {

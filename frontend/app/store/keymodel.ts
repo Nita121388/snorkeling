@@ -28,7 +28,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import * as keyutil from "@/util/keyutil";
-import { isWindows } from "@/util/platformutil";
+import { isMacOS, isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
@@ -762,10 +762,20 @@ function registerGlobalKeys() {
         void SessionOverviewModel.getInstance().open();
         return true;
     });
-    globalKeyMap.set("Cmd:Shift:Space", () => {
-        openCommonTextSearch();
-        return true;
-    });
+    // macOS: Ctrl+Shift+Space 被系统 IME 抢占 → Cmd+Shift+Space (Cmd=Meta)
+    // win/linux: keyutil 把 Cmd 映射成 Alt,Alt+Shift+Space 在 Windows 被 IME/Alt 菜单抢,
+    //            Linux 可能撞 IBus Alt+Shift 切输入法 → 统一 Ctrl+Shift+Space
+    if (isMacOS()) {
+        globalKeyMap.set("Cmd:Shift:Space", () => {
+            openCommonTextSearch();
+            return true;
+        });
+    } else {
+        globalKeyMap.set("Ctrl:Shift:Space", () => {
+            openCommonTextSearch();
+            return true;
+        });
+    }
     const allKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
     allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");
