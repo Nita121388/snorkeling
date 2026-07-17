@@ -41,7 +41,9 @@ const waveDirName = `${waveDirNamePrefix}${waveDirNameSuffix ? `-${waveDirNameSu
 
 const paths = envPaths("snorkeling", { suffix: waveDirNameSuffix });
 
-app.setName(isDev ? "Snorkeling (Dev)" : "Snorkeling");
+const WaveAppNameVarName = "WAVETERM_APP_NAME";
+const overrideAppName = process.env[WaveAppNameVarName];
+app.setName(isDev ? (overrideAppName || "Snorkeling (Dev)") : "Snorkeling");
 const unamePlatform = process.platform;
 const unameArch: string = process.arch;
 keyutil.setKeyUtilPlatform(unamePlatform);
