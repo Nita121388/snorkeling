@@ -171,6 +171,20 @@ func handlePslog(w http.ResponseWriter, r *http.Request) {
 			rest = line[idx+1:]
 		}
 	}
+	if strings.HasPrefix(strings.TrimSpace(rest), "{") {
+		var event pslog.Event
+		if err := json.Unmarshal([]byte(rest), &event); err != nil {
+			http.Error(w, "invalid structured pslog event", http.StatusBadRequest)
+			return
+		}
+		if event.Version != pslog.EventVersion || strings.TrimSpace(event.Name) == "" {
+			http.Error(w, "unsupported structured pslog event", http.StatusBadRequest)
+			return
+		}
+		pslog.AppendEvent(event)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	pslog.AppendRaw(tag, "client "+rest)
 	w.WriteHeader(http.StatusOK)
 }

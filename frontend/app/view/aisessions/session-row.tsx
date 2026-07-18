@@ -45,7 +45,7 @@ export function RunningDot({ runningState }: { runningState: SessionRunningState
     const dotClass = "absolute rounded-full bg-accent";
     return (
         <span
-            className="relative mt-0.5 block h-4 w-4 shrink-0 animate-spin"
+            className="relative mt-0.5 inline-flex h-4 w-4 shrink-0 animate-spin"
             title="This session has a live block in the app"
         >
             <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />

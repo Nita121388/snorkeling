@@ -1,7 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { clampSelectionCopyOverlayPosition, makeSelectionQuickActionMenu } from "@/app/element/selection-copy-overlay";
+import {
+    buildCopyContextText,
+    clampSelectionCopyOverlayPosition,
+    makeSelectionQuickActionMenu,
+} from "@/app/element/selection-copy-overlay";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/commontext/commontext-model", () => ({
@@ -30,5 +34,11 @@ describe("selection copy overlay helpers", () => {
             "Copy Selection as One Line",
             "Search In Files",
         ]);
+    });
+
+    it("formats markdown preview context with the source line", () => {
+        expect(buildCopyContextText("/notes/readme.md", 12, "selected text")).toBe(
+            "/notes/readme.md:12\n```markdown\nselected text\n```"
+        );
     });
 });

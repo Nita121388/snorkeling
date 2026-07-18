@@ -10,7 +10,7 @@ import { fetch } from "@/util/fetchutil";
 import { fireAndForget } from "@/util/util";
 import { atom, Atom, Getter, PrimitiveAtom, Setter, useAtomValue } from "jotai";
 import { globalStore } from "./jotaiStore";
-import { pslogEnabled, pslogTrace } from "./pslog-trace";
+import { makeAgentTraceId, makePslogSessionRef, pslogEnabled, pslogEvent, pslogTrace } from "./pslog-trace";
 import { ObjectService } from "./services";
 
 type WaveObjectDataItemType<T extends WaveObj> = {
@@ -275,8 +275,22 @@ function useWaveObjectValue<T extends WaveObj>(oref: string): [T, boolean] {
             const blockId = oref.slice("block:".length);
             const readVer = (atomVal.value as any)?.version ?? null;
             const readSid = (atomVal.value as any)?.meta?.["agent:sessionid"] ?? null;
-            const line = `[ps-use] oref=block:${blockId} readVer=${readVer} readSid=${readSid ?? ""}`;
+            const sessionRef = makePslogSessionRef(typeof readSid === "string" ? readSid : "");
+            const line = `[ps-use] oref=block:${blockId} readVer=${readVer} readSidRef=${sessionRef}`;
             pslogTrace("ps-use", line, { bufferKey: "ps-use-buf" });
+            if (sessionRef !== "") {
+                pslogEvent(
+                    {
+                        event: "agent.pubsub",
+                        stage: "use",
+                        traceid: makeAgentTraceId(blockId, readSid),
+                        blockid: blockId,
+                        sessionref: sessionRef,
+                        outcome: "ok",
+                    },
+                    { bufferKey: "ps-agent-top-buf" }
+                );
+            }
             // keep the legacy global name alive for DevTools/test observers
             (window as any).__psUseBuf = (window as any)["ps-use-buf"];
         }
@@ -306,8 +320,24 @@ function updateWaveObject(update: WaveObjUpdate) {
             const curSid = (curValue.value as any)?.meta?.["agent:sessionid"] ?? null;
             const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
             const willSkip = curValue.value != null && curVer != null && newVer != null && curVer >= newVer;
-            const line = `[ps-recv] oref=block:${update.oid} curVer=${curVer} newVer=${newVer} curSid=${curSid ?? ""} newSid=${newSid ?? ""} willSkip=${willSkip}`;
+            const curSessionRef = makePslogSessionRef(typeof curSid === "string" ? curSid : "");
+            const newSessionRef = makePslogSessionRef(typeof newSid === "string" ? newSid : "");
+            const line = `[ps-recv] oref=block:${update.oid} curVer=${curVer} newVer=${newVer} curSidRef=${curSessionRef} newSidRef=${newSessionRef} willSkip=${willSkip}`;
             pslogTrace("ps-recv", line, { bufferKey: "ps-recv-buf" });
+            if (newSessionRef !== "") {
+                pslogEvent(
+                    {
+                        event: "agent.pubsub",
+                        stage: "recv",
+                        traceid: makeAgentTraceId(update.oid, newSid),
+                        blockid: update.oid,
+                        sessionref: newSessionRef,
+                        outcome: willSkip ? "skipped" : "ok",
+                        reason: willSkip ? "stale-version" : undefined,
+                    },
+                    { bufferKey: "ps-agent-top-buf" }
+                );
+            }
             // keep the legacy global name alive for DevTools/test observers
             (window as any).__psRecvBuf = (window as any)["ps-recv-buf"];
         }
@@ -325,8 +355,22 @@ function updateWaveObject(update: WaveObjUpdate) {
         if (pslogEnabled() && update.otype === "block") {
             const newSid = (update.obj as any)?.meta?.["agent:sessionid"] ?? null;
             const newVer = update.obj?.version ?? null;
-            const line = `[ps-set] oref=block:${update.oid} newVer=${newVer} newSid=${newSid ?? ""}`;
+            const sessionRef = makePslogSessionRef(typeof newSid === "string" ? newSid : "");
+            const line = `[ps-set] oref=block:${update.oid} newVer=${newVer} newSidRef=${sessionRef}`;
             pslogTrace("ps-set", line, { bufferKey: "ps-set-buf" });
+            if (sessionRef !== "") {
+                pslogEvent(
+                    {
+                        event: "agent.pubsub",
+                        stage: "set",
+                        traceid: makeAgentTraceId(update.oid, newSid),
+                        blockid: update.oid,
+                        sessionref: sessionRef,
+                        outcome: "ok",
+                    },
+                    { bufferKey: "ps-agent-top-buf" }
+                );
+            }
             // keep the legacy global name alive for DevTools/test observers
             (window as any).__psSetBuf = (window as any)["ps-set-buf"];
         }

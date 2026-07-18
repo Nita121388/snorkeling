@@ -36,7 +36,11 @@ import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
 import { CommonTextSaveDialog } from "./commontext/commontext-save-dialog";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
-import { makeSelectionSearchInFilesMenuItem } from "./element/selection-copy-overlay";
+import {
+    getCopyContextTextFromDom,
+    makeCopyContextMenuItem,
+    makeSelectionSearchInFilesMenuItem,
+} from "./element/selection-copy-overlay";
 import { classifyMacOSFirstMouseTarget, shouldPassThroughMacOSFirstMouse } from "./macos-first-click";
 
 import "./app.scss";
@@ -112,8 +116,9 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     const canPaste = canEnablePaste();
     const canCopy = canEnableCopy();
     const canCut = canEnableCut();
+    const copyContextText = getCopyContextTextFromDom(window.getSelection(), e.target);
     const clipboardURL = await getClipboardURL();
-    if (!canPaste && !canCopy && !canCut && !clipboardURL) {
+    if (!canPaste && !canCopy && !canCut && !clipboardURL && !copyContextText) {
         return;
     }
     const menu: ContextMenuItem[] = [];
@@ -127,6 +132,9 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     }
     if (canPaste) {
         menu.push({ label: "Paste", role: "paste" });
+    }
+    if (copyContextText) {
+        menu.push(makeCopyContextMenuItem(copyContextText));
     }
     if (clipboardURL) {
         menu.push({ type: "separator" });

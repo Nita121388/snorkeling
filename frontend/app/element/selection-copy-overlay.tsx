@@ -24,6 +24,64 @@ export type SelectionCopyOverlayState = {
 
 export type SelectionQuickActionItem = ContextMenuItem;
 
+export function buildCopyContextText(filePath: string, sourceLine: number, text: string): string {
+    return `${filePath}:${sourceLine}\n\`\`\`markdown\n${text}\n\`\`\``;
+}
+
+function getElementFromNode(node: Node | null): HTMLElement | null {
+    if (typeof HTMLElement !== "undefined" && node instanceof HTMLElement) {
+        return node;
+    }
+    return node?.parentElement ?? null;
+}
+
+function getClosestCopyContextRoot(node: Node | null): HTMLElement | null {
+    return getElementFromNode(node)?.closest<HTMLElement>("[data-copy-context-path]") ?? null;
+}
+
+function getClosestSourceLineElement(node: Node | null): HTMLElement | null {
+    return getElementFromNode(node)?.closest<HTMLElement>("[data-source-line]") ?? null;
+}
+
+export function getCopyContextTextFromDom(selection: Selection | null, target?: EventTarget | null): string | null {
+    const range = selection != null && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    const sourceNode = range?.startContainer ?? (typeof Node !== "undefined" && target instanceof Node ? target : null);
+    const root = getClosestCopyContextRoot(sourceNode);
+    if (root == null) {
+        return null;
+    }
+
+    const sourceLineElement = getClosestSourceLineElement(sourceNode);
+    const sourceLine = Number(sourceLineElement?.dataset.sourceLine);
+    if (!Number.isInteger(sourceLine) || sourceLine < 1) {
+        return null;
+    }
+
+    const text =
+        selection != null && !selection.isCollapsed ? selection.toString() : (sourceLineElement?.textContent ?? "");
+    if (text.trim().length === 0) {
+        return null;
+    }
+
+    const filePath = root.dataset.copyContextPath;
+    if (filePath == null || filePath.length === 0) {
+        return null;
+    }
+    return buildCopyContextText(filePath, sourceLine, text);
+}
+
+export function makeCopyContextMenuItem(contextText: string, onCopied?: () => void): ContextMenuItem {
+    return {
+        label: "Copy Context",
+        click: () => {
+            fireAndForget(async () => {
+                await navigator.clipboard.writeText(contextText);
+                onCopied?.();
+            });
+        },
+    };
+}
+
 function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }

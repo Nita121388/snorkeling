@@ -1,0 +1,211 @@
+<!-- Design: Snorkeling Common Text Save/Edit Dialog — Tag 胶囊在 Text 下方实时渲染 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CommonText Save/Edit — Tag 渲染在 Text 下方</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1d1d1d;
+      color: #f7f7f7;
+      padding: 32px;
+    }
+    .kbd { font-family: 'Hack', ui-monospace, 'Cascadia Code', 'Consolas', monospace; font-size: 11px; }
+    .panel {
+      width: 560px;
+      max-width: calc(100vw - 32px);
+      background: #222222;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 20px 12px 12px 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    }
+    .field-label {
+      font-size: 13px;
+      color: #9aa1a8;
+      margin-bottom: 4px;
+    }
+    .ipt {
+      height: 36px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: #1a1a1a;
+      color: #f7f7f7;
+      border-radius: 6px;
+      padding: 0 12px;
+      outline: none;
+      font-size: 14px;
+    }
+    .ipt:focus { border-color: #58c142; }
+    .ta {
+      min-height: 160px;
+      resize: vertical;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: #1a1a1a;
+      color: #f7f7f7;
+      border-radius: 6px;
+      padding: 8px 12px;
+      outline: none;
+      font-family: 'Hack', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+      font-size: 13px;
+      width: 100%;
+      line-height: 1.5;
+    }
+    .ta:focus { border-color: #58c142; }
+    /* tag chip 来自 SessionTagChips 视觉等效 */
+    .chips {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 4px; min-height: 24px;
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 24px; max-width: 100%;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1;
+      background: rgba(88,193,66,0.10);
+      color: #58c142;
+      cursor: default;
+    }
+    .chip .h { opacity: 0.55; }
+    .chip .x { cursor: pointer; opacity: 0.55; margin-left: 2px; }
+    .chip .x:hover { opacity: 1; color: #ff6b6b; }
+    /* pin 按钮 */
+    .pin-btn {
+      flex-shrink: 0; width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 6px;
+      color: #9aa1a8;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .pin-btn:hover { border-color: rgba(88,193,66,0.7); color: #f7f7f7; }
+    .pin-btn.on { border-color: #58c142; background: rgba(88,193,66,0.12); color: #58c142; }
+    /* All tags 面板 chip（小 + 计数）*/
+    .all-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 22px; padding: 0 8px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.04);
+      color: #c3c8c2;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .all-chip:hover { border-color: rgba(88,193,66,0.7); color: #f7f7f7; }
+    .all-chip.on { border-color: #58c142; background: rgba(88,193,66,0.12); color: #58c142; }
+    .all-chip .cnt { font-size: 10px; opacity: 0.7; }
+    .btn { padding: 0 14px; height: 32px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
+    .btn-grey { background: rgba(255,255,255,0.06); color: #cfd4d8; border-color: rgba(255,255,255,0.12); }
+    .btn-grey:hover { background: rgba(255,255,255,0.10); }
+    .btn-green { background: #58c142; color: #0a1f06; }
+    .btn-green:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint { color: #9aa1a8; font-size: 11px; }
+    .row { margin-bottom: 12px; }
+    .section-title { font-size: 14px; font-weight: 600; margin: 0 0 10px 0; }
+    .ok { color: #58c142; font-size: 13px; height: 20px; }
+    .err { color: #ff6b6b; font-size: 13px; height: 20px; }
+    .all-panel {
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.02);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 4px;
+    }
+    .all-title { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9aa1a8; margin-bottom: 8px; }
+    .caption { font-size: 11px; color: #6b7178; margin-bottom: 4px; }
+    .mock-label {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 4px;
+      background: rgba(88,193,66,0.18); color: #58c142;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div style="margin-bottom: 24px;">
+    <div class="mock-label">MOCKUP — 方案 1A：标签胶囊在 Text 下方实时渲染（基于已实现的 SessionTagChips）</div>
+    <div class="caption">
+      在 Text 框里写 <code class="kbd">#email</code> <code class="kbd">#customer-support</code>，下方胶囊实时解析。
+      点胶囊 × 删除；该 tag 同时从 Text 中移除（两处始终一致）。
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-title">Edit Common Text</div>
+
+    <!-- Title -->
+    <div class="row">
+      <div class="field-label">Title</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input class="ipt" style="flex:1;" value="Refund reply template" />
+        <div class="pin-btn on" title="Unpin this text to the top of the list">📌</div>
+      </div>
+    </div>
+
+    <!-- Text + 下方胶囊 -->
+    <div class="row">
+      <div class="field-label">Text</div>
+      <textarea class="ta" rows="6">Hi #email team,
+
+A customer wants a refund for order #ord-1234.
+Could you please verify and send a confirmation reply
+with #customer-support policy attached? #priority</textarea>
+
+      <!-- ↓ 这一行就是新增的"Text 下方标签胶囊解析渲染" -->
+      <div style="margin-top:8px;">
+        <div class="field-label" style="font-size:11px;">Tags parsed from text</div>
+        <div class="chips">
+          <span class="chip"><span class="h">#</span>email<span class="x">×</span></span>
+          <span class="chip"><span class="h">#</span>customer-support<span class="x">×</span></span>
+          <span class="chip"><span class="h">#</span>priority<span class="x">×</span></span>
+          <!-- #ord-1234 不被识别：连字符允许 ✓ 但前缀有 # 且开头是字母 ✗? 这里展示 #ord-1234 因符合 [\p{L}\p{N}_-]+ → ord-1234 ✓ -->
+          <span class="chip"><span class="h">#</span>ord-1234<span class="x">×</span></span>
+        </div>
+        <div class="hint" style="margin-top:6px;">
+          识别规则（与 session Note 一致）：<code class="kbd">#</code> 前必须是行首或空白；标签仅含 <code>字母 / 数字 / _ / -</code>。
+          <code>#a.b</code> 会截断成 <code>#a</code>；紧贴前导字母的 <code>foo#bar</code> 不识别。
+        </div>
+      </div>
+    </div>
+
+    <!-- All tags 面板：当前 item 已用的 tag 高亮 -->
+    <div class="row all-panel">
+      <div class="all-title">All tags</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; max-height: 96px; overflow-y:auto;">
+        <span class="all-chip on"><span class="h" style="opacity:.55;">#</span>email <span class="cnt">3</span></span>
+        <span class="all-chip on"><span class="h" style="opacity:.55;">#</span>customer-support <span class="cnt">2</span></span>
+        <span class="all-chip on"><span class="h" style="opacity:.55;">#</span>priority <span class="cnt">1</span></span>
+        <span class="all-chip on"><span class="h" style="opacity:.55;">#</span>ord-1234 <span class="cnt">1</span></span>
+        <span class="all-chip"><span class="h" style="opacity:.55;">#</span>billing <span class="cnt">5</span></span>
+        <span class="all-chip"><span class="h" style="opacity:.55;">#</span>onboarding <span class="cnt">2</span></span>
+        <span class="all-chip"><span class="h" style="opacity:.55;">#</span>shortcut <span class="cnt">7</span></span>
+        <span class="all-chip"><span class="h" style="opacity:.55;">#</span>bug <span class="cnt">3</span></span>
+        <span class="all-chip"><span class="h" style="opacity:.55;">#</span>ops <span class="cnt">4</span></span>
+      </div>
+      <div class="hint" style="margin-top:6px;">点击任意 chip：未选 → 在 Text 末尾追加 <code class="kbd">#tag</code>；已选 → 从 Text 中移除该 <code class="kbd">#tag</code>。</div>
+    </div>
+
+    <div class="ok">Saved</div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px;">
+      <button class="btn btn-grey">Close</button>
+      <button class="btn btn-green">Update</button>
+    </div>
+  </div>
+
+  <!-- 方案对比小注脚 -->
+  <div style="margin-top: 24px; max-width: 560px; font-size: 12px; color: #9aa1a8; line-height: 1.6;">
+    <p><strong>相对"上方 chip 行"的区别</strong>：胶囊紧贴 Text 框下沿，读起来像"Text 的标签摘要"而非"独立筛选行"，更贴近你说"在 Text 下渲染"的语义。</p>
+    <p><strong>不做胶囊在 textarea 内就地渲染（方案 1B）</strong>：那需要把 textarea 替换成 contentEditable，重写光标 / 输入法 / 粘贴 / 换行，回归风险高，体验容易出脏。本方案借用已就绪的 SessionTagChips，零新增交互风险。</p>
+    <p><strong>Common Text 主列表</strong>（compose 弹窗下方列表行）：列表行已用 <code>CommonTextTagList maxVisible=3 compact</code> 显示前 3 个 tag，不在此 mockup 范围。如需也做胶囊化，<span style="color:#58c142;">→ 已是胶囊样式</span>，无需改动。</p>
+  </div>
+
+</body>
+</html>

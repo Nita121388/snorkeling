@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { atoms } from "@/app/store/global";
-import { globalStore } from "@/app/store/jotaiStore";
 import { BlockServiceType } from "@/app/store/services";
-import { waveEventSubscribeSingle } from "@/app/store/wps";
 import * as WOS from "@/app/store/wos";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import * as jotai from "jotai";
 import { useEffect, useMemo, useState } from "react";
@@ -47,14 +46,13 @@ export function projectSessionRunning(
     return map;
 }
 
-function collectAgentBlocks(workspace: Workspace | null, selfView: string): AgentBlockRef[] {
+function collectAgentBlocks(get: jotai.Getter, tabIds: string[], selfView: string): AgentBlockRef[] {
     const result: AgentBlockRef[] = [];
-    const tabIds = workspace?.tabids ?? [];
     for (const tabId of tabIds) {
-        const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+        const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
         if (tab == null) continue;
         for (const blockId of tab.blockids ?? []) {
-            const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+            const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
             if (block == null) continue;
             const meta = (block.meta ?? {}) as Record<string, unknown>;
             const view = typeof meta.view === "string" ? meta.view : "";
@@ -71,7 +69,13 @@ export function useSessionsRunning(active: boolean): Map<string, SessionRunningS
     const service = useMemo(() => new BlockServiceType(), []);
 
     const workspace = jotai.useAtomValue(atoms.workspace);
-    const agentBlocks = useMemo(() => collectAgentBlocks(workspace ?? null, "aisessions"), [workspace]);
+    const tabIds = workspace?.tabids ?? [];
+    const tabIdsKey = tabIds.join("\n");
+    const agentBlocksAtom = useMemo(
+        () => jotai.atom((get) => collectAgentBlocks(get, tabIds, "aisessions")),
+        [workspace?.oid, tabIdsKey]
+    );
+    const agentBlocks = jotai.useAtomValue(agentBlocksAtom);
     const blockIdsKey = agentBlocks
         .map((b) => b.blockId)
         .sort()
@@ -128,10 +132,7 @@ export function useSessionsRunning(active: boolean): Map<string, SessionRunningS
         };
     }, [active, service, blockIdsKey]);
 
-    const runningMap = useMemo(
-        () => projectSessionRunning(agentBlocks, statuses),
-        [agentBlocks, statuses]
-    );
+    const runningMap = useMemo(() => projectSessionRunning(agentBlocks, statuses), [agentBlocks, statuses]);
 
     return runningMap;
 }

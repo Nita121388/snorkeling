@@ -4,10 +4,12 @@
 package pslog
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // withTempPslog sets up a fresh pslog pointed at a temp dir, enabled, and
@@ -140,6 +142,87 @@ func TestAppendNoTraceWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestAppendEventWritesJSONLine(t *testing.T) {
+	dir := withTempPslog(t)
+	AppendEvent(Event{
+		Version:    99,
+		Timestamp:  "stale",
+		Name:       "agent.note.render",
+		Stage:      "visible",
+		TraceId:    "trace-1",
+		BlockId:    "block-1",
+		SessionRef: "fnv1a64:0123456789abcdef",
+		DurationMs: 32,
+		Outcome:    "ok",
+		Reason:     "summary-found",
+	})
+
+	var record map[string]any
+	for _, line := range strings.Split(readPslog(t, dir), "\n") {
+		if strings.HasPrefix(line, "{") {
+			if err := json.Unmarshal([]byte(line), &record); err != nil {
+				t.Fatalf("unmarshal event line: %v", err)
+			}
+			break
+		}
+	}
+	if record == nil {
+		t.Fatal("structured event line not found")
+	}
+	if record["v"] != float64(EventVersion) || record["event"] != "agent.note.render" {
+		t.Fatalf("unexpected event identity: %#v", record)
+	}
+	if record["stage"] != "visible" || record["traceid"] != "trace-1" || record["blockid"] != "block-1" {
+		t.Fatalf("unexpected correlation fields: %#v", record)
+	}
+	if record["sessionref"] != "fnv1a64:0123456789abcdef" || record["durationms"] != float64(32) {
+		t.Fatalf("unexpected session or duration fields: %#v", record)
+	}
+	if record["outcome"] != "ok" || record["reason"] != "summary-found" {
+		t.Fatalf("unexpected result fields: %#v", record)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, record["ts"].(string)); err != nil {
+		t.Fatalf("invalid event timestamp %q: %v", record["ts"], err)
+	}
+}
+
+func TestAppendEventDropsUntrustedSessionRef(t *testing.T) {
+	dir := withTempPslog(t)
+	AppendEvent(Event{Name: "agent.note", SessionRef: "raw-session-id"})
+	content := readPslog(t, dir)
+	if strings.Contains(content, "raw-session-id") || strings.Contains(content, "sessionref") {
+		t.Fatalf("untrusted session reference leaked into pslog:\n%s", content)
+	}
+}
+
+func TestMakeSessionRefIsStableAndOpaque(t *testing.T) {
+	const sessionId = "550e8400-e29b-41d4-a716-446655440000"
+	ref := MakeSessionRef(sessionId)
+	if ref != "fnv1a64:fbb0538ee83a5048" || ref != MakeSessionRef(sessionId) {
+		t.Fatalf("session ref is not stable: %q", ref)
+	}
+	if strings.Contains(ref, sessionId) {
+		t.Fatalf("session ref contains the full session id: %q", ref)
+	}
+	if MakeSessionRef("") != "" {
+		t.Fatal("empty session id should produce an empty ref")
+	}
+	traceId := MakeAgentTraceId("block-1", sessionId)
+	if traceId != "agent:block-1:"+ref {
+		t.Fatalf("unexpected agent trace id: %q", traceId)
+	}
+	if MakeAgentTraceId("", sessionId) != "" || MakeAgentTraceId("block-1", "") != "agent:block-1:" {
+		t.Fatal("agent trace id should require a block and permit a pending session")
+	}
+
+	dir := withTempPslog(t)
+	AppendEvent(Event{Name: "agent.session.capture", SessionRef: ref})
+	content := readPslog(t, dir)
+	if strings.Contains(content, sessionId) || strings.Contains(content, `"note"`) || strings.Contains(content, `"token"`) {
+		t.Fatalf("structured event leaked a sensitive field:\n%s", content)
+	}
+}
+
 func TestAppendRawWithTraceEmitsTrace(t *testing.T) {
 	dir := withTempPslog(t)
 	tid := NewTraceId()
@@ -159,6 +242,7 @@ func TestDisabledWritesNothing(t *testing.T) {
 	SetEnabled(false)
 	AppendWithTrace("tid", "ps-test", "k", "v")
 	AppendRawWithTrace("tid", "ps-raw", "x")
+	AppendEvent(Event{Name: "ps-test"})
 	matches, _ := filepath.Glob(filepath.Join(dir, "pslog-*.log"))
 	// disabled must not even open() the file; no file should exist yet
 	if len(matches) != 0 {

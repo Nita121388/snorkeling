@@ -10,6 +10,7 @@ function SessionTagChips({
     removable = false,
     onRemove,
     onClick,
+    countMap,
     className,
 }: {
     tags: string[] | null | undefined;
@@ -17,6 +18,7 @@ function SessionTagChips({
     removable?: boolean;
     onRemove?: (tag: string) => void;
     onClick?: (tag: string) => void;
+    countMap?: Map<string, number>;
     className?: string;
 }) {
     const normalizedTags = normalizeSessionTags(tags);
@@ -27,6 +29,7 @@ function SessionTagChips({
             {normalizedTags.map((tag) => {
                 const active = selected.has(tag);
                 const clickable = onClick != null;
+                const count = countMap?.get(tag.toLowerCase()) ?? countMap?.get(tag);
                 return (
                     <button
                         key={tag}
@@ -51,6 +54,7 @@ function SessionTagChips({
                             <span className="opacity-50">#</span>
                             {tag}
                         </span>
+                        {count != null ? <span className="text-[10px] opacity-70">{count}</span> : null}
                         {removable ? (
                             <i className="fa-sharp fa-solid fa-xmark text-[9px] opacity-60" />
                         ) : null}

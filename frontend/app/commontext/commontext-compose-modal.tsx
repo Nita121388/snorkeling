@@ -14,6 +14,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
 import { copyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
+    deleteCommonTextItem,
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     openCommonTextManager,
@@ -40,7 +41,7 @@ type ComposeState = {
 
 // 进程内草稿暂存：弹窗关闭后保留 editor 内容，下次无 query 打开时还原；重启进程即丢。
 // 带 detail.query 的外部触发（如选区 overlay 复制场景）不取草稿，避免与外部文本冲突。
-type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "manualQuery" | "selectedTags" | "insertedIds">;
+type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "insertedIds">;
 let composeDraft: ComposeDraft | null = null;
 
 const initialOpenState = (manualQuery = ""): ComposeState => ({
@@ -203,8 +204,6 @@ const CommonTextComposeModal = memo(() => {
             composeDraft = {
                 editor: cur.editor,
                 editorCaret: cur.editorCaret,
-                manualQuery: cur.manualQuery,
-                selectedTags: cur.selectedTags,
                 insertedIds: cur.insertedIds,
             };
             return { ...cur, open: false };
@@ -425,13 +424,6 @@ const CommonTextComposeModal = memo(() => {
             close();
             return;
         }
-        if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-            const selected = filteredItems[state.selectedIndex];
-            if (selected != null) {
-                event.preventDefault();
-                handleListItemSelected(selected);
-            }
-        }
     };
 
     const handleCompositionStart = () => {
@@ -497,55 +489,51 @@ const CommonTextComposeModal = memo(() => {
                 />
 
                 {/* Action row */}
-                <div className="shrink-0 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                        <Button
-                            className="grey"
-                            disabled={state.editor.trim() === ""}
-                            onClick={handleClearEditor}
-                            title="Clear editor"
-                        >
-                            <i className="fa fa-solid fa-eraser" />
+                <div className="shrink-0 flex items-center gap-2">
+                    <Button
+                        className="grey"
+                        disabled={state.editor.trim() === ""}
+                        onClick={handleClearEditor}
+                        title="Clear editor"
+                    >
+                        <i className="fa fa-solid fa-eraser" />
+                    </Button>
+                    <Button
+                        className="grey"
+                        onClick={handleSaveDialog}
+                        title="Save editor content as a Common Text item"
+                    >
+                        <i className="fa fa-solid fa-plus" />
+                    </Button>
+                    <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
+                        <i className="fa fa-regular fa-copy" />
+                    </Button>
+                    {canSendToTerm ? (
+                        <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
+                            <i className="fa fa-solid fa-terminal mr-1" />
+                            Send
                         </Button>
-                        <Button
-                            className="grey"
-                            onClick={handleSaveDialog}
-                            title="Save editor content as a Common Text item"
-                        >
-                            <i className="fa fa-solid fa-plus" />
-                        </Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
-                            <i className="fa fa-regular fa-copy" />
-                        </Button>
-                        {canSendToTerm ? (
-                            <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
+                    ) : (
+                        <span title="Focus a terminal to enable Send" className="inline-flex">
+                            <Button className="grey" disabled>
                                 <i className="fa fa-solid fa-terminal mr-1" />
                                 Send
                             </Button>
-                        ) : (
-                            <span title="Focus a terminal to enable Send" className="inline-flex">
-                                <Button className="grey" disabled>
-                                    <i className="fa fa-solid fa-terminal mr-1" />
-                                    Send
-                                </Button>
-                            </span>
-                        )}
-                        {state.status && (
-                            <span
-                                className={
-                                    state.statusKind === "err"
-                                        ? "text-xs text-red-500"
-                                        : state.statusKind === "ok"
-                                          ? "text-xs text-accent"
-                                          : "text-xs text-muted"
-                                }
-                            >
-                                {state.status}
-                            </span>
-                        )}
-                    </div>
+                        </span>
+                    )}
+                    {state.status && (
+                        <span
+                            className={
+                                state.statusKind === "err"
+                                    ? "text-xs text-red-500"
+                                    : state.statusKind === "ok"
+                                      ? "text-xs text-accent"
+                                      : "text-xs text-muted"
+                            }
+                        >
+                            {state.status}
+                        </span>
+                    )}
                 </div>
 
                 {/* List area */}

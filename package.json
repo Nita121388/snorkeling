@@ -26,6 +26,7 @@
         "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-task.ps1 dev",
         "package:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-task.ps1 package",
         "coverage": "vitest run --coverage",
+        "pslog:query": "node scripts/pslog-query.mjs",
         "test": "vitest",
         "postinstall": "node ./postinstall.cjs"
     },

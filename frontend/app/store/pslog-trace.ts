@@ -39,6 +39,34 @@ type PslogTraceOpts = {
     tid?: string;
 };
 
+export type PslogEventInput = {
+    event: string;
+    stage?: string;
+    traceid?: string;
+    blockid?: string;
+    sessionref?: string;
+    durationms?: number;
+    outcome?: string;
+    reason?: string;
+};
+
+export type PslogEventRecord = {
+    v: 1;
+    ts: string;
+    event: string;
+    stage?: string;
+    traceid?: string;
+    blockid?: string;
+    sessionref?: string;
+    durationms?: number;
+    outcome?: string;
+    reason?: string;
+};
+
+export type PslogEventOpts = {
+    bufferKey?: string;
+};
+
 // pslogTrace writes one trace line with tag `tag` and pre-formatted `line`
 // (the line should already include the leading `[<tag>] ...` token — the
 // server-side handler wraps it as `client <line>` via AppendRaw).
@@ -86,6 +114,75 @@ export function pslogTrace(tag: string, line: string, opts?: PslogTraceOpts): vo
             (window as any)[bufKey] = buf;
         }
     } catch {}
+}
+
+function optionalEventString(value: unknown): string | undefined {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const normalized = value.trim();
+    return normalized === "" ? undefined : normalized;
+}
+
+function optionalSessionRef(value: unknown): string | undefined {
+    const normalized = optionalEventString(value);
+    return normalized != null && /^fnv1a64:[0-9a-f]{16}$/.test(normalized) ? normalized : undefined;
+}
+
+export function pslogEvent(input: PslogEventInput, opts?: PslogEventOpts): void {
+    if (input == null || typeof input.event !== "string") {
+        return;
+    }
+    const event = input.event.trim();
+    if (event === "") {
+        return;
+    }
+    const record: PslogEventRecord = {
+        v: 1,
+        ts: new Date().toISOString(),
+        event,
+    };
+    const stage = optionalEventString(input.stage);
+    const traceid = optionalEventString(input.traceid);
+    const blockid = optionalEventString(input.blockid);
+    const sessionref = optionalSessionRef(input.sessionref);
+    const outcome = optionalEventString(input.outcome);
+    const reason = optionalEventString(input.reason);
+    if (stage != null) record.stage = stage;
+    if (traceid != null) record.traceid = traceid;
+    if (blockid != null) record.blockid = blockid;
+    if (sessionref != null) record.sessionref = sessionref;
+    if (Number.isInteger(input.durationms) && input.durationms > 0) record.durationms = input.durationms;
+    if (outcome != null) record.outcome = outcome;
+    if (reason != null) record.reason = reason;
+    // Keep structured records on the existing transport while intentionally omitting tid:
+    // adding a text suffix would make the body invalid JSON for the server parser.
+    pslogTrace(event, JSON.stringify(record), { bufferKey: opts?.bufferKey });
+}
+
+export function makePslogSessionRef(sessionId: string): string {
+    if (typeof sessionId !== "string" || sessionId === "") {
+        return "";
+    }
+    const BigIntFn = (globalThis as any).BigInt;
+    if (typeof BigIntFn !== "function") {
+        throw new Error("BigInt is required for pslog session references");
+    }
+    const offset = BigIntFn("14695981039346656037");
+    const prime = BigIntFn("1099511628211");
+    const mask = BigIntFn("18446744073709551615");
+    let hash = offset;
+    for (const byte of new TextEncoder().encode(sessionId)) {
+        hash = ((hash ^ BigIntFn(byte)) * prime) & mask;
+    }
+    return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
+}
+
+export function makeAgentTraceId(blockId: string, sessionId: string): string {
+    if (typeof blockId !== "string" || blockId === "") {
+        return "";
+    }
+    return `agent:${blockId}:${makePslogSessionRef(sessionId)}`;
 }
 
 // genFrontendTraceId: mints a FE-side trace id to pass as opts.tid to pslogTrace.

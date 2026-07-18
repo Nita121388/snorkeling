@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
-	"github.com/wavetermdev/waveterm/pkg/pslog"
 )
 
 // this broker interface is mostly generic
@@ -232,6 +232,9 @@ func (b *BrokerType) Publish(event WaveEvent) {
 		b.persistEvent(event)
 	}
 	client := b.GetClient()
+	var agentTraceId string
+	var agentBlockId string
+	var agentSessionRef string
 	// [ps-publish] trace whether broker publishes reach any subscribed route
 	if event.Event == Event_WaveObjUpdate {
 		if data, ok := event.Data.(waveobj.WaveObjUpdate); ok {
@@ -242,17 +245,38 @@ func (b *BrokerType) Publish(event WaveEvent) {
 			log.Printf("[ps-publish] event=waveobj:update otype=%s oid=%s%s client=%v scopes=%v",
 				data.OType, data.OID, verStr, client != nil, event.Scopes)
 			pslog.Append("ps-publish", "otype", data.OType, "oid", data.OID, "ver", verStr, "client", client != nil, "scopes", fmt.Sprintf("%v", event.Scopes))
+			if data.OType == waveobj.OType_Block && data.Obj != nil {
+				sessionId := waveobj.GetMeta(data.Obj).GetString("agent:sessionid", "")
+				if sessionId != "" {
+					agentBlockId = data.OID
+					agentSessionRef = pslog.MakeSessionRef(sessionId)
+					agentTraceId = pslog.MakeAgentTraceId(data.OID, sessionId)
+					pslog.AppendEvent(pslog.Event{Name: "agent.pubsub", Stage: "publish", TraceId: agentTraceId, BlockId: agentBlockId, SessionRef: agentSessionRef, Outcome: "ok"})
+				}
+			}
 		}
 	}
 	if client == nil {
 		log.Printf("[ps-publish] DROP client=nil event=%v", event.Event)
 		pslog.Append("ps-publish", "stage", "drop", "reason", "client-nil", "event", event.Event)
+		if agentTraceId != "" {
+			pslog.AppendEvent(pslog.Event{Name: "agent.pubsub", Stage: "route", TraceId: agentTraceId, BlockId: agentBlockId, SessionRef: agentSessionRef, Outcome: "error", Reason: "client-missing"})
+		}
 		return
 	}
 	routeIds := b.getMatchingRouteIds(event)
 	if event.Event == Event_WaveObjUpdate {
 		log.Printf("[ps-route] event=waveobj:update routes=%d", len(routeIds))
 		pslog.Append("ps-route", "event", "waveobj:update", "routes", len(routeIds))
+		if agentTraceId != "" {
+			outcome := "ok"
+			reason := ""
+			if len(routeIds) == 0 {
+				outcome = "error"
+				reason = "no-routes"
+			}
+			pslog.AppendEvent(pslog.Event{Name: "agent.pubsub", Stage: "route", TraceId: agentTraceId, BlockId: agentBlockId, SessionRef: agentSessionRef, Outcome: outcome, Reason: reason})
+		}
 	}
 	for _, routeId := range routeIds {
 		client.SendEvent(routeId, event)

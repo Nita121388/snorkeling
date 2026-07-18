@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import {
+    linkifyMarkdownFileReferences,
+    shouldOpenMarkdownLinkInNewBlock,
+    splitOrderedListItemChildren,
+} from "./markdown";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "./markdown-collapse";
-import { splitOrderedListItemChildren } from "./markdown";
 
 type MarkdownVisibilityElement = {
     headingLevel: number | null;
@@ -88,5 +92,54 @@ describe("markdown preview ordered list rendering", () => {
 
         expect(split.summaryChildren).toEqual(["Summary"]);
         expect(split.bodyChildren).toEqual(["Details"]);
+    });
+});
+
+describe("markdown preview file references", () => {
+    it("opens ctrl and command clicks in a new block", () => {
+        expect(shouldOpenMarkdownLinkInNewBlock({ ctrlKey: false, metaKey: false } as React.MouseEvent)).toBe(false);
+        expect(shouldOpenMarkdownLinkInNewBlock({ ctrlKey: true, metaKey: false } as React.MouseEvent)).toBe(true);
+        expect(shouldOpenMarkdownLinkInNewBlock({ ctrlKey: false, metaKey: true } as React.MouseEvent)).toBe(true);
+    });
+    it("turns an absolute markdown path with a line number into a link", () => {
+        const textNode = {
+            type: "text",
+            value: "E:/primary/Obsidian/Primary Mission/notes/学习笔记.md:43",
+        };
+        const tree = { type: "root", children: [{ type: "paragraph", children: [textNode] }] };
+
+        linkifyMarkdownFileReferences(tree);
+
+        expect(tree.children[0].children[0]).toEqual({
+            type: "link",
+            url: textNode.value,
+            children: [{ type: "text", value: textNode.value }],
+            position: undefined,
+        });
+    });
+
+    it("does not linkify file references inside code blocks", () => {
+        const code = {
+            type: "code",
+            value: "E:/primary/Obsidian/Primary Mission/notes/学习笔记.md:43",
+            children: [],
+        };
+        const tree = { type: "root", children: [code] };
+
+        linkifyMarkdownFileReferences(tree);
+
+        expect(tree.children[0]).toBe(code);
+    });
+
+    it("linkifies wiki links with their display label", () => {
+        const tree: any = {
+            type: "root",
+            children: [{ type: "paragraph", children: [{ type: "text", value: "[[终端笔记|打开笔记]]" }] }],
+        };
+
+        linkifyMarkdownFileReferences(tree);
+
+        expect(tree.children[0].children[0].children[0].value).toBe("打开笔记");
+        expect(tree.children[0].children[0].url).toContain("wave-wiki:");
     });
 });

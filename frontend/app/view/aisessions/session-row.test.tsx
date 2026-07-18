@@ -24,6 +24,8 @@ describe("RunningDot", () => {
         expect(dot.props.className).toContain("animate-spin");
         expect(dot.props.className).toContain("h-4");
         expect(dot.props.className).toContain("w-4");
+        expect(dot.props.className.split(/\s+/)).toContain("inline-flex");
+        expect(dot.props.className.split(/\s+/)).not.toContain("block");
         expect(dot.props.title).toBe("This session has a live block in the app");
 
         const dots = childSpanClasses(dot);
