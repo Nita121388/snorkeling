@@ -661,9 +661,36 @@
         background: rgb(from var(--block-bg-color) r g b / 0.92);
         cursor: grab;
 
-        &.dragging {
+        .tile-node.dragging & {
             cursor: grabbing;
             opacity: 0.55;
+        }
+    }
+
+    .inline-tab-block-group-handle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 22px;
+        flex: 0 0 18px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--main-text-color);
+        cursor: grab;
+        opacity: 0.45;
+
+        &:hover {
+            opacity: 0.85;
+        }
+
+        &:active {
+            cursor: grabbing;
+        }
+
+        i {
+            font-size: 11px;
         }
     }
 

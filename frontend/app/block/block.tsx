@@ -17,7 +17,13 @@ import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
 import { getLayoutModelForTabById, TileItemType, useDebouncedNodeInnerRect } from "@/layout/index";
-import { getLayoutDataActiveBlockId, getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
+import {
+    getLayoutDataActiveBlockId,
+    getLayoutDataBlockIds,
+    InlineTabDragItem,
+    InlineTabDragItemType,
+    InlineTabDropResult,
+} from "@/layout/lib/inlineTabs";
 import { counterInc } from "@/store/counters";
 import { getBlockComponentModel, registerBlockComponentModel, unregisterBlockComponentModel } from "@/store/global";
 import { makeORef } from "@/store/wos";
@@ -32,18 +38,6 @@ import { BlockEnv } from "./blockenv";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
-
-const InlineTabReorderItemType = "INLINE_TAB_REORDER";
-
-type InlineTabReorderDragItem = {
-    nodeId: string;
-    blockId: string;
-    index: number;
-};
-
-type InlineTabReorderDropResult = {
-    action: "reorder";
-};
 
 function getViewElem(
     blockId: string,
@@ -72,6 +66,14 @@ function basename(path: string): string {
     return normalized.split("/").pop() || normalized;
 }
 
+function getElementDimensions(element: HTMLElement): Dimensions | undefined {
+    if (!element) {
+        return;
+    }
+    const rect = element.getBoundingClientRect();
+    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+}
+
 type InlineTabLabelProps = {
     nodeId: string;
     blockId: string;
@@ -83,7 +85,8 @@ type InlineTabLabelProps = {
     onClose: () => void;
     onRename: (title: string) => void;
     onReorder: (dragBlockId: string, hoverIndex: number) => void;
-    onRestore: () => void;
+    onDragEnd: () => void;
+    sourceStripRef: React.RefObject<HTMLDivElement>;
 };
 
 const InlineTabLabel = memo(
@@ -98,7 +101,8 @@ const InlineTabLabel = memo(
         onClose,
         onRename,
         onReorder,
-        onRestore,
+        onDragEnd,
+        sourceStripRef,
     }: InlineTabLabelProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
         const blockData = useAtomValue(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
@@ -178,42 +182,35 @@ const InlineTabLabel = memo(
         }, [draftTitle, onRename]);
 
         const [{ isDragging }, dragInlineTab] = useDrag<
-            InlineTabReorderDragItem,
-            InlineTabReorderDropResult,
+            InlineTabDragItem,
+            InlineTabDropResult,
             { isDragging: boolean }
         >(
             () => ({
-                type: InlineTabReorderItemType,
-                item: { nodeId, blockId, index },
+                type: InlineTabDragItemType,
+                item: () => ({
+                    sourceNodeId: nodeId,
+                    blockId,
+                    sourceIndex: index,
+                    origin: "tab-label",
+                    sourceRect: getElementDimensions(sourceStripRef.current),
+                }),
                 collect: (monitor) => ({
                     isDragging: monitor.isDragging(),
                 }),
-                end: (_item, monitor) => {
-                    if (monitor.didDrop() || monitor.getClientOffset() == null) {
-                        return;
-                    }
-                    onRestore();
-                },
+                end: onDragEnd,
             }),
-            [blockId, index, nodeId, onRestore]
+            [blockId, index, nodeId, onDragEnd, sourceStripRef]
         );
 
-        const [{ isOver }, dropInlineTab] = useDrop<
-            InlineTabReorderDragItem,
-            InlineTabReorderDropResult,
-            { isOver: boolean }
-        >(
+        const [{ isOver }, dropInlineTab] = useDrop<InlineTabDragItem, InlineTabDropResult, { isOver: boolean }>(
             () => ({
-                accept: InlineTabReorderItemType,
-                canDrop: (dragItem) => dragItem.nodeId === nodeId,
-                hover: (dragItem) => {
-                    if (dragItem.nodeId !== nodeId || dragItem.index === index) {
-                        return;
-                    }
+                accept: InlineTabDragItemType,
+                canDrop: (dragItem) => dragItem.sourceNodeId === nodeId && dragItem.origin === "tab-label",
+                drop: (dragItem) => {
                     onReorder(dragItem.blockId, index);
-                    dragItem.index = index;
+                    return { action: "reorder" };
                 },
-                drop: () => ({ action: "reorder" }),
                 collect: (monitor) => ({
                     isOver: monitor.isOver() && monitor.canDrop(),
                 }),
@@ -335,14 +332,18 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const blockIds = getLayoutDataBlockIds(layoutData);
     const blockIdsKey = blockIds.join("\n");
     const activeBlockId = getLayoutDataActiveBlockId(layoutData) ?? blockIds[0];
+    const fallbackTabStripRef = useRef<HTMLDivElement>(null);
+    const tabStripRef = nodeModel.dragHandleRef ?? fallbackTabStripRef;
+    const activeBlockDragHandleRef = useRef<HTMLDivElement>(null);
     const activeLayoutDataAtom = useMemo(() => atom<TabLayoutData>(layoutData), [layoutData]);
     const activeNodeModel = useMemo(
         () => ({
             ...nodeModel,
             blockId: activeBlockId,
             layoutData: activeLayoutDataAtom,
+            dragHandleRef: blockIds.length > 1 ? activeBlockDragHandleRef : nodeModel.dragHandleRef,
         }),
-        [activeBlockId, activeLayoutDataAtom, nodeModel]
+        [activeBlockId, activeLayoutDataAtom, blockIds.length, nodeModel]
     );
     const titleMap = useMemo(() => {
         return Object.fromEntries(
@@ -353,7 +354,6 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const isEphemeral = useAtomValue(nodeModel.isEphemeral);
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
-    const tabStripRef = useRef<HTMLDivElement>(null);
 
     const cleanupMissingBlocks = useCallback(() => {
         if (!layoutModel) {
@@ -362,25 +362,27 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         const validBlockIds = blockIds.filter((blockId) => layoutModel.getBlockById(blockId) != null);
         layoutModel.cleanupInlineTabBlockIds(nodeModel.nodeId, validBlockIds);
     }, [blockIdsKey, layoutModel, nodeModel.nodeId]);
-    const [{ isGroupDragging }, dragInlineTabBlock] = useDrag<LayoutNode, unknown, { isGroupDragging: boolean }>(
+    const [, dragActiveInlineTabBlock] = useDrag<InlineTabDragItem, InlineTabDropResult>(
         () => ({
-            type: TileItemType,
-            canDrag: () =>
-                !(isEphemeral || isMagnified || isHidden) &&
-                layoutModel?.getNodeByBlockId(activeBlockId)?.id === nodeModel.nodeId,
-            item: () => layoutModel?.getNodeByBlockId(activeBlockId) ?? null,
-            collect: (monitor) => ({
-                isGroupDragging: monitor.isDragging(),
+            type: InlineTabDragItemType,
+            canDrag: () => blockIds.length > 1 && !(isEphemeral || isMagnified || isHidden),
+            item: () => ({
+                sourceNodeId: nodeModel.nodeId,
+                blockId: activeBlockId,
+                sourceIndex: blockIds.indexOf(activeBlockId),
+                origin: "block-header",
+                sourceRect: getElementDimensions(tabStripRef.current),
             }),
+            end: () => layoutModel?.clearPendingInlineTabDrop(),
         }),
-        [activeBlockId, isEphemeral, isHidden, isMagnified, layoutModel, nodeModel.nodeId]
+        [activeBlockId, blockIdsKey, isEphemeral, isHidden, isMagnified, layoutModel, nodeModel.nodeId]
     );
-    const [, dropInlineTabBlock] = useDrop<LayoutNode | InlineTabReorderDragItem, unknown>(
+    const [, dropInlineTabBlock] = useDrop<LayoutNode | InlineTabDragItem, unknown>(
         () => ({
-            accept: [TileItemType, InlineTabReorderItemType],
+            accept: [TileItemType, InlineTabDragItemType],
             canDrop: (dragItem, monitor) => {
-                if (monitor.getItemType() === InlineTabReorderItemType) {
-                    return (dragItem as InlineTabReorderDragItem).nodeId === nodeModel.nodeId;
+                if (monitor.getItemType() === InlineTabDragItemType) {
+                    return (dragItem as InlineTabDragItem).sourceNodeId === nodeModel.nodeId;
                 }
                 return (dragItem as LayoutNode).id !== nodeModel.nodeId;
             },
@@ -394,8 +396,8 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 if (monitor.didDrop()) {
                     return;
                 }
-                if (monitor.getItemType() === InlineTabReorderItemType) {
-                    return { action: "reorder" } satisfies InlineTabReorderDropResult;
+                if (monitor.getItemType() === InlineTabDragItemType) {
+                    return { action: "reorder" } satisfies InlineTabDropResult;
                 }
                 if (layoutModel?.setPendingInlineTabMerge(nodeModel.nodeId, (dragItem as LayoutNode).id)) {
                     layoutModel.onDrop();
@@ -405,7 +407,8 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         [layoutModel, nodeModel.nodeId]
     );
 
-    dragInlineTabBlock(dropInlineTabBlock(tabStripRef));
+    dragActiveInlineTabBlock(activeBlockDragHandleRef);
+    dropInlineTabBlock(tabStripRef);
 
     if (blockIds.length <= 1 || !activeBlockId) {
         return <Block key={activeBlockId} nodeModel={activeNodeModel} preview={preview} />;
@@ -421,7 +424,15 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 />
             ))}
             {!preview && (
-                <div ref={tabStripRef} className={clsx("inline-tab-block-tabs", { dragging: isGroupDragging })}>
+                <div ref={tabStripRef} className="inline-tab-block-tabs">
+                    <button
+                        type="button"
+                        className="inline-tab-block-group-handle"
+                        title="Move Tab Group"
+                        aria-label="Move Tab Group"
+                    >
+                        <i className={makeIconClass("grip-lines", true)} />
+                    </button>
                     {blockIds.map((blockId, index) => (
                         <InlineTabLabel
                             key={blockId}
@@ -436,7 +447,8 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                             onReorder={(dragBlockId, hoverIndex) =>
                                 layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)
                             }
-                            onRestore={() => layoutModel?.restoreInlineTabBlock(blockId)}
+                            onDragEnd={() => layoutModel?.clearPendingInlineTabDrop()}
+                            sourceStripRef={tabStripRef}
                             onRename={(title) => layoutModel?.setInlineTabTitle(nodeModel.nodeId, blockId, title)}
                         />
                     ))}

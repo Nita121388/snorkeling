@@ -19,7 +19,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 17
+	hookInstallVersion  = 18
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -329,6 +329,7 @@ func claudeHookInstallName() string {
 	}
 	return hookInstallBaseName + ".sh"
 }
+
 type agentStatusHookSpec struct {
 	event   string
 	action  string
@@ -366,9 +367,9 @@ func hookCommand(path string, action string, phase string) string {
 
 func codexHookCommand(path string, spec agentStatusHookSpec) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & echo {^"continue^":true}"`, path, spec.action, spec.phase)
+		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & exit /b 0"`, path, spec.action, spec.phase)
 	}
-	return fmt.Sprintf("bash %s %s %s >/dev/null 2>&1; printf '%%s\\n' '{\"continue\":true}'", shellSingleQuote(path), spec.action, spec.phase)
+	return fmt.Sprintf("bash %s %s %s >/dev/null 2>&1; exit 0", shellSingleQuote(path), spec.action, spec.phase)
 }
 
 func claudeHookCommand(path string, action string, phase string) string {

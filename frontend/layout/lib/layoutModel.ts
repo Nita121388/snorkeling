@@ -15,8 +15,11 @@ import {
     findInlineTabMergeTarget,
     getLayoutDataActiveBlockId,
     getLayoutDataBlockIds,
+    InlineTabDragItem,
     layoutDataContainsBlockId,
     mergeSourceNodeIntoTargetNode,
+    moveBlockBetweenInlineTabNodes,
+    PendingInlineTabDrop,
     removeBlockIdFromInlineTabNode,
     reorderInlineTabNodeBlockIds,
     setInlineTabNodeBlockIds,
@@ -41,6 +44,7 @@ import {
 import { getMinimizedBlockIdsFromTab } from "./minimizedBlocks";
 import {
     ContentRenderer,
+    DropDirection,
     FlexDirection,
     LayoutNode,
     LayoutNodeAdditionalProps,
@@ -178,6 +182,7 @@ export class LayoutModel {
      * @see LayoutTreeActionType for the different types of actions.
      */
     pendingTreeAction: AtomWithThrottle<LayoutTreeAction>;
+    pendingInlineTabDrop: PrimitiveAtom<PendingInlineTabDrop>;
     /**
      * Whether a node is currently being dragged.
      */
@@ -369,6 +374,7 @@ export class LayoutModel {
         this.focusedNodeIdStack = [];
 
         this.pendingTreeAction = atomWithThrottle<LayoutTreeAction>(null, 10);
+        this.pendingInlineTabDrop = atom();
         this.placeholderTransform = atom<CSSProperties>((get: Getter) => {
             const pendingAction = get(this.pendingTreeAction.throttledValueAtom);
             return this.getPlaceholderTransform(pendingAction);
@@ -1739,6 +1745,77 @@ export class LayoutModel {
             return false;
         }
         this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
+    setPendingInlineTabDrop(dragItem: InlineTabDragItem, targetNodeId: string, direction: DropDirection): boolean {
+        const sourceNode = findNode(this.treeState.rootNode, dragItem.sourceNodeId);
+        const targetNode = findNode(this.treeState.rootNode, targetNodeId);
+        if (
+            !sourceNode ||
+            !targetNode ||
+            getLayoutDataBlockIds(sourceNode.data).length <= 1 ||
+            !layoutDataContainsBlockId(sourceNode.data, dragItem.blockId) ||
+            (direction === DropDirection.Center && sourceNode.id === targetNode.id)
+        ) {
+            this.clearPendingInlineTabDrop();
+            return false;
+        }
+        const previewNode = newLayoutNode(undefined, undefined, undefined, { blockId: dragItem.blockId });
+        const previewAction = computeMoveNode(
+            this.treeState,
+            {
+                type: LayoutTreeActionType.ComputeMove,
+                nodeId: targetNodeId,
+                nodeToMoveId: previewNode.id,
+                direction,
+            } as LayoutTreeComputeMoveNodeAction,
+            previewNode
+        );
+        if (!previewAction) {
+            this.clearPendingInlineTabDrop();
+            return false;
+        }
+        this.setter(this.pendingInlineTabDrop, { ...dragItem, targetNodeId, direction });
+        this.setter(this.pendingTreeAction.throttledValueAtom, previewAction);
+        return true;
+    }
+
+    clearPendingInlineTabDrop() {
+        this.setter(this.pendingInlineTabDrop, undefined);
+        this.setter(this.pendingTreeAction.throttledValueAtom, undefined);
+    }
+
+    commitPendingInlineTabDrop(): boolean {
+        const pendingDrop = this.getter(this.pendingInlineTabDrop);
+        const previewAction = this.getter(this.pendingTreeAction.currentValueAtom);
+        this.clearPendingInlineTabDrop();
+        if (!pendingDrop || !previewAction) {
+            return false;
+        }
+        const sourceNode = findNode(this.treeState.rootNode, pendingDrop.sourceNodeId);
+        const targetNode = findNode(this.treeState.rootNode, pendingDrop.targetNodeId);
+        if (
+            !sourceNode ||
+            !targetNode ||
+            getLayoutDataBlockIds(sourceNode.data).length <= 1 ||
+            !layoutDataContainsBlockId(sourceNode.data, pendingDrop.blockId)
+        ) {
+            return false;
+        }
+        if (pendingDrop.direction === DropDirection.Center) {
+            if (!moveBlockBetweenInlineTabNodes(sourceNode, targetNode, pendingDrop.blockId)) {
+                return false;
+            }
+            this.commitInlineTabMutation(targetNode.id);
+            return true;
+        }
+        if (previewAction.type !== LayoutTreeActionType.Move) {
+            return false;
+        }
+        removeBlockIdFromInlineTabNode(sourceNode, pendingDrop.blockId);
+        this.treeReducer(previewAction as LayoutTreeMoveNodeAction, false);
+        this.commitInlineTabMutation((previewAction as LayoutTreeMoveNodeAction).node.id);
         return true;
     }
 

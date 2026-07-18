@@ -2,11 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { findNode } from "./layoutNode";
-import { LayoutNode, LayoutNodeAdditionalProps, LayoutTreeState } from "./types";
+import { DropDirection, LayoutNode, LayoutNodeAdditionalProps, LayoutTreeState } from "./types";
+
+export const InlineTabDragItemType = "INLINE_TAB_ITEM";
 
 export type InlineTabMergeTarget = {
     sourceNode: LayoutNode;
     targetNode: LayoutNode;
+};
+
+export type InlineTabDragItem = {
+    sourceNodeId: string;
+    blockId: string;
+    sourceIndex: number;
+    origin: "tab-label" | "block-header";
+    sourceRect?: Dimensions;
+};
+
+export type InlineTabDropResult = {
+    action: "reorder" | "move";
+};
+
+export type PendingInlineTabDrop = InlineTabDragItem & {
+    targetNodeId: string;
+    direction: DropDirection;
 };
 
 export function getLayoutDataBlockIds(data: TabLayoutData | null | undefined): string[] {
@@ -175,6 +194,33 @@ export function reorderInlineTabNodeBlockIds(node: LayoutNode, blockId: string, 
     nextBlockIds.splice(sourceIndex, 1);
     nextBlockIds.splice(targetIndex, 0, blockId);
     setInlineTabNodeBlockIds(node, nextBlockIds);
+    return true;
+}
+
+export function moveBlockBetweenInlineTabNodes(
+    sourceNode: LayoutNode,
+    targetNode: LayoutNode,
+    blockId: string
+): boolean {
+    if (
+        sourceNode.id === targetNode.id ||
+        !layoutDataContainsBlockId(sourceNode.data, blockId) ||
+        layoutDataContainsBlockId(targetNode.data, blockId)
+    ) {
+        return false;
+    }
+    const customTitle = sourceNode.data?.blockTabTitles?.[blockId];
+    removeBlockIdFromInlineTabNode(sourceNode, blockId);
+    const targetBlockIds = getLayoutDataBlockIds(targetNode.data);
+    const nextTitles = { ...(targetNode.data?.blockTabTitles ?? {}) };
+    if (customTitle) {
+        nextTitles[blockId] = customTitle;
+    }
+    targetNode.data = {
+        blockIds: [...targetBlockIds, blockId],
+        activeBlockId: blockId,
+        blockTabTitles: Object.keys(nextTitles).length > 0 ? nextTitles : undefined,
+    };
     return true;
 }
 

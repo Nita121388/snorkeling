@@ -8,6 +8,7 @@ import { UpgradeOnboardingPatch } from "@/app/onboarding/onboarding-upgrade-patc
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
+import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
@@ -20,6 +21,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [UpgradeOnboardingPatch.displayName || "UpgradeOnboardingPatch"]: UpgradeOnboardingPatch,
     [UserInputModal.displayName || "UserInputModal"]: UserInputModal,
     [AboutModal.displayName || "AboutModal"]: AboutModal,
+    [AgentHookSettingsModal.displayName || "AgentHookSettingsModal"]: AgentHookSettingsModal,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,

@@ -19,6 +19,7 @@ import React, {
 import { DropTargetMonitor, XYCoord, useDrag, useDragLayer, useDrop } from "react-dnd";
 import { debounce, throttle } from "throttle-debounce";
 import { useDevicePixelRatio } from "use-device-pixel-ratio";
+import { InlineTabDragItem, InlineTabDragItemType, InlineTabDropResult } from "./inlineTabs";
 import { LayoutModel } from "./layoutModel";
 import { useNodeModel, useTileLayout } from "./layoutModelHooks";
 import "./tilelayout.scss";
@@ -54,6 +55,18 @@ export interface TileLayoutProps {
 const DragPreviewWidth = 300;
 const DragPreviewHeight = 300;
 
+function pointIsInsideRect(point: XYCoord, rect: Dimensions): boolean {
+    if (!point || !rect) {
+        return false;
+    }
+    return (
+        point.x >= rect.left &&
+        point.x <= rect.left + rect.width &&
+        point.y >= rect.top &&
+        point.y <= rect.top + rect.height
+    );
+}
+
 function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutProps) {
     const layoutModel = useTileLayout(tabAtom, contents);
     const overlayTransform = useAtomValue(layoutModel.overlayTransform);
@@ -61,16 +74,24 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
     const setReady = useSetAtom(layoutModel.ready);
     const isResizing = useAtomValue(layoutModel.isResizing);
 
-    const { activeDrag, dragClientOffset, dragItemType } = useDragLayer((monitor) => ({
+    const { activeDrag, dragClientOffset, dragItem, dragItemType } = useDragLayer((monitor) => ({
         activeDrag: monitor.isDragging(),
         dragClientOffset: monitor.getClientOffset(),
+        dragItem: monitor.getItem<InlineTabDragItem>(),
         dragItemType: monitor.getItemType(),
     }));
 
     useEffect(() => {
         const activeTileDrag = activeDrag && dragItemType == TileItemType;
-        setActiveDrag(activeTileDrag);
-    }, [activeDrag, dragItemType]);
+        const activeInlineTabLayoutDrag =
+            activeDrag &&
+            dragItemType === InlineTabDragItemType &&
+            !pointIsInsideRect(dragClientOffset, dragItem?.sourceRect);
+        setActiveDrag(activeTileDrag || activeInlineTabLayoutDrag);
+        if (dragItemType === InlineTabDragItemType && !activeInlineTabLayoutDrag) {
+            layoutModel.clearPendingInlineTabDrop();
+        }
+    }, [activeDrag, dragClientOffset, dragItem, dragItemType, layoutModel, setActiveDrag]);
 
     const checkForCursorBounds = useCallback(
         debounce(100, (dragClientOffset: XYCoord) => {
@@ -86,10 +107,11 @@ function TileLayoutComponent({ tabAtom, contents, getCursorPoint }: TileLayoutPr
                     normalizedY >= displayContainerRect.height
                 ) {
                     layoutModel.treeReducer({ type: LayoutTreeActionType.ClearPendingAction });
+                    layoutModel.clearPendingInlineTabDrop();
                 }
             }
         }),
-        [getCursorPoint]
+        [getCursorPoint, layoutModel]
     );
 
     // Effect to detect when the cursor leaves the TileLayout hit trap so we can remove any placeholders. This cannot be done using pointer capture
@@ -364,43 +386,64 @@ const OverlayNode = memo(({ node, layoutModel }: OverlayNodeProps) => {
     const isHidden = useAtomValue(nodeModel.isHidden);
     const overlayRef = useRef<HTMLDivElement>(null);
 
-    const [, drop] = useDrop(
+    const [, drop] = useDrop<LayoutNode | InlineTabDragItem, InlineTabDropResult | unknown>(
         () => ({
-            accept: TileItemType,
+            accept: [TileItemType, InlineTabDragItemType],
             canDrop: (_, monitor) => {
                 if (isHidden) {
                     return false;
                 }
-                const dragItem = monitor.getItem<LayoutNode>();
-                if (monitor.isOver({ shallow: true }) && dragItem.id !== node.id) {
+                if (!monitor.isOver({ shallow: true })) {
+                    return false;
+                }
+                if (monitor.getItemType() === InlineTabDragItemType) {
                     return true;
                 }
-                return false;
+                const dragItem = monitor.getItem<LayoutNode>();
+                return dragItem.id !== node.id;
             },
             drop: (_, monitor) => {
-                if (!monitor.didDrop()) {
-                    layoutModel.onDrop();
+                if (monitor.didDrop()) {
+                    return;
                 }
+                if (monitor.getItemType() === InlineTabDragItemType) {
+                    return layoutModel.commitPendingInlineTabDrop() ? { action: "move" } : undefined;
+                }
+                layoutModel.onDrop();
             },
-            hover: throttle(50, (_, monitor: DropTargetMonitor<unknown, unknown>) => {
+            hover: throttle(50, (_, monitor: DropTargetMonitor<LayoutNode | InlineTabDragItem, unknown>) => {
                 if (monitor.isOver({ shallow: true })) {
                     if (monitor.canDrop() && layoutModel.displayContainerRef?.current && additionalProps?.rect) {
-                        const dragItem = monitor.getItem<LayoutNode>();
-                        // console.log("computing operation", layoutNode, dragItem, additionalProps.rect);
-                        const offset = monitor.getClientOffset();
+                        const clientOffset = monitor.getClientOffset();
+                        if (!clientOffset) {
+                            return;
+                        }
                         const containerRect = layoutModel.displayContainerRef.current.getBoundingClientRect();
-                        offset.x -= containerRect.x;
-                        offset.y -= containerRect.y;
+                        const offset = {
+                            x: clientOffset.x - containerRect.x,
+                            y: clientOffset.y - containerRect.y,
+                        };
+                        const direction = determineDropDirection(additionalProps.rect, offset);
+                        if (monitor.getItemType() === InlineTabDragItemType) {
+                            layoutModel.setPendingInlineTabDrop(
+                                monitor.getItem<InlineTabDragItem>(),
+                                node.id,
+                                direction
+                            );
+                            return;
+                        }
+                        const dragItem = monitor.getItem<LayoutNode>();
                         layoutModel.treeReducer({
                             type: LayoutTreeActionType.ComputeMove,
                             nodeId: node.id,
                             nodeToMoveId: dragItem.id,
-                            direction: determineDropDirection(additionalProps.rect, offset),
+                            direction,
                         } as LayoutTreeComputeMoveNodeAction);
                     } else {
                         layoutModel.treeReducer({
                             type: LayoutTreeActionType.ClearPendingAction,
                         });
+                        layoutModel.clearPendingInlineTabDrop();
                     }
                 }
             }),

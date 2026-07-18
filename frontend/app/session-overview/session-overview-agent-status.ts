@@ -10,6 +10,10 @@ function normalizeAgentProviderName(provider: string): string {
     return provider.trim().toLowerCase();
 }
 
+export function agentStatusHookProvidersForInstall(): string[] {
+    return [...AgentStatusHookProviders];
+}
+
 export function agentStatusHookProvidersForBlocks(blocks: AgentStatusHookBlock[]): string[] {
     const present = new Set<string>();
     for (const block of blocks) {
@@ -20,4 +24,13 @@ export function agentStatusHookProvidersForBlocks(blocks: AgentStatusHookBlock[]
         }
     }
     return AgentStatusHookProviders.filter((provider) => present.has(provider));
+}
+
+export function agentStatusHookStatusesNeedingInstall(providers: string[], statuses: HookStatus[]): HookStatus[] {
+    const statusByProvider = new Map(
+        statuses.map((status) => [normalizeAgentProviderName(status.provider), status] as const)
+    );
+    return providers
+        .map((provider) => statusByProvider.get(normalizeAgentProviderName(provider)))
+        .filter((status) => status?.supported === true && status.needsInstall === true);
 }

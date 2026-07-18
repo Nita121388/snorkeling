@@ -195,8 +195,8 @@ func TestInstallClaudeHooksUsesWindowsStdinSafeCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallClaudeHooks returned error: %v", err)
 	}
-	if filepath.Ext(result.HookPath) != ".cmd" {
-		t.Fatalf("expected Claude windows hook path to be a command script, got %q", result.HookPath)
+	if filepath.Ext(result.HookPath) != ".ps1" {
+		t.Fatalf("expected Claude windows hook path to be a PowerShell script, got %q", result.HookPath)
 	}
 	settingsBytes, err := os.ReadFile(result.SettingsPath)
 	if err != nil {
@@ -207,13 +207,13 @@ func TestInstallClaudeHooksUsesWindowsStdinSafeCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range hookCommands(settings) {
-		if !strings.HasPrefix(command, `cmd.exe /d /q /c "call ""`) {
-			t.Fatalf("expected Claude windows hook command to call cmd hook directly: %q", command)
+		if !strings.HasPrefix(command, `powershell -NoProfile -ExecutionPolicy Bypass -File "`) {
+			t.Fatalf("expected Claude windows hook command to call PowerShell hook directly: %q", command)
 		}
-		if !strings.Contains(command, hookInstallBaseName+".cmd") {
-			t.Fatalf("expected Claude windows hook command to call the cmd hook script: %q", command)
+		if !strings.Contains(command, hookInstallBaseName+".ps1") {
+			t.Fatalf("expected Claude windows hook command to call the PowerShell hook script: %q", command)
 		}
-		for _, forbidden := range []string{"bash ", "bash.exe", "<nul", ">nul", hookInstallBaseName + ".sh"} {
+		for _, forbidden := range []string{"bash ", "bash.exe", "<nul", ">nul", hookInstallBaseName + ".cmd", hookInstallBaseName + ".sh"} {
 			if strings.Contains(command, forbidden) {
 				t.Fatalf("Claude windows hook command should not contain %q: %q", forbidden, command)
 			}

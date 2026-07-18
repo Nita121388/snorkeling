@@ -37,6 +37,10 @@
     .overlay-node {
         display: flex;
         flex: 0 1 auto;
+
+        &:only-child {
+            flex: 1 1 100%;
+        }
     }
 
     .resize-handle {

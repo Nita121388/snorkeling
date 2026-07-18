@@ -552,8 +552,23 @@ const AgentTargetFloatingWindow = memo(
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
-                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
-                        New Agent
+                    <div className="flex items-center justify-between px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        <span>New Agent</span>
+                        <button
+                            type="button"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
+                            aria-label="Agent hook settings"
+                            title="Agent hook settings"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onClose();
+                                if (!modalsModel.isModalOpen("AgentHookSettingsModal")) {
+                                    modalsModel.pushModal("AgentHookSettingsModal");
+                                }
+                            }}
+                        >
+                            <i className={makeIconClass("gear", false)} />
+                        </button>
                     </div>
 
                     <div className="px-3 pt-2 pb-1.5 border-b border-border/60">

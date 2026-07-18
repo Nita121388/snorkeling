@@ -7,6 +7,7 @@ import {
     getLayoutDataActiveBlockId,
     getLayoutDataBlockIds,
     mergeSourceNodeIntoTargetNode,
+    moveBlockBetweenInlineTabNodes,
     removeBlockIdFromInlineTabNode,
     reorderInlineTabNodeBlockIds,
     setInlineTabNodeBlockIds,
@@ -130,6 +131,23 @@ test("reorder inline tab block ids preserves active block and titles", () => {
     assert.deepEqual(node.data.blockTabTitles, { two: "Second" });
     assert(!reorderInlineTabNodeBlockIds(node, "missing", 1), "missing blocks should not mutate the group");
     assert.deepEqual(getLayoutDataBlockIds(node.data), ["three", "one", "two"]);
+});
+
+test("move block between inline tab nodes preserves the custom title", () => {
+    const source = newLayoutNode(undefined, undefined, undefined, {
+        blockIds: ["one", "two"],
+        activeBlockId: "two",
+        blockTabTitles: { two: "Second" },
+    });
+    const target = newLayoutNode(undefined, undefined, undefined, { blockId: "target" });
+
+    const moved = moveBlockBetweenInlineTabNodes(source, target, "two");
+
+    assert(moved, "valid transfer should succeed");
+    assert.deepEqual(source.data, { blockId: "one" });
+    assert.deepEqual(getLayoutDataBlockIds(target.data), ["target", "two"]);
+    assert(getLayoutDataActiveBlockId(target.data) === "two", "moved block should become active");
+    assert.deepEqual(target.data.blockTabTitles, { two: "Second" });
 });
 
 test("remove active inline tab block selects the next neighbor", () => {
