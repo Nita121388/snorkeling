@@ -5,6 +5,7 @@ import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { getBlockComponentModel, atoms } from "@/app/store/global";
+import { blockComponentModelMap } from "@/app/store/global-atoms";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { fireAndForget } from "@/util/util";
@@ -81,11 +82,40 @@ const focusedTermBlockIdAtom = atom<string | null>((get) => {
     return blockId;
 });
 
+// All term-block ids visible in the current static tab. Used as a fallback chain
+// when the focused block isn't a term (e.g. focus is on the AI panel, a file
+// viewer, or the compose modal's own editor). Without this, "Send" silently
+// failed whenever the user opened the modal without keeping focus on a terminal
+// — modal focus moved to the textarea, so the user had no way to re-focus the
+// term without closing the modal first.
+const availableTermBlockIdsAtom = atom<string[]>((get) => {
+    // preferred: the statically-tracked term belonging to the focused layout node
+    const focusedTermId = get(focusedTermBlockIdAtom);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    // We don't have a layout-walk helper handy, so enumerate every block in the
+    // app via the model map and keep the ones whose viewModel is a term. The
+    // focused term (if any) is always first so "Send" defaults to the user's
+    // most recently relevant terminal.
+    if (focusedTermId != null) {
+        out.push(focusedTermId);
+        seen.add(focusedTermId);
+    }
+    for (const [blockId, bcm] of blockComponentModelMap.entries()) {
+        if (blockId == null || seen.has(blockId)) continue;
+        if (bcm?.viewModel?.viewType === "term") {
+            out.push(blockId);
+            seen.add(blockId);
+        }
+    }
+    return out;
+});
+
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     const settings = useAtomValue(atoms.settingsAtom);
-    const focusedTermBlockId = useAtomValue(focusedTermBlockIdAtom);
-    const canSendToTerm = focusedTermBlockId != null;
+    const availableTermBlockIds = useAtomValue(availableTermBlockIdsAtom);
+    const canSendToTerm = availableTermBlockIds.length > 0;
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -259,13 +289,16 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Nothing to send", "err");
             return;
         }
-        // Routes straight to the focused term, bypassing the modal's own
-        // textarea (which holds DOM focus while the user is editing here).
-        // `focusedTermBlockId` is the same atom feeding `canSendToTerm`, so the
-        // disabled button and the click path agree on the target.
-        const ok = sendTextToFocusedTerm(text, focusedTermBlockId);
-        if (ok) {
+        // Pick from the candidate chain (focused term → fallback terms in this
+        // tab) so that opening the modal without focus on a terminal no longer
+        // silently drops the Send. `sendTextToFocusedTerm` returns the blockId
+        // it actually pasted into, or null when every candidate's TermWrap was
+        // not live (panel mid-transition).
+        const target = sendTextToFocusedTerm(text, availableTermBlockIds);
+        if (target != null) {
             setStatus("Sent to focused terminal", "ok");
+        } else {
+            setStatus("No live terminal — focus a terminal and retry", "err");
         }
     };
 
@@ -287,14 +320,12 @@ const CommonTextComposeModal = memo(() => {
     };
 
     const handleListItemSend = (item: CommonTextItem) => {
-        if (focusedTermBlockId == null) {
-            setStatus("No terminal focused", "err");
-            return;
-        }
-        const ok = sendTextToFocusedTerm(item.text, focusedTermBlockId);
-        if (ok) {
+        const target = sendTextToFocusedTerm(item.text, availableTermBlockIds);
+        if (target != null) {
             setStatus("Sent to focused terminal", "ok");
             fireAndForget(() => recordCommonTextUse(item.id));
+        } else {
+            setStatus("No live terminal — focus a terminal and retry", "err");
         }
     };
 

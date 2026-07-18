@@ -165,6 +165,19 @@ export function mergeSourceNodeIntoTargetNode(sourceNode: LayoutNode, targetNode
     sourceNode.data = normalizeInlineTabData(sourceNode.data);
 }
 
+export function reorderInlineTabNodeBlockIds(node: LayoutNode, blockId: string, targetIndex: number): boolean {
+    const blockIds = getLayoutDataBlockIds(node.data);
+    const sourceIndex = blockIds.indexOf(blockId);
+    if (sourceIndex === -1 || sourceIndex === targetIndex || targetIndex < 0 || targetIndex >= blockIds.length) {
+        return false;
+    }
+    const nextBlockIds = [...blockIds];
+    nextBlockIds.splice(sourceIndex, 1);
+    nextBlockIds.splice(targetIndex, 0, blockId);
+    setInlineTabNodeBlockIds(node, nextBlockIds);
+    return true;
+}
+
 export function removeBlockIdFromInlineTabNode(node: LayoutNode, blockId: string): TabLayoutData {
     const currentBlockIds = getLayoutDataBlockIds(node.data);
     const nextBlockIds = currentBlockIds.filter((id) => id !== blockId);

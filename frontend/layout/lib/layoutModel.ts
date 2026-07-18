@@ -18,6 +18,7 @@ import {
     layoutDataContainsBlockId,
     mergeSourceNodeIntoTargetNode,
     removeBlockIdFromInlineTabNode,
+    reorderInlineTabNodeBlockIds,
     setInlineTabNodeBlockIds,
 } from "./inlineTabs";
 import { getLayoutStateAtomFromTab } from "./layoutAtom";
@@ -1612,6 +1613,24 @@ export class LayoutModel {
         );
     }
 
+    addBlockToInlineTab(nodeId: string, blockId: string): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node) {
+            return false;
+        }
+        const currentBlockIds = getLayoutDataBlockIds(node.data);
+        if (currentBlockIds.includes(blockId)) {
+            return false;
+        }
+        node.data = {
+            blockIds: [...currentBlockIds, blockId],
+            activeBlockId: blockId,
+            blockTabTitles: node.data?.blockTabTitles,
+        };
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
     inlineMinimizeBlock(blockId: string): boolean {
         const mergeTarget = findInlineTabMergeTarget(
             blockId,
@@ -1710,6 +1729,15 @@ export class LayoutModel {
             activeBlockId: getLayoutDataActiveBlockId(node.data) ?? blockId,
             blockTabTitles: Object.keys(nextTitles).length > 0 ? nextTitles : undefined,
         };
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
+    reorderInlineTabBlock(nodeId: string, blockId: string, targetIndex: number): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node || !reorderInlineTabNodeBlockIds(node, blockId, targetIndex)) {
+            return false;
+        }
         this.commitInlineTabMutation(node.id);
         return true;
     }

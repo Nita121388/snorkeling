@@ -18,6 +18,7 @@ import {
     getOverrideConfigAtom,
     refocusNode,
 } from "@/store/global";
+import { ObjectService } from "@/app/store/services";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -1392,6 +1393,48 @@ export class PreviewModel implements ViewModel {
         return true;
     }
 
+    private async openPathInPreviewBlockAsTab(
+        targetBlockId: string,
+        newPath: string,
+        connection: string,
+        options?: PreviewOpenPathOptions
+    ): Promise<boolean> {
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetNode = layoutModel.getNodeByBlockId(targetBlockId);
+        if (!targetNode) {
+            return false;
+        }
+        const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        const blockMeta: Record<string, any> = {
+            view: "preview",
+            file: newPath,
+            connection,
+        };
+        const lineNumber = normalizeSearchTargetLine(options?.lineNumber);
+        if (lineNumber != null) {
+            blockMeta[PreviewSearchLineMetaKey] = lineNumber;
+        }
+        if (options?.editMode != null) {
+            blockMeta.edit = options.editMode;
+        }
+        if (options?.pathIsDir !== undefined) {
+            blockMeta[PreviewPathIsDirMetaKey] = options.pathIsDir;
+        }
+        const blockDef: BlockDef = {
+            meta: blockMeta,
+        };
+        const newBlockId = await ObjectService.CreateBlock(blockDef, rtOpts);
+        if (!newBlockId) {
+            return false;
+        }
+        const added = layoutModel.addBlockToInlineTab(targetNode.id, newBlockId);
+        if (!added) {
+            fireAndForget(() => ObjectService.DeleteBlock(newBlockId));
+            return false;
+        }
+        return true;
+    }
+
     private async openPathInCurrentBlock(newPath: string, options?: PreviewOpenPathOptions) {
         const currentPath = globalStore.get(this.metaFilePath);
         if (normalizePath(currentPath) === normalizePath(newPath)) {
@@ -1494,7 +1537,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         const sourceConnection = await globalStore.get(this.connection);
-        const opened = await this.openPathInPreviewBlock(targetBlockId, newPath, sourceConnection, options);
+        const opened = await this.openPathInPreviewBlockAsTab(targetBlockId, newPath, sourceConnection, options);
         if (opened) {
             this.focusBlockById(targetBlockId);
             return;

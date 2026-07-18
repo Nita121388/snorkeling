@@ -104,20 +104,26 @@ export function insertTextIntoFocused(text: string): boolean {
 }
 
 /**
- * Send `text` straight to a specifically-chosen terminal block, bypassing any
- * input/textarea that currently holds DOM focus (e.g. the Compose modal's own
- * editor). The caller resolves the focused block id (see `focusedTermBlockIdAtom`
- * in `commontext-compose-modal`) via `getLayoutDataActiveBlockId`, which works
- * inside inline-tabs containers where the layout node carries `blockIds` +
- * `activeBlockId` instead of a single `blockId`. Returns false when the block
- * isn't a term.
+ * Send `text` straight to a terminal block, bypassing any input/textarea that
+ * currently holds DOM focus (e.g. the Compose modal's own editor). `candidates`
+ * is an ordered list of term-block ids to try: callers put the focused term
+ * first, then fallbacks for when focus isn't on a terminal or the focused
+ * block's `TermWrap` isn't live yet (newly created panel, view transition,
+ * etc. — see comment on `insertTextIntoTerm`). Returns the blockId that
+ * actually received the text, or null if none of the candidates had a live
+ * terminal — callers surface this so the failure is never silent.
  */
-export function sendTextToFocusedTerm(text: string, blockId: string | null): boolean {
-    if (blockId == null) return false;
-    const bcm = getBlockComponentModel(blockId);
-    const viewModel = bcm?.viewModel;
-    if (viewModel != null && viewModel.viewType === "term") {
-        return insertTextIntoTerm(viewModel as TermViewModel, text);
+export function sendTextToFocusedTerm(text: string, candidates: string[]): string | null {
+    const list = Array.isArray(candidates) ? candidates : candidates == null ? [] : [candidates];
+    for (const blockId of list) {
+        if (blockId == null) continue;
+        const bcm = getBlockComponentModel(blockId);
+        const viewModel = bcm?.viewModel;
+        if (viewModel != null && viewModel.viewType === "term") {
+            if (insertTextIntoTerm(viewModel as TermViewModel, text)) {
+                return blockId;
+            }
+        }
     }
-    return false;
+    return null;
 }
