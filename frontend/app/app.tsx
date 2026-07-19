@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { setMonacoTheme } from "@/app/monaco/monaco-env";
+import { applyAppTheme } from "@/app/theme-mode";
 import { waveAIHasSelection } from "@/app/aipanel/waveai-focus-utils";
 import {
     clearBadgesForBlockOnFocus,
@@ -8,7 +10,6 @@ import {
     getBadgeAtom,
     getBlockBadgeAtom,
 } from "@/app/store/badge";
-import { setMonacoTheme } from "@/app/monaco/monaco-env";
 import { ClientModel } from "@/app/store/client-model";
 import { FocusManager } from "@/app/store/focusManager";
 import { GlobalModel } from "@/app/store/global-model";
@@ -21,7 +22,6 @@ import { getLayoutModelForStaticTab } from "@/layout/index";
 import { ContextMenuModel } from "@/store/contextmenu";
 import { atoms, createBlock, getSettingsPrefixAtom, refocusNode } from "@/store/global";
 import { appHandleKeyDown, keyboardMouseDownHandler } from "@/store/keymodel";
-import { applyAppTheme } from "@/app/theme-mode";
 import { getElemAsStr } from "@/util/focusutil";
 import * as keyutil from "@/util/keyutil";
 import { PLATFORM } from "@/util/platformutil";
@@ -38,7 +38,11 @@ import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
 import { CommonTextSaveDialog } from "./commontext/commontext-save-dialog";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
-import { makeSelectionSearchInFilesMenuItem } from "./element/selection-copy-overlay";
+import {
+    getCopyContextTextFromDom,
+    makeCopyContextMenuItem,
+    makeSelectionSearchInFilesMenuItem,
+} from "./element/selection-copy-overlay";
 import { classifyMacOSFirstMouseTarget, shouldPassThroughMacOSFirstMouse } from "./macos-first-click";
 
 import "./app.scss";
@@ -114,8 +118,9 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     const canPaste = canEnablePaste();
     const canCopy = canEnableCopy();
     const canCut = canEnableCut();
+    const copyContextText = getCopyContextTextFromDom(window.getSelection(), e.target);
     const clipboardURL = await getClipboardURL();
-    if (!canPaste && !canCopy && !canCut && !clipboardURL) {
+    if (!canPaste && !canCopy && !canCut && !clipboardURL && !copyContextText) {
         return;
     }
     const menu: ContextMenuItem[] = [];
@@ -129,6 +134,9 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     }
     if (canPaste) {
         menu.push({ label: "Paste", role: "paste" });
+    }
+    if (copyContextText) {
+        menu.push(makeCopyContextMenuItem(copyContextText));
     }
     if (clipboardURL) {
         menu.push({ type: "separator" });
@@ -150,12 +158,14 @@ async function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
 function AppSettingsUpdater() {
     const windowSettingsAtom = getSettingsPrefixAtom("window");
     const windowSettings = useAtomValue(windowSettingsAtom);
+    // Reactive theme application. `applyAppTheme` writes <html data-theme> / <body data-theme>;
+    // `setMonacoTheme` swaps the monaco editor theme. Without this effect, picking a theme in
+    // the App Theme picker only updates settings but doesn't visually switch the shell until reload.
     const appTheme = useAtomValue(atoms.resolvedAppThemeAtom);
     useEffect(() => {
         applyAppTheme(appTheme);
         setMonacoTheme(appTheme);
     }, [appTheme]);
-
     useEffect(() => {
         const isTransparentOrBlur =
             (windowSettings?.["window:transparent"] || windowSettings?.["window:blur"]) ?? false;

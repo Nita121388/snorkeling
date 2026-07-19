@@ -24,6 +24,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/shellexec"
@@ -34,7 +35,6 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/utilds"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
-	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -1132,9 +1132,10 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	if blockId == "" || sessionId == "" {
 		return nil
 	}
-	tid := pslog.NewTraceId()
-	log.Printf("[ps-persist] enter block=%s sid=%s trace=%s", blockId, sessionId, tid)
-	pslog.AppendWithTrace(tid, "ps-persist", "stage", "enter", "block", blockId, "sid", sessionId)
+	tid := pslog.MakeAgentTraceId(blockId, sessionId)
+	sessionRef := pslog.MakeSessionRef(sessionId)
+	log.Printf("[ps-persist] enter block=%s sidref=%s trace=%s", blockId, sessionRef, tid)
+	pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "persist-request", TraceId: tid, BlockId: blockId, SessionRef: sessionRef})
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
 	ctx = waveobj.ContextWithUpdates(ctx)
@@ -1144,12 +1145,12 @@ func persistAgentSessionId(blockId string, sessionId string) error {
 	err := wstore.UpdateObjectMeta(ctx, waveobj.MakeORef(waveobj.OType_Block, blockId), metaUpdate, false)
 	if err != nil {
 		log.Printf("[ps-persist] FAIL block=%s err=%v trace=%s", blockId, err, tid)
-		pslog.AppendWithTrace(tid, "ps-persist", "stage", "fail", "block", blockId, "err", err.Error())
+		pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "persist-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "error", Reason: "update-meta"})
 		return err
 	}
 	wps.Broker.SendUpdateEvents(waveobj.ContextGetUpdatesRtn(ctx))
-	log.Printf("[ps-persist] SENT block=%s sid=%s trace=%s", blockId, sessionId, tid)
-	pslog.AppendWithTrace(tid, "ps-persist", "stage", "sent", "block", blockId, "sid", sessionId)
+	log.Printf("[ps-persist] SENT block=%s sidref=%s trace=%s", blockId, sessionRef, tid)
+	pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "persist-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "ok"})
 	return nil
 }
 
@@ -1177,8 +1178,9 @@ func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 	if blockId == "" || sessionId == "" {
 		return
 	}
-	tid := pslog.NewTraceId()
-	pslog.AppendWithTrace(tid, "ps-capture", "stage", "enter", "block", blockId, "sid", sessionId)
+	tid := pslog.MakeAgentTraceId(blockId, sessionId)
+	sessionRef := pslog.MakeSessionRef(sessionId)
+	pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-request", TraceId: tid, BlockId: blockId, SessionRef: sessionRef})
 	for i := 0; i < claudeSessionCaptureMaxAttempts; i++ {
 		if i > 0 {
 			time.Sleep(claudeSessionCapturePollInterval)
@@ -1187,23 +1189,23 @@ func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
 		cancelFn()
 		if err != nil || block == nil {
-			pslog.AppendWithTrace(tid, "ps-capture", "stage", "abdicate-gone", "block", blockId, "attempt", i+1, "err", fmt.Sprintf("%v", err))
+			pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "stopped", Reason: "block-gone"})
 			return // block gone (destroyed)
 		}
 		if existingSid := block.Meta.GetString(MetaKey_AgentSessionId, ""); existingSid != "" {
-			pslog.AppendWithTrace(tid, "ps-capture", "stage", "abdicate-existing", "block", blockId, "attempt", i+1, "existingSid", existingSid)
+			pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-result", TraceId: tid, BlockId: blockId, SessionRef: pslog.MakeSessionRef(existingSid), Outcome: "stopped", Reason: "session-exists"})
 			return // second resync or rider already persisted
 		}
 		if err := persistAgentSessionId(blockId, sessionId); err == nil {
 			log.Printf("[ps-capture] retry-persisted block=%s attempt=%d trace=%s", blockId, i+1, tid)
-			pslog.AppendWithTrace(tid, "ps-capture", "stage", "retry-persisted", "block", blockId, "attempt", i+1)
+			pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "ok"})
 			return
 		} else {
-			pslog.AppendWithTrace(tid, "ps-capture", "stage", "retry-fail", "block", blockId, "attempt", i+1)
+			pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-retry", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "error"})
 		}
 	}
 	log.Printf("claude agent session id retry gave up (block=%s, attempts=%d, trace=%s)", blockId, claudeSessionCaptureMaxAttempts, tid)
-	pslog.AppendWithTrace(tid, "ps-capture", "stage", "giveup", "block", blockId, "attempts", claudeSessionCaptureMaxAttempts)
+	pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "error", Reason: "retry-exhausted"})
 }
 
 func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {

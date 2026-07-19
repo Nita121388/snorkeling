@@ -4,14 +4,17 @@
 import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
-import { atoms, getBlockComponentModel } from "@/app/store/global";
+import { getBlockComponentModel, atoms } from "@/app/store/global";
+import { blockComponentModelMap } from "@/app/store/global-atoms";
 import { getLayoutModelForStaticTab } from "@/layout/index";
+import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
-import { copyCommonText, insertTextIntoFocused } from "./commontext-insert";
+import { copyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
+    deleteCommonTextItem,
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     openCommonTextManager,
@@ -38,7 +41,7 @@ type ComposeState = {
 
 // 进程内草稿暂存：弹窗关闭后保留 editor 内容，下次无 query 打开时还原；重启进程即丢。
 // 带 detail.query 的外部触发（如选区 overlay 复制场景）不取草稿，避免与外部文本冲突。
-type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "manualQuery" | "selectedTags" | "insertedIds">;
+type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "insertedIds">;
 let composeDraft: ComposeDraft | null = null;
 
 const initialOpenState = (manualQuery = ""): ComposeState => ({
@@ -61,22 +64,59 @@ const restoreOpenState = (): ComposeState => {
     };
 };
 
-// true when the layout's focused block is a term view. Drives the Send button's
-// availability so users see it disabled up-front instead of clicking first.
-const focusedTermAvailableAtom = atom<boolean>((get) => {
+// Resolves the truly-active block of the focused layout node. Layout nodes use
+// either `blockId` (single-block) or `blockIds` + `activeBlockId` (inline-tabs
+// container holding several blocks) — `data.blockId` alone misses the latter, so
+// we go through `getLayoutDataActiveBlockId`, the same helper `closeFocusedNode`
+// / `keymodel` use. Returns the blockId only when it's a term view, else null.
+// Drives the Send button's availability so users see it disabled up-front
+// instead of clicking first, and feeds `sendTextToFocusedTerm` so Send doesn't
+// route through the modal's own textarea.
+const focusedTermBlockIdAtom = atom<string | null>((get) => {
     const layoutModel = getLayoutModelForStaticTab();
-    if (layoutModel == null) return false;
+    if (layoutModel == null) return null;
     const focusedNode = get(layoutModel.focusedNode);
-    const blockId = focusedNode?.data?.blockId;
-    if (blockId == null) return false;
+    const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
+    if (blockId == null) return null;
     const bcm = getBlockComponentModel(blockId);
-    return bcm?.viewModel?.viewType === "term";
+    if (bcm?.viewModel?.viewType !== "term") return null;
+    return blockId;
+});
+
+// All term-block ids visible in the current static tab. Used as a fallback chain
+// when the focused block isn't a term (e.g. focus is on the AI panel, a file
+// viewer, or the compose modal's own editor). Without this, "Send" silently
+// failed whenever the user opened the modal without keeping focus on a terminal
+// — modal focus moved to the textarea, so the user had no way to re-focus the
+// term without closing the modal first.
+const availableTermBlockIdsAtom = atom<string[]>((get) => {
+    // preferred: the statically-tracked term belonging to the focused layout node
+    const focusedTermId = get(focusedTermBlockIdAtom);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    // We don't have a layout-walk helper handy, so enumerate every block in the
+    // app via the model map and keep the ones whose viewModel is a term. The
+    // focused term (if any) is always first so "Send" defaults to the user's
+    // most recently relevant terminal.
+    if (focusedTermId != null) {
+        out.push(focusedTermId);
+        seen.add(focusedTermId);
+    }
+    for (const [blockId, bcm] of blockComponentModelMap.entries()) {
+        if (blockId == null || seen.has(blockId)) continue;
+        if (bcm?.viewModel?.viewType === "term") {
+            out.push(blockId);
+            seen.add(blockId);
+        }
+    }
+    return out;
 });
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     const settings = useAtomValue(atoms.settingsAtom);
-    const canSendToTerm = useAtomValue(focusedTermAvailableAtom);
+    const availableTermBlockIds = useAtomValue(availableTermBlockIdsAtom);
+    const canSendToTerm = availableTermBlockIds.length > 0;
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -164,8 +204,6 @@ const CommonTextComposeModal = memo(() => {
             composeDraft = {
                 editor: cur.editor,
                 editorCaret: cur.editorCaret,
-                manualQuery: cur.manualQuery,
-                selectedTags: cur.selectedTags,
                 insertedIds: cur.insertedIds,
             };
             return { ...cur, open: false };
@@ -250,9 +288,16 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Nothing to send", "err");
             return;
         }
-        const ok = insertTextIntoFocused(text);
-        if (ok) {
+        // Pick from the candidate chain (focused term → fallback terms in this
+        // tab) so that opening the modal without focus on a terminal no longer
+        // silently drops the Send. `sendTextToFocusedTerm` returns the blockId
+        // it actually pasted into, or null when every candidate's TermWrap was
+        // not live (panel mid-transition).
+        const target = sendTextToFocusedTerm(text, availableTermBlockIds);
+        if (target != null) {
             setStatus("Sent to focused terminal", "ok");
+        } else {
+            setStatus("No live terminal — focus a terminal and retry", "err");
         }
     };
 
@@ -263,6 +308,42 @@ const CommonTextComposeModal = memo(() => {
         } catch (err) {
             setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
         }
+    };
+
+    const handleListItemEdit = (item: CommonTextItem) => {
+        openCommonTextSaveDialog({
+            existingId: item.id,
+            text: item.text,
+            title: item.title,
+        });
+    };
+
+    const handleListItemSend = (item: CommonTextItem) => {
+        const target = sendTextToFocusedTerm(item.text, availableTermBlockIds);
+        if (target != null) {
+            setStatus("Sent to focused terminal", "ok");
+            fireAndForget(() => recordCommonTextUse(item.id));
+        } else {
+            setStatus("No live terminal — focus a terminal and retry", "err");
+        }
+    };
+
+    const handleListItemDelete = async (item: CommonTextItem) => {
+        if (!window.confirm("Delete this common text?")) {
+            return;
+        }
+        try {
+            await deleteCommonTextItem(item.id);
+            setStatus("Deleted", "ok");
+        } catch (err) {
+            setStatus(`Delete failed: ${(err as Error).message ?? "unknown"}`, "err");
+        }
+    };
+
+    const handleClearEditor = () => {
+        if (state.editor.trim() === "") return;
+        setEditor("", 0);
+        requestAnimationFrame(() => editorRef.current?.focus());
     };
 
     const handleSaveDialog = () => {
@@ -343,13 +424,6 @@ const CommonTextComposeModal = memo(() => {
             close();
             return;
         }
-        if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-            const selected = filteredItems[state.selectedIndex];
-            if (selected != null) {
-                event.preventDefault();
-                handleListItemSelected(selected);
-            }
-        }
     };
 
     const handleCompositionStart = () => {
@@ -416,6 +490,21 @@ const CommonTextComposeModal = memo(() => {
 
                 {/* Action row */}
                 <div className="shrink-0 flex items-center gap-2">
+                    <Button
+                        className="grey"
+                        disabled={state.editor.trim() === ""}
+                        onClick={handleClearEditor}
+                        title="Clear editor"
+                    >
+                        <i className="fa fa-solid fa-eraser" />
+                    </Button>
+                    <Button
+                        className="grey"
+                        onClick={handleSaveDialog}
+                        title="Save editor content as a Common Text item"
+                    >
+                        <i className="fa fa-solid fa-plus" />
+                    </Button>
                     <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
                         <i className="fa fa-regular fa-copy" />
                     </Button>
@@ -432,20 +521,13 @@ const CommonTextComposeModal = memo(() => {
                             </Button>
                         </span>
                     )}
-                    <Button
-                        className="grey"
-                        onClick={handleSaveDialog}
-                        title="Save editor content as a Common Text item"
-                    >
-                        <i className="fa fa-solid fa-plus" />
-                    </Button>
                     {state.status && (
                         <span
                             className={
                                 state.statusKind === "err"
                                     ? "text-xs text-error"
                                     : state.statusKind === "ok"
-                                      ? "text-xs text-accent"
+                                      ? "text-xs text-success"
                                       : "text-xs text-muted"
                             }
                         >
@@ -546,17 +628,62 @@ const CommonTextComposeModal = memo(() => {
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        type="button"
-                                        title="Copy this text"
-                                        className="shrink-0 self-start pt-0.5 bg-transparent border-0 text-secondary hover:text-accent transition-[color,opacity] duration-150 cursor-pointer opacity-0 group-hover:opacity-100"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            fireAndForget(handleListItemCopy(item));
-                                        }}
-                                    >
-                                        <i className="fa fa-regular fa-copy text-[12px]" />
-                                    </button>
+                                    <div className="shrink-0 self-start pt-0.5 flex items-start gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                        <button
+                                            type="button"
+                                            title="Edit this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-accent transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleListItemEdit(item);
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-pen-to-square text-[11px]" />
+                                        </button>
+                                        {canSendToTerm ? (
+                                            <button
+                                                type="button"
+                                                title="Send to terminal"
+                                                className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-accent transition-colors duration-150 cursor-pointer"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    fireAndForget(async () => handleListItemSend(item));
+                                                }}
+                                            >
+                                                <i className="fa fa-regular fa-paper-plane text-[11px]" />
+                                            </button>
+                                        ) : (
+                                            <span
+                                                title="Focus a terminal to enable Send"
+                                                className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] opacity-40 text-muted pointer-events-none"
+                                            >
+                                                <i className="fa fa-regular fa-paper-plane text-[11px]" />
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            title="Copy this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-accent transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                fireAndForget(async () => handleListItemCopy(item));
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-copy text-[11px]" />
+                                        </button>
+                                        <div className="w-px h-[14px] bg-border self-center mx-[2px]" />
+                                        <button
+                                            type="button"
+                                            title="Delete this text"
+                                            className="shrink-0 w-[22px] h-[22px] flex items-center justify-center rounded-[5px] bg-transparent border-0 text-secondary hover:text-error hover:bg-error/10 transition-colors duration-150 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                fireAndForget(async () => handleListItemDelete(item));
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-trash-can text-[11px]" />
+                                        </button>
+                                    </div>
                                 </div>
                             ))
                         )}

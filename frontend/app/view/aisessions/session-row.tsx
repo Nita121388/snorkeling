@@ -1,9 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Tooltip } from "@/app/element/tooltip";
 import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -15,6 +16,7 @@ import {
     sessionTagsLabel,
     stripSessionTagHashes,
 } from "./session-tags";
+import type { SessionRunningState } from "./use-sessions-running";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
 /**
@@ -33,6 +35,55 @@ function sourceDotClass(source: string): string {
     return "bg-secondary";
 }
 
+/**
+ * Four-dot spinner shown beneath the mark button when the session has a live block.
+ * Four dots sit at the top/right/bottom/left of a small box and the whole box rotates,
+ * so the dots appear to chase each other around a square path.
+ * Returns null for any non-running state so callers can drop it straight into JSX.
+ */
+export function RunningDot({
+    runningState,
+    onJumpToBlock,
+}: {
+    runningState: SessionRunningState | null;
+    onJumpToBlock: (runningState: SessionRunningState) => void;
+}): ReactElement | null {
+    if (runningState == null || runningState.status !== "running") return null;
+    const dotClass = "absolute rounded-full bg-success";
+    return (
+        <Tooltip
+            placement="top"
+            openDelay={200}
+            hideOnClick
+            divClassName="mt-0.5 inline-flex h-4 w-4 shrink-0"
+            content={
+                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                    <div className="text-secondary">This session has a live block in the app.</div>
+                    <div className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase text-secondary">
+                        <span className="h-1.5 w-1.5 rounded-full bg-success/90 ring-2 ring-success/20" />
+                        <span>Click to jump to block</span>
+                    </div>
+                </div>
+            }
+        >
+            <button
+                type="button"
+                className="relative inline-flex h-4 w-4 shrink-0 cursor-pointer animate-spin border-0 bg-transparent p-0"
+                aria-label="Jump to live block"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onJumpToBlock(runningState);
+                }}
+            >
+                <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />
+                <span className={cn(dotClass, "right-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+                <span className={cn(dotClass, "bottom-0 left-1/2 h-1 w-1 -translate-x-1/2")} />
+                <span className={cn(dotClass, "left-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+            </button>
+        </Tooltip>
+    );
+}
+
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
 export function SessionRow({
@@ -43,6 +94,8 @@ export function SessionRow({
     onNoteSave,
     onResume,
     resumeDisabled = false,
+    runningState = null,
+    onJumpToBlock,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -51,6 +104,8 @@ export function SessionRow({
     onNoteSave: (note: string, tags: string[]) => Promise<boolean>;
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
+    runningState?: SessionRunningState | null;
+    onJumpToBlock: (runningState: SessionRunningState) => void;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
@@ -147,16 +202,19 @@ export function SessionRow({
             onClick={onSelect}
         >
             <div className="flex min-w-0 items-start gap-2">
-                <button
-                    className={cn(
-                        "mt-0.5 shrink-0 text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
-                        session.marked && "text-accent opacity-100"
-                    )}
-                    title="Mark session"
-                    onClick={onMark}
-                >
-                    <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
-                </button>
+                <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1">
+                    <button
+                        className={cn(
+                            "text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
+                            session.marked && "text-accent opacity-100"
+                        )}
+                        title="Mark session"
+                        onClick={onMark}
+                    >
+                        <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
+                    </button>
+                    <RunningDot runningState={runningState} onJumpToBlock={onJumpToBlock} />
+                </div>
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>

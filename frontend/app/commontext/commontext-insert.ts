@@ -102,3 +102,28 @@ export function insertTextIntoFocused(text: string): boolean {
     }
     return false;
 }
+
+/**
+ * Send `text` straight to a terminal block, bypassing any input/textarea that
+ * currently holds DOM focus (e.g. the Compose modal's own editor). `candidates`
+ * is an ordered list of term-block ids to try: callers put the focused term
+ * first, then fallbacks for when focus isn't on a terminal or the focused
+ * block's `TermWrap` isn't live yet (newly created panel, view transition,
+ * etc. — see comment on `insertTextIntoTerm`). Returns the blockId that
+ * actually received the text, or null if none of the candidates had a live
+ * terminal — callers surface this so the failure is never silent.
+ */
+export function sendTextToFocusedTerm(text: string, candidates: string[]): string | null {
+    const list = Array.isArray(candidates) ? candidates : candidates == null ? [] : [candidates];
+    for (const blockId of list) {
+        if (blockId == null) continue;
+        const bcm = getBlockComponentModel(blockId);
+        const viewModel = bcm?.viewModel;
+        if (viewModel != null && viewModel.viewType === "term") {
+            if (insertTextIntoTerm(viewModel as TermViewModel, text)) {
+                return blockId;
+            }
+        }
+    }
+    return null;
+}

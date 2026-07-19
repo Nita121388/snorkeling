@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { assert, test } from "vitest";
-import { newLayoutNode } from "../lib/layoutNode";
+import { findNode, newLayoutNode } from "../lib/layoutNode";
 import { computeMoveNode, deleteNode, moveNode } from "../lib/layoutTree";
 import {
     DropDirection,
@@ -55,6 +55,28 @@ test("layoutTreeStateReducer - compute move", () => {
         "root node should now have two children after node2 moved into node1"
     );
     assert(treeState.rootNode.children![1].children!.length === 2, "root's second child should now have two children");
+});
+
+test("compute move previews a node that is not in the tree yet", () => {
+    const target = newLayoutNode(undefined, undefined, undefined, { blockId: "target" });
+    const sibling = newLayoutNode(undefined, undefined, undefined, { blockId: "sibling" });
+    const previewNode = newLayoutNode(undefined, undefined, undefined, { blockId: "preview" });
+    const treeState = newLayoutTreeState(newLayoutNode(undefined, undefined, [target, sibling]));
+
+    const pendingAction = computeMoveNode(
+        treeState,
+        {
+            type: LayoutTreeActionType.ComputeMove,
+            nodeId: target.id,
+            nodeToMoveId: previewNode.id,
+            direction: DropDirection.Right,
+        },
+        previewNode
+    ) as LayoutTreeMoveNodeAction;
+
+    assert(pendingAction?.node === previewNode, "preview action should retain the detached node");
+    moveNode(treeState, pendingAction);
+    assert(findNode(treeState.rootNode, previewNode.id) === previewNode, "move should insert the detached node");
 });
 
 test("computeMove - noop action", () => {

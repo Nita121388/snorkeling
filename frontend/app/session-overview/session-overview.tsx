@@ -43,7 +43,10 @@ import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { agentStatusHookProvidersForBlocks } from "./session-overview-agent-status";
+import {
+    agentStatusHookProvidersForInstall,
+    agentStatusHookStatusesNeedingInstall,
+} from "./session-overview-agent-status";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
@@ -114,6 +117,7 @@ type OverviewSessionNoteEditorProps = {
 type HookInstallState = {
     loading: boolean;
     installing: boolean;
+    statuses: HookStatus[];
     status: HookStatus | null;
     error: string;
 };
@@ -466,33 +470,33 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
     const [state, setState] = useState<HookInstallState>({
         loading: false,
         installing: false,
+        statuses: [],
         status: null,
         error: "",
     });
     const refresh = React.useCallback(() => {
         if (!active || providersForHook.length === 0) {
-            setState({ loading: false, installing: false, status: null, error: "" });
+            setState({ loading: false, installing: false, statuses: [], status: null, error: "" });
             return;
         }
         setState((current) => ({ ...current, loading: true, error: "" }));
         service
             .CheckAgentStatusHooks("all")
             .then((result) => {
-                const status =
-                    providersForHook
-                        .map(
-                            (provider) =>
-                                result.statuses?.find(
-                                    (entry) => normalizeAgentProviderName(entry.provider) === provider
-                                ) ?? null
-                        )
-                        .find((entry) => entry?.supported === true && entry.needsInstall === true) ?? null;
-                setState((current) => ({ ...current, loading: false, status, error: "" }));
+                const statuses = agentStatusHookStatusesNeedingInstall(providersForHook, result.statuses ?? []);
+                setState((current) => ({
+                    ...current,
+                    loading: false,
+                    statuses,
+                    status: statuses[0] ?? null,
+                    error: "",
+                }));
             })
             .catch((error) => {
                 setState((current) => ({
                     ...current,
                     loading: false,
+                    statuses: [],
                     status: null,
                     error: error instanceof Error ? error.message : String(error),
                 }));
@@ -502,16 +506,18 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
         refresh();
     }, [refresh]);
     const install = React.useCallback(() => {
-        const provider = normalizeAgentProviderName(state.status?.provider ?? "");
-        if (!provider) {
+        const providers = state.statuses.map((status) => normalizeAgentProviderName(status.provider)).filter(Boolean);
+        if (providers.length === 0) {
             return;
         }
         setState((current) => ({ ...current, installing: true, error: "" }));
-        service
-            .InstallAgentStatusHooks(provider)
-            .then((results) => {
+        Promise.all(providers.map((provider) => service.InstallAgentStatusHooks(provider)))
+            .then((resultsByProvider) => {
+                const results = resultsByProvider.flat();
                 setState((current) => ({ ...current, installing: false }));
-                const installResult = results.find((entry) => normalizeAgentProviderName(entry.Provider) === provider);
+                const installResult = results.find((entry) =>
+                    providers.includes(normalizeAgentProviderName(entry.Provider))
+                );
                 const updatedPath =
                     installResult?.HooksPath ||
                     installResult?.SettingsPath ||
@@ -520,7 +526,7 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
                 modalsModel.pushModal("MessageModal", {
                     children: (
                         <div>
-                            <div>Agent status enabled for {formatAgentProvider(provider)}.</div>
+                            <div>Agent status enabled for {providers.map(formatAgentProvider).join(" and ")}.</div>
                             {updatedPath ? <div>Updated: {updatedPath}</div> : null}
                         </div>
                     ),
@@ -543,7 +549,7 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
                     ),
                 });
             });
-    }, [refresh, service, state.status?.provider]);
+    }, [refresh, service, state.statuses]);
     return { ...state, install };
 }
 
@@ -2104,10 +2110,11 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         });
     }, [blockId, detailBlocks, displayedTabGroups.length, overviewVisible]);
     const details = useSessionDetails(detailBlocks, refreshSeq, overviewVisible);
-    const agentStatusHookProviders = useMemo(() => agentStatusHookProvidersForBlocks(blocks), [blocks]);
+    const agentStatusHookProviders = useMemo(() => agentStatusHookProvidersForInstall(), []);
     const agentStatusHookInstall = useAgentStatusHookInstallState(agentStatusHookProviders, overviewVisible);
-    const agentStatusHookProvider = normalizeAgentProviderName(agentStatusHookInstall.status?.provider ?? "");
-    const agentStatusHookProviderLabel = formatAgentProvider(agentStatusHookProvider);
+    const agentStatusHookProviderLabel = agentStatusHookInstall.statuses
+        .map((status) => formatAgentProvider(status.provider))
+        .join(" and ");
     const showEnableAgentStatus =
         !agentStatusHookInstall.loading &&
         agentStatusHookInstall.status?.supported === true &&
@@ -2347,7 +2354,11 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                         false
                                     )}
                                 />
-                                <span>{agentStatusHookInstall.installing ? "Enabling..." : "Enable Agent Status"}</span>
+                                <span>
+                                    {agentStatusHookInstall.installing
+                                        ? "Enabling..."
+                                        : `Enable ${agentStatusHookProviderLabel}`}
+                                </span>
                             </button>
                         ) : null}
                         <div className="session-overview-filter-group" aria-label="Overview filters">

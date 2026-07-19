@@ -28,7 +28,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import * as keyutil from "@/util/keyutil";
-import { isWindows } from "@/util/platformutil";
+import { isMacOS, isWindows } from "@/util/platformutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
@@ -762,10 +762,23 @@ function registerGlobalKeys() {
         void SessionOverviewModel.getInstance().open();
         return true;
     });
-    globalKeyMap.set("Ctrl:Shift:Space", () => {
-        openCommonTextSearch();
-        return true;
-    });
+    // macOS: Ctrl+Shift+Space 被系统 IME 抢占 → 用 Cmd 系(Cmd=Meta),系统不抢。
+    // win/linux: Ctrl+Shift+Space 在 Windows 中文 IME(微软拼音切候选/翻页)和 Linux
+    //            桌面输入法(Fcitx/IBus)下也常被抢占 → 按键根本到不了 React keydown。
+    // 统一放弃 Space(IME 高危键),改用 Slash 物理键;三个平台"概念键一致",只 Ctrl/Cmd 区分。
+    // 用 c{Slash} 按 KeyboardEvent.code 匹配物理键,避免 Shift+/ 在美式键盘上报成 "?"(event.key="?"),
+    // 跟注册名 "/" 不匹配而导致不命中(参见 keyutil.checkKeyPressed,符号键不做大小写归一)。
+    if (isMacOS()) {
+        globalKeyMap.set("Cmd:Shift:c{Slash}", () => {
+            openCommonTextSearch();
+            return true;
+        });
+    } else {
+        globalKeyMap.set("Ctrl:Shift:c{Slash}", () => {
+            openCommonTextSearch();
+            return true;
+        });
+    }
     const allKeys = Array.from(globalKeyMap.keys());
     // special case keys, handled by web view
     allKeys.push("Cmd:l", "Cmd:r", "Cmd:ArrowRight", "Cmd:ArrowLeft", "Cmd:o");

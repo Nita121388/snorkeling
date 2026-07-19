@@ -42,8 +42,15 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
         return {
             connName: connName,
             baseDir: fileInfo.dir,
+            openLink: async (path, options) => {
+                await model.openPathWithTarget(path, {
+                    lineNumber: options.lineNumber,
+                    forceNewBlock: options.forceNewBlock,
+                    forceInlineTabCurrentBlock: !options.forceNewBlock,
+                });
+            },
         };
-    }, [connName, fileInfo.dir]);
+    }, [connName, fileInfo.dir, model]);
     return (
         <div className="flex flex-row h-full overflow-auto items-start justify-start">
             <Markdown
@@ -54,6 +61,7 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 fixedFontSizeOverride={fixedFontSizeOverride}
                 scrollTargetLine={searchTargetLine}
                 collapsibleOrderedLists={collapsibleOrderedLists}
+                copyContextPath={fileInfo.path}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>
@@ -127,8 +135,15 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
         return {
             connName: sourceConnName,
             baseDir,
+            openLink: async (path, options) => {
+                await model.openPathWithTarget(path, {
+                    lineNumber: options.lineNumber,
+                    forceNewBlock: options.forceNewBlock,
+                    forceInlineTabCurrentBlock: !options.forceNewBlock,
+                });
+            },
         };
-    }, [sourceConnName, sourcePath]);
+    }, [model, sourceConnName, sourcePath]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -261,6 +276,7 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
                             scrollTargetSourceState={syncScrollEnabled ? scrollSourceState : null}
                             scrollTargetBehavior="auto"
                             hideUntilInitialScroll={syncScrollEnabled && !isVisibleBuffer}
+                            copyContextPath={sourcePath}
                             onInitialScrollReady={
                                 isVisibleBuffer ? undefined : () => handleBufferInitialScrollReady(buffer.id)
                             }

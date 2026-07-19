@@ -36,7 +36,13 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { openLink } from "../store/global";
-import { normalizeLinkedFilePath, openFileLinkInPreview } from "../view/preview/file-link-navigation";
+import {
+    makeMarkdownWikiLinkHref,
+    normalizeLinkedFilePath,
+    openFileLinkInPreview,
+    parseMarkdownFileLineReference,
+    parseMarkdownWikiLink,
+} from "../view/preview/file-link-navigation";
 import { IconButton } from "./iconbutton";
 import "./markdown.scss";
 
@@ -80,6 +86,48 @@ function remarkSoftBreaks() {
     };
 }
 
+export function linkifyMarkdownFileReferences(tree: any): void {
+    const visitNode = (node: any) => {
+        if (!node || !Array.isArray(node.children) || ["code", "inlineCode", "link"].includes(node.type)) {
+            return;
+        }
+        node.children = node.children.map((child: any) => {
+            if (child?.type === "text") {
+                const reference = parseMarkdownFileLineReference(child.value);
+                if (reference != null) {
+                    const label = child.value.trim();
+                    return {
+                        type: "link",
+                        url: label,
+                        children: [{ type: "text", value: label }],
+                        position: child.position,
+                    };
+                }
+                const wikiLink = parseMarkdownWikiLink(child.value);
+                if (wikiLink != null) {
+                    return {
+                        type: "link",
+                        url: makeMarkdownWikiLinkHref(wikiLink.target, wikiLink.heading),
+                        children: [{ type: "text", value: wikiLink.label }],
+                        position: child.position,
+                    };
+                }
+            }
+            visitNode(child);
+            return child;
+        });
+    };
+    visitNode(tree);
+}
+
+function remarkMarkdownFileReferences() {
+    return linkifyMarkdownFileReferences;
+}
+
+export function shouldOpenMarkdownLinkInNewBlock(event: Pick<React.MouseEvent, "ctrlKey" | "metaKey">): boolean {
+    return event.ctrlKey || event.metaKey;
+}
+
 let mermaidInitialized = false;
 let mermaidInstance: any = null;
 
@@ -103,14 +151,37 @@ const Link = ({
 }) => {
     const onClick = (e: React.MouseEvent) => {
         const href = props.href ?? "";
+        const forceNewBlock = shouldOpenMarkdownLinkInNewBlock(e);
+        const onOpenPath = resolveOpts?.openLink
+            ? (path: string, lineNumber: number | null) =>
+                  resolveOpts.openLink(path, { lineNumber, forceNewBlock })
+            : undefined;
         e.preventDefault();
         if (href.startsWith("#")) {
             focusHeading(href);
         } else {
-            void openFileLinkInPreview(href, {
+            const wikiLink = parseMarkdownWikiLink(href);
+            if (wikiLink != null) {
+                void openFileLinkInPreview(wikiLink.target, {
+                    connection: resolveOpts?.connName,
+                    baseDir: resolveOpts?.baseDir,
+                    openDirectoryIndex: true,
+                    heading: wikiLink.heading,
+                    onOpenPath,
+                }).then((opened) => {
+                    if (!opened) {
+                        openLink(href);
+                    }
+                });
+                return;
+            }
+            const fileReference = parseMarkdownFileLineReference(href);
+            void openFileLinkInPreview(fileReference?.filePath ?? href, {
                 connection: resolveOpts?.connName,
                 baseDir: resolveOpts?.baseDir,
                 openDirectoryIndex: true,
+                lineNumber: fileReference?.lineNumber,
+                onOpenPath,
             }).then((opened) => {
                 if (!opened) {
                     openLink(href);
@@ -132,6 +203,9 @@ const FilePathHrefProtocols = [
 ];
 
 function markdownUrlTransform(value: string): string {
+    if (value.startsWith("wave-wiki:")) {
+        return value;
+    }
     if (normalizeLinkedFilePath(value) != null) {
         return value;
     }
@@ -672,6 +746,7 @@ type MarkdownProps = {
     onInitialScrollReady?: () => void;
     onUserScrollSourceLine?: (line: number) => void;
     collapsibleOrderedLists?: boolean;
+    copyContextPath?: string;
 };
 
 type MarkdownScrollSourceState = {
@@ -701,6 +776,7 @@ const Markdown = ({
     onInitialScrollReady,
     onUserScrollSourceLine,
     collapsibleOrderedLists = false,
+    copyContextPath,
     scrollable = true,
     rehype = true,
     onClickExecute,
@@ -1202,7 +1278,7 @@ const Markdown = ({
                     },
                     protocols: {
                         ...defaultSchema.protocols,
-                        href: FilePathHrefProtocols,
+                        href: [...FilePathHrefProtocols, "wave-wiki"],
                     },
                     tagNames: [
                         ...(defaultSchema.tagNames || []),
@@ -1218,6 +1294,7 @@ const Markdown = ({
     }
     const remarkPlugins: any = [
         remarkMermaidToTag,
+        remarkMarkdownFileReferences,
         remarkSoftBreaks,
         remarkGfm,
         [createContentBlockPlugin, { blocks: contentBlocksMap }],
@@ -1231,7 +1308,11 @@ const Markdown = ({
         mergedStyle["--markdown-fixed-font-size"] = `${boundNumber(fixedFontSizeOverride, 6, 64)}px`;
     }
     return (
-        <div className={clsx("markdown", className)} style={mergedStyle}>
+        <div
+            className={clsx("markdown", className)}
+            style={mergedStyle}
+            data-copy-context-path={copyContextPath || undefined}
+        >
             {scrollable ? (
                 <OverlayScrollbarsComponent
                     ref={contentsOsRef}

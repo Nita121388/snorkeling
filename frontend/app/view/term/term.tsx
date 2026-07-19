@@ -15,6 +15,12 @@ import {
 } from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
+import {
+    makeAgentTraceId,
+    makePslogSessionRef,
+    pslogEvent,
+    type PslogEventInput,
+} from "@/app/store/pslog-trace";
 import { AISessionsServiceType } from "@/app/store/services";
 import { useTabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
@@ -68,6 +74,27 @@ import { TermWrap } from "./termwrap";
 import "./xterm.css";
 
 const dlog = debug("wave:term");
+const AgentTopPslogBufferKey = "ps-agent-top-buf";
+
+function logAgentSessionEvent(
+    event: "agent.top" | "agent.note" | "agent.outline",
+    stage: string,
+    blockId: string,
+    sessionId: string,
+    result: Pick<PslogEventInput, "durationms" | "outcome" | "reason"> = {}
+): void {
+    pslogEvent(
+        {
+            event,
+            stage,
+            traceid: makeAgentTraceId(blockId, sessionId),
+            blockid: blockId,
+            sessionref: makePslogSessionRef(sessionId),
+            ...result,
+        },
+        { bufferKey: AgentTopPslogBufferKey }
+    );
+}
 
 function cloneTermMouseEvent(type: string, event: MouseEvent, overrides: MouseEventInit = {}): MouseEvent {
     return new MouseEvent(type, {
@@ -293,33 +320,31 @@ const TermSessionTopBar = React.memo(
         termWrap,
     }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
-        // [agent-sessionid-debug] temporary TopBar render trace
-        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        console.log("[agent-sessionid-debug] TopBar render", {
-            blockId,
-            blockVer: blockData?.version ?? null,
-            blockMetaRef: meta,
-            hasSid: meta["agent:sessionid"] != null,
-            resolvedSid: sessionId,
-            willReturnNull: sessionId === "",
-        });
-        // [agent-sessionid-debug] TopBar-level atom subscription (independent of parent re-render)
+        React.useEffect(() => {
+            logAgentSessionEvent("agent.top", "render", blockId, sessionId, {
+                outcome: sessionId === "" ? "hidden" : "visible",
+                reason: sessionId === "" ? "session-empty" : undefined,
+            });
+        }, [blockData?.version, blockId, sessionId]);
         React.useEffect(() => {
             if (blockId == null) return;
             const oref = WOS.makeORef("block", blockId);
             const dataAtom = WOS.getWaveObjectAtom<Block>(oref);
             const logSnapshot = () => {
                 const val = globalStore.get(dataAtom);
-                console.log("[agent-sessionid-debug] TopBar dataAtom notify", {
-                    blockId,
-                    blockVer: val?.version ?? null,
-                    hasSid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
-                    sid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
+                const sid = (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"];
+                const sessionId = typeof sid === "string" ? sid : "";
+                logAgentSessionEvent("agent.top", "atom", blockId, sessionId, {
+                    outcome: sessionId === "" ? "missing" : "ok",
+                    reason: sessionId === "" ? "session-empty" : undefined,
                 });
             };
             logSnapshot();
             const unsub = globalStore.sub(dataAtom, logSnapshot);
-            return () => { unsub(); };
+            return () => {
+                unsub();
+                logAgentSessionEvent("agent.top", "unmount", blockId, "", { outcome: "ok" });
+            };
         }, [blockId]);
         const [mode, setMode] = React.useState<TermSessionTopBarMode>("pinned-sticky");
         const [isCollapsedRevealed, setIsCollapsedRevealed] = React.useState(false);
@@ -445,11 +470,17 @@ const TermSessionUserOutlineOverlay = React.memo(
                 requestSeqRef.current++;
                 const requestSeq = requestSeqRef.current;
                 if (sessionId === "") {
+                    logAgentSessionEvent("agent.outline", "request", blockId, sessionId, {
+                        outcome: "skipped",
+                        reason: "session-empty",
+                    });
                     setOutline(null);
                     setError("");
                     setLoading(false);
                     return;
                 }
+                const startedAt = Date.now();
+                logAgentSessionEvent("agent.outline", "request", blockId, sessionId);
                 if (showLoading) {
                     setLoading(true);
                 }
@@ -458,14 +489,34 @@ const TermSessionUserOutlineOverlay = React.memo(
                     .UserOutline({ id: sessionId, connection, limit: 20, refresh })
                     .then((nextOutline) => {
                         if (requestSeq !== requestSeqRef.current) {
+                            logAgentSessionEvent("agent.outline", "result", blockId, sessionId, {
+                                durationms: Date.now() - startedAt,
+                                outcome: "stale",
+                                reason: "newer-request",
+                            });
                             return;
                         }
+                        logAgentSessionEvent("agent.outline", "result", blockId, sessionId, {
+                            durationms: Date.now() - startedAt,
+                            outcome: "ok",
+                            reason: nextOutline == null ? "outline-empty" : undefined,
+                        });
                         setOutline(nextOutline);
                     })
                     .catch((e) => {
                         if (requestSeq !== requestSeqRef.current) {
+                            logAgentSessionEvent("agent.outline", "result", blockId, sessionId, {
+                                durationms: Date.now() - startedAt,
+                                outcome: "stale",
+                                reason: "stale-error",
+                            });
                             return;
                         }
+                        logAgentSessionEvent("agent.outline", "result", blockId, sessionId, {
+                            durationms: Date.now() - startedAt,
+                            outcome: "error",
+                            reason: e instanceof Error ? e.name : typeof e,
+                        });
                         console.debug("[term-session-outline] failed to load user outline", { sessionId, error: e });
                         setError(e instanceof Error ? e.message : String(e));
                     })
@@ -476,7 +527,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                         setLoading(false);
                     });
             },
-            [connection, service, sessionId]
+            [blockId, connection, service, sessionId]
         );
 
         React.useEffect(() => {
@@ -509,6 +560,20 @@ const TermSessionUserOutlineOverlay = React.memo(
             window.addEventListener("keydown", onKeyDown);
             return () => window.removeEventListener("keydown", onKeyDown);
         }, [isOpen]);
+
+        React.useEffect(() => {
+            const messageCount = userOutlineMessages(outline).length;
+            const branch =
+                sessionId === ""
+                    ? "session-empty"
+                    : !isOpen && messageCount === 0 && !loading
+                      ? "no-messages-collapsed"
+                      : "visible";
+            logAgentSessionEvent("agent.outline", "render", blockId, sessionId, {
+                outcome: branch === "visible" ? "visible" : "hidden",
+                reason: branch === "visible" ? undefined : branch,
+            });
+        }, [blockId, error, isOpen, loading, outline, sessionId]);
 
         if (sessionId === "") {
             setOutlineRenderSnapshot(blockId, {
@@ -683,6 +748,10 @@ const TermSessionNoteEditor = React.memo(
 
         React.useEffect(() => {
             if (sessionId === "") {
+                logAgentSessionEvent("agent.note", "reset", blockId, sessionId, {
+                    outcome: "ok",
+                    reason: "session-empty",
+                });
                 setSummary(null);
                 setNoteDraft("");
                 setIsEditing(false);
@@ -691,6 +760,8 @@ const TermSessionNoteEditor = React.memo(
                 return;
             }
             let cancelled = false;
+            const startedAt = Date.now();
+            logAgentSessionEvent("agent.note", "request", blockId, sessionId);
             setSummary(null);
             setNoteDraft("");
             setIsEditing(false);
@@ -699,22 +770,44 @@ const TermSessionNoteEditor = React.memo(
             service
                 .Summary({ id: sessionId, connection })
                 .then((nextSummary) => {
-                    if (!cancelled) {
-                        setSummary(nextSummary);
-                        setNoteDraft(nextSummary.note ?? "");
+                    if (cancelled) {
+                        logAgentSessionEvent("agent.note", "result", blockId, sessionId, {
+                            durationms: Date.now() - startedAt,
+                            outcome: "stale",
+                            reason: "component-cancelled",
+                        });
+                        return;
                     }
+                    logAgentSessionEvent("agent.note", "result", blockId, sessionId, {
+                        durationms: Date.now() - startedAt,
+                        outcome: "ok",
+                        reason: nextSummary?.note ? "note-present" : "note-empty",
+                    });
+                    setSummary(nextSummary);
+                    setNoteDraft(nextSummary.note ?? "");
                 })
                 .catch((e) => {
-                    if (!cancelled) {
-                        console.debug("[term-session-note] failed to load session note", { sessionId, error: e });
-                        setSummary(null);
-                        setError(e instanceof Error ? e.message : String(e));
+                    if (cancelled) {
+                        logAgentSessionEvent("agent.note", "result", blockId, sessionId, {
+                            durationms: Date.now() - startedAt,
+                            outcome: "stale",
+                            reason: "stale-error",
+                        });
+                        return;
                     }
+                    logAgentSessionEvent("agent.note", "result", blockId, sessionId, {
+                        durationms: Date.now() - startedAt,
+                        outcome: "error",
+                        reason: e instanceof Error ? e.name : typeof e,
+                    });
+                    console.debug("[term-session-note] failed to load session note", { sessionId, error: e });
+                    setSummary(null);
+                    setError(e instanceof Error ? e.message : String(e));
                 });
             return () => {
                 cancelled = true;
             };
-        }, [connection, service, sessionId]);
+        }, [blockId, connection, service, sessionId]);
 
         React.useEffect(() => {
             latestDraftRef.current = noteDraft;
@@ -737,16 +830,22 @@ const TermSessionNoteEditor = React.memo(
                     return;
                 }
                 if (sessionSummaryMatchesId(event.detail.summary, sessionId)) {
+                    const shouldSyncDraft =
+                        saveStatus !== "saving" && latestDraftRef.current.trim() === (summary?.note ?? "");
+                    logAgentSessionEvent("agent.note", "sync", blockId, sessionId, {
+                        outcome: shouldSyncDraft ? "applied" : "ignored",
+                        reason: shouldSyncDraft ? undefined : "draft-modified",
+                    });
                     setSummary(event.detail.summary);
                     const nextNote = event.detail.summary.note ?? "";
-                    if (saveStatus !== "saving" && latestDraftRef.current.trim() === (summary?.note ?? "")) {
+                    if (shouldSyncDraft) {
                         setNoteDraft(nextNote);
                     }
                 }
             };
             window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
             return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
-        }, [saveStatus, sessionId, summary?.note]);
+        }, [blockId, saveStatus, sessionId, summary?.note]);
 
         const saveNote = React.useCallback(
             (nextNote: string) => {
@@ -830,6 +929,14 @@ const TermSessionNoteEditor = React.memo(
                 clearNoteRenderSnapshot(blockId);
             };
         }, []);
+
+        React.useEffect(() => {
+            const branch = sessionId === "" ? "session-empty" : summary == null ? "no-summary" : "visible";
+            logAgentSessionEvent("agent.note", "render", blockId, sessionId, {
+                outcome: branch === "visible" ? "visible" : "hidden",
+                reason: branch === "visible" ? (summary?.note ? "note-present" : "note-empty") : branch,
+            });
+        }, [blockId, error, noteDraft.length, saveStatus, sessionId, summary]);
 
         if (sessionId === "" || summary == null) {
             setNoteRenderSnapshot(blockId, {
@@ -1005,7 +1112,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
 
     const tabModel = useTabModel();
     const termFontSize = jotai.useAtomValue(model.fontSizeAtom);
-    const termFontFamily = jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:fontfamily")) ?? "Hack";
+    const fullConfig = globalStore.get(atoms.fullConfigAtom);
+    const connFontFamily = fullConfig.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];
     const isFocused = jotai.useAtomValue(model.nodeModel.isFocused);
     const isMI = jotai.useAtomValue(tabModel.isTermMultiInput);
     const isBasicTerm = termMode != "vdom" && blockData?.meta?.controller != "cmd"; // needs to match isBasicTerm
@@ -1104,7 +1212,9 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
-        const fontFamily = termFontFamily;
+        const fontFamily = termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+        // Light theme forces the Canvas renderer: xterm's WebGL renderer produces faint/thin
+        // glyphs on a light background (poor sub-pixel coverage), so disable it under light.
         const useWebGl =
             globalStore.get(atoms.resolvedAppThemeAtom) !== "light" && !termSettings?.["term:disablewebgl"];
         console.log("[termwrap-lifecycle-debug] create", {
@@ -1200,7 +1310,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             setSelectionCopyOverlay(null);
             setSelectionLogicalLineText(null);
         };
-    }, [blockId, termSettings, termFontSize, termFontFamily]);
+    }, [blockId, termSettings, termFontSize, connFontFamily]);
 
     React.useEffect(() => {
         if (termModeRef.current == "vdom" && termMode == "term") {
@@ -1499,7 +1609,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
-            <TermThemeUpdater model={model} termRef={model.termRef} />
+            <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermSessionTopBar

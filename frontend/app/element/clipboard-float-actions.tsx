@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
     clampSelectionCopyOverlayPosition,
+    getCopyContextTextFromDom,
+    makeCopyContextMenuItem,
     SelectionCopyOverlay,
     type SelectionCopyOverlayState,
 } from "./selection-copy-overlay";
@@ -156,7 +158,11 @@ export function ClipboardFloatActions() {
                 rect.right + 8,
                 rect.bottom + 8
             );
-            setCopyPos({ ...position, text });
+            setCopyPos({
+                ...position,
+                text,
+                contextText: getCopyContextTextFromDom(selection),
+            });
         };
 
         const hideCopyButton = () => {
@@ -282,6 +288,9 @@ export function ClipboardFloatActions() {
                 position="fixed"
                 onHide={hideCopyButton}
                 onCopied={recordOverlayCopy}
+                copyMenuItems={
+                    copyPos?.contextText ? [makeCopyContextMenuItem(copyPos.contextText, recordOverlayCopy)] : undefined
+                }
             />
             {pasteHint && (
                 <div

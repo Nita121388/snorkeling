@@ -670,10 +670,9 @@ export function SessionDetailPane({
                         <button
                             type="button"
                             onClick={toggleHeader}
-                            className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-hover"
+                            className="flex min-w-0 flex-1 items-center rounded px-1 py-0.5 text-left hover:bg-hover"
                             title="Expand session header"
                         >
-                            <i className="fa-sharp fa-solid fa-chevron-down shrink-0 text-[10px] text-secondary" />
                             <div
                                 className="min-w-0 flex-1 truncate text-sm font-medium"
                                 title={summary.title || summary.id}
@@ -701,7 +700,6 @@ export function SessionDetailPane({
                         </div>
                         <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
                             <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
-                                <span className="shrink-0 text-[10px] uppercase">Project directory:</span>
                                 {projectDirectory ? (
                                     <CopyTextButton
                                         text={projectDirectory}

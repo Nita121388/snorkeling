@@ -7,7 +7,6 @@ import { Tooltip } from "@/app/element/tooltip";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
-import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -31,9 +30,10 @@ import {
     resolveDefaultLaunchTarget,
     TerminalDefaultLaunchTargetMetaKey,
 } from "@/app/workspace/agent-launch";
-import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import { ClaudeLogo, GeminiLogo, OpencodeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
+import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
@@ -47,15 +47,15 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
-import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
     electron: {
-        getDevRuntimeInfo: WaveEnv["electron"]["getDevRuntimeInfo"];
         openBuilder: WaveEnv["electron"]["openBuilder"];
         setActiveTab: WaveEnv["electron"]["setActiveTab"];
+        getDevRuntimeInfo: WaveEnv["electron"]["getDevRuntimeInfo"];
     };
     rpc: {
         ListAllAppsCommand: WaveEnv["rpc"]["ListAllAppsCommand"];
@@ -109,15 +109,7 @@ type WidgetPropsType = {
 };
 
 const Widget = memo(
-    ({
-        widgetId,
-        widget,
-        mode,
-        onWidgetSelect,
-        onWidgetContextMenu,
-        onWidgetHover,
-        onWidgetHoverEnd,
-    }: WidgetPropsType) => {
+    ({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu, onWidgetHover, onWidgetHoverEnd }: WidgetPropsType) => {
         const [isTruncated, setIsTruncated] = useState(false);
         const labelRef = useRef<HTMLDivElement>(null);
         const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
@@ -138,7 +130,7 @@ const Widget = memo(
                 placement="left"
                 disable={shouldDisableTooltip || isTargetWidget}
                 divClassName={clsx(
-                    "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary overflow-hidden rounded-sm hover:bg-hoverbg hover:text-primary cursor-pointer",
+                    "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer",
                     mode === "supercompact" ? "text-sm" : "text-lg",
                     widget["display:hidden"] && "hidden"
                 )}
@@ -305,7 +297,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
                 </div>
                 <button
                     type="button"
-                    className="w-full px-4 py-2 border-t border-border text-xs text-secondary text-center hover:bg-hoverbg hover:text-primary transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full px-4 py-2 border-t border-border text-xs text-secondary text-center hover:bg-hoverbg hover:text-white transition-colors cursor-pointer flex items-center justify-center gap-2"
                     onClick={handleOpenBuilder}
                 >
                     <i className="fa fa-solid fa-hammer"></i>
@@ -562,8 +554,23 @@ const AgentTargetFloatingWindow = memo(
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
-                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
-                        New Agent
+                    <div className="flex items-center justify-between px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                        <span>New Agent</span>
+                        <button
+                            type="button"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
+                            aria-label="Agent hook settings"
+                            title="Agent hook settings"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onClose();
+                                if (!modalsModel.isModalOpen("AgentHookSettingsModal")) {
+                                    modalsModel.pushModal("AgentHookSettingsModal");
+                                }
+                            }}
+                        >
+                            <i className={makeIconClass("gear", false)} />
+                        </button>
                     </div>
 
                     <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
@@ -581,7 +588,9 @@ const AgentTargetFloatingWindow = memo(
                                             key={profile.name}
                                             className={clsx(
                                                 "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
-                                                isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
+                                                isSelected
+                                                    ? "bg-accent/12 relative"
+                                                    : "hover:bg-surface-soft"
                                             )}
                                         >
                                             {isSelected && (
@@ -621,13 +630,9 @@ const AgentTargetFloatingWindow = memo(
                                                         />
                                                     );
                                                 })()}
-                                                <span
-                                                    className={clsx(
-                                                        isSelected
-                                                            ? "text-foreground"
-                                                            : "text-muted group-hover:text-secondary"
-                                                    )}
-                                                >
+                                                <span className={clsx(
+                                                    isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                                )}>
                                                     {profile.label}
                                                 </span>
                                             </button>
@@ -649,7 +654,9 @@ const AgentTargetFloatingWindow = memo(
 
                     {/* path list */}
                     <div className="px-1 pb-1">
-                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
+                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">
+                            Select a path.
+                        </div>
                         {targets.length === 0 ? (
                             <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
                         ) : (
@@ -728,7 +735,7 @@ const AgentTargetFloatingWindow = memo(
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {selectedTarget.detail || selectedTarget.label}
+                                {(selectedTarget.detail || selectedTarget.label)}
                             </span>
                             <button
                                 type="button"
@@ -973,7 +980,7 @@ const TerminalTargetFloatingWindow = memo(
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {selectedTarget.detail || selectedTarget.label}
+                                {(selectedTarget.detail || selectedTarget.label)}
                             </span>
                             <button
                                 type="button"
@@ -1141,7 +1148,7 @@ const SettingsFloatingWindow = memo(
                     {menuItems.map((item, idx) => (
                         <div
                             key={idx}
-                            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-hoverbg cursor-pointer transition-colors text-secondary hover:text-primary"
+                            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-hoverbg cursor-pointer transition-colors text-secondary hover:text-white"
                             onClick={item.onClick}
                         >
                             <div className="text-lg w-5 flex justify-center">
@@ -1170,12 +1177,14 @@ const Widgets = memo(() => {
     const workspace = useAtomValue(env.atoms.workspace);
     const currentTabId = useAtomValue(env.atoms.staticTabId);
     const currentTab = useAtomValue(env.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", currentTabId)));
-    const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
-    const containerRef = useRef<HTMLDivElement>(null);
-    const measurementRef = useRef<HTMLDivElement>(null);
+    // Only resolved once at mount: the dev-runtime snapshot doesn't change for the lifetime of
+    // the renderer process, so a useState initializer (gated by isDev) is sufficient.
     const [devRuntimeInfo] = useState<DevRuntimeInfo | null>(() =>
         env.isDev() ? env.electron.getDevRuntimeInfo() : null
     );
+    const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
+    const containerRef = useRef<HTMLDivElement>(null);
+    const measurementRef = useRef<HTMLDivElement>(null);
 
     const featureWaveAppBuilder = settings?.["feature:waveappbuilder"] ?? false;
     const widgetsMap = fullConfig?.widgets ?? {};
@@ -1399,9 +1408,7 @@ const Widgets = memo(() => {
             fireAndForget(async () => {
                 try {
                     await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
-                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault
-                            ? (null as unknown as string)
-                            : targetKey,
+                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
                     } as MetaType);
                 } catch (error) {
                     showSettingsError("Terminal default target", error);
@@ -1702,7 +1709,7 @@ const Widgets = memo(() => {
                             {env.isDev() || featureWaveAppBuilder ? (
                                 <div
                                     ref={appsButtonRef}
-                                    className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-sm overflow-hidden rounded-sm hover:bg-hoverbg hover:text-primary cursor-pointer"
+                                    className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-sm overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                                     onClick={() => setIsAppsOpen(!isAppsOpen)}
                                 >
                                     <Tooltip content="Local WaveApps" placement="left" disable={isAppsOpen}>
@@ -1714,7 +1721,7 @@ const Widgets = memo(() => {
                             ) : null}
                             <div
                                 ref={settingsButtonRef}
-                                className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-sm overflow-hidden rounded-sm hover:bg-hoverbg hover:text-primary cursor-pointer"
+                                className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-sm overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                                 onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                             >
                                 <Tooltip
@@ -1750,7 +1757,7 @@ const Widgets = memo(() => {
                         {env.isDev() || featureWaveAppBuilder ? (
                             <div
                                 ref={appsButtonRef}
-                                className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-lg overflow-hidden rounded-sm hover:bg-hoverbg hover:text-primary cursor-pointer"
+                                className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-lg overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                                 onClick={() => setIsAppsOpen(!isAppsOpen)}
                             >
                                 <Tooltip content="Local WaveApps" placement="left" disable={isAppsOpen}>
@@ -1769,7 +1776,7 @@ const Widgets = memo(() => {
                         ) : null}
                         <div
                             ref={settingsButtonRef}
-                            className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-lg overflow-hidden rounded-sm hover:bg-hoverbg hover:text-primary cursor-pointer"
+                            className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-lg overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                             onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                         >
                             <Tooltip
@@ -1796,6 +1803,14 @@ const Widgets = memo(() => {
                         </div>
                     </>
                 )}
+                {env.isDev() ? (
+                    <div
+                        className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
+                        title="Running Wave Dev Build"
+                    >
+                        <i className="fa fa-brands fa-dev fa-fw" />
+                    </div>
+                ) : null}
                 {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} /> : null}
             </div>
             {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
@@ -1893,7 +1908,14 @@ const Widgets = memo(() => {
                         <div className="text-xxs mt-0.5 w-full px-0.5 text-center">apps</div>
                     </div>
                 ) : null}
-                {devRuntimeInfo != null ? <div className="h-10 w-full" /> : null}
+                {env.isDev() ? (
+                    <div
+                        className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
+                        title="Running Wave Dev Build"
+                    >
+                        <i className="fa fa-brands fa-dev fa-fw" />
+                    </div>
+                ) : null}
             </div>
         </>
     );

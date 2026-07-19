@@ -21,7 +21,7 @@ describe("makeTerminalSessionDebugInfo", () => {
             tabId: "tab-1",
             workspaceId: "workspace-1",
             routeId: "feblock:block-1",
-            blockData: { meta } as Block,
+            blockData: { meta } as unknown as Block,
             meta,
             agentSessionResolution: resolveAgentSessionId(meta, null),
             shellLastCommand: null,
@@ -58,6 +58,8 @@ describe("makeTerminalSessionDebugInfo", () => {
             session: {
                 agentSessionId: "",
                 hasAgentSessionId: false,
+                traceId: "agent:block-1:",
+                sessionRef: "",
                 source: "none",
                 provider: "codex",
                 reason: "new-codex-session-unbound",
@@ -111,6 +113,8 @@ describe("makeTerminalSessionDebugInfo", () => {
                 agentSessionId: "claude-session",
                 jobId: "job-2",
                 hasJobId: true,
+                traceId: "agent:block-2:fnv1a64:812989b1d96ba2a2",
+                sessionRef: "fnv1a64:812989b1d96ba2a2",
             },
             agentResolution: {
                 shellLastCommandPreview: "codex resume <session>",

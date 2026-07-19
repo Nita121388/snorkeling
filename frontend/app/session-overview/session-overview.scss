@@ -770,13 +770,14 @@
     white-space: nowrap;
 
     &.is-working {
-        --agent-status-color: var(--accent-color);
-        --agent-status-bg: rgb(from var(--accent-color) r g b / 0.1);
+        --agent-status-color: var(--success-color);
+        --agent-status-bg: rgb(from var(--success-color) r g b / 0.1);
     }
 
     &.is-done {
-        --agent-status-color: #22c55e;
-        --agent-status-bg: rgb(34 197 94 / 0.1);
+        // "done" 与 "working" 都属正常运转，用 success 微暗变体作区分。
+        --agent-status-color: rgb(from var(--success-color) r g b / 0.78);
+        --agent-status-bg: rgb(from var(--success-color) r g b / 0.1);
     }
 
     &.is-blocked {
@@ -786,8 +787,9 @@
     }
 
     &.is-stale {
-        --agent-status-color: #a855f7;
-        --agent-status-bg: rgb(168 85 247 / 0.1);
+        // stale = "不新鲜但没错" — 不用强调饱和值，回退到中性 secondary。
+        --agent-status-color: var(--secondary-text-color);
+        --agent-status-bg: transparent;
     }
 
     &.is-unknown {
@@ -1067,7 +1069,7 @@
     font-size: 10px;
 
     &.is-saved {
-        color: var(--accent-color);
+        color: var(--success-color);
     }
 
     &.is-error {

@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { makeAgentTraceId, makePslogSessionRef } from "@/app/store/pslog-trace";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { AgentCommandResolution, AgentSessionIdResolution } from "./agent-session";
 import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
@@ -183,6 +184,8 @@ function makeTerminalSessionDebugInfo(input: TerminalSessionDebugInput): Record<
             agentSessionId,
             hasAgentSessionId: agentSessionId !== "",
             agentSessionIdLength: agentSessionId.length,
+            traceId: makeAgentTraceId(input.blockId, agentSessionId),
+            sessionRef: makePslogSessionRef(agentSessionId),
             source: input.agentSessionResolution.source,
             provider: input.agentSessionResolution.provider,
             reason: input.agentSessionResolution.reason,

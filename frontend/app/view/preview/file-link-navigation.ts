@@ -6,8 +6,9 @@ import { atoms, createBlock, getFocusedBlockId, globalStore, refocusNode, WOS } 
 import { ObjectService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { getLayoutModelForStaticTab } from "@/layout/index";
-import { isBlank, isLocalConnName } from "@/util/util";
+import { base64ToString, isBlank, isLocalConnName } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import {
     PreviewDefaultDirectoryDisplaySettingKey,
@@ -24,9 +25,11 @@ type FileLinkOpenOptions = {
     baseDir?: string | null;
     openDirectoryIndex?: boolean;
     lineNumber?: number | null;
+    heading?: string | null;
     editMode?: boolean;
     revealInTree?: boolean;
     revealInTreeBlockId?: string | null;
+    onOpenPath?: (path: string, lineNumber: number | null) => Promise<void>;
 };
 
 type PreviewTreeBlock = {
@@ -36,6 +39,8 @@ type PreviewTreeBlock = {
 };
 
 const WindowsAbsolutePathRe = /^[A-Za-z]:(?:[\\/]|$)/;
+const MarkdownFileLineReferenceRe = /^((?:[A-Za-z]:[\\/]|\/|~\/).+\.(?:md|markdown|mdx)):(\d+)$/i;
+const MarkdownWikiLinkPrefix = "wave-wiki:";
 const FileUrlPrefixRe = /^file:\/\//i;
 const ExternalSchemeRe = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 
@@ -44,6 +49,86 @@ function safeDecodeURIComponent(value: string): string {
         return decodeURIComponent(value);
     } catch {
         return value;
+    }
+}
+
+export function parseMarkdownFileLineReference(value: string): { filePath: string; lineNumber: number } | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    const match = safeDecodeURIComponent(value.trim()).match(MarkdownFileLineReferenceRe);
+    if (match == null) {
+        return null;
+    }
+    const lineNumber = Number(match[2]);
+    if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {
+        return null;
+    }
+    return {
+        filePath: match[1].replace(/\\/g, "/"),
+        lineNumber,
+    };
+}
+
+export type MarkdownWikiLink = {
+    target: string;
+    label: string;
+    heading?: string;
+};
+
+export function parseMarkdownWikiLink(value: string): MarkdownWikiLink | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    let raw = value.trim();
+    if (raw.startsWith(MarkdownWikiLinkPrefix)) {
+        raw = safeDecodeURIComponent(raw.slice(MarkdownWikiLinkPrefix.length));
+    } else if (raw.startsWith("[[") && raw.endsWith("]]")) {
+        raw = raw.slice(2, -2);
+    } else {
+        return null;
+    }
+    const [targetAndHeading, labelPart] = raw.split("|", 2);
+    const [targetPart, headingPart] = targetAndHeading.split("#", 2);
+    const target = targetPart?.trim() ?? "";
+    if (target === "") {
+        return null;
+    }
+    return {
+        target: /\.(?:md|markdown|mdx)$/i.test(target) ? target : `${target}.md`,
+        label: labelPart?.trim() || target,
+        heading: headingPart?.trim() || undefined,
+    };
+}
+
+export function makeMarkdownWikiLinkHref(target: string, heading?: string): string {
+    const payload = heading == null || heading === "" ? target : `${target}#${heading}`;
+    return `${MarkdownWikiLinkPrefix}${encodeURIComponent(payload)}`;
+}
+
+export function findMarkdownHeadingLine(text: string, heading: string): number | null {
+    const normalizedHeading = heading.trim().replace(/\s+/g, " ").toLowerCase();
+    if (normalizedHeading === "") {
+        return null;
+    }
+    const match = getMarkdownHeadings(text).find(
+        (candidate) => candidate.text.trim().replace(/\s+/g, " ").toLowerCase() === normalizedHeading
+    );
+    return match?.lineNumber ?? null;
+}
+
+async function resolveMarkdownHeadingLine(
+    path: string,
+    heading: string,
+    connection: string | null | undefined
+): Promise<number | null> {
+    try {
+        const file = await RpcApi.FileReadCommand(TabRpcClient, {
+            info: { path: formatRemoteUri(path, connection ?? "local"), mimetype: "text/markdown" },
+        });
+        return findMarkdownHeadingLine(base64ToString(file?.data64 ?? ""), heading);
+    } catch {
+        return null;
     }
 }
 
@@ -378,7 +463,14 @@ export async function openFileLinkInPreview(href: string, options?: FileLinkOpen
     if (linkedPath == null) {
         return false;
     }
-    await openPathInPreview(linkedPath, options);
+    const lineNumber =
+        options?.lineNumber ??
+        (options?.heading ? await resolveMarkdownHeadingLine(linkedPath, options.heading, options.connection) : null);
+    if (options?.onOpenPath != null) {
+        await options.onOpenPath(linkedPath, lineNumber);
+        return true;
+    }
+    await openPathInPreview(linkedPath, { ...options, lineNumber });
     return true;
 }
 

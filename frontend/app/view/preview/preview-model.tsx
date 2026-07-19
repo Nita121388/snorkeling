@@ -10,6 +10,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
+import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import {
     createBlock,
     createBlockSplitHorizontally,
@@ -18,6 +19,7 @@ import {
     getOverrideConfigAtom,
     refocusNode,
 } from "@/store/global";
+import { ObjectService } from "@/app/store/services";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -122,6 +124,7 @@ type PreviewOpenPathOptions = {
     lineNumber?: number;
     forceNewBlock?: boolean;
     forceCurrentBlock?: boolean;
+    forceInlineTabCurrentBlock?: boolean;
     editMode?: boolean;
     directoryPath?: string | null;
     pathIsDir?: boolean | null;
@@ -1392,6 +1395,75 @@ export class PreviewModel implements ViewModel {
         return true;
     }
 
+    private async openPathInPreviewBlockAsTab(
+        targetBlockId: string,
+        newPath: string,
+        connection: string,
+        options?: PreviewOpenPathOptions
+    ): Promise<boolean> {
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetNode = layoutModel.getNodeByBlockId(targetBlockId);
+        if (!targetNode) {
+            return false;
+        }
+        const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        const blockMeta: Record<string, any> = {
+            view: "preview",
+            file: newPath,
+            connection,
+        };
+        const lineNumber = normalizeSearchTargetLine(options?.lineNumber);
+        if (lineNumber != null) {
+            blockMeta[PreviewSearchLineMetaKey] = lineNumber;
+        }
+        if (options?.editMode != null) {
+            blockMeta.edit = options.editMode;
+        }
+        if (options?.pathIsDir !== undefined) {
+            blockMeta[PreviewPathIsDirMetaKey] = options.pathIsDir;
+        }
+        const blockDef: BlockDef = {
+            meta: blockMeta,
+        };
+        const newBlockId = await ObjectService.CreateBlock(blockDef, rtOpts);
+        if (!newBlockId) {
+            return false;
+        }
+        const added = layoutModel.addBlockToInlineTab(targetNode.id, newBlockId);
+        if (!added) {
+            fireAndForget(() => ObjectService.DeleteBlock(newBlockId));
+            return false;
+        }
+        return true;
+    }
+
+    private async openPathInCurrentBlockAsTab(
+        newPath: string,
+        connection: string,
+        options?: PreviewOpenPathOptions
+    ): Promise<boolean> {
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetNode = layoutModel.getNodeByBlockId(this.blockId);
+        if (!targetNode) {
+            return false;
+        }
+        for (const blockId of getLayoutDataBlockIds(targetNode.data)) {
+            const block = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`));
+            const sameConnection =
+                block?.meta?.connection === connection ||
+                (isLocalConnName(block?.meta?.connection) && isLocalConnName(connection));
+            if (block?.meta?.view !== "preview" || !sameConnection) {
+                continue;
+            }
+            if (normalizePath(block.meta.file ?? "") !== normalizePath(newPath)) {
+                continue;
+            }
+            await this.openPathInPreviewBlock(blockId, newPath, connection, options);
+            return layoutModel.setActiveInlineTabBlock(targetNode.id, blockId);
+        }
+        return await this.openPathInPreviewBlockAsTab(this.blockId, newPath, connection, options);
+    }
+
     private async openPathInCurrentBlock(newPath: string, options?: PreviewOpenPathOptions) {
         const currentPath = globalStore.get(this.metaFilePath);
         if (normalizePath(currentPath) === normalizePath(newPath)) {
@@ -1482,6 +1554,16 @@ export class PreviewModel implements ViewModel {
             await this.openPathInNewBlock(newPath, direction, options);
             return;
         }
+        if (options?.forceInlineTabCurrentBlock) {
+            const sourceConnection = await globalStore.get(this.connection);
+            const opened = await this.openPathInCurrentBlockAsTab(newPath, sourceConnection, options);
+            if (opened) {
+                this.focusBlockById(this.blockId);
+                return;
+            }
+            await this.openPathInNewBlock(newPath, this.getOpenTargetDirection(), options);
+            return;
+        }
         const direction = this.getOpenTargetDirection();
         if (direction === "off") {
             await this.goHistory(newPath, options, options?.directoryPath);
@@ -1494,7 +1576,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         const sourceConnection = await globalStore.get(this.connection);
-        const opened = await this.openPathInPreviewBlock(targetBlockId, newPath, sourceConnection, options);
+        const opened = await this.openPathInPreviewBlockAsTab(targetBlockId, newPath, sourceConnection, options);
         if (opened) {
             this.focusBlockById(targetBlockId);
             return;

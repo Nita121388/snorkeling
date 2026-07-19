@@ -343,9 +343,10 @@
     --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
     --panel-bg-color: rgba(245, 245, 245, 0.72);
     --highlight-bg-color: rgba(0, 0, 0, 0.08);
-    --error-color: #2a2a2a;
-    --warning-color: #5a5a5a;
-    --success-color: #3a3a3a;
+    // monochrome 保留弱饱和语义色：人眼仍能分辨红/绿/黄三态，但与黑白调子调和。
+    --error-color: #8a6a6a;
+    --warning-color: #8a7a4a;
+    --success-color: #7a8a6a;
     --hover-bg-color: rgba(0, 0, 0, 0.05);
     --hover-bg-color-strong: rgba(0, 0, 0, 0.1);
     --block-bg-color: rgba(255, 255, 255, 0.72);

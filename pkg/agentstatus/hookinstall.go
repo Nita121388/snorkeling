@@ -19,7 +19,7 @@ const (
 	HookTargetClaude = "claude"
 
 	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 15
+	hookInstallVersion  = 18
 	codexHomeEnvVar     = "CODEX_HOME"
 	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
 	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
@@ -324,7 +324,10 @@ func hookInstallName() string {
 }
 
 func claudeHookInstallName() string {
-	return hookInstallName()
+	if runtime.GOOS == "windows" {
+		return hookInstallBaseName + ".ps1"
+	}
+	return hookInstallBaseName + ".sh"
 }
 
 type agentStatusHookSpec struct {
@@ -364,20 +367,23 @@ func hookCommand(path string, action string, phase string) string {
 
 func codexHookCommand(path string, spec agentStatusHookSpec) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & echo {^"continue^":true}"`, path, spec.action, spec.phase)
+		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s >nul 2>nul & exit /b 0"`, path, spec.action, spec.phase)
 	}
-	return fmt.Sprintf("bash %s %s %s >/dev/null 2>&1; printf '%%s\\n' '{\"continue\":true}'", shellSingleQuote(path), spec.action, spec.phase)
+	return fmt.Sprintf("bash %s %s %s >/dev/null 2>&1; exit 0", shellSingleQuote(path), spec.action, spec.phase)
 }
 
 func claudeHookCommand(path string, action string, phase string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`cmd.exe /d /q /c "call ""%s"" %s %s"`, path, action, phase)
+		return fmt.Sprintf(`powershell -NoProfile -ExecutionPolicy Bypass -File "%s" "%s" "%s"`, path, action, phase)
 	}
 	return hookCommand(path, action, phase)
 }
 
 func agentStatusHookScript(provider string) string {
 	if runtime.GOOS == "windows" {
+		if provider == HookTargetClaude {
+			return agentStatusPowerShellHookScript(provider)
+		}
 		return agentStatusBatchHookScript(provider)
 	}
 	return agentStatusShellHookScript(provider)
@@ -389,6 +395,8 @@ rem installed by Snorkeling
 rem managed by Snorkeling; reinstalling the integration overwrites this file.
 rem %s%s
 rem %s%d
+rem ENTER line written before setlocal to distinguish cmd-not-started from call-parse-failure
+if not "%%LOCALAPPDATA%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log" 2>nul) else if not "%%TEMP%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%TEMP%%\snorkeling-agentstatus-hook.log" 2>nul)
 
 setlocal
 set "ACTION=%%~1"
@@ -464,7 +472,69 @@ exit /b 0
 :debug_log
 if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider)
+}
+
+func agentStatusPowerShellHookScript(provider string) string {
+	return fmt.Sprintf(`# installed by Snorkeling
+# managed by Snorkeling; reinstalling the integration overwrites this file.
+# %s%s
+# %s%d
+
+param(
+    [string]$Action = "",
+    [string]$Phase = ""
+)
+
+$fireLog = ""
+if ($env:LOCALAPPDATA) {
+    $fireLog = Join-Path $env:LOCALAPPDATA "snorkeling-agentstatus-hook.log"
+} elseif ($env:TEMP) {
+    $fireLog = Join-Path $env:TEMP "snorkeling-agentstatus-hook.log"
+}
+if ($fireLog) {
+    $dateStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $fireLog -Value ("$dateStr [ENTER] provider=%s args=[$Action] [$Phase] block=$env:WAVETERM_BLOCKID cwd=$PWD") -ErrorAction SilentlyContinue
+}
+
+if ($Action -notin @("working", "idle", "blocked", "release", "unknown")) {
+    exit 0
+}
+
+if ([string]::IsNullOrEmpty($env:WAVETERM_BLOCKID)) { exit 0 }
+if ([string]::IsNullOrEmpty($env:WAVETERM_JWT)) { exit 0 }
+
+$wshBin = ""
+if ($env:WAVETERM_WSHBINDIR) {
+    $candidate = Join-Path $env:WAVETERM_WSHBINDIR "wsh.exe"
+    if (Test-Path $candidate -PathType Leaf) { $wshBin = $candidate }
+}
+if (-not $wshBin) {
+    $found = Get-Command "wsh.exe" -ErrorAction SilentlyContinue
+    if ($found) { $wshBin = $found.Source }
+}
+if (-not $wshBin -and $env:LOCALAPPDATA) {
+    $candidate = Join-Path $env:LOCALAPPDATA "snorkeling\Data\bin\wsh.exe"
+    if (Test-Path $candidate -PathType Leaf) { $wshBin = $candidate }
+}
+if (-not $wshBin -and $env:USERPROFILE) {
+    $candidate = Join-Path $env:USERPROFILE ".snorkeling\bin\wsh.exe"
+    if (Test-Path $candidate -PathType Leaf) { $wshBin = $candidate }
+}
+if (-not $wshBin) { exit 0 }
+
+$validPhases = @("thinking", "tool", "shell-command", "approval", "none", "unknown")
+if ($Phase -notin $validPhases) {
+    if ($Action -eq "idle") { $Phase = "none" }
+    elseif ($Action -eq "release") { $Phase = "none" }
+    elseif ($Action -eq "blocked") { $Phase = "approval" }
+    elseif ($Action -eq "working") { $Phase = "thinking" }
+    else { $Phase = "unknown" }
+}
+
+& $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase *> $null
+exit $LASTEXITCODE
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {

@@ -515,6 +515,10 @@ declare global {
     type MarkdownResolveOpts = {
         connName: string;
         baseDir: string;
+        openLink?: (
+            path: string,
+            options: { lineNumber?: number | null; forceNewBlock?: boolean }
+        ) => Promise<void>;
     };
 
     interface AbstractWshClient {

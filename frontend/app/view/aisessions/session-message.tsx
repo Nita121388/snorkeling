@@ -65,14 +65,16 @@ export function MessageCard({
     const isUser = message.role === "user";
     const collapsible = isCollapsibleMessage(message.text);
     const effectiveCollapsed = collapsed ?? collapsible;
-    const defaultShownText = trimMessageText(message.text);
     const normalizedSearchQuery = searchQuery?.trim().toLowerCase() ?? "";
     const searchMatched = normalizedSearchQuery !== "" && message.text.toLowerCase().includes(normalizedSearchQuery);
-    const defaultSearchShown =
-        normalizedSearchQuery !== "" && defaultShownText.toLowerCase().includes(normalizedSearchQuery);
-    const shownText = searchActive && searchMatched && !defaultSearchShown ? message.text : defaultShownText;
+    const collapsedShownText = trimMessageText(message.text);
+    const collapsedSearchShown =
+        normalizedSearchQuery !== "" && collapsedShownText.toLowerCase().includes(normalizedSearchQuery);
+    // 展开后用全文，不再受 trimMessageText 的 2400 字截断；只在折叠时截断
+    const useFullText = !effectiveCollapsed || (searchActive && searchMatched && !collapsedSearchShown);
+    const shownText = useFullText ? message.text : collapsedShownText;
     const searchShown = normalizedSearchQuery !== "" && shownText.toLowerCase().includes(normalizedSearchQuery);
-    const shouldClampText = effectiveCollapsed && !(searchActive && searchMatched && !defaultSearchShown);
+    const shouldClampText = effectiveCollapsed && !(searchActive && searchMatched && !collapsedSearchShown);
     return (
         <div
             ref={registerRef}

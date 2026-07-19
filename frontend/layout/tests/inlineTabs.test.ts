@@ -7,7 +7,9 @@ import {
     getLayoutDataActiveBlockId,
     getLayoutDataBlockIds,
     mergeSourceNodeIntoTargetNode,
+    moveBlockBetweenInlineTabNodes,
     removeBlockIdFromInlineTabNode,
+    reorderInlineTabNodeBlockIds,
     setInlineTabNodeBlockIds,
 } from "../lib/inlineTabs";
 import { newLayoutNode } from "../lib/layoutNode";
@@ -112,6 +114,40 @@ test("remove block from inline tab node degrades to single block", () => {
     removeBlockIdFromInlineTabNode(node, "source");
 
     assert.deepEqual(node.data, { blockId: "target" });
+});
+
+test("reorder inline tab block ids preserves active block and titles", () => {
+    const node = newLayoutNode(undefined, undefined, undefined, {
+        blockIds: ["one", "two", "three"],
+        activeBlockId: "two",
+        blockTabTitles: { two: "Second" },
+    });
+
+    const reordered = reorderInlineTabNodeBlockIds(node, "three", 0);
+
+    assert(reordered, "valid reorder should succeed");
+    assert.deepEqual(getLayoutDataBlockIds(node.data), ["three", "one", "two"]);
+    assert(getLayoutDataActiveBlockId(node.data) === "two", "reorder should preserve the active block");
+    assert.deepEqual(node.data.blockTabTitles, { two: "Second" });
+    assert(!reorderInlineTabNodeBlockIds(node, "missing", 1), "missing blocks should not mutate the group");
+    assert.deepEqual(getLayoutDataBlockIds(node.data), ["three", "one", "two"]);
+});
+
+test("move block between inline tab nodes preserves the custom title", () => {
+    const source = newLayoutNode(undefined, undefined, undefined, {
+        blockIds: ["one", "two"],
+        activeBlockId: "two",
+        blockTabTitles: { two: "Second" },
+    });
+    const target = newLayoutNode(undefined, undefined, undefined, { blockId: "target" });
+
+    const moved = moveBlockBetweenInlineTabNodes(source, target, "two");
+
+    assert(moved, "valid transfer should succeed");
+    assert.deepEqual(source.data, { blockId: "one" });
+    assert.deepEqual(getLayoutDataBlockIds(target.data), ["target", "two"]);
+    assert(getLayoutDataActiveBlockId(target.data) === "two", "moved block should become active");
+    assert.deepEqual(target.data.blockTabTitles, { two: "Second" });
 });
 
 test("remove active inline tab block selects the next neighbor", () => {

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent Status - Current Style Mockup</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #1a1b1a;
+    --surface: #222422;
+    --surface-2: #262826;
+    --primary: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --border: rgba(255,255,255,0.16);
+    --border-soft: rgba(255,255,255,0.08);
+    --hover: rgba(255,255,255,0.06);
+    --chipsurface: rgba(255,255,255,0.04);
+    --working: #58c142;
+    --done: #22c55e;
+    --idle: #38bdf8;
+    --blocked: #f59e0b;
+    --stale: #a855f7;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    min-height: 100%;
+    background:
+      radial-gradient(circle at top left, rgba(88,193,66,0.10), transparent 30%),
+      radial-gradient(circle at 90% 20%, rgba(56,189,248,0.08), transparent 24%),
+      var(--bg);
+    color: var(--primary);
+    font-family: -apple-system, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  body { padding: 28px; }
+  .stage {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    gap: 18px;
+  }
+
+  .hero {
+    padding: 18px 20px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+  }
+  .hero h1 { font-size: 18px; line-height: 1.2; margin-bottom: 6px; }
+  .hero p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .hero code {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.05);
+    color: var(--secondary);
+    font-size: 11px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.28);
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+  }
+  .card-sub {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .demo-wrap { padding: 14px; display: grid; gap: 10px; }
+
+  .block-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 8px 9px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    font: 11px/1 var(--fixed-font, "SFMono-Regular", Consolas, "Liberation Mono", monospace);
+    color: var(--secondary);
+  }
+  .block-header .label {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-family: inherit;
+  }
+  .block-header .spacer { flex: 1 1 auto; min-width: 8px; }
+
+  .agent-status-header,
+  .session-overview-agent-status,
+  .session-overview-agent-aggregate {
+    --agent-status-color: var(--secondary);
+    --agent-status-bg: rgba(255,255,255,0.06);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    border: 1px solid rgb(from var(--agent-status-color) r g b / 0.28);
+    border-radius: 6px;
+    background: var(--agent-status-bg);
+    color: var(--agent-status-color);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .agent-status-header {
+    max-width: 190px;
+    padding: 0 6px;
+  }
+  .session-overview-agent-status,
+  .session-overview-agent-aggregate {
+    padding: 0 6px;
+    max-width: 100%;
+  }
+
+  .agent-status-header > i,
+  .session-overview-agent-status > i,
+  .session-overview-agent-aggregate > i {
+    display: inline-flex;
+    width: 10px;
+    flex: 0 0 10px;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+  }
+
+  .agent-status-header.is-working,
+  .session-overview-agent-status.is-working,
+  .session-overview-agent-aggregate.is-working {
+    --agent-status-color: var(--working);
+    --agent-status-bg: rgb(from var(--working) r g b / 0.1);
+  }
+  .agent-status-header.is-done,
+  .session-overview-agent-status.is-done,
+  .session-overview-agent-aggregate.is-done {
+    --agent-status-color: var(--done);
+    --agent-status-bg: rgb(34 197 94 / 0.1);
+  }
+  .agent-status-header.is-idle,
+  .session-overview-agent-status.is-idle,
+  .session-overview-agent-aggregate.is-idle {
+    --agent-status-color: var(--idle);
+    --agent-status-bg: rgb(56 189 248 / 0.08);
+  }
+  .agent-status-header.is-blocked,
+  .session-overview-agent-status.is-blocked,
+  .session-overview-agent-aggregate.is-blocked {
+    --agent-status-color: var(--blocked);
+    --agent-status-bg: rgb(245 158 11 / 0.12);
+    border-color: rgb(245 158 11 / 0.64);
+  }
+  .agent-status-header.is-stale,
+  .session-overview-agent-status.is-stale,
+  .session-overview-agent-aggregate.is-stale {
+    --agent-status-color: var(--stale);
+    --agent-status-bg: rgb(168 85 247 / 0.1);
+  }
+  .agent-status-header.is-unknown,
+  .session-overview-agent-status.is-unknown,
+  .session-overview-agent-aggregate.is-unknown {
+    --agent-status-color: var(--secondary);
+    --agent-status-bg: transparent;
+  }
+  .agent-status-header.is-inferred,
+  .session-overview-agent-status.is-inferred,
+  .session-overview-agent-aggregate.is-inferred {
+    border-style: dashed;
+  }
+
+  .agent-status-header.is-working > span,
+  .session-overview-agent-status.is-working .label,
+  .session-overview-agent-aggregate.is-working .label {
+    animation: text-shimmer 1.8s ease-in-out infinite;
+  }
+  .agent-status-header.is-working > i,
+  .session-overview-agent-status.is-working > i,
+  .session-overview-agent-aggregate.is-working > i,
+  .session-overview-agent-status.is-blocked > i,
+  .session-overview-agent-aggregate.is-blocked > i {
+    animation: icon-pulse 1.4s ease-in-out infinite;
+  }
+  .agent-status-header.is-blocked {
+    animation: blocked-border 1.6s ease-in-out infinite;
+  }
+
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .status-item {
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.02);
+    display: grid;
+    gap: 8px;
+  }
+  .status-item .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .status-item .meta {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .status-item .meta b { color: var(--secondary); font-weight: 600; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--chipsurface);
+    color: var(--secondary);
+    font-size: 11px;
+  }
+
+  .mini-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .legend {
+    padding: 12px 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .legend b { color: var(--primary); }
+
+  @keyframes text-shimmer {
+    0%, 100% { opacity: 0.78; }
+    50% { opacity: 1; }
+  }
+  @keyframes icon-pulse {
+    0%, 100% { transform: translateY(0); opacity: 0.82; }
+    50% { transform: translateY(-0.3px); opacity: 1; }
+  }
+  @keyframes blocked-border {
+    0%, 100% { box-shadow: inset 0 0 0 0 rgba(245,158,11,0); }
+    50% { box-shadow: inset 0 0 0 1px rgba(245,158,11,0.14); }
+  }
+
+  @media (max-width: 920px) {
+    body { padding: 16px; }
+    .grid, .status-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <section class="hero">
+      <h1>Agent 状态样式 - Current</h1>
+      <p>
+        这个 mockup 对齐当前实现里的状态徽标样式，来源是
+        <code>frontend/app/block/block.scss</code> 和
+        <code>frontend/app/session-overview/session-overview.scss</code>。
+      </p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><i class="fa-regular fa-window-maximize"></i> Block Header</div>
+          <div class="card-sub">`agent-status-header`</div>
+        </div>
+        <div class="demo-wrap">
+          <div class="block-header">
+            <span class="label">Agent</span>
+            <span class="spacer"></span>
+            <span class="agent-status-header is-working" title="Working (inferred): thinking">
+              <i class="fa-solid fa-sparkles"></i><span>Thinking</span>
+            </span>
+          </div>
+          <div class="block-header">
+            <span class="label">Agent</span>
+            <span class="spacer"></span>
+            <span class="agent-status-header is-blocked is-inferred" title="Blocked (inferred): waiting for approval">
+              <i class="fa-solid fa-circle-exclamation"></i><span>Blocked</span>
+            </span>
+          </div>
+          <div class="block-header">
+            <span class="label">Agent</span>
+            <span class="spacer"></span>
+            <span class="agent-status-header is-idle" title="Idle: controller running without explicit report">
+              <i class="fa-regular fa-circle"></i><span>Idle</span>
+            </span>
+          </div>
+          <div class="block-header">
+            <span class="label">Agent</span>
+            <span class="spacer"></span>
+            <span class="agent-status-header is-unknown" title="No data: no explicit agent report received yet">
+              <i class="fa-regular fa-circle-question"></i><span>No data</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><i class="fa-regular fa-rectangle-list"></i> Session Overview</div>
+          <div class="card-sub">`session-overview-agent-status`</div>
+        </div>
+        <div class="demo-wrap">
+          <div class="status-grid">
+            <div class="status-item">
+              <div class="row">
+                <span class="tag"><i class="fa-solid fa-wand-magic-sparkles"></i> canonical hook</span>
+                <span class="session-overview-agent-status is-working">
+                  <i class="fa-solid fa-sparkles"></i><span class="label">Working</span>
+                </span>
+              </div>
+              <div class="meta"><b>phase:</b> tool · <b>source:</b> hook · <b>confidence:</b> high</div>
+            </div>
+            <div class="status-item">
+              <div class="row">
+                <span class="tag"><i class="fa-regular fa-clock"></i> inferred</span>
+                <span class="session-overview-agent-status is-done is-inferred">
+                  <i class="fa-regular fa-circle-check"></i><span class="label">Done</span>
+                </span>
+              </div>
+              <div class="meta"><b>reason:</b> idle-with-unseen-session-update</div>
+            </div>
+            <div class="status-item">
+              <div class="row">
+                <span class="tag"><i class="fa-regular fa-circle"></i> idle</span>
+                <span class="session-overview-agent-status is-idle">
+                  <i class="fa-regular fa-circle"></i><span class="label">Idle</span>
+                </span>
+              </div>
+              <div class="meta"><b>source:</b> controller · <b>confidence:</b> low</div>
+            </div>
+            <div class="status-item">
+              <div class="row">
+                <span class="tag"><i class="fa-regular fa-circle-question"></i> unknown</span>
+                <span class="session-overview-agent-status is-unknown is-inferred">
+                  <i class="fa-regular fa-circle-question"></i><span class="label">No data</span>
+                </span>
+              </div>
+              <div class="meta"><b>reason:</b> no-status-data</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title"><i class="fa-regular fa-layer-group"></i> 状态总览</div>
+        <div class="card-sub">`session-overview-agent-aggregate`</div>
+      </div>
+      <div class="demo-wrap">
+        <div class="mini-row">
+          <span class="session-overview-agent-aggregate is-working">
+            <i class="fa-solid fa-sparkles"></i><span class="label">2 working</span>
+          </span>
+          <span class="session-overview-agent-aggregate is-done">
+            <i class="fa-regular fa-circle-check"></i><span class="label">4 done</span>
+          </span>
+          <span class="session-overview-agent-aggregate is-blocked">
+            <i class="fa-solid fa-circle-exclamation"></i><span class="label">1 blocked</span>
+          </span>
+          <span class="session-overview-agent-aggregate is-stale is-inferred">
+            <i class="fa-regular fa-clock"></i><span class="label">3 stale</span>
+          </span>
+          <span class="session-overview-agent-aggregate is-unknown">
+            <i class="fa-regular fa-circle-question"></i><span class="label">no data</span>
+          </span>
+        </div>
+        <div class="legend">
+          <b>对齐点：</b>高度 18px、圆角 6px、`working` 绿色高亮 + 文本 shimmer、`blocked` 橙色边框脉冲、`is-inferred` 虚线边框、`unknown` 透明背景。
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -15,7 +15,7 @@
         flex-direction: column;
         gap: 4px;
         padding-bottom: 6px;
-        border-bottom: 1px solid var(--ts3-border);
+        border-bottom: 1px solid var(--border-color);
 
         .env-modal-title {
             font-weight: 600;
@@ -29,16 +29,16 @@
                 font-weight: 600;
                 letter-spacing: 0.5px;
                 text-transform: uppercase;
-                color: var(--ts3-fg-muted);
-                background: var(--ts3-bg-accent);
-                border: 1px solid var(--ts3-border);
+                color: var(--secondary-text-color);
+                background: var(--accent-bg-color);
+                border: 1px solid var(--border-color);
                 border-radius: 4px;
                 padding: 1px 6px;
             }
         }
 
         .env-modal-subtitle {
-            color: var(--ts3-fg-muted);
+            color: var(--secondary-text-color);
             font-size: 12px;
         }
     }
@@ -53,14 +53,14 @@
             min-width: 200px;
             padding: 5px 10px;
             font-size: 13px;
-            background: var(--ts3-input-bg);
-            border: 1px solid var(--ts3-border);
+            background: var(--form-element-bg-color);
+            border: 1px solid var(--border-color);
             border-radius: 4px;
-            color: var(--ts3-fg);
+            color: var(--main-text-color);
             outline: none;
 
             &:focus {
-                border-color: var(--ts3-accent);
+                border-color: var(--accent-color);
             }
         }
 
@@ -70,14 +70,14 @@
             gap: 4px;
             padding: 5px 10px;
             font-size: 12px;
-            background: var(--ts3-btn-bg);
-            color: var(--ts3-btn-fg);
-            border: 1px solid var(--ts3-border);
+            background: var(--form-element-bg-color);
+            color: var(--form-element-text-color);
+            border: 1px solid var(--border-color);
             border-radius: 4px;
             cursor: pointer;
 
             &:hover:not(:disabled) {
-                background: var(--ts3-btn-hover-bg);
+                background: var(--hover-bg-color-strong);
             }
 
             &:disabled {
@@ -92,25 +92,25 @@
     .env-modal-empty {
         padding: 20px;
         text-align: center;
-        color: var(--ts3-fg-muted);
+        color: var(--secondary-text-color);
         font-size: 13px;
     }
 
     .env-modal-error {
-        color: var(--ts3-error-fg);
+        color: var(--error-color);
     }
 
     .env-modal-table {
         flex: 1 1 auto;
         overflow: auto;
-        border: 1px solid var(--ts3-border);
+        border: 1px solid var(--border-color);
         border-radius: 4px;
         min-height: 120px;
 
         .env-modal-row {
             display: grid;
             grid-template-columns: minmax(140px, 30%) 1fr;
-            border-bottom: 1px solid var(--ts3-border-light);
+            border-bottom: 1px solid rgb(from var(--border-color) r g b / 0.5);
 
             &:last-child {
                 border-bottom: none;
@@ -119,7 +119,7 @@
             &.env-modal-row-header {
                 position: sticky;
                 top: 0;
-                background: var(--ts3-tab-bg);
+                background: var(--tabbar-bg-color);
                 font-weight: 600;
                 font-size: 12px;
                 z-index: 1;
@@ -130,15 +130,15 @@
                 padding: 5px 10px;
                 font-size: 12px;
                 word-break: break-all;
-                font-family: var(--ts3-mono-font);
+                font-family: var(--font-mono);
                 display: flex;
                 align-items: center;
                 gap: 6px;
             }
 
             .env-modal-key {
-                border-right: 1px solid var(--ts3-border-light);
-                background: var(--ts3-tab-bg);
+                border-right: 1px solid rgb(from var(--border-color) r g b / 0.5);
+                background: var(--tabbar-bg-color);
             }
 
             .env-modal-tag {
@@ -147,7 +147,7 @@
                 font-size: 9px;
                 font-weight: 700;
                 letter-spacing: 0.5px;
-                background: var(--ts3-error-fg);
+                background: var(--error-color);
                 color: #fff;
                 border-radius: 3px;
             }
@@ -164,11 +164,11 @@
                     background: transparent;
                     border: none;
                     cursor: pointer;
-                    color: var(--ts3-fg-muted);
+                    color: var(--secondary-text-color);
                     padding: 0 4px;
 
                     &:hover {
-                        color: var(--ts3-accent);
+                        color: var(--accent-color);
                     }
                 }
             }

@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { BlockNodeModel } from "@/app/block/blocktypes";
+import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock, createBlockSplitHorizontally } from "@/store/global";
+import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { getLayoutModelForTabById } from "@/layout/index";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -25,7 +27,9 @@ import {
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
 import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
+import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
 import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
+import "../../session-overview/session-overview.scss";
 import {
     emptySessionsText,
     formatDateTimeToSecond,
@@ -35,6 +39,24 @@ import {
     sortSessionsByTime,
     writeSortPreference,
 } from "./utils";
+
+function jumpToRunningSessionBlock(runningState: SessionRunningState): void {
+    const { blockId, tabId } = runningState;
+    if (blockId === "" || tabId === "") return;
+
+    const layoutModel = getLayoutModelForTabById(tabId);
+    if (layoutModel == null) return;
+    if (layoutModel.getNodeByBlockId(blockId) == null) {
+        restoreMinimizedBlockToLayout(tabId, blockId);
+    }
+    if (layoutModel.isBlockHidden(blockId)) {
+        layoutModel.showBlock(blockId);
+    }
+
+    setActiveTab(tabId);
+    window.setTimeout(() => refocusNode(blockId), 80);
+    window.setTimeout(() => refocusNode(blockId), 220);
+}
 
 export class AiSessionsViewModel implements ViewModel {
     blockId: string;
@@ -624,7 +646,6 @@ const AutoRefreshIntervalOptions = [
 const DefaultSessionListWidth = 320;
 const MinSessionListWidth = 240;
 const MaxSessionListWidth = 520;
-const CollapsedSessionListWidth = 44;
 const BackupKeepRecent = 3;
 const BackupMaxAgeDays = 7;
 
@@ -729,6 +750,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const [blockVisible, setBlockVisible] = useState(true);
+    const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
@@ -936,7 +958,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     );
 
     const gridTemplateColumns = sessionListCollapsed
-        ? `${CollapsedSessionListWidth}px minmax(0,1fr)`
+        ? "minmax(0,1fr)"
         : `${sessionListWidth}px minmax(0,1fr)`;
     const lastRefreshLabel = lastSessionsRefreshAt
         ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
@@ -952,23 +974,20 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     {error}
                 </div>
             ) : null}
-            <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
-                <div className="relative flex min-h-0 flex-col border-r border-border">
-                    {sessionListCollapsed ? (
-                        <div className="flex h-full min-h-0 flex-col items-center gap-2 py-3">
-                            <IconButton
-                                icon="fa-chevron-right"
-                                label="Expand sessions list"
-                                onClick={() => setSessionListCollapsed(false)}
-                            />
-                            <div className="rotate-180 text-[10px] uppercase tracking-normal text-secondary [writing-mode:vertical-rl]">
-                                Sessions
-                            </div>
-                            <div className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-secondary">
-                                {visibleSessions.length}
-                            </div>
-                        </div>
-                    ) : (
+            <div className="relative grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
+                {sessionListCollapsed ? (
+                    <button
+                        type="button"
+                        title="Expand sessions list"
+                        aria-label="Expand sessions list"
+                        onClick={() => setSessionListCollapsed(false)}
+                        className="absolute left-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-secondary shadow-sm hover:bg-hover hover:text-primary"
+                    >
+                        <i className="fa-sharp fa-solid fa-chevron-right" />
+                    </button>
+                ) : null}
+                <div className={cn("relative flex min-h-0 flex-col border-r border-border", sessionListCollapsed && "contents")}>
+                    {sessionListCollapsed ? null : (
                         <>
                             <div className="space-y-2 border-b border-border p-3">
                                 <div className="flex items-center gap-2">
@@ -1121,6 +1140,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 void model.restoreSession(session);
                                             }}
                                             resumeDisabled={restoring}
+                                            runningState={sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null}
+                                            onJumpToBlock={jumpToRunningSessionBlock}
                                         />
                                     ))
                                 )}

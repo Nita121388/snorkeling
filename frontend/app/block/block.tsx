@@ -8,14 +8,24 @@ import {
     FullSubBlockProps,
     SubBlockProps,
 } from "@/app/block/blocktypes";
+import { Tooltip } from "@/app/element/tooltip";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
 import { getLayoutModelForTabById, TileItemType, useDebouncedNodeInnerRect } from "@/layout/index";
-import { getLayoutDataActiveBlockId, getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
+import {
+    getLayoutDataActiveBlockId,
+    getLayoutDataBlockIds,
+    InlineTabDragItem,
+    InlineTabDragItemType,
+    InlineTabDropResult,
+} from "@/layout/lib/inlineTabs";
 import { counterInc } from "@/store/counters";
 import { getBlockComponentModel, registerBlockComponentModel, unregisterBlockComponentModel } from "@/store/global";
 import { makeORef } from "@/store/wos";
@@ -24,14 +34,18 @@ import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useDrop } from "react-dnd";
+import { useDrag, useDrop } from "react-dnd";
+import {
+    getInlineTabRuntimeOpts,
+    getRemainingInlineTabBlockIds,
+    isConfirmedMissingInlineTabBlock,
+    shouldWarmupInlineTabController,
+} from "./block-recovery";
 import "./block.scss";
 import { BlockEnv } from "./blockenv";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
-import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
-import { Tooltip } from "@/app/element/tooltip";
 
 function getViewElem(
     blockId: string,
@@ -60,18 +74,44 @@ function basename(path: string): string {
     return normalized.split("/").pop() || normalized;
 }
 
+function getElementDimensions(element: HTMLElement): Dimensions | undefined {
+    if (!element) {
+        return;
+    }
+    const rect = element.getBoundingClientRect();
+    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+}
+
 type InlineTabLabelProps = {
+    nodeId: string;
     blockId: string;
     layoutData: TabLayoutData;
     isActive: boolean;
     duplicateIndex?: number;
+    index: number;
     onActivate: () => void;
     onClose: () => void;
     onRename: (title: string) => void;
+    onReorder: (dragBlockId: string, hoverIndex: number) => void;
+    onDragEnd: () => void;
+    sourceStripRef: React.RefObject<HTMLDivElement>;
 };
 
 const InlineTabLabel = memo(
-    ({ blockId, layoutData, isActive, duplicateIndex, onActivate, onClose, onRename }: InlineTabLabelProps) => {
+    ({
+        nodeId,
+        blockId,
+        layoutData,
+        isActive,
+        duplicateIndex,
+        index,
+        onActivate,
+        onClose,
+        onRename,
+        onReorder,
+        onDragEnd,
+        sourceStripRef,
+    }: InlineTabLabelProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
         const blockData = useAtomValue(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
         const blockView = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "view")) ?? "";
@@ -82,6 +122,7 @@ const InlineTabLabel = memo(
         const [isEditing, setIsEditing] = useState(false);
         const [draftTitle, setDraftTitle] = useState(customTitle ?? "");
         const inputRef = useRef<HTMLInputElement>(null);
+        const tabRef = useRef<HTMLDivElement>(null);
 
         const defaultTitle = useMemo(() => {
             if (!isBlank(frameTitle)) {
@@ -109,11 +150,7 @@ const InlineTabLabel = memo(
             const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
             if (agentMeta != null) {
                 const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
-                return isBlank(cwd)
-                    ? ""
-                    : isBlank(connection)
-                        ? cwd
-                        : `${cwd} · ${connection}`;
+                return isBlank(cwd) ? "" : isBlank(connection) ? cwd : `${cwd} · ${connection}`;
             }
             if (blockView === "preview" && !isBlank(filePath)) {
                 return isBlank(connection) ? filePath : `${filePath} · ${connection}`;
@@ -152,6 +189,45 @@ const InlineTabLabel = memo(
             onRename(draftTitle);
         }, [draftTitle, onRename]);
 
+        const [{ isDragging }, dragInlineTab] = useDrag<
+            InlineTabDragItem,
+            InlineTabDropResult,
+            { isDragging: boolean }
+        >(
+            () => ({
+                type: InlineTabDragItemType,
+                item: () => ({
+                    sourceNodeId: nodeId,
+                    blockId,
+                    sourceIndex: index,
+                    origin: "tab-label",
+                    sourceRect: getElementDimensions(sourceStripRef.current),
+                }),
+                collect: (monitor) => ({
+                    isDragging: monitor.isDragging(),
+                }),
+                end: onDragEnd,
+            }),
+            [blockId, index, nodeId, onDragEnd, sourceStripRef]
+        );
+
+        const [{ isOver }, dropInlineTab] = useDrop<InlineTabDragItem, InlineTabDropResult, { isOver: boolean }>(
+            () => ({
+                accept: InlineTabDragItemType,
+                canDrop: (dragItem) => dragItem.sourceNodeId === nodeId && dragItem.origin === "tab-label",
+                drop: (dragItem) => {
+                    onReorder(dragItem.blockId, index);
+                    return { action: "reorder" };
+                },
+                collect: (monitor) => ({
+                    isOver: monitor.isOver() && monitor.canDrop(),
+                }),
+            }),
+            [index, nodeId, onReorder]
+        );
+
+        dragInlineTab(dropInlineTab(tabRef));
+
         if (isEditing) {
             return (
                 <input
@@ -174,7 +250,14 @@ const InlineTabLabel = memo(
         }
 
         return (
-            <div className={clsx("inline-tab-block-tab", { active: isActive })}>
+            <div
+                ref={tabRef}
+                className={clsx("inline-tab-block-tab", {
+                    active: isActive,
+                    dragging: isDragging,
+                    "drop-target": isOver,
+                })}
+            >
                 <Tooltip
                     content={
                         <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
@@ -224,20 +307,74 @@ const InlineTabLabel = memo(
 InlineTabLabel.displayName = "InlineTabLabel";
 
 const InlineTabBlockMissingGuard = memo(
-    ({ blockId, onMissingBlock }: { blockId: string; onMissingBlock: () => void }) => {
+    ({ blockId, onMissingBlock }: { blockId: string; onMissingBlock: (blockId: string) => void }) => {
         const waveEnv = useWaveEnv<BlockEnv>();
-        const blockIsNull = useAtomValue(waveEnv.wos.isWaveObjectNullAtom(makeORef("block", blockId)));
+        const blockRef = makeORef("block", blockId);
+        const blockIsLoading = useAtomValue(waveEnv.wos.getWaveObjectLoadingAtom(blockRef));
+        const blockIsNull = useAtomValue(waveEnv.wos.isWaveObjectNullAtom(blockRef));
 
         useEffect(() => {
-            if (blockIsNull) {
-                onMissingBlock();
+            if (isConfirmedMissingInlineTabBlock(blockIsLoading, blockIsNull)) {
+                onMissingBlock(blockId);
             }
-        }, [blockIsNull, onMissingBlock]);
+        }, [blockId, blockIsLoading, blockIsNull, onMissingBlock]);
 
         return null;
     }
 );
 InlineTabBlockMissingGuard.displayName = "InlineTabBlockMissingGuard";
+
+const InlineTabBlockControllerWarmup = memo(
+    ({ active, blockId, preview, tabId }: { active: boolean; blockId: string; preview: boolean; tabId: string }) => {
+        const waveEnv = useWaveEnv<BlockEnv>();
+        const [blockData, blockIsLoading] = waveEnv.wos.useWaveObjectValue<Block>(makeORef("block", blockId));
+        const blockExists = blockData != null;
+        const blockView = blockData?.meta?.view ?? "";
+        const controller = blockData?.meta?.controller ?? "";
+        const connection = blockData?.meta?.connection ?? "";
+        const connStatus = useAtomValue(waveEnv.getConnStatusAtom(connection));
+        const connStatusType = connStatus?.status;
+        const termRows = blockData?.runtimeopts?.termsize?.rows;
+        const termCols = blockData?.runtimeopts?.termsize?.cols;
+
+        useEffect(() => {
+            if (
+                !shouldWarmupInlineTabController({
+                    active,
+                    preview,
+                    blockIsLoading,
+                    blockExists,
+                    blockView,
+                    controller,
+                })
+            ) {
+                return;
+            }
+            const rtOpts = getInlineTabRuntimeOpts(termRows, termCols);
+            void RpcApi.ControllerResyncCommand(TabRpcClient, {
+                tabid: tabId,
+                blockid: blockId,
+                rtopts: rtOpts,
+            }).catch((error) => console.log("error warming inline-tab controller", blockId, error));
+        }, [
+            active,
+            blockExists,
+            blockId,
+            blockIsLoading,
+            blockView,
+            connection,
+            connStatusType,
+            controller,
+            preview,
+            tabId,
+            termCols,
+            termRows,
+        ]);
+
+        return null;
+    }
+);
+InlineTabBlockControllerWarmup.displayName = "InlineTabBlockControllerWarmup";
 
 function getDuplicateIndexes(blockIds: string[], titles: Record<string, string>): Map<string, number> {
     const counts = new Map<string, number>();
@@ -257,14 +394,18 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const blockIds = getLayoutDataBlockIds(layoutData);
     const blockIdsKey = blockIds.join("\n");
     const activeBlockId = getLayoutDataActiveBlockId(layoutData) ?? blockIds[0];
+    const fallbackTabStripRef = useRef<HTMLDivElement>(null);
+    const tabStripRef = nodeModel.dragHandleRef ?? fallbackTabStripRef;
+    const activeBlockDragHandleRef = useRef<HTMLDivElement>(null);
     const activeLayoutDataAtom = useMemo(() => atom<TabLayoutData>(layoutData), [layoutData]);
     const activeNodeModel = useMemo(
         () => ({
             ...nodeModel,
             blockId: activeBlockId,
             layoutData: activeLayoutDataAtom,
+            dragHandleRef: blockIds.length > 1 ? activeBlockDragHandleRef : nodeModel.dragHandleRef,
         }),
-        [activeBlockId, activeLayoutDataAtom, nodeModel]
+        [activeBlockId, activeLayoutDataAtom, blockIds.length, nodeModel]
     );
     const titleMap = useMemo(() => {
         return Object.fromEntries(
@@ -272,31 +413,67 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         );
     }, [blockIds, layoutData.blockTabTitles]);
     const duplicateIndexes = useMemo(() => getDuplicateIndexes(blockIds, titleMap), [blockIds, titleMap]);
+    const isEphemeral = useAtomValue(nodeModel.isEphemeral);
+    const isMagnified = useAtomValue(nodeModel.isMagnified);
+    const isHidden = useAtomValue(nodeModel.isHidden);
 
-    const cleanupMissingBlocks = useCallback(() => {
-        if (!layoutModel) {
-            return;
-        }
-        const validBlockIds = blockIds.filter((blockId) => layoutModel.getBlockById(blockId) != null);
-        layoutModel.cleanupInlineTabBlockIds(nodeModel.nodeId, validBlockIds);
-    }, [blockIdsKey, layoutModel, nodeModel.nodeId]);
-    const [, dropInlineTabBlock] = useDrop(
+    const cleanupMissingBlock = useCallback(
+        (missingBlockId: string) => {
+            if (!layoutModel) {
+                return;
+            }
+            const validBlockIds = getRemainingInlineTabBlockIds(blockIds, missingBlockId);
+            layoutModel.cleanupInlineTabBlockIds(nodeModel.nodeId, validBlockIds);
+        },
+        [blockIdsKey, layoutModel, nodeModel.nodeId]
+    );
+    const [, dragActiveInlineTabBlock] = useDrag<InlineTabDragItem, InlineTabDropResult>(
         () => ({
-            accept: TileItemType,
-            canDrop: (dragItem: LayoutNode) => {
-                return dragItem.id !== nodeModel.nodeId;
+            type: InlineTabDragItemType,
+            canDrag: () => blockIds.length > 1 && !(isEphemeral || isMagnified || isHidden),
+            item: () => ({
+                sourceNodeId: nodeModel.nodeId,
+                blockId: activeBlockId,
+                sourceIndex: blockIds.indexOf(activeBlockId),
+                origin: "block-header",
+                sourceRect: getElementDimensions(tabStripRef.current),
+            }),
+            end: () => layoutModel?.clearPendingInlineTabDrop(),
+        }),
+        [activeBlockId, blockIdsKey, isEphemeral, isHidden, isMagnified, layoutModel, nodeModel.nodeId]
+    );
+    const [, dropInlineTabBlock] = useDrop<LayoutNode | InlineTabDragItem, unknown>(
+        () => ({
+            accept: [TileItemType, InlineTabDragItemType],
+            canDrop: (dragItem, monitor) => {
+                if (monitor.getItemType() === InlineTabDragItemType) {
+                    return (dragItem as InlineTabDragItem).sourceNodeId === nodeModel.nodeId;
+                }
+                return (dragItem as LayoutNode).id !== nodeModel.nodeId;
             },
-            hover: (dragItem: LayoutNode) => {
-                layoutModel?.setPendingInlineTabMerge(nodeModel.nodeId, dragItem.id);
+            hover: (dragItem, monitor) => {
+                if (monitor.getItemType() !== TileItemType) {
+                    return;
+                }
+                layoutModel?.setPendingInlineTabMerge(nodeModel.nodeId, (dragItem as LayoutNode).id);
             },
-            drop: (dragItem: LayoutNode, monitor) => {
-                if (!monitor.didDrop() && layoutModel?.setPendingInlineTabMerge(nodeModel.nodeId, dragItem.id)) {
+            drop: (dragItem, monitor) => {
+                if (monitor.didDrop()) {
+                    return;
+                }
+                if (monitor.getItemType() === InlineTabDragItemType) {
+                    return { action: "reorder" } satisfies InlineTabDropResult;
+                }
+                if (layoutModel?.setPendingInlineTabMerge(nodeModel.nodeId, (dragItem as LayoutNode).id)) {
                     layoutModel.onDrop();
                 }
             },
         }),
         [layoutModel, nodeModel.nodeId]
     );
+
+    dragActiveInlineTabBlock(activeBlockDragHandleRef);
+    dropInlineTabBlock(tabStripRef);
 
     if (blockIds.length <= 1 || !activeBlockId) {
         return <Block key={activeBlockId} nodeModel={activeNodeModel} preview={preview} />;
@@ -308,20 +485,44 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 <InlineTabBlockMissingGuard
                     key={`missing-guard-${blockId}`}
                     blockId={blockId}
-                    onMissingBlock={cleanupMissingBlocks}
+                    onMissingBlock={cleanupMissingBlock}
+                />
+            ))}
+            {blockIds.map((blockId) => (
+                <InlineTabBlockControllerWarmup
+                    key={`controller-warmup-${blockId}`}
+                    active={blockId == activeBlockId}
+                    blockId={blockId}
+                    preview={preview}
+                    tabId={tabModel.tabId}
                 />
             ))}
             {!preview && (
-                <div ref={dropInlineTabBlock} className="inline-tab-block-tabs">
-                    {blockIds.map((blockId) => (
+                <div ref={tabStripRef} className="inline-tab-block-tabs">
+                    <button
+                        type="button"
+                        className="inline-tab-block-group-handle"
+                        title="Move Tab Group"
+                        aria-label="Move Tab Group"
+                    >
+                        <i className={makeIconClass("grip-lines", true)} />
+                    </button>
+                    {blockIds.map((blockId, index) => (
                         <InlineTabLabel
                             key={blockId}
+                            nodeId={nodeModel.nodeId}
                             blockId={blockId}
                             layoutData={layoutData}
                             isActive={blockId === activeBlockId}
                             duplicateIndex={duplicateIndexes.get(blockId)}
                             onActivate={() => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
                             onClose={() => uxCloseBlock(blockId)}
+                            index={index}
+                            onReorder={(dragBlockId, hoverIndex) =>
+                                layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)
+                            }
+                            onDragEnd={() => layoutModel?.clearPendingInlineTabDrop()}
+                            sourceStripRef={tabStripRef}
                             onRename={(title) => layoutModel?.setInlineTabTitle(nodeModel.nodeId, blockId, title)}
                         />
                     ))}
