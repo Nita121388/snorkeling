@@ -33,12 +33,12 @@ Not lazy about: input validation at trust boundaries, error handling that preven
 
 ## Local toolchain self-check
 
-- Do not conclude Go/Task/npm is unavailable from the raw Codex process PATH alone. This repo has a local toolchain bootstrap at `scripts/use-local-env.ps1`.
+- Do not conclude Go/Task/npm is unavailable from the raw Codex process PATH alone. Run `npm run setup` to install the pinned toolchain under `.tools/`; Task commands should go through `node scripts/run-task.mjs <task>`.
 - Before Go/Task/npm self-tests on Windows, run them in a child PowerShell process that dot-sources the local env, for example:
   `powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./pkg/remote"`
 - Keep this environment scoped to the command process. Do not persistently edit machine/user PATH, Go env, npm config, or device-debugging global variables.
 - When assigning temporary env vars inside a nested PowerShell `-Command` string, escape `$env:` as `` `$env:FOO='bar'`` so the outer shell does not expand it before the child process starts.
-- Prefer targeted package tests for the touched area first. If the toolchain is still unavailable after loading `scripts/use-local-env.ps1`, report that exact check and blocker.
+- Prefer targeted package tests for the touched area first. If the toolchain is still unavailable after `npm run setup` and loading `scripts/use-local-env.ps1`, report those exact checks and blocker.
 
 ## Electron UI inspection
 

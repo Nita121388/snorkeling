@@ -162,7 +162,7 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
     };
 
     return (
-        <div className={cn("border-t", isFocused ? "border-accent/50" : "border-gray-600")}>
+        <div className={cn("border-t", isFocused ? "border-accent/50" : "border-border")}>
             <input
                 ref={fileInputRef}
                 type="file"
@@ -184,7 +184,7 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                         onBlur={handleBlur}
                         placeholder={placeholder}
                         className={cn(
-                            "w-full  text-white px-2 py-2 pr-5 focus:outline-none resize-none overflow-auto bg-zinc-800/50"
+                            "w-full text-primary placeholder:text-muted px-2 py-2 pr-5 resize-none overflow-auto bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         )}
                         style={{ fontSize: "13px" }}
                         rows={2}
@@ -194,8 +194,9 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                             type="button"
                             onClick={handleUploadClick}
                             className={cn(
-                                "w-5 h-5 transition-colors flex items-center justify-center text-gray-400 hover:text-accent cursor-pointer"
+                                "w-5 h-5 transition-colors flex items-center justify-center text-secondary hover:text-accent cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                             )}
+                            aria-label="Attach files"
                         >
                             <i className="fa fa-paperclip text-sm"></i>
                         </button>
@@ -207,8 +208,9 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                                 onClick={() => model.stopResponse()}
                                 className={cn(
                                     "w-5 h-5 transition-colors flex items-center justify-center",
-                                    "text-green-500 hover:text-green-400 cursor-pointer"
+                                    "text-success hover:text-primary cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                 )}
+                                aria-label="Stop response"
                             >
                                 <i className="fa fa-square text-sm"></i>
                             </button>
@@ -225,9 +227,10 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                                 className={cn(
                                     "w-5 h-5 transition-colors flex items-center justify-center",
                                     status !== "ready" || !input.trim()
-                                        ? "text-gray-400"
-                                        : "text-accent/80 hover:text-accent cursor-pointer"
+                                        ? "text-muted cursor-default"
+                                        : "text-accent/80 hover:text-accent cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                 )}
+                                aria-label="Send message"
                             >
                                 <i className="fa fa-paper-plane text-sm"></i>
                             </button>

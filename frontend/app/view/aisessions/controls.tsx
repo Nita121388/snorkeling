@@ -135,7 +135,7 @@ export function IconButton({
             className={cn(
                 "shrink-0 rounded text-secondary hover:bg-hover hover:text-primary",
                 size === "xs" ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-xs",
-                disabled && "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-secondary",
+                disabled && "cursor-default opacity-60 hover:bg-transparent hover:text-secondary",
                 className
             )}
             title={label}

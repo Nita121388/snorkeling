@@ -75,7 +75,7 @@ const KeyCap = memo(({ children, className }: { children: React.ReactNode; class
     return (
         <kbd
             className={cn(
-                "px-1.5 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded-sm shadow-sm font-mono",
+                "px-1.5 py-0.5 text-xs bg-surface border border-border text-primary rounded-sm shadow-sm font-mono",
                 className
             )}
         >
@@ -101,8 +101,8 @@ const AIWelcomeMessage = memo(() => {
                     Wave AI is your terminal assistant with context. I can read your terminal output, analyze widgets,
                     access files, and help you solve problems faster.
                 </p>
-                <div className="bg-accent/10 border border-accent/30 rounded-lg p-4">
-                    <div className="text-sm font-semibold mb-3 text-accent">Getting Started:</div>
+                <div className="bg-actionsoft border border-actionsoftborder rounded-lg p-4">
+                    <div className="text-sm font-semibold mb-3 text-actionsofttext">Getting Started:</div>
                     <div className="space-y-3 text-sm">
                         <div className="flex items-start gap-3">
                             <div className="w-4 text-center flex-shrink-0">
@@ -210,10 +210,10 @@ const AIErrorMessage = memo(() => {
     }
 
     return (
-        <div className="px-4 py-2 text-red-400 bg-red-900/20 border-l-4 border-red-500 mx-2 mb-2 relative">
+        <div className="px-4 py-2 text-error bg-error/10 border-l-4 border-error mx-2 mb-2 relative">
             <button
                 onClick={() => model.clearError()}
-                className="absolute top-2 right-2 text-red-400 hover:text-red-300 cursor-pointer z-10"
+                className="absolute top-2 right-2 text-error hover:text-error/80 cursor-pointer z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 aria-label="Close error"
             >
                 <i className="fa fa-times text-sm"></i>
@@ -222,7 +222,7 @@ const AIErrorMessage = memo(() => {
                 {errorMessage}
                 <button
                     onClick={() => model.clearChat()}
-                    className="ml-2 text-xs text-red-300 hover:text-red-200 cursor-pointer underline"
+                    className="ml-2 text-xs text-error hover:text-error/80 cursor-pointer underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 >
                     New Chat
                 </button>
@@ -557,9 +557,9 @@ const AIPanelComponentInner = memo(({ roundTopLeft }: AIPanelComponentInnerProps
             ref={containerRef}
             data-waveai-panel="true"
             className={cn(
-                "@container bg-zinc-900/70 flex flex-col relative",
+                "@container bg-panel text-primary flex flex-col relative",
                 model.inBuilder ? "mt-0 h-full" : "mt-1 h-[calc(100%-4px)]",
-                (isDragOver || isReactDndDragOver) && "bg-zinc-800 border-accent",
+                (isDragOver || isReactDndDragOver) && "bg-hoverbg border-accent",
                 isFocused && !borderColor ? "border-2 border-accent" : "border-2 border-transparent"
             )}
             style={{

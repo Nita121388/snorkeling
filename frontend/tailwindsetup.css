@@ -24,6 +24,12 @@
     --color-accent-700: var(--accent-color-700);
     --color-accent-800: var(--accent-color-800);
     --color-accent-900: var(--accent-color-900);
+    --color-action: var(--action-bg-color);
+    --color-actionhover: var(--action-hover-bg-color);
+    --color-actiontext: var(--action-text-color);
+    --color-actionsoft: var(--action-soft-bg-color);
+    --color-actionsofttext: var(--action-soft-text-color);
+    --color-actionsoftborder: var(--action-soft-border-color);
     --color-error: var(--error-color);
     --color-warning: var(--warning-color);
     --color-success: var(--success-color);

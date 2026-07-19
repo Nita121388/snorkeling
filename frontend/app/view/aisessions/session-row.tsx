@@ -162,7 +162,7 @@ export function SessionRow({
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
                         <button
                             type="button"
-                            className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
+                            className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
                             title="Resume session"
                             disabled={resumeDisabled}
                             onClick={onResume}
@@ -284,7 +284,7 @@ export function SessionRow({
                                                 : "Save note"
                                     }
                                     className={cn(
-                                        "flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
+                                        "flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
                                         noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
                                         noteSaveStatus === "error" && "border-error bg-error/10 text-error"
                                     )}

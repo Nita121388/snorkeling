@@ -14,9 +14,11 @@ const previewElectronApi: ElectronApi = {
     getHomeDir: () => "",
     getWebviewPreload: () => "",
     getAboutModalDetails: () => ({}) as AboutModalDetails,
+    getDevRuntimeInfo: () => null,
     getAppDebugInfo: () =>
         Promise.resolve({
             generatedAt: new Date(0).toISOString(),
+            devRuntime: null,
             app: {
                 name: "Snorkeling Preview",
                 version: "preview",

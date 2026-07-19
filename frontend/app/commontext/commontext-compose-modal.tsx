@@ -4,7 +4,7 @@
 import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
-import { getBlockComponentModel, atoms } from "@/app/store/global";
+import { atoms, getBlockComponentModel } from "@/app/store/global";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
@@ -443,7 +443,7 @@ const CommonTextComposeModal = memo(() => {
                         <span
                             className={
                                 state.statusKind === "err"
-                                    ? "text-xs text-red-500"
+                                    ? "text-xs text-error"
                                     : state.statusKind === "ok"
                                       ? "text-xs text-accent"
                                       : "text-xs text-muted"

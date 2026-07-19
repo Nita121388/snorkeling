@@ -292,7 +292,7 @@ export function ClipboardFloatActions() {
                 >
                     <button
                         type="button"
-                        className="h-5 rounded px-1.5 text-[11px] text-secondary hover:bg-hoverbg hover:text-white transition-colors"
+                        className="h-5 rounded px-1.5 text-[11px] text-secondary hover:bg-hoverbg hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         title="Paste"
                         onClick={() => void handlePasteClick()}
                     >
@@ -301,7 +301,7 @@ export function ClipboardFloatActions() {
                     </button>
                     <button
                         type="button"
-                        className="h-5 w-5 rounded text-[10px] text-secondary hover:bg-hoverbg hover:text-white transition-colors"
+                        className="h-5 w-5 rounded text-[10px] text-secondary hover:bg-hoverbg hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         title="Don't show this paste hint again"
                         onClick={handleDisablePasteHint}
                     >

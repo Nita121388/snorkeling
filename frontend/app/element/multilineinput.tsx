@@ -18,6 +18,7 @@ interface MultiLineInputProps {
     maxLength?: number;
     autoFocus?: boolean;
     disabled?: boolean;
+    error?: boolean;
     rows?: number;
     maxRows?: number;
     manageFocus?: (isFocused: boolean) => void;
@@ -38,6 +39,7 @@ const MultiLineInput = memo(
                 maxLength,
                 autoFocus,
                 disabled,
+                error,
                 rows = 1,
                 maxRows = 5,
                 manageFocus,
@@ -114,7 +116,7 @@ const MultiLineInput = memo(
 
             return (
                 <textarea
-                    className={clsx("multiline-input", className)}
+                    className={clsx("multiline-input", className, { error })}
                     ref={textareaRef}
                     value={inputValue}
                     onChange={handleInputChange}
@@ -125,6 +127,7 @@ const MultiLineInput = memo(
                     maxLength={maxLength}
                     autoFocus={autoFocus}
                     disabled={disabled}
+                    aria-invalid={error || undefined}
                     rows={rows}
                     style={{
                         overflowY:

@@ -116,13 +116,13 @@ const BuilderBuildPanel = memo(() => {
                         Debug
                     </label>
                     <button
-                        className="px-3 py-1 text-sm font-medium rounded transition-colors bg-accent/80 text-white hover:bg-accent cursor-pointer"
+                        className="px-3 py-1 text-sm font-medium rounded transition-colors bg-action text-actiontext hover:bg-actionhover cursor-pointer"
                         onClick={handleSendToAI}
                     >
                         Send Output to AI
                     </button>
                     <button
-                        className="px-3 py-1 text-sm font-medium rounded transition-colors bg-accent/80 text-white hover:bg-accent cursor-pointer"
+                        className="px-3 py-1 text-sm font-medium rounded transition-colors bg-action text-actiontext hover:bg-actionhover cursor-pointer"
                         onClick={handleRestart}
                     >
                         Restart App

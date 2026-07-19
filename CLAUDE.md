@@ -23,22 +23,19 @@ node scripts/inspect-electron-ui.mjs screenshot
 
 For style bugs, gather both visual and layout evidence: `getBoundingClientRect()`, `clientHeight`, `scrollHeight`, computed `display`, `flex`, `minHeight`, `height`, `maxHeight`, `overflow`, `overflowY`, element text, `aria-label`, `title`, classes, and coordinates.
 
-### Launching `task dev` with a CDP port
+### Launching isolated dev with a CDP port
 
-`task dev` (= `electron-vite dev`) does **not** read `ELECTRON_EXTRA_LAUNCH_ARGS`, so setting that env var alone won't open `--remote-debugging-port=9222` on the launched Electron — the main process command line stays `electron.exe .` with no CDP switch. Two reliable ways to get CDP in dev:
+`npm run dev` enters the isolated launcher, which eventually runs `npm run dev:electron` (`electron-vite dev`). `electron-vite` does **not** read `ELECTRON_EXTRA_LAUNCH_ARGS`, so setting that env var alone won't open `--remote-debugging-port=9222` on the launched Electron — the main process command line stays `electron.exe .` with no CDP switch. Two reliable ways to get CDP in dev:
 
-1. **One-shot env override (preferred, no code change):** set `SNORKELING_CDP_PORT=9222` *before* launching `task dev`, and ensure the main process reads it. As of this writing there is no built-in hook for that env var; option 2 is the documented path.
-2. **Temporary main-process switch:** add, in `emain/emain.ts` right after `const electronApp = electron.app;`:
-   ```ts
-   if (isDev && process.env.SNORKELING_CDP_PORT) {
-       electronApp.commandLine.appendSwitch("remote-debugging-port", process.env.SNORKELING_CDP_PORT);
-   }
-   ```
-   `isDev` (from `emain/emain-platform.ts`) is a **boolean const** (`!app.isPackaged`), not a function — don't call it. Remove this snippet before committing.
+1. **Predefined entry:** `npm run dev:cdp` uses profile `cdp` and starts searching from Vite port `51742` and CDP port `9222`.
+2. **Custom instance:** `npm run dev -- --profile review --vite-port 51742 --cdp-port 9223`.
+3. **Environment override:** set `SNORKELING_DEV_PROFILE`, `SNORKELING_VITE_PORT`, and/or `SNORKELING_CDP_PORT` before launching `npm run dev`.
 
-To run dev detached from a background shell (so the Bash `&` exit doesn't kill the dev process tree), launch via `Start-Process` in a PowerShell script — `Start-Process powershell -ArgumentList ...local-task.ps1,dev -WindowStyle Minimized`. Killing prior dev instances safely: filter `Get-CimInstance Win32_Process` by `CommandLine -like '*Snorkeling (Dev)*'` (matches the dev user-data-dir) before `Stop-Process`.
+The launcher probes Vite and CDP ports and advances to the next available number by default; `--strict-port` or `SNORKELING_STRICT_PORT=1` makes a collision fail. It prints the actual URLs and CDP check command. Vite still uses `strictPort: true` after probing so a race cannot silently move the renderer again. The main process consumes the actual `SNORKELING_CDP_PORT` and appends Electron's `remote-debugging-port` switch. Do not edit `emain/emain.ts` for routine CDP sessions.
 
-After main rebuild, verify with `curl -s http://127.0.0.1:9222/json/version`. Two page targets are normal — pick the one titled `Wave Terminal - T<id>` (the real UI; the bare `Wave` target is a spare/empty window).
+To run dev detached from a background shell (so the Bash `&` exit doesn't kill the dev process tree), launch the Node entry with `Start-Process node -ArgumentList @('scripts/dev-isolated.mjs','--profile','cdp','--vite-port','51742','--cdp-port','9222') -WindowStyle Hidden`. Identify an instance by `CommandLine -like '*dev-isolated.mjs*--profile*cdp*'` or its `.runcfg\cdp` path before stopping the matching process tree.
+
+After main rebuild, use the actual CDP port printed by the launcher (for example `curl.exe http://127.0.0.1:9222/json/version`). Two page targets are normal — pick the one titled `Wave Terminal - T<id>` (the real UI; the bare `Wave` target is a spare/empty window).
 
 ## `session.note` semantics — tags live *inside* the note string
 

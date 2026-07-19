@@ -41,11 +41,11 @@ const TelemetryRequiredMessage = ({ className }: TelemetryRequiredMessageProps) 
                         </p>
                     </div>
 
-                    <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4">
+                    <div className="bg-actionsoft border border-actionsoftborder rounded-lg p-4">
                         <div className="flex items-start gap-3">
-                            <i className="fa fa-info-circle text-blue-400 text-lg mt-0.5"></i>
+                            <i className="fa fa-info-circle text-actionsofttext text-lg mt-0.5"></i>
                             <div className="text-left">
-                                <div className="text-blue-400 font-medium mb-1">Telemetry keeps Wave AI free</div>
+                                <div className="text-actionsofttext font-medium mb-1">Telemetry keeps Wave AI free</div>
                                 <div className="text-secondary text-sm mb-3">
                                     <p className="mb-2">
                                         To keep Wave AI free for everyone, we require a small amount of <i>anonymous</i>{" "}
@@ -66,7 +66,7 @@ const TelemetryRequiredMessage = ({ className }: TelemetryRequiredMessageProps) 
                                             href="https://docs.waveterm.dev/waveai-modes"
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="!text-secondary hover:!text-accent/80 cursor-pointer"
+                                            className="!text-accent hover:!text-accenthover cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                         >
                                             https://docs.waveterm.dev/waveai-modes
                                         </a>
@@ -76,7 +76,7 @@ const TelemetryRequiredMessage = ({ className }: TelemetryRequiredMessageProps) 
                                 <button
                                     onClick={handleEnableTelemetry}
                                     disabled={isEnabling}
-                                    className="bg-accent/80 hover:bg-accent disabled:bg-accent/50 text-background px-4 py-2 rounded-lg font-medium cursor-pointer disabled:cursor-not-allowed"
+                                    className="bg-action text-actiontext hover:bg-actionhover disabled:bg-action/50 px-4 py-2 rounded-lg font-medium cursor-pointer disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                 >
                                     {isEnabling ? "Enabling..." : "Enable Telemetry and Continue"}
                                 </button>
@@ -89,7 +89,7 @@ const TelemetryRequiredMessage = ({ className }: TelemetryRequiredMessageProps) 
                             href="https://waveterm.dev/privacy"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="!text-secondary hover:!text-accent/80 cursor-pointer"
+                            className="!text-accent hover:!text-accenthover cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         >
                             Privacy Policy
                         </a>

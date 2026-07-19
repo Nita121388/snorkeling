@@ -16,25 +16,24 @@ macOS does not have any platform-specific dependencies.
 
 #### Linux
 
-You must have `zip` installed. We also require the [Zig](https://ziglang.org/) compiler for statically linking CGO.
+You must have `zip` and `tar` installed. The repository bootstrap installs Zig for statically linking CGO.
 
 Debian/Ubuntu:
 
 ```sh
-sudo apt install zip snapd
-sudo snap install zig --classic --beta
+sudo apt install zip tar snapd
 ```
 
 Fedora/RHEL:
 
 ```sh
-sudo dnf install zip zig
+sudo dnf install zip tar
 ```
 
 Arch:
 
 ```sh
-sudo pacman -S zip zig
+sudo pacman -S zip tar
 ```
 
 ##### For packaging
@@ -53,27 +52,15 @@ For packaging, the following additional packages are required:
 
 #### Windows
 
-You will need the [Zig](https://ziglang.org/) compiler for statically linking CGO.
-
-You can find installation instructions for Zig on Windows [here](https://ziglang.org/learn/getting-started/#managers).
-
-### Task
-
-Download and install Task (to run the build commands): https://taskfile.dev/installation/
-
-Task is a modern equivalent to GNU Make. We use it to coordinate our build steps. You can find our full Task configuration in [Taskfile.yml](Taskfile.yml).
-
-### Go
-
-Download and install Go via your package manager or directly from the website: https://go.dev/doc/install
+Windows 10 and later include the `tar` command used by the repository bootstrap.
 
 ### NodeJS
 
-Make sure you have a NodeJS 22 LTS installed.
+Make sure you have Node.js 22.12 or later installed. Node is the only language toolchain required globally.
 
 See NodeJS's website for platform-specific instructions: https://nodejs.org/en/download
 
-We now use `npm`, so you can just run an `npm install` to install node dependencies.
+The repository bootstrap installs pinned Task, Go, and Zig versions under `.tools/` without changing the system PATH.
 
 ## Clone the Repo
 
@@ -87,13 +74,15 @@ or
 git clone https://github.com/Nita121388/snorkeling.git
 ```
 
-## Install code dependencies
+## Install the development toolchain
 
-The first time you clone the repo, you'll need to run the following to load the dependencies. If you ever have issues building the app, try running this again:
+The first time you clone the repo, install or verify the repository-local toolchain:
 
 ```sh
-task init
+npm run setup
 ```
+
+The development task installs Node and Go dependencies when they are first needed.
 
 ## Build and Run
 
@@ -104,8 +93,24 @@ All the methods below will install Node and Go dependencies when they run the fi
 Run the following command to build the app and run it via Vite's development server (this enables Hot Module Reloading):
 
 ```sh
-task dev
+npm run dev
 ```
+
+### Multiple dev instances and CDP
+
+Use a unique profile and Vite port for each running checkout:
+
+```sh
+npm run dev -- --profile review --vite-port 51742
+```
+
+Use the predefined CDP entry when inspecting the Electron UI:
+
+```sh
+npm run dev:cdp
+```
+
+It uses profile `cdp` and starts searching from Vite port `51742` and CDP port `9222`. Occupied ports advance automatically; the launcher prints the actual URLs and ready-to-run CDP check command. Add `--strict-port` to fail on a collision, or add `-- --dry` after the instance options when only checking Task expansion.
 
 ### Standalone
 

@@ -26,12 +26,13 @@
 
     &.solid {
         &.green {
-            color: var(--button-text-color);
-            background-color: var(--accent-color);
-            border: 1px solid var(--button-green-border-color);
+            color: var(--action-text-color);
+            background-color: var(--action-bg-color);
+            border: 1px solid var(--action-bg-color);
             &:hover {
-                color: var(--button-text-color);
-                background-color: var(--button-green-border-color);
+                color: var(--action-text-color);
+                background-color: var(--action-hover-bg-color);
+                border-color: var(--action-hover-bg-color);
             }
         }
 
@@ -155,7 +156,7 @@
     }
 
     &:focus-visible {
-        outline: 1px solid var(--success-color);
+        outline: 2px solid var(--accent-color);
         outline-offset: 2px;
     }
 }

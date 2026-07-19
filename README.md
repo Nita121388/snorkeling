@@ -140,6 +140,31 @@ Want to provide input to our future releases? Connect with us on [Discord](https
 
 See [Building Snorkeling](BUILD.md).
 
+### Development quick start
+
+Install Git and Node.js 22.12 or later, then run from the repository root:
+
+```sh
+npm run setup
+npm run dev
+```
+
+`npm run setup` installs the pinned Task, Go, and Zig toolchain into the repository `.tools/` directory without changing the system PATH. `npm run dev` uses that toolchain and keeps development data under `.runcfg/`.
+
+Run a second instance with an explicit profile and Vite port:
+
+```sh
+npm run dev -- --profile review --vite-port 51742
+```
+
+For Electron CDP inspection, use the predefined debug entry:
+
+```sh
+npm run dev:cdp
+```
+
+It uses profile `cdp` and starts searching from Vite port `51742` and CDP port `9222`. The launcher automatically advances past occupied ports and prints the actual Vite/CDP URLs; use those printed values for `curl.exe .../json/version` and `inspect-electron-ui.mjs`. Profile data lives under `.runcfg/<profile>/`. Add `--strict-port` when a collision should fail instead of switching automatically.
+
 ## Contributing
 
 Wave uses GitHub Issues for issue tracking.

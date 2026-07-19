@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Accent 按钮修改对比 - Snorkeling</title>
+<link rel="stylesheet" href="../public/fontawesome/css/fontawesome.min.css" />
+<link rel="stylesheet" href="../public/fontawesome/css/solid.min.css" />
+<style>
+  :root,
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --panel-bg-color: rgba(31, 33, 31, 0.5);
+    --block-bg-solid-color: rgb(0, 0, 0);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --accent-bg-color: rgba(88, 193, 66, 0.5);
+    --accent-color-300: rgb(110, 231, 133);
+    --accent-color-500: rgb(63, 162, 51);
+    --accent-color-600: rgb(47, 133, 47);
+    --accent-color-700: rgb(34, 104, 43);
+    --button-text-color: #000000;
+    --error-color: rgb(229, 77, 46);
+    --success-color: rgb(78, 154, 6);
+
+    --action-bg: var(--accent-color);
+    --action-hover-bg: var(--accent-hover-color);
+    --action-text: var(--button-text-color);
+    --soft-action-bg: color-mix(in oklab, var(--accent-color) 12%, transparent);
+    --soft-action-text: var(--accent-color-300);
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --main-text-color: #4c3924;
+    --secondary-text-color: #675033;
+    --grey-text-color: #777167;
+    --main-bg-color: #ebe5d9;
+    --border-color: #ded8ca;
+    --panel-bg-color: rgba(243, 239, 228, 0.72);
+    --block-bg-solid-color: #fffdf8;
+    --accent-color: #a76fca;
+    --accent-hover-color: #955ab8;
+    --accent-bg-color: rgba(167, 111, 202, 0.24);
+    --accent-color-300: #d6b4e8;
+    --accent-color-500: #955ab8;
+    --accent-color-600: #7c49a1;
+    --accent-color-700: #63387f;
+    --button-text-color: #ffffff;
+    --error-color: #d32f2f;
+    --success-color: #2e7d32;
+
+    --action-bg: var(--accent-color-600);
+    --action-hover-bg: var(--accent-color-500);
+    --action-text: var(--button-text-color);
+    --soft-action-bg: color-mix(in oklab, var(--accent-color) 12%, transparent);
+    --soft-action-text: var(--accent-color-700);
+  }
+
+  [data-theme="monochrome"] {
+    color-scheme: light;
+    --main-text-color: #0a0a0a;
+    --secondary-text-color: #4a4a4a;
+    --grey-text-color: #808080;
+    --main-bg-color: #fafafa;
+    --border-color: rgba(0, 0, 0, 0.14);
+    --panel-bg-color: rgba(245, 245, 245, 0.72);
+    --block-bg-solid-color: #ffffff;
+    --accent-color: #1a1a1a;
+    --accent-hover-color: #000000;
+    --accent-bg-color: rgba(0, 0, 0, 0.08);
+    --accent-color-300: #9a9a9a;
+    --accent-color-500: #3a3a3a;
+    --accent-color-600: #2a2a2a;
+    --accent-color-700: #1a1a1a;
+    --button-text-color: #ffffff;
+    --error-color: #2a2a2a;
+    --success-color: #3a3a3a;
+
+    --action-bg: var(--accent-color);
+    --action-hover-bg: var(--accent-color-600);
+    --action-text: var(--button-text-color);
+    --soft-action-bg: var(--accent-bg-color);
+    --soft-action-text: var(--accent-color-700);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font: 14px/1.5 Inter, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  code,
+  .mono {
+    font-family: Hack, "SFMono-Regular", Consolas, monospace;
+  }
+
+  code {
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--main-text-color) 7%, transparent);
+    padding: 2px 5px;
+    font-size: 12px;
+  }
+
+  .shell {
+    width: min(1160px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 24px 0 48px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h1 {
+    font-size: 21px;
+    font-weight: 650;
+  }
+
+  .subtitle {
+    max-width: 760px;
+    margin-top: 5px;
+    color: var(--secondary-text-color);
+    font-size: 12px;
+  }
+
+  .theme-switch {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(82px, 1fr));
+    flex: 0 0 auto;
+    gap: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--panel-bg-color);
+    padding: 3px;
+  }
+
+  .theme-switch button {
+    min-height: 32px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .theme-switch button:hover {
+    background: color-mix(in oklab, var(--main-text-color) 7%, transparent);
+  }
+
+  .theme-switch button[aria-selected="true"] {
+    background: var(--action-bg);
+    color: var(--action-text);
+  }
+
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: hidden;
+    margin-bottom: 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--block-bg-solid-color);
+  }
+
+  .token {
+    min-width: 0;
+    padding: 11px 12px;
+    border-right: 1px solid var(--border-color);
+  }
+
+  .token:last-child {
+    border-right: 0;
+  }
+
+  .token-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+  }
+
+  .swatch {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+  }
+
+  .token-value {
+    display: block;
+    overflow: hidden;
+    margin-top: 4px;
+    color: var(--main-text-color);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 0 10px;
+  }
+
+  .section-head h2 {
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .section-head span {
+    color: var(--secondary-text-color);
+    font-size: 11px;
+  }
+
+  .comparison-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .comparison {
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--block-bg-solid-color);
+  }
+
+  .comparison-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--panel-bg-color);
+    padding: 10px 14px;
+  }
+
+  .comparison-title h3 {
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .comparison-title span {
+    color: var(--secondary-text-color);
+    font-size: 10px;
+  }
+
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .variant {
+    min-width: 0;
+    padding: 14px;
+  }
+
+  .variant + .variant {
+    border-left: 1px solid var(--border-color);
+  }
+
+  .variant-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 11px;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .before .status {
+    color: var(--error-color);
+  }
+
+  .after .status {
+    color: var(--success-color);
+  }
+
+  .variant-head code {
+    overflow: hidden;
+    max-width: 72%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .demo-stage {
+    display: flex;
+    min-height: 82px;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--block-bg-solid-color);
+    padding: 16px;
+  }
+
+  .demo-button {
+    display: inline-flex;
+    height: 32px;
+    min-width: 72px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background-color 150ms, border-color 150ms, color 150ms;
+  }
+
+  .current-primary {
+    background: color-mix(in oklab, var(--accent-color) 80%, transparent);
+    color: var(--main-text-color);
+  }
+
+  .current-primary:hover {
+    background: var(--accent-color);
+  }
+
+  .current-solid {
+    background: var(--accent-color);
+    color: var(--main-text-color);
+  }
+
+  .current-solid:hover {
+    background: var(--accent-hover-color);
+  }
+
+  .current-soft {
+    background: var(--accent-bg-color);
+    color: var(--main-text-color);
+  }
+
+  .proposed-primary {
+    background: var(--action-bg);
+    color: var(--action-text);
+  }
+
+  .proposed-primary:hover {
+    background: var(--action-hover-bg);
+  }
+
+  .proposed-soft {
+    border-color: color-mix(in oklab, var(--accent-color) 30%, transparent);
+    background: var(--soft-action-bg);
+    color: var(--soft-action-text);
+  }
+
+  .proposed-soft:hover {
+    background: color-mix(in oklab, var(--accent-color) 18%, transparent);
+  }
+
+  .metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 10px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+  }
+
+  .metric-value {
+    color: var(--main-text-color);
+    font-family: Hack, "SFMono-Regular", Consolas, monospace;
+  }
+
+  .ratio {
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-weight: 700;
+  }
+
+  .ratio.pass {
+    background: color-mix(in oklab, var(--success-color) 14%, transparent);
+    color: var(--success-color);
+  }
+
+  .ratio.fail {
+    background: color-mix(in oklab, var(--error-color) 14%, transparent);
+    color: var(--error-color);
+  }
+
+  .note {
+    margin-top: 9px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+  }
+
+  .evidence {
+    overflow-x: auto;
+    margin-top: 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--block-bg-solid-color);
+  }
+
+  table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid var(--border-color);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--panel-bg-color);
+    color: var(--secondary-text-color);
+    font-weight: 600;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+
+  td:first-child {
+    width: 24%;
+  }
+
+  .source-note {
+    margin-top: 10px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+  }
+
+  @media (max-width: 780px) {
+    .shell {
+      width: min(100% - 20px, 680px);
+      padding-top: 14px;
+    }
+
+    .toolbar {
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .theme-switch {
+      width: 100%;
+    }
+
+    .palette {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .token:nth-child(2n) {
+      border-right: 0;
+    }
+
+    .token:nth-child(-n + 4) {
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .comparison-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .variant + .variant {
+      border-top: 1px solid var(--border-color);
+      border-left: 0;
+    }
+
+    .comparison-title,
+    .section-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 3px;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="toolbar">
+    <div>
+      <h1>Accent 按钮修改对比</h1>
+      <p class="subtitle">
+        当前主题：<strong id="theme-name">Light</strong>。主题色直接对齐 <code>frontend/app/theme.scss</code>；
+        下方色值与对比度由浏览器按最终渲染结果实时计算。
+      </p>
+    </div>
+    <div class="theme-switch" role="tablist" aria-label="预览主题">
+      <button type="button" role="tab" data-theme-set="dark" aria-selected="false">
+        <i class="fa-solid fa-moon" aria-hidden="true"></i> Dark
+      </button>
+      <button type="button" role="tab" data-theme-set="light" aria-selected="true">
+        <i class="fa-solid fa-sun" aria-hidden="true"></i> Light
+      </button>
+      <button type="button" role="tab" data-theme-set="monochrome" aria-selected="false">
+        <i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i> Mono
+      </button>
+    </div>
+  </header>
+
+  <section class="palette" aria-label="当前主题色板">
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--main-bg-color)"></i>App bg</span>
+      <span class="token-value" data-token="--main-bg-color"></span>
+    </div>
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--block-bg-solid-color)"></i>Surface</span>
+      <span class="token-value" data-token="--block-bg-solid-color"></span>
+    </div>
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--main-text-color)"></i>Primary text</span>
+      <span class="token-value" data-token="--main-text-color"></span>
+    </div>
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--accent-color)"></i>Accent</span>
+      <span class="token-value" data-token="--accent-color"></span>
+    </div>
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--action-bg)"></i>Action bg</span>
+      <span class="token-value" data-token="--action-bg"></span>
+    </div>
+    <div class="token">
+      <span class="token-label"><i class="swatch" style="background:var(--action-text)"></i>Action text</span>
+      <span class="token-value" data-token="--action-text"></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="comparison-heading">
+    <div class="section-head">
+      <h2 id="comparison-heading">修改前 / 修改后</h2>
+      <span>普通文字按 WCAG AA 4.5:1 检查</span>
+    </div>
+
+    <div class="comparison-list">
+      <article class="comparison">
+        <header class="comparison-title">
+          <h3>主要操作按钮</h3>
+          <span>builder / commontext / waveconfig</span>
+        </header>
+        <div class="comparison-grid">
+          <div class="variant before">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 修改前</span>
+              <code>bg-accent/80 text-primary</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button current-primary" data-measure type="button">
+                <i class="fa-solid fa-play" aria-hidden="true"></i>运行
+              </button>
+              <button class="demo-button current-primary" type="button">保存</button>
+            </div>
+            <div class="metrics">
+              <span>合成背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note">同一组 class 在三套主题中会得到不同结果，不能把半透明背景写成固定十六进制色。</p>
+          </div>
+
+          <div class="variant after">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> 修改后</span>
+              <code>bg-action text-action</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button proposed-primary" data-measure type="button">
+                <i class="fa-solid fa-play" aria-hidden="true"></i>运行
+              </button>
+              <button class="demo-button proposed-primary" type="button">保存</button>
+            </div>
+            <div class="metrics">
+              <span>背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note">语义 token 按主题选择可读的底色与文字色，并保留 hover 变亮的交互方向。</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="comparison">
+        <header class="comparison-title">
+          <h3>实色与裸变量写法</h3>
+          <span>builder-previewtab / tsunami</span>
+        </header>
+        <div class="comparison-grid">
+          <div class="variant before">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 修改前</span>
+              <code>bg-accent text-primary</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button current-solid" data-measure type="button">预览</button>
+              <button class="demo-button current-solid" type="button">打开</button>
+            </div>
+            <div class="metrics">
+              <span>背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note"><code>bg-accent-color</code> 与裸 CSS var 最终也是这组实色，问题在于缺少按钮语义，而非写法本身。</p>
+          </div>
+
+          <div class="variant after">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> 修改后</span>
+              <code>bg-action text-action</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button proposed-primary" data-measure type="button">预览</button>
+              <button class="demo-button proposed-primary" type="button">打开</button>
+            </div>
+            <div class="metrics">
+              <span>背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note">与主要操作按钮合并到同一语义样式，避免各页面分别猜测文字色和透明度。</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="comparison">
+        <header class="comparison-title">
+          <h3>柔和强调 / 选中态</h3>
+          <span>waveconfig / theme picker</span>
+        </header>
+        <div class="comparison-grid">
+          <div class="variant before">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 修改前</span>
+              <code>bg-accentbg text-primary</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button current-soft" data-measure type="button">已选中</button>
+              <button class="demo-button current-soft" type="button">Default</button>
+            </div>
+            <div class="metrics">
+              <span>合成背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note"><code>accentbg</code> 在 Dark 中是 50%，在 Light 中是 24%，在 Monochrome 中只有 8%，强调强度并不一致。</p>
+          </div>
+
+          <div class="variant after">
+            <div class="variant-head">
+              <span class="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> 修改后</span>
+              <code>bg-action-soft text-action-soft</code>
+            </div>
+            <div class="demo-stage">
+              <button class="demo-button proposed-soft" data-measure type="button">已选中</button>
+              <button class="demo-button proposed-soft" type="button">Default</button>
+            </div>
+            <div class="metrics">
+              <span>合成背景 <b class="metric-value" data-bg-value></b></span>
+              <span>文字 <b class="metric-value" data-fg-value></b></span>
+              <span>对比 <b class="ratio" data-ratio></b></span>
+            </div>
+            <p class="note">低透明度同色背景配同色系可读文字，并用 30% accent 描边补足 Monochrome 的状态识别。</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="evidence" aria-label="落地映射">
+    <table>
+      <thead>
+        <tr>
+          <th>现有写法</th>
+          <th>位置</th>
+          <th>原型中的修改方向</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">bg-accent/80 text-primary</td>
+          <td class="mono">builder-*.tsx / commontext-manager.tsx / waveconfig.tsx</td>
+          <td>统一到主要操作按钮语义 token，不再依赖通用的 <code>text-primary</code>。</td>
+        </tr>
+        <tr>
+          <td class="mono">bg-accent text-primary</td>
+          <td class="mono">builder-previewtab.tsx</td>
+          <td>与主要操作按钮合并，删除局部透明度差异。</td>
+        </tr>
+        <tr>
+          <td class="mono">bg-accent-color text-primary-text-color</td>
+          <td class="mono">tsunami.tsx</td>
+          <td>回到统一按钮语义；不把“裸变量”误判成唯一颜色根因。</td>
+        </tr>
+        <tr>
+          <td class="mono">bg-accentbg text-primary</td>
+          <td class="mono">waveconfig.tsx / themepicker.tsx</td>
+          <td>拆为柔和强调语义，分别约束背景、文字与边框。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p class="source-note">
+    原型只定义展示所需的主题变量；原始值来自 <code>frontend/app/theme.scss</code>。
+    推荐的 <code>action</code> / <code>action-soft</code> 是待落地语义 token，并非当前项目已有 Tailwind class。
+  </p>
+</main>
+
+<script>
+  (() => {
+    const ThemeNames = {
+      dark: "Dark",
+      light: "Light",
+      monochrome: "Monochrome",
+    };
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    function rgba(color) {
+      return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+    }
+
+    function paint(colors) {
+      context.clearRect(0, 0, 1, 1);
+      colors.forEach((color) => {
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+      });
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    }
+
+    function toHex(color) {
+      return `#${color.slice(0, 3).map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    function luminance(color) {
+      const channels = color.slice(0, 3).map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    }
+
+    function contrast(first, second) {
+      const lighter = Math.max(luminance(first), luminance(second));
+      const darker = Math.min(luminance(first), luminance(second));
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    function updateMetrics() {
+      document.querySelectorAll("[data-measure]").forEach((button) => {
+        const variant = button.closest(".variant");
+        const stage = button.closest(".demo-stage");
+        const stageColor = paint([getComputedStyle(stage).backgroundColor]);
+        const buttonStyle = getComputedStyle(button);
+        const background = paint([rgba(stageColor), buttonStyle.backgroundColor]);
+        const foreground = paint([rgba(background), buttonStyle.color]);
+        const ratio = contrast(background, foreground);
+        const ratioElement = variant.querySelector("[data-ratio]");
+
+        variant.querySelector("[data-bg-value]").textContent = toHex(background);
+        variant.querySelector("[data-fg-value]").textContent = toHex(foreground);
+        ratioElement.textContent = `${ratio.toFixed(2)}:1`;
+        ratioElement.classList.toggle("pass", ratio >= 4.5);
+        ratioElement.classList.toggle("fail", ratio < 4.5);
+        ratioElement.dataset.value = ratio.toFixed(2);
+      });
+
+      document.querySelectorAll("[data-token]").forEach((element) => {
+        element.textContent = getComputedStyle(document.documentElement).getPropertyValue(element.dataset.token).trim();
+      });
+
+      document.querySelectorAll(".variant.after [data-ratio]").forEach((element) => {
+        console.assert(Number(element.dataset.value) >= 4.5, `Proposed contrast failed: ${element.dataset.value}:1`);
+      });
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById("theme-name").textContent = ThemeNames[theme];
+      document.querySelectorAll("[data-theme-set]").forEach((button) => {
+        button.setAttribute("aria-selected", String(button.dataset.themeSet === theme));
+      });
+      updateMetrics();
+      window.setTimeout(updateMetrics, 180);
+    }
+
+    document.querySelectorAll("[data-theme-set]").forEach((button) => {
+      button.addEventListener("click", () => applyTheme(button.dataset.themeSet));
+    });
+
+    applyTheme("light");
+  })();
+</script>
+</body>
+</html>

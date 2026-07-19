@@ -337,7 +337,7 @@ const BuilderAppPanel = memo(() => {
                     </div>
                     <div className="flex items-center gap-2 mr-2">
                         <button
-                            className="px-3 py-1 text-sm font-medium rounded bg-accent/80 text-primary hover:bg-accent transition-colors cursor-pointer"
+                            className="px-3 py-1 text-sm font-medium rounded bg-action text-actiontext hover:bg-actionhover transition-colors cursor-pointer"
                             onClick={handlePublishClick}
                         >
                             Publish App

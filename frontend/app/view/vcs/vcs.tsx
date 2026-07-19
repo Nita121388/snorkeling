@@ -852,7 +852,7 @@ function RepoPanel({
                     />
                     <div className="mt-2 flex items-center gap-2">
                         <button
-                            className="rounded bg-accent px-2.5 py-1 text-xs text-black font-semibold hover:bg-accenthover disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                            className="rounded bg-action px-2.5 py-1 text-xs text-actiontext font-semibold hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default"
                             disabled={commitRunning}
                             onClick={onCommit}
                         >

@@ -69,6 +69,7 @@ interface InputProps {
     autoFocus?: boolean;
     autoSelect?: boolean;
     disabled?: boolean;
+    error?: boolean;
     isNumber?: boolean;
     inputRef?: React.RefObject<any>;
     manageFocus?: (isFocused: boolean) => void;
@@ -91,6 +92,7 @@ const Input = memo(
                 autoFocus,
                 autoSelect,
                 disabled,
+                error,
                 isNumber,
                 manageFocus,
             }: InputProps,
@@ -134,6 +136,7 @@ const Input = memo(
                 <input
                     className={clsx("input", className, {
                         disabled: disabled,
+                        error,
                     })}
                     ref={inputRef}
                     value={inputValue}
@@ -145,6 +148,7 @@ const Input = memo(
                     maxLength={maxLength}
                     autoFocus={autoFocus}
                     disabled={disabled}
+                    aria-invalid={error || undefined}
                 />
             );
         }

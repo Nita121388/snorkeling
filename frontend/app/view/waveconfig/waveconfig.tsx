@@ -48,7 +48,9 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                     key={file.path}
                     onClick={() => handleFileSelect(file)}
                     className={`px-4 py-2 border-b border-border cursor-pointer transition-colors ${
-                        selectedFile?.path === file.path ? "bg-accentbg text-primary" : "hover:bg-secondary/50"
+                        selectedFile?.path === file.path
+                            ? "bg-actionsoft text-actionsofttext border-actionsoftborder"
+                            : "hover:bg-secondary/50"
                     }`}
                 >
                     <div className="flex items-center gap-1">
@@ -71,7 +73,9 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                             key={file.path}
                             onClick={() => handleFileSelect(file)}
                             className={`px-4 py-2 border-b border-border cursor-pointer transition-colors ${
-                                selectedFile?.path === file.path ? "bg-accentbg text-primary" : "hover:bg-secondary/50"
+                                selectedFile?.path === file.path
+                                    ? "bg-actionsoft text-actionsofttext border-actionsoftborder"
+                                    : "hover:bg-secondary/50"
                             }`}
                         >
                             <div className="flex items-center gap-2 overflow-hidden">
@@ -168,7 +172,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
             <div className="flex flex-row flex-1 min-h-0">
                 {isMenuOpen && (
                     <div
-                        className="absolute inset-0 bg-black/50 z-5 @w600:hidden"
+                        className="absolute inset-0 bg-[var(--modal-backdrop-color)] z-5 @w600:hidden"
                         onClick={() => setIsMenuOpen(false)}
                     />
                 )}
@@ -182,7 +186,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                 <div className="flex items-baseline gap-2 min-w-0">
                                     <button
                                         onClick={() => setIsMenuOpen(true)}
-                                        className="@w600:hidden hover:bg-secondary/50 rounded p-1 cursor-pointer transition-colors mr-2 shrink-0"
+                                        className="@w600:hidden hover:bg-hover rounded p-1 cursor-pointer transition-colors mr-2 shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                     >
                                         <i className="fa fa-bars" />
                                     </button>
@@ -220,7 +224,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                                     className={`px-3 py-1 rounded transition-colors text-sm ${
                                                         !hasChanges || isSaving
                                                             ? "border border-border text-muted-foreground opacity-50"
-                                                            : "bg-accent/80 text-primary hover:bg-accent cursor-pointer"
+                                                            : "bg-action text-actiontext hover:bg-actionhover cursor-pointer"
                                                     }`}
                                                 >
                                                     {isSaving ? "Saving..." : "Save"}
@@ -266,7 +270,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     <span>{errorMessage}</span>
                                     <button
                                         onClick={() => model.clearError()}
-                                        className="ml-2 hover:bg-black/20 rounded p-1 cursor-pointer transition-colors"
+                                        className="ml-2 hover:bg-hover rounded p-1 cursor-pointer transition-colors"
                                     >
                                         ✕
                                     </button>
@@ -277,7 +281,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     <span>{validationError}</span>
                                     <button
                                         onClick={() => model.clearValidationError()}
-                                        className="ml-2 hover:bg-black/20 rounded p-1 cursor-pointer transition-colors"
+                                        className="ml-2 hover:bg-hover rounded p-1 cursor-pointer transition-colors"
                                     >
                                         ✕
                                     </button>

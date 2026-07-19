@@ -200,6 +200,51 @@ function readTextFileTail(filePath: string, maxBytes = 128 * 1024, maxLines = 20
     }
 }
 
+function parseDevPort(value: string | undefined): number | null {
+    const port = Number(value);
+    return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
+function parseRendererPort(value: string | undefined): number | null {
+    if (!value) {
+        return null;
+    }
+    try {
+        return parseDevPort(new URL(value).port);
+    } catch {
+        return null;
+    }
+}
+
+function makeDevEndpoint(port: number | null, requestedPort: number | null): DevRuntimeEndpoint | null {
+    if (port == null) {
+        return null;
+    }
+    return {
+        port,
+        requestedPort: requestedPort ?? port,
+        url: `http://127.0.0.1:${port}`,
+    };
+}
+
+function makeDevRuntimeInfo(): DevRuntimeInfo | null {
+    if (!isDev) {
+        return null;
+    }
+    const vitePort =
+        parseDevPort(process.env.SNORKELING_VITE_PORT) ?? parseRendererPort(process.env.ELECTRON_RENDERER_URL);
+    const cdpPort = parseDevPort(process.env.SNORKELING_CDP_PORT);
+    const cdp = makeDevEndpoint(cdpPort, parseDevPort(process.env.SNORKELING_CDP_REQUESTED_PORT));
+    return {
+        profile: process.env.SNORKELING_DEV_PROFILE || "default",
+        portMode: process.env.SNORKELING_PORT_MODE === "strict" ? "strict" : "auto",
+        vite: makeDevEndpoint(vitePort, parseDevPort(process.env.SNORKELING_VITE_REQUESTED_PORT)),
+        cdp,
+        cdpJsonUrl: cdp == null ? null : `${cdp.url}/json/version`,
+        inspectCommand: cdp == null ? null : `node scripts/inspect-electron-ui.mjs --endpoint ${cdp.url} state`,
+    };
+}
+
 function makeAppDebugInfo(): AppDebugInfo {
     const version = getWaveVersion();
     const dataDir = getWaveDataDir();
@@ -207,6 +252,7 @@ function makeAppDebugInfo(): AppDebugInfo {
     const logFile = path.join(dataDir, "waveapp.log");
     return {
         generatedAt: new Date().toISOString(),
+        devRuntime: makeDevRuntimeInfo(),
         app: {
             name: electronApp.getName(),
             version: version.version,
@@ -467,6 +513,10 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("get-env", (event, varName) => {
         event.returnValue = process.env[varName] ?? null;
+    });
+
+    electron.ipcMain.on("get-dev-runtime-info", (event) => {
+        event.returnValue = makeDevRuntimeInfo();
     });
 
     electron.ipcMain.on("get-about-modal-details", (event) => {

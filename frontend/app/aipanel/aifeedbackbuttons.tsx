@@ -47,8 +47,9 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                 className={cn(
                     "p-1.5 rounded cursor-pointer transition-colors",
                     thumbsUpClicked
-                        ? "text-accent"
-                        : "text-secondary hover:bg-zinc-700 hover:text-primary"
+                        ? "bg-actionsoft text-actionsofttext"
+                        : "text-secondary hover:bg-hoverbg hover:text-primary",
+                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 )}
                 title="Good Response"
             >
@@ -59,8 +60,9 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                 className={cn(
                     "p-1.5 rounded cursor-pointer transition-colors",
                     thumbsDownClicked
-                        ? "text-accent"
-                        : "text-secondary hover:bg-zinc-700 hover:text-primary"
+                        ? "bg-actionsoft text-actionsofttext"
+                        : "text-secondary hover:bg-hoverbg hover:text-primary",
+                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 )}
                 title="Bad Response"
             >
@@ -71,9 +73,8 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                     onClick={handleCopy}
                     className={cn(
                         "p-1.5 rounded cursor-pointer transition-colors",
-                        copied
-                            ? "text-success"
-                            : "text-secondary hover:bg-zinc-700 hover:text-primary"
+                        copied ? "bg-surface-soft text-success" : "text-secondary hover:bg-hoverbg hover:text-primary",
+                        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                     )}
                     title="Copy Message"
                 >

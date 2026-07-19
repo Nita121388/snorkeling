@@ -4,12 +4,7 @@
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { CopyIconButton } from "./controls";
-import {
-    displayRole,
-    formatDateTimeToSecond,
-    isCollapsibleMessage,
-    trimMessageText,
-} from "./utils";
+import { formatDateTimeToSecond, isCollapsibleMessage, trimMessageText } from "./utils";
 
 export function HighlightedMessageText({
     text,
@@ -38,7 +33,7 @@ export function HighlightedMessageText({
         parts.push(
             <mark
                 key={`match-${key++}`}
-                className={cn("rounded px-0.5 text-inherit", active ? "bg-yellow-300/55" : "bg-yellow-300/30")}
+                className={cn("rounded bg-actionsoft px-0.5 text-inherit", active && "ring-1 ring-accent")}
             >
                 {text.slice(matchIndex, end)}
             </mark>
@@ -85,7 +80,7 @@ export function MessageCard({
             className={cn(
                 "group scroll-mt-3 rounded border p-3",
                 isUser ? "border-accent/35 bg-accent/10 shadow-sm" : "border-border bg-surface-strong",
-                searchActive && "border-yellow-400/70 ring-2 ring-yellow-400/60"
+                searchActive && "border-accent ring-2 ring-accent/50"
             )}
         >
             <div
@@ -98,19 +93,20 @@ export function MessageCard({
                 onClick={collapsible ? onToggleCollapsed : undefined}
             >
                 <span className="relative">
-                    <span className="min-w-0 truncate" title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}>
+                    <span
+                        className="min-w-0 truncate"
+                        title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}
+                    >
                         {message.seq}
                     </span>
                     {message.timestamp ? (
-                        <span
-                            className="pointer-events-none absolute left-full top-1/2 z-10 ml-1 -translate-y-1/2 whitespace-nowrap rounded bg-panel px-2 py-1 text-xxs leading-none text-secondary shadow-md opacity-0 transition-opacity group-hover:opacity-100"
-                        >
+                        <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-1 -translate-y-1/2 whitespace-nowrap rounded bg-panel px-2 py-1 text-xxs leading-none text-secondary shadow-md opacity-0 transition-opacity group-hover:opacity-100">
                             {formatDateTimeToSecond(message.timestamp)}
                         </span>
                     ) : null}
                 </span>
                 {searchMatched ? (
-                    <span className="flex items-center gap-1 rounded border border-yellow-400/40 bg-yellow-400/10 px-1.5 py-0.5 text-[10px] text-yellow-300">
+                    <span className="flex items-center gap-1 rounded border border-actionsoftborder bg-actionsoft px-1.5 py-0.5 text-[10px] text-actionsofttext">
                         <i className="fa-sharp fa-solid fa-magnifying-glass" />
                         {searchActive
                             ? "Current match"

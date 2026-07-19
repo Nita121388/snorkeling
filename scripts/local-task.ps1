@@ -5,7 +5,5 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'use-local-env.ps1') -Quiet
-
-& task @TaskArgs
+& node (Join-Path $PSScriptRoot 'run-task.mjs') @TaskArgs
 exit $LASTEXITCODE

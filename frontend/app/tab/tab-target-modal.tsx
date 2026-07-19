@@ -137,7 +137,7 @@ export const TabTargetModal = React.memo(
                         ))
                     )}
                 </div>
-                {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
+                {error && <div className="mt-3 text-xs text-error">{error}</div>}
                 <div className="mt-4 flex w-full justify-end">
                     <Button className="grey ghost" onClick={onClose} disabled={workingTabId != null}>
                         Cancel

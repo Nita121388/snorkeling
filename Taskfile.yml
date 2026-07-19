@@ -17,9 +17,7 @@ vars:
 tasks:
     electron:dev:
         desc: Run the Electron application via the Vite dev server (enables hot reloading).
-        cmd: npm run dev
-        aliases:
-            - dev
+        cmd: npm run dev:electron
         deps:
             - npm:install
             - build:backend
@@ -47,7 +45,7 @@ tasks:
 
     electron:quickdev:
         desc: Run the Electron application via the Vite dev server (quick dev - no docsite, arm64 only, no generate, no wsh).
-        cmd: npm run dev
+        cmd: npm run dev:electron
         deps:
             - npm:install
             - build:backend:quickdev
@@ -74,7 +72,7 @@ tasks:
 
     electron:winquickdev:
         desc: Run the Electron application via the Vite dev server (quick dev - Windows amd64 only, no generate, no wsh).
-        cmd: npm run dev
+        cmd: npm run dev:electron
         deps:
             - npm:install
             - build:backend:quickdev:windows
@@ -129,14 +127,14 @@ tasks:
             - task: build:backend
             - task: build:tsunamiscaffold
             - |
-              npm run build:prod
-              {{if eq OS "darwin"}}
-              # Build macOS arm64/x64 in separate runs to avoid intermittent blockmap lock contention.
-              npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --arm64 {{.CLI_ARGS}}
-              npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --x64 {{.CLI_ARGS}}
-              {{else}}
-              npm exec electron-builder -- -c electron-builder.config.cjs -p never {{.CLI_ARGS}}
-              {{end}}
+                npm run build:prod
+                {{if eq OS "darwin"}}
+                # Build macOS arm64/x64 in separate runs to avoid intermittent blockmap lock contention.
+                npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --arm64 {{.CLI_ARGS}}
+                npm exec electron-builder -- -c electron-builder.config.cjs -p never --mac --x64 {{.CLI_ARGS}}
+                {{else}}
+                npm exec electron-builder -- -c electron-builder.config.cjs -p never {{.CLI_ARGS}}
+                {{end}}
 
     build:frontend:dev:
         desc: Build the frontend in development mode.

@@ -185,7 +185,7 @@ func TestMakeRemoteShellCommandUsesPowerShellWrapperForWindowsCommand(t *testing
 		ClientOs: "windows",
 		HomeDir:  `C:\Users\break`,
 	}
-	got := makeRemoteShellCommand(remoteInfo, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, shellutil.ShellType_pwsh, "npm run dev:local", CommandOptsType{
+	got := makeRemoteShellCommand(remoteInfo, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, shellutil.ShellType_pwsh, "npm run dev", CommandOptsType{
 		Cwd: `C:\Users\break\project`,
 		SwapToken: &shellutil.TokenSwapEntry{Env: map[string]string{
 			"ANTHROPIC_API_KEY": "anthropic-key",
@@ -199,7 +199,7 @@ func TestMakeRemoteShellCommandUsesPowerShellWrapperForWindowsCommand(t *testing
 		`$env:WAVETERM_SWAPTOKEN = "packed-token"`,
 		`$env:ANTHROPIC_API_KEY = "anthropic-key"`,
 		`Set-Location -LiteralPath "C:\Users\break\project"`,
-		`"-Command", "npm run dev:local"`,
+		`"-Command", "npm run dev"`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("expected decoded script to contain %q, got:\n%s", want, script)

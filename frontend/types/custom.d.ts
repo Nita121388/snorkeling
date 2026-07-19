@@ -97,6 +97,7 @@ declare global {
         getWebviewPreload: () => string; // get-webview-preload
         getAboutModalDetails: () => AboutModalDetails; // get-about-modal-details
         getAppDebugInfo: () => Promise<AppDebugInfo>; // get-app-debug-info
+        getDevRuntimeInfo: () => DevRuntimeInfo | null; // get-dev-runtime-info
         getZoomFactor: () => number; // get-zoom-factor
         showWorkspaceAppMenu: (workspaceId: string) => void; // workspace-appmenu-show
         showBuilderAppMenu: (builderId: string) => void; // builder-appmenu-show
@@ -427,8 +428,24 @@ declare global {
         error?: string;
     }
 
+    interface DevRuntimeEndpoint {
+        port: number;
+        requestedPort: number;
+        url: string;
+    }
+
+    interface DevRuntimeInfo {
+        profile: string;
+        portMode: "auto" | "strict";
+        vite: DevRuntimeEndpoint | null;
+        cdp: DevRuntimeEndpoint | null;
+        cdpJsonUrl: string | null;
+        inspectCommand: string | null;
+    }
+
     interface AppDebugInfo {
         generatedAt: string;
+        devRuntime: DevRuntimeInfo | null;
         app: {
             name: string;
             version: string;

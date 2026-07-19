@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("api", {
     getHomeDir: () => ipcRenderer.sendSync("get-home-dir"),
     getAboutModalDetails: () => ipcRenderer.sendSync("get-about-modal-details"),
     getAppDebugInfo: () => ipcRenderer.invoke("get-app-debug-info"),
+    getDevRuntimeInfo: () => ipcRenderer.sendSync("get-dev-runtime-info"),
     getWebviewPreload: () => ipcRenderer.sendSync("get-webview-preload"),
     getZoomFactor: () => ipcRenderer.sendSync("get-zoom-factor"),
     openNewWindow: () => ipcRenderer.send("open-new-window"),

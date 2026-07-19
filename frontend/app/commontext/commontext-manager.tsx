@@ -132,7 +132,7 @@ const CommonTextManagerContent = memo(() => {
                 </div>
                 <button
                     type="button"
-                    className="h-8 px-3 rounded bg-accent/80 text-primary hover:bg-accent transition-colors"
+                    className="h-8 px-3 rounded bg-action text-actiontext hover:bg-actionhover transition-colors cursor-pointer"
                     onClick={resetDraft}
                 >
                     <i className="fa fa-solid fa-plus mr-1" />
@@ -290,7 +290,7 @@ const CommonTextManagerContent = memo(() => {
                                 </button>
                                 <button
                                     type="button"
-                                    className="h-8 px-3 rounded bg-accent/80 text-primary hover:bg-accent disabled:opacity-50"
+                                    className="h-8 px-3 rounded bg-action text-actiontext hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default"
                                     onClick={() => fireAndForget(saveDraft)}
                                     disabled={!canSave}
                                 >

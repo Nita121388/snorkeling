@@ -296,7 +296,7 @@ const TsunamiView = memo((props: ViewComponentProps<TsunamiViewModel>) => {
             {isNotRunning && !isRestarting && (
                 <button
                     onClick={() => model.forceRestartController()}
-                    className="px-4 py-2 bg-accent-color text-primary-text-color rounded hover:bg-accent-color/80 transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-action text-actiontext rounded hover:bg-actionhover transition-colors cursor-pointer"
                 >
                     Start
                 </button>

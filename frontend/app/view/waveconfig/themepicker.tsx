@@ -60,7 +60,7 @@ function MiniTermPreview() {
                 <span className="w-1.5 h-1.5 rounded-full bg-error/80" />
                 <span className="w-1.5 h-1.5 rounded-full bg-warning/80" />
                 <span className="w-1.5 h-1.5 rounded-full bg-success/80" />
-                <div className="ml-1.5 px-1.5 py-0.5 text-[8px] rounded-sm bg-accentbg text-primary font-medium min-w-[24px] text-center">
+                <div className="ml-1.5 px-1.5 py-0.5 text-[8px] rounded-sm border border-actionsoftborder bg-actionsoft text-actionsofttext font-medium min-w-[24px] text-center">
                     tab
                 </div>
                 <div className="px-1.5 py-0.5 text-[8px] text-muted-foreground">tab</div>
@@ -71,7 +71,7 @@ function MiniTermPreview() {
                 </div>
                 <div className="text-secondary">✓ done in 1.4s</div>
                 <div className="flex gap-1 pt-0.5">
-                    <span className="px-1 py-0.5 rounded-sm bg-accent text-[var(--button-text-color)] text-[7px] font-semibold">
+                    <span className="px-1 py-0.5 rounded-sm bg-action text-actiontext text-[7px] font-semibold">
                         Run
                     </span>
                     <span className="px-1 py-0.5 rounded-sm border border-border text-muted-foreground text-[7px]">

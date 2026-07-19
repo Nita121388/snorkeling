@@ -17,12 +17,18 @@
         border-color: var(--form-element-primary-color);
     }
 
+    &:focus-visible {
+        outline: 2px solid var(--form-element-primary-color);
+        outline-offset: 1px;
+    }
+
     &.disabled {
         opacity: 0.75;
     }
 
     &.error {
         border-color: var(--form-element-error-color);
+        background-color: color-mix(in srgb, var(--form-element-error-color) 8%, var(--form-element-bg-color));
     }
 }
 

@@ -19,16 +19,20 @@
         "Chrome >= 128"
     ],
     "scripts": {
-        "dev": "electron-vite dev",
-        "dev:iso": "node scripts/dev-isolated.mjs",
+        "setup": "node scripts/bootstrap.mjs",
+        "dev": "node scripts/dev-isolated.mjs",
+        "dev:electron": "electron-vite dev",
+        "dev:cdp": "node scripts/dev-isolated.mjs --profile cdp --vite-port 51742 --cdp-port 9222",
         "start": "electron-vite preview",
         "build:dev": "electron-vite build --mode development",
         "build:prod": "electron-vite build --mode production",
-        "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-task.ps1 dev",
-        "package:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-task.ps1 package",
+        "package:local": "node scripts/run-task.mjs package",
         "coverage": "vitest run --coverage",
         "test": "vitest",
         "postinstall": "node ./postinstall.cjs"
+    },
+    "engines": {
+        "node": ">=22.12.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.39",

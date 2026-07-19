@@ -19,6 +19,18 @@
     min-height: 26px;
 
     &:focus-visible {
-        outline: none;
+        outline: 2px solid var(--form-element-primary-color);
+        outline-offset: 1px;
+        border-color: var(--form-element-primary-color);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    &.error {
+        border-color: var(--form-element-error-color);
+        background-color: color-mix(in srgb, var(--form-element-error-color) 8%, var(--form-element-bg-color));
     }
 }

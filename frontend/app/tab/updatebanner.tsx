@@ -63,11 +63,11 @@ const UpdateStatusBannerComponent = () => {
             content={tooltipContent}
             placement="bottom"
             divOnClick={isReady || isManualUpdate || isError ? onClick : undefined}
-            divClassName={`flex items-center gap-1 px-2 mb-1 h-[22px] text-xs font-medium text-black rounded-sm transition-all ${
+            divClassName={`flex items-center gap-1 px-2 mb-1 h-[22px] text-xs font-medium rounded-sm transition-all ${
                 isError
-                    ? "bg-error text-white cursor-pointer hover:bg-[var(--button-red-hover-bg)]"
-                    : `bg-accent ${
-                          isReady || isManualUpdate ? "cursor-pointer hover:bg-[var(--button-green-border-color)]" : ""
+                    ? "bg-error text-actiontext cursor-pointer hover:bg-[var(--button-red-hover-bg)]"
+                    : `bg-action text-actiontext ${
+                          isReady || isManualUpdate ? "cursor-pointer hover:bg-actionhover" : ""
                       }`
             }`}
             divStyle={{ WebkitAppRegion: "no-drag" } as any}

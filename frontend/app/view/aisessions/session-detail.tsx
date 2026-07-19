@@ -760,7 +760,7 @@ export function SessionDetailPane({
                         </div>
                         <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
                             <button
-                                className="flex h-7 items-center gap-2 rounded border border-accent bg-accent px-2 text-white hover:bg-accent/90 disabled:opacity-60"
+                                className="flex h-7 items-center gap-2 rounded border border-action bg-action px-2 text-actiontext hover:bg-actionhover disabled:opacity-60 cursor-pointer disabled:cursor-default"
                                 disabled={restoring}
                                 onClick={() => void model.restoreSession(summary)}
                             >
@@ -890,7 +890,7 @@ export function SessionDetailPane({
                                         title={noteStatusText || "Save note"}
                                         disabled={noteSaving || noteUnchanged}
                                         className={cn(
-                                            "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
+                                            "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
                                             noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
                                             noteSaveStatus === "error" && "border-error bg-error/10 text-error"
                                         )}

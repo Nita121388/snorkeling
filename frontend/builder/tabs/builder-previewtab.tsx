@@ -78,7 +78,7 @@ const ErrorStateView = memo(({ errorMsg }: { errorMsg: string }) => {
                         </div>
                         <button
                             onClick={handleGoToSecrets}
-                            className="px-6 py-2 mt-2 bg-accent/80 text-primary font-semibold rounded hover:bg-accent transition-colors cursor-pointer"
+                            className="px-6 py-2 mt-2 bg-action text-actiontext font-semibold rounded hover:bg-actionhover transition-colors cursor-pointer"
                         >
                             Go to Secrets Tab
                         </button>
@@ -106,7 +106,7 @@ const ErrorStateView = memo(({ errorMsg }: { errorMsg: string }) => {
                             </button>
                             <button
                                 onClick={handleAskAIToFix}
-                                className="px-4 py-2 bg-accent/80 text-primary font-semibold rounded hover:bg-accent transition-colors cursor-pointer"
+                                className="px-4 py-2 bg-action text-actiontext font-semibold rounded hover:bg-actionhover transition-colors cursor-pointer"
                             >
                                 Ask AI to Fix
                             </button>
@@ -159,7 +159,7 @@ const StoppedStateView = memo(({ onStart }: { onStart: () => void }) => {
                 {!isStarting && (
                     <button
                         onClick={handleStart}
-                        className="px-6 py-2 bg-accent text-primary font-semibold rounded hover:bg-accent/80 transition-colors cursor-pointer"
+                        className="px-6 py-2 bg-action text-actiontext font-semibold rounded hover:bg-actionhover transition-colors cursor-pointer"
                     >
                         Start App
                     </button>
