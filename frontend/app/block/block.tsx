@@ -11,6 +11,8 @@ import {
 import { Tooltip } from "@/app/element/tooltip";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { ErrorBoundary } from "@/element/errorboundary";
@@ -33,6 +35,12 @@ import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
+import {
+    getInlineTabRuntimeOpts,
+    getRemainingInlineTabBlockIds,
+    isConfirmedMissingInlineTabBlock,
+    shouldWarmupInlineTabController,
+} from "./block-recovery";
 import "./block.scss";
 import { BlockEnv } from "./blockenv";
 import { BlockFrame } from "./blockframe";
@@ -299,20 +307,74 @@ const InlineTabLabel = memo(
 InlineTabLabel.displayName = "InlineTabLabel";
 
 const InlineTabBlockMissingGuard = memo(
-    ({ blockId, onMissingBlock }: { blockId: string; onMissingBlock: () => void }) => {
+    ({ blockId, onMissingBlock }: { blockId: string; onMissingBlock: (blockId: string) => void }) => {
         const waveEnv = useWaveEnv<BlockEnv>();
-        const blockIsNull = useAtomValue(waveEnv.wos.isWaveObjectNullAtom(makeORef("block", blockId)));
+        const blockRef = makeORef("block", blockId);
+        const blockIsLoading = useAtomValue(waveEnv.wos.getWaveObjectLoadingAtom(blockRef));
+        const blockIsNull = useAtomValue(waveEnv.wos.isWaveObjectNullAtom(blockRef));
 
         useEffect(() => {
-            if (blockIsNull) {
-                onMissingBlock();
+            if (isConfirmedMissingInlineTabBlock(blockIsLoading, blockIsNull)) {
+                onMissingBlock(blockId);
             }
-        }, [blockIsNull, onMissingBlock]);
+        }, [blockId, blockIsLoading, blockIsNull, onMissingBlock]);
 
         return null;
     }
 );
 InlineTabBlockMissingGuard.displayName = "InlineTabBlockMissingGuard";
+
+const InlineTabBlockControllerWarmup = memo(
+    ({ active, blockId, preview, tabId }: { active: boolean; blockId: string; preview: boolean; tabId: string }) => {
+        const waveEnv = useWaveEnv<BlockEnv>();
+        const [blockData, blockIsLoading] = waveEnv.wos.useWaveObjectValue<Block>(makeORef("block", blockId));
+        const blockExists = blockData != null;
+        const blockView = blockData?.meta?.view ?? "";
+        const controller = blockData?.meta?.controller ?? "";
+        const connection = blockData?.meta?.connection ?? "";
+        const connStatus = useAtomValue(waveEnv.getConnStatusAtom(connection));
+        const connStatusType = connStatus?.status;
+        const termRows = blockData?.runtimeopts?.termsize?.rows;
+        const termCols = blockData?.runtimeopts?.termsize?.cols;
+
+        useEffect(() => {
+            if (
+                !shouldWarmupInlineTabController({
+                    active,
+                    preview,
+                    blockIsLoading,
+                    blockExists,
+                    blockView,
+                    controller,
+                })
+            ) {
+                return;
+            }
+            const rtOpts = getInlineTabRuntimeOpts(termRows, termCols);
+            void RpcApi.ControllerResyncCommand(TabRpcClient, {
+                tabid: tabId,
+                blockid: blockId,
+                rtopts: rtOpts,
+            }).catch((error) => console.log("error warming inline-tab controller", blockId, error));
+        }, [
+            active,
+            blockExists,
+            blockId,
+            blockIsLoading,
+            blockView,
+            connection,
+            connStatusType,
+            controller,
+            preview,
+            tabId,
+            termCols,
+            termRows,
+        ]);
+
+        return null;
+    }
+);
+InlineTabBlockControllerWarmup.displayName = "InlineTabBlockControllerWarmup";
 
 function getDuplicateIndexes(blockIds: string[], titles: Record<string, string>): Map<string, number> {
     const counts = new Map<string, number>();
@@ -355,13 +417,16 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
 
-    const cleanupMissingBlocks = useCallback(() => {
-        if (!layoutModel) {
-            return;
-        }
-        const validBlockIds = blockIds.filter((blockId) => layoutModel.getBlockById(blockId) != null);
-        layoutModel.cleanupInlineTabBlockIds(nodeModel.nodeId, validBlockIds);
-    }, [blockIdsKey, layoutModel, nodeModel.nodeId]);
+    const cleanupMissingBlock = useCallback(
+        (missingBlockId: string) => {
+            if (!layoutModel) {
+                return;
+            }
+            const validBlockIds = getRemainingInlineTabBlockIds(blockIds, missingBlockId);
+            layoutModel.cleanupInlineTabBlockIds(nodeModel.nodeId, validBlockIds);
+        },
+        [blockIdsKey, layoutModel, nodeModel.nodeId]
+    );
     const [, dragActiveInlineTabBlock] = useDrag<InlineTabDragItem, InlineTabDropResult>(
         () => ({
             type: InlineTabDragItemType,
@@ -420,7 +485,16 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 <InlineTabBlockMissingGuard
                     key={`missing-guard-${blockId}`}
                     blockId={blockId}
-                    onMissingBlock={cleanupMissingBlocks}
+                    onMissingBlock={cleanupMissingBlock}
+                />
+            ))}
+            {blockIds.map((blockId) => (
+                <InlineTabBlockControllerWarmup
+                    key={`controller-warmup-${blockId}`}
+                    active={blockId == activeBlockId}
+                    blockId={blockId}
+                    preview={preview}
+                    tabId={tabModel.tabId}
                 />
             ))}
             {!preview && (
