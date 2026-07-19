@@ -1803,14 +1803,6 @@ const Widgets = memo(() => {
                         </div>
                     </>
                 )}
-                {env.isDev() ? (
-                    <div
-                        className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
-                        title="Running Wave Dev Build"
-                    >
-                        <i className="fa fa-brands fa-dev fa-fw" />
-                    </div>
-                ) : null}
                 {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} /> : null}
             </div>
             {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
@@ -1906,14 +1898,6 @@ const Widgets = memo(() => {
                             <i className={makeIconClass("cube", true)}></i>
                         </div>
                         <div className="text-xxs mt-0.5 w-full px-0.5 text-center">apps</div>
-                    </div>
-                ) : null}
-                {env.isDev() ? (
-                    <div
-                        className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
-                        title="Running Wave Dev Build"
-                    >
-                        <i className="fa fa-brands fa-dev fa-fw" />
                     </div>
                 ) : null}
             </div>
