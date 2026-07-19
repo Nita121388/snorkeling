@@ -646,7 +646,6 @@ const AutoRefreshIntervalOptions = [
 const DefaultSessionListWidth = 320;
 const MinSessionListWidth = 240;
 const MaxSessionListWidth = 520;
-const CollapsedSessionListWidth = 44;
 const BackupKeepRecent = 3;
 const BackupMaxAgeDays = 7;
 
@@ -959,7 +958,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     );
 
     const gridTemplateColumns = sessionListCollapsed
-        ? `${CollapsedSessionListWidth}px minmax(0,1fr)`
+        ? "minmax(0,1fr)"
         : `${sessionListWidth}px minmax(0,1fr)`;
     const lastRefreshLabel = lastSessionsRefreshAt
         ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
@@ -975,23 +974,20 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     {error}
                 </div>
             ) : null}
-            <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
-                <div className="relative flex min-h-0 flex-col border-r border-border">
-                    {sessionListCollapsed ? (
-                        <div className="flex h-full min-h-0 flex-col items-center gap-2 py-3">
-                            <IconButton
-                                icon="fa-chevron-right"
-                                label="Expand sessions list"
-                                onClick={() => setSessionListCollapsed(false)}
-                            />
-                            <div className="rotate-180 text-[10px] uppercase tracking-normal text-secondary [writing-mode:vertical-rl]">
-                                Sessions
-                            </div>
-                            <div className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-secondary">
-                                {visibleSessions.length}
-                            </div>
-                        </div>
-                    ) : (
+            <div className="relative grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
+                {sessionListCollapsed ? (
+                    <button
+                        type="button"
+                        title="Expand sessions list"
+                        aria-label="Expand sessions list"
+                        onClick={() => setSessionListCollapsed(false)}
+                        className="absolute left-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-secondary shadow-sm hover:bg-hover hover:text-primary"
+                    >
+                        <i className="fa-sharp fa-solid fa-chevron-right" />
+                    </button>
+                ) : null}
+                <div className={cn("relative flex min-h-0 flex-col border-r border-border", sessionListCollapsed && "contents")}>
+                    {sessionListCollapsed ? null : (
                         <>
                             <div className="space-y-2 border-b border-border p-3">
                                 <div className="flex items-center gap-2">
