@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Tooltip } from "@/app/element/tooltip";
 import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -40,19 +41,46 @@ function sourceDotClass(source: string): string {
  * so the dots appear to chase each other around a square path.
  * Returns null for any non-running state so callers can drop it straight into JSX.
  */
-export function RunningDot({ runningState }: { runningState: SessionRunningState | null }): ReactElement | null {
-    if (runningState !== "running") return null;
+export function RunningDot({
+    runningState,
+    onJumpToBlock,
+}: {
+    runningState: SessionRunningState | null;
+    onJumpToBlock: (runningState: SessionRunningState) => void;
+}): ReactElement | null {
+    if (runningState == null || runningState.status !== "running") return null;
     const dotClass = "absolute rounded-full bg-accent";
     return (
-        <span
-            className="relative mt-0.5 inline-flex h-4 w-4 shrink-0 animate-spin"
-            title="This session has a live block in the app"
+        <Tooltip
+            placement="top"
+            openDelay={200}
+            hideOnClick
+            divClassName="mt-0.5 inline-flex h-4 w-4 shrink-0"
+            content={
+                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                    <div className="text-secondary">This session has a live block in the app.</div>
+                    <div className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase text-secondary">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent/90 ring-2 ring-accent/20" />
+                        <span>Click to jump to block</span>
+                    </div>
+                </div>
+            }
         >
-            <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />
-            <span className={cn(dotClass, "right-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
-            <span className={cn(dotClass, "bottom-0 left-1/2 h-1 w-1 -translate-x-1/2")} />
-            <span className={cn(dotClass, "left-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
-        </span>
+            <button
+                type="button"
+                className="relative inline-flex h-4 w-4 shrink-0 cursor-pointer animate-spin border-0 bg-transparent p-0"
+                aria-label="Jump to live block"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onJumpToBlock(runningState);
+                }}
+            >
+                <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />
+                <span className={cn(dotClass, "right-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+                <span className={cn(dotClass, "bottom-0 left-1/2 h-1 w-1 -translate-x-1/2")} />
+                <span className={cn(dotClass, "left-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+            </button>
+        </Tooltip>
     );
 }
 
@@ -67,6 +95,7 @@ export function SessionRow({
     onResume,
     resumeDisabled = false,
     runningState = null,
+    onJumpToBlock,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -76,6 +105,7 @@ export function SessionRow({
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
     runningState?: SessionRunningState | null;
+    onJumpToBlock: (runningState: SessionRunningState) => void;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
@@ -183,7 +213,7 @@ export function SessionRow({
                     >
                         <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
                     </button>
-                    <RunningDot runningState={runningState} />
+                    <RunningDot runningState={runningState} onJumpToBlock={onJumpToBlock} />
                 </div>
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">

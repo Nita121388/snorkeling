@@ -9,7 +9,11 @@ import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import * as jotai from "jotai";
 import { useEffect, useMemo, useState } from "react";
 
-export type SessionRunningState = "running";
+export type SessionRunningState = {
+    status: "running";
+    blockId: string;
+    tabId: string;
+};
 
 const STATUS_REQUEST_CONCURRENCY = 4;
 
@@ -24,7 +28,7 @@ async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T) 
     await Promise.all(workers);
 }
 
-type AgentBlockRef = { blockId: string; sessionId: string };
+type AgentBlockRef = { blockId: string; sessionId: string; tabId: string };
 
 /**
  * Pure projection from per-block controller statuses to per-session running state.
@@ -36,11 +40,11 @@ export function projectSessionRunning(
     statuses: Record<string, BlockControllerRuntimeStatus | null>
 ): Map<string, SessionRunningState> {
     const map = new Map<string, SessionRunningState>();
-    for (const { blockId, sessionId } of agentBlocks) {
+    for (const { blockId, sessionId, tabId } of agentBlocks) {
         const status = statuses[blockId];
         if (status == null) continue;
         if (status.shellprocstatus === "running") {
-            map.set(sessionId, "running");
+            map.set(sessionId, { status: "running", blockId, tabId });
         }
     }
     return map;
@@ -59,7 +63,7 @@ function collectAgentBlocks(get: jotai.Getter, tabIds: string[], selfView: strin
             if (view === selfView) continue;
             const sessionId = resolveAgentSessionIdFromMeta(meta).trim();
             if (sessionId === "") continue;
-            result.push({ blockId, sessionId });
+            result.push({ blockId, sessionId, tabId });
         }
     }
     return result;

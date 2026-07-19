@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { BlockNodeModel } from "@/app/block/blocktypes";
+import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock, createBlockSplitHorizontally } from "@/store/global";
+import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { getLayoutModelForTabById } from "@/layout/index";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -25,7 +27,7 @@ import {
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
 import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
-import { useSessionsRunning } from "./use-sessions-running";
+import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
 import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
 import "../../session-overview/session-overview.scss";
 import {
@@ -37,6 +39,24 @@ import {
     sortSessionsByTime,
     writeSortPreference,
 } from "./utils";
+
+function jumpToRunningSessionBlock(runningState: SessionRunningState): void {
+    const { blockId, tabId } = runningState;
+    if (blockId === "" || tabId === "") return;
+
+    const layoutModel = getLayoutModelForTabById(tabId);
+    if (layoutModel == null) return;
+    if (layoutModel.getNodeByBlockId(blockId) == null) {
+        restoreMinimizedBlockToLayout(tabId, blockId);
+    }
+    if (layoutModel.isBlockHidden(blockId)) {
+        layoutModel.showBlock(blockId);
+    }
+
+    setActiveTab(tabId);
+    window.setTimeout(() => refocusNode(blockId), 80);
+    window.setTimeout(() => refocusNode(blockId), 220);
+}
 
 export class AiSessionsViewModel implements ViewModel {
     blockId: string;
@@ -1125,6 +1145,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             }}
                                             resumeDisabled={restoring}
                                             runningState={sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null}
+                                            onJumpToBlock={jumpToRunningSessionBlock}
                                         />
                                     ))
                                 )}

@@ -13,22 +13,26 @@ function statusOf(blockId: string, shellprocstatus: string, version = 1): BlockC
     };
 }
 
+function block(blockId: string, sessionId: string, tabId = "tab-1") {
+    return { blockId, sessionId, tabId };
+}
+
 describe("projectSessionRunning", () => {
     it("marks a session running when its single block is running", () => {
-        const blocks = [{ blockId: "b1", sessionId: "s1" }];
+        const blocks = [block("b1", "s1")];
         const statuses = { b1: statusOf("b1", "running") };
 
         const map = projectSessionRunning(blocks, statuses);
 
-        expect(map.get("s1")).toBe("running");
+        expect(map.get("s1")).toEqual({ status: "running", blockId: "b1", tabId: "tab-1" });
         expect(map.size).toBe(1);
     });
 
     it("marks a session running when any one of its blocks is running", () => {
         const blocks = [
-            { blockId: "b1", sessionId: "s1" },
-            { blockId: "b2", sessionId: "s1" },
-            { blockId: "b3", sessionId: "s1" },
+            block("b1", "s1"),
+            block("b2", "s1"),
+            block("b3", "s1"),
         ];
         const statuses = {
             b1: statusOf("b1", "done"),
@@ -38,14 +42,14 @@ describe("projectSessionRunning", () => {
 
         const map = projectSessionRunning(blocks, statuses);
 
-        expect(map.get("s1")).toBe("running");
+        expect(map.get("s1")).toEqual({ status: "running", blockId: "b2", tabId: "tab-1" });
         expect(map.size).toBe(1);
     });
 
     it("omits sessions whose blocks are all done or init", () => {
         const blocks = [
-            { blockId: "b1", sessionId: "s1" },
-            { blockId: "b2", sessionId: "s2" },
+            block("b1", "s1"),
+            block("b2", "s2"),
         ];
         const statuses = {
             b1: statusOf("b1", "done"),
@@ -61,19 +65,19 @@ describe("projectSessionRunning", () => {
 
     it("omits blocks with no status yet", () => {
         const blocks = [
-            { blockId: "b1", sessionId: "s1" },
-            { blockId: "b2", sessionId: "s2" },
+            block("b1", "s1"),
+            block("b2", "s2"),
         ];
         const statuses = { b1: null, b2: statusOf("b2", "running") };
 
         const map = projectSessionRunning(blocks, statuses);
 
         expect(map.has("s1")).toBe(false);
-        expect(map.get("s2")).toBe("running");
+        expect(map.get("s2")).toEqual({ status: "running", blockId: "b2", tabId: "tab-1" });
     });
 
     it("omits blocks whose status is missing from the map entirely", () => {
-        const blocks = [{ blockId: "b1", sessionId: "s1" }];
+        const blocks = [block("b1", "s1")];
 
         const map = projectSessionRunning(blocks, {});
 
@@ -82,10 +86,10 @@ describe("projectSessionRunning", () => {
 
     it("tracks multiple independent sessions in one pass", () => {
         const blocks = [
-            { blockId: "b1", sessionId: "s1" },
-            { blockId: "b2", sessionId: "s1" },
-            { blockId: "b3", sessionId: "s2" },
-            { blockId: "b4", sessionId: "s3" },
+            block("b1", "s1"),
+            block("b2", "s1"),
+            block("b3", "s2"),
+            block("b4", "s3"),
         ];
         const statuses = {
             b1: statusOf("b1", "done"),
@@ -96,8 +100,8 @@ describe("projectSessionRunning", () => {
 
         const map = projectSessionRunning(blocks, statuses);
 
-        expect(map.get("s1")).toBe("running");
-        expect(map.get("s2")).toBe("running");
+        expect(map.get("s1")).toEqual({ status: "running", blockId: "b2", tabId: "tab-1" });
+        expect(map.get("s2")).toEqual({ status: "running", blockId: "b3", tabId: "tab-1" });
         expect(map.has("s3")).toBe(false);
         expect(map.size).toBe(2);
     });
