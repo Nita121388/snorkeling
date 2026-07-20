@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>主题设计界面原型</title>
+<style>
+  :root {
+    /* Default values (wave-light) */
+    --accent-color: rgb(88, 193, 66);
+    --action-bg-color: var(--accent-color);
+    --action-text-color: #ffffff;
+    --success-color: rgb(78, 154, 6);
+    --error-color: rgb(229, 77, 46);
+    --warning-color: rgb(224, 185, 86);
+    --editor-background: #faf7f0;
+    --editor-foreground: #1f2937;
+    --token-keyword: #cf222e;
+    --token-string: #0a3069;
+    --token-comment: #6e7781;
+    --token-number: #0550ae;
+    --token-function: #8250df;
+    --token-type: #953800;
+    --token-variable: #24292f;
+    --term-background: #faf7f0;
+    --term-foreground: #1f2937;
+    --term-cmdtext: #1f2937;
+    --term-cursor-accent: #faf7f0;
+  }
+  body {
+    margin: 0;
+    font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0c0d10;
+    color: #f7f7f7;
+    display: flex;
+    height: 100vh;
+  }
+  #sidebar {
+    width: 260px;
+    background: #1a1b1e;
+    padding: 20px;
+    overflow-y: auto;
+    border-right: 1px solid rgba(255,255,255,0.1);
+  }
+  #preview {
+    flex: 1; 1px;
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .theme-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .theme-item:hover, .theme-item.active {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.2);
+  }
+  .theme-swatch {
+    display: flex;
+    gap: 6px;
+  }
+  .swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+  }
+  .theme-label {
+    font-size: 14px;
+  }
+  .preview-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .preview-title {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #c0c0c0;
+  }
+  /* Code snippet */
+  .code-block {
+    background: var(--editor-background);
+    color: var(--editor-foreground);
+    padding: 12px;
+    border-radius: 6px;
+    font-family: "Hack", monospace;
+    font-size: 13px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  /* Terminal line */
+  .term-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .term-prompt {
+    color: var(--term-foreground);
+    min-width: 2ch;
+  }
+  .term-input {
+    color: var(--term-cmdtext);
+    background: var(--term-background);
+    border: none;
+    outline: none;
+    padding: 2px 4px;
+    font-family: "Hack", monospace;
+    font-size: 13px;
+  }
+  /* Buttons */
+  .btn-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary-text-color, #c0c0c0);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--main-text-color, #f7f7f7);
+  }
+  .btn-success { color: var(--success-color); }
+  .btn-error { color: var(--error-color); }
+  .btn-warning { color: var(--warning-color); }
+  .btn-accent { background: var(--action-bg-color); color: var(--action-text-color); }
+  /* Status messages */
+  .msg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+  .msg-success { color: var(--success-color); }
+  .msg-error { color: var(--error-color); }
+  .msg-warning { color: var(--warning-color); }
+  .msg-spacer { flex: 1; }
+  /* Custom theme panel (simple) */
+  #custom-panel {
+    display: none;
+    margin-top: 20px;
+    padding: 16px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+  }
+  #custom-panel label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #c0c0c0;
+  }
+  #custom-panel input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.4);
+    color: #f7f7f7;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  #custom-panel .btn {
+    width: auto;
+    padding: 6px 12px;
+  }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h2 style="margin-top:0;font-size:16px;color:#c0c0c0;">主题选择</h2>
+  <div id="theme-list">
+    <!-- Will be filled by JS -->
+  </div>
+  <div id="custom-panel">
+    <h3 style="margin-top:0;font-size:14px;color:#c0c0c0;">自定义主题</h3>
+    <label>主色 (Accent): <input type="color" id="accent-picker" value="#58c162"></label>
+    <button id="apply-custom" class="btn">应用</button>
+  </div>
+</div>
+<div id="preview">
+  <div class="preview-card">
+    <div class="preview-title">代码编辑器预览</div>
+    <div class="code-block" id="code-preview">
+function helloWorld(name: string): void {
+  // This is a comment
+  const msg = `Hello, ${name}!`;
+  console.log(msg);
+  if (name.length > 0) {
+    return;
+  }
+  throw new Error("Name is empty");
+}
+    </div>
+  </div>
+  <div class="preview-card">
+    <div class="preview-title">终端预览</div>
+    <div class="term-line">
+      <span class="term-prompt">λ </span>
+      <input class="term-input" placeholder="ls -la" />
+    </div>
+    <div class="term-line">
+      <span class="term-prompt">λ </span>
+      <input class="term-input" placeholder="git status" />
+    </div>
+  </div>
+  <div class="preview-card">
+    <div class="preview-title">按钮与状态</div>
+    <div class="btn-group">
+      <button class="btn btn-accent">主要按钮</button>
+      <button class="btn">次要按钮</button>
+      <button class="btn btn-success">成功</button>
+      <button class="btn btn-error">错误</button>
+      <button class="btn btn-warning">警告</button>
+    </div>
+    <div class="msg">
+      <span class="msg-spacer"></span>
+      <span class="msg-success">✓ 操作成功</span>
+    </div>
+    <div class="msg">
+      <span class="msg-spacer"></span>
+      <span class="msg-error">✗ 操作失败</span>
+    </div>
+    <div class="msg">
+      <span class="msg-spacer"></span>
+      <span class="msg-warning">⚠️ 警告信息</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Define theme data
+  const themes = [
+    {
+      key: 'wave-light',
+      label: 'Wave Light',
+      vars: {
+        '--accent-color': 'rgb(88, 193, 66)',
+        '--action-bg-color': 'rgb(88, 193, 66)',
+        '--action-text-color': '#ffffff',
+        '--success-color': 'rgb(78, 154, 6)',
+        '--error-color': 'rgb(229, 77, 46)',
+        '--warning-color': 'rgb(224, 185, 86)',
+        '--editor-background': '#faf7f0',
+        '--editor-foreground': '#1f2937',
+        '--token-keyword': '#cf222e',
+        '--token-string': '#0a3069',
+        '--token-comment': '#6e7781',
+        '--token-number': '#0550ae',
+        '--token-function': '#8250df',
+        '--token-type': '#953800',
+        '--token-variable': '#24292f',
+        '--term-background': '#faf7f0',
+        '--term-foreground': '#1f2937',
+        '--term-cmdtext': '#1f2937',
+        '--term-cursor-accent': '#faf7f0'
+      }
+    },
+    {
+      key: 'github-light',
+      label: 'GitHub Light',
+      vars: {
+        '--accent-color': '#0969da',
+        '--action-bg-color': '#0969da',
+        '--action-text-color': '#ffffff',
+        '--success-color': '#28a745',
+        '--error-color': '#d9534f',
+        '--warning-color': '#ffc107',
+        '--editor-background': '#ffffff',
+        '--editor-foreground': '#24292f',
+        '--token-keyword': '#cf222e',
+        '--token-string': '#0a3069',
+        '--token-comment': '#6e7781',
+        '--token-number': '#0550ae',
+        '--token-function': '#8250df',
+        '--token-type': '#953800',
+        '--token-variable': '#24292f',
+        '--term-background': '#faf7f0',
+        '--term-foreground': '#1f2937',
+        '--term-cmdtext': '#1f2937',
+        '--term-cursor-accent': '#faf7f0'
+      }
+    },
+    {
+      key: 'catppuccin-latte',
+      label: 'Catppuccin Latte',
+      vars: {
+        '--accent-color': '#8839ef',
+        '--action-bg-color': '#8839ef',
+        '--action-text-color': '#ffffff',
+        '--success-color': '#40a02b',
+        '--error-color': '#ed8796',
+        '--warning-color': '#f5e0dc',
+        '--editor-background': '#eff1f5',
+        '--editor-foreground': '#4c4f69',
+        '--token-keyword': '#8839ef',
+        '--token-string': '#40a02b',
+        '--token-comment': '#9ca0b8',
+        '--token-number': '#b5bd68',
+        '--token-function': '#82aaff',
+        '--token-type': '#a6e3a1',
+        '--token-variable': '#cad3f5',
+        '--term-background': '#eff1f5',
+        '--term-foreground': '#4c4f69',
+        '--term-cmdtext': '#4c4f69',
+        '--term-cursor-accent': '#eff1f5'
+      }
+    },
+    {
+      key: 'rose-pine-dawn',
+      label: 'Rose Pine Dawn',
+      vars: {
+        '--accent-color': '#907aa9',
+        '--action-bg-color': '#907aa9',
+        '--action-text-color': '#ffffff',
+        '--success-color': '#ea9d34',
+        '--error-color': '#d7827e',
+        '--warning-color': '#e0def4',
+        '--editor-background': '#faf4ed',
+        '--editor-foreground': '#575279',
+        '--token-keyword': '#907aa9',
+        '--token-string': '#dbb34f',
+        '--token-comment': '#6e6a86',
+        '--token-number': '#f6c177',
+        '--token-function': '#eb6f92',
+        '--token-type': '#3e8fb0',
+        '--token-variable': '#ebcb8b',
+        '--term-background': '#faf4ed',
+        '--term-foreground': '#575279',
+        '--term-cmdtext': '#575279',
+        '--term-cursor-accent': '#faf4ed'
+      }
+    },
+    {
+      key: 'ocean',
+      label: 'Ocean',
+      vars: {
+        '--accent-color': '#4169e1',
+        '--action-bg-color': '#4169e1',
+        '--action-text-color': '#ffffff',
+        '--success-color': '#20b2aa',
+        '--error-color': '#dc143c',
+        '--warning-color': '#ffa500',
+        '--editor-background': '#f0f8ff',
+        '--editor-foreground': '#000000',
+        '--token-keyword': '#4169e1',
+        '--token-string': '#8b0000',
+        '--token-comment': '#008000',
+        '--token-number': '#b22222',
+        '--token-function': '#ff8c00',
+        '--token-type': '#006400',
+        '--token-variable': '#0000ff',
+        '--term-background': '#f0f8ff',
+        '--term-foreground': '#000000',
+        '--term-cmdtext': '#000000',
+        '--term-cursor-accent': '#f0f8ff'
+      }
+    },
+    {
+      key: 'fresh-green',
+      label: 'Fresh Green',
+      vars: {
+        '--accent-color': '#228b22',
+        '--action-bg-color': '#228b22',
+        '--action-text-color': '#ffffff',
+        '--success-color': '#228b22',
+        '--error-color': '#b22222',
+        '--warning-color': '#ffd700',
+        '--editor-background': '#f5fff5',
+        '--editor-foreground': '#000000',
+        '--token-keyword': '#228b22',
+        '--token-string': '#006400',
+        '--token-comment': '#008000',
+        '--token-number': '#8b0000',
+        '--token-function': '#ff0000',
+        '--token-type': '#008000',
+        '--token-variable': '#0000cd',
+        '--term-background': '#f5fff5',
+        '--term-foreground': '#000000',
+        '--term-cmdtext': '#000000',
+        '--term-cursor-accent': '#f5fff5'
+      }
+    }
+  ];
+
+  const themeList = document.getElementById('theme-list');
+  const customPanel = document.getElementById('custom-panel');
+  const accentPicker = document.getElementById('accent-picker');
+  const applyCustomBtn = document.getElementById('apply-custom');
+
+  function renderThemes() {
+    themeList.innerHTML = '';
+    themes.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'theme-item';
+      div.dataset.key = t.key;
+      div.innerHTML = `
+        <div class="theme-swatch">
+          <div class="swatch" style="background:${t.vars['--accent-color']}"></div>
+          <div class="swatch" style="background:${t.vars['--success-color']}"></div>
+          <div class="swatch" style="background:${t.vars['--error-color']}"></div>
+          <div class="swatch" style="background:${t.vars['--warning-color']}"></div>
+        </div>
+        <div class="theme-label">${t.label}</div>
+      `;
+      div.addEventListener('click', () => {
+        applyTheme(t);
+        document.querySelectorAll('.theme-item').forEach(el => el.classList.remove('active'));
+        div.classList.add('active');
+      });
+      themeList.appendChild(div);
+    });
+    // Add custom item
+    const customDiv = document.createElement('div');
+    customDiv.className = 'theme-item';
+    customDiv.innerHTML = `
+      <div class="theme-swatch">
+        <div class="swatch" style="background:#888"></div>
+        <div class="swatch" style="background:#888"></div>
+        <div class="swatch" style="background:#888"></div>
+        <div class="swatch" style="background:#888"></div>
+      </div>
+      <div class="theme-label">+ 自定义</div>
+    `;
+    customDiv.addEventListener('click', () => {
+      customPanel.style.display = customPanel.style.display === 'none' ? 'block' : 'none';
+    });
+    themeList.appendChild(customDiv);
+  }
+
+  function applyTheme(theme) {
+    for (const [varName, value] of Object.entries(theme.vars)) {
+      document.documentElement.style.setProperty(varName, value);
+    }
+    // Update preview
+    updatePreview();
+  }
+
+  function updatePreview() {
+    // Nothing needed as CSS variables already update the preview
+  }
+
+  applyCustomBtn.addEventListener('click', () => {
+    const accent = accentPicker.value;
+    // Derive simple variations for demo
+    const success = accent; // same as accent for demo
+    const error = '#ff0000';
+    const warning = '#ffa500';
+    const editorBg = '#ffffff';
+    const editorFg = '#000000';
+    const termBg = '#ffffff';
+    const termFg = '#000000';
+    const termCmd = '#000000';
+    const termCursor = '#ffffff';
+    const tokenKw = '#000000';
+    const tokenStr = '#006400';
+    const tokenCmt = '#6e6e6e';
+    const tokenNum = '#8b0000';
+    const tokenFn = '#006400';
+    const tokenTy = '#008b8b';
+    const tokenVar = '#0000cd';
+
+    document.documentElement.style.setProperty('--accent-color', accent);
+    document.documentElement.style.setProperty('--action-bg-color', accent);
+    document.documentElement.style.setProperty('--action-text-color', '#ffffff');
+    document.documentElement.style.setProperty('--success-color', success);
+    document.documentElement.style.setProperty('--error-color', error);
+    document.documentElement.style.setProperty('--warning-color', warning);
+    document.documentElement.style.setProperty('--editor-background', editorBg);
+    document.documentElement.style.setProperty('--editor-foreground', editorFg);
+    document.documentElement.style.setProperty('--token-keyword', tokenKw);
+    document.documentElement.style.setProperty('--token-string', tokenStr);
+    document.documentElement.style.setProperty('--token-comment', tokenCmt);
+    document.documentElement.style.setProperty('--token-number', tokenNum);
+    document.documentElement.style.setProperty('--token-function', tokenFn);
+    document.documentElement.style.setProperty('--token-type', tokenTy);
+    document.documentElement.style.setProperty('--token-variable', tokenVar);
+    document.documentElement.style.setProperty('--term-background', termBg);
+    document.documentElement.style.setProperty('--term-foreground', termFg);
+    document.documentElement.style.setProperty('--term-cmdtext', termCmd);
+    document.documentElement.style.setProperty('--term-cursor-accent', termCursor);
+    // Hide custom panel after apply
+    customPanel.style.display = 'none';
+  });
+
+  // Initialize: apply first theme (wave-light) and mark active
+  renderThemes();
+  if (themes.length > 0) {
+    applyTheme(themes[0]);
+    themeList.firstChild.classList.add('active');
+  }
+</script>
+</body>
+</html>
