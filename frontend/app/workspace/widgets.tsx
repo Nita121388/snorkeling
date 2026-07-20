@@ -34,6 +34,11 @@ import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { ClaudeLogo, GeminiLogo, OpencodeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
+import {
+    CcSwitchVendor,
+    CcSwitchVendorList,
+    loadCcSwitchVendors,
+} from "@/app/workspace/ccswitch-vendors";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
@@ -325,6 +330,12 @@ type AgentTargetFloatingWindowProps = {
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
     onSetDefaultProfile: (profileName: string) => void;
+    // cc-switch后台 vendor 列表（Claude Code per-block vendor 选择；detected=false 时不渲染 vendor 行）
+    vendorOptions?: CcSwitchVendor[];
+    vendorDetected?: boolean;
+    selectedVendorId?: string;
+    onSelectVendor?: (id: string | undefined) => void;
+    onRefreshVendors?: () => void;
 };
 
 type TerminalTargetFloatingWindowProps = {
@@ -494,6 +505,11 @@ const AgentTargetFloatingWindow = memo(
         onCreateToExistingTab,
         onSetDefaultTarget,
         onSetDefaultProfile,
+        vendorOptions,
+        vendorDetected,
+        selectedVendorId,
+        onSelectVendor,
+        onRefreshVendors,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -652,6 +668,77 @@ const AgentTargetFloatingWindow = memo(
                         )}
                     </div>
 
+                    {/* cc-switch 业务 vendor（仅 claude profile）—— 来自 cc-switch，按方案1: chips 横向 wrap，与上方 profile chips 同款样式 */}
+                    {effectiveSelectedProfile === "claude" && vendorDetected !== false && Array.isArray(vendorOptions) && (
+                        <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-xxs text-muted">Vendor · from cc-switch</span>
+                                <button
+                                    type="button"
+                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
+                                    aria-label="Refresh cc-switch vendors"
+                                    title="Refresh"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onRefreshVendors?.();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-regular fa-rotate-right text-[10px]" />
+                                </button>
+                            </div>
+                            {vendorOptions.length === 0 ? (
+                                <div className="px-2 py-1.5 text-xs text-muted">No vendors</div>
+                            ) : (
+                                <div className="flex flex-wrap gap-0.5">
+                                    {vendorOptions.map((vendor) => {
+                                        const isSelected = selectedVendorId === vendor.id || (selectedVendorId == null && vendor.is_current);
+                                        return (
+                                            <div
+                                                key={vendor.id}
+                                                className={clsx(
+                                                    "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
+                                                    isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
+                                                )}
+                                                onClick={() => onSelectVendor?.(isSelected ? undefined : vendor.id)}
+                                            >
+                                                {isSelected && (
+                                                    <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-2 rounded-md text-xs font-medium border-none bg-transparent cursor-pointer"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onSelectVendor?.(isSelected ? undefined : vendor.id);
+                                                    }}
+                                                >
+                                                    <span
+                                                        className={clsx(
+                                                            "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
+                                                            isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
+                                                        )}
+                                                        style={{ background: "#888" }}
+                                                    />
+                                                    <span className={clsx(
+                                                        isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                                    )}>
+                                                        {vendor.name}
+                                                    </span>
+                                                    {vendor.is_current && (
+                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">·当前</span>
+                                                    )}
+                                                    {vendor.category === "official" && (
+                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">官方</span>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* path list */}
                     <div className="px-1 pb-1">
                         <div className="px-2 pt-2 pb-1 text-xxs text-muted">
@@ -748,7 +835,9 @@ const AgentTargetFloatingWindow = memo(
                                     const blockDef = createAgentBlockDefForTarget(
                                         settings,
                                         selectedTarget,
-                                        effectiveSelectedProfile
+                                        effectiveSelectedProfile,
+                                        vendorOptions,
+                                        selectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -776,7 +865,9 @@ const AgentTargetFloatingWindow = memo(
                                     const blockDef = createAgentBlockDefForTarget(
                                         settings,
                                         selectedTarget,
-                                        effectiveSelectedProfile
+                                        effectiveSelectedProfile,
+                                        vendorOptions,
+                                        selectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -805,7 +896,9 @@ const AgentTargetFloatingWindow = memo(
                                     const blockDef = createAgentBlockDefForTarget(
                                         settings,
                                         selectedTarget,
-                                        effectiveSelectedProfile
+                                        effectiveSelectedProfile,
+                                        vendorOptions,
+                                        selectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1212,6 +1305,11 @@ const Widgets = memo(() => {
     const [createToExistingTabRequest, setCreateToExistingTabRequest] = useState<CreateToExistingTabRequest | null>(
         null
     );
+    // cc-switch vendors (Claude Code providers). Loaded lazily when the New Agent floating window opens,
+    // so the user doesn't pay for an SQLite read until they actually need to pick a vendor.
+    const [ccSwitchVendors, setCcSwitchVendors] = useState<CcSwitchVendor[]>([]);
+    const [ccSwitchDetected, setCcSwitchDetected] = useState<boolean>(false);
+    const [ccSwitchSelectedVendorId, setCcSwitchSelectedVendorId] = useState<string | undefined>(undefined);
 
     const rawAgentProfileOptions = useMemo(
         () => getAgentProfileOptions(settings, agentCommandPaths),
@@ -1272,10 +1370,31 @@ const Widgets = memo(() => {
         };
     }, [env.services.client, settings]);
 
+    // Load cc-switch vendors when the New Agent floating window opens (lazy + module-cached in ccswitch-vendors.ts).
+    // Soft-degrades — if cc-switch isn't installed, we just get an empty vendor list + detected=false and the UI
+    // hides the vendor row entirely (graceful, never blocks agent launch).
+    const refreshCcSwitchVendors = useCallback((force: boolean) => {
+        fireAndForget(async () => {
+            const list = await loadCcSwitchVendors(force);
+            setCcSwitchVendors(list.vendors ?? []);
+            setCcSwitchDetected(Boolean(list.detected));
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!isAgentTargetOpen) {
+            return;
+        }
+        refreshCcSwitchVendors(false);
+    }, [isAgentTargetOpen, refreshCcSwitchVendors]);
+
     const closeAgentTargetSelector = useCallback(() => {
         setIsAgentTargetOpen(false);
         setAgentReferenceElement(null);
         setAgentTargets([]);
+        // Reset the per-launch vendor pick when the floating window closes: next open defaults to
+        // cc-switch's "is_current" vendor (highlighted chip), not whatever the user picked last time.
+        setCcSwitchSelectedVendorId(undefined);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -1838,6 +1957,11 @@ const Widgets = memo(() => {
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultAgentTarget}
                     onSetDefaultProfile={setDefaultAgentProfile}
+                    vendorOptions={ccSwitchVendors}
+                    vendorDetected={ccSwitchDetected}
+                    selectedVendorId={ccSwitchSelectedVendorId}
+                    onSelectVendor={setCcSwitchSelectedVendorId}
+                    onRefreshVendors={() => refreshCcSwitchVendors(true)}
                 />
             )}
             {terminalReferenceElement != null && (
