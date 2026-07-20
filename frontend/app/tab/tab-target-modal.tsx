@@ -5,6 +5,7 @@ import { Modal } from "@/app/modals/modal";
 import * as WOS from "@/app/store/wos";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { Button } from "@/element/button";
+import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 
@@ -34,15 +35,27 @@ const TabTargetRow = React.memo(
         return (
             <button
                 type="button"
-                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-hoverbg disabled:cursor-default disabled:opacity-60"
+                className={cn(
+                    "tab-target-row flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-hoverbg disabled:cursor-default",
+                    working && "is-working"
+                )}
                 disabled={disabled}
                 onClick={() => onSelect(tabId)}
             >
                 <div className="min-w-0">
                     <div className="truncate text-sm text-primary">{tabName}</div>
-                    <div className="truncate text-[11px] text-secondary">{tabId}</div>
+                    <div className="truncate text-[10.5px] leading-tight text-secondary">{tabId}</div>
                 </div>
-                <span className="shrink-0 text-xs text-secondary">{working ? workingLabel : actionLabel}</span>
+                <span className="tab-target-action shrink-0">
+                    {working ? (
+                        <span className="tab-target-spinner" aria-label={workingLabel} title={workingLabel} />
+                    ) : (
+                        <>
+                            <span className="tab-target-action-label text-xs text-secondary">{actionLabel}</span>
+                            <span className="tab-target-action-btn">{actionLabel}</span>
+                        </>
+                    )}
+                </span>
             </button>
         );
     }

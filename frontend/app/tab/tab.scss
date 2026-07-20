@@ -150,3 +150,77 @@ body.nohover .tab.active .close {
 .tab.new-tab {
     animation: expandWidthAndFadeIn 0.1s forwards;
 }
+
+// ── Move Block / Copy Block 弹窗: 视觉美化 (沿用 design token, 多主题自适应) ──
+// 决策 (2026-07-20): Move / Copy 都用 accent 主题色, 仅靠文字 + 微图标区分动作;
+// 行 hover 时静态文字 → 行内按钮抬起; working 行换成 spinner 替代 "Moving..." 文字.
+.tab-target-row {
+    &:disabled,
+    &.is-working {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+    // working 行右侧 spinner (替代静态 workingLabel 文字)
+    .tab-target-spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--action-bg-color);
+        border-radius: 50%;
+        animation: tab-target-spin 0.8s linear infinite;
+    }
+}
+
+@keyframes tab-target-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// 默认显示静态文字; 整行 hover 时文字隐藏 + 按钮抬起.
+// 按钮配色 = action token (bg-action / text-actiontext / hover bg-actionhover), 与 Move / Copy 一致,
+// 仅靠按钮文字区分动作 — 浅/深主题切换自动跟随.
+.tab-target-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+
+    .tab-target-action-label {
+        display: inline;
+    }
+    .tab-target-action-btn {
+        display: none;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 12px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+        border-radius: 5px;
+        border: 1px solid var(--action-bg-color);
+        background-color: var(--action-bg-color);
+        color: var(--action-text-color);
+        cursor: pointer;
+        transition: background-color 0.15s ease, transform 0.05s ease;
+
+        &:hover {
+            background-color: var(--action-hover-bg-color);
+            border-color: var(--action-hover-bg-color);
+        }
+        &:active {
+            transform: translateY(0.5px);
+        }
+    }
+}
+
+.tab-target-row:hover:not(:disabled):not(.is-working) {
+    .tab-target-action-label {
+        display: none;
+    }
+    .tab-target-action-btn {
+        display: inline-flex;
+    }
+}

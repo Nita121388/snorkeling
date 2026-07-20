@@ -2,18 +2,42 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>主题设计界面原型</title>
+<title>主题设计方案原型（嵌入真实设置面板外壳）</title>
+<!--
+  目的：本原型完全复用 frontend/app/view/waveconfig/waveconfig.tsx + themepicker.tsx 的真实结构，
+  让"Editor Theme Set"二级面板以真实尺寸、真实位置出现，方便看出在设置页里的实际效果。
+  - 外壳：左 192px sidebar（"Config Files"列表）+ 右主面板（p-6 overflow-auto）
+  - 上半段：复用现有 App Theme 4 模式卡片（system/light/dark/monochrome），原样照搬 themepicker.tsx
+  - 下半段：新增"Editor Theme Set"区块（仅当 App Theme = light 时解锁），6 套预设 + 自定义
+  - 卡片用 data-theme 局部 scope 变量，真实 MainAppThemeCss / MiniTermPreview 样式照搬
+-->
 <style>
-  :root {
-    /* Default values (wave-light) */
+  /* ====== 完全复刻 frontend/app/theme.scss 的 [data-theme="light"] 块 ====== */
+  [data-theme="light"] {
+    --main-text-color: #1f2328;
+    --secondary-text-color: #57606a;
+    --grey-text-color: #8c959f;
+    --main-bg-color: #faf7f0;
+    --panel-bg-color: rgba(255, 255, 255, 0.6);
+    --border-color: rgba(0, 0, 0, 0.12);
     --accent-color: rgb(88, 193, 66);
-    --action-bg-color: var(--accent-color);
+    --accent-hover-color: rgb(118, 223, 96);
+    --accent-bg-color: rgba(88, 193, 66, 0.18);
+    --action-bg-color: rgb(88, 193, 66);
+    --action-hover-bg-color: rgb(118, 223, 96);
     --action-text-color: #ffffff;
-    --success-color: rgb(78, 154, 6);
+    --action-soft-bg-color: rgba(88, 193, 66, 0.12);
+    --action-soft-text-color: rgb(63, 162, 51);
+    --action-soft-border-color: rgba(88, 193, 66, 0.3);
     --error-color: rgb(229, 77, 46);
-    --warning-color: rgb(224, 185, 86);
+    --warning-color: rgb(180, 140, 0);
+    --success-color: rgb(120, 180, 38);
+    --hover-bg-color: rgba(0, 0, 0, 0.04);
+    --block-bg-color: rgba(0, 0, 0, 0.02);
+    --block-bg-solid-color: #ffffff;
+    --secondary-bg-color: rgba(0, 0, 0, 0.04);
     --editor-background: #faf7f0;
-    --editor-foreground: #1f2937;
+    --editor-foreground: #1f2328;
     --token-keyword: #cf222e;
     --token-string: #0a3069;
     --token-comment: #6e7781;
@@ -22,492 +46,756 @@
     --token-type: #953800;
     --token-variable: #24292f;
     --term-background: #faf7f0;
-    --term-foreground: #1f2937;
-    --term-cmdtext: #1f2937;
+    --term-foreground: #1f2328;
+    --term-cmdtext: #1f2328;
     --term-cursor-accent: #faf7f0;
   }
-  body {
-    margin: 0;
-    font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: #0c0d10;
-    color: #f7f7f7;
-    display: flex;
-    height: 100vh;
+  /* ====== 完全复刻 [data-theme="dark"] 块（用于 sidebar + body 外壳） ====== */
+  [data-theme="dark"] {
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --panel-bg-color: rgba(31, 33, 31, 0.5);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --action-bg-color: rgb(88, 193, 66);
+    --action-hover-bg-color: rgb(118, 223, 96);
+    --action-text-color: #ffffff;
+    --action-soft-bg-color: rgba(88, 193, 66, 0.12);
+    --action-soft-text-color: rgb(110, 231, 133);
+    --action-soft-border-color: rgba(88, 193, 66, 0.3);
+    --error-color: rgb(229, 77, 46);
+    --warning-color: rgb(224, 185, 86);
+    --success-color: rgb(78, 154, 6);
+    --hover-bg-color: rgba(255, 255, 255, 0.1);
   }
-  #sidebar {
-    width: 260px;
-    background: #1a1b1e;
-    padding: 20px;
-    overflow-y: auto;
-    border-right: 1px solid rgba(255,255,255,0.1);
+
+  /* ===== 全局 reset + 字体，模拟 wave app root ===== */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: "Inter", system-ui, "Segoe UI", sans-serif;
+    font-size: 14px;
+    background: var(--main-bg-color, rgb(34,34,34));
+    color: var(--main-text-color, #f7f7f7);
   }
-  #preview {
-    flex: 1; 1px;
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
+  body { data-theme: dark; }
+  body { attribute: none; }
+
+  /* ===== 模拟 waveconfig.tsx 的整体布局 ===== */
+  #app-root { display: flex; height: 100vh; data-theme: dark; }
+  body { data-theme: dark; }
+
+  /* ===== 左侧 sidebar ——完全照搬 waveconfig.tsx ConfigSidebar ===== */
+  .config-sidebar {
+    width: 192px; /* w-48 */
+    border-right: 1px solid var(--border-color);
+    background: var(--main-bg-color);
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
   }
-  .theme-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    margin-bottom: 8px;
-    border-radius: 6px;
+  .sidebar-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--main-text-color);
+  }
+  .sidebar-item {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
     cursor: pointer;
-    border: 1px solid transparent;
+    transition: background-color 0.15s;
+    color: var(--secondary-text-color);
   }
-  .theme-item:hover, .theme-item.active {
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.2);
+  .sidebar-item:hover { background: var(--secondary-bg-color, rgba(255,255,255,0.06)); }
+  .sidebar-item.active {
+    background: var(--action-soft-bg-color);
+    color: var(--action-soft-text-color);
+    border-color: var(--action-soft-border-color);
   }
-  .theme-swatch {
-    display: flex;
-    gap: 6px;
+  .sidebar-item .item-name { font-size: 14px; }
+  .sidebar-item .item-desc { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+
+  /* ===== 右侧主面板 —— 完全照搬 themepicker.tsx 的 p-6 h-full overflow-auto ===== */
+  .main-panel {
+    flex: 1; min-width: 0;
+    padding: 24px; /* p-6 */
+    overflow: auto;
+    background: var(--main-bg-color);
   }
-  .swatch {
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
-  }
-  .theme-label {
-    font-size: 14px;
-  }
-  .preview-card {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.1);
+  .main-panel h2 { font-size: 20px; font-weight: 600; margin: 0 0 4px 0; }
+  .main-panel .subtitle { font-size: 13px; color: var(--secondary-text-color); margin: 0 0 16px 0; }
+  .section-divider { border-top: 1px solid var(--border-color); margin: 24px 0; }
+  .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--grey-text-color); margin: 16px 0 8px 0; }
+
+  /* ===== App Theme 卡片网格 (grid-cols-1 @md:grid-cols-3 gap-3) ===== */
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .theme-card {
+    position: relative;
+    border: 1px solid var(--border-color);
+    background: var(--panel-bg-color);
     border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
   }
-  .preview-title {
-    font-size: 14px;
-    margin-bottom: 8px;
-    color: #c0c0c0;
+  .theme-card:hover { border-color: var(--accent-color); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .theme-card.active {
+    border-color: var(--accent-color);
+    background: var(--accent-bg-color);
   }
-  /* Code snippet */
-  .code-block {
+  .theme-card.active::after {
+    content: "✓";
+    position: absolute; top: 6px; right: 8px;
+    color: var(--accent-color); font-size: 12px;
+  }
+  .theme-card .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .theme-card .card-icon { font-size: 16px; }
+  .theme-card .card-label { font-weight: 500; font-size: 14px; }
+  .theme-card .card-badge {
+    font-size: 10px; padding: 1px 6px;
+    background: var(--secondary-bg-color, rgba(0,0,0,0.06));
+    border-radius: 4px; color: var(--secondary-text-color);
+  }
+  .theme-card .card-desc { font-size: 12px; color: var(--secondary-text-color); margin-top: 8px; }
+
+  /* ===== MiniTermPreview —— 完全照搬 themepicker.tsx line 55-84 ===== */
+  .mini-term {
+    border-radius: 6px; overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .mini-term .term-bar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 6px;
+    background: var(--panel-bg-color);
+  }
+  .mini-term .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-red { background: var(--error-color); opacity: 0.8; }
+  .dot-yel { background: var(--warning-color); opacity: 0.8; }
+  .dot-grn { background: var(--success-color); opacity: 0.8; }
+  .mini-term .tab-pill {
+    margin-left: 6px; padding: 1px 6px;
+    font-size: 8px; font-weight: 500;
+    background: var(--action-soft-bg-color);
+    color: var(--action-soft-text-color);
+    border: 1px solid var(--action-soft-border-color);
+    border-radius: 2px;
+    min-width: 24px; text-align: center;
+  }
+  .mini-term .tab-ghost {
+    padding: 1px 6px; font-size: 8px;
+    color: var(--secondary-text-color);
+  }
+  .mini-term .term-body {
+    padding: 6px 8px;
+    font-family: "Hack", "Cascadia Code", monospace;
+    font-size: 9px;
+    line-height: 1.1;
+    background: var(--term-background);
+    color: var(--term-foreground);
+  }
+  .mini-term .term-prompt { color: var(--accent-color); }
+  .mini-term .term-out-success { color: var(--success-color); }
+  .mini-term .term-btn-row { display: flex; gap: 4px; margin-top: 4px; }
+  .mini-term .term-btn-primary {
+    padding: 1px 4px; font-size: 7px; font-weight: 600;
+    background: var(--action-bg-color);
+    color: var(--action-text-color);
+    border-radius: 2px;
+  }
+  .mini-term .term-btn-ghost {
+    padding: 1px 4px; font-size: 7px;
+    border: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+    border-radius: 2px;
+  }
+
+  /* ===== Editor Theme Set 区块专用 ===== */
+  .theme-block-locked {
+    opacity: 0.45; pointer-events: none;
+    filter: grayscale(0.6);
+  }
+  .lock-hint {
+    font-size: 11px; color: var(--warning-color);
+    margin-top: 4px;
+  }
+  .lock-hint.i { font-style: normal; }
+
+  /* swatch 行 —— 加上 editorBg 与 foreground 两槽（R11） */
+  .swatch-row {
+    display: flex; gap: 4px; margin: 6px 0 4px 0;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    height: 24px;
+  }
+  .swatch-row .swatch { flex: 1; height: 100%; }
+  .swatch-row .swatch.bg { flex: 2.2; } /* editorBg 占更大 */
+  .swatch-row .swatch.fg { flex: 1.2; }
+  .swatch-row .swatch + .swatch { border-left: 1px solid rgba(0,0,0,0.08); }
+
+  /* code-mini-strip —— 1 行代码示例代替纯色块,更代表主题气质 */
+  .code-mini-strip {
+    margin: 4px 0 6px 0;
+    padding: 4px 6px;
     background: var(--editor-background);
     color: var(--editor-foreground);
+    border-radius: 4px;
+    font-family: "Hack", "Cascadia Code", monospace;
+    font-size: 9px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tok-kw { color: var(--token-keyword); }
+  .tok-str { color: var(--token-string); }
+  .tok-cmt { color: var(--token-comment); }
+  .tok-num { color: var(--token-number); }
+  .tok-fn { color: var(--token-function); }
+
+  /* large preview —— 真实编辑器/终端/按钮组合,看主题全貌 */
+  .large-preview {
+    border: 1px solid var(--border-color);
+    background: var(--block-bg-solid-color, #ffffff);
+    border-radius: 8px;
     padding: 12px;
+    margin-bottom: 16px;
+  }
+  .large-preview .lp-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--grey-text-color); margin-bottom: 6px;
+  }
+  .large-code {
+    background: var(--editor-background);
+    color: var(--editor-foreground);
+    padding: 10px;
     border-radius: 6px;
-    font-family: "Hack", monospace;
-    font-size: 13px;
+    font-family: "Hack", "Cascadia Code", monospace;
+    font-size: 12px;
+    line-height: 1.5;
     white-space: pre;
     overflow-x: auto;
   }
-  /* Terminal line */
-  .term-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-  }
-  .term-prompt {
-    color: var(--term-foreground);
-    min-width: 2ch;
-  }
-  .term-input {
-    color: var(--term-cmdtext);
+  .large-term {
     background: var(--term-background);
-    border: none;
-    outline: none;
-    padding: 2px 4px;
+    color: var(--term-foreground);
+    padding: 8px 10px;
+    border-radius: 6px;
     font-family: "Hack", monospace;
-    font-size: 13px;
+    font-size: 12px;
   }
-  /* Buttons */
-  .btn-group {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
+  .large-term .t-prompt { color: var(--accent-color); margin-right: 6px; }
+  .large-term .t-out-ok { color: var(--success-color); }
+  .large-term .t-out-err { color: var(--error-color); }
+  .large-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
   .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 4px;
+    padding: 4px 12px; border-radius: 4px;
+    font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border-color);
     background: transparent;
-    color: var(--secondary-text-color, #c0c0c0);
-    cursor: pointer;
-    font-size: 14px;
+    color: var(--main-text-color);
+    transition: all 0.15s;
   }
-  .btn:hover {
-    background: rgba(255,255,255,0.1);
-    color: var(--main-text-color, #f7f7f7);
+  .btn:hover { background: var(--hover-bg-color); }
+  .btn-accent {
+    background: var(--action-bg-color);
+    color: var(--action-text-color);
+    border-color: var(--action-bg-color);
   }
-  .btn-success { color: var(--success-color); }
-  .btn-error { color: var(--error-color); }
-  .btn-warning { color: var(--warning-color); }
-  .btn-accent { background: var(--action-bg-color); color: var(--action-text-color); }
-  /* Status messages */
-  .msg {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 6px 0;
-    font-size: 13px;
-  }
-  .msg-success { color: var(--success-color); }
-  .msg-error { color: var(--error-color); }
-  .msg-warning { color: var(--warning-color); }
-  .msg-spacer { flex: 1; }
-  /* Custom theme panel (simple) */
-  #custom-panel {
-    display: none;
-    margin-top: 20px;
-    padding: 16px;
-    background: rgba(255,255,255,0.05);
+  .btn-accent:hover { background: var(--action-hover-bg-color); }
+  .btn-success { color: var(--success-color); border-color: var(--success-color); }
+  .btn-error { color: var(--error-color); border-color: var(--error-color); }
+  .btn-warning { color: var(--warning-color); border-color: var(--warning-color); }
+  .msg-row { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; }
+  .msg-ok { color: var(--success-color); }
+  .msg-err { color: var(--error-color); }
+  .msg-warn { color: var(--warning-color); }
+
+  /* ===== 自定义面板 (R3/R4 修复: 6 个核心 color picker + 重置) ===== */
+  .custom-panel {
+    border: 1px dashed var(--border-color);
     border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+    background: var(--panel-bg-color);
   }
-  #custom-panel label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 13px;
-    color: #c0c0c0;
-  }
-  #custom-panel input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid rgba(255,255,255,0.2);
+  .custom-panel .cp-title { font-weight: 500; font-size: 14px; margin-bottom: 4px; }
+  .custom-panel .cp-hint { font-size: 11px; color: var(--secondary-text-color); margin-bottom: 10px; }
+  .custom-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .custom-field label { display: block; font-size: 11px; color: var(--secondary-text-color); margin-bottom: 4px; }
+  .custom-field .ctl { display: flex; gap: 6px; align-items: center; }
+  .custom-field input[type="color"] {
+    width: 32px; height: 28px;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
-    background: rgba(0,0,0,0.4);
-    color: #f7f7f7;
-    font-size: 13px;
-    margin-bottom: 12px;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
   }
-  #custom-panel .btn {
-    width: auto;
-    padding: 6px 12px;
+  .custom-field input[type="text"] {
+    flex: 1; min-width: 0;
+    padding: 4px 6px;
+    background: var(--block-bg-solid-color, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--editor-foreground);
+    font-family: "Hack", monospace;
+    font-size: 11px;
   }
+  .custom-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  .note { font-size: 11px; color: var(--grey-text-color); margin-top: 6px; font-style: italic; }
 </style>
 </head>
-<body>
-<div id="sidebar">
-  <h2 style="margin-top:0;font-size:16px;color:#c0c0c0;">主题选择</h2>
-  <div id="theme-list">
-    <!-- Will be filled by JS -->
-  </div>
-  <div id="custom-panel">
-    <h3 style="margin-top:0;font-size:14px;color:#c0c0c0;">自定义主题</h3>
-    <label>主色 (Accent): <input type="color" id="accent-picker" value="#58c162"></label>
-    <button id="apply-custom" class="btn">应用</button>
-  </div>
-</div>
-<div id="preview">
-  <div class="preview-card">
-    <div class="preview-title">代码编辑器预览</div>
-    <div class="code-block" id="code-preview">
-function helloWorld(name: string): void {
-  // This is a comment
-  const msg = `Hello, ${name}!`;
-  console.log(msg);
-  if (name.length > 0) {
-    return;
-  }
-  throw new Error("Name is empty");
-}
+<body data-theme="dark">
+
+<div id="app-root" data-theme="dark">
+  <!-- ====== 模拟 waveconfig.tsx 的 ConfigSidebar ====== -->
+  <aside class="config-sidebar" data-theme="dark">
+    <div class="sidebar-header">Config Files</div>
+    <div class="sidebar-item">
+      <div class="item-name">General</div>
+      <div class="item-desc">settings.json</div>
     </div>
-  </div>
-  <div class="preview-card">
-    <div class="preview-title">终端预览</div>
-    <div class="term-line">
-      <span class="term-prompt">λ </span>
-      <input class="term-input" placeholder="ls -la" />
+    <div class="sidebar-item">
+      <div class="item-name">Common Text</div>
+      <div class="item-desc">Reusable snippets</div>
     </div>
-    <div class="term-line">
-      <span class="term-prompt">λ </span>
-      <input class="term-input" placeholder="git status" />
+    <div class="sidebar-item active">
+      <div class="item-name">App Theme</div>
+      <div class="item-desc">Light / Dark / Mono / System</div>
     </div>
-  </div>
-  <div class="preview-card">
-    <div class="preview-title">按钮与状态</div>
-    <div class="btn-group">
-      <button class="btn btn-accent">主要按钮</button>
-      <button class="btn">次要按钮</button>
-      <button class="btn btn-success">成功</button>
-      <button class="btn btn-error">错误</button>
-      <button class="btn btn-warning">警告</button>
+    <div class="sidebar-item">
+      <div class="item-name">Connections</div>
+      <div class="item-desc">SSH hosts</div>
     </div>
-    <div class="msg">
-      <span class="msg-spacer"></span>
-      <span class="msg-success">✓ 操作成功</span>
+    <div class="sidebar-item">
+      <div class="item-name">Wave AI Modes</div>
+      <div class="item-desc">Local models & BYOK</div>
     </div>
-    <div class="msg">
-      <span class="msg-spacer"></span>
-      <span class="msg-error">✗ 操作失败</span>
+    <div class="sidebar-item">
+      <div class="item-name">Tab Backgrounds</div>
     </div>
-    <div class="msg">
-      <span class="msg-spacer"></span>
-      <span class="msg-warning">⚠️ 警告信息</span>
+  </aside>
+
+  <!-- ====== 主面板（themepicker.tsx 的容器 + 新增 Editor Theme Set 子段） ====== -->
+  <main class="main-panel" data-theme="light">
+
+    <!-- 上半段：现有 App Theme 4 模式卡片，原样照搬 themepicker.tsx -->
+    <h2>App Theme</h2>
+    <p class="subtitle">Choose the appearance of the Wave interface. Hover a card to preview, click to apply. Terminal and editor follow automatically.</p>
+    <div class="card-grid" id="app-theme-grid">
+      <!-- 4 张卡片由 JS 渲染：system / light / dark / monochrome -->
     </div>
-  </div>
+
+    <div class="section-divider"></div>
+
+    <!-- 下半段：新增 Editor Theme Set 二级面板（仅 light 模式下解锁） -->
+    <div id="theme-set-section">
+      <h2>Editor Theme Set</h2>
+      <p class="subtitle">Fine-grained visual style for code editor / terminal / buttons / status colors. Active only when App Theme = Light.</p>
+      <div class="card-grid" id="theme-set-grid">
+        <!-- 6 套预设 + 自定义 由 JS 渲染 -->
+      </div>
+
+      <!-- 大预览区：真实编辑器/终端/按钮组合 -->
+      <div class="section-divider"></div>
+      <h2 style="font-size:16px;">Live Preview <span class="subtitle" style="font-size:12px;">(应用所选主题后,这一段会实时换风格)</span></h2>
+      <div class="large-preview" id="live-preview">
+        <div class="lp-title">Code Editor</div>
+        <div class="large-code" id="lp-code"></div>
+      </div>
+      <div class="large-preview">
+        <div class="lp-title">Terminal</div>
+        <div class="large-term">
+          <div><span class="t-prompt">❯</span>npm run build</div>
+          <div class="t-out-ok">✓ built in 1.4s</div>
+          <div><span class="t-prompt">❯</span>git status</div>
+          <div class="t-out-err">✗ nothing to commit, working tree clean</div>
+        </div>
+      </div>
+      <div class="large-preview">
+        <div class="lp-title">Buttons & Status</div>
+        <div class="large-btns">
+          <button class="btn btn-accent">主要按钮</button>
+          <button class="btn">次要按钮</button>
+          <button class="btn btn-success">成功</button>
+          <button class="btn btn-error">错误</button>
+          <button class="btn btn-warning">警告</button>
+        </div>
+        <div class="msg-row">
+          <span class="msg-ok">✓ 操作成功</span>
+          <span class="msg-err">✗ 操作失败</span>
+          <span class="msg-warn">⚠ 警告信息</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="lock-hint-bar" class="lock-hint i" style="display:none;">
+      ⚠ Editor Theme Set 仅在 App Theme = Light 时可用,当前为暗色模式所以面板已锁定。
+    </div>
+
+  </main>
 </div>
 
 <script>
-  // Define theme data
-  const themes = [
+  /* ============ 主题套装数据（评审后修复过的 6 套 + 自定义） ============ */
+  const THEME_SETS = [
     {
-      key: 'wave-light',
-      label: 'Wave Light',
+      key: "wave-light", label: "Wave Light", isDefault: true,
       vars: {
-        '--accent-color': 'rgb(88, 193, 66)',
-        '--action-bg-color': 'rgb(88, 193, 66)',
-        '--action-text-color': '#ffffff',
-        '--success-color': 'rgb(78, 154, 6)',
-        '--error-color': 'rgb(229, 77, 46)',
-        '--warning-color': 'rgb(224, 185, 86)',
-        '--editor-background': '#faf7f0',
-        '--editor-foreground': '#1f2937',
-        '--token-keyword': '#cf222e',
-        '--token-string': '#0a3069',
-        '--token-comment': '#6e7781',
-        '--token-number': '#0550ae',
-        '--token-function': '#8250df',
-        '--token-type': '#953800',
-        '--token-variable': '#24292f',
-        '--term-background': '#faf7f0',
-        '--term-foreground': '#1f2937',
-        '--term-cmdtext': '#1f2937',
-        '--term-cursor-accent': '#faf7f0'
+        "--accent-color": "rgb(88, 193, 66)", "--action-bg-color": "rgb(88, 193, 66)",
+        "--action-text-color": "#ffffff",
+        "--success-color": "rgb(120, 180, 38)", "--error-color": "rgb(229, 77, 46)",
+        "--warning-color": "rgb(180, 140, 0)",
+        "--editor-background": "#faf7f0", "--editor-foreground": "#1f2328",
+        "--token-keyword": "#cf222e", "--token-string": "#0a3069", "--token-comment": "#6e7781",
+        "--token-number": "#0550ae", "--token-function": "#8250df", "--token-type": "#953800",
+        "--token-variable": "#24292f",
+        "--term-background": "#faf7f0", "--term-foreground": "#1f2328",
+        "--term-cmdtext": "#1f2328", "--term-cursor-accent": "#faf7f0",
       }
     },
     {
-      key: 'github-light',
-      label: 'GitHub Light',
+      key: "github-light", label: "GitHub Light",
       vars: {
-        '--accent-color': '#0969da',
-        '--action-bg-color': '#0969da',
-        '--action-text-color': '#ffffff',
-        '--success-color': '#28a745',
-        '--error-color': '#d9534f',
-        '--warning-color': '#ffc107',
-        '--editor-background': '#ffffff',
-        '--editor-foreground': '#24292f',
-        '--token-keyword': '#cf222e',
-        '--token-string': '#0a3069',
-        '--token-comment': '#6e7781',
-        '--token-number': '#0550ae',
-        '--token-function': '#8250df',
-        '--token-type': '#953800',
-        '--token-variable': '#24292f',
-        '--term-background': '#faf7f0',
-        '--term-foreground': '#1f2937',
-        '--term-cmdtext': '#1f2937',
-        '--term-cursor-accent': '#faf7f0'
+        "--accent-color": "#0969da", "--action-bg-color": "#0969da", "--action-text-color": "#ffffff",
+        "--success-color": "#28a745", "--error-color": "#d1242f", "--warning-color": "#bf8700",
+        "--editor-background": "#ffffff", "--editor-foreground": "#24292f",
+        "--token-keyword": "#cf222e", "--token-string": "#0a3069", "--token-comment": "#6e7781",
+        "--token-number": "#0550ae", "--token-function": "#8250df", "--token-type": "#953800",
+        "--token-variable": "#24292f",
+        "--term-background": "#f6f8fa", "--term-foreground": "#24292f",
+        "--term-cmdtext": "#24292f", "--term-cursor-accent": "#f6f8fa",
       }
     },
     {
-      key: 'catppuccin-latte',
-      label: 'Catppuccin Latte',
+      key: "catppuccin-latte", label: "Catppuccin Latte",
       vars: {
-        '--accent-color': '#8839ef',
-        '--action-bg-color': '#8839ef',
-        '--action-text-color': '#ffffff',
-        '--success-color': '#40a02b',
-        '--error-color': '#ed8796',
-        '--warning-color': '#f5e0dc',
-        '--editor-background': '#eff1f5',
-        '--editor-foreground': '#4c4f69',
-        '--token-keyword': '#8839ef',
-        '--token-string': '#40a02b',
-        '--token-comment': '#9ca0b8',
-        '--token-number': '#b5bd68',
-        '--token-function': '#82aaff',
-        '--token-type': '#a6e3a1',
-        '--token-variable': '#cad3f5',
-        '--term-background': '#eff1f5',
-        '--term-foreground': '#4c4f69',
-        '--term-cmdtext': '#4c4f69',
-        '--term-cursor-accent': '#eff1f5'
+        "--accent-color": "#8839ef", "--action-bg-color": "#8839ef", "--action-text-color": "#eff1f5",
+        "--success-color": "#40a02b", "--error-color": "#d20f39", "--warning-color": "#df8b1f",
+        "--editor-background": "#eff1f5", "--editor-foreground": "#4c4f69",
+        "--token-keyword": "#8839ef", "--token-string": "#40a02b", "--token-comment": "#9ca0b8",
+        "--token-number": "#fe640b", "--token-function": "#1e66f5", "--token-type": "#ea76cb",
+        "--token-variable": "#5c5f77",
+        "--term-background": "#e6e9ef", "--term-foreground": "#4c4f69",
+        "--term-cmdtext": "#4c4f69", "--term-cursor-accent": "#e6e9ef",
       }
     },
     {
-      key: 'rose-pine-dawn',
-      label: 'Rose Pine Dawn',
+      key: "rose-pine-dawn", label: "Rose Pine Dawn",
       vars: {
-        '--accent-color': '#907aa9',
-        '--action-bg-color': '#907aa9',
-        '--action-text-color': '#ffffff',
-        '--success-color': '#ea9d34',
-        '--error-color': '#d7827e',
-        '--warning-color': '#e0def4',
-        '--editor-background': '#faf4ed',
-        '--editor-foreground': '#575279',
-        '--token-keyword': '#907aa9',
-        '--token-string': '#dbb34f',
-        '--token-comment': '#6e6a86',
-        '--token-number': '#f6c177',
-        '--token-function': '#eb6f92',
-        '--token-type': '#3e8fb0',
-        '--token-variable': '#ebcb8b',
-        '--term-background': '#faf4ed',
-        '--term-foreground': '#575279',
-        '--term-cmdtext': '#575279',
-        '--term-cursor-accent': '#faf4ed'
+        "--accent-color": "#907aa9", "--action-bg-color": "#907aa9", "--action-text-color": "#faf4ed",
+        "--success-color": "#ea9d34", "--error-color": "#eb6f92", "--warning-color": "#dfad4e",
+        "--editor-background": "#faf4ed", "--editor-foreground": "#575279",
+        "--token-keyword": "#907aa9", "--token-string": "#d7827e", "--token-comment": "#9893a5",
+        "--token-number": "#f6c177", "--token-function": "#56949f", "--token-type": "#d7827e",
+        "--token-variable": "#286983",
+        "--term-background": "#faf4ed", "--term-foreground": "#575279",
+        "--term-cmdtext": "#575279", "--term-cursor-accent": "#faf4ed",
       }
     },
     {
-      key: 'ocean',
-      label: 'Ocean',
+      key: "ocean", label: "Ocean",
       vars: {
-        '--accent-color': '#4169e1',
-        '--action-bg-color': '#4169e1',
-        '--action-text-color': '#ffffff',
-        '--success-color': '#20b2aa',
-        '--error-color': '#dc143c',
-        '--warning-color': '#ffa500',
-        '--editor-background': '#f0f8ff',
-        '--editor-foreground': '#000000',
-        '--token-keyword': '#4169e1',
-        '--token-string': '#8b0000',
-        '--token-comment': '#008000',
-        '--token-number': '#b22222',
-        '--token-function': '#ff8c00',
-        '--token-type': '#006400',
-        '--token-variable': '#0000ff',
-        '--term-background': '#f0f8ff',
-        '--term-foreground': '#000000',
-        '--term-cmdtext': '#000000',
-        '--term-cursor-accent': '#f0f8ff'
+        "--accent-color": "#2a6fb4", "--action-bg-color": "#2a6fb4", "--action-text-color": "#ffffff",
+        "--success-color": "#0f9b6e", "--error-color": "#d1242f", "--warning-color": "#cf8a1a",
+        "--editor-background": "#f0f6fb", "--editor-foreground": "#243b53",
+        "--token-keyword": "#2a6fb4", "--token-string": "#0f9b6e", "--token-comment": "#7d8a9c",
+        "--token-number": "#b56b2c", "--token-function": "#7c5cc4", "--token-type": "#5688c5",
+        "--token-variable": "#485f6e",
+        "--term-background": "#f0f6fb", "--term-foreground": "#243b53",
+        "--term-cmdtext": "#243b53", "--term-cursor-accent": "#f0f6fb",
       }
     },
     {
-      key: 'fresh-green',
-      label: 'Fresh Green',
+      key: "fresh-green", label: "Fresh Green",
       vars: {
-        '--accent-color': '#228b22',
-        '--action-bg-color': '#228b22',
-        '--action-text-color': '#ffffff',
-        '--success-color': '#228b22',
-        '--error-color': '#b22222',
-        '--warning-color': '#ffd700',
-        '--editor-background': '#f5fff5',
-        '--editor-foreground': '#000000',
-        '--token-keyword': '#228b22',
-        '--token-string': '#006400',
-        '--token-comment': '#008000',
-        '--token-number': '#8b0000',
-        '--token-function': '#ff0000',
-        '--token-type': '#008000',
-        '--token-variable': '#0000cd',
-        '--term-background': '#f5fff5',
-        '--term-foreground': '#000000',
-        '--term-cmdtext': '#000000',
-        '--term-cursor-accent': '#f5fff5'
+        "--accent-color": "#3a9d3a", "--action-bg-color": "#3a9d3a", "--action-text-color": "#ffffff",
+        "--success-color": "#4caf50", "--error-color": "#c62828", "--warning-color": "#d97706",
+        "--editor-background": "#f5faf5", "--editor-foreground": "#1f3a1f",
+        "--token-keyword": "#2a6f2a", "--token-string": "#0f6b3a", "--token-comment": "#6e8a6e",
+        "--token-number": "#b5722c", "--token-function": "#d97706", "--token-type": "#3a8a8a",
+        "--token-variable": "#1f4a8a",
+        "--term-background": "#f5faf5", "--term-foreground": "#1f3a1f",
+        "--term-cmdtext": "#1f3a1f", "--term-cursor-accent": "#f5faf5",
       }
-    }
+    },
   ];
 
-  const themeList = document.getElementById('theme-list');
-  const customPanel = document.getElementById('custom-panel');
-  const accentPicker = document.getElementById('accent-picker');
-  const applyCustomBtn = document.getElementById('apply-custom');
+  /* App Theme 4 模式卡片数据(照搬 themepicker.tsx CARDS) */
+  const APP_THEME_CARDS = [
+    { mode: "system", label: "System", icon: "◐", description: "Follow OS appearance" },
+    { mode: "light", label: "Light", icon: "☀", description: "Always light" },
+    { mode: "dark", label: "Dark", icon: "☾", description: "Always dark" },
+    { mode: "monochrome", label: "Monochrome", icon: "●", description: "Black & white" },
+  ];
 
-  function renderThemes() {
-    themeList.innerHTML = '';
-    themes.forEach(t => {
-      const div = document.createElement('div');
-      div.className = 'theme-item';
-      div.dataset.key = t.key;
+  /* ============ 状态 ============ */
+  let activeAppTheme = "light";     // 模拟 app:theme
+  let activeThemeSet = "wave-light"; // 模拟 editor:themeSet
+
+  /* ============ 渲染 App Theme 4 卡 ============ */
+  function renderAppThemeGrid() {
+    const grid = document.getElementById("app-theme-grid");
+    grid.innerHTML = "";
+    APP_THEME_CARDS.forEach(card => {
+      const div = document.createElement("div");
+      div.className = "theme-card" + (card.mode === activeAppTheme ? " active" : "");
+      // 卡片用对应 mode 局部 scope(预览),system 用 light 占位
+      const previewTheme = card.mode === "system" ? "light" : card.mode;
+      div.setAttribute("data-theme", previewTheme);
       div.innerHTML = `
-        <div class="theme-swatch">
-          <div class="swatch" style="background:${t.vars['--accent-color']}"></div>
-          <div class="swatch" style="background:${t.vars['--success-color']}"></div>
-          <div class="swatch" style="background:${t.vars['--error-color']}"></div>
-          <div class="swatch" style="background:${t.vars['--warning-color']}"></div>
+        <div class="card-header">
+          <span class="card-icon">${card.icon}</span>
+          <span class="card-label">${card.label}</span>
+          ${card.mode === "system" ? '<span class="card-badge">OS: light</span>' : ""}
         </div>
-        <div class="theme-label">${t.label}</div>
+        ${miniTermHtml()}
+        <div class="card-desc">${card.description}</div>
       `;
-      div.addEventListener('click', () => {
-        applyTheme(t);
-        document.querySelectorAll('.theme-item').forEach(el => el.classList.remove('active'));
-        div.classList.add('active');
+      div.addEventListener("click", () => {
+        activeAppTheme = card.mode;
+        renderAppThemeGrid();
+        updateLockState();
       });
-      themeList.appendChild(div);
+      grid.appendChild(div);
     });
-    // Add custom item
-    const customDiv = document.createElement('div');
-    customDiv.className = 'theme-item';
-    customDiv.innerHTML = `
-      <div class="theme-swatch">
-        <div class="swatch" style="background:#888"></div>
-        <div class="swatch" style="background:#888"></div>
-        <div class="swatch" style="background:#888"></div>
-        <div class="swatch" style="background:#888"></div>
+  }
+
+  function miniTermHtml() {
+    return `
+      <div class="mini-term">
+        <div class="term-bar">
+          <span class="dot dot-red"></span><span class="dot dot-yel"></span><span class="dot dot-grn"></span>
+          <span class="tab-pill">tab</span>
+          <span class="tab-ghost">tab</span>
+        </div>
+        <div class="term-body">
+          <div><span class="term-prompt">❯</span> run build</div>
+          <div class="term-out-success">✓ done in 1.4s</div>
+          <div class="term-btn-row">
+            <span class="term-btn-primary">Run</span>
+            <span class="term-btn-ghost">Cancel</span>
+          </div>
+        </div>
       </div>
-      <div class="theme-label">+ 自定义</div>
     `;
-    customDiv.addEventListener('click', () => {
-      customPanel.style.display = customPanel.style.display === 'none' ? 'block' : 'none';
+  }
+
+  /* ============ 渲染 Editor Theme Set 6 套 + 自定义 ============ */
+  function renderThemeSetGrid() {
+    const grid = document.getElementById("theme-set-grid");
+    grid.innerHTML = "";
+    THEME_SETS.forEach(set => {
+      const div = document.createElement("div");
+      div.className = "theme-card" + (set.key === activeThemeSet ? " active" : "");
+      // 把卡片 scope 设为 light(因为 Editor Theme Set 仅 light 下可用),
+      // 然后在卡片内联 style 注入该 set 的变量(模拟"局部预览")
+      div.setAttribute("data-theme", "light");
+      div.setAttribute("data-set", set.key);
+      div.innerHTML = `
+        <div class="card-header">
+          <span class="card-label">${set.label}</span>
+          ${set.isDefault ? '<span class="card-badge">默认</span>' : ""}
+        </div>
+        <!-- swatch 6 槽:editorBg / fg / accent / success / error / warning -->
+        <div class="swatch-row" style="background:${set.vars["--editor-background"]};">
+          <div class="swatch bg" style="background:${set.vars["--editor-background"]};"></div>
+          <div class="swatch fg" style="background:${set.vars["--editor-foreground"]};"></div>
+          <div class="swatch" style="background:${set.vars["--accent-color"]};"></div>
+          <div class="swatch" style="background:${set.vars["--success-color"]};"></div>
+          <div class="swatch" style="background:${set.vars["--error-color"]};"></div>
+          <div class="swatch" style="background:${set.vars["--warning-color"]};"></div>
+        </div>
+        <!-- code-mini-strip: 1 行代码示例,看主题气质 -->
+        <div class="code-mini-strip" style="
+          --editor-background:${set.vars["--editor-background"]};
+          --editor-foreground:${set.vars["--editor-foreground"]};
+          --token-keyword:${set.vars["--token-keyword"]};
+          --token-string:${set.vars["--token-string"]};
+          --token-comment:${set.vars["--token-comment"]};
+          --token-number:${set.vars["--token-number"]};
+          --token-function:${set.vars["--token-function"]};
+          background:var(--editor-background); color:var(--editor-foreground);
+        ">
+          <span class="tok-kw">const</span> <span class="tok-fn">hello</span> = <span class="tok-str">"world"</span>; <span class="tok-cmt">// 42</span>
+        </div>
+        <div class="card-desc">${set.key === "wave-light" ? "Wave 默认浅色,米色背景 + GitHub 系语法。" :
+          set.key === "github-light" ? "GitHub 浅色,纯白底,主流语法。" :
+          set.key === "catppuccin-latte" ? "柔和奶咖色,适合长时间阅读。" :
+          set.key === "rose-pine-dawn" ? "玫瑰黎明,低饱和暖调。" :
+          set.key === "ocean" ? "海洋蓝绿,沉稳深蓝主色。" :
+          "清新森林绿,绿色 accent + 偏冷语法。"}</div>
+      `;
+      // 注入该 set 的所有变量到卡片 scope,让 mini-term/code-mini 用上
+      Object.entries(set.vars).forEach(([k, v]) => {
+        div.style.setProperty(k, v);
+      });
+      div.addEventListener("click", () => {
+        activeThemeSet = set.key;
+        applyThemeToMain(set);
+        renderThemeSetGrid();
+      });
+      grid.appendChild(div);
     });
-    themeList.appendChild(customDiv);
-  }
 
-  function applyTheme(theme) {
-    for (const [varName, value] of Object.entries(theme.vars)) {
-      document.documentElement.style.setProperty(varName, value);
+    // "+ 自定义" 卡片
+    const custom = document.createElement("div");
+    custom.className = "theme-card";
+    custom.setAttribute("data-theme", "light");
+    custom.style.borderStyle = "dashed";
+    custom.innerHTML = `
+      <div class="card-header">
+        <span class="card-label" style="color:var(--secondary-text-color);">+ 自定义</span>
+      </div>
+      <div class="swatch-row" style="background:repeating-linear-gradient(45deg, var(--block-bg-solid-color, #fff) 0 6px, var(--secondary-bg-color, rgba(0,0,0,0.04)) 6px 12px);">
+        <div class="swatch bg" style="background:transparent;"></div>
+        <div class="swatch" style="background:transparent;"></div>
+        <div class="swatch" style="background:transparent;"></div>
+        <div class="swatch" style="background:transparent;"></div>
+        <div class="swatch" style="background:transparent;"></div>
+        <div class="swatch" style="background:transparent;"></div>
+      </div>
+      <div class="card-desc">自选 6 个核心颜色,其它用 HSL 派生。</div>
+    `;
+    custom.addEventListener("click", () => {
+      const panel = document.getElementById("custom-panel");
+      if (panel) panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+    grid.appendChild(custom);
+
+    // 自定义面板(放在 grid 下方)
+    let cp = document.getElementById("custom-panel");
+    if (!cp) {
+      cp = document.createElement("div");
+      cp.id = "custom-panel";
+      cp.className = "custom-panel";
+      cp.style.display = "none";
+      cp.innerHTML = `
+        <div class="cp-title">自定义主题</div>
+        <div class="cp-hint">挑 6 个核心颜色。其余 token 会用 HSL 旋转派生。点"重置回预设"清掉自定义,回到所选预设。</div>
+        <div class="custom-grid">
+          ${["accent","action-bg","success","error","warning","editor-bg"].map(k => `
+            <div class="custom-field">
+              <label>${k}</label>
+              <div class="ctl">
+                <input type="color" data-var="${k}" value="#3a9d3a">
+                <input type="text" data-var-text="${k}" value="#3a9d3a">
+              </div>
+            </div>`).join("")}
+        </div>
+        <div class="custom-actions">
+          <button class="btn btn-accent" id="apply-custom">应用并持久化</button>
+          <button class="btn" id="reset-custom">重置回预设</button>
+        </div>
+        <div class="note">[评审 R4 修复] 应用时会调用 RpcApi.SetConfigCommand("editor:themeSetCustom", {...}) 写入 settings.json,刷新后自动恢复。</div>
+      `;
+      document.getElementById("theme-set-section").appendChild(cp);
+
+      // color <-> text 同步
+      cp.querySelectorAll("input[type='color']").forEach(p => {
+        p.addEventListener("input", e => {
+          const k = e.target.dataset.var;
+          cp.querySelector(`input[data-var-text="${k}"]`).value = e.target.value;
+        });
+      });
+      cp.querySelectorAll("input[type='text']").forEach(t => {
+        t.addEventListener("change", e => {
+          const k = e.target.dataset.varText;
+          const v = e.target.value;
+          if (/^#[0-9a-f]{6}$/i.test(v)) cp.querySelector(`input[data-var="${k}"]`).value = v;
+        });
+      });
+      document.getElementById("apply-custom").addEventListener("click", applyCustom);
+      document.getElementById("reset-custom").addEventListener("click", resetCustom);
     }
-    // Update preview
-    updatePreview();
   }
 
-  function updatePreview() {
-    // Nothing needed as CSS variables already update the preview
+  function applyCustom() {
+    const get = k => document.querySelector(`#custom-panel input[data-var="${k}"]`).value;
+    const accent = get("accent");
+    const actionBg = get("action-bg");
+    const success = get("success");
+    const error = get("error");
+    const warning = get("warning");
+    const editorBg = get("editor-bg");
+    // 简易派生:前景 = editorBg 反相 + 加深
+    const editorFg = "#1f2328";
+    const termBg = editorBg;
+    const termFg = editorFg;
+    const vars = {
+      "--accent-color": accent, "--action-bg-color": actionBg, "--action-text-color": "#ffffff",
+      "--success-color": success, "--error-color": error, "--warning-color": warning,
+      "--editor-background": editorBg, "--editor-foreground": editorFg,
+      "--token-keyword": accent, "--token-string": success, "--token-comment": "#6e7781",
+      "--token-number": error, "--token-function": accent, "--token-type": warning,
+      "--token-variable": editorFg,
+      "--term-background": termBg, "--term-foreground": termFg,
+      "--term-cmdtext": termFg, "--term-cursor-accent": termBg,
+    };
+    applyThemeToMain({ key: "custom", label: "Custom", vars });
+    activeThemeSet = "custom";
+    renderThemeSetGrid();
+    alert("[模拟] 已持久化 editor:themeSetCustom = " + JSON.stringify(vars, null, 0).slice(0, 80) + "...");
+  }
+  function resetCustom() {
+    activeThemeSet = "wave-light";
+    applyThemeToMain(THEME_SETS[0]);
+    document.getElementById("custom-panel").style.display = "none";
+    renderThemeSetGrid();
   }
 
-  applyCustomBtn.addEventListener('click', () => {
-    const accent = accentPicker.value;
-    // Derive simple variations for demo
-    const success = accent; // same as accent for demo
-    const error = '#ff0000';
-    const warning = '#ffa500';
-    const editorBg = '#ffffff';
-    const editorFg = '#000000';
-    const termBg = '#ffffff';
-    const termFg = '#000000';
-    const termCmd = '#000000';
-    const termCursor = '#ffffff';
-    const tokenKw = '#000000';
-    const tokenStr = '#006400';
-    const tokenCmt = '#6e6e6e';
-    const tokenNum = '#8b0000';
-    const tokenFn = '#006400';
-    const tokenTy = '#008b8b';
-    const tokenVar = '#0000cd';
-
-    document.documentElement.style.setProperty('--accent-color', accent);
-    document.documentElement.style.setProperty('--action-bg-color', accent);
-    document.documentElement.style.setProperty('--action-text-color', '#ffffff');
-    document.documentElement.style.setProperty('--success-color', success);
-    document.documentElement.style.setProperty('--error-color', error);
-    document.documentElement.style.setProperty('--warning-color', warning);
-    document.documentElement.style.setProperty('--editor-background', editorBg);
-    document.documentElement.style.setProperty('--editor-foreground', editorFg);
-    document.documentElement.style.setProperty('--token-keyword', tokenKw);
-    document.documentElement.style.setProperty('--token-string', tokenStr);
-    document.documentElement.style.setProperty('--token-comment', tokenCmt);
-    document.documentElement.style.setProperty('--token-number', tokenNum);
-    document.documentElement.style.setProperty('--token-function', tokenFn);
-    document.documentElement.style.setProperty('--token-type', tokenTy);
-    document.documentElement.style.setProperty('--token-variable', tokenVar);
-    document.documentElement.style.setProperty('--term-background', termBg);
-    document.documentElement.style.setProperty('--term-foreground', termFg);
-    document.documentElement.style.setProperty('--term-cmdtext', termCmd);
-    document.documentElement.style.setProperty('--term-cursor-accent', termCursor);
-    // Hide custom panel after apply
-    customPanel.style.display = 'none';
-  });
-
-  // Initialize: apply first theme (wave-light) and mark active
-  renderThemes();
-  if (themes.length > 0) {
-    applyTheme(themes[0]);
-    themeList.firstChild.classList.add('active');
+  /* ============ 把主题应用到主面板(及 live preview) ============ */
+  function applyThemeToMain(set) {
+    const scope = document.querySelector(".main-panel");
+    // 先清掉之前 inline 写入的 vars(评审 R9:避免 inline style 永久覆盖 CSS 块)
+    scope.style.cssText = scope.style.cssText.replace(/--[\w-]+:[^;]+;?/g, "");
+    Object.entries(set.vars).forEach(([k, v]) => {
+      scope.style.setProperty(k, v);
+    });
+    renderLivePreview(set);
   }
+
+  function renderLivePreview(set) {
+    const code = `
+<span class="tok-kw">function</span> <span class="tok-fn">helloWorld</span>(name: <span class="tok-fn">string</span>): <span class="tok-kw">void</span> {
+  <span class="tok-cmt">// this is a comment</span>
+  <span class="tok-kw">const</span> msg = <span class="tok-str">\`Hello, \${name}!\`</span>;
+  <span class="tok-fn">console</span>.log(msg);
+  <span class="tok-kw">if</span> (name.length > <span class="tok-num">0</span>) <span class="tok-kw">return</span>;
+  <span class="tok-kw">throw</span> <span class="tok-kw">new</span> <span class="tok-fn">Error</span>(<span class="tok-str">"empty"</span>);
+}`;
+    const codeEl = document.getElementById("lp-code");
+    codeEl.innerHTML = code;
+    // live preview 容器继承 main-panel 已注入的 vars(无需重复 set)
+  }
+
+  /* ============ Lock 状态:app:theme != light 时锁定 Editor Theme Set ============ */
+  function updateLockState() {
+    const section = document.getElementById("theme-set-section");
+    const hint = document.getElementById("lock-hint-bar");
+    if (activeAppTheme === "light") {
+      section.classList.remove("theme-block-locked");
+      hint.style.display = "none";
+    } else {
+      section.classList.add("theme-block-locked");
+      hint.style.display = "block";
+    }
+  }
+
+  /* ============ 初始化 ============ */
+  renderAppThemeGrid();
+  renderThemeSetGrid();
+  applyThemeToMain(THEME_SETS[0]);  // 默认 wave-light
+  updateLockState();
 </script>
+
 </body>
 </html>

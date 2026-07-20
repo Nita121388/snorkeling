@@ -1,0 +1,358 @@
+<!--
+  Design: Move Block / Copy Block 弹窗视觉美化 mockup
+
+  决策记录 (2026-07-20)：
+  - 用户选择「仅视觉美化,不动结构」力度。本 mockup 只调样式,不引入搜索框/序号/新增 confirm 按钮。
+  - 真实组件: frontend/app/tab/tab-target-modal.tsx → TabTargetModal (Move / Copy Block 共用)。
+  - 原组件结构 (必须保留):
+      · 420px Modal, title + subtitle (源 tab 名)
+      · max-h-320 滚动列表,每行 = (Tab名 + tabId 文本) + 右侧 actionLabel/workingLabel
+      · 末行 Cancel 按钮 (grey ghost)
+  - 本 mockup 仅做以下视觉变更 (合入时只动 className,不动 props/state):
+      1. subtitle 增加 "↳ from «…»" 前缀,让"源 tab"语义清晰 (真组件 subtitle 字段,文案层面改)
+      2. 列表行 hover 显示行内 Move / Copy 按钮 (替换原右侧静态文字),无 hover 时按钮隐藏,行高亮
+      3. working 行换成 spinner + 透明度压低 (替换 "Moving..." 文字),整行 disabled
+      4. tabId 行字号/对齐微调,行间距更舒朗 (px-2 py-2 → px-3 py-2.5)
+      5. 列表容器加 1px border + 软背景,与 Modal 主体形成层次
+  - 不动:空态文案 "No other tabs"、Cancel 按钮位置与样式、Move 操作触发方式 (整行 click 仍是主路径)。
+  - 静态原型限制:spinner 是 CSS 动画演示,真实 working 由 workingTabId state 控制。
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Move Block Modal — Visual Only</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 颜色与真组件使用的 CSS 变量保持一致(深色主题,可与浅色主题对照) */
+    :root {
+      --primary: #f7f7f7;
+      --secondary: #9aa1a8;
+      --tertiary: #6b7178;
+      --accent: #58c142;           /* action-bg / success-color */
+      --accent-strong: #4cae3c;
+      --accent-soft: rgba(88,193,66,0.12);
+      --bg-panel: #222222;
+      --bg-row-hover: rgba(255,255,255,0.06);
+      --bg-list: rgba(255,255,255,0.02);
+      --border-soft: rgba(255,255,255,0.08);
+      --border-line: rgba(255,255,255,0.16);
+      --error: #ff6b6b;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1d1d1d;
+      color: var(--primary);
+      padding: 32px;
+    }
+    .mock-label {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 4px;
+      background: rgba(88,193,66,0.18); color: var(--accent);
+      font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    .mock-caption {
+      font-size: 11px; color: var(--secondary);
+      margin-bottom: 24px; max-width: 420px; line-height: 1.6;
+    }
+
+    /* ── Modal 主体 (与真组件 .modal 保持 420px + pt-8 pb-4) ── */
+    .panel {
+      width: 420px;
+      max-width: calc(100vw - 32px);
+      background: var(--bg-panel);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 20px 12px 12px 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+      position: relative;
+    }
+    /* 右上关闭按钮位 (真组件由 Modal 组件内置, 这里仅占位视觉对齐) */
+    .panel-close {
+      position: absolute; top: 12px; right: 12px;
+      width: 24px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--secondary); cursor: pointer; border-radius: 4px;
+      font-size: 14px;
+    }
+    .panel-close:hover { background: var(--bg-row-hover); color: var(--primary); }
+
+    /* ── Header 区 ── */
+    .header { padding-right: 28px; margin-bottom: 14px; }   /* pr-8 给关闭按钮让位, 与真组件 mb-3 一致 */
+    .title { font-size: 16px; font-weight: 600; color: var(--primary); }
+    .subtitle { margin-top: 3px; font-size: 12px; color: var(--secondary); display: flex; align-items: center; gap: 6px; }
+    .subtitle .arrow { color: var(--tertiary); }
+    .subtitle .from { opacity: 0.85; }
+    .subtitle .srcname { color: var(--primary); font-weight: 500; }
+
+    /* ── 列表容器: 加 border + 软背景, 形成层次 ── */
+    .list {
+      max-height: 320px; overflow-y: auto;
+      border: 1px solid var(--border-soft);
+      background: var(--bg-list);
+      border-radius: 8px;
+      padding: 4px;
+    }
+    .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 8px 12px; border-radius: 6px;
+      cursor: default; transition: background-color .15s;
+    }
+    .row:hover { background: var(--bg-row-hover); }
+    .row.is-working { opacity: 0.55; cursor: default; }   /* working 行整体压暗 + 不可点 */
+    .row .info { min-width: 0; flex: 1 1 0; }
+    .row .name {
+      font-size: 13px; line-height: 1.3; color: var(--primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .row .id {
+      margin-top: 2px; font-size: 10.5px; line-height: 1.2; color: var(--tertiary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* ── Action: 默认静态文字, hover 整行时升级为按钮 ── */
+    /* Move / Copy 都用 accent 主题色, 只靠文字区分动作 (与 #58c142 = action-bg 一致) */
+    .row .action { flex-shrink: 0; }
+    .row .action-label {
+      font-size: 11px; color: var(--secondary);
+      transition: opacity .15s;
+    }
+    .row:hover .action-label { display: none; }   /* hover 时隐藏文字, 按钮接管 */
+    .row .action-btn {
+      display: none;
+      align-items: center; gap: 5px;
+      height: 26px; padding: 0 12px;
+      font-size: 12px; font-weight: 600;
+      border-radius: 5px;
+      cursor: pointer; border: 1px solid transparent;
+      transition: background-color .15s, transform .05s;
+    }
+    .row:hover .action-btn { display: inline-flex; }
+    /* Move / Copy 共用 accent 实色 (= bg-action text-actiontext 风格) */
+    .row .action-btn.move,
+    .row .action-btn.copy {
+      background: var(--accent); color: #0a1f06;
+    }
+    .row .action-btn.move:hover,
+    .row .action-btn.copy:hover {
+      background: var(--accent-strong);
+    }
+    .row .action-btn:active { transform: translateY(0.5px); }   /* 轻按压反馈 */
+    /* 微图标 (可与按钮文字同色, 提升精致度) */
+    .row .action-btn .icon {
+      display: inline-flex; align-items: center;
+      font-size: 11px; opacity: 0.85;
+    }
+    /* ── Working: spinner 替代静态文字 (视觉美化点 3) ── */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.18);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 空态 (保持原 "No other tabs" 文案不变, 仅视觉精修) ── */
+    .empty {
+      padding: 28px 12px; text-align: center;
+      font-size: 13px; color: var(--secondary);
+      font-style: italic;
+    }
+
+    /* ── footer: 仅 Cancel, 真组件原貌 ── */
+    .footer { margin-top: 14px; display: flex; justify-content: flex-end; }
+    .btn-cancel {
+      padding: 0 14px; height: 30px; font-size: 13px;
+      border-radius: 6px; cursor: pointer;
+      background: rgba(255,255,255,0.06); color: #cfd4d8;
+      border: 1px solid var(--border-line);
+      transition: background-color .15s;
+    }
+    .btn-cancel:hover { background: rgba(255,255,255,0.10); color: var(--primary); }
+    .btn-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div class="mock-label">MOCKUP — 仅视觉美化, 不动结构</div>
+  <div class="mock-caption">
+    Move / Copy Block 共用 <code>TabTargetModal</code>(<span class="kbd">frontend/app/tab/tab-target-modal.tsx</span>)。
+    本原型只演示视觉层:subtitle 加 <code>↳ from «…»</code> 语义、列表行 hover 时静态文字 → 行内按钮、
+    working 行换 spinner、列表容器加 border/软背景、字号行距精修。<strong>不引入</strong>搜索框/序号/新 confirm 按钮。
+  </div>
+
+  <!-- ============== 状态 A: Move Block 默认 (鼠标未悬停任何行) ============== -->
+  <div class="panel" style="margin-right: 32px; display: inline-block; vertical-align: top;">
+    <div class="panel-close" title="Close (ESC)">✕</div>
+    <div class="header">
+      <div class="title">Move Block</div>
+      <div class="subtitle">
+        <span class="arrow">↳</span>
+        <span class="from">from</span>
+        <span class="srcname">«Snorkeling»</span>
+        <span class="from">Tab</span>
+      </div>
+    </div>
+
+    <div class="list">
+      <!-- 行 1: Agent Review — 默认态 (静态 action 文字) -->
+      <div class="row">
+        <div class="info">
+          <div class="name">Agent Review</div>
+          <div class="id">tab_01HV…K7Q</div>
+        </div>
+        <div class="action">
+          <span class="action-label">Move</span>
+          <button class="action-btn move"><span class="icon">→</span>Move</button>
+        </div>
+      </div>
+
+      <!-- 行 2: Logs — hover 态示意 (静态展示按钮抬起的效果) -->
+      <div class="row" style="background: var(--bg-row-hover);">
+        <div class="info">
+          <div class="name">Logs</div>
+          <div class="id">tab_01HV…R9Z</div>
+        </div>
+        <div class="action">
+          <!-- hover 时 action-label 隐藏, action-btn 显示 -->
+          <button class="action-btn move" style="display: inline-flex;"><span class="icon">→</span>Move</button>
+        </div>
+      </div>
+
+      <!-- 行 3: DB Migrations -->
+      <div class="row">
+        <div class="info">
+          <div class="name">DB Migrations</div>
+          <div class="id">tab_01HW…3AB</div>
+        </div>
+        <div class="action">
+          <span class="action-label">Move</span>
+          <button class="action-btn move"><span class="icon">→</span>Move</button>
+        </div>
+      </div>
+
+      <!-- 行 4: 远端 staging (长名字截断演示) -->
+      <div class="row">
+        <div class="info">
+          <div class="name">远端 staging — 性能压测与回归套件</div>
+          <div class="id">tab_01HX…9QK</div>
+        </div>
+        <div class="action">
+          <span class="action-label">Move</span>
+          <button class="action-btn move"><span class="icon">→</span>Move</button>
+        </div>
+      </div>
+
+      <!-- 行 5: working 态 — 整行 disabled + spinner -->
+      <div class="row is-working">
+        <div class="info">
+          <div class="name">Scratch</div>
+          <div class="id">tab_01HZ…P2D</div>
+        </div>
+        <div class="action">
+          <div class="spinner" title="Moving..."></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============== 状态 B: Copy Block (与 Move 同为 accent 主题色, 仅文字区分) ============== -->
+  <div class="panel" style="display: inline-block; vertical-align: top;">
+    <div class="panel-close" title="Close (ESC)">✕</div>
+    <div class="header">
+      <div class="title">Copy Block</div>
+      <div class="subtitle">
+        <span class="arrow">↳</span>
+        <span class="from">from</span>
+        <span class="srcname">«Snorkeling»</span>
+        <span class="from">Tab</span>
+      </div>
+    </div>
+
+    <div class="list">
+      <div class="row">
+        <div class="info">
+          <div class="name">Agent Review</div>
+          <div class="id">tab_01HV…K7Q</div>
+        </div>
+        <div class="action">
+          <span class="action-label">Copy</span>
+          <button class="action-btn copy"><span class="icon">⧉</span>Copy</button>
+        </div>
+      </div>
+
+      <div class="row" style="background: var(--bg-row-hover);">
+        <div class="info">
+          <div class="name">Logs</div>
+          <div class="id">tab_01HV…R9Z</div>
+        </div>
+        <div class="action">
+          <button class="action-btn copy" style="display: inline-flex;"><span class="icon">⧉</span>Copy</button>
+        </div>
+      </div>
+
+      <div class="row is-working">
+        <div class="info">
+          <div class="name">DB Migrations</div>
+          <div class="id">tab_01HW…3AB</div>
+        </div>
+        <div class="action">
+          <div class="spinner" title="Copying..."></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============== 状态 C: 空态 — 无其它 tab (文案保留 "No other tabs") ============== -->
+  <div style="display: block; margin-top: 32px;">
+    <div class="mock-label" style="background: rgba(255,193,7,0.18); color: #f59e0b;">EMPTY — no other tabs</div>
+    <div class="panel" style="width: 420px;">
+      <div class="panel-close" title="Close (ESC)">✕</div>
+      <div class="header">
+        <div class="title">Move Block</div>
+        <div class="subtitle">
+          <span class="arrow">↳</span>
+          <span class="from">from</span>
+          <span class="srcname">«Snorkeling»</span>
+          <span class="from">Tab</span>
+        </div>
+      </div>
+
+      <div class="list">
+        <div class="empty">No other tabs</div>
+      </div>
+
+      <div class="footer">
+        <button class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== 设计决策注脚 ============== -->
+  <div style="margin-top: 32px; max-width: 760px; font-size: 12px; color: var(--secondary); line-height: 1.7;">
+    <p><strong>视觉改动清单 (合入时只动 className,不动 props/state)</strong>：</p>
+    <ul style="padding-left: 18px; margin: 6px 0;">
+      <li><strong>subtitle</strong> — 字段值由 <code class="kbd">Snorkeling</code> 改为 <code class="kbd">↳ from «Snorkeling» Tab</code>。在 <code>MoveBlockToTabModal</code> 里给 <code>subtitle</code> prop 拼前缀即可,</li>
+      <li><strong>列表行 hover 抬起按钮</strong> — 原 <code>TabTargetRow</code> 右侧始终显示 <code>{working ? workingLabel : actionLabel}</code> 文字。改为:默认显示文字,<code>:hover</code> 时文字消失、显示同义的实色按钮。整行 click 仍是主触发路径,按钮只是视觉强调。</li>
+      <li><strong>Move / Copy 按钮配色</strong> — 二者都用 accent 主题色 (<code>bg-action text-actiontext</code> 风=实色 #58c142 / 深绿前景),只靠按钮文字 + 微图标(<code>→</code> 表移动, <code>⧉</code> 表复制)区分动作。沿用项目 token,浅/深主题切换不裂。hover 用 <code>bg-actionhover</code> 加深,active 时 <code>translateY(0.5px)</code> 给轻按压反馈。</li>
+      <li><strong>按钮形状</strong> — 高 26px,圆角 5px,字重 600,内边距 <code>0 12px</code>;图标与文字 5px 间距,图标 opacity 0.85 与文字保持层次。</li>
+      <li><strong>working 行 spinner</strong> — 原 working 行右侧显示 <code>"Moving..."</code> 文字 + 整行 disabled。改为 14px accent spinner + 整行 <code>opacity:.55</code>。</li>
+      <li><strong>列表容器</strong> — 原无 border 无背景,新加 <code>border + bg-list + radius-8 + p-1</code>,与 modal 主体形成层次。</li>
+      <li><strong>行距字号</strong> — <code>px-2 py-2</code> → <code>px-3 py-2</code>;tabId 文字 11px → 10.5px 更轻。</li>
+    </ul>
+    <p><strong>不动</strong>:<code>Modal</code> 组件、空态文案 "No other tabs"、Cancel 按钮位置、ESC 关闭、整行 click 选择 tab 的交互路径。</p>
+    <p><strong>静态原型限制</strong>:spinner/按钮抬起是 CSS 演示。真组件里按钮与文字共存,需要靠 <code>:hover</code> CSS 控制 display,而非 React state。</p>
+  </div>
+
+</body>
+</html>

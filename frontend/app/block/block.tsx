@@ -15,6 +15,11 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import {
+    agentStatusPresentation,
+    type AgentStatus,
+    isInferredAgentStatus,
+} from "@/app/agent-status/agent-status-derive";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -46,6 +51,21 @@ import { BlockEnv } from "./blockenv";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
+
+/**
+ * 读取 InlineTabLabel 所属 agent block 的 canonical agent status.
+ * 直接复用 TermViewModel 已经维护的 `agentStatusAtom` (term-model.ts 在 ViewModel 构造时
+ * 一次性 GetAgentStatus + 订阅 "agentstatus" 事件), 避免在 Tab 集群里再开一份独立订阅
+ * 与额外 RPC 调用 — 之前那种"每 tab label 一份订阅 + new BlockServiceType()" 的写法会
+ * 造成 Block 主区状态被冲掉(出现持久的 "No data"), 也无谓地增加 backend 调用.
+ *
+ * 非 agent 块、或 ViewModel 尚未挂载时返回 null (Tab 上不渲染状态点).
+ */
+function useInlineTabAgentStatus(blockId: string): AgentStatus | null {
+    const bcm = getBlockComponentModel(blockId);
+    const agentStatusAtom = (bcm?.viewModel as { agentStatusAtom?: jotai.PrimitiveAtom<AgentStatus | null> } | undefined)?.agentStatusAtom ?? null;
+    return useAtomValueSafe(agentStatusAtom);
+}
 
 function getViewElem(
     blockId: string,
@@ -177,6 +197,23 @@ const InlineTabLabel = memo(
             return getAgentLogoByProvider(provider);
         }, [blockData?.meta]);
 
+        // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
+        // 用于在 Tab 标签右侧渲染状态点. 仅 working / blocked / done / stale 等显眼状态会渲染;
+        // idle/unknown 不显示以减少视觉噪声.
+        const agentStatus = useInlineTabAgentStatus(blockId);
+        const statusDot = useMemo(() => {
+            if (agentStatus == null) return null;
+            const state = agentStatus.state;
+            if (state === "idle" || state === "unknown") return null;
+            const presentation = agentStatusPresentation(agentStatus);
+            const inferred = isInferredAgentStatus(agentStatus);
+            return {
+                state,
+                inferred,
+                title: `${presentation.label}${inferred ? " (inferred)" : ""}`,
+            };
+        }, [agentStatus]);
+
         useEffect(() => {
             if (isEditing) {
                 setDraftTitle(customTitle ?? "");
@@ -286,6 +323,14 @@ const InlineTabLabel = memo(
                             <i className={iconClass} />
                         )}
                         <span>{displayTitle}</span>
+                        {statusDot != null ? (
+                            <span
+                                className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
+                                    "is-inferred": statusDot.inferred,
+                                })}
+                                title={statusDot.title}
+                            />
+                        ) : null}
                     </button>
                 </Tooltip>
                 <button

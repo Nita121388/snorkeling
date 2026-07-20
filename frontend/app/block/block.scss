@@ -752,6 +752,42 @@
                 white-space: nowrap;
                 font-weight: 400;
             }
+
+            // agent 状态点: 仅作颜色指示, 不参与文本截断布局, 不显示文字
+            .inline-tab-block-tab-statusdot {
+                flex: 0 0 auto;
+                width: 6px;
+                height: 6px;
+                margin-left: 1px;
+                border-radius: 50%;
+                background: var(--secondary-text-color);
+                overflow: visible;
+                opacity: 0.85;
+
+                &.is-working {
+                    background: var(--success-color);
+                    animation: agent-status-text-shimmer 1.6s ease-in-out infinite;
+                }
+
+                &.is-done {
+                    background: rgb(from var(--success-color) r g b / 0.78);
+                }
+
+                &.is-blocked {
+                    background: var(--warning-color, #f59e0b);
+                    animation: agent-status-blocked-border 1.6s ease-in-out infinite;
+                }
+
+                &.is-stale {
+                    background: var(--secondary-text-color);
+                    opacity: 0.55;
+                }
+
+                &.is-inferred {
+                    outline: 1px dashed currentColor;
+                    outline-offset: -1px;
+                }
+            }
         }
 
         .inline-tab-block-tab-close {
