@@ -1396,6 +1396,30 @@ export class PreviewModel implements ViewModel {
         return true;
     }
 
+    private findExistingPreviewBlockInInlineTab(
+        targetNode: LayoutNode,
+        newPath: string,
+        connection: string
+    ): string | null {
+        for (const blockId of getLayoutDataBlockIds(targetNode.data)) {
+            const block = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`));
+            if (block?.meta?.view !== "preview") {
+                continue;
+            }
+            const sameConnection =
+                block?.meta?.connection === connection ||
+                (isLocalConnName(block?.meta?.connection) && isLocalConnName(connection));
+            if (!sameConnection) {
+                continue;
+            }
+            if (normalizePath(block.meta.file ?? "") !== normalizePath(newPath)) {
+                continue;
+            }
+            return blockId;
+        }
+        return null;
+    }
+
     private async openPathInPreviewBlockAsTab(
         targetBlockId: string,
         newPath: string,
@@ -1406,6 +1430,10 @@ export class PreviewModel implements ViewModel {
         const targetNode = layoutModel.getNodeByBlockId(targetBlockId);
         if (!targetNode) {
             return false;
+        }
+        const existingId = this.findExistingPreviewBlockInInlineTab(targetNode, newPath, connection);
+        if (existingId != null) {
+            return layoutModel.setActiveInlineTabBlock(targetNode.id, existingId);
         }
         const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
         const blockMeta: Record<string, any> = {
