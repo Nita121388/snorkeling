@@ -4,6 +4,12 @@
 import { CopyButton } from "@/app/element/copybutton";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
 import { createContentBlockPlugin } from "@/app/element/markdown-contentblock-plugin";
+import {
+    InlineEditOverlay,
+    makeInlineEditKeydown,
+    useInlineEdit,
+    type InlineEditBlockKind,
+} from "@/app/element/markdown-inline-edit";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import {
     MarkdownContentBlockType,
@@ -22,6 +28,7 @@ import {
     cloneElement,
     createContext,
     isValidElement,
+    useCallback,
     useContext,
     useEffect,
     useLayoutEffect,
@@ -747,6 +754,13 @@ type MarkdownProps = {
     onUserScrollSourceLine?: (line: number) => void;
     collapsibleOrderedLists?: boolean;
     copyContextPath?: string;
+    /**
+     * Invoked with the full new markdown text when the user commits an inline edit on a
+     * paragraph or heading (dblclick → textarea → blur/Cmd+S/Cmd+Enter). The caller owns
+     * "really save to disk" — this only stages the new text into the shared draft so the
+     * existing Save/Revert flow picks it up. Omit to disable inline editing entirely.
+     */
+    onInlineEditCommit?: (newFullText: string) => void;
 };
 
 type MarkdownScrollSourceState = {
@@ -777,6 +791,7 @@ const Markdown = ({
     onUserScrollSourceLine,
     collapsibleOrderedLists = false,
     copyContextPath,
+    onInlineEditCommit,
     scrollable = true,
     rehype = true,
     onClickExecute,
@@ -800,6 +815,95 @@ const Markdown = ({
     const transformedOutput = transformBlocks(text);
     const transformedText = transformedOutput.content;
     const contentBlocksMap = transformedOutput.blocks;
+
+    const getViewportEl = useCallback((): HTMLElement | null => {
+        const inst = contentsOsRef.current?.osInstance();
+        if (!inst) {
+            return null;
+        }
+        return inst.elements().viewport;
+    }, []);
+
+    const handleInlineEditCommit = useCallback(
+        (newFullText: string) => {
+            if (!onInlineEditCommit) {
+                return;
+            }
+            onInlineEditCommit(newFullText);
+        },
+        [onInlineEditCommit]
+    );
+
+    const inlineEdit = useInlineEdit({
+        fullText: text,
+        onCommit: handleInlineEditCommit,
+        getViewportEl,
+        resetKey: onInlineEditCommit,
+    });
+
+    const handleInlineEditDblClick = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            // Only intercept when inline editing has been opted in by the parent
+            // (onInlineEditCommit wired). Without that, dblclick should fall through to
+            // native text selection behavior.
+            if (!onInlineEditCommit) {
+                return;
+            }
+            // Capture phase: ensure we get one shot before any renderer's own dblclick toggles
+            // (e.g. CollapsibleHeading would fold/unfold on dblclick otherwise).
+            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
+            if (target == null) {
+                return;
+            }
+            const lineAttr = target.dataset.sourceLine;
+            if (lineAttr == null) {
+                return;
+            }
+            const line = Number(lineAttr);
+            if (!Number.isFinite(line) || line < 1) {
+                return;
+            }
+            const tag = target.tagName;
+            let blockKind: InlineEditBlockKind | null = null;
+            if (tag === "P" || target.classList.contains("paragraph")) {
+                blockKind = "p";
+            } else if (
+                tag === "H1" ||
+                tag === "H2" ||
+                tag === "H3" ||
+                tag === "H4" ||
+                tag === "H5" ||
+                tag === "H6" ||
+                // CollapseableHeading renders as <div class="heading is-N"> rather than <hN>;
+                // match by class so dblclick-to-edit works for the headings the user actually sees.
+                target.classList.contains("heading")
+            ) {
+                blockKind = "h";
+            } else {
+                // M1 only handles p / h. Other block kinds (li-summary, table, code) are
+                // plain dblclick → native selection for now; M2 will branch here.
+                return;
+            }
+            // Don't intercept on a heading that is currently collapsed. CollapsibleHeading
+            // expresses state via the `collapsed` class (no aria-expanded on the div), so a
+            // dblclick on a folded heading should expand it, not open the editor. For raw <hN>
+            // tags (non-collapsible render path) there's no collapsed class, so this check is a
+            // no-op and the editor opens normally.
+            if (blockKind === "h" && target.classList.contains("collapsed")) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            inlineEdit.beginEdit(blockKind, line, target);
+        },
+        [inlineEdit, onInlineEditCommit]
+    );
+
+    const inlineEditKeyDown = useMemo(
+        () => makeInlineEditKeydown({ commit: inlineEdit.commit, cancel: inlineEdit.cancel }),
+        [inlineEdit.commit, inlineEdit.cancel]
+    );
+
     const normalizedScrollTargetText = useMemo(
         () => normalizeScrollTargetText(scrollTargetText ?? ""),
         [scrollTargetText]
@@ -1322,6 +1426,10 @@ const Markdown = ({
                         initialized: () => requestAnimationFrame(() => applyScrollTarget("initialized")),
                         scroll: handleMarkdownScroll,
                     }}
+                    // Capture-phase dblclick so we beat CollapsibleHeading's own dblclick toggle
+                    // and any native selection side effects. The handler no-ops unless the
+                    // parent wired onInlineEditCommit (i.e. opt-in to inline editing).
+                    onDoubleClickCapture={handleInlineEditDblClick}
                 >
                     <ReactMarkdown
                         remarkPlugins={remarkPlugins}
@@ -1332,6 +1440,17 @@ const Markdown = ({
                     >
                         {transformedText}
                     </ReactMarkdown>
+                    {onInlineEditCommit && (
+                        <InlineEditOverlay
+                            overlayRect={inlineEdit.overlayRect}
+                            blockKind={inlineEdit.editSession?.blockKind ?? null}
+                            draftText={inlineEdit.draftText}
+                            textareaRef={inlineEdit.textareaRef}
+                            onTextChange={inlineEdit.setDraftText}
+                            onKeyDown={inlineEditKeyDown}
+                            onBlur={inlineEdit.commit}
+                        />
+                    )}
                 </OverlayScrollbarsComponent>
             ) : (
                 <div className={cn("content non-scrollable", contentClassName)}>

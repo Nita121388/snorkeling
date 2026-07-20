@@ -379,4 +379,45 @@
         border-left: 1px solid var(--border-color);
         padding: 4px;
     }
+
+    // --- Inline paragraph/heading edit overlay (Obsidian-style double-click) ---
+    // Mounted inside the OverlayScrollbars viewport as a sibling of .markdown-render-root,
+    // positioned absolutely against the viewport coordinate system. The anchored block
+    // element gets .inline-edit-hidden while the overlay is up so the editor sits where the
+    // rendered text was without doubling it visually.
+    .inline-edit-overlay {
+        z-index: 50;
+        box-sizing: border-box;
+        pointer-events: auto;
+
+        .inline-edit-textarea {
+            width: 100%;
+            min-height: 1.5em;
+            box-sizing: border-box;
+            // Match the rendered paragraph: same font, size, line-height, color so typing
+            // feels identical to reading. We pull these from CSS vars the markdown root sets
+            // (--markdown-font-size) and fall back to body defaults.
+            font: inherit;
+            font-size: var(--markdown-font-size, inherit);
+            line-height: inherit;
+            color: var(--main-text-color);
+            background-color: var(--content-bg-color);
+            border: 1px solid var(--accent-color);
+            border-radius: 4px;
+            margin: 0;
+            padding: 0.1em 0.2em;
+            resize: none;
+            overflow: hidden;
+            outline: none;
+            // Slight elevated shadow so the editor reads as floating rather than reflowing
+            // the doc. Keep light — we don't want to obscure neighbouring content.
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        }
+    }
+
+    .inline-edit-hidden {
+        // visibility (not display) keeps the element's layout box so the overlay dimensions
+        // match exactly; an HTML hidden element loses box and the textarea would collapse.
+        visibility: hidden;
+    }
 }

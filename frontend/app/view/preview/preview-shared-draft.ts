@@ -696,3 +696,19 @@ export function clearPreviewSharedDraftRecordsForTest(): void {
     globalStore.set(previewSharedDraftNullRecordVersion, 0);
     bumpPreviewSharedDraftRecordVersion(null);
 }
+
+/**
+ * Global flag: any markdown preview block is currently in inline-edit (textarea overlay) mode.
+ * Set true by Markdown when a user double-clicks a paragraph / heading and the textarea mounts;
+ * set false on commit / cancel / unmount.
+ *
+ * Consumed by:
+ *   - PreviewModel.keyDownHandler Cmd+E to suppress the "toggle full-screen Monaco edit" shortcut
+ *     while the user is mid-edit on a single paragraph (prevents accidental mode switch).
+ *   - Markdown live-scroll paths to skip scroll-to-line while the overlay is anchored.
+ *
+ * Single global boolean is sufficient because inline edit is a modal interaction — multiple
+ * blocks can't realistically be in inline edit at once (only the focused textarea commits).
+ * If that ever needs to be per-block, change to a Set<blockId>.
+ */
+export const inlineEditingActiveAtom: PrimitiveAtom<boolean> = atom(false);

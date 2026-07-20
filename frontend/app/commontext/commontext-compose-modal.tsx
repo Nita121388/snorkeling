@@ -23,6 +23,8 @@ import {
     type CommonTextItem,
 } from "./commontext-model";
 import { CommonTextTagChip } from "./commontext-tags";
+import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
+import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
@@ -114,6 +116,10 @@ const availableTermBlockIdsAtom = atom<string[]>((get) => {
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
+    // editor 默认收缩为单行高度（与 Title/Action 控件视觉对齐），聚焦时再撑开到多行，
+    // 避免每次打开弹窗都被一个 120px 的 textarea 撑高、抢走主视觉。
+    // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
+    const [editorExpanded, setEditorExpanded] = useState(false);
     const settings = useAtomValue(atoms.settingsAtom);
     const availableTermBlockIds = useAtomValue(availableTermBlockIdsAtom);
     const canSendToTerm = availableTermBlockIds.length > 0;
@@ -125,6 +131,9 @@ const CommonTextComposeModal = memo(() => {
 
     const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
+    // editor 当前正文里嵌入的 #tag：在 Send 右侧渲染成可删 chip，点 × 把字面从 editor 抹掉，
+    // 这样剩余正文 send/copy 出去时不带走 #tag。
+    const editorTags = useMemo(() => extractSessionTagsFromNote(state.editor).tags, [state.editor]);
 
     const filteredItems = useMemo(() => {
         if (!state.open) return [];
@@ -156,10 +165,11 @@ const CommonTextComposeModal = memo(() => {
             }
             isComposingRef.current = false;
             // 外部带入 query（选区 overlay 找条目）走全新状态；纯打开尝试还原上次草稿。
-            setState(hasExternalQuery ? initialOpenState(manualQuery) : restoreOpenState());
-            requestAnimationFrame(() =>
-                (manualQuery.trim() === "" ? editorRef.current : searchInputRef.current)?.focus()
-            );
+            const next = hasExternalQuery ? initialOpenState(manualQuery) : restoreOpenState();
+            setState(next);
+            // 不主动聚焦 editor：避免一打开就把弹窗撑成编辑多行态。多行草稿按文本本身初始展开，
+            // 让用户视觉上立刻知道草稿还在；单行草稿保持紧凑单行高，等用户点进去再撑开。
+            setEditorExpanded(next.editor.includes("\n"));
         };
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
@@ -230,6 +240,25 @@ const CommonTextComposeModal = memo(() => {
     };
 
     const setStatus = (status: string, statusKind: "info" | "ok" | "err" = "info") => update({ status, statusKind });
+
+    // 从 editor 正文里抹掉某个 #tag 字面并保持 caret 在原位置附近。tags 字段不用单独维护：
+    // 它始终由 editor 文本派生（extractSessionTagsFromNote），抹掉字面后下一次 memo 自动重算。
+    const removeEditorTag = (tag: string) => {
+        const editor = editorRef.current;
+        const prevCaret = editor?.selectionStart ?? state.editor.length;
+        const newText = removeSessionTagFromNote(state.editor, tag);
+        update({ editor: newText, editorCaret: Math.min(prevCaret, newText.length) });
+        if (newText === state.editor) return;
+        if (editor != null) {
+            requestAnimationFrame(() => {
+                editor.focus();
+                editor.setSelectionRange(
+                    Math.min(prevCaret, newText.length),
+                    Math.min(prevCaret, newText.length)
+                );
+            });
+        }
+    };
 
     const handleListItemSelected = (item: CommonTextItem) => {
         const editor = editorRef.current;
@@ -471,20 +500,31 @@ const CommonTextComposeModal = memo(() => {
 
                 <textarea
                     ref={editorRef}
-                    className="shrink-0 min-h-[120px] max-h-[280px] resize-y rounded border border-border bg-background text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed"
-                    value={state.editor}
-                    onChange={(event) =>
-                        setEditor(
-                            event.currentTarget.value,
-                            event.currentTarget.selectionStart ?? event.currentTarget.value.length
-                        )
+                    className={
+                        "shrink-0 resize-y rounded border border-border bg-background text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
+                        (editorExpanded
+                            ? "min-h-[120px] max-h-[280px]"
+                            : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
                     }
+                    rows={editorExpanded ? undefined : 1}
+                    value={state.editor}
+                    onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        // expanded 只由 onFocus 拉起、onBlur 依据文本收回——onChange 不去重置它，
+                        // 否则用户在聚焦态敲普通字符（无换行）会被立即打回单行高度，
+                        // 出现"聚焦时展开、一开始编辑又缩回"的闪烁。
+                        setEditor(value, event.currentTarget.selectionStart ?? value.length);
+                    }}
+                    onFocus={() => setEditorExpanded(true)}
+                    onBlur={(event) => {
+                        // 用事件目标当前值而非 state.editor，避开闭包陷阱拿到旧 text 导致失焦不收回。
+                        setEditorExpanded(event.currentTarget.value.includes("\n"));
+                    }}
                     onSelect={(event) => updateEditorCaret(event.currentTarget)}
                     onKeyDown={handleEditorKeyDown}
                     onCompositionStart={handleCompositionStart}
                     onCompositionEnd={handleCompositionEnd}
                     placeholder="Compose here. The list below suggests common text matching what you type."
-                    autoFocus
                     spellCheck={false}
                 />
 
@@ -520,6 +560,14 @@ const CommonTextComposeModal = memo(() => {
                                 Send
                             </Button>
                         </span>
+                    )}
+                    {editorTags.length > 0 && (
+                        <SessionTagChips
+                            tags={editorTags.slice(0, MAX_TAG_CHIPS)}
+                            removable
+                            onRemove={removeEditorTag}
+                            className="min-w-0 flex-1"
+                        />
                     )}
                     {state.status && (
                         <span

@@ -38,6 +38,13 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
     const collapsibleOrderedLists = MarkdownFilePattern.test(fileInfo.path ?? fileInfo.name ?? "");
+    // Inline-edit commit: write the patched full text to the shared draft atom. The atom's own
+    // writer (preview-model.tsx newFileContent) handles draft saving, localStorage publish, and
+    // dirty-flag/Save-highlight; we do NOT call handleFileSave from here — keep the "blur commits
+    // to draft, Cmd+S/Cmd+click-Save lands to disk" semantics so Revert stays available.
+    const handleInlineEditCommit = useCallback((newText: string) => {
+        globalStore.set(model.newFileContent, newText);
+    }, [model]);
     const resolveOpts: MarkdownResolveOpts = useMemo<MarkdownResolveOpts>(() => {
         return {
             connName: connName,
@@ -62,6 +69,7 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 scrollTargetLine={searchTargetLine}
                 collapsibleOrderedLists={collapsibleOrderedLists}
                 copyContextPath={fileInfo.path}
+                onInlineEditCommit={handleInlineEditCommit}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>

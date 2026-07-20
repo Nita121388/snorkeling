@@ -63,6 +63,7 @@ import {
     getOrCreatePreviewSharedDraftRecord,
     getPreviewSharedDraftRecord,
     getPreviewSharedDraftRecordVersionAtom,
+    inlineEditingActiveAtom,
     makePreviewDraftKey,
     migratePreviewSharedDraftRecord,
     previewSharedDraftDebugLog,
@@ -2108,6 +2109,13 @@ export class PreviewModel implements ViewModel {
         const canPreview = globalStore.get(this.canPreview);
         if (canPreview) {
             if (checkKeyPressed(e, "Cmd:e")) {
+                // Suppress "toggle full-screen Monaco edit" while a markdown preview is in
+                // Obsidian-style inline textarea edit on a single paragraph/heading. The
+                // textarea overlay commits/cancels independently; Cmd+E here would yank the
+                // whole block into Monaco mid-keystroke.
+                if (globalStore.get(inlineEditingActiveAtom)) {
+                    return true;
+                }
                 const editMode = globalStore.get(this.editMode);
                 fireAndForget(() => this.setEditMode(!editMode));
                 return true;

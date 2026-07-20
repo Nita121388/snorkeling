@@ -3,6 +3,7 @@
 
 import { getBlockComponentModel, getFocusedBlockId } from "@/app/store/global";
 import type { TermViewModel } from "@/app/view/term/term-model";
+import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 
 export function isEditableElement(target: Element | null): target is HTMLElement {
     if (!(target instanceof HTMLElement)) {
@@ -50,7 +51,11 @@ export function insertTextAtEditableElement(target: HTMLElement, text: string): 
 }
 
 export async function copyCommonText(text: string): Promise<void> {
-    await navigator.clipboard.writeText(text);
+    // 复制时不带走正文里的 #tag 字面：剥掉 #tag 后再写入剪贴板，让 Common Text 的 chip
+    // 仅作为编辑/筛选的元数据存在，不会再泄漏到外部输入框/终端/邮件正文里。
+    // strip 是恒等 + 额外空格规整的，不带 #tag 的纯正文走过它也安全。
+    const cleanText = stripSessionTagHashes(text);
+    await navigator.clipboard.writeText(cleanText);
 }
 
 export async function insertOrCopyCommonText(
@@ -114,13 +119,16 @@ export function insertTextIntoFocused(text: string): boolean {
  * terminal — callers surface this so the failure is never silent.
  */
 export function sendTextToFocusedTerm(text: string, candidates: string[]): string | null {
+    // Send 与 copy 走同一套 strip 语义：Common Text 的 #tag 是元数据，发到终端时也剥掉，
+    // 避免在 shell 里误把 #fix 当注释/参数/裸字符串送出。strip 对不含 #tag 的文本是恒等的。
+    const cleanText = stripSessionTagHashes(text);
     const list = Array.isArray(candidates) ? candidates : candidates == null ? [] : [candidates];
     for (const blockId of list) {
         if (blockId == null) continue;
         const bcm = getBlockComponentModel(blockId);
         const viewModel = bcm?.viewModel;
         if (viewModel != null && viewModel.viewType === "term") {
-            if (insertTextIntoTerm(viewModel as TermViewModel, text)) {
+            if (insertTextIntoTerm(viewModel as TermViewModel, cleanText)) {
                 return blockId;
             }
         }
