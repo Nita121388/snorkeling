@@ -1,0 +1,864 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommonText Compose Modal – 完整交互原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  :root {
+    --bg: #222222;
+    --foreground: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --accent-hover: rgb(118, 223, 96);
+    --error: rgb(229, 77, 46);
+    --error-hover: rgb(255, 100, 70);
+    --warning: rgb(224, 185, 86);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --modal-bg: #2a2a2a;
+    --panel: rgba(31, 33, 31, 0.5);
+    --highlight-bg: rgba(88, 193, 66, 0.12);
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --editor-bg: rgba(0, 0, 0, 0.25);
+    --font-mono: "Hack", "Consolas", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--foreground);
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    padding: 20px;
+  }
+
+  .page { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+
+  /* ===== 原型画廊布局 ===== */
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--modal-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-title { font-size: 13px; font-weight: 600; }
+  .card-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(88, 193, 66, 0.15);
+    color: var(--accent);
+  }
+  .card-badge.new { background: rgba(88, 193, 66, 0.15); color: var(--accent); }
+  .card-badge.beta { background: rgba(224, 185, 86, 0.15); color: var(--warning); }
+
+  /* ===== 模拟弹窗 ===== */
+  .mock-modal {
+    background: var(--modal-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 480px;
+    max-height: 640px;
+  }
+  .mm-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .mm-title-block {}
+  .mm-title { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .mm-subtitle { font-size: 11px; color: var(--muted); }
+  .mm-gear {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--secondary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .mm-gear:hover { background: var(--hover-bg); color: var(--foreground); }
+
+  /* 编辑器 */
+  .mm-editor {
+    margin: 10px 16px 8px;
+    padding: 10px 12px;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--foreground);
+    min-height: 100px;
+    resize: vertical;
+    outline: none;
+  }
+  .mm-editor:focus { border-color: var(--accent); }
+  .mm-editor:empty::before {
+    content: "Compose here. The list below suggests common text matching what you type.";
+    color: var(--muted);
+  }
+
+  /* 操作行 */
+  .mm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px 10px;
+    flex-wrap: wrap;
+  }
+  .mm-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--foreground);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .mm-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255,255,255,0.24); }
+  .mm-btn.accent {
+    background: rgba(88, 193, 66, 0.5);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .mm-btn.accent:hover { background: var(--accent); }
+  .mm-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .mm-btn:disabled:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--border); }
+  .mm-status {
+    font-size: 11px;
+    margin-left: auto;
+    padding-left: 8px;
+  }
+  .mm-status.ok { color: var(--accent); }
+  .mm-status.err { color: var(--error); }
+  .mm-status.info { color: var(--muted); }
+
+  /* ===== 列表区域 ===== */
+  .mm-list-wrap {
+    margin: 0 16px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }
+  .mm-search-area {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(255,255,255,0.02);
+  }
+  .mm-search-input {
+    width: 100%;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--foreground);
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .mm-search-input:focus { border-color: var(--accent); }
+  .mm-search-hint {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* 标签筛选 */
+  .mm-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .mm-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    border: none;
+    background: rgba(255,255,255,0.04);
+    color: var(--secondary);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .mm-tag-chip:hover { background: var(--hover-bg); color: var(--foreground); }
+  .mm-tag-chip.on {
+    background: rgba(88, 193, 66, 0.12);
+    color: var(--accent);
+  }
+  .mm-tag-chip .hash { opacity: 0.5; margin-right: 1px; }
+  .mm-tag-chip .cnt {
+    font-size: 9px;
+    background: rgba(255,255,255,0.1);
+    padding: 1px 5px;
+    border-radius: 999px;
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 列表 */
+  .mm-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 80px;
+  }
+  .mm-list-item {
+    display: flex;
+    align-items: start;
+    gap: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.12s;
+    border-radius: 0;
+    position: relative;
+  }
+  .mm-list-item:hover,
+  .mm-list-item.active { background: var(--hover-bg); }
+
+  .mm-item-pin {
+    width: 16px;
+    flex-shrink: 0;
+    padding-top: 2px;
+    color: var(--secondary);
+    font-size: 11px;
+    text-align: center;
+  }
+  .mm-item-content {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .mm-item-title {
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+  }
+  .mm-item-preview {
+    font-size: 11px;
+    color: var(--secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+  .mm-item-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .mm-item-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    font-size: 10px;
+    color: var(--secondary);
+  }
+
+  /* ===== 行内动作按钮组 ===== */
+  .mm-item-actions {
+    display: flex;
+    align-items: start;
+    gap: 2px;
+    flex-shrink: 0;
+    padding-top: 1px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .mm-list-item:hover .mm-item-actions,
+  .mm-list-item.active .mm-item-actions { opacity: 1; }
+
+  .mm-action-btn {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: var(--secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .mm-action-btn:hover { background: rgba(255, 255, 255, 0.08); }
+  .mm-action-btn.copy:hover { color: var(--accent); }
+  .mm-action-btn.edit:hover { color: rgb(99, 102, 241); }
+  .mm-action-btn.send:hover { color: var(--accent); }
+  .mm-action-btn.send:disabled {
+    color: var(--muted);
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+  .mm-action-btn.delete:hover {
+    color: var(--error);
+    background: rgba(229, 77, 46, 0.12);
+  }
+  .mm-action-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    margin: 0 2px;
+    align-self: center;
+  }
+
+  /* ===== 空状态 ===== */
+  .mm-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 120px;
+    color: var(--secondary);
+    font-size: 13px;
+  }
+  .mm-empty i { font-size: 24px; opacity: 0.6; }
+  .mm-empty a {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .mm-empty a:hover { text-decoration: underline; }
+
+  /* ===== 编辑弹窗（Save Dialog） ===== */
+  .save-dialog-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .save-dialog {
+    background: var(--modal-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: min(420px, 90%);
+    padding: 20px;
+  }
+  .save-dialog h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .save-row {
+    margin-bottom: 12px;
+  }
+  .save-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    display: block;
+  }
+  .save-input {
+    width: 100%;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--foreground);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+  }
+  .save-input:focus { border-color: var(--accent); }
+  .save-textarea {
+    width: 100%;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--foreground);
+    font-size: 13px;
+    outline: none;
+    font-family: var(--font-mono);
+    min-height: 100px;
+    resize: vertical;
+  }
+  .save-textarea:focus { border-color: var(--accent); }
+  .save-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  /* ===== 行内编辑模式 ===== */
+  .inline-edit-area {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-soft);
+    background: rgba(255,255,255,0.02);
+  }
+  .inline-edit-input {
+    width: 100%;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--foreground);
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 6px;
+  }
+  .inline-edit-input:focus { border-color: var(--accent); }
+  .inline-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .inline-edit-actions .mm-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  /* ===== 注释说明 ===== */
+  .note-panel {
+    background: var(--modal-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+  .note-panel h3 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--secondary);
+    margin-bottom: 10px;
+  }
+  .note-text {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .note-text b { color: var(--accent); }
+  code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: rgba(0,0,0,0.3);
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 700px) {
+    .gallery { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>CommonText Compose Modal – 完整交互原型</h1>
+  <p class="sub">方案A：Edit → Send → Copy → Delete | 行内编辑 | 多种交互状态</p>
+
+  <div class="gallery">
+    <!-- ====== 状态1: 正常态 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">1. 正常态（Normal）</span>
+        <span class="card-badge new">推荐</span>
+      </div>
+      <div class="mock-modal">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear" title="Manage common text"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true">kubectl get pods -n </div>
+        <div class="mm-actions">
+          <button class="mm-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent"><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" placeholder="Search common text..." />
+          </div>
+          <div class="mm-tags-row">
+            <span class="mm-tag-chip on"><span class="hash">#</span>k8s<span class="cnt">3</span></span>
+            <span class="mm-tag-chip"><span class="hash">#</span>ops<span class="cnt">5</span></span>
+            <span class="mm-tag-chip"><span class="hash">#</span>git<span class="cnt">8</span></span>
+            <span class="mm-tag-chip"><span class="hash">#</span>docker<span class="cnt">2</span></span>
+          </div>
+          <div class="mm-list">
+            <!-- item 1 (hover) -->
+            <div class="mm-list-item active">
+              <div class="mm-item-pin"><i class="fa-solid fa-thumbtack"></i></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">kubectl get pods</div>
+                <div class="mm-item-preview">kubectl get pods -n production --watch</div>
+                <div class="mm-item-tags">
+                  <span class="mm-item-tag">#k8s</span>
+                  <span class="mm-item-tag">#ops</span>
+                </div>
+              </div>
+              <div class="mm-item-actions">
+                <button class="mm-action-btn edit" title="Edit this text"><i class="fa-regular fa-pen-to-square"></i></button>
+                <button class="mm-action-btn send" title="Send to terminal"><i class="fa-regular fa-paper-plane"></i></button>
+                <button class="mm-action-btn copy" title="Copy this text"><i class="fa-regular fa-copy"></i></button>
+                <div class="mm-action-sep"></div>
+                <button class="mm-action-btn delete" title="Delete this text"><i class="fa-regular fa-trash-can"></i></button>
+              </div>
+            </div>
+            <!-- item 2 -->
+            <div class="mm-list-item">
+              <div class="mm-item-pin"></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">docker compose up</div>
+                <div class="mm-item-preview">docker compose up -d --build</div>
+                <div class="mm-item-tags"><span class="mm-item-tag">#docker</span></div>
+              </div>
+              <div class="mm-item-actions">
+                <button class="mm-action-btn edit" title="Edit"><i class="fa-regular fa-pen-to-square"></i></button>
+                <button class="mm-action-btn send" title="Send"><i class="fa-regular fa-paper-plane"></i></button>
+                <button class="mm-action-btn copy" title="Copy"><i class="fa-regular fa-copy"></i></button>
+                <div class="mm-action-sep"></div>
+                <button class="mm-action-btn delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+              </div>
+            </div>
+            <!-- item 3 (send disabled) -->
+            <div class="mm-list-item">
+              <div class="mm-item-pin"></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">git reset --hard HEAD</div>
+                <div class="mm-item-preview">git reset --hard HEAD && git clean -fd</div>
+                <div class="mm-item-tags"><span class="mm-item-tag">#git</span><span class="mm-item-tag">#danger</span></div>
+              </div>
+              <div class="mm-item-actions">
+                <button class="mm-action-btn edit" title="Edit"><i class="fa-regular fa-pen-to-square"></i></button>
+                <button class="mm-action-btn send" title="Focus a terminal to enable Send" disabled><i class="fa-regular fa-paper-plane"></i></button>
+                <button class="mm-action-btn copy" title="Copy"><i class="fa-regular fa-copy"></i></button>
+                <div class="mm-action-sep"></div>
+                <button class="mm-action-btn delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 状态2: 编辑弹窗覆盖 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">2. 行内编辑模式（Inline Edit）</span>
+        <span class="card-badge beta">备选</span>
+      </div>
+      <div class="mock-modal" style="position:relative;">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear" title="Manage"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true">kubectl get pods -n </div>
+        <div class="mm-actions">
+          <button class="mm-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent"><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" placeholder="Search common text..." />
+          </div>
+          <div class="mm-list">
+            <!-- item 1: 展开编辑 -->
+            <div class="mm-list-item active">
+              <div class="mm-item-pin"><i class="fa-solid fa-thumbtack"></i></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">kubectl get pods</div>
+                <div class="mm-item-preview">kubectl get pods -n production --watch</div>
+              </div>
+              <div class="mm-item-actions">
+                <button class="mm-action-btn edit" title="Editing..."><i class="fa-solid fa-pen-to-square" style="color:var(--accent)"></i></button>
+                <button class="mm-action-btn send" title="Send"><i class="fa-regular fa-paper-plane"></i></button>
+                <button class="mm-action-btn copy" title="Copy"><i class="fa-regular fa-copy"></i></button>
+                <div class="mm-action-sep"></div>
+                <button class="mm-action-btn delete" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+              </div>
+            </div>
+            <!-- 行内编辑展开区 -->
+            <div class="inline-edit-area">
+              <label class="save-label">Title</label>
+              <input class="inline-edit-input" value="kubectl get pods" />
+              <label class="save-label">Text</label>
+              <textarea class="inline-edit-input" style="min-height:60px; font-family:var(--font-mono);">kubectl get pods -n production --watch</textarea>
+              <label class="save-label">Tags (comma separated)</label>
+              <input class="inline-edit-input" value="k8s, ops" />
+              <div class="inline-edit-actions">
+                <button class="mm-btn">Cancel</button>
+                <button class="mm-btn accent">Update</button>
+              </div>
+            </div>
+            <!-- item 2 -->
+            <div class="mm-list-item">
+              <div class="mm-item-pin"></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">docker compose up</div>
+                <div class="mm-item-preview">docker compose up -d --build</div>
+              </div>
+              <div class="mm-item-actions" style="opacity:0;">
+                <button class="mm-action-btn edit"><i class="fa-regular fa-pen-to-square"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 状态3: 发送成功反馈 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">3. Send 成功反馈</span>
+        <span class="card-badge new">状态</span>
+      </div>
+      <div class="mock-modal">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true"></div>
+        <div class="mm-actions">
+          <button class="mm-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent"><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+          <span class="mm-status ok"><i class="fa-solid fa-check" style="font-size:10px"></i> Sent to focused terminal</span>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" placeholder="Search common text..." />
+          </div>
+          <div class="mm-list">
+            <div class="mm-list-item">
+              <div class="mm-item-pin"><i class="fa-solid fa-thumbtack"></i></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">kubectl get pods</div>
+                <div class="mm-item-preview">kubectl get pods -n production --watch</div>
+              </div>
+              <div class="mm-item-actions" style="opacity:0;">
+                <button class="mm-action-btn edit"><i class="fa-regular fa-pen-to-square"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 状态4: Copy 成功 + 空列表 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">4. 空状态（Empty）</span>
+        <span class="card-badge">基础</span>
+      </div>
+      <div class="mock-modal">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true">Some search text</div>
+        <div class="mm-actions">
+          <button class="mm-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent" disabled><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+          <span class="mm-status ok"><i class="fa-solid fa-check" style="font-size:10px"></i> Copied</span>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" value="nomatch" />
+          </div>
+          <div class="mm-empty">
+            <i class="fa-regular fa-quote-left"></i>
+            <span>No matching text</span>
+            <a>Manage</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 状态5: 无数据初始态 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">5. 首次使用（No Items）</span>
+        <span class="card-badge">基础</span>
+      </div>
+      <div class="mock-modal">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true"></div>
+        <div class="mm-actions">
+          <button class="mm-btn" disabled><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent" disabled><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" placeholder="Search common text..." />
+          </div>
+          <div class="mm-empty">
+            <i class="fa-regular fa-quote-left"></i>
+            <span>No common text yet</span>
+            <a>Manage</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 状态6: 编辑覆盖弹窗 ====== -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">6. Save Dialog（编辑弹窗覆盖）</span>
+        <span class="card-badge new">推荐</span>
+      </div>
+      <div class="mock-modal" style="position:relative;">
+        <div class="mm-header">
+          <div class="mm-title-block">
+            <div class="mm-title">Common Text</div>
+            <div class="mm-subtitle">Compose text. Pick from list; enter inserts, shift+enter newline.</div>
+          </div>
+          <button class="mm-gear"><i class="fa-solid fa-gear"></i></button>
+        </div>
+        <div class="mm-editor" contenteditable="true"></div>
+        <div class="mm-actions">
+          <button class="mm-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+          <button class="mm-btn accent"><i class="fa-solid fa-terminal"></i> Send</button>
+          <button class="mm-btn"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="mm-list-wrap">
+          <div class="mm-search-area">
+            <input class="mm-search-input" placeholder="Search..." />
+          </div>
+          <div class="mm-list">
+            <div class="mm-list-item">
+              <div class="mm-item-pin"><i class="fa-solid fa-thumbtack"></i></div>
+              <div class="mm-item-content">
+                <div class="mm-item-title">kubectl get pods</div>
+                <div class="mm-item-preview">kubectl get pods -n production --watch</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- 覆盖弹窗 -->
+        <div class="save-dialog-backdrop">
+          <div class="save-dialog">
+            <h3>Edit Common Text</h3>
+            <div class="save-row">
+              <label class="save-label">Title</label>
+              <input class="save-input" value="kubectl get pods" />
+            </div>
+            <div class="save-row">
+              <label class="save-label">Text</label>
+              <textarea class="save-textarea">kubectl get pods -n production --watch</textarea>
+            </div>
+            <div class="save-row">
+              <label class="save-label">Tags (comma separated)</label>
+              <input class="save-input" value="k8s, ops" />
+            </div>
+            <div class="save-actions">
+              <button class="mm-btn">Cancel</button>
+              <button class="mm-btn accent">Update</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 设计说明 ===== -->
+  <div class="note-panel">
+    <h3>📋 完整交互设计规范</h3>
+    <div class="note-text">
+      <b>1. 按钮顺序（方案A）：</b>Edit → Send → Copy → [分隔线] → Delete<br/>
+      <b>2. 悬浮触发：</b>actions-col 默认 opacity:0，group-hover 时 opacity:1，过渡 150ms ease<br/>
+      <b>3. Send 禁用：</b>无聚焦 terminal 时 disabled + cursor:not-allowed，tooltip "Focus a terminal to enable Send"<br/>
+      <b>4. 事件阻止：</b>所有 action 按钮必须 <code>event.stopPropagation()</code>，防止触发行 onClick（插入 editor）<br/>
+      <b>5. 编辑入口：</b>推荐用 Save Dialog 覆盖（方案6），保持 Compose Modal 层级不深入；备选行内编辑（方案2）<br/>
+      <b>6. Delete 确认：</b>沿用 <code>window.confirm("Delete this common text?")</code><br/>
+      <b>7. 键盘导航：</b>↑↓ 切换选中行，Enter 插入 editor，Escape 关闭弹窗<br/>
+      <b>8. 状态反馈：</b>Copy/Send/Delete 操作后状态行显示结果（ok/err/info）<br/>
+      <b>9. 标签筛选：</b>点击 chip 切换筛选状态，选中态 accent 底色
+    </div>
+  </div>
+
+  <div class="note-panel">
+    <h3>🎨 视觉设计决策</h3>
+    <div class="note-text">
+      <b>色彩体系：</b>沿用 Snorkeling 暗色主题 — bg:#222, modal:#2a2a2a, accent:#58c142, error:#e54d2e<br/>
+      <b>按钮尺寸：</b>action-btn 22×22px，图标 11px，圆角 5px<br/>
+      <b>分隔线：</b>Copy 与 Delete 之间 1px 竖线，降低误触风险<br/>
+      <b>选中态：</b>列表行 active/hover 背景 var(--hover-bg) = rgba(255,255,255,0.06)<br/>
+      <b>标签 chips：</b>高度 24px，圆角 6px，无描边，选中态 accent 底色<br/>
+      <b>编辑器：</b>monospace 字体，深色背景，聚焦时 accent 边框
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

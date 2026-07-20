@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Agent Card 响应式布局原型</title>
+<!--
+  布局需求:
+  - 宽屏 (>= 621px): [logo] [message+note] [4 action 按钮] [删除 X]  横向一行
+  - 中/窄屏 (<= 620px): 上中下三段
+      上段:  logo 左上 .. status chip 中 .. 删除 X 右上
+      中段:  message-strip
+      下段:  note 左 .......... 4 个 action 按钮 右下
+- 删除 X 与 action 列表 不同层级: X 在卡片顶部右端, action 列表在卡片底部右端, 中间隔着中段
+- status chip: 仅中/窄屏提到 row-head 上段; 宽屏仍在 body-topline 与 message 同行
+
+  配色: 全部用项目 dark 主题 token (frontend/app/theme.scss 实测值)
+-->
+<style>
+  :root {
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --panel-bg-color: rgba(31, 33, 31, 0.5);
+    --hover-bg-color: rgba(255, 255, 255, 0.1);
+    --error-color: rgb(229, 77, 46);
+    --warning-color: rgb(224, 185, 86);
+
+    --st-idle-fg: var(--secondary-text-color);
+    --st-idle-bg: rgb(from var(--main-text-color) r g b / 0.06);
+    --st-working-fg: var(--accent-color);
+    --st-working-bg: rgb(from var(--accent-color) r g b / 0.1);
+    --st-blocked-fg: var(--warning-color);
+    --st-blocked-bg: rgb(245 158 11 / 0.12);
+  }
+  body {
+    background: #0c0d10;
+    color: var(--main-text-color);
+    font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    margin: 0;
+    padding: 24px;
+    font-size: 12px;
+  }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  .desc { color: var(--secondary-text-color); font-size: 11px; margin-bottom: 16px; max-width: 980px; line-height: 1.6; }
+  .stage {
+    margin-bottom: 30px;
+    padding: 16px;
+    background: var(--main-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+  }
+  .stage-title {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+  }
+  .stage-title .wtag {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--main-text-color);
+    font-variant-numeric: tabular-nums;
+  }
+  .container-box { container-type: inline-size; width: 100%; }
+  .container-box.w-wide  { max-width: 760px; }
+  .container-box.w-mid   { max-width: 460px; }
+  .container-box.w-narrow{ max-width: 320px; }
+
+  /* ============= 行容器 - 宽屏 (默认) ============= */
+  .agent-row {
+    display: grid;
+    width: 100%;
+    box-sizing: border-box;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;   /* icon | body | actions | x */
+    grid-template-areas: "icon body actions x";
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgb(from var(--main-text-color) r g b / 0.035);
+    max-width: 100%;
+    min-width: 0;
+  }
+  .agent-row.unread {
+    border-color: rgb(from var(--accent-color) r g b / 0.55);
+    background: rgb(from var(--accent-color) r g b / 0.08);
+  }
+
+  .row-icon {
+    grid-area: icon;
+    width: 24px; height: 24px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent;
+  }
+  .row-icon svg { width: 18px; height: 18px; display: block; }
+
+  /* 宽屏: body 是单行高的中间内容 (status chip + msg / note 双行) */
+  .row-body {
+    grid-area: body;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: center;
+  }
+  .body-topline {
+    display: flex; align-items: center;
+    gap: 6px; min-width: 0;
+  }
+
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 18px; padding: 0 5px;
+    border: 1px solid rgb(from var(--st-idle-fg) r g b / 0.28);
+    border-radius: 6px; background: var(--st-idle-bg); color: var(--st-idle-fg);
+    font-size: 10px; font-weight: 600; line-height: 1; white-space: nowrap; flex: 0 0 auto;
+  }
+  .status-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st-idle-fg); flex: 0 0 8px; }
+  .status-chip.working {
+    color: var(--st-working-fg); border-color: rgb(from var(--accent-color) r g b / 0.45);
+    background: var(--st-working-bg);
+  }
+  .status-chip.working .dot {
+    background: var(--accent-color);
+    box-shadow: 0 0 0 2px rgb(from var(--accent-color) r g b / 0.18);
+    animation: pulsate 1.4s ease-in-out infinite;
+  }
+  .status-chip.blocked {
+    color: var(--st-blocked-fg); border-color: rgb(245 158 11 / 0.64);
+    background: var(--st-blocked-bg);
+  }
+  @keyframes pulsate { 0%,100%{transform:scale(0.9);opacity:.6} 50%{transform:scale(1.12);opacity:1} }
+
+  .msg-strip {
+    display: flex; align-items: center; gap: 4px;
+    min-width: 0; overflow: visible; flex-wrap: wrap;
+  }
+  .msg-more { color: var(--secondary-text-color); font-size: 10px; flex: 0 0 auto; }
+  .msg-sq {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid rgb(from var(--main-text-color) r g b / 0.2);
+    background: rgb(from var(--main-text-color) r g b / 0.12);
+    flex: 0 0 14px; cursor: pointer; padding: 0;
+  }
+  .msg-sq.user {
+    border-color: rgb(from var(--accent-color) r g b / 0.8);
+    background: rgb(from var(--accent-color) r g b / 0.28);
+  }
+
+  .note-line {
+    display: flex; align-items: center;
+    color: var(--secondary-text-color);
+    font-size: 10px; min-width: 0;
+  }
+  .note-line > span {
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* 4 个 action 按钮 */
+  .row-actions {
+    grid-area: actions;
+    display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap;
+  }
+  .act-btn {
+    width: 22px; height: 22px;
+    border: 1px solid var(--border-color); border-radius: 5px;
+    background: transparent; color: var(--secondary-text-color);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 0; font-size: 11px;
+  }
+  .act-btn:hover { color: var(--main-text-color); background: var(--hover-bg-color); }
+  .act-btn.danger:hover {
+    border-color: rgb(from var(--error-color) r g b / 0.65);
+    color: var(--error-color); background: rgb(from var(--error-color) r g b / 0.1);
+  }
+  .act-btn.is-active {
+    border-color: rgb(from var(--accent-color) r g b / 0.45);
+    background: rgb(from var(--accent-color) r g b / 0.1);
+    color: var(--accent-color);
+  }
+
+  /* 删除 block X 按钮 */
+  .row-x {
+    grid-area: x;
+    width: 20px; height: 20px;
+    border: 0; border-radius: 4px;
+    background: transparent; color: var(--secondary-text-color);
+    cursor: pointer; font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .row-x:hover { color: var(--error-color); background: rgb(from var(--error-color) r g b / 0.12); }
+
+  /* ============= 中/窄屏 (<=620px): 上中下三段 =============
+     grid 变成:  上段:  icon(左)  body-head(右) = X 按钮
+                  body
+                  body-foot:  note(左) .......... actions(右)
+     用 grid-template-areas 把 5 个区域拼成三段栈
+  */
+  @container (max-width: 620px) {
+    .agent-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "icon  head       x"
+        "body  body       body"
+        "foot  foot       foot";
+      grid-template-rows: auto auto auto;
+      column-gap: 8px;
+      row-gap: 6px;
+      align-items: start;
+    }
+
+    /* 上段中部: status chip 容器 (中/窄屏才出现) */
+    .row-head {
+      grid-area: head;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    /* body 占整行中段 */
+    .row-body { grid-area: body; }
+
+    /* 显式声明 row-foot 到 foot 区, 否则会被 auto-placement 错放进 body 行 */
+    .row-foot { grid-area: foot; }
+
+    /* 上段左 = logo (grid-area: icon, 保持原位) */
+    .row-icon { /* 已是 grid-area: icon */ }
+
+    /* 上段右 = X 按钮 (grid-area: x), 已在原位 */
+
+    /* 中段只剩 message-strip: body-topline 隐藏掉它的 status 容器语义,
+       但保留外层以便宽屏共用. status chip 由 row-head 接管. */
+
+    /* 下段: note 左, 4 个 action 按钮 右 */
+    .row-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .row-foot .note-line { flex: 1 1 auto; min-width: 0; }
+    .row-foot .row-actions-narrow {
+      display: inline-flex; gap: 4px; flex: 0 0 auto;
+    }
+    /* 中/窄屏: 原 grid actions 不再渲染 (移到 row-foot) */
+    .row-actions { display: none; }
+  }
+
+  /* 宽屏: 不渲染 row-foot 与 row-head (中/窄屏专用层级) */
+  @container (min-width: 621px) {
+    .row-foot { display: none; }
+    .row-head { display: none; }
+  }
+
+  @container (max-width: 360px) {
+    .agent-row { row-gap: 5px; padding: 6px; column-gap: 6px; }
+    .act-btn { width: 20px; height: 20px; font-size: 10px; }
+    .row-x { width: 18px; height: 18px; }
+    .row-foot .row-actions-narrow { gap: 3px; }
+  }
+
+  /* 辅助标尺 */
+  /* .agent-row > * { outline: 1px dashed rgb(255 255 255 / 0.08); } */
+</style>
+</head>
+<body>
+
+<h1>Agent Card 响应式布局原型</h1>
+<div class="desc">
+  中/窄屏 = 上 — 中 — 下 三段栈式布局:<br/>
+  <b>上段</b> = logo 左上 ········· <b>status chip</b> 中 ········· <b>删除 X</b> 右上<br/>
+  <b>中段</b> = message-strip<br/>
+  <b>下段</b> = note 左 ········· <b>4 个 action 按钮</b> 右下<br/>
+  status chip 提到上段与 logo/X 同层; X 在卡片顶部右端, action 列表在卡片底部右端, 中间被中段隔开.
+  宽屏仍是一行横向 (status 留在 body-topline 与 message 同行, row-head 在宽屏下隐藏). 配色全部取自项目 dark 主题 token.
+</div>
+
+<!-- ============== 宽屏 760px ============== -->
+<div class="stage">
+  <div class="stage-title">
+    <span class="wtag">宽屏 ~760px</span>
+    <span>logo · message+note · 4 action · 删除 X, 横向一行</span>
+  </div>
+  <div class="container-box w-wide">
+
+    <div class="agent-row unread">
+      <span class="row-icon">
+        <svg height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#D97757" fill-rule="nonzero"
+            d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" />
+        </svg>
+      </span>
+      <div class="row-body">
+        <div class="body-topline">
+          <span class="status-chip working"><span class="dot"></span>Working</span>
+          <div class="msg-strip">
+            <span class="msg-more">+45</span>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button><button class="msg-sq"></button>
+            <button class="msg-sq user"></button><button class="msg-sq"></button>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button><button class="msg-sq"></button>
+            <button class="msg-sq user"></button><button class="msg-sq"></button>
+          </div>
+        </div>
+        <div class="note-line"><span>#Terminal #学习 next: hook session-id capture</span></div>
+      </div>
+      <div class="row-actions">
+        <button class="act-btn is-active" title="Edit session note">🏷</button>
+        <button class="act-btn" title="Open session details">≡</button>
+        <button class="act-btn" title="Jump to block">⊕</button>
+        <button class="act-btn danger" title="Delete session file">🗑</button>
+      </div>
+      <button class="row-x" title="Delete block">✕</button>
+    </div>
+
+    <div class="agent-row" style="margin-top:8px;">
+      <span class="row-icon">
+        <svg height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#D97757" fill-rule="nonzero"
+            d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" />
+        </svg>
+      </span>
+      <div class="row-body">
+        <div class="body-topline">
+          <span class="status-chip"><span class="dot"></span>Idle: explicit-report</span>
+          <div class="msg-strip">
+            <span class="msg-more">+12</span>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button><button class="msg-sq"></button>
+            <button class="msg-sq user"></button><button class="msg-sq"></button>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+          </div>
+        </div>
+        <div class="note-line"><span>#fix next: re-run after rebase</span></div>
+      </div>
+      <div class="row-actions">
+        <button class="act-btn" title="Edit session note">🏷</button>
+        <button class="act-btn" title="Open session details">≡</button>
+        <button class="act-btn" title="Jump to block">⊕</button>
+        <button class="act-btn danger" title="Delete session file">🗑</button>
+      </div>
+      <button class="row-x" title="Delete block">✕</button>
+    </div>
+    <div class="helper-note">宽屏: 一行横向. X 与 4 个 action 分离成两个独立 grid cell.
+      row-foot 元素已通过 @container (min-width:621px) { display:none } 移除.</div>
+  </div>
+</div>
+
+<!-- ============== 中屏 460px ============== -->
+<div class="stage">
+  <div class="stage-title">
+    <span class="wtag">中屏 ~460px</span>
+    <span>上中下三段: 上=logo 左+status 中+X 右; 中=message-strip; 下=note 左+4 action 右下</span>
+  </div>
+  <div class="container-box w-mid">
+    <div class="agent-row">
+      <span class="row-icon">
+        <svg height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#D97757" fill-rule="nonzero"
+            d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" />
+        </svg>
+      </span>
+      <!-- 上段中部: status chip (中/窄屏才渲染, 宽屏 row-head 被 display:none) -->
+      <div class="row-head">
+        <span class="status-chip working"><span class="dot"></span>Working</span>
+      </div>
+      <div class="row-body">
+        <!-- 中段仅 message-strip: status chip 已提到 row-head, body-topline 留作宽屏共用壳 -->
+        <div class="body-topline">
+          <div class="msg-strip">
+            <span class="msg-more">+45</span>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button><button class="msg-sq"></button>
+            <button class="msg-sq user"></button><button class="msg-sq"></button>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button>
+          </div>
+        </div>
+      </div>
+      <!-- 上段右: 删除 X -->
+      <button class="row-x" title="Delete block">✕</button>
+      <!-- 下段: note 左 + 4 个 action 按钮 右 -->
+      <div class="row-foot">
+        <div class="note-line"><span>#Terminal #学习 next: hook session-id capture</span></div>
+        <div class="row-actions-narrow">
+          <button class="act-btn is-active" title="Edit session note">🏷</button>
+          <button class="act-btn" title="Open session details">≡</button>
+          <button class="act-btn" title="Jump to block">⊕</button>
+          <button class="act-btn danger" title="Delete session file">🗑</button>
+        </div>
+      </div>
+    </div>
+    <div class="helper-note">
+      中屏: 三段栈式.<br/>
+      <b>上段</b>: logo 左上 — <b>status chip</b> 中 — <b>X 右上</b>;<br/>
+      <b>中段</b>: message-strip 只一行;<br/>
+      <b>下段</b>: note 左 — <b>4 个 action 按钮</b> 右下.<br/>
+      status chip 提到上段, 与 logo / X 同层; X 与 action 列表相隔中段.
+    </div>
+  </div>
+</div>
+
+<!-- ============== 窄屏 320px ============== -->
+<div class="stage">
+  <div class="stage-title">
+    <span class="wtag">窄屏 ~320px</span>
+    <span>同中屏三段结构, 仅缩小间距/icon 尺寸</span>
+  </div>
+  <div class="container-box w-narrow">
+    <div class="agent-row">
+      <span class="row-icon">
+        <svg height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#D97757" fill-rule="nonzero"
+            d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" />
+        </svg>
+      </span>
+      <div class="row-head">
+        <span class="status-chip"><span class="dot"></span>Idle</span>
+      </div>
+      <div class="row-body">
+        <div class="body-topline">
+          <div class="msg-strip">
+            <span class="msg-more">+10</span>
+            <button class="msg-sq"></button><button class="msg-sq user"></button>
+            <button class="msg-sq"></button><button class="msg-sq"></button>
+            <button class="msg-sq user"></button><button class="msg-sq"></button>
+          </div>
+        </div>
+      </div>
+      <button class="row-x" title="Delete block">✕</button>
+      <div class="row-foot">
+        <div class="note-line"><span>#Terminal next: re-run</span></div>
+        <div class="row-actions-narrow">
+          <button class="act-btn is-active" title="Edit session note">🏷</button>
+          <button class="act-btn" title="Open session details">≡</button>
+          <button class="act-btn" title="Jump to block">⊕</button>
+          <button class="act-btn danger" title="Delete session file">🗑</button>
+        </div>
+      </div>
+    </div>
+    <div class="helper-note">窄屏: 与中屏同一三段结构 (上=logo+status+X; 中=message; 下=note+action), 仅 padding 缩到 6px, icon/act 缩到 20×20, X 缩到 18×18. message-strip 可换行.</div>
+  </div>
+</div>
+
+<!-- ============== 变更说明 ============== -->
+<div class="stage">
+  <div class="stage-title"><span class="wtag">变更说明</span></div>
+  <table style="border-collapse:collapse; color:var(--main-text-color); font-size:11px; width:100%;">
+    <thead><tr style="color:var(--secondary-text-color);">
+      <th style="text-align:left;border-bottom:1px solid var(--border-color);padding:6px;">维度</th>
+      <th style="text-align:left;border-bottom:1px solid var(--border-color);padding:6px;">现状</th>
+      <th style="text-align:left;border-bottom:1px solid var(--border-color);padding:6px;">新方案</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">宽屏 grid</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">3 列: main | side | (actions+X 同列)</td>
+        <td style="padding:6px;vertical-align:top;">4 列: icon | body | actions | x (X 与 actions 拆开)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">中/窄屏 layout</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">main 上 + side 下 两段</td>
+        <td style="padding:6px;vertical-align:top;">三段: 上=logo+status+X ; 中=message-strip ; 下=note + 4 action 按钮</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">X 按钮位置</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">混在 actions 末位 / 浮右上</td>
+        <td style="padding:6px;vertical-align:top;">永远卡片最右端 (上段右上角), 与 action 列表分属不同层级</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">4 action 按钮位置</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">actions 列, 中/窄屏同行</td>
+        <td style="padding:6px;vertical-align:top;">宽屏: actions 列; 中窄屏: 下段右下角推右对齐</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">status chip</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">main 列第二行 (挨 logo)</td>
+        <td style="padding:6px;vertical-align:top;">中/窄屏: 上段中部 (与 logo / X 同层); 宽屏: 仍在 body-topline 与 message 同行</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">note 位置 (中/窄屏)</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">side 列第二行</td>
+        <td style="padding:6px;vertical-align:top;">下段左端, 与 action 列表左右两端对齐</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">配色</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">项目主题 token</td>
+        <td style="padding:6px;vertical-align:top;">同主题 token; brand logo 保留 #D97757 (provider 自带)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">icon 列表个数</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">—</td>
+        <td style="padding:6px;vertical-align:top;">三个场景均为 4 个 (tag/list/jump/trash)</td>
+      </tr>
+      <tr>
+        <td style="padding:6px;vertical-align:top;">row-foot 样式</td>
+        <td style="padding:6px;vertical-align:top;color:var(--secondary-text-color);">N/A</td>
+        <td style="padding:6px;vertical-align:top;">无 border/无背景, 仅 flex justify-between; 宽屏下 display:none</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>
