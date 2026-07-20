@@ -13,6 +13,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/vdom"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
@@ -158,6 +159,9 @@ type WshRpcInterface interface {
 	GetSecretsNamesCommand(ctx context.Context) ([]string, error)
 	SetSecretsCommand(ctx context.Context, secrets map[string]*string) error
 	GetSecretsLinuxStorageBackendCommand(ctx context.Context) (string, error)
+
+	// cc-switch integration: read-only list of cc-switch's Claude providers (vendors), for per-block vendor isolation
+	CcSwitchListClaudeVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error)
 
 	WorkspaceListCommand(ctx context.Context) ([]WorkspaceInfoData, error)
 	GetUpdateChannelCommand(ctx context.Context) (string, error)

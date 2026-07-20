@@ -29,6 +29,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/buildercontroller"
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/filebackup"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
@@ -1577,6 +1578,13 @@ func (ws *WshServer) GetTabCommand(ctx context.Context, tabId string) (*waveobj.
 
 func (ws *WshServer) GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEvent, error) {
 	return wcore.GetAllBadges(), nil
+}
+
+// CcSwitchListClaudeVendorsCommand reads the user's cc-switch SQLite DB read-only and returns the list of
+// Claude Code vendors (providers) with each one's env block. Soft-degrades to an empty list + Detected=false
+// if cc-switch isn't installed, its DB is missing, or its schema doesn't match — never blocks agent launch.
+func (ws *WshServer) CcSwitchListClaudeVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error) {
+	return ccswitch.ListClaudeVendors(ctx)
 }
 
 func (ws *WshServer) GetSecretsCommand(ctx context.Context, names []string) (map[string]string, error) {
