@@ -86,6 +86,11 @@ type MetaTSType struct {
 	AgentClaudeVendorId   *string `json:"agent:claudevendorid,omitempty"`
 	AgentClaudeVendorName *string `json:"agent:claudevendorname,omitempty"`
 
+	// Codex per-block vendor (from cc-switch). When set, this codex block was launched against a
+	// specific cc-switch provider rather than the global one — drives per-block CODEX_HOME isolation.
+	AgentCodexVendorId   *string `json:"agent:codexvendorid,omitempty"`
+	AgentCodexVendorName *string `json:"agent:codexvendorname,omitempty"`
+
 	EditorClear               bool    `json:"editor:*,omitempty"`
 	EditorMinimapEnabled      bool    `json:"editor:minimapenabled,omitempty"`
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`

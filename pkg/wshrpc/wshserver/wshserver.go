@@ -1587,6 +1587,13 @@ func (ws *WshServer) CcSwitchListClaudeVendorsCommand(ctx context.Context) (*ccs
 	return ccswitch.ListClaudeVendors(ctx)
 }
 
+// CcSwitchListCodexVendorsCommand reads the user's cc-switch SQLite DB read-only and returns the list of
+// Codex vendors (providers) with each one's OPENAI_API_KEY plus a materialized per-vendor CODEX_HOME path.
+// Same soft-degrade contract as the Claude variant — never blocks agent launch.
+func (ws *WshServer) CcSwitchListCodexVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error) {
+	return ccswitch.ListCodexVendors(ctx)
+}
+
 func (ws *WshServer) GetSecretsCommand(ctx context.Context, names []string) (map[string]string, error) {
 	result := make(map[string]string)
 	for _, name := range names {

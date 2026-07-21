@@ -162,6 +162,8 @@ type WshRpcInterface interface {
 
 	// cc-switch integration: read-only list of cc-switch's Claude providers (vendors), for per-block vendor isolation
 	CcSwitchListClaudeVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error)
+	// cc-switch integration: read-only list of cc-switch's Codex providers (vendors), for per-block vendor isolation
+	CcSwitchListCodexVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error)
 
 	WorkspaceListCommand(ctx context.Context) ([]WorkspaceInfoData, error)
 	GetUpdateChannelCommand(ctx context.Context) (string, error)
