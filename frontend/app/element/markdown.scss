@@ -402,16 +402,12 @@
             line-height: inherit;
             color: var(--main-text-color);
             background-color: var(--content-bg-color);
-            border: 1px solid var(--accent-color);
-            border-radius: 4px;
+            border: 0;
             margin: 0;
             padding: 0.1em 0.2em;
             resize: none;
             overflow: hidden;
             outline: none;
-            // Slight elevated shadow so the editor reads as floating rather than reflowing
-            // the doc. Keep light — we don't want to obscure neighbouring content.
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
         }
     }
 

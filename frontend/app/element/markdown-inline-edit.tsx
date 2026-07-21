@@ -25,6 +25,19 @@ export type InlineEditSession = {
     targetEl: HTMLElement;
 };
 
+export function resolveInlineEditTarget(
+    viewport: HTMLElement,
+    session: Pick<InlineEditSession, "blockKind" | "startLine" | "targetEl">
+): HTMLElement | null {
+    if (session.targetEl.isConnected && viewport.contains(session.targetEl)) {
+        return session.targetEl;
+    }
+    const blockClass = session.blockKind === "p" ? "paragraph" : "heading";
+    return viewport.querySelector<HTMLElement>(
+        `.markdown-render-root .${blockClass}[data-source-line="${session.startLine}"]`
+    );
+}
+
 /**
  * Replace an inclusive [startLine..endLine] range (1-based, original-coordinate) inside `text`
  * with `newSegment`. Lines outside the range are preserved verbatim, including EOL style:
@@ -72,6 +85,7 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
     // we do NOT keep the element in state because reading getBoundingClientRect during render
     // breaks SSR and causes layout thrash.
     const [overlayRect, setOverlayRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+    const focusedSessionRef = useRef<InlineEditSession | null>(null);
     const [, setEditingFlag] = useAtom(inlineEditingActiveAtom);
 
     // Reset on file switch / unmount / external text rewrite that wipes our anchor.
@@ -86,20 +100,12 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
     useEffect(() => {
         const active = editSession != null;
         setEditingFlag(active);
-        if (!active) {
-            return;
-        }
-        // Hide target element while overlay is mounted (visibility, not display, keeps layout).
-        const target = editSession.targetEl;
-        target.classList.add("inline-edit-hidden");
-        return () => {
-            target.classList.remove("inline-edit-hidden");
-        };
+        return () => active && setEditingFlag(false);
     }, [editSession, setEditingFlag]);
 
     const measureOverlay = useCallback(() => {
         const viewport = getViewportEl();
-        const target = editSession?.targetEl;
+        const target = viewport && editSession ? resolveInlineEditTarget(viewport, editSession) : null;
         if (!viewport || !target) {
             setOverlayRect(null);
             return;
@@ -114,13 +120,38 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
         });
     }, [editSession, getViewportEl]);
 
+    useLayoutEffect(() => {
+        if (editSession == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        if (viewport == null) {
+            return;
+        }
+        const target = resolveInlineEditTarget(viewport, editSession);
+        if (target == null) {
+            setEditSession(null);
+            setDraftText("");
+            setOverlayRect(null);
+            return;
+        }
+        target.classList.add("inline-edit-hidden");
+        return () => target.classList.remove("inline-edit-hidden");
+    });
+
+    useLayoutEffect(() => {
+        if (editSession == null) {
+            return;
+        }
+        measureOverlay();
+    }, [editSession, measureOverlay]);
+
     // Re-measure on scroll / resize / dismiss. We attach scroll to the viewport element
     // (which is the OverlayScrollbars inner scrollable). Resize window covers container reflow.
     useEffect(() => {
         if (editSession == null) {
             return;
         }
-        measureOverlay();
         const viewport = getViewportEl();
         const onScroll = () => measureOverlay();
         const onResize = () => measureOverlay();
@@ -134,6 +165,16 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
             cancelAnimationFrame(raf);
         };
     }, [editSession, measureOverlay, getViewportEl]);
+
+    useLayoutEffect(() => {
+        const ta = textareaRef.current;
+        if (ta == null || editSession == null || overlayRect == null || focusedSessionRef.current === editSession) {
+            return;
+        }
+        focusedSessionRef.current = editSession;
+        ta.focus();
+        ta.setSelectionRange(0, ta.value.length);
+    }, [editSession, overlayRect]);
 
     // Auto-grow textarea height to fit content.
     useLayoutEffect(() => {
@@ -163,16 +204,6 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
             };
             setEditSession(session);
             setDraftText(initialContent);
-            // Focus next tick so the textarea is mounted; otherwise setSelectionRange runs
-            // against null.
-            requestAnimationFrame(() => {
-                const ta = textareaRef.current;
-                if (ta == null) {
-                    return;
-                }
-                ta.focus();
-                ta.setSelectionRange(0, initialContent.length);
-            });
         },
         [fullText]
     );
