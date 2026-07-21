@@ -17,9 +17,10 @@ import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } f
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     agentStatusPresentation,
-    type AgentStatus,
     isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -54,17 +55,25 @@ import { blockViewToIcon, blockViewToName } from "./blockutil";
 
 /**
  * 读取 InlineTabLabel 所属 agent block 的 canonical agent status.
- * 直接复用 TermViewModel 已经维护的 `agentStatusAtom` (term-model.ts 在 ViewModel 构造时
- * 一次性 GetAgentStatus + 订阅 "agentstatus" 事件), 避免在 Tab 集群里再开一份独立订阅
- * 与额外 RPC 调用 — 之前那种"每 tab label 一份订阅 + new BlockServiceType()" 的写法会
- * 造成 Block 主区状态被冲掉(出现持久的 "No data"), 也无谓地增加 backend 调用.
  *
- * 非 agent 块、或 ViewModel 尚未挂载时返回 null (Tab 上不渲染状态点).
+ * 旧实现直接复用 TermViewModel.agentStatusAtom, 但 InlineTabBlock 只渲染 active 子 block,
+ * 切走的 tab 的 ViewModel 被 dispose, atom 消失 → 非激活 tab 状态点不显示.
+ * 现改用全局 AgentStatusStore: 它对每个 blockId 自带一份 GetAgentStatus + agentstatus 事件订阅,
+ * 生命周期与 ViewModel 解耦. 通过 acquire/release 引用计数管理订阅, 关闭的 block 释放订阅.
+ *
+ * 仍复用已有 TermViewModel 那条订阅的 active 块: 它本身行为不变 (term-model.ts 自带一份 atom),
+ * 这里仅用于补齐非激活 tab 的状态来源.
  */
 function useInlineTabAgentStatus(blockId: string): AgentStatus | null {
-    const bcm = getBlockComponentModel(blockId);
-    const agentStatusAtom = (bcm?.viewModel as { agentStatusAtom?: jotai.PrimitiveAtom<AgentStatus | null> } | undefined)?.agentStatusAtom ?? null;
-    return useAtomValueSafe(agentStatusAtom);
+    const store = AgentStatusStore.getInstance();
+    const statusAtom = useMemo(() => store.getAgentStatusAtom(blockId), [store, blockId]);
+    useEffect(() => {
+        store.acquire(blockId);
+        return () => {
+            store.release(blockId);
+        };
+    }, [store, blockId]);
+    return useAtomValueSafe(statusAtom);
 }
 
 function getViewElem(
