@@ -9,6 +9,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/vdom"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
@@ -99,6 +100,12 @@ func BlocksListCommand(w *wshutil.WshRpc, data wshrpc.BlocksListRequest, opts *w
 // command "captureblockscreenshot", wshserver.CaptureBlockScreenshotCommand
 func CaptureBlockScreenshotCommand(w *wshutil.WshRpc, data wshrpc.CommandCaptureBlockScreenshotData, opts *wshrpc.RpcOpts) (string, error) {
 	resp, err := sendRpcRequestCallHelper[string](w, "captureblockscreenshot", data, opts)
+	return resp, err
+}
+
+// command "ccswitchlistclaudevendors", wshserver.CcSwitchListClaudeVendorsCommand
+func CcSwitchListClaudeVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*ccswitch.VendorList, error) {
+	resp, err := sendRpcRequestCallHelper[*ccswitch.VendorList](w, "ccswitchlistclaudevendors", nil, opts)
 	return resp, err
 }
 

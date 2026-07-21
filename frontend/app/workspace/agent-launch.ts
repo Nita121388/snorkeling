@@ -2,12 +2,17 @@ import { atoms, getApi, getFocusedBlockId, globalStore } from "@/app/store/globa
 import * as WOS from "@/app/store/wos";
 import { PreviewExplorerRootMetaKey, PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
 import { isBlank } from "@/util/util";
+import type { CcSwitchVendor } from "@/app/workspace/ccswitch-vendors";
 
 const DefaultAgentCommand = "codex";
 const DefaultAgentProfile = "codex";
 const DefaultModelFlag = "--model";
 const AgentAutoResumeMetaKey = "agent:autoresume";
 const AgentProviderMetaKey = "agent:provider";
+// Per-block cc-switch vendor binding. When present, this Claude Code block was launched against a specific
+// cc-switch provider's env, not the global ~/.claude/settings.json env — supports per-block vendor isolation.
+const AgentClaudeVendorIdMetaKey = "agent:claudevendorid";
+const AgentClaudeVendorNameMetaKey = "agent:claudevendorname";
 const DefaultHomeLaunchTargetBlockId = "launch-target:home";
 const DefaultHomeLaunchTargetCwd = "~";
 
@@ -924,19 +929,32 @@ export function createTerminalBlockDef(context?: AgentLaunchContext, baseBlockDe
     };
 }
 
-export function createDefaultAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext): BlockDef {
-    return createAgentBlockDef(settings, context);
+export function createDefaultAgentBlockDef(
+    settings?: SettingsType,
+    context?: AgentLaunchContext,
+    vendorOptions?: CcSwitchVendor[],
+    vendorId?: string
+): BlockDef {
+    return createAgentBlockDef(settings, context, undefined, vendorOptions, vendorId);
 }
 
 export function createAgentBlockDefForProfile(
     profileName: string,
     settings?: SettingsType,
-    context?: AgentLaunchContext
+    context?: AgentLaunchContext,
+    vendorOptions?: CcSwitchVendor[],
+    vendorId?: string
 ): BlockDef {
-    return createAgentBlockDef(settings, context, profileName);
+    return createAgentBlockDef(settings, context, profileName, vendorOptions, vendorId);
 }
 
-function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchContext, profileName?: string): BlockDef {
+function createAgentBlockDef(
+    settings?: SettingsType,
+    context?: AgentLaunchContext,
+    profileName?: string,
+    vendorOptions?: CcSwitchVendor[],
+    vendorId?: string
+): BlockDef {
     const contextMeta = resolveContextMeta(context);
     const profile = getProfileConfig(settings, profileName);
     const cmd = !isBlank(profile.cmd) ? profile.cmd : DefaultAgentCommand;
@@ -953,6 +971,37 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
         }
     }
     const cmdEnv = sanitizeEnv(profile.env);
+
+    // Resolve the cc-switch vendor (only meaningful for Claude Code blocks). Vendor env is layered ON TOP
+    // of profile.env: profile.env is the user's settings.json default, vendor is the user's explicit per-block
+    // pick at launch time → vendor wins. If vendorId is blank or not found in options, the layer is a no-op
+    // and the block lands exactly as it would have before (zero-invasive).
+    //
+    // IMPORTANT well-spent gotcha: Claude Code applies ~/.claude/settings.json's "env" block on top of the
+    // process env it inherits from us (per https://code.claude.com/docs/en/env-vars — "When the same
+    // variable is set in both your shell and a settings file env block, the settings file value applies").
+    // So the ANTHROPIC_BASE_URL we put in cmd:env gets *overwritten* by whatever the user's global
+    // settings.json says, silently reverting every block back to the user's default vendor.
+    //
+    // To make the per-block pick actually stick, we also inject CLAUDE_CONFIG_DIR -> the vendor's
+    // materialized settings dir (see reader.go materializeClaudeConfigDir). Claude then reads
+    // *that* settings.json (containing only this vendor's env) instead of ~/.claude/settings.json,
+    // so our vendor.env wins by construction. We still inject the env values themselves into cmd:env
+    // for the case where claude_config_dir is empty (reader skipped materialization, e.g. write failed)
+    // — that path keeps the old OS-env-injection behavior as a fallback.
+    let selectedVendor: CcSwitchVendor | undefined = undefined;
+    const isClaudeProvider = provider === "claude" || provider === "anthropic";
+    if (isClaudeProvider && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
+        selectedVendor = vendorOptions.find((v) => v != null && v.id === vendorId);
+    }
+    if (selectedVendor != null && selectedVendor.env != null) {
+        for (const [k, v] of Object.entries(selectedVendor.env)) {
+            cmdEnv[k] = v;
+        }
+    }
+    if (selectedVendor != null && !isBlank(selectedVendor.claude_config_dir)) {
+        cmdEnv["CLAUDE_CONFIG_DIR"] = selectedVendor.claude_config_dir;
+    }
 
     const blockMeta: MetaType = {
         view: "term",
@@ -972,6 +1021,12 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
     const blockMetaRecord = blockMeta as Record<string, unknown>;
     blockMetaRecord[AgentAutoResumeMetaKey] = true;
     blockMetaRecord[AgentProviderMetaKey] = provider;
+    if (selectedVendor != null) {
+        // Persist the per-block vendor binding so the block's vendor survives Wave restart
+        // and other UI can show "this claude block is using <vendorName>".
+        blockMetaRecord[AgentClaudeVendorIdMetaKey] = selectedVendor.id;
+        blockMetaRecord[AgentClaudeVendorNameMetaKey] = selectedVendor.name;
+    }
 
     return {
         meta: blockMeta,
@@ -981,7 +1036,9 @@ function createAgentBlockDef(settings?: SettingsType, context?: AgentLaunchConte
 export function createAgentBlockDefForTarget(
     settings: SettingsType | undefined,
     target: AgentLaunchTarget,
-    profileName?: string
+    profileName?: string,
+    vendorOptions?: CcSwitchVendor[],
+    vendorId?: string
 ): BlockDef {
     const context = {
         connection: target.connection,
@@ -989,9 +1046,9 @@ export function createAgentBlockDefForTarget(
         inheritWorkspaceContext: false,
     };
     if (isBlank(profileName)) {
-        return createDefaultAgentBlockDef(settings, context);
+        return createDefaultAgentBlockDef(settings, context, vendorOptions, vendorId);
     }
-    return createAgentBlockDefForProfile(profileName!, settings, context);
+    return createAgentBlockDefForProfile(profileName!, settings, context, vendorOptions, vendorId);
 }
 
 export async function resolveAgentBlockCommandForLaunch(

@@ -1604,6 +1604,8 @@ declare global {
         "aifilediff:chatid"?: string;
         "aifilediff:toolcallid"?: string;
         "agent:defaultlaunchtarget"?: string;
+        "agent:claudevendorid"?: string;
+        "agent:claudevendorname"?: string;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
@@ -2639,6 +2641,24 @@ declare global {
         remote?: VcsRemoteState;
         status?: VcsFileStatus[];
         statuserr?: string;
+    };
+
+    // ccswitch.Vendor
+    type Vendor = {
+        id: string;
+        name: string;
+        env: {[key: string]: string};
+        is_current: boolean;
+        provider_type: string;
+        category: string;
+        claude_config_dir: string;
+    };
+
+    // ccswitch.VendorList
+    type VendorList = {
+        vendors: Vendor[];
+        dbpath: string;
+        detected: boolean;
     };
 
     type WSCommandType = {

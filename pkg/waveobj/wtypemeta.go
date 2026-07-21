@@ -81,6 +81,11 @@ type MetaTSType struct {
 
 	AgentDefaultLaunchTarget string `json:"agent:defaultlaunchtarget,omitempty"`
 
+	// Claude Code per-block vendor (from cc-switch). When set, this Claude block was launched against
+	// a specific cc-switch provider rather than the global one — drives per-block env isolation.
+	AgentClaudeVendorId   *string `json:"agent:claudevendorid,omitempty"`
+	AgentClaudeVendorName *string `json:"agent:claudevendorname,omitempty"`
+
 	EditorClear               bool    `json:"editor:*,omitempty"`
 	EditorMinimapEnabled      bool    `json:"editor:minimapenabled,omitempty"`
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`
