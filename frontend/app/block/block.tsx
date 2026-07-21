@@ -39,6 +39,7 @@ import { focusedBlockId, getElemAsStr } from "@/util/focusutil";
 import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
+import type { Atom } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import {
@@ -66,9 +67,10 @@ import { blockViewToIcon, blockViewToName } from "./blockutil";
  */
 function useInlineTabAgentStatus(blockId: string): AgentStatus | null {
     const store = AgentStatusStore.getInstance();
-    const statusAtom = useMemo(() => store.getAgentStatusAtom(blockId), [store, blockId]);
+    const [statusAtom, setStatusAtom] = useState<Atom<AgentStatus | null> | Atom<Promise<AgentStatus | null>> | null>(null);
     useEffect(() => {
-        store.acquire(blockId);
+        const atom = store.acquire(blockId);
+        setStatusAtom(atom);
         return () => {
             store.release(blockId);
         };

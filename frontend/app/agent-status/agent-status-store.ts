@@ -25,7 +25,10 @@ type StatusEntry = {
     atom: PrimitiveAtom<AgentStatus | null>;
     refCount: number;
     unsubscribe: () => void;
+    teardownTimer: ReturnType<typeof setTimeout> | null;
 };
+
+const TEARDOWN_DELAY_MS = 0;
 
 export class AgentStatusStore {
     private static instance: AgentStatusStore | null = null;
@@ -45,11 +48,10 @@ export class AgentStatusStore {
     }
 
     /**
-     * 返回 blockId 对应的状态 atom (复用同一份). 调用方负责通过 acquire/release 配对维持引用计数;
-     * 仅读取 atom 值不配对 acquire 时, 订阅不会被回收 —— 但只要消费者用 useInlineTabAgentStatus
-     * 这条标准入口就不会出现这种泄漏.
+     * 返回 blockId 对应的状态 atom (复用同一份); 不存在时新建并注册订阅 + 初始 GetAgentStatus.
+     * 内部使用 —— 公开入口是 acquire/release 配对, refCount 由 acquire 维护.
      */
-    getAgentStatusAtom(blockId: string): PrimitiveAtom<AgentStatus | null> {
+    private getAgentStatusAtom(blockId: string): PrimitiveAtom<AgentStatus | null> {
         const entry = this.entries.get(blockId);
         if (entry != null) {
             return entry.atom;
@@ -69,7 +71,7 @@ export class AgentStatusStore {
             .catch((error) => {
                 console.log("error getting initial agent status (inline-tab store)", blockId, error);
             });
-        this.entries.set(blockId, { atom: statusAtom, refCount: 0, unsubscribe });
+        this.entries.set(blockId, { atom: statusAtom, refCount: 0, unsubscribe, teardownTimer: null });
         return statusAtom;
     }
 
@@ -78,6 +80,10 @@ export class AgentStatusStore {
         const entry = this.entries.get(blockId);
         if (entry != null) {
             entry.refCount++;
+            if (entry.teardownTimer != null) {
+                clearTimeout(entry.teardownTimer);
+                entry.teardownTimer = null;
+            }
         }
         return atom;
     }
@@ -88,9 +94,19 @@ export class AgentStatusStore {
             return;
         }
         entry.refCount--;
-        if (entry.refCount <= 0) {
-            entry.unsubscribe();
-            this.entries.delete(blockId);
+        if (entry.refCount <= 0 && entry.teardownTimer == null) {
+            // 不立即拆订阅: React 18 Strict Mode 下 effect cleanup 与下一次 effect 之间
+            // 会有一帧零 refCount 窗口, 立刻 unsubscribe + delete entry 会让正在使用中的
+            // atom 被作废, 后续重建的新 atom 与组件持有的旧 atom 不一致 → 事件不再触发 re-render.
+            // 延一拍再拆; 期间若 acquire 抵达则取消 teardown.
+            entry.teardownTimer = setTimeout(() => {
+                const current = this.entries.get(blockId);
+                if (current == null || current.refCount > 0) {
+                    return;
+                }
+                current.unsubscribe();
+                this.entries.delete(blockId);
+            }, TEARDOWN_DELAY_MS);
         }
     }
 }
