@@ -253,6 +253,16 @@ declare global {
         noGrow?: boolean;
         title?: string;
         onClick?: (e: React.MouseEvent<any>) => void;
+        // Optional rich Tooltip. When present, the renderer wraps the element in the shared
+        // `<Tooltip>` component (replacing the native `title`). Used by agent-block header
+        // status badges that want the same styled tooltip as the block path copy element.
+        tooltipNode?: React.ReactNode;
+        tooltipProps?: {
+            forceOpen?: boolean;
+            openDelay?: number;
+            hideOnClick?: boolean;
+            divClassName?: string;
+        };
     };
 
     type HeaderInput = {

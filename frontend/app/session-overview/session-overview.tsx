@@ -11,6 +11,7 @@ import {
 } from "@/app/agent-status/agent-status-derive";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
 import { DefaultNoteDirectory, normalizeNoteDirectory, NoteDirectorySettingKey } from "@/app/modals/notedirectorymodal";
@@ -965,24 +966,47 @@ function statusDurationText(status: AgentStatus, now: number): string {
     return formatUnreadDuration(start, now);
 }
 
-function AgentStatusChip({ status, now }: { status: AgentStatus; now: number }) {
+function AgentStatusChip({
+    status,
+    now,
+    blockId,
+    unread,
+    onAck,
+}: {
+    status: AgentStatus;
+    now: number;
+    blockId: string;
+    unread: boolean;
+    onAck: (blockId: string) => void;
+}) {
     const presentation = agentStatusPresentation(status);
     const duration = statusDurationText(status, now);
     const inferred = isInferredAgentStatus(status);
+    const tooltipText = unread
+        ? `${presentation.label} — click to mark as read`
+        : `${presentation.label} — up to date`;
     return (
-        <span
-            className={cn(
-                "session-overview-agent-status",
-                `is-${status.state}`,
-                status.phase !== "none" && `phase-${status.phase}`,
-                inferred && "is-inferred"
-            )}
-            title={presentation.title}
-        >
-            <i className={makeIconClass(presentation.icon, false)} />
-            <span className="session-overview-agent-status-label">{presentation.label}</span>
-            {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
-        </span>
+        <Tooltip content={tooltipText} placement="top" hideOnClick divClassName="inline-flex">
+            <button
+                type="button"
+                className={cn(
+                    "session-overview-agent-status",
+                    `is-${status.state}`,
+                    status.phase !== "none" && `phase-${status.phase}`,
+                    inferred && "is-inferred",
+                    !unread && "is-acked"
+                )}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onAck(blockId);
+                }}
+                aria-label={tooltipText}
+            >
+                <i className={makeIconClass(presentation.icon, false)} />
+                <span className="session-overview-agent-status-label">{presentation.label}</span>
+                {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
+            </button>
+        </Tooltip>
     );
 }
 
@@ -994,13 +1018,50 @@ function shouldShowAgentAggregate(statuses: AgentStatus[]): boolean {
     return statuses.some(shouldShowAgentStatusChip);
 }
 
-function AggregateStatusChip({ statuses }: { statuses: AgentStatus[] }) {
+function AggregateStatusChip({
+    statuses,
+    unread,
+    onAck,
+}: {
+    statuses: AgentStatus[];
+    unread: boolean;
+    onAck: () => void;
+}) {
     if (!shouldShowAgentAggregate(statuses)) return null;
     const aggregate = aggregateAgentStatuses(statuses);
+    const label = aggregateStatusLabel(aggregate);
+    const tooltipText = unread
+        ? `${label} — click to mark tab as read`
+        : `${label} — up to date`;
+    // Rendered as role="button" span (not <button>) because it sits inside the tab-toggle
+    // <button>; nested <button> is invalid HTML. stopPropagation prevents the click from
+    // toggling tab collapse.
     return (
-        <span className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`)}>
-            <span className="session-overview-agent-aggregate-label">{aggregateStatusLabel(aggregate)}</span>
-        </span>
+        <Tooltip content={tooltipText} placement="top" hideOnClick divClassName="inline-flex">
+            <span
+                role="button"
+                tabIndex={0}
+                className={cn(
+                    "session-overview-agent-aggregate",
+                    `is-${aggregate.state}`,
+                    !unread && "is-acked"
+                )}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onAck();
+                }}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onAck();
+                    }
+                }}
+                aria-label={tooltipText}
+            >
+                <span className="session-overview-agent-aggregate-label">{label}</span>
+            </span>
+        </Tooltip>
     );
 }
 
@@ -1705,6 +1766,7 @@ function BlockRow({
     currentBlockId,
     now,
     agentStatus,
+    agentStatusAckedAt,
     onSelectBlock,
     onJumpBlock,
     onToggleSessionNote,
@@ -1713,6 +1775,7 @@ function BlockRow({
     onDeleteSession,
     onDeleteBlock,
     onOpenMessage,
+    onAckAgentStatus,
 }: {
     block: OverviewBlock;
     detailState: DetailState | undefined;
@@ -1724,6 +1787,7 @@ function BlockRow({
     currentBlockId: string | null;
     now: number;
     agentStatus: AgentStatus | null;
+    agentStatusAckedAt: number;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onToggleSessionNote: (block: OverviewBlock) => void;
@@ -1732,6 +1796,7 @@ function BlockRow({
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
+    onAckAgentStatus: (blockId: string) => void;
 }) {
     const badge = jotai.useAtomValue(getBadgeAtom(WOS.makeORef("block", block.blockId)));
     const detail = detailState?.detail;
@@ -1744,6 +1809,7 @@ function BlockRow({
     // Reuses getAgentLogoByProvider so the icon stays consistent with the term block header (term-model.viewIcon);
     // falls back to the project's shared "robot" generic-agent icon when provider is unknown.
     const agentLogo = block.isAgentLike ? getAgentLogoByProvider(block.agentProvider) : null;
+    const agentStatusUnread = agentStatus != null && isAgentStatusUnread(agentStatus, agentStatusAckedAt);
 
     return (
         <div
@@ -1771,7 +1837,7 @@ function BlockRow({
                 </span>
                 <span className="session-overview-block-text">
                     {block.isAgentLike ? (
-                        <>{agentStatus ? <AgentStatusChip status={agentStatus} now={now} /> : null}</>
+                        <>{agentStatus ? <AgentStatusChip status={agentStatus} now={now} blockId={block.blockId} unread={agentStatusUnread} onAck={onAckAgentStatus} /> : null}</>
                     ) : (
                         <>
                             <span className="session-overview-block-title">{block.title}</span>
@@ -1916,6 +1982,7 @@ function TabGroupSection({
     currentBlockId,
     now,
     agentStatuses,
+    agentStatusAckedAt,
     onSelectBlock,
     onJumpBlock,
     onToggleSessionNote,
@@ -1925,6 +1992,8 @@ function TabGroupSection({
     onDeleteSession,
     onDeleteBlock,
     onOpenMessage,
+    onAckAgentStatus,
+    onAckTabAgentStatuses,
 }: {
     group: TabGroup;
     collapsed: boolean;
@@ -1937,6 +2006,7 @@ function TabGroupSection({
     currentBlockId: string | null;
     now: number;
     agentStatuses: Record<string, AgentStatus>;
+    agentStatusAckedAt: Record<string, number>;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onToggleSessionNote: (block: OverviewBlock) => void;
@@ -1946,11 +2016,18 @@ function TabGroupSection({
     onDeleteSession: (block: OverviewBlock) => void;
     onDeleteBlock: (block: OverviewBlock) => void;
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
+    onAckAgentStatus: (blockId: string) => void;
+    onAckTabAgentStatuses: () => void;
 }) {
     const tabBadges = jotai.useAtomValue(getTabBadgeAtom(group.tabId));
     const groupAgentStatuses = group.blocks
         .map((block) => agentStatuses[block.blockId])
         .filter((status): status is AgentStatus => status != null);
+    const tabAgentStatusUnread = group.blocks.some((block) => {
+        const status = agentStatuses[block.blockId];
+        if (status == null) return false;
+        return isAgentStatusUnread(status, agentStatusAckedAt[block.blockId] ?? 0);
+    });
     return (
         <section key={group.tabId} className={cn("session-overview-tab-group", collapsed && "is-collapsed")}>
             <div className="session-overview-tab-title">
@@ -1970,7 +2047,7 @@ function TabGroupSection({
                     <i className={makeIconClass("table-columns", false)} />
                     <span className="session-overview-tab-name">{group.tabName}</span>
                     <strong>{group.blocks.length}</strong>
-                    <AggregateStatusChip statuses={groupAgentStatuses} />
+                    <AggregateStatusChip statuses={groupAgentStatuses} unread={tabAgentStatusUnread} onAck={onAckTabAgentStatuses} />
                     <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
                 </button>
                 <button
@@ -2005,6 +2082,7 @@ function TabGroupSection({
                                     currentBlockId={currentBlockId}
                                     now={now}
                                     agentStatus={agentStatuses[block.blockId] ?? null}
+                                    agentStatusAckedAt={agentStatusAckedAt[block.blockId] ?? 0}
                                     onSelectBlock={onSelectBlock}
                                     onJumpBlock={onJumpBlock}
                                     onToggleSessionNote={onToggleSessionNote}
@@ -2013,6 +2091,7 @@ function TabGroupSection({
                                     onDeleteSession={onDeleteSession}
                                     onDeleteBlock={onDeleteBlock}
                                     onOpenMessage={onOpenMessage}
+                                    onAckAgentStatus={onAckAgentStatus}
                                 />
                             ) : (
                                 <CompactBlockIcon
@@ -2059,6 +2138,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const activeTabId = jotai.useAtomValue(atoms.staticTabId);
     const displayLimit = jotai.useAtomValue(overviewModel.displayLimitAtom);
     const viewedAt = jotai.useAtomValue(overviewModel.blockViewedAtAtom);
+    const agentStatusAckedAt = jotai.useAtomValue(overviewModel.agentStatusAckedAtAtom);
     const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
@@ -2207,6 +2287,18 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const noteSwitchSeqRef = useRef(0);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
+    const ackAgentStatus = React.useCallback(
+        (blockId: string) => overviewModel.markAgentStatusAcked(blockId),
+        [overviewModel]
+    );
+    const ackTabAgentStatuses = React.useCallback(
+        (blocks: OverviewBlock[]) => {
+            for (const block of blocks) {
+                overviewModel.markAgentStatusAcked(block.blockId);
+            }
+        },
+        [overviewModel]
+    );
     useEffect(() => {
         setCollapsedTabIds((current) => {
             const tabIds = new Set(tabGroupsKey ? tabGroupsKey.split("\n") : []);
@@ -2488,6 +2580,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     overviewModel.markBlockViewed(nextBlock.blockId);
                                     setSelected({ block: nextBlock, message });
                                 }}
+                                agentStatusAckedAt={agentStatusAckedAt}
+                                onAckAgentStatus={ackAgentStatus}
+                                onAckTabAgentStatuses={() => ackTabAgentStatuses(group.blocks)}
                             />
                         ))
                     )}
