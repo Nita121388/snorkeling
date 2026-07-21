@@ -1606,6 +1606,8 @@ declare global {
         "agent:defaultlaunchtarget"?: string;
         "agent:claudevendorid"?: string;
         "agent:claudevendorname"?: string;
+        "agent:codexvendorid"?: string;
+        "agent:codexvendorname"?: string;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
@@ -2651,7 +2653,8 @@ declare global {
         is_current: boolean;
         provider_type: string;
         category: string;
-        claude_config_dir: string;
+        claude_config_dir?: string;
+        codex_config_dir?: string;
     };
 
     // ccswitch.VendorList

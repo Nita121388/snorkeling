@@ -80,6 +80,8 @@ const (
 	MetaKey_AgentDefaultLaunchTarget         = "agent:defaultlaunchtarget"
 	MetaKey_AgentClaudeVendorId              = "agent:claudevendorid"
 	MetaKey_AgentClaudeVendorName            = "agent:claudevendorname"
+	MetaKey_AgentCodexVendorId               = "agent:codexvendorid"
+	MetaKey_AgentCodexVendorName             = "agent:codexvendorname"
 
 	MetaKey_EditorClear                      = "editor:*"
 	MetaKey_EditorMinimapEnabled             = "editor:minimapenabled"
