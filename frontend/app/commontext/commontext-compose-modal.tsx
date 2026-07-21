@@ -22,7 +22,6 @@ import {
     searchCommonTextComposeItems,
     type CommonTextItem,
 } from "./commontext-model";
-import { CommonTextTagChip } from "./commontext-tags";
 import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 
@@ -608,20 +607,17 @@ const CommonTextComposeModal = memo(() => {
                             </InputRightElement>
                         </InputGroup>
                         {tagSummaries.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                {tagSummaries.map((tagSummary) => (
-                                    <CommonTextTagChip
-                                        key={tagSummary.tag}
-                                        tag={tagSummary.tag}
-                                        count={tagSummary.count}
-                                        compact
-                                        selected={state.selectedTags.some(
-                                            (t) => t.toLowerCase() === tagSummary.tag.toLowerCase()
-                                        )}
-                                        onClick={() => toggleTag(tagSummary.tag)}
-                                    />
-                                ))}
-                            </div>
+                            <SessionTagChips
+                                tags={tagSummaries.map((s) => s.tag)}
+                                selectedTags={state.selectedTags}
+                                countMap={(() => {
+                                    const m = new Map<string, number>();
+                                    for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
+                                    return m;
+                                })()}
+                                onClick={toggleTag}
+                                className="mt-2"
+                            />
                         )}
                     </div>
                     <div
