@@ -27,6 +27,7 @@ func GenerateWshClient() error {
 		"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes",
 		"github.com/wavetermdev/waveterm/pkg/agentstatus",
 		"github.com/wavetermdev/waveterm/pkg/baseds",
+		"github.com/wavetermdev/waveterm/pkg/ccswitch",
 		"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata",
 		"github.com/wavetermdev/waveterm/pkg/vdom",
 		"github.com/wavetermdev/waveterm/pkg/waveobj",

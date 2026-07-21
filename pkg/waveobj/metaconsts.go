@@ -78,6 +78,8 @@ const (
 	MetaKey_AiFileDiffToolCallId             = "aifilediff:toolcallid"
 
 	MetaKey_AgentDefaultLaunchTarget         = "agent:defaultlaunchtarget"
+	MetaKey_AgentClaudeVendorId              = "agent:claudevendorid"
+	MetaKey_AgentClaudeVendorName            = "agent:claudevendorname"
 
 	MetaKey_EditorClear                      = "editor:*"
 	MetaKey_EditorMinimapEnabled             = "editor:minimapenabled"

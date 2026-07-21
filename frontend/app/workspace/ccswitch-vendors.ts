@@ -21,6 +21,13 @@ export interface CcSwitchVendor {
     is_current: boolean;
     provider_type: string;
     category: string;
+    /**
+     * Absolute path to the per-vendor CLAUDE_CONFIG_DIR we materialize on the wshserver side (reader.go).
+     * When set, agent-launch.ts adds `CLAUDE_CONFIG_DIR=<this>` to the block's cmd:env so the spawned
+     * claude reads *this* vendor's settings.json instead of the user's global ~/.claude/settings.json —
+     * which is required for the per-block vendor pick to actually win (see ccswitch.Vendor doc comment).
+     */
+    claude_config_dir: string;
 }
 
 export interface CcSwitchVendorList {

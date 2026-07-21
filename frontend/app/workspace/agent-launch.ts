@@ -976,6 +976,19 @@ function createAgentBlockDef(
     // of profile.env: profile.env is the user's settings.json default, vendor is the user's explicit per-block
     // pick at launch time → vendor wins. If vendorId is blank or not found in options, the layer is a no-op
     // and the block lands exactly as it would have before (zero-invasive).
+    //
+    // IMPORTANT well-spent gotcha: Claude Code applies ~/.claude/settings.json's "env" block on top of the
+    // process env it inherits from us (per https://code.claude.com/docs/en/env-vars — "When the same
+    // variable is set in both your shell and a settings file env block, the settings file value applies").
+    // So the ANTHROPIC_BASE_URL we put in cmd:env gets *overwritten* by whatever the user's global
+    // settings.json says, silently reverting every block back to the user's default vendor.
+    //
+    // To make the per-block pick actually stick, we also inject CLAUDE_CONFIG_DIR -> the vendor's
+    // materialized settings dir (see reader.go materializeClaudeConfigDir). Claude then reads
+    // *that* settings.json (containing only this vendor's env) instead of ~/.claude/settings.json,
+    // so our vendor.env wins by construction. We still inject the env values themselves into cmd:env
+    // for the case where claude_config_dir is empty (reader skipped materialization, e.g. write failed)
+    // — that path keeps the old OS-env-injection behavior as a fallback.
     let selectedVendor: CcSwitchVendor | undefined = undefined;
     const isClaudeProvider = provider === "claude" || provider === "anthropic";
     if (isClaudeProvider && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
@@ -985,6 +998,9 @@ function createAgentBlockDef(
         for (const [k, v] of Object.entries(selectedVendor.env)) {
             cmdEnv[k] = v;
         }
+    }
+    if (selectedVendor != null && !isBlank(selectedVendor.claude_config_dir)) {
+        cmdEnv["CLAUDE_CONFIG_DIR"] = selectedVendor.claude_config_dir;
     }
 
     const blockMeta: MetaType = {
