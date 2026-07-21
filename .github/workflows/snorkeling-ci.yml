@@ -4,11 +4,9 @@ on:
     pull_request:
         branches:
             - main
-            - refactor/snorkeling
     push:
         branches:
             - main
-            - refactor/snorkeling
     workflow_dispatch:
 
 env:

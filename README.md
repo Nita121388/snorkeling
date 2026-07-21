@@ -21,7 +21,7 @@
 
 ## Snorkeling Custom Highlights
 
-- This repo is based on upstream `wavetermdev/waveterm` and maintained on branch `refactor/snorkeling`.
+- This repo is based on upstream `wavetermdev/waveterm` and maintained on branch `main` (default branch); archived branches: `archive/upstream-main` (upstream mirror), `archive/refactor-snorkeling` (legacy dev line). Upstream sync via the `upstream` remote.
 - Product goal: stay in Terminal for core workflows (open, edit, compare, commit, and launch Agent) whenever possible.
 - Agent workflow enhancements:
   - Dedicated `Agent` entry in the right sidebar.

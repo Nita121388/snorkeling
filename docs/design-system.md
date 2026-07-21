@@ -195,7 +195,7 @@ Every foundational UI batch must include:
 1. GitNexus upstream impact analysis before modifying a symbol.
 2. A targeted runnable check for new or changed non-trivial logic.
 3. Relevant Vitest tests and `npm run build:prod`.
-4. GitNexus `detect_changes` against `refactor/snorkeling` before commit.
+4. GitNexus `detect_changes` against `main` before commit.
 5. Electron CDP screenshots for dark, light, and monochrome.
 6. Keyboard verification of focus-visible plus disabled and error state inspection.
 7. Layout checks at the active desktop viewport and a narrow/resized viewport where the surface supports it.

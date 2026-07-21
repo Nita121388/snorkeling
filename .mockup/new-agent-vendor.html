@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>New Agent · Vendor 区域候选布局</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<script>
+  // 还原 snorkeling 主题配色（light-theme 真实变量，参考 .mockup/agent-status-current.html）
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: 'var(--bg)',
+          surface: 'var(--surface)',
+          'surface-soft': 'var(--surface-soft)',
+          foreground: 'var(--foreground)',
+          secondary: 'var(--secondary)',
+          muted: 'var(--muted)',
+          accent: 'var(--accent)',
+          accenthover: 'var(--accent-hover)',
+          border: 'var(--border)',
+          hoverbg: 'var(--hoverbg)',
+          modalbg: 'var(--modalbg)',
+        },
+        fontSize: {
+          xxs: ['10px', '14px'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --bg: #1a1b1a;
+    --surface: #222422;
+    --surface-soft: rgba(255,255,255,0.06);
+    --modalbg: #1d1f1d;
+    --foreground: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --accent: #58c142;
+    --accent-hover: #6cd055;
+    --border: rgba(255,255,255,0.16);
+    --hoverbg: rgba(255,255,255,0.06);
+  }
+  html, body { background: var(--bg); color: var(--foreground); font-family: -apple-system, "SF Pro Text", "Inter", "Segoe UI", ui-sans-serif, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
+  body { padding: 32px 20px 80px; }
+  .page { max-width: 1280px; margin: 0 auto; }
+  .lead { max-width: 760px; margin: 0 auto 28px; text-align: center; }
+  .lead h1 { font-size: 19px; margin-bottom: 8px; }
+  .lead p { color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+  .lead code { background: rgba(255,255,255,0.06); color: var(--secondary); padding: 1px 6px; border-radius: 5px; font-size: 11px; }
+
+  /* ==== 浮窗外壳（还原 widgets.tsx:546-555） ==== */
+  .floating {
+    background: rgba(29,31,29,0.80);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+    z-index: 50;
+    min-width: 400px;
+    max-width: 520px;
+    overflow: visible;
+  }
+  .hdr { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; font-size:13px; font-weight:500; border-bottom:1px solid rgba(255,255,255,0.10); }
+  .hdr button { display:flex; height:24px; width:24px; align-items:center; justify-content:center; border-radius:4px; color:var(--muted); background:transparent; border:0; cursor:pointer; }
+  .hdr button:hover { background:var(--hoverbg); color:var(--foreground); }
+
+  .profile-block { padding: 8px 12px 6px; border-bottom: 1px solid rgba(255,255,255,0.10); }
+  .block-title { font-size:10px; color:var(--muted); margin-bottom: 6px; line-height:1; }
+  .chips { display:flex; flex-wrap:wrap; gap:2px; }
+  .chip { display:inline-flex; align-items:center; height:30px; border-radius:6px; transition: background .15s; position:relative; }
+  .chip.sel { background: rgba(88,193,66,0.12); }
+  .chip.sel::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); border-radius:2px; }
+  .chip:hover:not(.sel) { background: rgba(255,255,255,0.05); }
+  .chip-main { display:inline-flex; align-items:center; gap:6px; height:100%; padding:0 10px 0 10px; background:transparent; border:0; cursor:pointer; font-size:12px; font-weight:500; }
+  .chip-main .ic { width:7px; height:7px; border-radius:50%; }
+  .chip-main .lab { color: var(--muted); }
+  .chip.sel .chip-main .lab, .chip.sel .chip-main .ic { color: var(--foreground); opacity:1; }
+  .chip:not(.sel) .chip-main .ic { opacity:0.55; }
+  .chip:not(.sel):hover .chip-main .ic { opacity:0.85; }
+  .chip .star { color: var(--foreground); font-size:11px; }
+  .chip .chk { display:inline-flex; align-items:center; justify-content:center; width:18px; height:100%; cursor:pointer; color:var(--muted); }
+  .chip .chk:hover { color:var(--accent); }
+  .chip .chk.on { color: var(--accent); }
+
+  .path-block { padding: 4px 4px 4px; }
+  .path-row { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px 8px 8px 12px; border-radius:6px; margin-bottom:1px; cursor:pointer; position:relative; }
+  .path-row.sel { background: rgba(88,193,66,0.12); }
+  .path-row.sel::before { content:""; position:absolute; left:0; top:6px; bottom:6px; width:2px; background:var(--accent); border-radius:2px; }
+  .path-row:hover:not(.sel) { background: var(--hoverbg); }
+  .path-row .ic { width:16px; text-align:center; color:var(--muted); font-size:11px; }
+  .path-row .lab { font-size:12px; color:var(--foreground); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .path-row .chk { color:var(--muted); width:18px; text-align:center; cursor:pointer; }
+  .path-row .chk.on { color:var(--accent); }
+  .path-row .chk:hover { color:var(--accent); }
+
+  .actionbar { border-top:1px solid rgba(255,255,255,0.10); padding:8px 12px; display:flex; align-items:center; justify-content:flex-end; gap:12px; }
+  .actionbar .crumb { font-size:10px; color:var(--muted); margin-right:auto; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .act-btn { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:500; height:24px; padding:0 8px; border-radius:6px; background:transparent; border:0; cursor:pointer; transition:all .15s; }
+  .act-btn.primary { color:var(--accent); }
+  .act-btn.primary:hover { background:rgba(88,193,66,0.12); color:var(--accent-hover); }
+  .act-btn.ghost { color:var(--secondary); }
+  .act-btn.ghost:hover { background:rgba(255,255,255,0.05); color:var(--foreground); }
+  .act-btn:active { transform: scale(0.97); }
+  .dot { width:2px; height:2px; border-radius:50%; background: rgba(255,255,255,0.18); }
+
+  /* ==== 三候选布局的 vendor 区域 ==== */
+  .vendor-block { padding: 8px 12px 6px; border-bottom: 1px solid rgba(255,255,255,0.10); }
+  .vendor-block .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .vendor-block .head .t { font-size:10px; color:var(--muted); }
+  .vendor-block .head .t b { color:var(--accent); font-weight:500; }
+  .vendor-block .head .refresh { font-size:11px; color:var(--muted); cursor:pointer; }
+  .vendor-block .head .refresh:hover { color: var(--foreground); }
+  .v-chips { display:flex; flex-wrap:wrap; gap:2px; }
+  .v-chip { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 10px; border-radius:6px; cursor:pointer; font-size:12px; position:relative; transition: background .15s; }
+  .v-chip.sel { background: rgba(88,193,66,0.12); }
+  .v-chip.sel::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); border-radius:2px; }
+  .v-chip:hover:not(.sel) { background: rgba(255,255,255,0.05); }
+  .v-chip .name { color: var(--muted); }
+  .v-chip.sel .name { color: var(--foreground); }
+  .v-chip .tag { font-size:9px; padding:1px 5px; border-radius:3px; }
+  .v-chip .tag.cur { background: rgba(88,193,66,0.18); color: var(--accent); }
+  .v-chip .tag.official { background: rgba(56,189,248,0.16); color:#7dd3fc; }
+
+  .vendor-preview { margin-top:6px; padding:6px 8px; border-top:1px dashed rgba(255,255,255,0.10); font-size:10px; color:var(--muted); line-height:1.55; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .vendor-preview b { color:var(--secondary); font-weight:500; }
+
+  /* 右侧弹面板候选 */
+  .right-pop { position:absolute; left: calc(100% + 8px); top: 60px; width: 260px; background: rgba(29,31,29,0.92); backdrop-filter: blur(40px); border:1px solid rgba(255,255,255,0.16); border-radius:10px; box-shadow: 0 18px 50px rgba(0,0,0,0.45); padding:8px; }
+  .right-pop .rp-title { font-size:10px; color:var(--muted); margin: 2px 6px 6px; }
+  .right-pop .rp-title b { color: var(--accent); }
+
+  /* 比较脚手架 */
+  .compare-title { text-align:center; margin: 56px 0 24px; }
+  .compare-title h2 { font-size:15px; margin-bottom:6px; }
+  .compare-title p { color:var(--muted); font-size:11.5px; line-height:1.6; }
+  .compare { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:20px; }
+  @media (max-width: 1080px) { .compare { grid-template-columns: 1fr; } }
+  .compare .col { display:flex; flex-direction:column; gap:10px; }
+  .compare .tag-row { display:flex; align-items:center; gap:8px; padding: 6px 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size:11.5px; }
+  .compare .num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; background: rgba(88,193,66,0.18); color:var(--accent); font-weight:600; }
+  .compare .label b { color: var(--foreground); }
+  .compare .label span { color: var(--muted); font-size:11px; display:block; margin-top:2px; }
+  .anchor { position: relative; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="lead">
+    <h1>New Agent 弹层 · vendor 区域候选布局</h1>
+    <p>这是把 Wave 里 <code>AgentTargetFloatingWindow</code>（<code>frontend/app/workspace/widgets.tsx:479-833</code>）按代码 1:1 还原的浮窗。<br/>
+       在它基础上叠加"来自 cc-switch 的 vendor 选择"区域，下方并列三个候选，选完告诉我编号即可。</p>
+  </div>
+
+  <!-- ============ 候选 1：vendor chips 紧贴 profile chips 下方 ============ -->
+  <div class="compare">
+    <div class="col">
+      <div class="tag-row">
+        <span class="num">1</span>
+        <div class="label"><b>vendor chips 紧贴 profile 下方</b>
+          <span>最小改动，复用 chips 横向布局；vendor 行夹在 profile chips 与 "Select a path" 之间</span>
+        </div>
+      </div>
+      <div class="anchor">
+        <div class="floating">
+          <!-- header -->
+          <div class="hdr"><span>New Agent</span><button title="Agent hook settings"><i class="fa-solid fa-gear"></i></button></div>
+
+          <!-- profile -->
+          <div class="profile-block">
+            <div class="block-title">Select an agent type</div>
+            <div class="chips">
+              <div class="chip sel"><button class="chip-main"><i class="fa-solid fa-star star"></i><span class="lab">Claude Code</span></button><span class="chk on" title="set default"><i class="fa-solid fa-check"></i></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#38bdf8"></span><span class="lab">Codex</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#a855f7"></span><span class="lab">Gemini</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#22c55e"></span><span class="lab">OpenCode</span></button><span class="chk"></span></div>
+            </div>
+          </div>
+
+          <!-- vendor (候选 1) -->
+          <div class="vendor-block">
+            <div class="head"><span class="t">Vendor · from <b>cc-switch</b></span><span class="refresh" title="refresh"><i class="fa-solid fa-rotate-right"></i></span></div>
+            <div class="v-chips">
+              <div class="v-chip sel"><span class="name">质谱-无限</span><span class="tag cur">·当前</span></div>
+              <div class="v-chip"><span class="name">Claude Official</span><span class="tag official">官方</span></div>
+            </div>
+          </div>
+
+          <!-- path -->
+          <div class="path-block">
+            <div class="block-title" style="padding: 6px 6px 4px;">Select a path.</div>
+            <div class="path-row sel"><i class="fa-solid fa-house ic"></i><div class="lab">E:\primary\projects\snorkeling-light-theme</div><span class="chk on"><i class="fa-solid fa-check"></i></span></div>
+            <div class="path-row"><i class="fa-solid fa-house ic"></i><div class="lab">~</div></div>
+          </div>
+
+          <!-- actionbar -->
+          <div class="actionbar">
+            <span class="crumb">E:\primary\projects\snorkeling-light-theme</span>
+            <button class="act-btn primary"><i class="fa-solid fa-plus" style="font-size:9px"></i>Current Tab</button><span class="dot"></span>
+            <button class="act-btn ghost"><i class="fa-solid fa-arrow-right" style="font-size:9px"></i>New</button><span class="dot"></span>
+            <button class="act-btn ghost">Existing…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 候选 2：vendor 独立块 + baseURL 脱敏预览 ============ -->
+    <div class="col">
+      <div class="tag-row">
+        <span class="num">2</span>
+        <div class="label"><b>vendor 块 + baseURL 脱敏预览</b>
+          <span>vendor chips 下方多一区描边预览，显示走哪个 base_url / 模型映射；信息量更高，浮窗加高</span>
+        </div>
+      </div>
+      <div class="anchor">
+        <div class="floating">
+          <div class="hdr"><span>New Agent</span><button><i class="fa-solid fa-gear"></i></button></div>
+
+          <div class="profile-block">
+            <div class="block-title">Select an agent type</div>
+            <div class="chips">
+              <div class="chip sel"><button class="chip-main"><i class="fa-solid fa-star star"></i><span class="lab">Claude Code</span></button><span class="chk on"><i class="fa-solid fa-check"></i></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#38bdf8"></span><span class="lab">Codex</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#a855f7"></span><span class="lab">Gemini</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#22c55e"></span><span class="lab">OpenCode</span></button><span class="chk"></span></div>
+            </div>
+          </div>
+
+          <div class="vendor-block">
+            <div class="head"><span class="t">Vendor · from <b>cc-switch</b></span><span class="refresh"><i class="fa-solid fa-rotate-right"></i></span></div>
+            <div class="v-chips">
+              <div class="v-chip sel"><span class="name">质谱-无限</span><span class="tag cur">·当前</span></div>
+              <div class="v-chip"><span class="name">Claude Official</span><span class="tag official">官方</span></div>
+            </div>
+            <div class="vendor-preview">
+              <div><b>base_url</b>  https://api.supxh.xin</div>
+              <div><b>models</b>    glm-5.2  (haiku → opus 全映射)</div>
+              <div><b>token</b>    sk-wNcY…CZ  <span style="opacity:.5">(脱敏)</span></div>
+            </div>
+          </div>
+
+          <div class="path-block">
+            <div class="block-title" style="padding: 6px 6px 4px;">Select a path.</div>
+            <div class="path-row sel"><i class="fa-solid fa-house ic"></i><div class="lab">E:\primary\projects\snorkeling-light-theme</div><span class="chk on"><i class="fa-solid fa-check"></i></span></div>
+            <div class="path-row"><i class="fa-solid fa-house ic"></i><div class="lab">~</div></div>
+          </div>
+
+          <div class="actionbar">
+            <span class="crumb">E:\primary\projects\snorkeling-light-theme</span>
+            <button class="act-btn primary"><i class="fa-solid fa-plus" style="font-size:9px"></i>Current Tab</button><span class="dot"></span>
+            <button class="act-btn ghost"><i class="fa-solid fa-arrow-right" style="font-size:9px"></i>New</button><span class="dot"></span>
+            <button class="act-btn ghost">Existing…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 候选 3：右侧二级弹面板 ============ -->
+    <div class="col">
+      <div class="tag-row">
+        <span class="num">3</span>
+        <div class="label"><b>右侧二级弹面板</b>
+          <span>主浮窗不增高，点 claude 后右弹 vendor 列表面板；path 与 vendor 并列可见；实现成本最高</span>
+        </div>
+      </div>
+      <div class="anchor">
+        <div class="floating" style="margin-right: 280px;">
+          <div class="hdr"><span>New Agent</span><button><i class="fa-solid fa-gear"></i></button></div>
+
+          <div class="profile-block">
+            <div class="block-title">Select an agent type</div>
+            <div class="chips">
+              <div class="chip sel"><button class="chip-main"><i class="fa-solid fa-star star"></i><span class="lab">Claude Code</span></button><span class="chk on"><i class="fa-solid fa-check"></i></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#38bdf8"></span><span class="lab">Codex</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#a855f7"></span><span class="lab">Gemini</span></button><span class="chk"></span></div>
+              <div class="chip"><button class="chip-main"><span class="ic" style="background:#22c55e"></span><span class="lab">OpenCode</span></button><span class="chk"></span></div>
+            </div>
+          </div>
+
+          <div class="path-block">
+            <div class="block-title" style="padding: 6px 6px 4px;">Select a path.</div>
+            <div class="path-row sel"><i class="fa-solid fa-house ic"></i><div class="lab">E:\primary\projects\snorkeling-light-theme</div><span class="chk on"><i class="fa-solid fa-check"></i></span></div>
+            <div class="path-row"><i class="fa-solid fa-house ic"></i><div class="lab">~</div></div>
+          </div>
+
+          <div class="actionbar">
+            <span class="crumb">E:\primary\projects\snorkeling-light-theme</span>
+            <button class="act-btn primary"><i class="fa-solid fa-plus" style="font-size:9px"></i>Current Tab</button><span class="dot"></span>
+            <button class="act-btn ghost"><i class="fa-solid fa-arrow-right" style="font-size:9px"></i>New</button><span class="dot"></span>
+            <button class="act-btn ghost">Existing…</button>
+          </div>
+
+          <!-- 右侧弹面板 -->
+          <div class="right-pop">
+            <div class="rp-title">Vendor (claude) · from <b>cc-switch</b></div>
+            <div class="v-chip sel" style="width:100%; margin-bottom:2px;"><span class="name">质谱-无限</span><span class="tag cur">·当前</span></div>
+            <div class="v-chip" style="width:100%; margin-bottom:6px;"><span class="name">Claude Official</span><span class="tag official">官方</span></div>
+            <div class="vendor-preview" style="border-top:1px dashed rgba(255,255,255,0.10); margin-top:0;">
+              <div><b>base_url</b>  api.supxh.xin</div>
+              <div><b>models</b>    glm-5.2</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="compare-title">
+    <h2>挑一个</h2>
+    <p>告诉我编号 1 / 2 / 3 即可，我会把 plan 文件里 §3 的 UI 候选布局段更新为最终方案，再开 worktree 进入开发。</p>
+  </div>
+
+</div>
+</body>
+</html>

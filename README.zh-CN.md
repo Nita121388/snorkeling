@@ -23,7 +23,7 @@
 
 ## Snorkeling 定制开发重点
 
-- 本仓库基于官方 `wavetermdev/waveterm` 持续定制维护，主开发分支为 `refactor/snorkeling`。
+- 本仓库基于官方 `wavetermdev/waveterm` 持续定制维护，主开发分支为 `main`（默认分支）；归档分支：`archive/upstream-main`（上游镜像）、`archive/refactor-snorkeling`（历史开发线）。上游同步通过 `upstream` remote。
 - 产品目标：尽可能让核心流程“足不出 Terminal”（打开、编辑、对比、提交、启动 Agent）。
 - Agent 工作流增强：
   - 在右侧导航新增独立 `Agent` 入口。

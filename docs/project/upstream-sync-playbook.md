@@ -10,26 +10,24 @@
 
 ## 分支约定
 
-- `upstream/main`：官方主线镜像（只同步，不直接开发）
-- `main`：Snorkeling 可发布主线
-- `refactor/snorkeling`：当前开发分支
+- `upstream/main`：官方主线（通过 `upstream` remote 拉取，只同步，不直接开发）
+- `main`：Snorkeling 默认分支，开发与可发布主线
+- `archive/upstream-main`：origin 内的上游镜像归档（旧 `origin/main`，不再前进，仅作历史快照）
+- `archive/refactor-snorkeling`：历史开发线归档（旧 `refactor/snorkeling`，不再前进）
 
 ## 同步步骤（建议）
 
 1. 拉取官方更新到本地：
    - `git fetch upstream`
-2. 更新本地同步分支：
-   - `git checkout -B upstream-main upstream/main`
-3. 回到 Snorkeling 主线并 rebase：
+2. 回到 Snorkeling 主线并 rebase：
    - `git checkout main`
-   - `git rebase upstream-main`
-4. 处理冲突后运行验证：
+   - `git rebase upstream/main`
+3. 处理冲突后运行验证：
    - `npm exec -- eslint frontend`
    - `npm exec vitest run frontend/app/workspace/agent-launch.test.ts`
    - `go test ./...`
-5. 合并回开发分支：
-   - `git checkout refactor/snorkeling`
-   - `git rebase main`
+4. 推回远端：
+   - `git push origin main`
 
 ## 冲突优先级
 
