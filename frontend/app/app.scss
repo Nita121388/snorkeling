@@ -22,6 +22,20 @@ body {
     transform: translateZ(0);
 }
 
+:read-write {
+    caret-color: currentColor;
+}
+
+:is([data-theme="light"], [data-theme="monochrome"]) {
+    cursor: default;
+}
+
+:is([data-theme="light"], [data-theme="monochrome"])
+    :is(:read-write, .monaco-mouse-cursor-text),
+:is([data-theme="light"], [data-theme="monochrome"]) .input-group:hover {
+    cursor: default;
+}
+
 .is-transparent {
     background-color: transparent;
 }

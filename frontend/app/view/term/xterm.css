@@ -43,6 +43,11 @@
     -webkit-user-select: none;
 }
 
+[data-theme="light"] .xterm,
+[data-theme="monochrome"] .xterm {
+    cursor: default;
+}
+
 .xterm.focus,
 .xterm:focus {
     outline: none;
