@@ -35,6 +35,7 @@ import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { ClaudeLogo, GeminiLogo, OpencodeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import {
+    CcSwitchAppType,
     CcSwitchVendor,
     CcSwitchVendorList,
     loadCcSwitchVendors,
@@ -330,12 +331,20 @@ type AgentTargetFloatingWindowProps = {
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
     onSetDefaultProfile: (profileName: string) => void;
-    // cc-switch后台 vendor 列表（Claude Code per-block vendor 选择；detected=false 时不渲染 vendor 行）
+    // cc-switch vendor list (per-block vendor selection; the row isn't rendered when detected=false).
+    // Separate "claude"/"codex" sets because a cc-switch vendor id is scoped per app_type — the two
+    // DB queries return disjoint rows, and bindings (vendor id/name meta on the block) must carry the
+    // profile discriminator.
     vendorOptions?: CcSwitchVendor[];
     vendorDetected?: boolean;
     selectedVendorId?: string;
     onSelectVendor?: (id: string | undefined) => void;
     onRefreshVendors?: () => void;
+    codexVendorOptions?: CcSwitchVendor[];
+    codexVendorDetected?: boolean;
+    codexSelectedVendorId?: string;
+    onCodexSelectVendor?: (id: string | undefined) => void;
+    onCodexRefreshVendors?: () => void;
 };
 
 type TerminalTargetFloatingWindowProps = {
@@ -510,6 +519,11 @@ const AgentTargetFloatingWindow = memo(
         selectedVendorId,
         onSelectVendor,
         onRefreshVendors,
+        codexVendorOptions,
+        codexVendorDetected,
+        codexSelectedVendorId,
+        onCodexSelectVendor,
+        onCodexRefreshVendors,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -530,6 +544,10 @@ const AgentTargetFloatingWindow = memo(
                 : (profileOptions[0]?.name ?? "");
         const [selectedProfile, setSelectedProfile] = useState(defaultProfileNameOrDefault);
         const [selectedIdx, setSelectedIdx] = useState(0);
+        // Vendor chip row collapse state: default only the current/selected chip shows, the rest are
+        // hidden behind a "+N▾" inline toggle. Pure frontend; reset to collapsed each time the
+        // floating window reopens (see the isOpen useEffect below) so a prior expand never leaks.
+        const [vendorRestExpanded, setVendorRestExpanded] = useState(false);
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
 
@@ -537,6 +555,7 @@ const AgentTargetFloatingWindow = memo(
         // path 找不到默认 index 则保留上次手选，不强行重置到 0。
         useEffect(() => {
             if (!isOpen) {
+                setVendorRestExpanded(false);
                 return;
             }
             setSelectedProfile(defaultProfileNameOrDefault);
@@ -552,8 +571,89 @@ const AgentTargetFloatingWindow = memo(
             ? selectedProfile
             : defaultProfileNameOrDefault;
 
+        // Effective vendor set for the active profile. cc-switch vendors are queried per app_type
+        // (claude vs codex) — these route the chip row + the createAgentBlockDefForTarget calls
+        // without touching the createAgentBlockDef signature. Codex vendors fall through to the
+        // same `vendorOptions/selectedVendorId` plumbing the rest of this component already uses.
+        const isClaudeProfileActive = effectiveSelectedProfile === "claude";
+        const isCodexProfileActive = effectiveSelectedProfile === "codex";
+        const effectiveVendorOptions = isCodexProfileActive ? codexVendorOptions : vendorOptions;
+        const effectiveVendorDetected = isCodexProfileActive ? codexVendorDetected : vendorDetected;
+        const effectiveSelectedVendorId = isCodexProfileActive ? codexSelectedVendorId : selectedVendorId;
+        const effectiveOnSelectVendor = isCodexProfileActive ? onCodexSelectVendor : onSelectVendor;
+        const effectiveOnRefreshVendors = isCodexProfileActive ? onCodexRefreshVendors : onRefreshVendors;
+
+        // Split the vendor chip list into the "current/selected" chip (always shown) and the rest (collapsed
+        // behind a "+N▾" inline toggle that reflows in place on click). Selection logic mirrors the live
+        // chip row's: the highlighted chip is effectiveSelectedVendorId if set, else vendor.is_current.
+        // If nothing is selected, currentVendorIndex is -1 and we fall back to laying the whole row out flat
+        // (rare — cc-switch rows always have an is_current entry, but we degrade safely if not).
+        const currentVendorIndex = (() => {
+            if (!Array.isArray(effectiveVendorOptions) || effectiveVendorOptions.length === 0) return -1;
+            const byExplicit = effectiveVendorOptions.findIndex((v) => v.id === effectiveSelectedVendorId);
+            if (byExplicit >= 0) return byExplicit;
+            return effectiveVendorOptions.findIndex((v) => v.is_current);
+        })();
+        const currentVendor = currentVendorIndex >= 0 ? effectiveVendorOptions[currentVendorIndex] : undefined;
+        const restVendors = Array.isArray(effectiveVendorOptions)
+            ? effectiveVendorOptions.filter((_, i) => i !== currentVendorIndex)
+            : [];
+        const showVendorRestToggle = currentVendor != null && restVendors.length > 0;
+
         const clampedSelectedIdx = Math.min(selectedIdx, targets.length - 1);
         const selectedTarget = clampedSelectedIdx >= 0 ? targets[clampedSelectedIdx] : null;
+
+        // Renders a single cc-switch vendor chip. Factored out so the collapse-rest layout can call it for
+        // both the always-shown "current/selected" chip and each reflowed "rest" chip — identical styling,
+        // identical selection semantics, identical badges. Same JSX the chip row rendered inline before.
+        const renderVendorChip = (
+            vendor: CcSwitchVendor,
+            selectedVendorId: string | undefined,
+            onSelectVendor: ((id: string | undefined) => void) | undefined
+        ) => {
+            const isSelected = selectedVendorId === vendor.id || (selectedVendorId == null && vendor.is_current);
+            return (
+                <div
+                    key={vendor.id}
+                    className={clsx(
+                        "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
+                        isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
+                    )}
+                    onClick={() => onSelectVendor?.(isSelected ? undefined : vendor.id)}
+                >
+                    {isSelected && (
+                        <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
+                    )}
+                    <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-2 rounded-md text-xs font-medium border-none bg-transparent cursor-pointer"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectVendor?.(isSelected ? undefined : vendor.id);
+                        }}
+                    >
+                        <span
+                            className={clsx(
+                                "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
+                                isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
+                            )}
+                            style={{ background: "#888" }}
+                        />
+                        <span className={clsx(
+                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                        )}>
+                            {vendor.name}
+                        </span>
+                        {vendor.is_current && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">·current</span>
+                        )}
+                        {(vendor.category === "official" || vendor.provider_type === "official") && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">official</span>
+                        )}
+                    </button>
+                </div>
+            );
+        };
 
         if (!isOpen) {
             return null;
@@ -668,8 +768,8 @@ const AgentTargetFloatingWindow = memo(
                         )}
                     </div>
 
-                    {/* cc-switch 业务 vendor（仅 claude profile）—— 来自 cc-switch，按方案1: chips 横向 wrap，与上方 profile chips 同款样式 */}
-                    {effectiveSelectedProfile === "claude" && vendorDetected !== false && Array.isArray(vendorOptions) && (
+                    {/* cc-switch vendor chips (claude OR codex profile) — from cc-switch, chips wrap horizontally, same style as the profile chips above */}
+                    {(isClaudeProfileActive || isCodexProfileActive) && effectiveVendorDetected !== false && Array.isArray(effectiveVendorOptions) && (
                         <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
                             <div className="flex items-center justify-between mb-1.5">
                                 <span className="text-xxs text-muted">Vendor · from cc-switch</span>
@@ -680,60 +780,44 @@ const AgentTargetFloatingWindow = memo(
                                     title="Refresh"
                                     onClick={(event) => {
                                         event.stopPropagation();
-                                        onRefreshVendors?.();
+                                        effectiveOnRefreshVendors?.();
                                     }}
                                 >
                                     <i className="fa-sharp fa-regular fa-rotate-right text-[10px]" />
                                 </button>
                             </div>
-                            {vendorOptions.length === 0 ? (
+                            {effectiveVendorOptions.length === 0 ? (
                                 <div className="px-2 py-1.5 text-xs text-muted">No vendors</div>
+                            ) : currentVendor == null ? (
+                                // No "current" chip found (cc-switch DB edge case). Lay the chips out fully
+                                // flat, identical to the pre-collapse behavior — degrade safely.
+                                <div className="flex flex-wrap gap-0.5">
+                                    {effectiveVendorOptions.map((vendor) => renderVendorChip(vendor, effectiveSelectedVendorId, effectiveOnSelectVendor))}
+                                </div>
                             ) : (
                                 <div className="flex flex-wrap gap-0.5">
-                                    {vendorOptions.map((vendor) => {
-                                        const isSelected = selectedVendorId === vendor.id || (selectedVendorId == null && vendor.is_current);
-                                        return (
-                                            <div
-                                                key={vendor.id}
-                                                className={clsx(
-                                                    "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
-                                                    isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
-                                                )}
-                                                onClick={() => onSelectVendor?.(isSelected ? undefined : vendor.id)}
-                                            >
-                                                {isSelected && (
-                                                    <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-2 rounded-md text-xs font-medium border-none bg-transparent cursor-pointer"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onSelectVendor?.(isSelected ? undefined : vendor.id);
-                                                    }}
-                                                >
-                                                    <span
-                                                        className={clsx(
-                                                            "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
-                                                            isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
-                                                        )}
-                                                        style={{ background: "#888" }}
-                                                    />
-                                                    <span className={clsx(
-                                                        isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
-                                                    )}>
-                                                        {vendor.name}
-                                                    </span>
-                                                    {vendor.is_current && (
-                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">·当前</span>
-                                                    )}
-                                                    {vendor.category === "official" && (
-                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">官方</span>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
+                                    {/* The always-shown "current/selected" chip — highlight = effectiveSelectedVendorId ?? is_current */}
+                                    {renderVendorChip(currentVendor, effectiveSelectedVendorId, effectiveOnSelectVendor)}
+                                    {showVendorRestToggle && (
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setVendorRestExpanded((prev) => !prev);
+                                            }}
+                                            title={vendorRestExpanded ? "Collapse" : "Expand the rest of the vendors"}
+                                            aria-expanded={vendorRestExpanded}
+                                            className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md text-xs font-medium text-secondary hover:bg-surface-soft hover:text-foreground transition-colors cursor-pointer"
+                                        >
+                                            <span className="text-[11px] font-semibold text-accent">{`+${restVendors.length}`}</span>
+                                            <span className="text-[10px] opacity-85">{vendorRestExpanded ? "▴" : "▾"}</span>
+                                        </button>
+                                    )}
+                                    {/* When expanded, reflow the rest in place — same chip styling, no panel/border */}
+                                    {vendorRestExpanded &&
+                                        restVendors.map((vendor) =>
+                                            renderVendorChip(vendor, effectiveSelectedVendorId, effectiveOnSelectVendor)
+                                        )}
                                 </div>
                             )}
                         </div>
@@ -836,8 +920,8 @@ const AgentTargetFloatingWindow = memo(
                                         settings,
                                         selectedTarget,
                                         effectiveSelectedProfile,
-                                        vendorOptions,
-                                        selectedVendorId
+                                        effectiveVendorOptions,
+                                        effectiveSelectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -866,8 +950,8 @@ const AgentTargetFloatingWindow = memo(
                                         settings,
                                         selectedTarget,
                                         effectiveSelectedProfile,
-                                        vendorOptions,
-                                        selectedVendorId
+                                        effectiveVendorOptions,
+                                        effectiveSelectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -897,8 +981,8 @@ const AgentTargetFloatingWindow = memo(
                                         settings,
                                         selectedTarget,
                                         effectiveSelectedProfile,
-                                        vendorOptions,
-                                        selectedVendorId
+                                        effectiveVendorOptions,
+                                        effectiveSelectedVendorId
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1310,6 +1394,12 @@ const Widgets = memo(() => {
     const [ccSwitchVendors, setCcSwitchVendors] = useState<CcSwitchVendor[]>([]);
     const [ccSwitchDetected, setCcSwitchDetected] = useState<boolean>(false);
     const [ccSwitchSelectedVendorId, setCcSwitchSelectedVendorId] = useState<string | undefined>(undefined);
+    // Codex mirror of the three claude pieces above. Independent state because the two app_types have
+    // disjoint vendor id spaces in cc-switch — a user can simultaneously have picked "kimi" for claude
+    // and "tabcode" for codex without the selections bleeding across profile switches.
+    const [ccCodexVendors, setCcCodexVendors] = useState<CcSwitchVendor[]>([]);
+    const [ccCodexDetected, setCcCodexDetected] = useState<boolean>(false);
+    const [ccCodexSelectedVendorId, setCcCodexSelectedVendorId] = useState<string | undefined>(undefined);
 
     const rawAgentProfileOptions = useMemo(
         () => getAgentProfileOptions(settings, agentCommandPaths),
@@ -1372,12 +1462,18 @@ const Widgets = memo(() => {
 
     // Load cc-switch vendors when the New Agent floating window opens (lazy + module-cached in ccswitch-vendors.ts).
     // Soft-degrades — if cc-switch isn't installed, we just get an empty vendor list + detected=false and the UI
-    // hides the vendor row entirely (graceful, never blocks agent launch).
-    const refreshCcSwitchVendors = useCallback((force: boolean) => {
+    // hides the vendor row entirely (graceful, never blocks agent launch). Both app_types are loaded eagerly so
+    // a profile switch inside the window doesn't pay a fresh SQLite read on chip-row reveal.
+    const refreshCcSwitchVendors = useCallback((appType: CcSwitchAppType, force: boolean) => {
         fireAndForget(async () => {
-            const list = await loadCcSwitchVendors(force);
-            setCcSwitchVendors(list.vendors ?? []);
-            setCcSwitchDetected(Boolean(list.detected));
+            const list = await loadCcSwitchVendors(appType, force);
+            if (appType === "codex") {
+                setCcCodexVendors(list.vendors ?? []);
+                setCcCodexDetected(Boolean(list.detected));
+            } else {
+                setCcSwitchVendors(list.vendors ?? []);
+                setCcSwitchDetected(Boolean(list.detected));
+            }
         });
     }, []);
 
@@ -1385,7 +1481,8 @@ const Widgets = memo(() => {
         if (!isAgentTargetOpen) {
             return;
         }
-        refreshCcSwitchVendors(false);
+        refreshCcSwitchVendors("claude", false);
+        refreshCcSwitchVendors("codex", false);
     }, [isAgentTargetOpen, refreshCcSwitchVendors]);
 
     const closeAgentTargetSelector = useCallback(() => {
@@ -1394,7 +1491,9 @@ const Widgets = memo(() => {
         setAgentTargets([]);
         // Reset the per-launch vendor pick when the floating window closes: next open defaults to
         // cc-switch's "is_current" vendor (highlighted chip), not whatever the user picked last time.
+        // Reset both app_types — neither selection leaks to the next open.
         setCcSwitchSelectedVendorId(undefined);
+        setCcCodexSelectedVendorId(undefined);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -1961,7 +2060,12 @@ const Widgets = memo(() => {
                     vendorDetected={ccSwitchDetected}
                     selectedVendorId={ccSwitchSelectedVendorId}
                     onSelectVendor={setCcSwitchSelectedVendorId}
-                    onRefreshVendors={() => refreshCcSwitchVendors(true)}
+                    onRefreshVendors={() => refreshCcSwitchVendors("claude", true)}
+                    codexVendorOptions={ccCodexVendors}
+                    codexVendorDetected={ccCodexDetected}
+                    codexSelectedVendorId={ccCodexSelectedVendorId}
+                    onCodexSelectVendor={setCcCodexSelectedVendorId}
+                    onCodexRefreshVendors={() => refreshCcSwitchVendors("codex", true)}
                 />
             )}
             {terminalReferenceElement != null && (

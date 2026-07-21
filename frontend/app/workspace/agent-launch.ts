@@ -13,6 +13,8 @@ const AgentProviderMetaKey = "agent:provider";
 // cc-switch provider's env, not the global ~/.claude/settings.json env — supports per-block vendor isolation.
 const AgentClaudeVendorIdMetaKey = "agent:claudevendorid";
 const AgentClaudeVendorNameMetaKey = "agent:claudevendorname";
+const AgentCodexVendorIdMetaKey = "agent:codexvendorid";
+const AgentCodexVendorNameMetaKey = "agent:codexvendorname";
 const DefaultHomeLaunchTargetBlockId = "launch-target:home";
 const DefaultHomeLaunchTargetCwd = "~";
 
@@ -989,9 +991,18 @@ function createAgentBlockDef(
     // so our vendor.env wins by construction. We still inject the env values themselves into cmd:env
     // for the case where claude_config_dir is empty (reader skipped materialization, e.g. write failed)
     // — that path keeps the old OS-env-injection behavior as a fallback.
+    //
+    // Codex mirrors this: vendor.env holds OPENAI_API_KEY (whitelisted in reader.go) and we inject
+    // CODEX_HOME -> the materialized per-vendor codex home (auth.json + config.toml + hooks.json +
+    // cc-switch-model-catalog.json). We deliberately do NOT set OPENAI_BASE_URL here — base_url is a
+    // config.toml resource (in [model_providers.<name>]) and an env OPENAI_BASE_URL would silently
+    // clobber it. When the picked codex vendor has no codex_config_dir (codex-official / blank rows),
+    // we skip CODEX_HOME injection entirely so the spawned codex falls back to the user's global ~/.codex/
+    // (official OAuth login path).
     let selectedVendor: CcSwitchVendor | undefined = undefined;
     const isClaudeProvider = provider === "claude" || provider === "anthropic";
-    if (isClaudeProvider && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
+    const isCodexProvider = provider === "codex";
+    if ((isClaudeProvider || isCodexProvider) && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
         selectedVendor = vendorOptions.find((v) => v != null && v.id === vendorId);
     }
     if (selectedVendor != null && selectedVendor.env != null) {
@@ -999,8 +1010,10 @@ function createAgentBlockDef(
             cmdEnv[k] = v;
         }
     }
-    if (selectedVendor != null && !isBlank(selectedVendor.claude_config_dir)) {
+    if (isClaudeProvider && selectedVendor != null && !isBlank(selectedVendor.claude_config_dir)) {
         cmdEnv["CLAUDE_CONFIG_DIR"] = selectedVendor.claude_config_dir;
+    } else if (isCodexProvider && selectedVendor != null && !isBlank(selectedVendor.codex_config_dir)) {
+        cmdEnv["CODEX_HOME"] = selectedVendor.codex_config_dir;
     }
 
     const blockMeta: MetaType = {
@@ -1023,9 +1036,17 @@ function createAgentBlockDef(
     blockMetaRecord[AgentProviderMetaKey] = provider;
     if (selectedVendor != null) {
         // Persist the per-block vendor binding so the block's vendor survives Wave restart
-        // and other UI can show "this claude block is using <vendorName>".
-        blockMetaRecord[AgentClaudeVendorIdMetaKey] = selectedVendor.id;
-        blockMetaRecord[AgentClaudeVendorNameMetaKey] = selectedVendor.name;
+        // and other UI can show "this <profile> block is using <vendorName>". The two sets of
+        // meta keys are kept separate (rather than a single "agent:vendorid") because a vendor
+        // identity in cc-switch is scoped by app_type — the same id could in principle exist for
+        // both claude and codex providers, and the profile disambiguates which set to read.
+        if (isClaudeProvider) {
+            blockMetaRecord[AgentClaudeVendorIdMetaKey] = selectedVendor.id;
+            blockMetaRecord[AgentClaudeVendorNameMetaKey] = selectedVendor.name;
+        } else if (isCodexProvider) {
+            blockMetaRecord[AgentCodexVendorIdMetaKey] = selectedVendor.id;
+            blockMetaRecord[AgentCodexVendorNameMetaKey] = selectedVendor.name;
+        }
     }
 
     return {
