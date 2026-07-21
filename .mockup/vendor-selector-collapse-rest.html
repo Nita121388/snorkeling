@@ -1,0 +1,363 @@
+<!-- Copyright 2026, Command Line Inc. SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  Vendor selector: "show 1 (current) + collapse the rest (+N▾)".
+  Tokens below are inlined verbatim from frontend/app/theme.scss (dark) + frontend/tailwindsetup.css
+  so this mockup renders identically to the live New-Agent window's vendor chip row.
+  Layout targets the real live UI: 30px chip height, 8px radius, 10px (current/official) badge,
+  12px chip label, 5x5 refresh icon button.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vendor selector — collapse-rest mockup</title>
+<style>
+  :root {
+    /* ---- theme.scss (data-theme=dark) — verbatim ---- */
+    --main-bg-color:           rgb(34, 34, 34);
+    --main-text-color:         rgb(232, 230, 227);
+    --secondary-text-color:    rgb(195, 200, 194);
+    --grey-text-color:         rgb(138, 138, 138);
+    --border-color:            rgb(60, 60, 60);
+    --hover-bg-color:          rgb(48, 48, 48);
+    --hover-bg-color-strong:   rgb(56, 56, 56);
+    --accent-color:            rgb(88, 193, 66);
+    --accent-hover-color:      rgb(118, 223, 96);
+    --accent-color-300:       rgb(110, 231, 133);
+    --accent-color-500:       rgb(63, 162, 51);
+    --panel-bg-color:          rgb(40, 40, 40);
+    --modal-bg-color:          rgb(40, 40, 40);
+    --accent-bg-color:         rgb(40, 56, 56);
+    --action-soft-bg-color:    rgb(from var(--accent-color) r g b / 0.12);
+    --action-soft-text-color:  var(--accent-color-300);
+    /* ---- tailwindsetup.css — verbatim ---- */
+    --color-surface-soft:      rgba(255, 255, 255, 0.04);
+    --text-xxs: 10px;
+  }
+
+  html, body {
+    margin: 0;
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { padding: 28px 24px 40px; }
+  .page > h1 { font-size: 13px; font-weight: 600; color: var(--secondary-text-color); margin: 0 0 4px; }
+  .page > p.sub { font-size: 12px; color: var(--grey-text-color); margin: 0 0 24px; max-width: 720px; }
+  .stage { display: flex; gap: 40px; flex-wrap: wrap; }
+
+  /* Each "card" mimics the New-Agent floating-window body card (px-3 pt-2 pb-1.5 border-b). */
+  .vendor-panel {
+    width: 360px;
+    margin-bottom: 28px;
+    background: var(--panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .vendor-row {
+    padding: 8px 12px 6px;            /* px-3 pt-2 pb-1.5 */
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  }
+  .vendor-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .vendor-label { font-size: var(--text-xxs); color: var(--grey-text-color); letter-spacing: .02em; }
+  .refresh-btn {
+    display: inline-flex; width: 20px; height: 20px;
+    align-items: center; justify-content: center;
+    border-radius: 3px; color: var(--grey-text-color);
+    background: transparent; border: none; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .refresh-btn:hover { background: var(--hover-bg-color-strong); color: var(--main-text-color); }
+  .refresh-btn i { font-size: 10px; }
+
+  /* chip — exactly the live 30px chip */
+  .chips { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+  .chip {
+    position: relative;
+    display: inline-flex; align-items: center;
+    height: 30px; border-radius: 6px;
+    transition: background .15s;
+    cursor: pointer;
+  }
+  .chip:hover { background: var(--color-surface-soft); }
+  .chip.selected { background: var(--action-soft-bg-color); }
+  .chip.selected::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px;
+    width: 2px; border-radius: 999px; background: var(--accent-color);
+  }
+  .chip-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 100%; padding: 0 8px 0 10px;
+    border-radius: 6px; border: none; background: transparent;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 999px; flex: 0 0 auto;
+    background: #888; transition: opacity .15s, transform .15s;
+  }
+  .chip:hover .dot { opacity: .8; }
+  .chip.selected .dot { opacity: 1; transform: scale(1.1); }
+  .chip-label { color: var(--main-text-color); }
+  .chip:not(.selected) .chip-label { color: var(--grey-text-color); }
+  .chip:not(.selected):hover .chip-label { color: var(--secondary-text-color); }
+
+  .badge {
+    font-size: var(--text-xxs); line-height: 1;
+    padding: 2px 4px; border-radius: 4px; margin-left: 2px;
+  }
+  .badge-current { background: color-mix(in srgb, var(--accent-color) 15%, transparent); color: var(--accent-color); }
+  .badge-official { background: var(--color-surface-soft); color: var(--grey-text-color); }
+
+  /* the "+N▾" inline toggle */
+  .more-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 10px;
+    margin-left: 4px;
+    border-radius: 6px; border: none; background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .more-toggle .cnt {
+    font-size: 11px; font-weight: 600; color: var(--accent-color-300);
+  }
+  .more-toggle .caret { font-size: 10px; opacity: .85; transform: translateY(-1px); }
+
+  /* expanded inline panel — flat, no extra border/background; chips just reflow in place */
+  .more-panel {
+    margin-top: 4px;
+  }
+  .more-panel {
+    margin-top: 4px;
+  }
+
+  /* caption under each scenario */
+  .scenario-cap { margin: 4px 0 16px; font-size: 11px; color: var(--grey-text-color); max-width: 360px; }
+  .scenario-cap b { color: var(--secondary-text-color); font-weight: 600; }
+
+  /* the row beneath the vendor area (path list) — just to show what follows in the live UI */
+  .below { padding: 6px 12px 8px; color: var(--grey-text-color); font-size: 11px; }
+
+  .legend {
+    margin-top: 8px; max-width: 760px;
+    font-size: 11px; color: var(--grey-text-color); line-height: 1.7;
+    border-top: 1px solid var(--border-color); padding-top: 12px;
+  }
+  .legend b { color: var(--secondary-text-color); }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+</head>
+<body data-theme="dark">
+<div class="page">
+  <h1>Vendor selector · show 1 (current) + collapse the rest (+N▾)</h1>
+  <p class="sub">
+    Live behavior: when the New-Agent window opens, the `<strong>Vendor · from cc-switch</strong>` row lays out
+    every vendor chip in a wrapping flex row. This mockup instead shows only the <strong>currently selected</strong> chip on
+    one line plus a `<code>+N▾</code>` collapse toggle; clicking it reflows the rest in place. What's exposed is always
+    the <em>selected</em> chip — if the official provider is selected, the official chip (with its <code>official</code> badge)
+    sits on top and the rest collapse underneath.
+  </p>
+
+  <div class="stage">
+    <!-- ============ A. 收起 · 当前是自定义供应商 ============ -->
+    <div>
+      <div class="vendor-panel">
+        <div class="vendor-row">
+          <div class="vendor-head">
+            <span class="vendor-label">Vendor · from cc-switch</span>
+            <button class="refresh-btn" aria-label="Refresh cc-switch vendors" title="Refresh">
+              <i class="fa-sharp fa-regular fa-rotate-right"></i>
+            </button>
+          </div>
+          <div class="chips">
+            <!-- 当前选中:露脸(只这一个) -->
+            <div class="chip selected" title="kimi-cli">
+              <button class="chip-btn">
+                <span class="dot"></span>
+                <span class="chip-label">kimi-cli</span>
+                <span class="badge badge-current">·current</span>
+              </button>
+            </div>
+            <!-- 折叠按钮:本地无选中→此处为 +N▾ -->
+            <button class="more-toggle" title="Expand the rest of the vendors">
+              <span class="cnt">+5</span><span class="caret">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="below">path list / rest of New-Agent form…</div>
+      </div>
+      <p class="scenario-cap"><b>A · collapsed · current = kimi-cli (custom)</b><br>Only the current chip shows, plus a <code>+5▾</code> toggle. The other 5 are hidden, the whole row is one line.</p>
+    </div>
+
+    <!-- ============ B. collapsed · current is "official" ============ -->
+    <div>
+      <div class="vendor-panel">
+        <div class="vendor-row">
+          <div class="vendor-head">
+            <span class="vendor-label">Vendor · from cc-switch</span>
+            <button class="refresh-btn" aria-label="Refresh cc-switch vendors" title="Refresh">
+              <i class="fa-sharp fa-regular fa-rotate-right"></i>
+            </button>
+          </div>
+          <div class="chips">
+            <!-- current selection = official: official chip with its "official" badge sits on top, not hidden -->
+            <div class="chip selected" title="claude-official">
+              <button class="chip-btn">
+                <span class="dot"></span>
+                <span class="chip-label">claude-official</span>
+                <span class="badge badge-official">official</span>
+                <span class="badge badge-current">·current</span>
+              </button>
+            </div>
+            <button class="more-toggle" title="Expand the rest of the vendors">
+              <span class="cnt">+5</span><span class="caret">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="below">path list / rest of New-Agent form…</div>
+      </div>
+      <p class="scenario-cap"><b>B · collapsed · current = official (answers "what if the official is current")</b><br>What shows is the <b>selected</b> chip, not "only non-official shows". The official chip + its <code>official</code> badge sit on top; the other 5 collapse into <code>+5▾</code>.</p>
+    </div>
+
+    <!-- ============ C. expanded ============ -->
+    <div>
+      <div class="vendor-panel">
+        <div class="vendor-row">
+          <div class="vendor-head">
+            <span class="vendor-label">Vendor · from cc-switch</span>
+            <button class="refresh-btn" aria-label="Refresh cc-switch vendors" title="Refresh">
+              <i class="fa-sharp fa-regular fa-rotate-right"></i>
+            </button>
+          </div>
+          <div class="chips">
+            <!-- current still shown (selected state) -->
+            <div class="chip selected" title="kimi-cli">
+              <button class="chip-btn">
+                <span class="dot"></span>
+                <span class="chip-label">kimi-cli</span>
+                <span class="badge badge-current">·current</span>
+              </button>
+            </div>
+            <!-- click again to collapse -->
+            <button class="more-toggle" title="Collapse">
+              <span class="caret" style="transform: rotate(180deg) translateY(1px);">▾</span>
+            </button>
+          </div>
+
+          <!-- expanded in place — same chip style, no border / panel label -->
+          <div class="more-panel">
+            <div class="chips">
+              <div class="chip" title="pulse-1m">
+                <button class="chip-btn">
+                  <span class="dot" style="opacity:.5;"></span>
+                  <span class="chip-label">pulse-1m</span>
+                </button>
+              </div>
+              <div class="chip" title="glm-5.2">
+                <button class="chip-btn">
+                  <span class="dot" style="opacity:.5;"></span>
+                  <span class="chip-label">glm-5.2</span>
+                </button>
+              </div>
+              <div class="chip" title="claude-official">
+                <button class="chip-btn">
+                  <span class="dot" style="opacity:.5;"></span>
+                  <span class="chip-label">claude-official</span>
+                  <span class="badge badge-official">official</span>
+                </button>
+              </div>
+              <div class="chip" title="tencent-1">
+                <button class="chip-btn">
+                  <span class="dot" style="opacity:.5;"></span>
+                  <span class="chip-label">tencent-1</span>
+                </button>
+              </div>
+              <div class="chip" title="test-vendor">
+                <button class="chip-btn">
+                  <span class="dot" style="opacity:.5;"></span>
+                  <span class="chip-label">test-vendor</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="below">path list / rest of New-Agent form…</div>
+      </div>
+      <p class="scenario-cap"><b>C · expanded</b><br>Clicking <code>+5▾</code> reflows the other 5 chips in place below; the current chip stays put in its selected state and the toggle flips to ▴ (collapse). Click again to collapse.</p>
+    </div>
+
+    <!-- ============ D. edge · only 1 vendor left ============ -->
+    <div>
+      <div class="vendor-panel">
+        <div class="vendor-row">
+          <div class="vendor-head">
+            <span class="vendor-label">Vendor · from cc-switch</span>
+            <button class="refresh-btn" aria-label="Refresh cc-switch vendors" title="Refresh">
+              <i class="fa-sharp fa-regular fa-rotate-right"></i>
+            </button>
+          </div>
+          <div class="chips">
+            <div class="chip selected" title="kimi-cli">
+              <button class="chip-btn">
+                <span class="dot"></span>
+                <span class="chip-label">kimi-cli</span>
+                <span class="badge badge-current">·current</span>
+              </button>
+            </div>
+            <!-- N=0 -> no collapse toggle rendered -->
+          </div>
+        </div>
+        <div class="below">path list / rest of New-Agent form…</div>
+      </div>
+      <p class="scenario-cap"><b>D · edge · only 1 vendor</b><br>When there's no "more", the <code>+N▾</code> button isn't rendered (no empty collapse). Visually matches the live single-chip row.</p>
+    </div>
+
+    <!-- ============ E. edge · no selection (panel default) ============ -->
+    <div>
+      <div class="vendor-panel">
+        <div class="vendor-row">
+          <div class="vendor-head">
+            <span class="vendor-label">Vendor · from cc-switch</span>
+            <button class="refresh-btn" aria-label="Refresh cc-switch vendors" title="Refresh">
+              <i class="fa-sharp fa-regular fa-rotate-right"></i>
+            </button>
+          </div>
+          <div class="chips">
+            <!-- no user selection -> fall back to cc-switch's is_current default -->
+            <div class="chip selected" title="glm-5.2">
+              <button class="chip-btn">
+                <span class="dot"></span>
+                <span class="chip-label">glm-5.2</span>
+                <span class="badge badge-current">·current</span>
+              </button>
+            </div>
+            <button class="more-toggle" title="Expand the rest of the vendors">
+              <span class="cnt">+5</span><span class="caret">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="below">path list / rest of New-Agent form…</div>
+      </div>
+      <p class="scenario-cap"><b>E · edge · no selection (panel default)</b><br>Reuses live logic: no user pick -> fall back to cc-switch's <code>is_current</code> chip, shown with <code>·current</code>. The rest collapse into <code>+5▾</code>, identical to scenario A.</p>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>Rules</b> (maps to live <code>widgets.tsx</code> render site, lines ~700-765)<br>
+    • Default visible chip = the currently selected one; <code>effectiveSelectedVendorId != null</code> uses it, otherwise fall back to <code>vendor.is_current</code> (identical to live line 720).<br>
+    • Toggle text <code>+N▾</code>, where N = remaining vendor count. N=0 -> the toggle isn't rendered.<br>
+    • Collapse/expand is pure frontend <code>useState</code>, local state (reset on window close, alongside the live "Reset the per-launch vendor pick" at lines 1434-1438).<br>
+    • The expanded chips still render via the live <code>effectiveVendorOptions.map(...)</code>; styles are fully reused — no border/panel/background between the current chip and the rest, they just reflow in place.<br>
+    • The <code>·current</code> and <code>official</code> badges and their colors are unchanged; only the default behavior stops laying every chip out at once.
+  </div>
+</div>
+</body>
+</html>
