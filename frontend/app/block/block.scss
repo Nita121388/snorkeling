@@ -152,7 +152,7 @@
                             color: var(--accent-color);
                             background: rgb(from var(--accent-color) r g b / 0.1);
 
-                            > span {
+                            span {
                                 animation: agent-status-text-shimmer 1.8s ease-in-out infinite;
                             }
                         }
@@ -188,6 +188,22 @@
 
                         &.is-inferred {
                             border-style: dashed;
+                        }
+
+                        // Acknowledged: user has dismissed the badge. Fade it out (still visible),
+                        // kill shimmer/border animations, switch to a dashed neutral border so the
+                        // outline/position remains but stops demanding attention. Re-lights when the
+                        // agent's `status.updatedAt` flips newer than the ackedAt timestamp.
+                        &.is-acked {
+                            border-style: dashed;
+                            opacity: 0.78;
+
+                            // Kill all running animations — covers shimmer (set above on `is-working span`)
+                            // and the border-pulse set on `is-blocked`.
+                            animation: none;
+                            span {
+                                animation: none;
+                            }
                         }
                     }
 

@@ -769,6 +769,14 @@
     line-height: 1;
     white-space: nowrap;
 
+    // chip is now a real <button> (block-level) / role="button" span (tab aggregate),
+    // so reset UA button chrome to keep the badge styling authoritative.
+    appearance: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    padding: 0;
+
     &.is-working {
         --agent-status-color: var(--success-color);
         --agent-status-bg: rgb(from var(--success-color) r g b / 0.1);
@@ -799,6 +807,24 @@
 
     &.is-inferred {
         border-style: dashed;
+    }
+
+    // "I've seen this state" — user clicked to dismiss. Stays visible but faded,
+    // and critically STOPS the working/blocked pulse + shimmer animations so the
+    // chip no longer nags for attention. Relights when agent state changes again
+    // (status.updatedAt moves past ackedAt), which the component flips back to
+    // non-acked so this block stops applying.
+    &.is-acked {
+        --agent-status-color: rgb(from var(--main-text-color) r g b / 0.42);
+        --agent-status-bg: transparent;
+        border-style: dashed;
+        opacity: 0.78;
+        > i {
+            animation: none;
+        }
+        .session-overview-agent-status-label {
+            animation: none;
+        }
     }
 
     > i {

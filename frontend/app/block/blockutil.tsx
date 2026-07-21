@@ -353,16 +353,31 @@ export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem;
     } else if (elem.elemtype == "input") {
         return <Input decl={elem} className={clsx("block-frame-input", elem.className)} preview={preview} />;
     } else if (elem.elemtype == "text") {
-        return (
+        const textDiv = (
             <div
                 className={clsx("block-frame-text ellipsis", elem.className, { "flex-nogrow": elem.noGrow })}
                 title={elem.title}
             >
-                <span ref={preview ? null : elem.ref} onClick={(e) => elem?.onClick(e)}>
+                <span ref={preview ? null : elem.ref} onClick={(e) => elem?.onClick?.(e)}>
                     &lrm;{elem.text}
                 </span>
             </div>
         );
+        if (elem.tooltipNode != null) {
+            return (
+                <Tooltip
+                    placement="top"
+                    content={elem.tooltipNode}
+                    forceOpen={elem.tooltipProps?.forceOpen}
+                    openDelay={elem.tooltipProps?.openDelay ?? 200}
+                    hideOnClick={elem.tooltipProps?.hideOnClick}
+                    divClassName={elem.tooltipProps?.divClassName}
+                >
+                    {textDiv}
+                </Tooltip>
+            );
+        }
+        return textDiv;
     } else if (elem.elemtype == "textbutton") {
         return (
             <Button className={elem.className} onClick={(e) => elem.onClick(e)} title={elem.title}>

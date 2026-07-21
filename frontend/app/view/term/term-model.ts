@@ -6,6 +6,7 @@ import {
     formatAgentProvider,
     isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
@@ -20,6 +21,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { EnvModalView } from "@/app/view/term/envmodal";
@@ -554,8 +556,8 @@ export class TermViewModel implements ViewModel {
             return null;
         }
         const status = get(this.agentStatusAtom);
-        const provider = formatAgentProvider(status?.provider || normalizeAgentProvider(blockMeta?.["agent:provider"]));
         if (status == null) {
+            const provider = formatAgentProvider(status?.provider || normalizeAgentProvider(blockMeta?.["agent:provider"]));
             return {
                 elemtype: "text",
                 text: "No data",
@@ -565,13 +567,28 @@ export class TermViewModel implements ViewModel {
             };
         }
         const presentation = agentStatusPresentation(status);
-        const inferred = isInferredAgentStatus(status) ? " Lower-confidence status presentation." : "";
+        // Ack: read the shared `agentStatusAckedAtAtom` (sourced from SessionOverviewModel singleton
+        // — same atom the Session Overview chips consume, so term header and overview stay in sync).
+        // `get` is the viewText atom's getter on the same globalStore, so ack writes trigger a
+        // re-derive of this elem and the badge re-renders.
+        const overview = SessionOverviewModel.getInstance();
+        const ackedAtMap = get(overview.agentStatusAckedAtAtom) ?? {};
+        const ackedAt = ackedAtMap[this.blockId] ?? 0;
+        const unread = isAgentStatusUnread(status, ackedAt);
+        const titleText = unread
+            ? `${presentation.label} — click to mark as read`
+            : `${presentation.label} — up to date`;
         return {
             elemtype: "text",
             text: presentation.label,
-            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}`,
-            title: `${provider} agent status: ${presentation.title}. Source: ${status.source}.${inferred}`,
+            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}${unread ? "" : " is-acked"}`,
             noGrow: true,
+            onClick: (e) => {
+                e.stopPropagation();
+                overview.markAgentStatusAcked(this.blockId);
+            },
+            tooltipNode: titleText,
+            tooltipProps: { hideOnClick: true, openDelay: 200, divClassName: "inline-flex" },
         };
     }
 

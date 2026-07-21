@@ -49,6 +49,7 @@ export class SessionOverviewModel {
     });
     displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
     blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
+    agentStatusAckedAtAtom = jotai.atom(readAgentStatusAckedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
     hideUnopenedTabsAtom = jotai.atom(readBoolean(HideUnopenedTabsStorageKey)) as jotai.PrimitiveAtom<boolean>;
     agentsOnlyAtom = jotai.atom(readBoolean(AgentsOnlyStorageKey)) as jotai.PrimitiveAtom<boolean>;
 
@@ -111,6 +112,17 @@ export class SessionOverviewModel {
         writeViewedAt(next);
     }
 
+    // Ack the current agent status of a block: dismisses the pulsing status chip ("I've seen this state")
+    // until the agent's state changes again (status.updatedAt moves past ackedAt). Stored separately from
+    // markBlockViewed because that one tracks session-message unread (summary.updatedAt), not agent-state unread.
+    markAgentStatusAcked(blockId: string, ackedAt = Date.now()): void {
+        if (!blockId) return;
+        const current = globalStore.get(this.agentStatusAckedAtAtom) ?? {};
+        const next = { ...current, [blockId]: ackedAt };
+        globalStore.set(this.agentStatusAckedAtAtom, next);
+        writeAgentStatusAckedAt(next);
+    }
+
     jumpToBlock(tabId: string, blockId: string): void {
         if (tabId) {
             setActiveTab(tabId);
@@ -148,6 +160,7 @@ export function mergeVisibleTabIdsWithSessionOverview(
 
 const DisplayLimitStorageKey = "snorkeling:session-overview:display-limit";
 const ViewedAtStorageKey = "snorkeling:session-overview:block-viewed-at";
+const AgentStatusAckedAtStorageKey = "snorkeling:session-overview:agent-status-acked-at";
 const HideUnopenedTabsStorageKey = "snorkeling:session-overview:hide-unopened-tabs";
 const AgentsOnlyStorageKey = "snorkeling:session-overview:agents-only";
 const DefaultDisplayLimit = 20;
@@ -197,4 +210,28 @@ function readViewedAt(): Record<string, number> {
 function writeViewedAt(value: Record<string, number>): void {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(ViewedAtStorageKey, JSON.stringify(value));
+}
+
+function readAgentStatusAckedAt(): Record<string, number> {
+    if (typeof window === "undefined") return {};
+    try {
+        const parsed = JSON.parse(window.localStorage.getItem(AgentStatusAckedAtStorageKey) ?? "{}");
+        if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            return {};
+        }
+        const result: Record<string, number> = {};
+        for (const [key, value] of Object.entries(parsed)) {
+            if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
+                result[key] = value;
+            }
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+function writeAgentStatusAckedAt(value: Record<string, number>): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(AgentStatusAckedAtStorageKey, JSON.stringify(value));
 }
