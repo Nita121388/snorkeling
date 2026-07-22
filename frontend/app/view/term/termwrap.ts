@@ -40,6 +40,7 @@ import {
     bufferLinesToText,
     createTempFileFromBlob,
     extractAllClipboardData,
+    getBufferTailLines,
     normalizeCursorStyle,
     quoteForPosixShell,
     trimTerminalSelection,
@@ -88,6 +89,7 @@ export class TermWrap {
     loaded: boolean;
     heldData: Uint8Array[];
     handleResize_debounced: () => void;
+    pushTermTail_debounced: () => void;
     hasResized: boolean;
     multiInputCallback: (data: string) => void;
     sendDataHandler: (data: string) => void;
@@ -101,6 +103,8 @@ export class TermWrap {
     promptMarkers: TermTypes.IMarker[] = [];
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
+    // 终端实时尾 3 物理行（已 apply 转义的可见文本）。null = 还没数据。
+    termTailAtom: jotai.PrimitiveAtom<string[] | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
@@ -141,6 +145,7 @@ export class TermWrap {
         this.promptMarkers = [];
         this.shellIntegrationStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
         this.lastCommandAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
+        this.termTailAtom = jotai.atom(null) as jotai.PrimitiveAtom<string[] | null>;
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
         this.terminal = new Terminal(options);
@@ -281,6 +286,11 @@ export class TermWrap {
         this.mainFileSubject = null;
         this.heldData = [];
         this.handleResize_debounced = debounce(50, this.handleResize.bind(this));
+        this.pushTermTail_debounced = debounce(300, () => {
+            if (!this.terminal) return;
+            const tail = getBufferTailLines(this.terminal.buffer?.active, 3);
+            globalStore.set(this.termTailAtom, tail.length > 0 ? tail : null);
+        });
         this.terminal.open(this.connectElem);
 
         const dragoverHandler = (e: DragEvent) => {
@@ -312,6 +322,11 @@ export class TermWrap {
             dispose: () => {
                 this.connectElem.removeEventListener("dragover", dragoverHandler);
                 this.connectElem.removeEventListener("drop", dropHandler);
+            },
+        });
+        this.toDispose.push({
+            dispose: () => {
+                (this.pushTermTail_debounced as unknown as { cancel?: () => void }).cancel?.();
             },
         });
         this.handleResize();
@@ -439,6 +454,7 @@ export class TermWrap {
             this.loaded = true;
         }
         this.runProcessIdleTimeout();
+        this.pushTermTail_debounced();
     }
 
     dispose() {
@@ -513,6 +529,7 @@ export class TermWrap {
                 this.dataBytesProcessed += data.length;
             }
             this.lastUpdated = Date.now();
+            this.pushTermTail_debounced();
             resolve();
         });
         return prtn;

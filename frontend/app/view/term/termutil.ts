@@ -400,3 +400,18 @@ export function bufferLinesToText(buffer: TermTypes.IBuffer, startIndex: number,
 export function quoteForPosixShell(filePath: string): string {
     return "'" + filePath.replace(/'/g, "'\\''") + "'";
 }
+
+// 取 active buffer 最后 `count` 个物理行（xterm wrap 不合并），用于 agent card 尾 3 行显示。
+// 空数组 = 没 buffer / 还没数据。
+export function getBufferTailLines(buffer: TermTypes.IBuffer | null | undefined, count: number): string[] {
+    if (!buffer || buffer.length <= 0 || count <= 0) return [];
+    const start = Math.max(0, buffer.length - count);
+    const rows: string[] = [];
+    for (let i = start; i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (!line) continue;
+        // translateToString(true) 的 true 是 trimRight，永远传 true：尾巴的尾随空格对宽列无意义
+        rows.push(line.translateToString(true));
+    }
+    return rows.slice(-count);
+}
