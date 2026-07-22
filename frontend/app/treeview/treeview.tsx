@@ -819,7 +819,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                 className={clsx(
                                     "absolute left-0 right-0 flex items-center whitespace-nowrap rounded-[5px] text-sm",
                                     row.kind === "node" ? "cursor-pointer" : "text-muted",
-                                    selected ? "bg-accent/25 text-foreground" : "text-foreground hover:bg-hover"
+                                    selected ? "bg-accent/25 text-foreground" : "text-foreground hover:bg-hoverbg"
                                 )}
                                 style={{
                                     top: 0,

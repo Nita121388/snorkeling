@@ -143,12 +143,25 @@ const CommonTextComposeModal = memo(() => {
     // editor blur 后延时折叠的 timer：onFocus 时取消，给用户从 editor 移动到
     // Send/Copy 等按钮留出 600ms 落点窗口，避免按钮还没点 editor 已塌回单行。
     const editorCollapseTimerRef = useRef<number>(null);
+    // 详情区自动保存防抖 timer：detailTitle/detailText 变化触发，800ms 后落盘。
+    // 切项/关闭/卸载前会被强制 flush（auto-save 兜底），timer 清理在 effect cleanup 里同步处理。
+    const detailSaveTimerRef = useRef<number>(null);
+    // "Saved" 文字淡回 idle 的延时 timer——避免停留在 footer 右下角，但又给用户一个落盘确认。
+    const detailSaveFadeRef = useRef<number>(null);
+    const DETAIL_SAVE_DEBOUNCE_MS = 800;
+    // 自动保存状态：与 state.status（Send/Copy/Delete 瞬时反馈）分开，贴在 footer 右下角。
+    const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "err">("idle");
+    const saveStatusMsgRef = useRef<string>("");
 
     const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
     // editor 当前正文里嵌入的 #tag：在 Send 右侧渲染成可删 chip，点 × 把字面从 editor 抹掉，
     // 这样剩余正文 send/copy 出去时不带走 #tag。
     const editorTags = useMemo(() => extractSessionTagsFromNote(state.editor).tags, [state.editor]);
+
+    // 详情区 tag 完全由 detailText 派生——与编辑器上方的 editorTags 同语义。手写 #tag 落在 Text
+    // 正文里，All Tags 面板据此决定 chip 亮灭；该 memo 也是 Save 时写回 item.tags 的真源。
+    const detailTags = useMemo(() => extractSessionTagsFromNote(state.detailText).tags, [state.detailText]);
 
     const filteredItems = useMemo(() => {
         if (!state.open) return [];
@@ -264,6 +277,17 @@ const CommonTextComposeModal = memo(() => {
             if (editorCollapseTimerRef.current != null) {
                 window.clearTimeout(editorCollapseTimerRef.current);
             }
+            // 卸载前若还有未 flush 的 detail 草稿，强制存盘兜底（关弹窗已 flush，这里只是 React
+            // 卸载流的最后保险，避免极小窗口内的改动丢失）。
+            if (detailSaveTimerRef.current != null) {
+                window.clearTimeout(detailSaveTimerRef.current);
+                detailSaveTimerRef.current = null;
+            }
+            if (detailSaveFadeRef.current != null) {
+                window.clearTimeout(detailSaveFadeRef.current);
+                detailSaveFadeRef.current = null;
+            }
+            fireAndForget(() => flushDetailSave({ keepDirty: true }));
         };
     }, []);
 
@@ -281,6 +305,16 @@ const CommonTextComposeModal = memo(() => {
             window.clearTimeout(editorCollapseTimerRef.current);
             editorCollapseTimerRef.current = null;
         }
+        // 关闭前强制 flush 详情草稿——auto-save 防抖窗口内未落盘的改动在关弹窗这一刻统一存盘。
+        if (detailSaveTimerRef.current != null) {
+            window.clearTimeout(detailSaveTimerRef.current);
+            detailSaveTimerRef.current = null;
+        }
+        if (detailSaveFadeRef.current != null) {
+            window.clearTimeout(detailSaveFadeRef.current);
+            detailSaveFadeRef.current = null;
+        }
+        fireAndForget(() => flushDetailSave({ keepDirty: true }));
         isComposingRef.current = false;
         setState((cur) => {
             composeDraft = {
@@ -335,13 +369,23 @@ const CommonTextComposeModal = memo(() => {
     // 列表行 click —— Master-Detail 模式下进入详情就地编辑态：
     // 不再"只选中"再点 Edit，而是一点进编辑态（title input + body textarea 直接出现，
     // footer 直接是 Save/Cancel）。这样省掉只读中间态、减少需要手点 Edit 的步骤。
+    // 列表行 click —— Master-Detail 模式下进入详情就地编辑态：title input + body textarea
+    // 直接出现。切项前先 flush 当前 detail 草稿（auto-save 兜底），避免漏存上一项的改动；
+    // 新项目从已存数据开始，dirty=false（除非用户 T1 刚看到 B 就改了它，那时 onChange 才置 dirty）。
     const handleListItemClick = (item: CommonTextItem) => {
+        if (state.detailId != null && state.detailId !== item.id) {
+            if (detailSaveTimerRef.current != null) {
+                window.clearTimeout(detailSaveTimerRef.current);
+                detailSaveTimerRef.current = null;
+            }
+            fireAndForget(() => flushDetailSave({ keepDirty: true }));
+        }
         setState((cur) => ({
             ...cur,
             detailId: item.id,
             detailTitle: item.title,
             detailText: item.text,
-            detailDirty: true,
+            detailDirty: false,
             selectedIndex: filteredItems.findIndex((it) => it.id === item.id),
         }));
     };
@@ -450,51 +494,94 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
-    // 详情区就地编辑：进入即编辑态（click 已经把 item 的 title/text 拷进 detailTitle/Text
-    // 并设 detailDirty=true）。Cancel 丢弃草稿、Save 调 upsertCommonTextItem 写回 settings。
-    const handleDetailCancelEdit = () => {
-        if (detailItem == null) {
-            setState((cur) => ({ ...cur, detailTitle: "", detailText: "", detailDirty: false }));
-            return;
-        }
-        setState((cur) => ({
-            ...cur,
-            detailTitle: detailItem.title,
-            detailText: detailItem.text,
-            detailDirty: false,
-        }));
-    };
-
-    // All tags 面板里点 chip：立即把该 tag 加进/移出当前 item.tags 并写回 settings，
-    // 不走 footer Save 草稿流程（tag 改动点点即生效）。
-    // 写回时用后端当前 item 的 title/text/pinned 副本，避免把未 Save 的 detailTitle/detailText
-    // 草稿误回写（草稿只在 state 里，下次 Save 再落盘）。
-    const handleDetailToggleTag = async (tag: string) => {
-        if (detailItem == null) return;
-        const currentTags = detailItem.tags ?? [];
-        const lower = tag.toLowerCase();
-        const exists = currentTags.some((t) => t.toLowerCase() === lower);
-        const nextTags = exists
-            ? currentTags.filter((t) => t.toLowerCase() !== lower)
-            : [...currentTags, tag];
+    // 详情区自动保存：草稿态没有手动 Save/Cancel——typed 停手 800ms 后落盘。flushDetailSave 既是
+    // 防抖到点的执行器，也是切项/关闭/卸载前的强制兜底，避免最后一次编辑丢失。
+    // 空纯空白草稿跳过存储（当空草稿就意味着"清掉本文"会被显式点 Delete 处理），避免一改空就误空写。
+    const flushDetailSave = async (opts?: { keepDirty?: boolean }) => {
+        const id = state.detailId;
+        if (id == null) return;
+        if (!state.detailDirty) return;
+        const text = state.detailText;
+        if (text.trim() === "") return;
+        const title = state.detailTitle.trim();
+        setSaveStatus("saving");
         try {
             await upsertCommonTextItem(
                 {
-                    title: detailItem.title,
-                    text: detailItem.text,
-                    tags: nextTags,
-                    pinned: detailItem.pinned ?? false,
+                    title,
+                    text,
+                    tags: extractSessionTagsFromNote(text).tags,
+                    pinned: detailItem?.pinned ?? false,
                 },
-                detailItem.id
+                id
             );
-            setStatus(exists ? "Tag removed" : "Tag added", "ok");
+            if (!opts?.keepDirty) {
+                setState((cur) => ({ ...cur, detailDirty: false }));
+            }
+            setSaveStatus("saved");
+            saveStatusMsgRef.current = "";
+            // "Saved" 在 1.5s 后淡回 idle，给用户一个落盘确认又不长期占着 footer 右下角。
+            if (detailSaveFadeRef.current != null) {
+                window.clearTimeout(detailSaveFadeRef.current);
+            }
+            detailSaveFadeRef.current = window.setTimeout(() => {
+                detailSaveFadeRef.current = null;
+                setSaveStatus((cur) => (cur === "saved" ? "idle" : cur));
+            }, 1500);
         } catch (err) {
-            setStatus(`Tag update failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setSaveStatus("err");
+            saveStatusMsgRef.current = (err as Error)?.message ?? "save failed";
         }
     };
 
+    // 防抖触发：detailDirty 被置 true 后排 800ms 一次性 flush，timer 在每次新改动时被清并重排。
+    useEffect(() => {
+        if (!state.detailDirty) return;
+        // 重新打字进新一轮保存：把上一轮的 "Saved" 淡回 timer 取消，并立刻切 "Saving…" 以反映
+        // 当前确实有未落盘改动（避免视觉上停在 "Saved" 让用户误以为已存）。
+        if (detailSaveFadeRef.current != null) {
+            window.clearTimeout(detailSaveFadeRef.current);
+            detailSaveFadeRef.current = null;
+        }
+        setSaveStatus("saving");
+        if (detailSaveTimerRef.current != null) {
+            window.clearTimeout(detailSaveTimerRef.current);
+        }
+        detailSaveTimerRef.current = window.setTimeout(() => {
+            detailSaveTimerRef.current = null;
+            fireAndForget(() => flushDetailSave());
+        }, DETAIL_SAVE_DEBOUNCE_MS);
+        return () => {
+            if (detailSaveTimerRef.current != null) {
+                window.clearTimeout(detailSaveTimerRef.current);
+                detailSaveTimerRef.current = null;
+            }
+        };
+    }, [state.detailDirty, state.detailTitle, state.detailText, state.detailId]);
+
+    // All tags 面板里点 chip：在 detailText 正文里加/抹对应 #tag 字面（草稿态，Save 才落盘）。
+    // tag 与 text 完全同源——点亮/熄灭由 detailTags（从 text 抽）决定，不在 item.tags 结构化字段
+    // 上点点即生效。加 tag 时同行末尾追加 ` #tag`，单空格分隔；抹 tag 用 removeSessionTagFromNote。
+    const handleDetailToggleTag = (tag: string) => {
+        const normalized = tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
+        if (normalized === "") return;
+        setState((cur) => {
+            const currentTags = extractSessionTagsFromNote(cur.detailText).tags;
+            const hasTag = currentTags.some((t) => t.toLowerCase() === normalized);
+            let nextText: string;
+            if (hasTag) {
+                nextText = removeSessionTagFromNote(cur.detailText, normalized);
+            } else {
+                // 同行末尾追加，单空格分隔；若 text 为空或已以空白结尾则不再加第二空格。
+                const sep = cur.detailText === "" || /\s$/.test(cur.detailText) ? "" : " ";
+                nextText = cur.detailText + sep + "#" + normalized;
+            }
+            return { ...cur, detailText: nextText, detailDirty: true };
+        });
+    };
+
     // 详情区 Pin toggle 按钮：立即把 pinned 翻转写回 settings，与 tag toggle 同属"点点即生效"。
-    // 用后端当前 item 的 title/text/tags 副本避免误回写未 Save 的草稿。
+    // 用后端当前 item 的 title/text 副本，tags 从 text 抽（与渲染真源一致），避免误回写未 Save 的草稿。
     const handleDetailTogglePin = async () => {
         if (detailItem == null) return;
         try {
@@ -502,7 +589,7 @@ const CommonTextComposeModal = memo(() => {
                 {
                     title: detailItem.title,
                     text: detailItem.text,
-                    tags: detailItem.tags ?? [],
+                    tags: extractSessionTagsFromNote(detailItem.text).tags,
                     pinned: !detailItem.pinned,
                 },
                 detailItem.id
@@ -510,31 +597,6 @@ const CommonTextComposeModal = memo(() => {
             setStatus(detailItem.pinned ? "Unpinned" : "Pinned", "ok");
         } catch (err) {
             setStatus(`Pin toggle failed: ${(err as Error).message ?? "unknown"}`, "err");
-        }
-    };
-
-    const handleDetailSaveEdit = async () => {
-        if (detailItem == null) return;
-        const title = state.detailTitle.trim();
-        const text = state.detailText;
-        if (text.trim() === "") {
-            setStatus("Nothing to save", "err");
-            return;
-        }
-        try {
-            await upsertCommonTextItem(
-                {
-                    title,
-                    text,
-                    tags: detailItem.tags ?? [],
-                    pinned: detailItem.pinned ?? false,
-                },
-                detailItem.id
-            );
-            setState((cur) => ({ ...cur, detailDirty: false }));
-            setStatus("Saved", "ok");
-        } catch (err) {
-            setStatus(`Save failed: ${(err as Error).message ?? "unknown"}`, "err");
         }
     };
 
@@ -781,10 +843,11 @@ const CommonTextComposeModal = memo(() => {
                     )}
                 </div>
 
-                {/* Master-Detail: 左侧列表常驻、右侧详情常驻。行 hover → 详情同步；行 click → 仅选中不插入。 */}
-                <div className="min-h-0 flex-1 flex gap-2">
-                    {/* 左：列表 */}
-                    <div className="flex-1 min-w-0 border border-border rounded flex flex-col overflow-hidden">
+                {/* Master-Detail: 左列表与右详情共用同一个圆角矩形容器，中间只一条 border-r 软分隔线
+                    （对齐 .mockup/_to-keep/commontext-compose-modal-improved.html 的 .md-body）。 */}
+                <div className="min-h-0 flex-1 flex border border-border rounded overflow-hidden">
+                    {/* 左：列表 —— 去掉自己的 border/rounded，靠外层容器收口；右侧 border-r 作为内分隔线 */}
+                    <div className="flex-1 min-w-0 flex flex-col border-r border-border bg-modalbg overflow-hidden">
                         <div
                             className="shrink-0 p-2 border-b border-border"
                             onCompositionStart={handleCompositionStart}
@@ -876,8 +939,8 @@ const CommonTextComposeModal = memo(() => {
                         </div>
                     </div>
 
-                    {/* 右：详情 */}
-                    <div className="flex-1 min-w-0 border border-border rounded flex flex-col overflow-hidden">
+                    {/* 右：详情 —— 同样去掉自己的 border/rounded，背景用 bg-background 让左右色差与原型一致 */}
+                    <div className="flex-1 min-w-0 flex flex-col bg-background overflow-hidden">
                         {detailItem == null ? (
                             <div className="flex flex-1 flex-col items-center justify-center gap-2.5 text-muted text-[13px] px-5 py-10 text-center">
                                 <i className="fa fa-regular fa-square text-[28px] opacity-40" />
@@ -917,13 +980,6 @@ const CommonTextComposeModal = memo(() => {
                                     </button>
                                 </div>
 
-                                {/* item 自身 tags：单层 chip 行，无 Tags label、无空态提示，0 chip 直接不渲染 */}
-                                {(detailItem.tags?.length ?? 0) > 0 && (
-                                    <div className="shrink-0 flex flex-wrap items-center gap-1.5">
-                                        <SessionTagChips tags={detailItem.tags} />
-                                    </div>
-                                )}
-
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸 */}
                                 <div className="flex-1 min-h-0">
                                     <textarea
@@ -931,56 +987,46 @@ const CommonTextComposeModal = memo(() => {
                                         onChange={(e) =>
                                             setState((cur) => ({ ...cur, detailText: e.target.value, detailDirty: true }))
                                         }
-                                        placeholder="Text to insert"
+                                        placeholder="Text to insert — type #tag inline to tag this item"
                                         className="w-full h-full min-h-[200px] resize-none rounded-lg border border-border bg-editorbg text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />
                                 </div>
 
-                                {/* All tags 面板：贴边、border+圆角+半透 bg、padding 12/14、gap 8。 */}
-                                {tagSummaries.length > 0 && (
-                                    <div className="shrink-0 rounded-lg border border-border bg-modalbg/60 px-3.5 py-3 flex flex-col gap-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-secondary">
-                                                All tags
-                                            </div>
-                                            <div className="text-[10.5px] text-muted">
-                                                {tagSummaries.length} tags · click to toggle on this item
-                                            </div>
+                                {/* All tags 面板：恒渲染（只要详情有选中项）。chip 选中态来自 detailTags——
+                                    即从 Text 正文抽出的 #tag 集合，点 chip 在 Text 里加/抹对应字面（草稿态，Save 落盘）。 */}
+                                <div className="shrink-0 rounded-lg border border-border bg-modalbg/60 px-3.5 py-3 flex flex-col gap-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-secondary">
+                                            All tags
                                         </div>
+                                        <div className="text-[10.5px] text-muted">
+                                            {tagSummaries.length} tags · click to toggle in Text
+                                        </div>
+                                    </div>
+                                    {tagSummaries.length === 0 ? (
+                                        <div className="text-[11px] text-muted py-1">
+                                            No tags yet — type <code className="px-1 rounded bg-surface-soft">#tag</code> in Text to create one
+                                        </div>
+                                    ) : (
                                         <div className="max-h-24 overflow-y-auto pr-1 -mr-1">
                                             <SessionTagChips
                                                 tags={tagSummaries.map((s) => s.tag)}
-                                                selectedTags={detailItem.tags ?? []}
+                                                selectedTags={detailTags}
                                                 countMap={(() => {
                                                     const m = new Map<string, number>();
                                                     for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
                                                     return m;
                                                 })()}
-                                                onClick={(tag) => fireAndForget(async () => handleDetailToggleTag(tag))}
+                                                onClick={(tag) => handleDetailToggleTag(tag)}
                                             />
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
 
-                                {/* 详情 footer：始终是 Save/Cancel + 行为条（点选即编辑，无中间只读态）。
+                                {/* 详情 footer：自动保存模式——无 Save/Cancel，仅行为条 + 右侧自动保存状态。
                                     不带 border-t，靠外层 gap 与上面分隔。 */}
                                 <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
-                                    <Button
-                                        className="primary"
-                                        onClick={handleDetailSaveEdit}
-                                        title="Save changes"
-                                    >
-                                        <i className="fa fa-solid fa-check mr-1" />
-                                        Save
-                                    </Button>
-                                    <Button
-                                        className="grey"
-                                        onClick={handleDetailCancelEdit}
-                                        title="Discard changes and clear detail"
-                                    >
-                                        Cancel
-                                    </Button>
                                     {canSendToTerm ? (
                                         <Button
                                             className="grey"
@@ -1014,15 +1060,33 @@ const CommonTextComposeModal = memo(() => {
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
                                         Insert
                                     </Button>
-                                    <div className="ml-auto">
+                                    <div className="ml-auto flex items-center gap-2.5">
+                                        {saveStatus !== "idle" && (
+                                            <span
+                                                className={
+                                                    "text-[11px] " +
+                                                    (saveStatus === "err"
+                                                        ? "text-error"
+                                                        : saveStatus === "saved"
+                                                          ? "text-success"
+                                                          : "text-muted")
+                                                }
+                                                title={saveStatus === "err" ? saveStatusMsgRef.current : undefined}
+                                            >
+                                                {saveStatus === "saving"
+                                                    ? "Saving…"
+                                                    : saveStatus === "saved"
+                                                      ? "Saved"
+                                                      : "Save failed"}
+                                            </span>
+                                        )}
                                         <button
                                             type="button"
                                             title="Delete this text"
-                                            className="shrink-0 h-7 px-2 inline-flex items-center justify-center rounded bg-transparent border-0 text-secondary hover:text-error hover:bg-error/10 transition-colors duration-150 cursor-pointer"
+                                            className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded bg-transparent border-0 text-secondary hover:text-error hover:bg-error/10 transition-colors duration-150 cursor-pointer"
                                             onClick={() => fireAndForget(async () => handleListItemDelete(detailItem))}
                                         >
-                                            <i className="fa fa-regular fa-trash-can text-[11px] mr-1" />
-                                            Delete
+                                            <i className="fa fa-regular fa-trash-can text-[12px]" />
                                         </button>
                                     </div>
                                 </div>
