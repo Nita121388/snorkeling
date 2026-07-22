@@ -1,0 +1,79 @@
+# `.mockup/` 整理导览
+
+> 生成于 2026-07-22 审查。本目录原 42 个文件已按"建议删除 / 保留 / 待你拍板"分成三个子文件夹,**没有删除任何文件**,只移动。逐文件夹审查即可。
+
+## 命名速查
+
+| 文件夹 | 含义 | 你要做 |
+|---|---|---|
+| `_to-delete/` | 已被真实实现覆盖 / 被后续 mockup 取代 / 全仓 0 引用。**强烈建议删**。 | 抽样核一眼就放心删 |
+| `_to-keep/` | 当前活跃设计稿、被设计文档显式引用、对应尚未实现的功能。 | 保留 |
+| `_review-boundary/` | 7/6 三联主题方向探索稿,未被 `design-system.html` 4 套主题采纳。 | **二选一**:三份一起删 / 三份一起留。默认建议删 |
+
+## `_to-delete/` — 30 项
+
+### Common Text(5)
+- `commontext-feedback-toast.html` — 5 种气泡方案对比稿;真实 compose modal 只取单行 `statusKind`
+- `commontext-list-row-hover-actions.html` — hover actions 已在真实列表项落地,且与已被取代的 full.html 内容重复
+- `commontext-save-dialog-tags.html` — 真实 `commontext-tags.tsx` 的 `CommonTextTagChip` 已存在
+- `debug-commontext-overflow.html` — 临时调试页(含 setInterval 重算),非设计资产
+- (注:`commontext-compose-modal-full.html` 在审查期间已被另行删除)
+
+### 主题/配色/设计系统(7)
+- `_cream_accent_cards.html` — 米黄 accent 探索稿,方案 38/39 已并入 `light-theme-variations.html`
+- `_gen_cream_accent_cards.py` — 上者生成脚本
+- `_litter_themes.json` — `_litter_cards.html` 源数据,方案已并入 `light-theme-variations.html`
+- `_gen_litter_cards.py` — 上者生成脚本
+- `_litter_cards.html` — 213KB 临时卡片稿,内容一字不差并入 `light-theme-variations.html`
+- `_litter_cards.txt` — 上者纯文本镜像(同 213980 字节),完全冗余
+- `accent-color-candidates.html` — 早期候选;最终 accent `#7c49a1/#a76fca` 已定型入 `design-system.html`
+- `button-accent-redesign.html` — 同期按钮细化稿,风格已落入 `design-system.html`
+- `checkbutton-redesign.html` — 7/2 CheckButton 探索,accent 仍是旧绿色,已被紫 accent 取代
+- `theme-design.html` — V1 设置面板原型,V2 总览 PNG 已是其后继(注:V2 PNG 在审查期间已被另行删除)
+
+### Agent/Session/Block(15)
+- `agent-card-responsive.html` — 布局已落地 `session-overview.scss:455`(上中下三段 + message-strip)
+- `agent-status-current.html` — 状态已由 `agent-status/*` + commit c66c1c07 完整覆盖,`-current` 阶段性对比稿
+- `agent-terminal-redesign.html` — 7/2 Agent Type 样式稿,被 7/22 `new-agent-vendor.html` 接力
+- `terminal-agent-redesign.html` — 6/29 全流程稿,链路 `terminal-agent-redesign → agent-terminal-redesign → new-agent-vendor` 前端被迭代
+- `card-wireframe.html` — 7/2 早期线框,被 `agent-card-responsive` 细化取代且后者已落地
+- `combine-vs-overview.html` — V2 联动方案;`docs/project/combine-dashboard-design.md:15` 已明确否定,采纳 V3
+- `session-detail-redesign.html` — 6/30 早期稿,真实 `session-detail.tsx` 已实现且方向演进到 session-overview
+- `sessions-redesign.html` — 6/26 早期稿,真实 `aisessions.tsx` + `session-overview/` 已落地
+- (注:`sessions-redesign.png` 在审查期间已被另行删除)
+- `move-block-modal.html` — 视觉美化主体已合入 `tab-target-modal.tsx`(hover/spinner/is-working)
+- `x-button-adaptive.html` — OverViewAgentCard 一次性微调稿,全仓 0 引用
+- `filter-redesign.html` — 6/25 早期稿,真实 filter UI 已在 session-overview 落地
+- `filter-redesign.png` — 配套 PNG
+- `tag-chips.html` — 6/25 早期稿,真实 `session-tag-chips.tsx` + `session-tags.ts` 已落地
+- `tag-chips.png` — 配套 PNG
+
+### 单点小修(2)
+- `markdown-inline-code-wrap.html` — bug 在 commit `6e81834a` 已修在 `markdown.tsx`,`markdown.preview.tsx` 永久 preview 已取代复现作用
+- `tooltip-overflow-redesign.html` — 三方案均未落地;真实 `tooltip.tsx` 用 `@floating-ui` 的 `shift/flip` 从根本解决
+
+## `_to-keep/` — 6 项
+
+- `combine-dashboard.html` — 7/22 最新;`docs/project/combine-dashboard-design.md:136` 显式引用,真实 `combinedashboard/` 组件尚未实现,设计仍活跃(V3 当前方案)
+- `new-agent-vendor.html` — 7/22 最新;cc-switch vendor 区域设计,codex vendor 隔离尚未落地
+- `commontext-compose-modal-improved.html` — 07-22 11:41 最新,Mater-Detail 改进 + 明暗主题 + 600ms blur 折叠;真实 tsx 仍是"compact 拥挤"
+- `commontext-search-virtual.html` — 虚拟滚动提案,真实仅采纳"limit 提至 500"未做真正虚拟化
+- `design-system.html` — 项目唯一权威 visual reference,`docs/design-system.md` 显式引用
+- `light-theme-variations.html` — 150KB 浅色主题候选总集,light 选型母本
+
+## `_review-boundary/` — 3 项
+
+7/6 12:55–13:17 三联式主题方向探索稿。**未被 `design-system.html` 4 套主题(dark/light/monochrome)采纳,无后续引用**。三者同命运,要么一起删、要么一起留。
+
+- `cool-pine-ink.html` — 冷松石墨绿
+- `eink-inkwash.html` — 水墨
+- `retro-monochrome.html` — 复古无彩色
+
+**默认建议:三份一起删。** 若想留一组历史方向以备日后重启,就三份一起留。
+
+## 净效果
+
+- `_to-delete/`:30 项 → 抽样核完执行 `rm -rf .mockup/_to-delete/`
+- `_review-boundary/`:3 项 → 拍板后或删或并回保留集
+- `_to-keep/`:6 项 → 留下作为 .mockup 的常驻设计资产
+- 总体从 42 项收敛到 6(+可选 3)项
