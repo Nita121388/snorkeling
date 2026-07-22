@@ -43,7 +43,7 @@ import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/ind
 import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
@@ -52,11 +52,13 @@ import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
     getCachedSessionSummary,
+    getSessionOverviewCacheRevision,
     getSessionOverviewCacheSnapshot,
     loadCachedSessionDetail,
     loadCachedSessionSummary,
     patchCachedSessionSummary,
-    subscribeSessionOverviewCache,
+    subscribeSessionOverviewCacheChannel,
+    type SessionOverviewCacheChannel,
 } from "./session-overview-session-cache";
 import "./session-overview.scss";
 
@@ -554,10 +556,41 @@ function useAgentStatusHookInstallState(providers: string[], active: boolean) {
     return { ...state, install };
 }
 
-function useSessionOverviewCacheVersion(): number {
-    const [version, setVersion] = useState(0);
-    useEffect(() => subscribeSessionOverviewCache(() => setVersion((current) => current + 1)), []);
-    return version;
+// 频道 revision hook (基于 useSyncExternalStore): 供三个 React 消费者订阅.
+// 旧实现是本地 useState + passive effect subscribe, render 读取与订阅之间存在窗口, 且
+// 隐藏时仍订阅缓存通知会无谓触发 React 更新. 新实现:
+//   - 用 useSyncExternalStore 保证 render 与订阅一致性 (subscribed 快照 ≡ cache revision).
+//   - active=false 时返回固定 0 且不订阅 (隐藏期间不参与 cache 通知), 再次激活时直接读到最新 revision.
+//   - 写入路径同步 bump revision, 即便 cache 通知尚未 flush, 组件也已能读到最新 revision.
+function subscribeChannel(channel: SessionOverviewCacheChannel): (cb: () => void) => () => void {
+    return (cb: () => void) => subscribeSessionOverviewCacheChannel(channel, cb);
+}
+// 各频道 subscribe 函数引用稳定 (模块级常量), 不触发 useSyncExternalStore 重订阅.
+const SUBSCRIBE_SUMMARY = subscribeChannel("summary");
+const SUBSCRIBE_DETAIL = subscribeChannel("detail");
+const NOOP_SUBSCRIBE = () => () => {};
+const CONSTANT_ZERO = () => 0;
+const GET_REVISION_SUMMARY = () => getSessionOverviewCacheRevision("summary");
+const GET_REVISION_DETAIL = () => getSessionOverviewCacheRevision("detail");
+
+function useSessionOverviewCacheRevision(
+    channel: SessionOverviewCacheChannel,
+    active = true
+): number {
+    // active=false 时 useSyncExternalStore 用 NOOP_SUBSCRIBE + CONSTANT_ZERO, 不订阅外部 store.
+    // active 切回 true 后切回真实 subscribe + getSnapshot, React 会重新订阅并读取最新 revision.
+    if (channel === "summary") {
+        return useSyncExternalStore(
+            active ? SUBSCRIBE_SUMMARY : NOOP_SUBSCRIBE,
+            active ? GET_REVISION_SUMMARY : CONSTANT_ZERO,
+            CONSTANT_ZERO
+        );
+    }
+    return useSyncExternalStore(
+        active ? SUBSCRIBE_DETAIL : NOOP_SUBSCRIBE,
+        active ? GET_REVISION_DETAIL : CONSTANT_ZERO,
+        CONSTANT_ZERO
+    );
 }
 
 function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: boolean): Record<string, DetailState> {
@@ -567,8 +600,12 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: 
         [blocks]
     );
     const sessionIdsKey = sessionIds.join("\n");
-    const cacheVersion = useSessionOverviewCacheVersion();
-    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheVersion, sessionIdsKey]);
+    // detail 消费者订阅 "detail" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
+    const cacheRevision = useSessionOverviewCacheRevision("detail", active);
+    const cacheSnapshot = useMemo(
+        () => getSessionOverviewCacheSnapshot(sessionIds),
+        [cacheRevision, sessionIdsKey]
+    );
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const refreshSeqRef = useRef(refreshSeq);
@@ -790,8 +827,12 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
         [blocks]
     );
     const sessionIdsKey = sessionIds.join("\n");
-    const cacheVersion = useSessionOverviewCacheVersion();
-    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheVersion, sessionIdsKey]);
+    // summary 消费者订阅 "summary" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
+    const cacheRevision = useSessionOverviewCacheRevision("summary", active);
+    const cacheSnapshot = useMemo(
+        () => getSessionOverviewCacheSnapshot(sessionIds),
+        [cacheRevision, sessionIdsKey]
+    );
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const [summaries, setSummaries] = useState<Record<string, SummaryState>>(() => {
@@ -1101,10 +1142,11 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         [blocks]
     );
     const sessionIdsKey = sessionIds.join("\n");
-    const cacheVersion = useSessionOverviewCacheVersion();
+    // 按钮 badge 只依赖 summary 频道; 按钮永远在 tab strip 中可见, 保持订阅 active=true.
+    const cacheRevision = useSessionOverviewCacheRevision("summary", true);
     const cachedSummaries = useMemo(
         () => getSessionOverviewCacheSnapshot(sessionIds).summaries,
-        [cacheVersion, sessionIdsKey]
+        [cacheRevision, sessionIdsKey]
     );
     const unreadBlocks = blocks.filter((block) => {
         if (!block.isAgentLike || !block.sessionId) return false;

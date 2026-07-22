@@ -30,11 +30,124 @@ const StatRequestConcurrency = 4;
 const summaryCache = new Map<string, CacheEntry<SessionSummary>>();
 const detailCache = new Map<string, CacheEntry<SessionDetail>>();
 const sessionAliases = new Map<string, string>();
+// 旧的全局 cache 订阅集合, 与新频道订阅共存. 任何频道 dirty 都会同步通知全局订阅者,
+// 保证尚未迁移到 channel API 的消费者 (例如外部 useSessionOverviewCacheVersion) 仍能收到信号.
 const cacheSubscribers = new Set<() => void>();
 const summaryRequestQueue: RequestQueue = { active: 0, limit: SummaryRequestConcurrency, pending: [] };
 const detailRequestQueue: RequestQueue = { active: 0, limit: DetailRequestConcurrency, pending: [] };
 const statRequestQueue: RequestQueue = { active: 0, limit: StatRequestConcurrency, pending: [] };
 const dlog = debug("wave:sessionoverview");
+
+// --- 频道 revision 与帧级 flush 调度 ---
+// 设计要点:
+//   - revision 在 cache 写入时**同步**递增. UI 通知可以延后. 这样即使组件在 flush 前订阅,
+//     或隐藏期间没订阅, 重新读取 revision 时仍能发现最新缓存状态.
+//   - 一个调度窗口 (一次 rAF / fallback timer) 内每个频道最多 flush 一次; 同一频道多次写入
+//     revision 会叠加, 但 subscriber 只回调一次.
+//   - flush 时复制当前订阅者集合 (避免迭代中 unsubscribe 触发 Set mutation), 单 subscriber 抛错
+//     不能中断其他 subscriber; 错误走 dlog, 不影响 cache 写入 Promise 的 resolve.
+//   - 可见窗口用 requestAnimationFrame 做帧级合批; 没有 rAF (测试/非浏览器/不可见) 走短 timer fallback,
+//     保证通知最终推进, 永不悬挂.
+export type SessionOverviewCacheChannel = "summary" | "detail";
+
+type ChannelKey = SessionOverviewCacheChannel;
+
+const channelRevisions: Record<ChannelKey, number> = { summary: 0, detail: 0 };
+const channelSubscribers: Record<ChannelKey, Set<() => void>> = {
+    summary: new Set(),
+    detail: new Set(),
+};
+const pendingFlushChannels = new Set<ChannelKey>();
+let flushScheduled = false;
+let flushTimerHandle: ReturnType<typeof setTimeout> | null = null;
+
+function getRaf(): typeof requestAnimationFrame | null {
+    if (typeof globalThis !== "object" || globalThis == null) return null;
+    const raf = (globalThis as any).requestAnimationFrame;
+    return typeof raf === "function" ? raf : null;
+}
+
+function scheduleFlush(): void {
+    if (flushScheduled) return;
+    flushScheduled = true;
+    const raf = getRaf();
+    if (raf != null) {
+        // rAF 可见: 帧级合批. 失败兜底走 timer (某些环境 rAF 可能抛错而不是 undefined).
+        try {
+            raf.call(globalThis, flushChannels);
+            return;
+        } catch (err) {
+            dlog("cache raf schedule failed, fallback to timer", err);
+        }
+    }
+    // 没有 rAF / rAF 抛错: 短 timer fallback, 不悬挂.
+    flushTimerHandle = setTimeout(flushChannels, 0);
+}
+
+function flushChannels(): void {
+    flushScheduled = false;
+    flushTimerHandle = null;
+    // 收集本帧要 flush 的频道, 清 pending 让新写入可以安排下一帧.
+    const channels = Array.from(pendingFlushChannels);
+    pendingFlushChannels.clear();
+    for (const channel of channels) {
+        const subs = channelSubscribers[channel];
+        if (subs.size === 0) continue;
+        // 复制后迭代: subscriber 内可能退订自身或新增订阅, 不影响本轮迭代稳定性.
+        const snapshot = Array.from(subs);
+        for (const subscriber of snapshot) {
+            try {
+                subscriber();
+            } catch (err) {
+                dlog("cache channel subscriber threw", { channel, err });
+            }
+        }
+    }
+    // 同帧也通知旧的全局订阅者 (兼容尚未迁移的消费者).
+    if (cacheSubscribers.size > 0) {
+        const globalSnapshot = Array.from(cacheSubscribers);
+        for (const subscriber of globalSnapshot) {
+            try {
+                subscriber();
+            } catch (err) {
+                dlog("cache global subscriber threw", err);
+            }
+        }
+    }
+}
+
+// cache 写入路径调用: 同步 bump revision + 安排帧级 flush.
+function markChannelDirty(channel: ChannelKey): void {
+    channelRevisions[channel] += 1;
+    pendingFlushChannels.add(channel);
+    scheduleFlush();
+}
+
+// 仅供测试使用: 重置模块级调度状态. cache 数据 (summaryCache/detailCache/aliases) 不重置,
+// 用唯一 sessionId 隔离数据. 调度状态必须在每个测试开头复位, 否则上一个测试未 flush 的
+// schedule 残留会阻止下一个测试收到通知.
+export function _resetCacheSchedulerForTest(): void {
+    flushScheduled = false;
+    pendingFlushChannels.clear();
+    if (flushTimerHandle != null) {
+        clearTimeout(flushTimerHandle);
+        flushTimerHandle = null;
+    }
+}
+
+export function getSessionOverviewCacheRevision(channel: SessionOverviewCacheChannel): number {
+    return channelRevisions[channel];
+}
+
+export function subscribeSessionOverviewCacheChannel(
+    channel: SessionOverviewCacheChannel,
+    subscriber: () => void
+): () => void {
+    channelSubscribers[channel].add(subscriber);
+    return () => {
+        channelSubscribers[channel].delete(subscriber);
+    };
+}
 
 function getEntry<T>(cache: Map<string, CacheEntry<T>>, key: string): CacheEntry<T> {
     key = canonicalSessionKey(key);
@@ -99,10 +212,12 @@ function registerSessionAliases(sessionId: string, summary: SessionSummary | nul
     return existingCanonical;
 }
 
+// 兼容垫片: 旧的全局订阅 API. 现已迁到分频道 API, 但保留这个调用点不动,
+// 既驱动 cacheSubscribers 的全局订阅兼容, 又保证旧调用者 (含尚未迁移的消费者)
+// 仍能在每次写入后拿到信号. 内部等同于把两个频道都标记 dirty.
 function notifyCacheSubscribers(): void {
-    for (const subscriber of cacheSubscribers) {
-        subscriber();
-    }
+    markChannelDirty("summary");
+    markChannelDirty("detail");
 }
 
 export function subscribeSessionOverviewCache(subscriber: () => void): () => void {
@@ -225,7 +340,8 @@ export function loadCachedSessionSummary(
                 updatedAt: summary.updatedAt,
                 messageCount: summary.messageCount,
             });
-            notifyCacheSubscribers();
+            // Summary load 只动 summary 频道. detail 频道不受影响.
+            markChannelDirty("summary");
             return summary;
         })
         .finally(() => {
@@ -286,7 +402,9 @@ export function loadCachedSessionDetail(
                 messageCount: detail.messages?.length ?? 0,
                 summaryMessageCount: detail.summary.messageCount,
             });
-            notifyCacheSubscribers();
+            // Detail load 同时把 summary 写入 summaryCache: 两个频道都标记 dirty.
+            markChannelDirty("summary");
+            markChannelDirty("detail");
             return detail;
         })
         .finally(() => {
@@ -308,8 +426,11 @@ export function patchCachedSessionSummary(sessionId: string, summary: SessionSum
     const summaryEntry = getEntry(summaryCache, canonicalKey);
     summaryEntry.value = { ...(summaryEntry.value ?? summary), ...summary };
     summaryEntry.loadedAt = Date.now();
+    // Summary 频道必然 dirty.
+    markChannelDirty("summary");
 
     const detailEntry = detailCache.get(canonicalKey);
+    const hadDetail = detailEntry?.value?.summary != null;
     if (detailEntry?.value?.summary != null) {
         detailEntry.value = {
             ...detailEntry.value,
@@ -317,5 +438,8 @@ export function patchCachedSessionSummary(sessionId: string, summary: SessionSum
         };
         detailEntry.loadedAt = Date.now();
     }
-    notifyCacheSubscribers();
+    // 仅在已有 detail.summary 被同步修改时 bump Detail revision. 没有缓存 detail 时不打扰 detail 频道.
+    if (hadDetail) {
+        markChannelDirty("detail");
+    }
 }
