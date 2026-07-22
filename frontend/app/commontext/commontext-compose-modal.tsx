@@ -152,6 +152,9 @@ const CommonTextComposeModal = memo(() => {
     // 自动保存状态：与 state.status（Send/Copy/Delete 瞬时反馈）分开，贴在 footer 右下角。
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "err">("idle");
     const saveStatusMsgRef = useRef<string>("");
+    // unmount/closing guard——组件关闭或同步 flush 中途被卸载时置 true，
+    // 之后所有 await 之 setState 都跳过，避免"setState on unmounted component"触发 React 19 卸载期 throw 白屏。
+    const unmountedRef = useRef(false);
 
     const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
@@ -287,7 +290,9 @@ const CommonTextComposeModal = memo(() => {
                 window.clearTimeout(detailSaveFadeRef.current);
                 detailSaveFadeRef.current = null;
             }
-            fireAndForget(() => flushDetailSave({ keepDirty: true }));
+            // 关闭弹窗已在 close() 里执行强制 flush，此处 React 卸载流不再重复 fire——
+            // 避免组件已卸载却仍调用 setState（saveStatus / detailDirty）触发 React 卸载期 throw 白屏。
+            unmountedRef.current = true;
         };
     }, []);
 
@@ -504,7 +509,9 @@ const CommonTextComposeModal = memo(() => {
         const text = state.detailText;
         if (text.trim() === "") return;
         const title = state.detailTitle.trim();
-        setSaveStatus("saving");
+        if (!unmountedRef.current) {
+            setSaveStatus("saving");
+        }
         try {
             await upsertCommonTextItem(
                 {
@@ -515,10 +522,12 @@ const CommonTextComposeModal = memo(() => {
                 },
                 id
             );
-            if (!opts?.keepDirty) {
+            if (!opts?.keepDirty && !unmountedRef.current) {
                 setState((cur) => ({ ...cur, detailDirty: false }));
             }
-            setSaveStatus("saved");
+            if (!unmountedRef.current) {
+                setSaveStatus("saved");
+            }
             saveStatusMsgRef.current = "";
             // "Saved" 在 1.5s 后淡回 idle，给用户一个落盘确认又不长期占着 footer 右下角。
             if (detailSaveFadeRef.current != null) {
@@ -526,10 +535,14 @@ const CommonTextComposeModal = memo(() => {
             }
             detailSaveFadeRef.current = window.setTimeout(() => {
                 detailSaveFadeRef.current = null;
-                setSaveStatus((cur) => (cur === "saved" ? "idle" : cur));
+                if (!unmountedRef.current) {
+                    setSaveStatus((cur) => (cur === "saved" ? "idle" : cur));
+                }
             }, 1500);
         } catch (err) {
-            setSaveStatus("err");
+            if (!unmountedRef.current) {
+                setSaveStatus("err");
+            }
             saveStatusMsgRef.current = (err as Error)?.message ?? "save failed";
         }
     };
