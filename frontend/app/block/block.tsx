@@ -21,6 +21,8 @@ import {
 } from "@/app/agent-status/agent-status-derive";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -212,18 +214,26 @@ const InlineTabLabel = memo(
         // 用于在 Tab 标签右侧渲染状态点. 仅 working / blocked / done / stale 等显眼状态会渲染;
         // idle/unknown 不显示以减少视觉噪声.
         const agentStatus = useInlineTabAgentStatus(blockId);
+        // 与 Session Overview chip / term header pill 共享同一份 ackedAt atom (SessionOverviewModel
+        // 单例上的 agentStatusAckedAtAtom), 任一 surface 点击 markAgentStatusAcked 时所有 surface
+        // 同帧 re-derive, 三处已读状态天然联动. idle/unknown 不算 unread (isAgentStatusUnread 已处理).
+        const overviewModel = SessionOverviewModel.getInstance();
+        const ackedAtMap = useAtomValueSafe(overviewModel.agentStatusAckedAtAtom) ?? {};
         const statusDot = useMemo(() => {
             if (agentStatus == null) return null;
             const state = agentStatus.state;
             if (state === "idle" || state === "unknown") return null;
             const presentation = agentStatusPresentation(agentStatus);
             const inferred = isInferredAgentStatus(agentStatus);
+            const ackedAt = ackedAtMap[blockId] ?? 0;
+            const unread = isAgentStatusUnread(agentStatus, ackedAt);
             return {
                 state,
                 inferred,
-                title: `${presentation.label}${inferred ? " (inferred)" : ""}`,
+                unread,
+                title: `${presentation.label}${inferred ? " (inferred)" : ""}${unread ? " — click to mark as read" : " — up to date"}`,
             };
-        }, [agentStatus]);
+        }, [agentStatus, ackedAtMap, blockId]);
 
         useEffect(() => {
             if (isEditing) {
@@ -338,8 +348,17 @@ const InlineTabLabel = memo(
                             <span
                                 className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
                                     "is-inferred": statusDot.inferred,
+                                    "is-acked": !statusDot.unread,
                                 })}
                                 title={statusDot.title}
+                                onClick={
+                                    statusDot.unread
+                                        ? (e) => {
+                                              e.stopPropagation();
+                                              overviewModel.markAgentStatusAcked(blockId);
+                                          }
+                                        : undefined
+                                }
                             />
                         ) : null}
                     </button>

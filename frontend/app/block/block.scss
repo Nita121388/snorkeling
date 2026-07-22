@@ -803,6 +803,18 @@
                     outline: 1px dashed currentColor;
                     outline-offset: -1px;
                 }
+
+                // Acknowledged: user has dismissed the agent status badge (clicked any of
+                // Session Overview chip / term header pill / this dot itself). Fade it out,
+                // kill shimmer (is-working) and blocked-border pulse (is-blocked) animations.
+                // Source order puts this AFTER the is-working/is-blocked rules so the same
+                // specificity wins, stopping the dot from demanding attention while the
+                // outline/position remains. Re-lights when the agent's `status.updatedAt`
+                // flips newer than the ackedAt timestamp (is-acked class drops off).
+                &.is-acked {
+                    opacity: 0.5;
+                    animation: none;
+                }
             }
         }
 
