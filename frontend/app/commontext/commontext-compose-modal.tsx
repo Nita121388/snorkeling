@@ -460,7 +460,8 @@ const CommonTextComposeModal = memo(() => {
         // not live (panel mid-transition).
         const target = sendTextToFocusedTerm(text, availableTermBlockIds);
         if (target != null) {
-            setStatus("Sent to focused terminal", "ok");
+            // Send 成功即关弹窗：失败分支保留弹窗让用户读到错误并重试。
+            close();
         } else {
             setStatus("No live terminal — focus a terminal and retry", "err");
         }
@@ -478,8 +479,9 @@ const CommonTextComposeModal = memo(() => {
     const handleListItemSend = (item: CommonTextItem) => {
         const target = sendTextToFocusedTerm(item.text, availableTermBlockIds);
         if (target != null) {
-            setStatus("Sent to focused terminal", "ok");
+            // 详情区 Send 成功即关弹窗，与 editor 上方 Send 同语义；失败保留弹窗供重试。
             fireAndForget(() => recordCommonTextUse(item.id));
+            close();
         } else {
             setStatus("No live terminal — focus a terminal and retry", "err");
         }
