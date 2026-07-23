@@ -22,6 +22,10 @@ export type AgentStatus = {
     provider: string;
     sessionId?: string;
     state: AgentDisplayState;
+    // 上一帧的 state. 仅由 agentstatus 事件 emit 时附带 (见 pkg/agentstatus/agentstatus.go
+    // attachPrevState); GetAgentStatus 主动拉取不带 (没有"上一帧"概念), 留空.
+    // 用于判别"非 idle → idle"跳变, 即完成态 D 信号的事件层依据 (决策 1).
+    prevState?: string;
     phase: AgentPhase;
     source: AgentStatusSource;
     confidence: AgentStatusConfidence;

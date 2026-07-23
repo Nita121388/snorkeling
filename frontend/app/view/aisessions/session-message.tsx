@@ -102,7 +102,7 @@ export function MessageCard({
                         {message.seq}
                     </span>
                     {message.timestamp ? (
-                        <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-1 -translate-y-1/2 whitespace-nowrap rounded bg-panel px-2 py-1 text-xxs leading-none text-secondary shadow-md opacity-0 transition-opacity group-hover:opacity-100">
+                        <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-1 -translate-y-1/2 whitespace-nowrap rounded bg-panel px-2 py-1 text-xxs leading-none text-secondary opacity-0 transition-opacity group-hover:opacity-100">
                             {formatDateTimeToSecond(message.timestamp)}
                         </span>
                     ) : null}

@@ -212,6 +212,19 @@ describe("extractAgentCommandFromTerminalText", () => {
 });
 
 describe("resolveAgentSessionId", () => {
+    it("marks resume commands as agent sessions without persisted agent metadata", () => {
+        expect(resolveAgentSessionId({ cmd: "codex resume codex-session" })).toMatchObject({
+            isAgent: true,
+            provider: "codex",
+            sessionId: "codex-session",
+        });
+        expect(resolveAgentSessionId({ cmd: "claude", "cmd:args": ["--resume", "claude-session"] })).toMatchObject({
+            isAgent: true,
+            provider: "claude",
+            sessionId: "claude-session",
+        });
+    });
+
     it("prefers persisted ids, then startup commands, then shell last commands", () => {
         expect(
             resolveAgentSessionId({ "agent:sessionid": "persisted", cmd: "codex resume startup" }, "codex resume shell")

@@ -7,6 +7,9 @@ import {
     isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
@@ -76,9 +79,7 @@ export function normalizeAgentProvider(provider: unknown): string {
 
 export function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
     if (meta == null) return false;
-    if (typeof meta["agent:sessionid"] === "string" && meta["agent:sessionid"].trim() !== "") return true;
-    if (typeof meta["agent:provider"] === "string" && meta["agent:provider"].trim() !== "") return true;
-    return meta["agent:autoresume"] === true;
+    return resolveAgentSessionId(meta).isAgent;
 }
 
 export { getAgentLogoByProvider };
@@ -113,7 +114,7 @@ export class TermViewModel implements ViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
     shellProcStatus: jotai.Atom<string>;
     shellProcStatusUnsubFn: () => void;
-    agentStatusAtom: jotai.PrimitiveAtom<AgentStatus | null>;
+    agentStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<AgentStatus | null>;
     agentStatusUnsubFn: () => void;
     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;
     blockJobStatusVersionTs: number;
@@ -156,8 +157,12 @@ export class TermViewModel implements ViewModel {
             }
             // agent block: 显示对应 agent 的品牌 icon 而不是通用 terminal 图标
             const blockMeta = get(this.blockAtom)?.meta;
-            if (isAgentTerminalMeta(blockMeta)) {
-                const provider = normalizeAgentProvider(blockMeta?.["agent:provider"]);
+            const agentStatus = get(this.agentStatusAtom);
+            if (isAgentTerminalMeta(blockMeta) || agentStatus != null) {
+                const explicitProvider =
+                    typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";
+                const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
+                const provider = normalizeAgentProvider(explicitProvider || commandProvider || agentStatus?.provider);
                 if (provider !== "agent") {
                     const logoInfo = getAgentLogoByProvider(provider);
                     if (logoInfo != null) {
@@ -216,13 +221,17 @@ export class TermViewModel implements ViewModel {
                 const cmdCwd = blockMeta?.["cmd:cwd"];
                 const cmdRaw = blockMeta?.["cmd"];
                 const providerRaw = blockMeta?.["agent:provider"];
-                const provider = typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";
+                const explicitProvider =
+                    typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";
+                const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
+                const agentStatus = get(this.agentStatusAtom);
+                const provider = explicitProvider || commandProvider || agentStatus?.provider || "";
                 const hasCmdArgs = cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0;
                 const cmdArgsStr = hasCmdArgs ? cmdArgs.join(" ") : "";
                 // Agent blocks: surface the provider's short label (e.g. "Claude") instead of the raw
                 // command string, which may be an absolute path or carry args. Keep the original
                 // command text reachable via the tooltip for debugging.
-                const isAgentBlock = isAgentTerminalMeta(blockMeta) && provider !== "";
+                const isAgentBlock = (isAgentTerminalMeta(blockMeta) || agentStatus != null) && provider !== "";
                 const headerText = isAgentBlock ? "" : cmdRaw;
                 const headerTitle = isAgentBlock
                     ? `${formatAgentProvider(provider)} · ${cmdRaw ?? ""}${cmdArgsStr ? " " + cmdArgsStr : ""}`
@@ -433,7 +442,6 @@ export class TermViewModel implements ViewModel {
                 this.updateShellProcStatus(event.data);
             },
         });
-        this.agentStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<AgentStatus | null>;
         services.BlockService.GetAgentStatus(blockId)
             .then((status) => {
                 globalStore.set(this.agentStatusAtom, normalizeCanonicalAgentStatus(status));
@@ -552,12 +560,15 @@ export class TermViewModel implements ViewModel {
     }
 
     getAgentStatusHeaderElem(get: jotai.Getter, blockMeta: MetaType | null | undefined): HeaderElem | null {
-        if (!isAgentTerminalMeta(blockMeta)) {
+        const status = get(this.agentStatusAtom);
+        if (!isAgentTerminalMeta(blockMeta) && status == null) {
             return null;
         }
-        const status = get(this.agentStatusAtom);
+        const explicitProvider =
+            typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";
+        const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
         if (status == null) {
-            const provider = formatAgentProvider(status?.provider || normalizeAgentProvider(blockMeta?.["agent:provider"]));
+            const provider = formatAgentProvider(normalizeAgentProvider(explicitProvider || commandProvider));
             return {
                 elemtype: "text",
                 text: "No data",
@@ -575,17 +586,39 @@ export class TermViewModel implements ViewModel {
         const ackedAtMap = get(overview.agentStatusAckedAtAtom) ?? {};
         const ackedAt = ackedAtMap[this.blockId] ?? 0;
         const unread = isAgentStatusUnread(status, ackedAt);
+        // Done-state (D) ack lives in a parallel per-block map. Decision 6B: ack semantics & lifecycle
+        // stay in the agent-status channel, sibling to R's ackedAt rather than reusing SessionOverview's.
+        const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
+        const doneAckedAt = doneAckedAtMap[this.blockId] ?? 0;
+        const doneUnread = isAgentDoneUnread(status, doneAckedAt);
+        // D 完成态 elapsed 自动刷新: 仅在 doneUnread 时订阅 nowMinuteTickAtom, 分钟跳变驱动
+        // rederive, "10m" → "11m" 才不会冻结在跳变那一刻的值. 没 D 时跳过订阅, R 或 idle 上
+        // 不必为分钟 tick 付多余 rederive 代价.
+        if (doneUnread) {
+            get(nowMinuteTickAtom);
+        }
+        const doneElapsedMs = doneUnread ? agentDoneElapsedMs(status, Date.now()) : 0;
+        const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
         const titleText = unread
             ? `${presentation.label} — click to mark as read`
-            : `${presentation.label} — up to date`;
+            : doneUnread
+              ? `${presentation.label} (${doneElapsedText} ago) — click to dismiss`
+              : `${presentation.label} — up to date`;
+        const labelText = doneUnread ? `${presentation.label} ${doneElapsedText}` : presentation.label;
+        // 已阅灰化: R 与 D 各自看自己的未读判定, 任何一个未读都不灰;
+        // 两个都已阅 (或没有未读可点亮) → is-acked 视觉上变淡.
+        const allRead = !unread && !doneUnread;
         return {
             elemtype: "text",
-            text: presentation.label,
-            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}${unread ? "" : " is-acked"}`,
+            text: labelText,
+            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}${allRead ? " is-acked" : ""}${doneUnread ? " is-done-unread" : ""}`,
             noGrow: true,
             onClick: (e) => {
                 e.stopPropagation();
+                // Click the badge acknowledges both R (in-flight updates) and D (just-finished flash),
+                // so a single click fully clears the user's "I've seen this block's status" cue.
                 overview.markAgentStatusAcked(this.blockId);
+                agentStatusDoneAckStore.markDoneAcked(this.blockId);
             },
             tooltipNode: titleText,
             tooltipProps: { hideOnClick: true, openDelay: 200, divClassName: "inline-flex" },

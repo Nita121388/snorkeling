@@ -1,0 +1,578 @@
+<!doctype html>
+<!--
+  Prototype: AI Sessions — Path filter (按路径筛选)
+
+  User request: "aisession优化：增加根据路径筛选，先设计原型html到.mockup，我确定后继续"
+
+  Context (verify-existing-impl-before-redesign 检查过现状):
+    - frontend/app/view/aisessions/filter-panel.tsx 现有的 FilterPanel 已有四行:
+      Marked / Date(+Custom) / Tags, 走 SegTrack + 行图标 + 底部 ActiveChip 模式.
+    - 数据源 session.projectPath 是真实字段 (aisessions.tsx 里 resume 命令、
+      session-row tooltip 都用到), 但当前**没有独立的路径筛选**;
+      路径只被 query 文本搜索覆盖 (placeholder "Search title, note, path, tag").
+    - 用户希望路径能像 source/marked/date 一样作为一阶筛选项.
+
+  Decisions (当场确定 — 见 ask-position-before-placing-ui / decisions-go-into-file-comments):
+    [1] 交互形态: 沿用 FilterPanel 的 SegTrack 行模式, 新增一行 "Path",
+        顶层 SegTrack 切换 path root (All / 各根目录短名 / Other),
+        下面追加一行 breadcrumb 折叠/展开按钮序列 (E:\code ▸ snorkeling ▸ ...)
+        逐级缩小命中范围, 而不是把整条路径硬塞进 SegButton.
+        — 与现有四行视觉语义一致, 比"路径树"省垂直空间, 比"自由输入框"更可发现.
+    [2] 匹配语义: 前缀包含 — 选 E:\code 时, projectPath 以 E:\code 开头的所有
+        session (含子目录 E:\code\snorkeling\...) 都命中.
+        — 对"按项目根目录归类"场景最自然, 避免"在子目录开 session 被漏"的精确匹配陷阱.
+    [3] 路径根 root 分组: 取所有 sessions 的 projectPath, 按盘符/家目录前缀聚类
+        (Windows: E:\ D:\ ~\; *nix: / / ~/). "Other" 兜底空 projectPath.
+        — 根目录太多会让 SegTrack 溢出, 实装时 cap 到前 N 个并折叠其余.
+    [4] ActiveChip: breadcrumb 当前最深一级写成 chip (e.g. [E:\code ×]),
+        与现有 marked/date/tag ActiveChip 同款, 一键清空回 All.
+    [5] Breadcrumb 行只在选了 Menurack 上某根目录之后才显示, All 时不显示;
+        分隔符用 ▸, 末尾当前选中级另起 chip; 前几级可点击回退 (静态原型不绑事件).
+    [6] 与 query 文本搜索的关系: Path 选定后 query 仍生效 (AND 复合),
+        path 不替代 query 的模糊检索能力, 是更结构化的"按项目归类"入口.
+
+  Scope (prototype-html-static-not-interactive):
+    只画样式 + 占位状态视觉. 无 JS 行为, 数据写死.
+    用户体验焦点: SegTrack 行 + breadcrumb 行 + ActiveChip 三处视觉关系.
+-->
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI Sessions — Path Filter (Prototype)</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+        <style>
+            /* ── Design tokens (copied from .mockup/_to-keep/design-system.html) ── */
+            * {
+                box-sizing: border-box;
+                letter-spacing: 0;
+            }
+            :root,
+            [data-theme="dark"] {
+                color-scheme: dark;
+                --canvas: #222222;
+                --panel: #1f211f;
+                --surface: #2b2d2b;
+                --surface-strong: #343734;
+                --overlay: #212121;
+                --text: #f7f7f7;
+                --text-secondary: #c3c8c2;
+                --text-muted: #858a84;
+                --border: rgba(255, 255, 255, 0.16);
+                --border-soft: rgba(255, 255, 255, 0.08);
+                --hover: rgba(255, 255, 255, 0.1);
+                --action: #58c142;
+                --action-hover: #76df60;
+                --action-text: #000000;
+                --action-soft: rgba(88, 193, 66, 0.12);
+                --action-soft-text: #6ee785;
+                --action-soft-border: rgba(88, 193, 66, 0.3);
+                --focus: #58c142;
+                --error: #e54d2e;
+                --error-soft: rgba(229, 77, 46, 0.12);
+                --shadow: rgba(0, 0, 0, 0.55);
+            }
+            [data-theme="light"] {
+                color-scheme: light;
+                --canvas: #ebe5d9;
+                --panel: #f3efe4;
+                --surface: #fffdf8;
+                --surface-strong: #f0ede6;
+                --overlay: #f3efe4;
+                --text: #4c3924;
+                --text-secondary: #675033;
+                --text-muted: #777167;
+                --border: #d6cfbe;
+                --hover: rgba(167, 111, 202, 0.1);
+                --action: #7c49a1;
+                --action-hover: #955ab8;
+                --action-text: #ffffff;
+                --action-soft: rgba(167, 111, 202, 0.12);
+                --action-soft-text: #63387f;
+                --action-soft-border: rgba(167, 111, 202, 0.3);
+                --focus: #a76fca;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background: var(--canvas);
+                color: var(--text);
+                font: 14px/1.45 Inter, "Segoe UI", sans-serif;
+            }
+            button,
+            input {
+                font: inherit;
+                color: inherit;
+            }
+            button {
+                cursor: pointer;
+                background: transparent;
+                border: none;
+            }
+            button:focus-visible,
+            input:focus-visible {
+                outline: 2px solid var(--focus);
+                outline-offset: 2px;
+            }
+
+            /* ── Layout shell ── */
+            .app-shell {
+                display: grid;
+                grid-template-columns: 380px minmax(0, 1fr);
+                gap: 0;
+                min-height: 100vh;
+            }
+            .main {
+                padding: 24px 28px;
+                background: var(--canvas);
+                border-left: 1px solid var(--border);
+            }
+            .meta {
+                background: var(--panel);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 14px 16px;
+                color: var(--text-secondary);
+                font-size: 12px;
+                line-height: 1.6;
+                max-width: 560px;
+            }
+            .meta code {
+                background: var(--surface);
+                padding: 1px 5px;
+                border-radius: 4px;
+                font-size: 11px;
+                color: var(--text);
+            }
+            .theme-row {
+                display: flex;
+                gap: 6px;
+                margin: 16px 0 18px;
+            }
+            .theme-row button {
+                padding: 5px 10px;
+                border-radius: 6px;
+                border: 1px solid var(--border);
+                color: var(--text-secondary);
+                font-size: 11px;
+            }
+            .theme-row button.active {
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                border-color: var(--action-soft-border);
+            }
+
+            /* ── Filter panel (mirrors filter-panel.tsx classes) ── */
+            .filter-panel {
+                margin: 10px;
+                border: 1px solid var(--border-soft);
+                border-radius: 12px;
+                background: var(--panel);
+                box-shadow: 0 1px 3px var(--shadow);
+                overflow: hidden;
+            }
+            .filter-top {
+                display: flex;
+                justify-content: flex-end;
+                padding: 8px 10px 4px;
+            }
+            .clear-all {
+                width: 24px;
+                height: 24px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                color: var(--text-muted);
+                font-size: 11px;
+            }
+            .clear-all:hover {
+                background: var(--hover);
+                color: var(--text);
+            }
+            .filter-rows {
+                padding: 4px 10px;
+            }
+            .filter-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 6px 0;
+            }
+            .filter-row + .filter-row {
+                border-top: 1px solid var(--border-soft);
+            }
+            .filter-row.start {
+                align-items: flex-start;
+            }
+            .row-icon {
+                flex: 0 0 14px;
+                text-align: center;
+                font-size: 11px;
+                color: var(--text-secondary);
+            }
+            .filter-row.start .row-icon {
+                margin-top: 6px;
+            }
+            .row-label {
+                font-size: 11px;
+                color: var(--text-muted);
+                margin-left: 6px;
+            }
+
+            /* SegTrack */
+            .seg-track {
+                display: inline-flex;
+                border: 1px solid var(--border-soft);
+                border-radius: 8px;
+                background: var(--surface);
+                padding: 2px;
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+            }
+            .seg-track.grow {
+                flex: 1;
+            }
+            .seg-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                height: 24px;
+                padding: 0 8px;
+                border-radius: 6px;
+                border: 1px solid transparent;
+                font-size: 12px;
+                color: var(--text-secondary);
+                transition: background 0.12s, color 0.12s;
+            }
+            .seg-btn:hover {
+                background: var(--hover);
+                color: var(--text);
+            }
+            .seg-btn.active {
+                border-color: var(--border);
+                background: var(--overlay);
+                color: var(--text);
+                box-shadow: 0 1px 2px var(--shadow);
+            }
+
+            /* Path root seg buttons shrink; overflow with truncate */
+            .seg-track .seg-btn.slim {
+                padding: 0 7px;
+                font-size: 11px;
+            }
+            .seg-track .seg-btn .dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--text-muted);
+            }
+
+            /* ── NEW: Path breadcrumb row ── */
+            .breadcrumb-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 5px 0 6px 24px; /* indent past icon for visual hierarchy */
+                flex-wrap: wrap;
+            }
+            .breadcrumb-row .crumb {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 22px;
+                padding: 0 8px;
+                border-radius: 6px;
+                font-size: 11px;
+                color: var(--text-secondary);
+                background: var(--surface);
+                border: 1px solid transparent;
+            }
+            .breadcrumb-row .crumb.clickable:hover {
+                color: var(--text);
+                background: var(--hover);
+            }
+            .breadcrumb-row .crumb.leaf {
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                border-color: var(--action-soft-border);
+                font-weight: 600;
+            }
+            .breadcrumb-row .sep {
+                color: var(--text-muted);
+                font-size: 10px;
+                margin: 0 -3px;
+            }
+            .breadcrumb-row .count {
+                font-size: 10px;
+                color: var(--text-muted);
+                background: var(--surface-strong);
+                padding: 0 5px;
+                border-radius: 999px;
+                margin-left: 4px;
+            }
+
+            /* ActiveChip (mirrors ActiveChip in filter-panel.tsx) */
+            .active-strip {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                border-top: 1px solid var(--border-soft);
+                padding: 8px 10px;
+            }
+            .active-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 24px;
+                padding: 0 6px 0 10px;
+                border-radius: 999px;
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                font-size: 11px;
+            }
+            .active-chip .x {
+                width: 16px;
+                height: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                font-size: 9px;
+                opacity: 0.65;
+            }
+            .active-chip .x:hover {
+                opacity: 1;
+                background: var(--surface-strong);
+            }
+
+            /* variant label header above each instance */
+            .variant-title {
+                padding: 14px 14px 6px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--text-secondary);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .variant-hint {
+                padding: 0 14px 4px;
+                font-size: 11px;
+                color: var(--text-muted);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app-shell">
+            <!-- Left: filter panel (the focus of this prototype) -->
+            <div>
+                <!-- ============ Variant A: All (default, nothing selected) ============ -->
+                <div class="variant-title">A · Path filter idle (All)</div>
+                <div class="variant-hint">Path root = All, breadcrumb 不渲染。</div>
+                <div class="filter-panel">
+                    <!-- existing rows condensed here to show context -->
+                    <div class="filter-top">
+                        <button class="clear-all" title="Clear all filters" aria-label="Clear all filters">
+                            <i class="fa-solid fa-broom"></i>
+                        </button>
+                    </div>
+                    <div class="filter-rows">
+                        <!-- Marked -->
+                        <div class="filter-row">
+                            <i class="fa-solid fa-star row-icon"></i>
+                            <div class="seg-track">
+                                <button class="seg-btn active" title="All"><i class="fa-solid fa-list" style="font-size: 11px"></i></button>
+                                <button class="seg-btn" title="Starred"><i class="fa-solid fa-star" style="font-size: 11px"></i></button>
+                                <button class="seg-btn" title="Unstarred"><i class="fa-regular fa-star" style="font-size: 11px"></i></button>
+                            </div>
+                        </div>
+                        <!-- Date -->
+                        <div class="filter-row">
+                            <i class="fa-regular fa-calendar row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn active">All</button>
+                                <button class="seg-btn">Today</button>
+                                <button class="seg-btn">7d</button>
+                                <button class="seg-btn">30d</button>
+                                <button class="seg-btn">Custom</button>
+                            </div>
+                        </div>
+                        <!-- NEW: Path row (idle) -->
+                        <div class="filter-row">
+                            <i class="fa-solid fa-folder-tree row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn slim active">All</button>
+                                <button class="seg-btn slim" title="E:\code (24)">
+                                    <span class="dot" style="background: #74a7cb"></span>
+                                    E:\
+                                </button>
+                                <button class="seg-btn slim" title="D:\Workspaces (8)">
+                                    <span class="dot" style="background: #cc685c"></span>
+                                    D:\
+                                </button>
+                                <button class="seg-btn slim" title="~\home (5)">
+                                    <span class="dot" style="background: #e0b956"></span>
+                                    ~\
+                                </button>
+                                <button class="seg-btn slim" title="Other (3 — empty projectPath)">…</button>
+                            </div>
+                        </div>
+                        <!-- Tags (collapsed hint) -->
+                        <div class="filter-row start">
+                            <i class="fa-solid fa-tag row-icon"></i>
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap; padding-top: 2px">
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#fix <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">3</span></span>
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#snork <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">5</span></span>
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#release <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">2</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant B: Path root selected (E:\), breadcrumb reveals ============ -->
+                <div class="variant-title">B · 选择 E:\ 后 breadcrumb 展开</div>
+                <div class="variant-hint">root=E:\ 点亮, breadcrumb 行出现显示子级和文件数; 子目录可点击进一步收窄; 叶子级高亮成 action 色。</div>
+                <div class="filter-panel">
+                    <div class="filter-top">
+                        <button class="clear-all" title="Clear all filters"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <!-- Path row with E:\ active -->
+                        <div class="filter-row">
+                            <i class="fa-solid fa-folder-tree row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn slim">All</button>
+                                <button class="seg-btn slim active" title="E:\code (24)">
+                                    <span class="dot" style="background: #74a7cb"></span>
+                                    E:\
+                                </button>
+                                <button class="seg-btn slim" title="D:\Workspaces (8)"><span class="dot" style="background: #cc685c"></span>D:\</button>
+                                <button class="seg-btn slim" title="~\home (5)"><span class="dot" style="background: #e0b956"></span>~\</button>
+                                <button class="seg-btn slim">…</button>
+                            </div>
+                        </div>
+                        <!-- NEW: breadcrumb row, only rendered after root selected -->
+                        <div class="breadcrumb-row">
+                            <button class="crumb clickable" title="Back to E:\code">code</button>
+                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                            <button class="crumb clickable" title="Back to E:\code\snorkeling">snorkeling</button>
+                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                            <button class="crumb leaf" title="Currently filtering E:\code\snorkeling">
+                                backend
+                                <span class="count">9</span>
+                            </button>
+                        </div>
+                        <!-- Active strip showing all stacked filters -->
+                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                            <span class="active-chip">
+                                <i class="fa-solid fa-folder-tree" style="font-size: 10px"></i>
+                                E:\code\snorkeling\backend
+                                <button class="x" aria-label="Remove path filter"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                7d
+                                <button class="x" aria-label="Remove date filter"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant C: deeper path + multi-filter compound ============ -->
+                <div class="variant-title">C · 深路径 + 多筛选复合</div>
+                <div class="variant-hint">root=~/, breadcrumb 到第三级; 路径 + marked(starred) + tag 同时生效 (AND); active strip 平铺所有可一键清。</div>
+                <div class="filter-panel">
+                    <div class="filter-top">
+                        <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <div class="filter-row">
+                            <i class="fa-solid fa-star row-icon"></i>
+                            <div class="seg-track">
+                                <button class="seg-btn"><i class="fa-solid fa-list" style="font-size: 11px"></i></button>
+                                <button class="seg-btn active"><i class="fa-solid fa-star" style="font-size: 11px"></i></button>
+                                <button class="seg-btn"><i class="fa-regular fa-star" style="font-size: 11px"></i></button>
+                            </div>
+                            <span class="row-label">Starred</span>
+                        </div>
+                        <div class="filter-row">
+                            <i class="fa-solid fa-folder-tree row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn slim">All</button>
+                                <button class="seg-btn slim" title="E:\code (24)"><span class="dot" style="background: #74a7cb"></span>E:\</button>
+                                <button class="seg-btn slim"><span class="dot" style="background: #cc685c"></span>D:\</button>
+                                <button class="seg-btn slim active" title="~\home (5)"><span class="dot" style="background: #e0b956"></span>~\</button>
+                                <button class="seg-btn slim">…</button>
+                            </div>
+                        </div>
+                        <div class="breadcrumb-row">
+                            <button class="crumb clickable">home</button>
+                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                            <button class="crumb clickable">docs</button>
+                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                            <button class="crumb leaf">
+                                ai-notes
+                                <span class="count">3</span>
+                            </button>
+                        </div>
+                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                            <span class="active-chip">
+                                <i class="fa-solid fa-folder-tree" style="font-size: 10px"></i>
+                                ~/home/docs/ai-notes
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                <i class="fa-solid fa-star" style="font-size: 10px"></i>
+                                Starred
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                #release
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: explanation + theme switcher -->
+            <div class="main">
+                <div class="theme-row">
+                    <button data-theme="dark" class="active">dark</button>
+                    <button data-theme="light">light</button>
+                </div>
+                <div class="meta">
+                    <strong>原型: AI Sessions — Path Filter</strong><br />
+                    在 FilterPanel 加一行 <code>Path</code> 作为新的路径筛选维度.<br /><br />
+
+                    <strong>形态</strong>: 沿用 SegTrack 行模式, root 切换盘符/家目录前缀;
+                    选定 root 后 breadcrumb 行展开, 逐级点击收窄到子目录.<br />
+                    <strong>匹配语义</strong>: 前缀包含 — 选 <code>E:\code</code> 时, 所有
+                    <code>E:\code\*</code> 下的 session 都命中(含子目录).<br />
+                    <strong>关系</strong>: Path 与 query/marked/date/tag 是 AND 复合;
+                    ActiveChip 一键清空回 All.<br /><br />
+
+                    <strong>三个变体</strong>:<br />
+                    A · idle (All) — Path root=All, breadcrumb 不渲染<br />
+                    B · E:\ + 3 级 breadcrumb — 叶子 <code>backend</code> 高亮<br />
+                    C · ~\ + 3 级 + starred + tag 复合 — active strip 平铺<br /><br />
+
+                    <strong>Static only</strong> (无 JS 行为).<br />
+                    决策全部写入文件头 HTML 注释, 实装时改 FilterPanel + ViewModel 即可.
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // theme switch only (prototype-html-static-not-interactive)
+            document.querySelectorAll("[data-theme] button[data-theme], .theme-row button").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const theme = btn.getAttribute("data-theme") || btn.textContent;
+                    document.documentElement.setAttribute("data-theme", theme);
+                    document.querySelectorAll(".theme-row button").forEach((b) => b.classList.remove("active"));
+                    btn.classList.add("active");
+                });
+            });
+        </script>
+    </body>
+</html>

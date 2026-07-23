@@ -16,6 +16,7 @@ type AgentCommandResolution = {
 };
 
 type AgentSessionIdResolution = {
+    isAgent: boolean;
     sessionId: string;
     source: AgentSessionIdSource;
     provider: AgentSessionProvider;
@@ -432,8 +433,15 @@ function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown
     const startupCommand = resolveAgentCommandFromMeta(meta);
     const lastCommand = resolveAgentCommand(shellLastCommand);
     const persistedSessionId = stringValue(meta["agent:sessionid"]);
+    const isAgent =
+        persistedSessionId !== "" ||
+        stringValue(meta["agent:provider"]) !== "" ||
+        isAgentAutoResume(meta) ||
+        startupCommand.provider !== "" ||
+        lastCommand.provider !== "";
     if (persistedSessionId !== "") {
         return {
+            isAgent,
             sessionId: persistedSessionId,
             source: "agent:sessionid",
             provider: providerFromMeta(meta) || startupCommand.provider,
@@ -444,6 +452,7 @@ function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown
     }
     if (startupCommand.sessionId !== "") {
         return {
+            isAgent,
             sessionId: startupCommand.sessionId,
             source: "cmd",
             provider: startupCommand.provider,
@@ -454,6 +463,7 @@ function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown
     }
     if (lastCommand.sessionId !== "") {
         return {
+            isAgent,
             sessionId: lastCommand.sessionId,
             source: "shell:lastcmd",
             provider: lastCommand.provider,
@@ -463,6 +473,7 @@ function resolveAgentSessionId(meta: TermCommandMeta, shellLastCommand?: unknown
         };
     }
     return {
+        isAgent,
         sessionId: "",
         source: "none",
         provider: startupCommand.provider || lastCommand.provider,

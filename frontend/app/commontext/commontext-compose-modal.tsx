@@ -11,7 +11,7 @@ import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { OpenCommonTextSearchEvent, openCommonTextSaveDialog, type CommonTextSearchDetail } from "./commontext-events";
+import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
 import { copyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
     deleteCommonTextItem,
@@ -296,8 +296,6 @@ const CommonTextComposeModal = memo(() => {
         };
     }, []);
 
-    if (!state.open) return null;
-
     const close = () => {
         if (compositionEndTimerRef.current != null) {
             // compositionEndTimerRef 既能容纳 setTimeout 也能容纳 rAF 的 numeric id
@@ -572,6 +570,8 @@ const CommonTextComposeModal = memo(() => {
         };
     }, [state.detailDirty, state.detailTitle, state.detailText, state.detailId]);
 
+    if (!state.open) return null;
+
     // All tags 面板里点 chip：在 detailText 正文里加/抹对应 #tag 字面（草稿态，Save 才落盘）。
     // tag 与 text 完全同源——点亮/熄灭由 detailTags（从 text 抽）决定，不在 item.tags 结构化字段
     // 上点点即生效。加 tag 时同行末尾追加 ` #tag`，单空格分隔；抹 tag 用 removeSessionTagFromNote。
@@ -625,7 +625,25 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Nothing to save", "err");
             return;
         }
-        openCommonTextSaveDialog({ text });
+        // 不再弹独立的 SaveDialog：直接新建一条带 editor 正文的 item，让详情区接管就地编辑。
+        // upsertCommonTextItem 收口 title 派生（normalizeCommonTextTitle）；新建后顺手记一次使用，
+        // 让它在 sortCommonTextItems 的 lastusedat desc 里排到列表第一行（pinned 除外）。
+        fireAndForget(async () => {
+            const item = await upsertCommonTextItem({
+                title: "",
+                text,
+                tags: extractSessionTagsFromNote(text).tags,
+                pinned: false,
+            });
+            await recordCommonTextUse(item.id);
+            setState((cur) => ({
+                ...cur,
+                detailId: item.id,
+                detailTitle: item.title,
+                detailText: item.text,
+                detailDirty: false,
+            }));
+        });
     };
 
     const openManager = () => {
@@ -741,7 +759,7 @@ const CommonTextComposeModal = memo(() => {
                     <div>
                         <div className="text-base font-semibold">Common Text</div>
                         <div className="text-[11px] text-muted">
-                            Compose text. Click a row (or press Enter) to edit it on the right; Insert drops it into the editor.
+                            Compose text. Click + to add a new item to the top, then edit it on the right; click a row (or press Enter) to edit it; Insert drops it into the editor.
                         </div>
                     </div>
                     <button
@@ -813,7 +831,7 @@ const CommonTextComposeModal = memo(() => {
                     <Button
                         className="grey"
                         onClick={handleSaveDialog}
-                        title="Save editor content as a Common Text item"
+                        title="Add new common text item (edit on the right)"
                     >
                         <i className="fa fa-solid fa-plus" />
                     </Button>

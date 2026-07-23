@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { getTabAgentStatusDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
+import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
 import { refocusNode } from "@/app/store/global";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -48,6 +50,7 @@ interface TabVProps {
     unopenedThisLaunch: boolean;
     hidden?: boolean;
     badges?: Badge[] | null;
+    agentDots?: TabAgentStatusDot[] | null;
     flagColor?: string | null;
     onClick: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
@@ -70,6 +73,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         unopenedThisLaunch,
         hidden: isHidden = false,
         badges,
+        agentDots,
         flagColor,
         onClick,
         onClose,
@@ -215,7 +219,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 >
                     {displayName}
                 </div>
-                <TabBadges badges={badges} flagColor={flagColor} />
+                <TabBadges badges={badges} agentDots={agentDots} flagColor={flagColor} />
                 <Button
                     className="ghost grey close"
                     onClick={onClose}
@@ -250,6 +254,8 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
+    // C 层 agent-status 聚合点 (22 号方案决策 6B): D 走自有通道, 仅借 TabBadges 槽位渲染.
+    const agentDots = useAtomValue(getTabAgentStatusDotsAtom(id));
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
@@ -319,6 +325,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             unopenedThisLaunch={unopenedThisLaunch}
             hidden={isHidden}
             badges={badges}
+            agentDots={agentDots}
             flagColor={flagColor}
             onClick={handleTabClick}
             onClose={onClose}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/genconn"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
@@ -99,10 +100,15 @@ func (cs *ClientService) FindCommandForConnection(ctx context.Context, command s
 }
 
 func findCommandOnShellClient(ctx context.Context, client genconn.ShellClient, command string, cwd string) (string, error) {
-	stdout, _, err := genconn.RunSimpleCommand(ctx, client, genconn.CommandSpec{
-		Cmd: makeFindCommandScript(command),
+	script := makeFindCommandScript(command)
+	log.Printf("FINDCMD-FORSHIP cmd=[%q] cwd=[%q] script=[%q]", command, cwd, script)
+	pslog.AppendRaw("findcmd-forship", fmt.Sprintf("cmd=%q cwd=%q script=%q", command, cwd, script))
+	stdout, stderr, err := genconn.RunSimpleCommand(ctx, client, genconn.CommandSpec{
+		Cmd: script,
 		Cwd: strings.TrimSpace(cwd),
 	})
+	log.Printf("FINDCMD-RESULT stdout=[%q] stderr=[%q] err=[%v]", stdout, stderr, err)
+	pslog.AppendRaw("findcmd-result", fmt.Sprintf("stdout=%q stderr=%q err=%v", stdout, stderr, err))
 	if err != nil {
 		return "", err
 	}

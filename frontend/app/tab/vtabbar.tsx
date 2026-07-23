@@ -8,6 +8,7 @@ import {
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { getTabAgentStatusDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import { confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
@@ -132,6 +133,7 @@ function VTabWrapper({
     const env = useWaveEnv<VTabBarEnv>();
     const [tabData] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", tabId));
     const badges = useAtomValue(getTabBadgeAtom(tabId, env));
+    const agentDots = useAtomValue(getTabAgentStatusDotsAtom(tabId));
     const renameRef = useRef<(() => void) | null>(null);
     const tabModel = getTabModelByTabId(tabId, env);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
@@ -162,6 +164,7 @@ function VTabWrapper({
         id: tabId,
         name: tabData?.name ?? "",
         badges,
+        agentDots,
         flagColor,
     };
 

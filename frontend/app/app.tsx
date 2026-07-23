@@ -35,7 +35,6 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
 import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
-import { CommonTextSaveDialog } from "./commontext/commontext-save-dialog";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
 import { CenteredDiv } from "./element/quickelems";
 import {
@@ -445,7 +444,6 @@ const AppInner = () => {
             </DndProvider>
             <ClipboardFloatActions />
             <CommonTextComposeModal />
-            <CommonTextSaveDialog />
         </div>
     );
 };

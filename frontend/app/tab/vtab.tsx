@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { refocusNode } from "@/app/store/global";
+import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
 import { validateCssColor } from "@/util/color-validator";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ export interface VTabItem {
     badge?: Badge | null;
     badges?: Badge[] | null;
     flagColor?: string | null;
+    agentDots?: TabAgentStatusDot[] | null;
 }
 
 interface VTabProps {
@@ -188,6 +190,7 @@ export function VTab({
             />
             <TabBadges
                 badges={badges}
+                agentDots={tab.agentDots}
                 flagColor={flagColor}
                 className="mr-1 min-w-[16px] shrink-0 static top-auto left-auto z-auto h-[16px] w-auto translate-y-0 justify-start px-[2px] py-[1px] [&_i]:text-[10px]"
             />

@@ -223,6 +223,7 @@ declare global {
         provider?: string;
         sessionId?: string;
         state: string;
+        prevState?: string;
         phase: string;
         source: string;
         confidence: string;

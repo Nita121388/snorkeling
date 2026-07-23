@@ -52,6 +52,7 @@ type AgentStatus struct {
 	Provider    string `json:"provider,omitempty"`
 	SessionId   string `json:"sessionId,omitempty"`
 	State       string `json:"state"`
+	PrevState   string `json:"prevState,omitempty"`
 	Phase       string `json:"phase"`
 	Source      string `json:"source"`
 	Confidence  string `json:"confidence"`
@@ -318,6 +319,7 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	}
 	bs.sources[report.Source] = sourceEntry{status: status}
 	nextCanonical := m.canonicalLocked(report.BlockId, nowMs)
+	attachPrevState(nextCanonical, prevCanonical)
 	return nextCanonical, !sameStatus(prevCanonical, nextCanonical), nil
 }
 
@@ -363,6 +365,7 @@ func (m *statusManager) releaseLocked(blockId string, source string, seq int64, 
 		delete(m.blocks, blockId)
 	}
 	nextCanonical := m.canonicalLocked(blockId, nowMs)
+	attachPrevState(nextCanonical, prevCanonical)
 	return nextCanonical, !sameStatus(prevCanonical, nextCanonical), nil
 }
 
@@ -394,6 +397,18 @@ func (m *statusManager) canonicalLocked(blockId string, nowMs int64) *AgentStatu
 		delete(m.blocks, blockId)
 	}
 	return best
+}
+
+func attachPrevState(next *AgentStatus, prev *AgentStatus) {
+	if next == nil {
+		return
+	}
+	if prev == nil {
+		next.PrevState = ""
+		return
+	}
+	// canonicalLocked returns a defensive copy, so mutating next here is safe.
+	next.PrevState = prev.State
 }
 
 func sameStatus(a *AgentStatus, b *AgentStatus) bool {

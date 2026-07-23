@@ -8,6 +8,7 @@ type RawCanonicalAgentStatus = {
     provider?: unknown;
     sessionId?: unknown;
     state?: unknown;
+    prevState?: unknown;
     phase?: unknown;
     source?: unknown;
     confidence?: unknown;
@@ -77,11 +78,14 @@ export function normalizeCanonicalAgentStatus(
     const source = typeof raw.source === "string" && raw.source.trim() !== "" ? raw.source.trim() : "hook";
     const state = normalizedState(typeof raw.state === "string" ? raw.state : undefined);
     const phase = normalizedPhase(typeof raw.phase === "string" ? raw.phase : undefined, state);
+    const prevStateRaw = typeof raw.prevState === "string" ? raw.prevState.trim() : "";
+    const prevState = prevStateRaw === "" ? undefined : prevStateRaw;
     return {
         blockId: raw.blockId.trim(),
         provider: typeof raw.provider === "string" && raw.provider.trim() !== "" ? raw.provider.trim() : "agent",
         sessionId: typeof raw.sessionId === "string" && raw.sessionId.trim() !== "" ? raw.sessionId.trim() : undefined,
         state,
+        prevState,
         phase,
         source: source as AgentStatus["source"],
         confidence: normalizedConfidence(typeof raw.confidence === "string" ? raw.confidence : undefined, source),

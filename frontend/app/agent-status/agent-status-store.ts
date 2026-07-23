@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { observeAgentStatusTransition } from "@/app/agent-status/agent-status-done-ack-store";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -61,7 +62,9 @@ export class AgentStatusStore {
             eventType: "agentstatus",
             scope: makeORef("block", blockId),
             handler: (event) => {
-                globalStore.set(statusAtom, normalizeCanonicalAgentStatus(event.data));
+                const next = normalizeCanonicalAgentStatus(event.data);
+                globalStore.set(statusAtom, next);
+                observeAgentStatusTransition(next);
             },
         });
         services.BlockService.GetAgentStatus(blockId)
@@ -108,5 +111,18 @@ export class AgentStatusStore {
                 this.entries.delete(blockId);
             }, TEARDOWN_DELAY_MS);
         }
+    }
+
+    /**
+     * 仅取已缓存的 status atom, 不创建新订阅、不自增 refCount.
+     * 适合 C 层 (顶部 app tab) 这种"被动聚合已存在 agent 状态"的消费者: 一个 block 还没人订阅
+     * = 它当前没必要在 C 上提示, 直接返回 null. acquire 才是"我要用、订阅"的强信号入口.
+     */
+    peekStatusAtom(blockId: string): PrimitiveAtom<AgentStatus | null> | null {
+        const entry = this.entries.get(blockId);
+        if (entry == null) {
+            return null;
+        }
+        return entry.atom;
     }
 }

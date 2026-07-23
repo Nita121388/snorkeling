@@ -9,6 +9,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -78,6 +79,8 @@ func (s *SSHProcessController) Start() error {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 	s.started = true
+	log.Printf("FINDCMD-SSH-START fullCmd=[%q]", fullCmd)
+	pslog.AppendRaw("findcmd-ssh-start", fmt.Sprintf("fullCmd=%q", fullCmd))
 	return nil
 }
 

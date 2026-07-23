@@ -22,6 +22,8 @@ import {
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
@@ -211,29 +213,43 @@ const InlineTabLabel = memo(
         }, [blockData?.meta]);
 
         // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
-        // 用于在 Tab 标签右侧渲染状态点. 仅 working / blocked / done / stale 等显眼状态会渲染;
-        // idle/unknown 不显示以减少视觉噪声.
+        // 用于在 Tab 标签右侧渲染状态点. R 类 (working/blocked) 显眼状态点亮; 22 号方案新增
+        // D 类 (非 idle → idle 跳变后未阅) 同样点亮, 用绿色呼吸表达"刚跑完可来看结果".
+        // idle/unknown 默认不点亮, 但 D 触发后会以 is-done-unread 视觉盖过 is-idle 的灰蓝.
         const agentStatus = useInlineTabAgentStatus(blockId);
         // 与 Session Overview chip / term header pill 共享同一份 ackedAt atom (SessionOverviewModel
         // 单例上的 agentStatusAckedAtAtom), 任一 surface 点击 markAgentStatusAcked 时所有 surface
         // 同帧 re-derive, 三处已读状态天然联动. idle/unknown 不算 unread (isAgentStatusUnread 已处理).
         const overviewModel = SessionOverviewModel.getInstance();
         const ackedAtMap = useAtomValueSafe(overviewModel.agentStatusAckedAtAtom) ?? {};
+        // D 类 done ack 走 agent-status 自有通道 (决策 6B), 与 R ack map 平行, 仅由 A 头部点击写入
+        // (决策 2A) — 这里只读不写, B 处点击只 ack R (19 号方案既有行为), D 必须切回 block 点 A.
+        const doneAckedAtMap = useAtomValueSafe(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
         const statusDot = useMemo(() => {
             if (agentStatus == null) return null;
             const state = agentStatus.state;
-            if (state === "idle" || state === "unknown") return null;
-            const presentation = agentStatusPresentation(agentStatus);
-            const inferred = isInferredAgentStatus(agentStatus);
             const ackedAt = ackedAtMap[blockId] ?? 0;
             const unread = isAgentStatusUnread(agentStatus, ackedAt);
+            const doneAckedAt = doneAckedAtMap[blockId] ?? 0;
+            const doneUnread = isAgentDoneUnread(agentStatus, doneAckedAt);
+            // 22 号方案明确: idle/unknown 默认不渲染 R 状态点减噪; 但 D 触发后即便 state=idle,
+            // 因 doneUnread=true 也要点亮. 否则进入"开局即 idle 不亮"分支会把 D 也误吞.
+            if ((state === "idle" || state === "unknown") && !doneUnread) return null;
+            const presentation = agentStatusPresentation(agentStatus);
+            const inferred = isInferredAgentStatus(agentStatus);
+            const doneElapsedMs = doneUnread ? agentDoneElapsedMs(agentStatus, Date.now()) : 0;
+            const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
             return {
                 state,
                 inferred,
                 unread,
-                title: `${presentation.label}${inferred ? " (inferred)" : ""}${unread ? " — click to mark as read" : " — up to date"}`,
+                doneUnread,
+                doneElapsedText,
+                title: `${presentation.label}${inferred ? " (inferred)" : ""}${
+                    unread ? " — click to mark as read" : doneUnread ? ` — done ${doneElapsedText} ago, switch to block to dismiss` : " — up to date"
+                }`,
             };
-        }, [agentStatus, ackedAtMap, blockId]);
+        }, [agentStatus, ackedAtMap, doneAckedAtMap, blockId]);
 
         useEffect(() => {
             if (isEditing) {
@@ -348,8 +364,10 @@ const InlineTabLabel = memo(
                             <span
                                 className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
                                     "is-inferred": statusDot.inferred,
-                                    "is-acked": !statusDot.unread,
+                                    "is-acked": !statusDot.unread && !statusDot.doneUnread,
+                                    "is-done-unread": statusDot.doneUnread,
                                 })}
+                                data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
                                 title={statusDot.title}
                                 onClick={
                                     statusDot.unread
