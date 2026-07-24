@@ -9,6 +9,7 @@ import {
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
@@ -114,8 +115,7 @@ export class TermViewModel implements ViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
     shellProcStatus: jotai.Atom<string>;
     shellProcStatusUnsubFn: () => void;
-    agentStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<AgentStatus | null>;
-    agentStatusUnsubFn: () => void;
+    agentStatusAtom: jotai.PrimitiveAtom<AgentStatus | null>;
     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;
     blockJobStatusVersionTs: number;
     blockJobStatusUnsubFn: () => void;
@@ -442,20 +442,13 @@ export class TermViewModel implements ViewModel {
                 this.updateShellProcStatus(event.data);
             },
         });
-        services.BlockService.GetAgentStatus(blockId)
-            .then((status) => {
-                globalStore.set(this.agentStatusAtom, normalizeCanonicalAgentStatus(status));
-            })
-            .catch((error) => {
-                console.log("error getting initial agent status", error);
-            });
-        this.agentStatusUnsubFn = waveEventSubscribeSingle({
-            eventType: "agentstatus",
-            scope: WOS.makeORef("block", blockId),
-            handler: (event) => {
-                globalStore.set(this.agentStatusAtom, normalizeCanonicalAgentStatus(event.data));
-            },
-        });
+        // Reuse AgentStatusStore's singleton atom + subscription per blockId, instead of
+        // maintaining our own duplicate. AgentStatusStore handles GetAgentStatus on acquire
+        // and subscribes to agentstatus events with reference-counted lifetime — when all
+        // consumers (TermViewModel + useInlineTabAgentStatus) release the blockId the
+        // subscription is torn down. This eliminates the first-screen race where TermViewModel's
+        // own subscription could miss the inaugural event before it registered.
+        this.agentStatusAtom = AgentStatusStore.getInstance().acquire(blockId);
         this.shellProcStatus = jotai.atom((get) => {
             const fullStatus = get(this.shellProcFullStatus);
             return fullStatus?.shellprocstatus ?? "init";
@@ -768,7 +761,7 @@ export class TermViewModel implements ViewModel {
     dispose() {
         DefaultRouter.unregisterRoute(makeFeBlockRouteId(this.blockId));
         this.shellProcStatusUnsubFn?.();
-        this.agentStatusUnsubFn?.();
+        AgentStatusStore.getInstance().release(this.blockId);
         this.blockJobStatusUnsubFn?.();
         this.termBPMUnsubFn?.();
         this.termCursorUnsubFn?.();

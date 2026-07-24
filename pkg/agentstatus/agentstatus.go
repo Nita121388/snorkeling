@@ -415,6 +415,11 @@ func sameStatus(a *AgentStatus, b *AgentStatus) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
+	// UpdatedAt, ActiveSince are intentionally excluded from comparison.
+	// Hook reports may carry a new timestamp on each invocation even when
+	// the semantic state (state, phase, source) is unchanged. Including them
+	// would suppress valid state-change events after the user acks the badge,
+	// because the new UpdatedAt would always differ from the previous value.
 	return a.BlockId == b.BlockId &&
 		a.Provider == b.Provider &&
 		a.SessionId == b.SessionId &&
@@ -425,8 +430,6 @@ func sameStatus(a *AgentStatus, b *AgentStatus) bool {
 		a.Reason == b.Reason &&
 		a.Message == b.Message &&
 		a.ToolName == b.ToolName &&
-		a.UpdatedAt == b.UpdatedAt &&
-		a.ActiveSince == b.ActiveSince &&
 		a.Seq == b.Seq &&
 		a.ExpiresAt == b.ExpiresAt
 }
