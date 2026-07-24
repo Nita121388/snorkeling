@@ -10,6 +10,8 @@ import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
 import { atom, Atom, Getter } from "jotai";
+import { useEffect } from "react";
+import { useAtomValue } from "jotai";
 
 /**
  * C 层 (顶部 app tab) agent status 聚合 — 22 号方案决策 6B 选定: D 走 agent-status 自有通道,
@@ -22,6 +24,9 @@ import { atom, Atom, Getter } from "jotai";
  * - 收集范围: D (非 idle→idle 跳变未阅) + R.blocked (waiting/blocked 未阅). working/running 不上 tab
  *   圆点 (用户拍板: "完成、阻塞这样的状态才显示状态到 app 的 tab"), 避免在跑的 agent 把顶部 tab
  *   涂成一片主题绿与 D 撞色.
+ *   特性保留: working/running 永不上 tab 圆点, 为了减少噪音 — 有必要的才提示用户. 运行中的视觉色
+ *   (蓝通道, 与 accent 解耦) 只在 Sessions Overview chip / term header pill / A 头部 pill 等
+ *   surface 渲染, 顶部 tab 永远只承担 D / blocked 两类信号.
  * - 排序: D 优先 > blocked > 其他; 同优先级按 updatedAt 倒序.
  * - 仅返回未阅信号 (R unread 或 D unread), 已阅的不再在顶部 tab 上提示.
  * - 多 agent: 决策 4 仅显示主槽 1 + 副点 2, 这里把所有未阅点都返回, 由 TabBadges 现有"主槽1+副2"
@@ -46,6 +51,70 @@ export interface TabAgentStatusDot {
 
 const TabAgentStatusDotAtomCache = new Map<string, Atom<TabAgentStatusDot[]>>();
 
+// 对一组 tabIds 派生"本工作区该 acquire 的 blockId 全集 (顶层 + inline 子 block)".
+// 缓存以 tabIds.join("") 为 key, 避免每次渲染都重建一个 derived atom.
+// 反应式: 它订阅每个 tab/block 的 WOS atom, 任一变化 (tab.blockids 增删、block.subblockids 增删)
+// 都会重 derive, 上层 useAtomValue 拿到新列表后重跑 acquire/release 配对.
+const WorkspaceBlockIdsAtomCache = new Map<string, Atom<string[]>>();
+
+// 对一组 tabIds 派生"有未阅 agent 状态点 (D 或 R.blocked) 的 tabId 集合".
+// 供 TabBar/VTabBar 的 visibleTabIds 过滤使用: 即使某 tab 非激活、非悬停、非本次启动新开,
+// 只要有未阅点就强制 keep 到 visibleTabIds — 否则该 TabInner 不挂载, dots 永远画不出来,
+// 用户必须先点过去才看到状态 (这正是本次要修的 bug).
+const TabsWithUnreadDotsAtomCache = new Map<string, Atom<Set<string>>>();
+
+export function getTabsWithUnreadDotsAtom(tabIds: string[]): Atom<Set<string>> {
+    const key = tabIds.join(" ");
+    const cached = TabsWithUnreadDotsAtomCache.get(key);
+    if (cached != null) return cached;
+    const tabDotAtoms = tabIds.map((id) => getTabAgentStatusDotsAtom(id));
+    const derived = atom<Set<string>>((get) => {
+        const out = new Set<string>();
+        for (let i = 0; i < tabIds.length; i++) {
+            const dots = get(tabDotAtoms[i]);
+            if (dots != null && dots.length > 0) {
+                out.add(tabIds[i]);
+            }
+        }
+        return out;
+    });
+    TabsWithUnreadDotsAtomCache.set(key, derived);
+    return derived;
+}
+
+function getWorkspaceBlockIdsAtom(tabIds: string[]): Atom<string[]> {
+    const key = tabIds.join("");
+    const cached = WorkspaceBlockIdsAtomCache.get(key);
+    if (cached != null) return cached;
+    const derived = atom<string[]>((get) => {
+        const out: string[] = [];
+        const seen = new Set<string>();
+        for (const tabId of tabIds) {
+            const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+            const topIds = tab?.blockids;
+            if (topIds == null) continue;
+            for (const topId of topIds) {
+                if (!seen.has(topId)) {
+                    seen.add(topId);
+                    out.push(topId);
+                }
+                const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", topId)));
+                const sub = block?.subblockids;
+                if (sub == null) continue;
+                for (const subId of sub) {
+                    if (!seen.has(subId)) {
+                        seen.add(subId);
+                        out.push(subId);
+                    }
+                }
+            }
+        }
+        return out;
+    });
+    WorkspaceBlockIdsAtomCache.set(key, derived);
+    return derived;
+}
+
 function rankPriority(kind: TabAgentStatusDotKind, state: string): number {
     if (kind === "D") return 100;
     if (state === "blocked") return 70;
@@ -59,6 +128,35 @@ function updatedAtMs(status: AgentStatus): number {
     return 0;
 }
 
+/**
+ * 把 tab.blockids 顶层 block 展开成"顶层 + 各自 inline 子 block"全集.
+ * inline-tab 子 block 列在父 Block.subblockids, 用户从未切到的 tab 里这些子 block
+ * 不会被 InlineTabBlock 渲染, 也不会触发 useInlineTabAgentStatus 的 acquire;
+ * C 层聚合若只走 tab.blockids 就会漏掉它们的 agent 状态, 所以这里一并并入.
+ */
+function expandBlockIdsWithSubblocks(get: Getter, blockIds: string[]): string[] {
+    if (blockIds.length === 0) return blockIds;
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const blockId of blockIds) {
+        if (!seen.has(blockId)) {
+            seen.add(blockId);
+            out.push(blockId);
+        }
+        const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
+        const block = get(blockAtom);
+        const sub = block?.subblockids;
+        if (sub == null) continue;
+        for (const subId of sub) {
+            if (!seen.has(subId)) {
+                seen.add(subId);
+                out.push(subId);
+            }
+        }
+    }
+    return out;
+}
+
 function collectBlockDots(
     get: Getter,
     blockIds: string[],
@@ -66,8 +164,11 @@ function collectBlockDots(
     doneAckedAtMap: Record<string, number>
 ): TabAgentStatusDot[] {
     const store = AgentStatusStore.getInstance();
+    // expand: 每个 tab.blockids 顶层 block, 若其含 inline 子 block (subblockids), 一并纳入聚合,
+    // 否则非激活 inline 子 block 的 D 点在任何 tab 上都会缺失.
+    const expanded = expandBlockIdsWithSubblocks(get, blockIds);
     const dots: TabAgentStatusDot[] = [];
-    for (const blockId of blockIds) {
+    for (const blockId of expanded) {
         const statusAtom = store.peekStatusAtom(blockId);
         if (statusAtom == null) continue;
         const status = get(statusAtom);
@@ -83,7 +184,9 @@ function collectBlockDots(
                 blockId,
                 kind: "D",
                 state: status.state,
-                color: "#22c55e",
+                // D 完成 tab 圆点走主题感知 --agent-done-color (与 success 解耦), 回退 #22c55e,
+                // 不再硬编码绿 — 之前硬 #22c55e 在深色主题下与 accent 绿撞色.
+                color: "var(--agent-done-color, #22c55e)",
                 elapsedText: formatDoneElapsed(elapsedMs),
                 title: `Agent done ${formatDoneElapsed(elapsedMs)} ago — switch to block to dismiss`,
             });
@@ -152,4 +255,41 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
     });
     TabAgentStatusDotAtomCache.set(tabId, rtn);
     return rtn;
+}
+
+/**
+ * 让本工作区所有 tab 的顶层 block 及 inline 子 block 都在 AgentStatusStore 持有一份订阅
+ * (acquire), 即使该 tab 没被切到、InlineTabBlock 没挂载也照常订阅.
+ *
+ * 必要性: C 层聚合用 peekStatusAtom 只看"已 acquire 过的 blockId", 对从未切到过的 tab,
+ * 其 inline 子 block 的 useInlineTabAgentStatus / TermViewModel 都没跑过 acquire, peekStatusAtom
+ * 会返回 null → 该 tab 的"未阅 agent 状态点"在 Tab 栏永远不显示, 必须先切到该 tab 才浮现.
+ * 在 TabBar/VTabBar 层 (始终挂载) 调本 hook 把本工作区所有相关 block 都 acquire 一遍,
+ * 让 store 全程持有订阅, peekStatusAtom 才有数据可读 — 非激活 tab 也能在 Tab 栏显示状态.
+ *
+ * 引用计数由 AgentStatusStore.acquire/release 配对维护; Strict Mode 下 cleanup→remount 之间
+ * 的零 refCount 窗口由 store 内部 TEARDOWN_DELAY_MS 兜底 (acquire 抵达会取消 teardown),
+ * 这里只管按 effect 生命周期配对 acquire/release 即可.
+ */
+export function useAcquireWorkspaceBlockStatuses(tabIds: string[]): void {
+    const store = AgentStatusStore.getInstance();
+    // 反应式取得本工作区所有相关 block (顶层 + inline 子 block) 的全集; 任一 tab/block 变化会重 derive,
+    // 上层 useAtomValue 触发 re-render.
+    const blockIds = useAtomValue(getWorkspaceBlockIdsAtom(tabIds));
+    // 仅在 blockIds 实际集合变化时重做 acquire/release, 避免每次 derive 产生新数组引用就重新订阅
+    // (否则会触发 store 的 teardown 兜底逻辑反复 un/subscribe 同一批 block, 浪费 GetAgentStatus 请求).
+    const blockKey = blockIds.join(" ");
+    useEffect(() => {
+        for (const blockId of blockIds) {
+            store.acquire(blockId);
+        }
+        return () => {
+            for (const blockId of blockIds) {
+                store.release(blockId);
+            }
+        };
+        // 依赖用稳定的 blockKey 字符串而不是 blockIds 数组本身; effect body 里仍按 blockIds 配对.
+        // blockIds 在每次 derive 是新引用, blockKey 在内容不变时是同一字符串.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [store, blockKey]);
 }

@@ -3,12 +3,24 @@
 
 import { Markdown } from "@/element/markdown";
 import { getBlockComponentModel, getOverrideConfigAtom } from "@/store/global";
+import { fireAndForget } from "@/util/util";
 import { globalStore } from "@/store/jotaiStore";
 import { useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SpecializedViewProps } from "./preview";
-import { getLiveScrollSourceLineAtom, getLiveScrollSourceStateAtom, type PreviewModel } from "./preview-model";
+import {
+    getLiveScrollSourceLineAtom,
+    getLiveScrollSourceStateAtom,
+    getMarkdownCollapsedHeadings,
+    getMarkdownCollapsedOLItems,
+    getMarkdownIdPrefix,
+    getMarkdownScrollPosition,
+    setMarkdownCollapsedHeadings,
+    setMarkdownCollapsedOLItems,
+    setMarkdownScrollPosition,
+    type PreviewModel,
+} from "./preview-model";
 
 const LivePreviewDebounceMs = 2000;
 const LivePreviewSourceModelRetryMs = 100;
@@ -38,12 +50,44 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
     const collapsibleOrderedLists = MarkdownFilePattern.test(fileInfo.path ?? fileInfo.name ?? "");
+    // Stable heading-id prefix + collapse snapshot so the rehype-slug ids (and the Set of collapsed
+    // heading ids) survive BlockInner remount on tab switch. We only seed the initial snapshot here
+    // (read once on mount) and write back live via the toggle callbacks — Markdown owns local
+    // useState; we never need to push updates downward after mount.
+    const mdPath = fileInfo.path ?? fileInfo.name ?? "";
+    const idPrefix = useMemo(() => (mdPath ? getMarkdownIdPrefix(`${model.blockId}|${mdPath}`) : undefined), [
+        model.blockId,
+        mdPath,
+    ]);
+    const collapseSeed = useMemo(() => getMarkdownCollapsedHeadings(model.blockId), [model.blockId]);
+    const olCollapseSeed = useMemo(() => getMarkdownCollapsedOLItems(model.blockId), [model.blockId]);
+    // Saved viewport scrollTop from the last time this block was mounted; restores the user's
+    // scroll position when they switch back to this inline/top-level tab.
+    const savedScrollTop = useMemo(() => getMarkdownScrollPosition(model.blockId), [model.blockId]);
+    const blockIdRef = useRef(model.blockId);
+    blockIdRef.current = model.blockId;
+    const onCollapsedHeadingsChange = useCallback((next: Set<string>) => {
+        setMarkdownCollapsedHeadings(blockIdRef.current, next);
+    }, []);
+    const onCollapsedOrderedListItemsChange = useCallback((next: Set<string>) => {
+        setMarkdownCollapsedOLItems(blockIdRef.current, next);
+    }, []);
+    const onScrollTopChange = useCallback((scrollTop: number) => {
+        setMarkdownScrollPosition(blockIdRef.current, scrollTop);
+    }, []);
     // Inline-edit commit: write the patched full text to the shared draft atom. The atom's own
     // writer (preview-model.tsx newFileContent) handles draft saving, localStorage publish, and
     // dirty-flag/Save-highlight; we do NOT call handleFileSave from here — keep the "blur commits
     // to draft, Cmd+S/Cmd+click-Save lands to disk" semantics so Revert stays available.
     const handleInlineEditCommit = useCallback((newText: string) => {
         globalStore.set(model.newFileContent, newText);
+    }, [model]);
+    // Inline-edit ⌘/Ctrl+S: commit synchronously patched the draft atom above (the keydown
+    // handler calls commit → handleInlineEditCommit before us), so by the time we run here the
+    // draft is staged. Preview mode registers no global ⌘S listener, so bubble-saving wouldn't
+    // work — drive the flush ourselves.
+    const handleInlineEditSave = useCallback(() => {
+        fireAndForget(model.handleFileSave.bind(model));
     }, [model]);
     const resolveOpts: MarkdownResolveOpts = useMemo<MarkdownResolveOpts>(() => {
         return {
@@ -70,6 +114,14 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 collapsibleOrderedLists={collapsibleOrderedLists}
                 copyContextPath={fileInfo.path}
                 onInlineEditCommit={handleInlineEditCommit}
+                onInlineEditSave={handleInlineEditSave}
+                idPrefix={idPrefix}
+                collapsedHeadings={collapseSeed}
+                onCollapsedHeadingsChange={onCollapsedHeadingsChange}
+                collapsedOrderedListItems={olCollapseSeed}
+                onCollapsedOrderedListItemsChange={onCollapsedOrderedListItemsChange}
+                savedScrollTop={savedScrollTop}
+                onScrollTopChange={onScrollTopChange}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>

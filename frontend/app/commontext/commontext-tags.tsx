@@ -7,32 +7,32 @@ type CommonTextTagChipProps = {
     tag: string;
     count?: number;
     selected?: boolean;
-    compact?: boolean;
     onClick?: () => void;
 };
 
-function commonTextTagChipClassName(selected?: boolean, compact?: boolean): string {
+function commonTextTagChipClassName(selected?: boolean, clickable?: boolean): string {
     return cn(
-        "inline-flex max-w-full items-center gap-1 rounded-full border font-medium leading-none transition-colors",
-        compact ? "h-5 px-2 text-[11px]" : "h-6 px-2.5 text-xs",
-        selected
-            ? "border-accent bg-highlightbg text-primary"
-            : "border-border bg-background text-secondary hover:border-accent/70 hover:text-primary"
+        "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] leading-none transition-colors",
+        selected ? "bg-accent/10 text-accent" : "bg-surface-soft text-secondary",
+        clickable && "cursor-pointer hover:bg-hover hover:text-primary"
     );
 }
 
-export function CommonTextTagChip({ tag, count, selected, compact, onClick }: CommonTextTagChipProps) {
+export function CommonTextTagChip({ tag, count, selected, onClick }: CommonTextTagChipProps) {
     const content = (
         <>
-            <span className="truncate">#{tag}</span>
+            <span className="truncate">
+                <span className="opacity-50">#</span>
+                {tag}
+            </span>
             {count != null && <span className="text-[10px] opacity-70">{count}</span>}
         </>
     );
     if (onClick == null) {
-        return <span className={commonTextTagChipClassName(selected, compact)}>{content}</span>;
+        return <span className={commonTextTagChipClassName(selected)}>{content}</span>;
     }
     return (
-        <button type="button" className={commonTextTagChipClassName(selected, compact)} onClick={onClick}>
+        <button type="button" className={commonTextTagChipClassName(selected, true)} onClick={onClick}>
             {content}
         </button>
     );
@@ -42,10 +42,9 @@ type CommonTextTagListProps = {
     tags?: string[];
     maxVisible?: number;
     selectedTags?: string[];
-    compact?: boolean;
 };
 
-export function CommonTextTagList({ tags = [], maxVisible, selectedTags = [], compact }: CommonTextTagListProps) {
+export function CommonTextTagList({ tags = [], maxVisible, selectedTags = [] }: CommonTextTagListProps) {
     const visibleTags = maxVisible == null ? tags : tags.slice(0, maxVisible);
     const hiddenCount = maxVisible == null ? 0 : Math.max(0, tags.length - maxVisible);
     const selectedTagSet = new Set(selectedTags.map((tag) => tag.toLowerCase()));
@@ -59,11 +58,10 @@ export function CommonTextTagList({ tags = [], maxVisible, selectedTags = [], co
                     key={tag}
                     tag={tag}
                     selected={selectedTagSet.has(tag.toLowerCase())}
-                    compact={compact}
                 />
             ))}
             {hiddenCount > 0 && (
-                <span className={commonTextTagChipClassName(false, compact)}>
+                <span className={commonTextTagChipClassName(false)}>
                     <span>+{hiddenCount}</span>
                 </span>
             )}

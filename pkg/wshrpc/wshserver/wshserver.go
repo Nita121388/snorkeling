@@ -51,6 +51,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/wcloud"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -71,12 +72,26 @@ func (*WshServer) WshServerImpl() {}
 
 var WshServerImpl = WshServer{}
 
-func publishAgentStatus(blockId string, status *agentstatus.AgentStatus) {
+func publishAgentStatus(blockId string, status *agentstatus.AgentStatus, source string) {
 	if blockId == "" && status != nil {
 		blockId = status.BlockId
 	}
 	if blockId == "" {
 		return
+	}
+	if status != nil {
+		// agent.status/publish: emit actually reached the wps wire. `source`
+		// in Reason distinguishes the four emit origins (hook / fe-report /
+		// fe-release / blockclose) so symptom-A gaps can be attributed to
+		// exactly one of them. Outcome is "ok" unless status is nil below.
+		pslog.AppendEvent(pslog.Event{
+			Name:    "agent.status",
+			Stage:   "publish",
+			TraceId: pslog.MakeAgentTraceId(blockId, status.SessionId),
+			BlockId: blockId,
+			Reason:  source,
+			Outcome: "ok",
+		})
 	}
 	wps.Broker.Publish(wps.WaveEvent{
 		Event:  wps.Event_AgentStatus,
@@ -92,6 +107,13 @@ func (ws *WshServer) AgentStatusCommand(ctx context.Context, data agentstatus.Ag
 		fallbackBlockId = handler.GetRpcContext().BlockId
 	}
 	log.Printf("[agentstatus] recv block=%q provider=%q state=%q phase=%q source=%q fallback=%q", data.BlockId, data.Provider, data.State, data.Phase, data.Source, fallbackBlockId)
+	// agent.status/recv-report: the hook-originated report first lands here.
+	// Seq is diagnostic for the seq-guard path in report(); ReportedAt shows
+	// whether the hook sent its own clock (preferred) or left 0 for sanitizeReport
+	// to back-fill (wall-clock — the suspected driver of the "same state, newer
+	// UpdatedAt -> re-emit" symptom A). BlockId may be empty pre-sanitize, so
+	// we use the data id when present else fallback (acks pre-sanitize).
+	pslogRecvReport(data.BlockId, fallbackBlockId, data)
 	report, err := agentstatus.SanitizeReport(data, fallbackBlockId)
 	if err != nil {
 		log.Printf("[agentstatus] sanitize-error block=%q provider=%q state=%q phase=%q err=%v", data.BlockId, data.Provider, data.State, data.Phase, err)
@@ -105,9 +127,31 @@ func (ws *WshServer) AgentStatusCommand(ctx context.Context, data agentstatus.Ag
 	log.Printf("[agentstatus] report-ok block=%q provider=%q state=%q phase=%q source=%q changed=%t status-nil=%t", report.BlockId, report.Provider, report.State, report.Phase, report.Source, changed, status == nil)
 	if changed {
 		log.Printf("[agentstatus] publish block=%q", report.BlockId)
-		publishAgentStatus(report.BlockId, status)
+		publishAgentStatus(report.BlockId, status, "hook")
 	}
 	return status, nil
+}
+
+// pslogRecvReport writes the agent.status/recv-report record. Uses whichever
+// of data.BlockId / fallbackBlockId is non-empty so a hook that omits BlockId
+// still correlates. Opaque fields only: state/phase/source/seq/reportedat.
+// No-op unless debug:pslog is on.
+func pslogRecvReport(blockId string, fallbackBlockId string, data agentstatus.AgentStatusReport) {
+	id := blockId
+	if id == "" {
+		id = fallbackBlockId
+	}
+	if id == "" {
+		return
+	}
+	pslog.AppendEvent(pslog.Event{
+		Name:    "agent.status",
+		Stage:   "recv-report",
+		TraceId: pslog.MakeAgentTraceId(id, data.SessionId),
+		BlockId: id,
+		Reason:  data.State,
+		Outcome: data.Source,
+	})
 }
 
 func (ws *WshServer) GetJwtPublicKeyCommand(ctx context.Context) (string, error) {

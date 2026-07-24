@@ -1,551 +1,435 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<title>New-Agent Floating Panel — info + inherit toggles prototype</title>
+<title>New-Agent Floating Panel — info + inherit toggles (Light + Tabs)</title>
 <style>
-  <!--
-    Color/typography tokens are hardcoded from
+  /*
+    Color/typography tokens hardcoded from
       frontend/app/theme.scss  +  frontend/tailwindsetup.css  +  docs/design-system.md
-    Three themes (dark/light/monochrome) per DS §2.2 "Theme parity".
+    Light theme only. Token names + accent language mirror
+      .mockup/_to-keep/commontext-compose-modal-improved.html —— 同源 token：
+        --bg / --fg / --secondary / --muted / --accent / --accent-hover / --error / --warning / --success
+        --border / --border-soft / --modal-bg / --hover-bg / --surface-soft / --highlight-bg / --editor-bg
     Static HTML mockup cannot rely on var() aliases to project .scss — values must be inlined.
-  -->
+  */
   :root,
-  [data-theme="dark"] {
-    --mockup-bg: rgb(34, 34, 34);
-    --mockup-modal-bg: #232323;
-    --mockup-surface: #212121;
-    --mockup-surface-soft: rgba(255, 255, 255, 0.04);
-    --mockup-surface-2: rgba(0, 0, 0, 0.5);
-    --mockup-tab-bar: rgba(255, 255, 255, 0.1);
-    --mockup-text: #f7f7f7;
-    --mockup-text-secondary: rgb(195, 200, 194);
-    --mockup-text-tertiary: #666;
-    --mockup-accent: rgb(88, 193, 66);
-    --mockup-accent-hover: rgb(118, 223, 96);
-    --mockup-border: rgba(255, 255, 255, 0.16);
-    --mockup-modal-border: rgba(255, 255, 255, 0.12);
-    --mockup-divider: rgba(255, 255, 255, 0.16);
-    --mockup-error: rgb(229, 77, 46);
-    --mockup-warning: rgb(224, 185, 86);
-    --mockup-success: rgb(78, 154, 6);
-    --mockup-action-bg: rgb(88, 193, 66);
-    --mockup-action-text: #000;
-    --mockup-action-hover: rgb(118, 223, 96);
-    --mockup-grey-btn-bg: rgba(255, 255, 255, 0.06);
-    --mockup-grey-btn-hover: rgba(255, 255, 255, 0.2);
-    --mockup-shadow-color: rgba(0, 0, 0, 0.8);
-  }
-
   [data-theme="light"] {
-    --mockup-bg: #ebe5d9;
-    --mockup-modal-bg: #fffdf8;
-    --mockup-surface: #f3efe4;
-    --mockup-surface-soft: #f7f7f4;
-    --mockup-surface-2: rgba(255, 253, 248, 0.72);
-    --mockup-tab-bar: rgba(167, 111, 202, 0.1);
-    --mockup-text: #4c3924;
-    --mockup-text-secondary: #675033;
-    --mockup-text-tertiary: #777167;
-    --mockup-accent: #a76fca;
-    --mockup-accent-hover: #955ab8;
-    --mockup-border: #ded8ca;
-    --mockup-modal-border: #d6cfbe;
-    --mockup-divider: #ded8ca;
-    --mockup-error: #d32f2f;
-    --mockup-warning: #e65100;
-    --mockup-success: #2e7d32;
-    --mockup-action-bg: #7c49a1;
-    --mockup-action-text: #ffffff;
-    --mockup-action-hover: #955ab8;
-    --mockup-grey-btn-bg: rgba(60, 50, 40, 0.07);
-    --mockup-grey-btn-hover: rgba(60, 50, 40, 0.12);
-    --mockup-shadow-color: rgba(69, 48, 30, 0.18);
+    --bg: #ebe5d9;                                  /* main-bg-color */
+    --fg: #4c3924;                                  /* main-text-color */
+    --secondary: #675033;                            /* secondary-text-color */
+    --muted: #777167;                               /* grey-text-color */
+    --accent: #a76fca;                              /* accent-color 紫 */
+    --accent-hover: #955ab8;                        /* accent-hover-color */
+    --error: #d32f2f;
+    --warning: #e65100;
+    --success: #2e7d32;
+    --border: #ded8ca;                              /* border-color */
+    --border-soft: #d6cfbe;                          /* modal-border-color */
+    --modal-bg: #fffdf8;                            /* modal-bg-color 米白 */
+    --hover-bg: rgba(167, 111, 202, 0.10);          /* hover-bg-color accent@10% */
+    --surface-soft: #f0ede6;                         /* color-surface 表面色 */
+    --highlight-bg: rgba(167, 111, 202, 0.20);      /* highlight-bg-color accent@20% */
+    --editor-bg: #faf7f0;                           /* term-background */
+    --shadow-color: rgba(69, 48, 30, 0.18);
+    --font-mono: "Hack", "JetBrains Mono", "Consolas", monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
   }
 
-  [data-theme="monochrome"] {
-    --mockup-bg: #fafafa;
-    --mockup-modal-bg: #ffffff;
-    --mockup-surface: #f5f5f5;
-    --mockup-surface-soft: #fafafa;
-    --mockup-surface-2: #f5f5f5;
-    --mockup-tab-bar: rgba(0, 0, 0, 0.06);
-    --mockup-text: #0a0a0a;
-    --mockup-text-secondary: #4a4a4a;
-    --mockup-text-tertiary: #808080;
-    --mockup-accent: #1a1a1a;
-    --mockup-accent-hover: #000000;
-    --mockup-border: rgba(0, 0, 0, 0.14);
-    --mockup-modal-border: rgba(0, 0, 0, 0.14);
-    --mockup-divider: rgba(0, 0, 0, 0.14);
-    --mockup-error: #8a6a6a;
-    --mockup-warning: #8a7a4a;
-    --mockup-success: #7a8a6a;
-    --mockup-action-bg: #1a1a1a;
-    --mockup-action-text: #ffffff;
-    --mockup-action-hover: #000000;
-    --mockup-grey-btn-bg: #f5f5f5;
-    --mockup-grey-btn-hover: #ebebeb;
-    --mockup-shadow-color: rgba(0, 0, 0, 0.18);
-  }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    margin: 0; padding: 0;
-    background: var(--mockup-bg);
-    color: var(--mockup-text);
-    font-family: "Inter", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
     font-size: 14px;
-    line-height: 1.45;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
     min-height: 100vh;
   }
   body { padding: 32px 24px; }
-  h1.page-title {
-    font-size: 18px; margin: 0 0 4px 0; color: var(--mockup-text); font-weight: 600;
-  }
-  .page-subtitle {
-    color: var(--mockup-text-secondary); margin: 0 0 24px 0; font-size: 12px;
-  }
-  .variants-bar {
-    display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;
-  }
-  .variants-bar button {
-    background: var(--mockup-grey-btn-bg); color: var(--mockup-text-secondary);
-    border: 1px solid var(--mockup-border); border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
-  }
-  .variants-bar button.active {
-    background: var(--mockup-accent); color: var(--mockup-action-text); border-color: var(--mockup-accent-hover);
-  }
-  .variants-bar .hint {
-    color: var(--mockup-text-tertiary); font-size: 11.5px; margin-left: 8px;
-  }
-  .variants-bar .theme-btn {
-    background: var(--mockup-grey-btn-bg); color: var(--mockup-text-secondary);
-    border: 1px solid var(--mockup-border); border-radius: 6px;
-    padding: 4px 10px; font-size: 11.5px; cursor: pointer; font-family: inherit;
-  }
-  .variants-bar .theme-btn.active {
-    background: color-mix(in oklab, var(--mockup-accent) 18%, transparent);
-    color: var(--mockup-accent);
-    border-color: color-mix(in oklab, var(--mockup-accent) 35%, transparent);
-  }
-  /* variant panels */
-  .variant-panel { display: none; }
-  .variant-panel.active { display: block; }
-  /* NewAgent shell mockup — mirrors widgets.tsx AgentTargetFloatingWindow:
-     rounded-xl (12px), bg-modalbg with backdrop blur, border-border/70 */
+  h1.page-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .page-subtitle { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+
+  /* ============================================================
+     NewAgent shell —— 锚到 commontext-compose-modal-improved.html
+       • 实色 modal-bg + 1px border + 8px 圆角，去 blur 玻璃质和大投影
+       • 对称 padding 20px/16px + 统一 gap 12px（呼吸感）
+       • 三层 accent 语言：hover-bg(@10%) / highlight-bg(@20%) / accent(实色)
+       • accent 收回强调态：勾选 ✓ / focus 光环 / CTA 文字 / active tab 下边
+     ============================================================ */
   .newagent-shell {
-    background: color-mix(in oklab, var(--mockup-modal-bg) 80%, transparent);
-    backdrop-filter: blur(40px);
-    border: 1px solid color-mix(in oklab, var(--mockup-border) 70%, transparent);
-    border-radius: 12px;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
     width: 540px; max-width: 100%;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-color) 30%, transparent),
+                0 6px 14px color-mix(in srgb, var(--shadow-color) 22%, transparent);
     margin: 0 auto;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
+
+  /* —— 头部 —— */
   .newagent-header {
-    display: flex; align-items: center; padding: 8px 12px;
-    border-bottom: 1px solid color-mix(in oklab, var(--mockup-border) 60%, transparent);
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--border-soft);
   }
-  .newagent-title { font-size: 14px; font-weight: 500; flex: 1; color: var(--mockup-text); }
+  .newagent-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg); }
+  .newagent-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .newagent-iconbtn {
-    background: transparent; border: none; color: var(--mockup-text-tertiary);
-    cursor: pointer; font-size: 14px; line-height: 1; padding: 4px;
-    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 2px;
+    width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--secondary);
+    font-size: 14px; line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
   }
-  .newagent-iconbtn:hover { color: var(--mockup-text); background: var(--mockup-grey-btn-hover); }
+  .newagent-iconbtn:hover { background: var(--hover-bg); color: var(--fg); border-color: var(--border-soft); }
+
+  /* —— field 区 —— */
   .field-row {
     display: flex; align-items: center; gap: 8px;
-    padding: 8px 20px; border-bottom: 1px solid var(--mockup-divider);
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border-soft);
   }
-  .field-label { width: 64px; color: var(--mockup-text-secondary); font-size: 12px; }
+  .field-label { width: 64px; color: var(--secondary); font-size: 12px; }
   .field-select {
-    flex: 1; background: var(--mockup-grey-btn-bg); color: var(--mockup-text);
-    border: 1px solid var(--mockup-border); border-radius: 6px;
-    padding: 6px 8px; font-size: 14px; font-family: inherit; cursor: pointer;
+    flex: 1;
+    background: var(--modal-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
   }
-  .field-row .icon-btn-after {
-    margin-left: 4px; color: var(--mockup-text-secondary);
-    background: transparent; border: none; cursor: pointer; font-size: 13px;
-  }
-  /* Tab strip — for variant C */
+  .field-select:hover { border-color: var(--border-soft); }
+  .field-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--highlight-bg); }
+
+  /* —— Tab strip —— */
   .tab-strip {
-    display: flex; gap: 2px; padding: 0 20px;
-    border-bottom: 1px solid var(--mockup-modal-border);
+    display: flex; gap: 2px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border-soft);
   }
   .tab-strip .tab {
-    padding: 8px 14px; cursor: pointer; color: var(--mockup-text-secondary);
-    font-size: 13px; border-bottom: 2px solid transparent;
-    background: transparent; border-top: 0; border-left: 0; border-right: 0;
+    padding: 9px 14px;
+    cursor: pointer;
+    color: var(--secondary);
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
     font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
   }
-  .tab-strip .tab.active {
-    color: var(--mockup-text); border-bottom-color: var(--mockup-accent);
+  .tab-strip .tab:hover { color: var(--fg); }
+  .tab-strip .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+
+  /* —— 内容区 —— */
+  .body { padding: 16px 18px; }
+  .body.compact { padding: 14px 16px; }
+
+  /* —— 区段标题 —— */
+  .section-title {
+    font-size: 10.5px; font-weight: 600;
+    color: var(--secondary);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin: 14px 0 8px 0;
   }
-  /* Content body */
-  .body { padding: 12px 20px; }
-  .body.compact { padding: 0; }
-  /* Toggles */
+  .section-title:first-child { margin-top: 4px; }
+  .section-title .hint {
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* —— 隔离目录 path-row —— editor-bg + accent 仅 hover 亮起 */
+  .path-row {
+    display: flex; gap: 8px; align-items: center;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg);
+    margin: 4px 0 8px 0;
+  }
+  .path-row .label { color: var(--muted); font-size: 10.5px; flex-shrink: 0; }
+  .path-row .copy {
+    margin-left: auto; color: var(--secondary);
+    cursor: pointer; font-size: 11px; font-family: var(--font-sans);
+    transition: color 0.15s;
+  }
+  .path-row .copy:hover { color: var(--accent-hover); }
+
+  /* —— 诊断行：success/warn 通过左侧细条 + 图标颜色编码，不整行抢色 */
+  .diag-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-soft);
+    margin: 6px 0;
+    font-size: 12.5px;
+  }
+  .diag-row .icon { font-size: 14px; line-height: 1; }
+  .diag-row.success { border-left-color: var(--success); }
+  .diag-row.warn    { border-left-color: var(--warning); }
+  .diag-row.bad     { border-left-color: var(--error); }
+  .diag-row.success .icon { color: var(--success); }
+  .diag-row.warn .icon    { color: var(--warning); }
+  .diag-row.bad .icon     { color: var(--error); }
+  .diag-row .stat { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+  /* —— ENV kv 表 —— */
+  .kv-table { width: 100%; border-collapse: collapse; }
+  .kv-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    vertical-align: top;
+  }
+  .kv-table tr:last-child td { border-bottom: none; }
+  .kv-table td.k { color: var(--secondary); width: 38%; }
+  .kv-table td.v { color: var(--fg); word-break: break-all; }
+  .kv-table td.v .masked { color: var(--muted); }
+  .kv-table .reveal {
+    color: var(--accent-hover); cursor: pointer;
+    font-size: 10.5px; margin-left: 6px; font-family: var(--font-sans);
+  }
+  .kv-table .reveal:hover { color: var(--accent); }
+
+  /* —— JSON 预览块 —— editor-bg + 8px 圆角 */
+  .json-block {
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--fg);
+    white-space: pre;
+    overflow-x: auto;
+    max-height: 220px;
+  }
+  .json-block .k { color: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
+  .json-block .s { color: var(--success); }
+  .json-block .n { color: var(--warning); }
+
+  /* —— 继承项 toggle 行 —— */
   .toggle-row {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 7px 0; border-bottom: 1px solid var(--mockup-divider);
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-soft);
   }
   .toggle-row:last-child { border-bottom: none; }
   .toggle-check {
-    width: 16px; height: 16px; border: 1.5px solid var(--mockup-border);
-    border-radius: 3px; flex-shrink: 0; cursor: pointer; margin-top: 1px;
-    background: var(--mockup-grey-btn-bg); position: relative;
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 5px;
+    flex-shrink: 0; cursor: pointer; margin-top: 1px;
+    background: var(--modal-bg);
+    position: relative;
+    transition: background 0.15s, border-color 0.15s;
   }
+  .toggle-check:hover { border-color: var(--accent); }
   .toggle-check.on {
-    background: var(--mockup-accent); border-color: var(--mockup-accent);
+    background: var(--accent);
+    border-color: var(--accent);
   }
   .toggle-check.on::after {
-    content: "✓"; color: var(--mockup-action-text); font-size: 11px; font-weight: 800;
+    content: "✓"; color: #fff;
+    font-size: 12px; font-weight: 800;
     position: absolute; top: -1px; left: 2px; line-height: 1;
   }
-  .toggle-label { flex: 1; }
+  .toggle-label { flex: 1; min-width: 0; }
   .toggle-label .key {
-    color: var(--mockup-text); font-family: "Hack", monospace;
+    color: var(--fg);
+    font-family: var(--font-mono);
     font-size: 13px; font-weight: 600;
   }
   .toggle-label .meta {
-    font-size: 11.5px; color: var(--mockup-text-tertiary); margin-top: 2px;
+    font-size: 11.5px; color: var(--muted); margin-top: 3px;
+    line-height: 1.5;
   }
-  .toggle-label .meta .badge {
-    display: inline-block; padding: 1px 5px; border-radius: 3px; margin-left: 4px;
-    font-family: "Hack", monospace; font-size: 11px;
+  .toggle-label code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--editor-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  /* —— 徽章：good 薄底 accent 文字、warn 弱化、bad 错色 */
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    margin-left: 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.6;
   }
   .badge-good {
-    background: color-mix(in srgb, var(--mockup-success) 15%, transparent);
-    color: var(--mockup-success); border: 1px solid color-mix(in srgb, var(--mockup-success) 30%, transparent);
+    background: var(--highlight-bg);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .badge-warn {
-    background: color-mix(in srgb, var(--mockup-warning) 15%, transparent);
-    color: var(--mockup-warning); border: 1px solid color-mix(in srgb, var(--mockup-warning) 30%, transparent);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
   }
   .badge-bad {
-    background: color-mix(in srgb, var(--mockup-error) 15%, transparent);
-    color: var(--mockup-error); border: 1px solid color-mix(in srgb, var(--mockup-error) 30%, transparent);
+    background: color-mix(in srgb, var(--error) 10%, transparent);
+    color: var(--error);
+    border: 1px solid color-mix(in srgb, var(--error) 24%, transparent);
   }
-  /* ENV kv table */
-  .kv-table { width: 100%; border-collapse: collapse; }
-  .kv-table td {
-    padding: 5px 8px; border-bottom: 1px solid var(--mockup-divider);
-    font-family: "Hack", monospace; font-size: 12px; vertical-align: top;
-  }
-  .kv-table td.k { color: var(--mockup-text-secondary); width: 38%; }
-  .kv-table td.v { color: var(--mockup-text); word-break: break-all; }
-  .kv-table td.v .masked { color: var(--mockup-text-tertiary); }
-  .kv-table .reveal {
-    color: var(--mockup-accent-hover); cursor: pointer; font-size: 10.5px;
-    margin-left: 6px;
-  }
-  /* JSON preview block */
-  .json-block {
-    background: var(--mockup-surface); border: 1px solid var(--mockup-border);
-    border-radius: 6px; padding: 9px 12px;
-    font-family: "Hack", monospace; font-size: 12px; color: var(--mockup-text);
-    white-space: pre; overflow-x: auto; max-height: 200px;
-  }
-  .json-block .k { color: color-mix(in srgb, var(--mockup-accent) 70%, var(--mockup-text)); }
-  .json-block .s { color: var(--mockup-success); }
-  .json-block .n { color: var(--mockup-warning); }
-  /* Section header */
-  .section-title {
-    font-size: 11.5px; color: var(--mockup-text-secondary);
-    text-transform: uppercase; letter-spacing: 0.05em;
-    margin: 14px 0 6px 0; font-weight: 600;
-  }
-  /* Path row */
-  .path-row {
-    display: flex; gap: 8px; align-items: center;
-    background: var(--mockup-surface); border: 1px solid var(--mockup-border);
-    border-radius: 6px; padding: 7px 10px;
-    font-family: "Hack", monospace; font-size: 12px;
-    color: var(--mockup-text); margin: 6px 0;
-  }
-  .path-row .copy {
-    color: var(--mockup-accent-hover); cursor: pointer; margin-left: auto;
-    font-size: 11px;
-  }
-  /* Status badges for hooks (diagnostic) */
-  .diag-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; border-radius: 6px;
-    background: var(--mockup-surface); border: 1px solid var(--mockup-border);
-    margin: 6px 0; font-size: 12px;
-  }
-  .diag-row .icon {
-    font-size: 14px; line-height: 1;
-  }
-  .diag-row.success { border-left: 3px solid var(--mockup-success); }
-  .diag-row.warn    { border-left: 3px solid var(--mockup-warning); }
-  .diag-row.bad     { border-left: 3px solid var(--mockup-error); }
-  /* Buttons row — mirrors real New-Agent footer (ghost + accent text, NOT solid wave-button):
-     height: 24px, padding: 0 8px, font-size: 12px (text-xs), font-weight: 500, rounded-md (6px). */
-  .btn-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+
+  /* —— 按钮行 —— 同参考原型 mm-btn：30px 高 / 7px 圆角 / hover-bg */
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   .btn {
-    background: transparent; color: var(--mockup-text-secondary);
-    border: none; border-radius: 6px;
-    padding: 0 8px; height: 24px;
-    font-size: 12px; font-weight: 500;
-    cursor: pointer; font-family: inherit;
-    display: inline-flex; align-items: center; gap: 4px;
-    transition: all 0.2s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--hover-bg);
+    color: var(--fg);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
-  .btn:hover {
-    color: var(--mockup-text); background: var(--mockup-surface);
-  }
+  .btn:hover { background: var(--surface-soft); border-color: var(--border-soft); }
   .btn:active { transform: scale(0.97); }
-  .btn-primary {
-    color: var(--mockup-accent);
+  .btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* —— 浮窗外说明 —— */
+  .scratch-note {
+    max-width: 540px; margin: 24px auto 0; padding: 12px 14px;
+    background: var(--editor-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    color: var(--secondary);
+    font-size: 11.5px;
+    line-height: 1.7;
   }
-  .btn-primary:hover {
-    background: color-mix(in oklab, var(--mockup-accent) 12%, transparent);
-    color: var(--mockup-accent-hover);
+
+  /* —— 内嵌提示条（tab 内说明）—— */
+  .inline-note {
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--modal-bg) 60%, transparent);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    color: var(--secondary);
+    font-size: 12px;
+    line-height: 1.6;
   }
-  .btn:disabled { opacity: 0.4; cursor: default; }
-  .btn:disabled:hover { background: transparent; color: var(--mockup-text-secondary); }
+  .inline-note code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--editor-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  /* —— 浮窗底栏 —— */
   .footer {
-    display: flex; justify-content: flex-end; align-items: center; gap: 12px;
-    padding: 8px 12px;
-    border-top: 1px solid color-mix(in oklab, var(--mockup-border) 60%, transparent);
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-soft);
   }
   .footer .hint {
-    flex: 1; color: var(--mockup-text-tertiary); font-size: 10px;
-    align-self: center;
+    flex: 1; color: var(--muted); font-size: 11px;
+    line-height: 1.5;
   }
-  .dot-sep {
-    width: 2px; height: 2px; border-radius: 50%; background: var(--mockup-border);
-    flex-shrink: 0;
-  }
-  /* Drawer styles — variant A */
-  .drawer-wrap {
-    position: relative;
-  }
-  .drawer {
-    position: absolute; top: 0; right: -240px; width: 320px;
-    background: var(--mockup-surface); border-left: 1px solid var(--mockup-border);
-    padding: 14px; box-shadow: -8px 0 24px rgba(0,0,0,0.35);
-    overflow-y: auto; max-height: 480px;
-  }
-  .shell-with-drawer { width: 540px; margin: 0 240px 0 0; }
-  /* Inline expand — variant B */
-  .expand-collapse {
-    display: flex; align-items: center; gap: 6px;
-    padding: 7px 20px; cursor: pointer; color: var(--mockup-text-secondary);
-    font-size: 12px; background: var(--mockup-tab-bar);
-    border-bottom: 1px solid var(--mockup-border);
-  }
-  .expand-collapse .chevron { font-size: 10px; transition: transform 0.15s; }
-  .expand-collapse.collapsed .chevron { transform: rotate(-90deg); }
-  /* explanatory notes */
-  .scratch-note {
-    max-width: 540px; margin: 24px auto; padding: 10px 14px;
-    background: var(--mockup-surface); border: 1px dashed var(--mockup-border);
-    border-radius: 8px; color: var(--mockup-text-secondary); font-size: 11.5px;
-  }
+  .footer .btn-row { margin-top: 0; }
 </style>
 </head>
 <body>
-<h1 class="page-title">New-Agent 浮窗 — 信息展示 + 继承项开关 原型</h1>
-<p class="page-subtitle">三个布局变体（A 抽屉 / B 内联折叠 / C Tab 切换）。点击上面的按钮切换。仅前端 mockup。</p>
+<h1 class="page-title">Agent Settings Panel — Tab layout (Light theme)</h1>
+<p class="page-subtitle">Shown by clicking the gear button on the New-Agent panel. Tabs: Basics / Details / Inherit. Frontend mockup only. Styled after commontext-compose-modal-improved.html.</p>
 
-<div class="variants-bar">
-  <button data-variant="A">A — 详情抽屉</button>
-  <button data-variant="B" class="active">B — 内联折叠（推荐）</button>
-  <button data-variant="C">C — Tab 切换</button>
-  <span class="hint">⭐ 推荐 B（单一面板更紧凑，drawer 在窄屏会遮住）</span>
-  <span class="theme-spacer" style="flex:1"></span>
-  <span class="theme-switcher" style="display:inline-flex;gap:2px;align-items:center">
-    <span style="color:var(--mockup-text-tertiary);font-size:11.5px;margin-right:6px">主题</span>
-    <button data-theme="dark" class="theme-btn active">Dark</button>
-    <button data-theme="light" class="theme-btn">Light</button>
-    <button data-theme="monochrome" class="theme-btn">Mono</button>
-  </span>
-</div>
-
-<!-- ===== Variant A — detail drawer ===== -->
-<div class="variant-panel" data-variant="A">
-  <div class="drawer-wrap">
-    <div class="newagent-shell shell-with-drawer">
-      <div class="newagent-header">
-        <span class="newagent-title">New Agent</span>
-        <button class="newagent-iconbtn">×</button>
-      </div>
-      <div class="field-row">
-        <span class="field-label">App</span>
-        <select class="field-select"><option>Claude</option><option>Codex</option></select>
-        <span class="field-label" style="width:auto;margin-left:8px;">Target</span>
-        <select class="field-select"><option>Current Tab</option></select>
-      </div>
-      <div class="field-row">
-        <span class="field-label">Vendor</span>
-        <select class="field-select"><option>GLM (4b2ac9d2-...)</option><option>My-Ali</option><option>Claude Official</option></select>
-        <button class="icon-btn-after" id="open-drawer-A">ⓘ 详情 + 继承项</button>
-      </div>
-      <div class="drawer" id="drawer-A" style="right:-280px;display:none;width:300px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px">GLM <span style="font-family:'Hack', monospace;font-size:11px;color:var(--mockup-text-tertiary);font-weight:normal">(4b2ac9d2-026e-45a4-ae6b-86a09b17f4fa)</span></div>
-
-        <div class="path-row" style="margin:4px 0">
-          <span style="color:var(--mockup-text-tertiary);font-size:10.5px">DIR</span>
-          <span style="font-size:10.5px">%WAVEDATA%\claude-vendors\4b2ac9d2-...\</span>
-          <span class="copy">复制</span>
-        </div>
-
-        <div class="diag-row success" style="padding:6px 8px">
-          <span class="icon">✓</span>
-          <span style="font-size:11px"><b>hooks</b> 继承自全局 <span style="color:var(--mockup-text-secondary);font-size:10px">6 events</span></span>
-        </div>
-
-        <div class="section-title">继承项</div>
-        <div class="toggle-row" style="padding:5px 0">
-          <div class="toggle-check on"></div>
-          <div class="toggle-label">
-            <div><span class="key">hooks</span> <span class="badge badge-good">全局 6 events</span></div>
-          </div>
-        </div>
-        <div class="toggle-row" style="padding:5px 0">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">permissions</span> <span class="badge badge-warn">absent</span></div>
-          </div>
-        </div>
-        <div class="toggle-row" style="padding:5px 0">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">outputStyle</span> <span class="badge badge-warn">absent</span></div>
-          </div>
-        </div>
-        <div class="toggle-row" style="padding:5px 0">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">enabledPlugins</span> <span class="badge badge-warn">absent</span></div>
-          </div>
-        </div>
-
-        <div class="section-title">ENV (3 项)</div>
-        <table class="kv-table" style="font-size:10.5px">
-          <tr><td class="k">ANTHROPIC_BASE_URL</td><td class="v" style="font-size:10.5px">https://api.supxh.xin/api</td></tr>
-          <tr><td class="k">ANTHROPIC_AUTH_TOKEN</td><td class="v" style="font-size:10.5px"><span class="masked">sk-xx</span> <span class="reveal" style="font-size:10px">显示</span></td></tr>
-          <tr><td class="k">ANTHROPIC_MODEL</td><td class="v" style="font-size:10.5px">claude-sonnet-5-20250929</td></tr>
-        </table>
-
-        <div class="section-title">物化预览</div>
-        <div class="json-block" style="font-size:10.5px;max-height:140px">{
-  <span class="k">"env"</span>: {...},
-  <span class="k">"hooks"</span>: {...}
-}</div>
-
-        <div class="btn-row" style="margin-top:10px">
-          <button class="btn" style="font-size:11px;padding:5px 8px">打开隔离目录</button>
-          <button class="btn" style="font-size:11px;padding:5px 8px">重装 hooks</button>
-          <button class="btn" style="font-size:11px;padding:5px 8px">复制</button>
-        </div>
-      </div>
-      <div class="footer">
-        <span class="hint">ⓘ 点击 "详情" 弹出右侧抽屉</span>
-        <button class="btn">Cancel</button>
-        <button class="btn btn-primary">Continue</button>
-      </div>
+<div class="newagent-shell">
+  <div class="newagent-header">
+    <div>
+      <div class="newagent-title">Agent Settings</div>
+      <div class="newagent-subtitle">Vendor isolation details and inherit toggles for the selected agent.</div>
     </div>
+    <button class="newagent-iconbtn">×</button>
   </div>
-  <div class="scratch-note">
-    变体 A 优点：浮窗主面板保持紧凑，详情按需展开。缺点：drawer 右边凸出 320px，窄屏挤出视口；vendor 切换时 drawer 内容要重建。
-  </div>
-</div>
 
-<!-- ===== Variant B — inline expand ===== -->
-<div class="variant-panel active" data-variant="B">
-  <div class="newagent-shell">
-    <div class="newagent-header">
-      <span class="newagent-title">New Agent</span>
-      <button class="newagent-iconbtn">×</button>
+  <div class="field-row">
+    <span class="field-label">App</span>
+    <select class="field-select"><option>Claude</option><option>Codex</option></select>
+    <span class="field-label" style="width:auto;margin-left:8px;">Target</span>
+    <select class="field-select"><option>Current Tab</option></select>
+  </div>
+  <div class="field-row">
+    <span class="field-label">Vendor</span>
+    <select class="field-select">
+      <option>GLM (4b2ac9d2-...)</option>
+      <option>My-Ali ...</option>
+      <option>Claude Official</option>
+    </select>
+  </div>
+
+  <div class="tab-strip">
+    <button class="tab active" data-tab="C-basic" onclick="switchTabsC('C-basic')">Basics</button>
+    <button class="tab" data-tab="C-detail" onclick="switchTabsC('C-detail')">Details</button>
+    <button class="tab" data-tab="C-inherit" onclick="switchTabsC('C-inherit')">Inherit</button>
+  </div>
+
+  <div class="body compact">
+    <!-- ===== 基础 tab ===== -->
+    <div class="tab-content" id="C-basic">
+      <div class="inline-note">
+        Basics tab (placeholder): existing toggles from the New-Agent panel (autoresume / shared etc.) stay here unchanged.
+      </div>
     </div>
-    <div class="field-row">
-      <span class="field-label">App</span>
-      <select class="field-select"><option>Claude</option><option>Codex</option></select>
-      <span class="field-label" style="width:auto;margin-left:8px;">Target</span>
-      <select class="field-select"><option>Current Tab</option></select>
-    </div>
-    <div class="field-row">
-      <span class="field-label">Vendor</span>
-      <select class="field-select">
-        <option>GLM (4b2ac9d2-026e-...)</option>
-        <option>My-Ali (acde4b3f-...)</option>
-        <option>词元流动-qwen ...</option>
-        <option>Claude Official (codex-official)</option>
-      </select>
-    </div>
-    <div class="expand-collapse" id="collapse-B" onclick="toggleExpandB()">
-      <span class="chevron">▾</span> Vendor 详情 & 继承项
-    </div>
-    <div class="body" id="expand-B">
-      <!-- ===== shared detail/inherit block (variant B inline) ===== -->
+
+    <!-- ===== 详情 tab ===== -->
+    <div class="tab-content" id="C-detail" style="display:none">
       <div class="path-row">
-        <span style="color:var(--mockup-text-tertiary)">隔离目录</span>
+        <span class="label">Isolation dir</span>
         <span>%WAVEDATA%\claude-vendors\4b2ac9d2-026e-45a4-ae6b-86a09b17f4fa\</span>
-        <span class="copy">复制</span>
+        <span class="copy">Copy</span>
       </div>
 
       <div class="diag-row success">
         <span class="icon">✓</span>
-        <span><b>hooks</b> 继承自全局 <code style="font-family:'Hack', monospace;color:var(--mockup-text-secondary)">~/.claude/settings.json</code></span>
-        <span style="margin-left:auto;color:var(--mockup-text-secondary);font-size:11px">6 events</span>
+        <span><b>hooks</b> inherited from global</span>
+        <span class="stat">6 events</span>
       </div>
       <div class="diag-row warn">
         <span class="icon">◐</span>
-        <span><b>permissions / outputStyle / enabledPlugins</b> 全局未配置 → 继承后为空内容</span>
+        <span><b>permissions / outputStyle / enabledPlugins</b> not set globally → inherited as empty</span>
       </div>
 
-      <div class="section-title">继承项（写入此 vendor 隔离 settings.json 的全局键）</div>
-      <div class="toggle-row">
-        <div class="toggle-check on"></div>
-        <div class="toggle-label">
-          <div><span class="key">hooks</span>
-            <span class="badge badge-good">全局 6 events</span>
-          </div>
-          <div class="meta">PreToolUse(3) · PostToolUse(2) · Stop(1) — 来自 <code>~/.claude/settings.json</code></div>
-        </div>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-check"></div>
-        <div class="toggle-label">
-          <div><span class="key">permissions</span>
-            <span class="badge badge-warn">全局 absent</span>
-          </div>
-          <div class="meta">claude code 工具权限 allow/deny 列表</div>
-        </div>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-check"></div>
-        <div class="toggle-label">
-          <div><span class="key">outputStyle</span>
-            <span class="badge badge-warn">全局 absent</span>
-          </div>
-          <div class="meta">输出风格 concise / verbose / terse</div>
-        </div>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-check"></div>
-        <div class="toggle-label">
-          <div><span class="key">enabledPlugins</span>
-            <span class="badge badge-warn">全局 absent</span>
-          </div>
-          <div class="meta">启用的插件 ID 列表</div>
-        </div>
-      </div>
-
-      <div class="section-title">ENV <span style="color:var(--mockup-text-tertiary);font-weight:normal;text-transform:none;letter-spacing:0">（来自 cc-switch DB settings_config.env，3 项）</span></div>
+      <div class="section-title">ENV <span class="hint">from cc-switch DB settings_config.env · 3 keys</span></div>
       <table class="kv-table">
         <tr><td class="k">ANTHROPIC_BASE_URL</td><td class="v">https://api.supxh.xin/api</td></tr>
-        <tr><td class="k">ANTHROPIC_AUTH_TOKEN</td><td class="v"><span class="masked">sk-xxxxxxxxx</span> <span class="reveal">显示</span></td></tr>
+        <tr><td class="k">ANTHROPIC_AUTH_TOKEN</td><td class="v"><span class="masked">sk-xxxxxxxxx</span> <span class="reveal">Reveal</span></td></tr>
         <tr><td class="k">ANTHROPIC_MODEL</td><td class="v">claude-sonnet-5-20250929</td></tr>
       </table>
 
-      <div class="section-title">物化预览</div>
+      <div class="section-title">Materialized preview</div>
       <div class="json-block">{
   <span class="k">"env"</span>: {
     <span class="k">"ANTHROPIC_BASE_URL"</span>: <span class="s">"https://api.supxh.xin/api"</span>,
@@ -554,7 +438,7 @@
   },
   <span class="k">"hooks"</span>: {
     <span class="k">"PreToolUse"</span>: [
-      { <span class="k">"hooks"</span>: [{ <span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"powershell ... snorkeling-agent-status.ps1 ..."</span> }] }
+      { <span class="k">"hooks"</span>: [{ <span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"powershell ..."</span> }] }
     ],
     <span class="k">"PostToolUse"</span>: [...],
     <span class="k">"Stop"</span>: [...]
@@ -562,182 +446,74 @@
 }</div>
 
       <div class="btn-row">
-        <button class="btn">打开隔离目录</button>
-        <button class="btn">重新安装全局 hooks</button>
-        <button class="btn">复制 JSON</button>
+        <button class="btn">Open isolation dir</button>
+        <button class="btn">Reinstall global hooks</button>
+        <button class="btn">Copy JSON</button>
       </div>
     </div>
-    <div class="footer">
-      <span class="hint">改动继承项 → 下次 listVendors 重物化；已启动 block 需重启才生效。</span>
-      <button class="btn">Cancel</button>
-      <button class="btn btn-primary">Continue</button>
+
+    <!-- ===== 继承项 tab ===== -->
+    <div class="tab-content" id="C-inherit" style="display:none">
+      <div class="inline-note">
+        When checked, the next <code>listVendors</code> materialization will write the matching global key into this vendor's isolated settings.json.
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-check on"></div>
+        <div class="toggle-label">
+          <div><span class="key">hooks</span> <span class="badge badge-good">global · 6 events</span></div>
+          <div class="meta">PreToolUse(3) · PostToolUse(2) · Stop(1) — from <code>~/.claude/settings.json</code></div>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-check"></div>
+        <div class="toggle-label">
+          <div><span class="key">permissions</span> <span class="badge badge-warn">absent globally</span></div>
+          <div class="meta">claude code tool allow/deny lists</div>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-check"></div>
+        <div class="toggle-label">
+          <div><span class="key">outputStyle</span> <span class="badge badge-warn">absent globally</span></div>
+          <div class="meta">output style concise / verbose / terse</div>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-check"></div>
+        <div class="toggle-label">
+          <div><span class="key">enabledPlugins</span> <span class="badge badge-warn">absent globally</span></div>
+          <div class="meta">list of enabled plugin IDs</div>
+        </div>
+      </div>
+
+      <div class="inline-note" style="margin-top:12px">
+        ⓘ Changes apply on the next listVendors materialization; already-launched isolation blocks need a restart to take effect (claude does not hot-reload settings.json after the process starts).
+      </div>
     </div>
   </div>
-  <div class="scratch-note">
-    变体 B 优点：单一面板、无 drawer 浮层、窄屏友好。缺点：浮窗纵向变长，可能需滚动；信息密度高需要在视觉上分组。
+
+  <div class="footer">
+    <span class="hint">Inherit toggles apply on the next listVendors materialization; running blocks need a restart to take effect.</span>
+    <div class="btn-row">
+      <button class="btn">Close</button>
+      <button class="btn" style="background:var(--accent);border-color:var(--accent);color:#fff">Apply</button>
+    </div>
   </div>
 </div>
 
-<!-- ===== Variant C — tabs ===== -->
-<div class="variant-panel" data-variant="C">
-  <div class="newagent-shell">
-    <div class="newagent-header">
-      <span class="newagent-title">New Agent</span>
-      <button class="newagent-iconbtn">×</button>
-    </div>
-    <div class="field-row">
-      <span class="field-label">App</span>
-      <select class="field-select"><option>Claude</option><option>Codex</option></select>
-      <span class="field-label" style="width:auto;margin-left:8px;">Target</span>
-      <select class="field-select"><option>Current Tab</option></select>
-    </div>
-    <div class="field-row">
-      <span class="field-label">Vendor</span>
-      <select class="field-select">
-        <option>GLM (4b2ac9d2-...)</option>
-        <option>My-Ali ...</option>
-        <option>Claude Official</option>
-      </select>
-    </div>
-    <div class="tab-strip">
-      <button class="tab active" data-tab="C-basic" onclick="switchTabsC('C-basic')">基础</button>
-      <button class="tab" data-tab="C-detail" onclick="switchTabsC('C-detail')">详情</button>
-      <button class="tab" data-tab="C-inherit" onclick="switchTabsC('C-inherit')">继承项</button>
-    </div>
-    <div class="body compact">
-      <div class="tab-content" id="C-basic" style="padding:12px 14px">
-        <div class="scratch-note">
-          基础 tab 内容（占位）：现有 New-Agent 浮窗的几个开 checkbox（autoresume / 共享 etc）保持不动。
-        </div>
-      </div>
-      <div class="tab-content" id="C-detail" style="display:none;padding:12px 14px">
-        <div class="path-row">
-          <span style="color:var(--mockup-text-tertiary)">隔离目录</span>
-          <span>%WAVEDATA%\claude-vendors\4b2ac9d2-026e-45a4-ae6b-86a09b17f4fa\</span>
-          <span class="copy">复制</span>
-        </div>
-
-        <div class="diag-row success">
-          <span class="icon">✓</span>
-          <span><b>hooks</b> 继承自全局（6 events）</span>
-        </div>
-        <div class="diag-row warn">
-          <span class="icon">◐</span>
-          <span>permissions / outputStyle / enabledPlugins 全局未配 → 继承后为空</span>
-        </div>
-
-        <div class="section-title">ENV (3 项)</div>
-        <table class="kv-table">
-          <tr><td class="k">ANTHROPIC_BASE_URL</td><td class="v">https://api.supxh.xin/api</td></tr>
-          <tr><td class="k">ANTHROPIC_AUTH_TOKEN</td><td class="v"><span class="masked">sk-xxxxxxxxx</span> <span class="reveal">显示</span></td></tr>
-          <tr><td class="k">ANTHROPIC_MODEL</td><td class="v">claude-sonnet-5-20250929</td></tr>
-        </table>
-
-        <div class="section-title">物化预览</div>
-        <div class="json-block">{
-  <span class="k">"env"</span>: { ... },
-  <span class="k">"hooks"</span>: { "PreToolUse": [...], ... }
-}</div>
-
-        <div class="btn-row">
-          <button class="btn">打开隔离目录</button>
-          <button class="btn">重新安装全局 hooks</button>
-          <button class="btn">复制 JSON</button>
-        </div>
-      </div>
-      <div class="tab-content" id="C-inherit" style="display:none;padding:12px 14px">
-        <div style="color:var(--mockup-text-secondary);font-size:12px;margin-bottom:6px">
-          勾选后，下次 <code>listVendors</code> 重新物化时，会把对应全局键写入此 vendor 隔离 settings.json。
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-check on"></div>
-          <div class="toggle-label">
-            <div><span class="key">hooks</span> <span class="badge badge-good">全局 6 events</span></div>
-            <div class="meta">PreToolUse(3) · PostToolUse(2) · Stop(1) — 来自 <code>~/.claude/settings.json</code></div>
-          </div>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">permissions</span> <span class="badge badge-warn">全局 absent</span></div>
-            <div class="meta">claude code 工具权限 allow/deny 列表</div>
-          </div>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">outputStyle</span> <span class="badge badge-warn">全局 absent</span></div>
-            <div class="meta">输出风格 concise / verbose / terse</div>
-          </div>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-check"></div>
-          <div class="toggle-label">
-            <div><span class="key">enabledPlugins</span> <span class="badge badge-warn">全局 absent</span></div>
-            <div class="meta">启用的插件 ID 列表</div>
-          </div>
-        </div>
-
-        <div class="scratch-note" style="margin-top:10px">
-          ⓘ 改动后下次 listVendors 重物化；本 vendor 已启动的隔离 block 需要重启才能看到效果（claude 进程启动后不热重载 settings.json）。
-        </div>
-      </div>
-    </div>
-    <div class="footer">
-      <span class="hint">改动继承项 → 下次 listVendors 重物化；已启动 block 需重启才生效。</span>
-      <button class="btn">Cancel</button>
-      <button class="btn btn-primary">Continue</button>
-    </div>
-  </div>
-  <div class="scratch-note">
-    变体 C 优点：每个 tab 视觉隔离、信息不挤。缺点：tab 切换多一步；"改继承项 → 看物化效果"要切回详情 tab。
-  </div>
+<div class="scratch-note">
+  Tab layout: each tab visually isolates its content, no crowding. Trade-off: one extra click to switch; "edit inherit → see materialized effect" requires switching back to the Details tab.
 </div>
 
 <script>
-  // variant switching
-  document.querySelectorAll('.variants-bar button[data-variant]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const varId = btn.getAttribute('data-variant');
-      document.querySelectorAll('.variants-bar button[data-variant]')
-        .forEach(b => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.variant-panel')
-        .forEach(p => p.classList.toggle('active', p.getAttribute('data-variant') === varId));
-    });
-  });
-
-  // Theme switcher (dark/light/monochrome)
-  document.querySelectorAll('.variants-bar button.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const theme = btn.getAttribute('data-theme');
-      document.documentElement.setAttribute('data-theme', theme);
-      document.querySelectorAll('.variants-bar button.theme-btn')
-        .forEach(b => b.classList.toggle('active', b === btn));
-    });
-  });
-
-  // Variant B inline expand/collapse
-  function toggleExpandB() {
-    const chevron = document.getElementById('collapse-B');
-    const body = document.getElementById('expand-B');
-    const collapsed = chevron.classList.toggle('collapsed');
-    body.style.display = collapsed ? 'none' : 'block';
-  }
-
-  // Variant C tab switch
+  // Tab switch
   function switchTabsC(tabId) {
     document.querySelectorAll('.tab-strip .tab[data-tab]')
       .forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === tabId));
     document.querySelectorAll('.tab-content')
       .forEach(c => c.style.display = c.id === tabId ? 'block' : 'none');
   }
-
-  // Variant A drawer toggle
-  document.getElementById('open-drawer-A').addEventListener('click', () => {
-    const d = document.getElementById('drawer-A');
-    d.style.display = d.style.display === 'none' ? 'block' : 'none';
-  });
 </script>
 </body>
 </html>

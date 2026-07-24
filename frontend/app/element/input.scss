@@ -78,6 +78,12 @@
             border-color: transparent;
         }
 
+        /* Inside an InputGroup the outer group border already conveys focus,
+           so drop the inner focus-visible outline to avoid a double primary ring. */
+        &:focus-visible {
+            outline: none;
+        }
+
         &.error {
             border-color: transparent;
         }

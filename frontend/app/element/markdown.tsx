@@ -21,7 +21,12 @@ import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
-import { Atom } from "jotai";
+import { atom, Atom, useAtomValue } from "jotai";
+import { loadable } from "jotai/utils";
+
+// Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
+// call unconditional so the Rules of Hooks remain satisfied below.
+const NullStringAtom = atom<string | null>(null);
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import {
     Children,
@@ -255,8 +260,30 @@ function getSourceLine(props: any): number | undefined {
     return Number.isInteger(line) && line > 0 ? line : undefined;
 }
 
-function sourceLineAttrs(sourceLine?: number): Record<string, number> {
-    return sourceLine == null ? {} : { "data-source-line": sourceLine };
+// End line of the source span. Multi-line blocks (paragraphs/soft-broken across several
+// source lines) get end > start; single-line blocks have end === start. Falls back to the
+// start line so callers that only want the start can ignore the end entirely.
+function getSourceLineEnd(props: any): number | undefined {
+    const start = getSourceLine(props);
+    if (start == null) {
+        return undefined;
+    }
+    const end = props?.node?.position?.end?.line;
+    return Number.isInteger(end) && (end as number) >= start ? (end as number) : start;
+}
+
+// Emits both data-source-line (start) and, when distinct, data-source-line-end. The inline
+// edit overlay reads the end attribute to slice multi-line paragraphs/headings back into a
+// matching source range — without it a soft-broken paragraph collapses to its first line.
+function sourceLineAttrs(sourceLine?: number, endLine?: number): Record<string, number> {
+    if (sourceLine == null) {
+        return {};
+    }
+    const attrs: Record<string, number> = { "data-source-line": sourceLine };
+    if (endLine != null && endLine !== sourceLine) {
+        attrs["data-source-line-end"] = endLine;
+    }
+    return attrs;
 }
 
 const OrderedListContext = createContext(false);
@@ -396,6 +423,7 @@ type HeadingProps = {
 
 const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) => {
     const sourceLine = getSourceLine(props);
+    const endLine = getSourceLineEnd(props);
     const headingId = typeof props.id === "string" ? props.id : "";
     return (
         <div
@@ -403,7 +431,7 @@ const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) 
             className={clsx("heading", `is-${hnum}`, { collapsed })}
             data-heading-level={hnum}
             data-heading-id={headingId}
-            {...sourceLineAttrs(sourceLine)}
+            {...sourceLineAttrs(sourceLine, endLine)}
         >
             <button
                 type="button"
@@ -755,12 +783,43 @@ type MarkdownProps = {
     collapsibleOrderedLists?: boolean;
     copyContextPath?: string;
     /**
+     * Stable prefix for rehype-slug heading ids. When two Markdown instances render the same
+     * md file, ids collide; when the *same* block is unmounted/remounted (tab switch) a random
+     * prefix makes the persisted collapsedSet unmatchable. Pass a blockId+path-derived prefix
+     * from preview-markdown so collapse state survives remount. Omit for one-shot renderers
+     * (vdom, input modal) which keep the random default.
+     */
+    idPrefix?: string;
+    /**
+     * Controlled heading-collapse set (element ids). When provided, the Markdown instance seeds
+     * its local state from this and reports each change back via onCollapsedHeadingsChange, so
+     * the caller can persist across remounts. When omitted, the instance owns its own state.
+     */
+    collapsedHeadings?: Set<string>;
+    onCollapsedHeadingsChange?: (next: Set<string>) => void;
+    collapsedOrderedListItems?: Set<string>;
+    onCollapsedOrderedListItemsChange?: (next: Set<string>) => void;
+    /**
+     * Restore a saved viewport scrollTop (px) on mount, after scrollHeight stabilizes. Caller persists
+     * live changes via onScrollTopChange so the value survives BlockInner remount on tab switch.
+     * Honored only when no scrollTargetLine jump is pending (searchline meta takes precedence).
+     */
+    savedScrollTop?: number;
+    onScrollTopChange?: (scrollTop: number) => void;
+    /**
      * Invoked with the full new markdown text when the user commits an inline edit on a
      * paragraph or heading (dblclick → textarea → blur/Cmd+S/Cmd+Enter). The caller owns
      * "really save to disk" — this only stages the new text into the shared draft so the
      * existing Save/Revert flow picks it up. Omit to disable inline editing entirely.
      */
     onInlineEditCommit?: (newFullText: string) => void;
+    /**
+     * Optional: flush the staged inline-edit draft to disk. Triggered only when the user presses
+     * ⌘/Ctrl+S inside the inline-edit textarea (after `onInlineEditCommit` has already written the
+     * draft to the shared atom). Preview-mode callers wire `model.handleFileSave` here because no
+     * global ⌘S listener runs in that view, so bubbling the keystroke would otherwise save nothing.
+     */
+    onInlineEditSave?: () => void;
 };
 
 type MarkdownScrollSourceState = {
@@ -792,24 +851,65 @@ const Markdown = ({
     collapsibleOrderedLists = false,
     copyContextPath,
     onInlineEditCommit,
+    onInlineEditSave,
     scrollable = true,
     rehype = true,
     onClickExecute,
+    idPrefix: idPrefixProp,
+    collapsedHeadings: collapsedHeadingsProp,
+    onCollapsedHeadingsChange,
+    collapsedOrderedListItems: collapsedOrderedListItemsProp,
+    onCollapsedOrderedListItemsChange,
+    savedScrollTop,
+    onScrollTopChange,
 }: MarkdownProps) => {
-    const textAtomValue = useAtomValueSafe<string>(textAtom);
+    // `fileContentAtom` is an async atom (Atom<Promise<string>>). On invalidation `useAtomValue`
+    // throws the pending Promise → without a Suspense boundary above, ReactMarkdown's subtree
+    // unmounts for one frame and the user sees "loading flash" then re-mount + scroll jump. Wrap
+    // the atom in `loadable(...)` so the throw becomes a plain {state, data, error} object we can
+    // read synchronously, and on the pending frame restream the last resolved string from a ref
+    // so the ReactMarkdown DOM tree stays mounted and only the textarea's commit lands without a
+    // blink. Writing the ref during render is fine here — assignment is idempotent (same string
+    // each re-render) and free of side effects external to this hook.
+    const textAtomLoadable = useAtomValue(loadable(textAtom ?? NullStringAtom));
+    const lastResolvedTextRef = useRef<string | null>(null);
+    let textAtomValue: string | undefined;
+    if (textAtomLoadable != null) {
+        if (textAtomLoadable.state === "hasData") {
+            lastResolvedTextRef.current = textAtomLoadable.data;
+            textAtomValue = textAtomLoadable.data;
+        } else if (textAtomLoadable.state === "loading") {
+            // pending: keep the ReactMarkdown subtree mounted on the previous content rather than
+            // rendering empty — that's the frame that caused the loading-flash symptom on Save.
+            textAtomValue = lastResolvedTextRef.current ?? undefined;
+        } else {
+            // hasError — fall through to the prop fallback so caller surfaces the error path.
+            textAtomValue = undefined;
+        }
+    }
     const showToc = useAtomValueSafe(showTocAtom) ?? false;
     const contentsOsRef = useRef<OverlayScrollbarsComponentRef>(null);
     const programmaticScrollUntilRef = useRef(0);
     const lastAppliedScrollTargetRef = useRef<{ line: number; text: string } | null>(null);
     const lastViewportScrollTopRef = useRef(0);
     const previousTransformedTextRef = useRef<string | null>(null);
+    const savedScrollTopAppliedRef = useRef(false);
+    const scrollTopWriteRafRef = useRef<number | null>(null);
     const [initialScrollReadyKey, setInitialScrollReadyKey] = useState<string | null>(null);
     const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
-    const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(() => new Set());
-    const [collapsedOrderedListItems, setCollapsedOrderedListItems] = useState<Set<string>>(() => new Set());
+    // Controlled seeding: when a caller persists collapse across remounts it passes a snapshot
+    // captured at unmount as the initial here, plus an onChange callback to write back live.
+    const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(
+        () => collapsedHeadingsProp ?? new Set()
+    );
+    const [collapsedOrderedListItems, setCollapsedOrderedListItems] = useState<Set<string>>(
+        () => collapsedOrderedListItemsProp ?? new Set()
+    );
 
-    // Ensure uniqueness of ids between MD preview instances.
-    const [idPrefix] = useState<string>(crypto.randomUUID());
+    // Ensure uniqueness of ids between MD preview instances. When the caller supplies a stable
+    // idPrefix (blockId+path-derived) the persisted collapsedHeadings Set stays matchable across
+    // remount; otherwise fall back to a per-instance random prefix.
+    const [idPrefix] = useState<string>(() => idPrefixProp ?? crypto.randomUUID());
 
     text = textAtomValue ?? text ?? "";
     const transformedOutput = transformBlocks(text);
@@ -900,8 +1000,13 @@ const Markdown = ({
     );
 
     const inlineEditKeyDown = useMemo(
-        () => makeInlineEditKeydown({ commit: inlineEdit.commit, cancel: inlineEdit.cancel }),
-        [inlineEdit.commit, inlineEdit.cancel]
+        () =>
+            makeInlineEditKeydown({
+                commit: inlineEdit.commit,
+                cancel: inlineEdit.cancel,
+                save: onInlineEditSave,
+            }),
+        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave]
     );
 
     const normalizedScrollTargetText = useMemo(
@@ -946,7 +1051,18 @@ const Markdown = ({
         const { viewport } = instance.elements();
         const previousTransformedText = previousTransformedTextRef.current;
         if (previousTransformedText != null && previousTransformedText !== transformedText) {
+            // OverlayScrollbars resets scrollTop during ReactMarkdown's child re-mount for one
+            // visible frame — the user sees a flash to the top before we set it back. Mask that
+            // frame: hide the viewport's contents for the layout pass, snap scrollTop to the
+            // user's live ref position, then reveal on the next animation frame once layout has
+            // stabilized. visibility:hidden (vs display:none) keeps the box geometry intact so the
+            // restore scrollTop value lands on the right row, the OS only skips painting the glow.
+            const prevVisibility = viewport.style.visibility;
+            viewport.style.visibility = "hidden";
             viewport.scrollTop = lastViewportScrollTopRef.current;
+            requestAnimationFrame(() => {
+                viewport.style.visibility = prevVisibility;
+            });
             liveScrollDebug("restore preview scroll after content update", {
                 restoredScrollTop: lastViewportScrollTopRef.current,
             });
@@ -982,6 +1098,7 @@ const Markdown = ({
             } else {
                 next.add(headingId);
             }
+            onCollapsedHeadingsChange?.(next);
             return next;
         });
     };
@@ -994,6 +1111,7 @@ const Markdown = ({
             } else {
                 next.add(itemId);
             }
+            onCollapsedOrderedListItemsChange?.(next);
             return next;
         });
     };
@@ -1204,16 +1322,101 @@ const Markdown = ({
         transformedText,
     ]);
 
-    const handleMarkdownScroll = () => {
-        if (onUserScrollSourceLine == null || Date.now() < programmaticScrollUntilRef.current) {
+    // Restore the caller's savedScrollTop once per mount, after the ReactMarkdown subtree has
+    // produced content (so scrollHeight reflects the file). Skipped when scrollTargetLine is set —
+    // a "preview:searchline" jump from block.meta takes precedence (mirrors the editor viewState
+    // vs revealSearchTargetLine precedence in preview-edit.tsx). Two rAF passes handle the common
+    // case where images/mermaid still inflate scrollHeight on the first frame.
+    useEffect(() => {
+        if (savedScrollTopAppliedRef.current) {
+            return;
+        }
+        if (savedScrollTop == null || !Number.isFinite(savedScrollTop) || savedScrollTop <= 0) {
+            return;
+        }
+        if (scrollTargetLine != null && Number.isFinite(scrollTargetLine)) {
+            savedScrollTopAppliedRef.current = true;
             return;
         }
         const instance = contentsOsRef.current?.osInstance();
+        const viewport = instance?.elements().viewport;
+        if (!viewport || !transformedText) {
+            return;
+        }
+        if (viewport.scrollHeight <= viewport.clientHeight) {
+            return; // wait for content to populate
+        }
+        viewport.scrollTop = savedScrollTop;
+        programmaticScrollUntilRef.current = Date.now() + ProgrammaticScrollIgnoreMs;
+        savedScrollTopAppliedRef.current = true;
+        // Re-apply on the next two frames in case scrollHeight grows after images/code settle.
+        const raf1 = requestAnimationFrame(() => {
+            const inst = contentsOsRef.current?.osInstance();
+            const vp = inst?.elements().viewport;
+            if (vp) {
+                vp.scrollTop = savedScrollTop;
+                programmaticScrollUntilRef.current = Date.now() + ProgrammaticScrollIgnoreMs;
+            }
+        });
+        const raf2 = requestAnimationFrame(() => {
+            const inst = contentsOsRef.current?.osInstance();
+            const vp = inst?.elements().viewport;
+            if (vp) {
+                vp.scrollTop = savedScrollTop;
+                programmaticScrollUntilRef.current = Date.now() + ProgrammaticScrollIgnoreMs;
+            }
+        });
+        return () => {
+            cancelAnimationFrame(raf1);
+            cancelAnimationFrame(raf2);
+        };
+    }, [savedScrollTop, scrollTargetLine, transformedText]);
+
+    // Cancel any pending scrollTop write-back on unmount.
+    useEffect(() => {
+        return () => {
+            if (scrollTopWriteRafRef.current != null) {
+                cancelAnimationFrame(scrollTopWriteRafRef.current);
+                scrollTopWriteRafRef.current = null;
+            }
+        };
+    }, []);
+
+    const handleMarkdownScroll = () => {
+        // Always sync the live scrollTop into the ref, even when we're going to bail below. The ref
+        // is the restore-ancla for the useLayoutEffect that runs after `transformedText` changes
+        // (line 963 → viewport.scrollTop = lastViewportScrollTopRef.current on a content update).
+        // Without this line, in preview mode (where onUserScrollSourceLine is null) the ref would
+        // stay at its initial 0 — so any save / inline-edit commit that flips transformedText
+        // yanks the viewport back to the top of the file. Hijacking early-return here is the
+        // smallest patch: the user-visible scroll position stays live across edits + saves.
+        const instance = contentsOsRef.current?.osInstance();
+        if (instance) {
+            const { viewport } = instance.elements();
+            lastViewportScrollTopRef.current = viewport.scrollTop;
+        }
+        if (Date.now() < programmaticScrollUntilRef.current) {
+            return;
+        }
+        if (onScrollTopChange != null && instance) {
+            const { viewport } = instance.elements();
+            // Debounce on rAF so a flinging trackpad doesn't write on every pixel.
+            if (scrollTopWriteRafRef.current != null) {
+                cancelAnimationFrame(scrollTopWriteRafRef.current);
+            }
+            const st = viewport.scrollTop;
+            scrollTopWriteRafRef.current = requestAnimationFrame(() => {
+                scrollTopWriteRafRef.current = null;
+                onScrollTopChange(st);
+            });
+        }
+        if (onUserScrollSourceLine == null) {
+            return;
+        }
         if (!instance) {
             return;
         }
         const { viewport } = instance.elements();
-        lastViewportScrollTopRef.current = viewport.scrollTop;
         const viewportBoundingRect = viewport.getBoundingClientRect();
         const lineElems = Array.from(viewport.querySelectorAll<HTMLElement>("[data-source-line]"));
         if (lineElems.length === 0) {
@@ -1253,7 +1456,7 @@ const Markdown = ({
             <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
         ),
         p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-            <div className="paragraph" {...props} {...sourceLineAttrs(getSourceLine(props))} />
+            <div className="paragraph" {...props} {...sourceLineAttrs(getSourceLine(props), getSourceLineEnd(props))} />
         ),
         h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
             <CollapsibleHeading

@@ -8,6 +8,10 @@ import {
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { confirmCurrentTabClose } from "@/app/store/global";
+import {
+    getTabsWithUnreadDotsAtom,
+    useAcquireWorkspaceBlockStatuses,
+} from "@/app/agent-status/agent-status-tab-aggregate";
 import { globalStore } from "@/app/store/jotaiStore";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -142,6 +146,12 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const scrollableRef = useRef<boolean>(false);
     const prevAllLoadedRef = useRef<boolean>(false);
     const activeTabId = useAtomValue(env.atoms.staticTabId);
+    // 让本工作区所有 tab (含 inline-tab 子 block) 在 AgentStatusStore 都持有订阅,
+    // 非激活 tab 的 agent 状态点才能在 Tab 栏渲染.
+    useAcquireWorkspaceBlockStatuses(tabIds);
+    // 有未阅状态点的 tab 集合: 这些 tab 必须强制 keep 到 visibleTabIds, 否则 TabInner 不挂载,
+    // 用户不切过去就永远看不到状态 (本次修复的核心).
+    const tabsWithUnreadDots = useAtomValue(getTabsWithUnreadDotsAtom(tabIds));
     const isFullScreen = useAtomValue(env.atoms.isFullScreen);
     const zoomFactor = useAtomValue(env.atoms.zoomFactorAtom);
     const showMenuBar = useAtomValue(env.getSettingsKeyAtom("window:showmenubar"));
@@ -197,10 +207,20 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                     headerHovered ||
                     isWrapperHovered ||
                     draggingTab != null ||
-                    wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+                    wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId) ||
+                    tabsWithUnreadDots.has(tabId)
                 );
             }),
-        [activeTabId, draggingTab, headerHovered, isTabBarHovered, isWrapperHovered, openedThisLaunchTabIds, tabIds]
+        [
+            activeTabId,
+            draggingTab,
+            headerHovered,
+            isTabBarHovered,
+            isWrapperHovered,
+            openedThisLaunchTabIds,
+            tabIds,
+            tabsWithUnreadDots,
+        ]
     );
 
     // Update refs when tabIds change

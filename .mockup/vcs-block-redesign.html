@@ -1,0 +1,1104 @@
+<!--
+================  User request  ================
+基于项目实际样式风格优化 VCS Block 原型
+
+================  Project tokens (from vcs.tsx + tailwind config) ================
+- accent #7c49a1 / accent-hover #955ab8
+- text: main #4c3924 / secondary #675033 / muted #777167
+- bg: panel #f3efe4 / surface #fffdf8 / surface-strong #f0ede6
+- border: #d6cfbe
+- hoverbg: rgba(167, 111, 202, 0.1)
+- status: warning #e65100 / error #d32f2f / success #2e7d32
+- fonts: Inter (body) + Hack (code/mono)
+- radius: 4px (small) / 8px (medium)
+
+================  Redesign principles ================
+1. 去掉深色半透明底，用浅色主题 token
+2. 简化 badge，C:2 U:1 R:1 → "3 changed"
+3. Behind/Ahead 改为 ↓4 ↑1 形式
+4. 按钮统一：primary (bg-accent) + ghost (border-border)
+5. 次要操作 hover 延迟浮现
+6. 用 tabular-nums 替代硬拍 min-width
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS Block Redesign · snorkeling (optimized)</title>
+<style>
+  /* ===== §0 Project tokens ===== */
+  :root {
+    --accent: #7c49a1;
+    --accent-hover: #955ab8;
+    --accent-text: #ffffff;
+    --accent-soft: rgba(124, 73, 161, 0.12);
+    --accent-soft-border: rgba(124, 73, 161, 0.3);
+    --text: #4c3924;
+    --text-secondary: #675033;
+    --text-muted: #777167;
+    --panel: #f3efe4;
+    --surface: #fffdf8;
+    --surface-strong: #f0ede6;
+    --hoverbg: rgba(167, 111, 202, 0.1);
+    --border: #d6cfbe;
+    --warning: #e65100;
+    --error: #d32f2f;
+    --success: #2e7d32;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #ebe5d9;
+    color: var(--text);
+    font: 14px/1.45 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  code, .mono, pre { font-family: Hack, "JetBrains Mono", Consolas, ui-monospace, monospace; }
+  button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ===== Button variants (project style) ===== */
+  .btn-primary {
+    border: 0; border-radius: 4px; padding: 4px 10px;
+    background: var(--accent); color: var(--accent-text); font-weight: 600; font-size: 12px;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  
+  .btn-ghost {
+    border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px;
+    background: transparent; color: var(--text-secondary); font-size: 11px;
+  }
+  .btn-ghost:hover { background: var(--hoverbg); color: var(--text); }
+  .btn-ghost:disabled { opacity: 0.5; cursor: default; }
+  
+  .btn-text {
+    border: 0; background: transparent; color: var(--accent); font-size: 11px; padding: 2px 4px;
+  }
+  .btn-text:hover { text-decoration: underline; }
+  .btn-text:disabled { color: var(--text-muted); text-decoration: none; cursor: default; }
+
+  /* ===== Page scaffolding ===== */
+  .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px 96px; }
+  .page > h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .page > .intro { color: var(--text-muted); font-size: 13px; margin-bottom: 28px; max-width: 70ch; }
+
+  .section { margin-top: 48px; }
+  .section > h2 {
+    font-size: 15px; margin: 0 0 4px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .section > h2 .tag {
+    font: inherit; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted); border: 1px solid var(--border); padding: 1px 6px; border-radius: 999px;
+  }
+  .section > .why { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; max-width: 72ch; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  @media (max-width: 920px) { .grid2, .grid4 { grid-template-columns: 1fr; } }
+
+  .frame {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 14px;
+    overflow: hidden;
+  }
+  .frame > .frame-title {
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted); margin: 0 0 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .frame > .frame-title .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* ===== §1 CURRENT UI (with dark-translucent, showing the problem) ===== */
+  .cur-dark-bg {
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+  }
+  
+  .cur-repo-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 4px;
+    background: rgba(0,0,0,0.15);
+    position: relative;
+  }
+  .cur-repo-head.is-active {
+    background: rgba(255,255,255,0.06);
+  }
+  .cur-repo-head.is-active::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 2px; border-radius: 2px; background: var(--accent);
+  }
+  .cur-caret { font-size: 11px; color: var(--text-muted); width: 12px; }
+  .cur-typebadge {
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 11px; text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .cur-reponame { font-size: 14px; font-weight: 500; line-height: 18px; }
+  .cur-summary { font-size: 11px; color: var(--text-muted); margin-left: auto; font-family: Hack, ui-monospace, monospace; }
+  .cur-iconbtn {
+    width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; background: transparent; color: var(--text-secondary); border-radius: 3px;
+  }
+  .cur-iconbtn:hover { background: var(--hoverbg); color: var(--text); }
+
+  .cur-collhead {
+    margin-top: 8px; padding: 4px 8px; font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.10); background: rgba(0,0,0,0.18); border-radius: 4px;
+  }
+  .cur-collhead.noborder { background: transparent; border: 0; padding: 4px 2px; }
+
+  .cur-filerow {
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 8px; font-size: 12px;
+  }
+  .cur-filerow:last-child { border-bottom: 0; }
+  .cur-filerow .code {
+    font-family: Hack, ui-monospace, monospace; color: var(--text-secondary);
+  }
+  .cur-filerow .path { flex: 1 1 auto; }
+  .cur-filerow .link { font-size: 11px; color: var(--accent); }
+  .cur-filerow .link + .link { margin-left: 8px; }
+  .cur-filerow .link:hover { text-decoration: underline; }
+
+  .cur-commitrow {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+  }
+  .cur-commitrow .hash {
+    font-family: Hack, ui-monospace, monospace; color: var(--text-secondary);
+  }
+  .cur-commitrow .subject { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+  .cur-commitrow .author { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cur-commitrow .date { color: var(--text-muted); white-space: nowrap; }
+
+  .cur-notice {
+    margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(0, 0, 0, 0.20); border-radius: 4px; padding: 6px 8px; font-size: 12px;
+  }
+  .cur-notice .warn { color: var(--warning); }
+  .cur-notice details > pre {
+    max-height: 180px; overflow: auto; white-space: pre-wrap;
+    background: rgba(0,0,0,0.15); padding: 8px; border-radius: 4px;
+    font-family: Hack, ui-monospace, monospace; font-size: 11px;
+  }
+
+  .cur-section {
+    border: 1px solid rgba(255, 255, 255, 0.10); background: rgba(0,0,0,0.15);
+    border-radius: 4px; padding: 8px; margin-top: 8px;
+  }
+  .cur-section .head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; }
+  .cur-section .head .badge {
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .cur-section .head .ops { margin-left: auto; display: inline-flex; gap: 4px; }
+
+  .cur-filterbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    border: 1px solid var(--border); background: var(--panel);
+    border-radius: 4px; padding: 6px 8px; margin-bottom: 8px;
+  }
+  .cur-ctrl {
+    height: 24px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel); color: var(--text); padding: 0 6px; font-size: 12px;
+    outline: none;
+  }
+  .cur-ctrl:focus { border-color: var(--accent); }
+  .cur-resetlink { font-size: 12px; color: var(--text-secondary); }
+  .cur-resetlink:hover { color: var(--accent); text-decoration: underline; }
+
+  .cur-card {
+    border: 1px solid rgba(255, 255, 255, 0.10); background: rgba(0,0,0,0.15);
+    border-radius: 4px; padding: 6px 8px;
+  }
+  .cur-card .row1 { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .cur-card .row1 .hash { font-family: Hack, ui-monospace, monospace; color: var(--text-secondary); }
+  .cur-card .row1 .subject { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cur-card .row2 { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .cur-card .files {
+    max-height: 200px; overflow: auto; margin-top: 6px;
+    border: 1px solid var(--border); border-radius: 4px; background: rgba(0,0,0,0.12);
+  }
+  .cur-card .frow { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 11px; border-bottom: 1px solid var(--border); }
+  .cur-card .frow:last-child { border-bottom: 0; }
+  .cur-card .frow .code { font-family: Hack, ui-monospace, monospace; color: var(--text-secondary); }
+  .cur-card .frow .path { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cur-card .frow .link { color: var(--accent); font-size: 11px; }
+
+  .cur-modebar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .cur-modebar .lbl { font-size: 11px; color: var(--text-secondary); }
+  .cur-modebar button {
+    border: 1px solid var(--border); padding: 2px 8px; font-size: 11px;
+    color: var(--text-secondary); background: transparent; border-radius: 4px;
+  }
+  .cur-modebar button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+  .cur-diffwrap {
+    border: 1px solid rgba(255, 255, 255, 0.10); background: rgba(0,0,0,0.18);
+    border-radius: 4px; padding: 8px; overflow: auto;
+    font-family: Hack, ui-monospace, monospace; font-size: 12px; line-height: 20px;
+    color: var(--text-secondary); white-space: pre;
+  }
+
+  .cur-pager {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  }
+  .cur-pager button {
+    border: 1px solid var(--border); padding: 4px 8px; color: var(--text-secondary);
+    background: transparent; border-radius: 4px; font-size: 12px;
+  }
+  .cur-pager button:disabled { opacity: 0.5; cursor: default; }
+  .cur-pager button:hover:not(:disabled) { background: var(--hoverbg); }
+
+  /* ===== §2 REDESIGNED (project-style, light theme) ===== */
+  /* A. Quiet List — minimal, hairline rows, ops on hover */
+  .redesign-frame {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  
+  .red-header {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .red-header .crumb { color: var(--text-muted); font-size: 12px; }
+  .red-header .name { font-weight: 600; font-size: 14px; }
+  .red-header .meta { margin-left: auto; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .red-header .flow { margin-left: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .red-header .flow .down { color: var(--error); }
+  .red-header .flow .up { color: var(--success); }
+  .red-header .ops { display: inline-flex; gap: 6px; }
+
+  .red-row {
+    display: grid; grid-template-columns: 16px 20px 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 7px 4px; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .red-row:last-child { border-bottom: 0; }
+  .red-row .sel { color: var(--text-muted); }
+  .red-row .code {
+    font-family: Hack, ui-monospace, monospace; font-size: 11px;
+    text-align: center; color: var(--text-secondary);
+  }
+  .red-row .code.M { color: var(--warning); }
+  .red-row .code.A { color: var(--success); }
+  .red-row .code.D { color: var(--error); }
+  .red-row .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .red-row .rowops { opacity: 0; display: inline-flex; gap: 10px; transition: opacity 0.12s; }
+  .redesign-frame:hover .red-row:hover .rowops { opacity: 1; }
+  .red-rowops a, .red-rowops a:link { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .red-rowops a:hover { text-decoration: underline; }
+
+  .red-section-label {
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted); margin: 14px 0 4px;
+  }
+
+  .red-commitbar { display: flex; gap: 8px; margin-top: 12px; }
+  .red-commitbar input {
+    flex: 1; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); padding: 7px 10px; font-size: 13px;
+  }
+  .red-commitbar input:focus { border-color: var(--accent); }
+
+  .red-cli-row {
+    display: grid; grid-template-columns: 16px 88px 1fr auto auto;
+    align-items: baseline; gap: 12px;
+    padding: 8px 4px; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .red-cli-row:last-child { border-bottom: 0; }
+  .red-cli-row .caret { color: var(--text-muted); font-size: 10px; }
+  .red-cli-row .hash { font-family: Hack, ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .red-cli-row .subj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .red-cli-row .by, .red-cli-row .when { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .red-cli-row .files {
+    grid-column: 2 / -1; padding: 4px 0 2px;
+  }
+  .red-cli-row .files .f {
+    display: grid; grid-template-columns: 20px 1fr auto; gap: 10px;
+    padding: 3px 0; font-size: 12px;
+  }
+  .red-cli-row .files .f .code { font-family: Hack, ui-monospace, monospace; font-size: 11px; color: var(--text-secondary); }
+  .red-cli-row .files .f a, .red-cli-row .files .f a:link { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .red-cli-row .files .f a:hover { text-decoration: underline; }
+
+  .red-diff {
+    margin-top: 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel); overflow: auto;
+    font-family: Hack, ui-monospace, monospace; font-size: 12px; line-height: 20px;
+    padding: 10px 12px; white-space: pre; color: var(--text-secondary);
+  }
+  .red-diff .del { color: var(--error); }
+  .red-diff .add { color: var(--success); }
+  .red-diff .hunk { color: var(--text-muted); }
+
+  .red-modebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .red-modebar .lbl { font-size: 11px; color: var(--text-muted); }
+
+  .red-pager {
+    display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 12px;
+  }
+  .red-pager .info { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* B. Page Layout — block as a page */
+  .page-frame {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex; flex-direction: column;
+    min-height: 340px;
+  }
+  .page-title {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page-title .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+  .page-title .h { display: flex; align-items: baseline; gap: 10px; margin-top: 3px; }
+  .page-title .h .name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .page-title .h .crumb { color: var(--text-muted); font-size: 12px; }
+  .page-title .h .flow { margin-left: auto; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .page-title .h .flow .down { color: var(--error); }
+  .page-title .h .flow .up { color: var(--success); }
+  .page-title .actions { margin-top: 10px; display: flex; gap: 8px; }
+
+  .page-body { padding: 14px 16px; flex: 1 1 auto; }
+  .page-block { margin-bottom: 16px; }
+  .page-block:last-child { margin-bottom: 0; }
+  .page-block .lead {
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+  .page-block .lead .count { color: var(--text-secondary); }
+
+  .page-card {
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel); overflow: hidden;
+  }
+  .page-frow {
+    display: grid; grid-template-columns: 14px 20px 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 7px 12px; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page-frow:last-child { border-bottom: 0; }
+  .page-frow .sel { color: var(--text-secondary); }
+  .page-frow .code { font-family: Hack, ui-monospace, monospace; font-size: 11px; text-align: center; color: var(--text-secondary); }
+  .page-frow .code.M { color: var(--warning); }
+  .page-frow .code.A { color: var(--success); }
+  .page-frow .code.D { color: var(--error); }
+  .page-frow .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-frow .ops { display: inline-flex; gap: 10px; }
+  .page-frow .ops a, .page-frow .ops a:link { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .page-frow .ops a:hover { text-decoration: underline; }
+
+  .page-commit {
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); margin-bottom: 8px; padding: 10px 12px;
+  }
+  .page-commit .r1 { display: flex; align-items: baseline; gap: 10px; }
+  .page-commit .r1 .hash { font-family: Hack, ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .page-commit .r1 .subj { flex: 1 1 auto; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-commit .r1 .when { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .page-commit .r2 { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .page-commit .files {
+    margin-top: 8px; border-left: 2px solid var(--border); padding-left: 10px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .page-commit .files .f {
+    display: grid; grid-template-columns: 20px 1fr auto; gap: 10px;
+    font-size: 12px; align-items: baseline;
+  }
+  .page-commit .files .f .code { font-family: Hack, ui-monospace, monospace; font-size: 11px; color: var(--text-secondary); }
+  .page-commit .files .f a, .page-commit .files .f a:link { color: var(--accent); text-decoration: none; font-size: 12px; }
+
+  .page-foot {
+    padding: 10px 16px 12px; border-top: 1px solid var(--border);
+    background: var(--surface-strong); border-radius: 0 0 7px 7px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .page-foot input {
+    flex: 1; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); padding: 6px 10px; font-size: 13px;
+  }
+  .page-foot input:focus { outline: none; border-color: var(--accent); }
+
+  /* C. Console Lite — terminal flavor */
+  .cli-frame {
+    background: var(--surface-strong);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: Hack, ui-monospace, monospace;
+    font-size: 12px; line-height: 1.5;
+    overflow: hidden;
+  }
+  .cli-titlebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .cli-titlebar .prompt { color: var(--accent); }
+  .cli-titlebar .path { }
+  .cli-titlebar .at { color: var(--text-muted); }
+  .cli-titlebar .rev { color: var(--text-secondary); }
+  .cli-titlebar .cmds { margin-left: auto; display: inline-flex; gap: 4px; }
+
+  .cli-list { padding: 6px 0; background: var(--surface); }
+  .cli-row {
+    display: grid; grid-template-columns: 14px 8ch 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 3px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cli-row.head { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 12px 2px; }
+  .cli-row + .cli-row { border-top: 1px dashed var(--border); }
+  .cli-row .sel { color: var(--text-muted); }
+  .cli-row .keyhole { font-size: 11px; text-align: center; color: var(--text-secondary); }
+  .cli-row .keyhole.M { color: var(--warning); }
+  .cli-row .keyhole.A { color: var(--success); }
+  .cli-row .keyhole.D { color: var(--error); }
+  .cli-row .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cli-row .tail { display: inline-flex; gap: 10px; }
+  .cli-row .tail a, .cli-row .tail a:link { color: var(--accent); text-decoration: none; }
+  .cli-row .tail a:hover { text-decoration: underline; }
+
+  .cli-flow {
+    display: flex; align-items: center; gap: 12px;
+    padding: 3px 12px; font-variant-numeric: tabular-nums;
+    border-top: 1px solid var(--border); background: var(--panel);
+  }
+  .cli-flow .down { color: var(--error); }
+  .cli-flow .up { color: var(--success); }
+  .cli-flow .branch { color: var(--text-muted); }
+
+  .cli-commitbar {
+    display: flex; gap: 6px; padding: 8px 12px;
+    border-top: 1px solid var(--border); background: var(--panel);
+  }
+  .cli-commitbar .prompt { color: var(--accent); align-self: center; }
+  .cli-commitbar input {
+    flex: 1; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); padding: 4px 8px;
+    font-family: inherit; font-size: 12px; color: var(--text);
+  }
+  .cli-commitbar input:focus { outline: none; border-color: var(--accent); }
+
+  .cli-log-row {
+    display: grid; grid-template-columns: 14px 9ch 1fr 8ch 11ch;
+    gap: 10px; align-items: baseline;
+    padding: 4px 12px; font-variant-numeric: tabular-nums;
+    border-top: 1px dashed var(--border);
+  }
+  .cli-log-row.first { border-top: 0; }
+  .cli-log-row .caret { color: var(--text-muted); }
+  .cli-log-row .hash { color: var(--text-secondary); }
+  .cli-log-row .subj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cli-log-row .by { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cli-log-row .when { color: var(--text-muted); text-align: right; }
+  .cli-log-row .files {
+    grid-column: 2 / -1; padding: 4px 0 6px;
+    border-left: 2px solid var(--border); padding-left: 10px; margin-left: 1px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .cli-log-row .files .f { display: grid; grid-template-columns: 4ch 1fr 4ch; gap: 10px; align-items: baseline; }
+  .cli-log-row .files .f .c { color: var(--text-secondary); }
+  .cli-log-row .files .f a, .cli-log-row .files .f a:link { color: var(--accent); text-decoration: none; }
+
+  .cli-diff {
+    padding: 8px 12px; font-family: inherit; font-size: 12px; line-height: 1.6;
+    white-space: pre; overflow: auto;
+    background: var(--surface); color: var(--text-secondary);
+  }
+  .cli-diff .hunk { color: var(--text-muted); }
+  .cli-diff .del { color: var(--error); }
+  .cli-diff .add { color: var(--success); }
+  .cli-hint { padding: 6px 12px; color: var(--text-muted); font-size: 11px; border-top: 1px dashed var(--border); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>VCS Block Redesign · 项目风格优化版</h1>
+  <p class="intro">
+    基于项目实际样式（vcs.tsx + tailwind config）优化。三套候选方向统一使用：
+    <strong>accent #7c49a1</strong> · <strong>Inter 14 / Hack 12</strong> · <strong>border-radius 4-8px</strong> ·
+    <strong>tabular-nums</strong> 数字对齐。
+  </p>
+
+  <!-- ============== §1 CURRENT ============== -->
+  <div class="section">
+    <h2>§1 当前 UI <span class="tag">问题展示</span></h2>
+    <p class="why">保留深色半透明底以呈现问题：浅色主题下发灰、操作按钮形态不一、AI 味浓的 badge。</p>
+
+    <div class="grid2">
+      <!-- current vcs -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>vcs · 当前</p>
+        <div class="cur-repo-head is-active">
+          <span class="cur-caret">▾</span>
+          <span class="cur-typebadge">git</span>
+          <span class="cur-reponame">snorkeling-light-theme</span>
+          <span class="cur-summary">C:2 U:1 R:1</span>
+          <button class="btn-ghost">Pull</button>
+          <button class="cur-iconbtn" title="Refresh">⟳</button>
+          <button class="cur-iconbtn" title="Open commits">☷</button>
+        </div>
+        <div class="cur-collhead">▾ Changes (3)</div>
+        <div class="cur-dark-bg">
+          <div class="cur-filerow"><input type="checkbox" checked /><span class="code">M</span><span class="path">frontend/app/view/vcs/vcs.tsx</span><a class="link">Diff</a></div>
+          <div class="cur-filerow"><input type="checkbox" checked /><span class="code">A</span><span class="path">frontend/app/view/vcs/vcsmeta.ts</span><a class="link">Diff</a></div>
+          <div class="cur-filerow"><input type="checkbox" /><span class="code">M</span><span class="path">pkg/wshrpc/vcshelpers/vcshelpers.go</span><a class="link">Diff</a><a class="link">History</a></div>
+        </div>
+        <div class="cur-filterbar" style="margin-top:8px">
+          <input class="cur-ctrl" style="flex:1" placeholder="Search files" />
+          <select class="cur-ctrl"><option>All</option></select>
+          <a class="cur-resetlink">Reset</a>
+        </div>
+        <div class="cur-section">
+          <div class="head">
+            <span>Remote (1)</span>
+            <span class="badge">Behind 4</span>
+            <span class="badge">Ahead 1</span>
+            <span class="ops"><button class="btn-ghost" disabled>Pull</button><button class="btn-ghost">Push</button></span>
+          </div>
+        </div>
+        <textarea class="cur-ctrl" style="width:100%;min-height:52px;margin-top:8px" placeholder="chore: update selected files"></textarea>
+        <div style="margin-top:6px">
+          <button class="btn-primary">Commit (2)</button>
+        </div>
+      </div>
+
+      <!-- current vcscommits -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>vcscommits · 当前</p>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input class="cur-ctrl" style="flex:1" placeholder="keyword..." />
+          <button class="btn-primary" style="padding:3px 10px">Apply</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div class="cur-card">
+            <div class="row1"><span class="cur-caret">▾</span><span class="hash">cad377d1</span><span class="subject">feat(agent-status): done-unread (D) layer</span></div>
+            <div class="row2">hamagesila · 2026-07-23 03:18</div>
+            <div class="files">
+              <div class="frow"><span class="code">M</span><span class="path">ack.ts</span><a class="link">Diff</a></div>
+              <div class="frow"><span class="code">M</span><span class="path">atomack.ts</span><a class="link">Diff</a></div>
+            </div>
+          </div>
+          <div class="cur-card">
+            <div class="row1"><span class="cur-caret">▸</span><span class="hash">fbe3c2d6</span><span class="subject">fix(commontext): guard detail-flush setState</span></div>
+            <div class="row2">hamagesila · 2026-07-22 23:51</div>
+          </div>
+        </div>
+        <div class="cur-pager"><button disabled>Prev</button><span style="font-size:12px;color:var(--text-muted)">Page 1</span><button>Next</button></div>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-top:18px">
+      <!-- current vcsdiff -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>vcsdiff · 当前</p>
+        <div class="cur-modebar"><span class="lbl">View</span><button class="on">Side by side</button><button>Inline</button></div>
+        <div class="cur-diffwrap">@@ -220,7 +220,7 @@
+ export function RepoHeader() {
+   return (
+-    <div className="bg-black/15">
++    <div className="bg-surface-strong">
+   ...</div>
+
+      <!-- current vcshistory -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>vcshistory · 当前</p>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="cur-card">
+            <div class="row1"><span class="cur-caret">▾</span><span class="hash">cad377d1</span><span class="subject">feat(agent-status): done-unread (D) layer</span></div>
+            <div class="row2">hamagesila · 2026-07-23 03:18</div>
+          </div>
+          <div class="cur-card">
+            <div class="row1"><span class="cur-caret">▸</span><span class="hash">4f2e5c46</span><span class="subject">refactor(commontext): rework compose modal</span></div>
+            <div class="row2">hamagesila · 2026-07-21</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== §2 REDESIGNED A — Quiet List ============== -->
+  <div class="section">
+    <h2>§2 候选 A — Quiet List <span class="tag">灵动 · 简洁</span></h2>
+    <p class="why">
+      <strong>原则:</strong> 去掉深色半透明底，用 <code>var(--surface)</code> 纯浅色背景；
+      Badge 简化（<code>C:2 U:1</code> → <code>3 changed</code>）；
+      次要操作 hover 浮现；用 tabular-nums 替代硬拍 min-width。
+    </p>
+
+    <div class="grid2">
+      <!-- A.vcs -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>A · vcs</p>
+        <div class="redesign-frame">
+          <div class="red-header">
+            <span class="crumb">origin/main ·</span>
+            <span class="name">snorkeling-light-theme</span>
+            <span class="meta">3 changed</span>
+            <span class="flow"><span class="down">↓4</span> <span class="up">↑1</span></span>
+            <span class="ops">
+              <button class="btn-ghost">Pull</button>
+              <button class="btn-ghost">Push</button>
+            </span>
+          </div>
+
+          <div class="red-section-label">Changes</div>
+          <div class="red-row"><span class="sel">✓</span><span class="code M">M</span><span class="path">frontend/app/view/vcs/vcs.tsx</span><span class="rowops"><a>Diff</a><a>History</a></span></div>
+          <div class="red-row"><span class="sel">✓</span><span class="code A">A</span><span class="path">frontend/app/view/vcs/vcsmeta.ts</span><span class="rowops"><a>Diff</a></span></div>
+          <div class="red-row"><span class="sel">○</span><span class="code M">M</span><span class="path">pkg/wshrpc/vcshelpers/vcshelpers.go</span><span class="rowops"><a>Diff</a><a>History</a></span></div>
+
+          <div class="red-commitbar">
+            <input placeholder="chore: update selected files" />
+            <button class="btn-primary">Commit · 2</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- A.vcscommits -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>A · vcscommits</p>
+        <div class="redesign-frame">
+          <div class="red-header">
+            <span class="name">Commits</span>
+            <span class="meta">page 1 · since 2026-07-01</span>
+            <span class="ops"><button class="btn-ghost">‹ Prev</button><button class="btn-ghost">Next ›</button></span>
+          </div>
+
+          <div class="red-cli-row">
+            <span class="caret">▾</span>
+            <span class="hash">cad377d1</span>
+            <span class="subj">feat(agent-status): done-unread (D) layer</span>
+            <span class="by">hamagesila</span>
+            <span class="when">07-23 03:18</span>
+            <div class="files">
+              <div class="f"><span class="code">M</span><span>ack.ts</span><a>Diff</a></div>
+              <div class="f"><span class="code">M</span><span>atomack.ts</span><a>Diff</a></div>
+            </div>
+          </div>
+          <div class="red-cli-row">
+            <span class="caret">▸</span>
+            <span class="hash">fbe3c2d6</span>
+            <span class="subj">fix(commontext): guard detail-flush setState</span>
+            <span class="by">hamagesila</span>
+            <span class="when">07-22 23:51</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- A.vcsdiff -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>A · vcsdiff</p>
+        <div class="redesign-frame">
+          <div class="red-header">
+            <span class="crumb">vcs.tsx @</span>
+            <span class="name">cad377d1</span>
+            <span class="ops red-modebar">
+              <span class="lbl">view</span>
+              <button class="btn-ghost" style="border-color:var(--accent-soft-border);color:var(--accent)">Side by side</button>
+              <button class="btn-ghost">Inline</button>
+            </span>
+          </div>
+          <pre class="red-diff"><span class="hunk">@@ -220,7 +220,7 @@</span>
+ export function RepoHeader() {
+   return (
+-    <div className="bg-black/15">
++    <div className="bg-surface-strong"></pre>
+        </div>
+      </div>
+
+      <!-- A.vcshistory -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>A · vcshistory</p>
+        <div class="redesign-frame">
+          <div class="red-header">
+            <span class="name">History</span>
+            <span class="meta">vcs.tsx · 100 entries</span>
+          </div>
+          <div class="red-cli-row">
+            <span class="caret">▾</span>
+            <span class="hash">cad377d1</span>
+            <span class="subj">feat(agent-status): done-unread (D) layer</span>
+            <span class="by">hamagesila</span>
+            <span class="when">07-23 03:18</span>
+          </div>
+          <div class="red-cli-row">
+            <span class="caret">▸</span>
+            <span class="hash">4f2e5c46</span>
+            <span class="subj">refactor(commontext): rework compose modal</span>
+            <span class="by">hamagesila</span>
+            <span class="when">07-21</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== §3 REDESIGNED B — Page Layout ============== -->
+  <div class="section">
+    <h2>§3 候选 B — Page Layout <span class="tag">有呼吸 · 统一</span></h2>
+    <p class="why">
+      <strong>原则:</strong> 把 block 当一页文档：eyebrow + 大标题 + 行内 actions；
+      用纯空白 + 小写区块标题分段；紫色 accent 只在 primary 按钮出现。
+    </p>
+
+    <div class="grid2">
+      <!-- B.vcs -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>B · vcs</p>
+        <div class="page-frame">
+          <div class="page-title">
+            <div class="eyebrow">version control · git</div>
+            <div class="h">
+              <span class="name">snorkeling-light-theme</span>
+              <span class="crumb">on origin/main</span>
+              <span class="flow"><span class="down">↓4</span> <span class="up">↑1</span></span>
+            </div>
+            <div class="actions">
+              <button class="btn-ghost">Pull</button>
+              <button class="btn-ghost">Push</button>
+              <button class="btn-ghost">Fetch</button>
+            </div>
+          </div>
+          <div class="page-body">
+            <div class="page-block">
+              <div class="lead">Changes <span class="count">· 2 selected of 3</span></div>
+              <div class="page-card">
+                <div class="page-frow"><span class="sel">✓</span><span class="code M">M</span><span class="path">frontend/app/view/vcs/vcs.tsx</span><span class="ops"><a>Diff</a><a>History</a></span></div>
+                <div class="page-frow"><span class="sel">✓</span><span class="code A">A</span><span class="path">frontend/app/view/vcs/vcsmeta.ts</span><span class="ops"><a>Diff</a></span></div>
+                <div class="page-frow"><span class="sel">○</span><span class="code M">M</span><span class="path">pkg/wshrpc/vcshelpers/vcshelpers.go</span><span class="ops"><a>Diff</a><a>History</a></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="page-foot">
+            <input placeholder="chore: update selected files" />
+            <button class="btn-primary">Commit · 2</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- B.vcscommits -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>B · vcscommits</p>
+        <div class="page-frame">
+          <div class="page-title">
+            <div class="eyebrow">repo commits · git</div>
+            <div class="h"><span class="name">Commits</span><span class="crumb">since 2026-07-01</span></div>
+            <div class="actions">
+              <input class="btn-ghost" placeholder="keyword..." style="min-width:180px;padding:4px 8px" />
+              <button class="btn-primary" style="padding:4px 10px">Apply</button>
+            </div>
+          </div>
+          <div class="page-body">
+            <div class="page-block">
+              <div class="lead">Page 1 <span class="count">· 20 / page</span></div>
+              <div class="page-commit">
+                <div class="r1">
+                  <span class="hash">cad377d1</span>
+                  <span class="subj">feat(agent-status): done-unread (D) layer</span>
+                  <span class="when">07-23 03:18</span>
+                </div>
+                <div class="r2"><span>hamagesila</span><span>2 files</span></div>
+                <div class="files">
+                  <div class="f"><span class="code">M</span><span>ack.ts</span><a>Diff</a></div>
+                  <div class="f"><span class="code">M</span><span>atomack.ts</span><a>Diff</a></div>
+                </div>
+              </div>
+              <div class="page-commit">
+                <div class="r1">
+                  <span class="hash">fbe3c2d6</span>
+                  <span class="subj">fix(commontext): guard detail-flush setState</span>
+                  <span class="when">07-22 23:51</span>
+                </div>
+                <div class="r2"><span>hamagesila</span><span>1 file</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="page-foot" style="justify-content:space-between">
+            <span style="font-size:12px;color:var(--text-muted)">page 1 of 9</span>
+            <span style="display:inline-flex;gap:6px">
+              <button class="btn-ghost" disabled>‹ Prev</button>
+              <button class="btn-ghost">Next ›</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B.vcsdiff -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>B · vcsdiff</p>
+        <div class="page-frame">
+          <div class="page-title">
+            <div class="eyebrow">file diff · git</div>
+            <div class="h"><span class="name">vcs.tsx</span><span class="crumb">@ cad377d1</span></div>
+            <div class="actions">
+              <span style="font-size:12px;color:var(--text-muted)">view</span>
+              <button class="btn-ghost" style="border-color:var(--accent-soft-border);color:var(--accent)">Side by side</button>
+              <button class="btn-ghost">Inline</button>
+            </div>
+          </div>
+          <div class="page-body">
+            <pre class="red-diff" style="margin:0"><span class="hunk">@@ -220,7 +220,7 @@</span>
+ export function RepoHeader() {
+   return (
+-    <div className="bg-black/15">
++    <div className="bg-surface-strong">
+       ...</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- B.vcshistory -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>B · vcshistory</p>
+        <div class="page-frame">
+          <div class="page-title">
+            <div class="eyebrow">file history · git</div>
+            <div class="h"><span class="name">vcs.tsx</span><span class="crumb">last 100 commits</span></div>
+          </div>
+          <div class="page-body">
+            <div class="page-block">
+              <div class="lead">History <span class="count">· 100 entries</span></div>
+              <div class="page-commit">
+                <div class="r1">
+                  <span class="hash">cad377d1</span>
+                  <span class="subj">feat(agent-status): done-unread (D) layer</span>
+                  <span class="when">07-23 03:18</span>
+                </div>
+                <div class="r2"><span>hamagesila</span><span>1 file</span></div>
+              </div>
+              <div class="page-commit">
+                <div class="r1">
+                  <span class="hash">4f2e5c46</span>
+                  <span class="subj">refactor(commontext): rework compose modal</span>
+                  <span class="when">07-21</span>
+                </div>
+                <div class="r2"><span>hamagesila</span><span>1 file</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== §4 REDESIGNED C — Console Lite ============== -->
+  <div class="section">
+    <h2>§4 候选 C — Console Lite <span class="tag">终端气质 · 不浓 AI</span></h2>
+    <p class="why">
+      <strong>原则:</strong> 终端风格但收敛：prompt / command 小词；
+      hash 当钥匙孔（8-9ch 等宽）；所有数字走 tabular-nums；
+      次要操作写成 <code>diff</code> / <code>hist</code> 小写命令而非按钮。
+    </p>
+
+    <div class="grid2">
+      <!-- C.vcs -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>C · vcs</p>
+        <div class="cli-frame">
+          <div class="cli-titlebar">
+            <span class="prompt">git@snorkeling</span>
+            <span class="path">origin/main</span>
+            <span class="at">—</span>
+            <span class="rev">3 changed</span>
+            <span class="cmds">
+              <button class="btn-ghost">pull</button>
+              <button class="btn-ghost">push</button>
+            </span>
+          </div>
+          <div class="cli-list">
+            <div class="cli-row head"><span></span><span>code</span><span>path</span><span>ops</span></div>
+            <div class="cli-row"><span class="sel">✓</span><span class="keyhole M">M</span><span class="path">frontend/app/view/vcs/vcs.tsx</span><span class="tail"><a>diff</a><a>hist</a></span></div>
+            <div class="cli-row"><span class="sel">✓</span><span class="keyhole A">A</span><span class="path">frontend/app/view/vcs/vcsmeta.ts</span><span class="tail"><a>diff</a></span></div>
+            <div class="cli-row"><span class="sel">·</span><span class="keyhole M">M</span><span class="path">pkg/wshrpc/vcshelpers/vcshelpers.go</span><span class="tail"><a>diff</a><a>hist</a></span></div>
+          </div>
+          <div class="cli-flow">
+            <span class="branch">origin/main</span>
+            <span class="down">↓4 behind</span>
+            <span class="up">↑1 ahead</span>
+          </div>
+          <div class="cli-commitbar">
+            <span class="prompt">$</span>
+            <input placeholder="chore: update selected files" />
+            <button class="btn-primary" style="padding:4px 10px">commit · 2</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- C.vcscommits -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>C · vcscommits</p>
+        <div class="cli-frame">
+          <div class="cli-titlebar">
+            <span class="prompt">git log</span>
+            <span class="path">snorkeling-light-theme</span>
+            <span class="at">—</span>
+            <span class="rev">page 1 · 20/page</span>
+            <span class="cmds">
+              <button class="btn-ghost" disabled>prev</button>
+              <button class="btn-ghost">next</button>
+            </span>
+          </div>
+          <div class="cli-list" style="padding-top:4px">
+            <div class="cli-log-row first">
+              <span class="caret">▾</span>
+              <span class="hash">cad377d1</span>
+              <span class="subj">feat(agent-status): done-unread (D) layer</span>
+              <span class="by">hamagesila</span>
+              <span class="when">07-23 0318</span>
+              <div class="files">
+                <div class="f"><span class="c">M</span><span>ack.ts</span><a>diff</a></div>
+                <div class="f"><span class="c">M</span><span>atomack.ts</span><a>diff</a></div>
+              </div>
+            </div>
+            <div class="cli-log-row">
+              <span class="caret">▸</span>
+              <span class="hash">fbe3c2d6</span>
+              <span class="subj">fix(commontext): guard detail-flush setState</span>
+              <span class="by">hamagesila</span>
+              <span class="when">07-22 2351</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- C.vcsdiff -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>C · vcsdiff</p>
+        <div class="cli-frame">
+          <div class="cli-titlebar">
+            <span class="prompt">git diff</span>
+            <span class="path">vcs.tsx</span>
+            <span class="at">@</span>
+            <span class="rev">cad377d1</span>
+            <span class="cmds">
+              <button class="btn-ghost" style="border-color:var(--accent-soft-border);color:var(--accent)">side</button>
+              <button class="btn-ghost">inline</button>
+            </span>
+          </div>
+          <pre class="cli-diff"><span class="hunk">@@ -220,7 +220,7 @@</span>
+ export function RepoHeader() {
+-   <div className="bg-black/15">
++   <div className="bg-surface-strong"></pre>
+          <div class="cli-hint">// raw patch fallback</div>
+        </div>
+      </div>
+
+      <!-- C.vcshistory -->
+      <div class="frame">
+        <p class="frame-title"><span class="dot"></span>C · vcshistory</p>
+        <div class="cli-frame">
+          <div class="cli-titlebar">
+            <span class="prompt">git log --follow</span>
+            <span class="path">vcs.tsx</span>
+            <span class="at">—</span>
+            <span class="rev">100 entries</span>
+          </div>
+          <div class="cli-list" style="padding-top:4px">
+            <div class="cli-log-row first">
+              <span class="cur-caret">▾</span>
+              <span class="hash">cad377d1</span>
+              <span class="subj">feat(agent-status): done-unread (D) layer</span>
+              <span class="by">hamagesila</span>
+              <span class="when">07-23 0318</span>
+            </div>
+            <div class="cli-log-row">
+              <span class="caret">▸</span>
+              <span class="hash">4f2e5c46</span>
+              <span class="subj">refactor(commontext): rework compose modal</span>
+              <span class="by">hamagesila</span>
+              <span class="when">07-21</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== §5 Comparison ============== -->
+  <div class="section">
+    <h2>§5 横向对照 <span class="tag">quick compare</span></h2>
+    <div class="frame" style="padding:0;overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="text-align:left;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+            <th style="padding:10px 14px;border-bottom:1px solid var(--border)">维度</th>
+            <th style="padding:10px 14px;border-bottom:1px solid var(--border)">当前</th>
+            <th style="padding:10px 14px;border-bottom:1px solid var(--border)">A · Quiet List</th>
+            <th style="padding:10px 14px;border-bottom:1px solid var(--border)">B · Page Layout</th>
+            <th style="padding:10px 14px;border-bottom:1px solid var(--border)">C · Console Lite</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary)">背景色</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">深色半透明 <code>bg-black/25</code></td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>--surface</code> 纯浅色</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>--surface</code> 纯浅色</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>--surface-strong</code> 带灰度</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary)">状态数字</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>C:2 U:1 R:1</code> pill</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>3 changed</code> 文字</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>↓4 ↑1</code> 带色箭头</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>↓4 behind</code> 流量形</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary)">次要操作</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">永远显示，下划线</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">hover 浮现</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">永远显示，统一 ghost</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><code>diff</code> / <code>hist</code> 小写命令</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary)">accent 用量</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">多（hover/soft bg/badges）</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">少（链接 + active 状态）</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">中（primary + active tab）</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">少（链接 + prompt 色）</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary)">"AI 味"</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">强（pill + accent 软背景）</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">几乎无，像 macOS 设置</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">轻微，像 Linear/GitHub</td>
+            <td style="padding:8px 14px;border-bottom:1px solid var(--border)">无，像 lazygit/tig</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 14px;color:var(--text-secondary)">实现难度</td>
+            <td style="padding:8px 14px">—</td>
+            <td style="padding:8px 14px">低（CSS hover）</td>
+            <td style="padding:8px 14px">中（页面结构）</td>
+            <td style="padding:8px 14px">中（等宽列对齐）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="why" style="margin-top:18px">
+      <strong>建议组合:</strong> B 作骨架（eyebrow + 大标题 + 页面分区）+
+      A 的 hover 浮现次要操作 +
+      C 的 tabular-nums 等宽列处理 hash 与数字。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

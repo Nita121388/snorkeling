@@ -5,6 +5,7 @@ import { observeAgentStatusTransition } from "@/app/agent-status/agent-status-do
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
+import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import * as services from "@/store/services";
 import { makeORef } from "@/store/wos";
@@ -64,12 +65,57 @@ export class AgentStatusStore {
             handler: (event) => {
                 const next = normalizeCanonicalAgentStatus(event.data);
                 globalStore.set(statusAtom, next);
+                // F2 subscribe-recv: paired with the term-model handler.
+                // Reason="agent-status-store" lets a grep split the two paths
+                // that fire on the same event.
+                pslogEvent({
+                    event: "agent.status",
+                    stage: "subscribe-recv",
+                    blockid: blockId,
+                    traceid: makeAgentTraceId(blockId, next?.sessionId ?? ""),
+                    reason: "agent-status-store",
+                });
                 observeAgentStatusTransition(next);
+                // F3 transition-observed: this is the path that DOES call
+                // observeAgentStatusTransition; the term-model handler emits
+                // the matching record with Outcome="skipped". Comparing the
+                // two on a block over time shows which path its events came
+                // through, and thus whether D-ack was reset.
+                pslogEvent({
+                    event: "agent.status",
+                    stage: "transition",
+                    blockid: blockId,
+                    traceid: makeAgentTraceId(blockId, next?.sessionId ?? ""),
+                    reason: "agent-status-store",
+                    outcome: "observed",
+                });
             },
         });
         services.BlockService.GetAgentStatus(blockId)
             .then((status) => {
-                globalStore.set(statusAtom, normalizeCanonicalAgentStatus(status));
+                const normalized = normalizeCanonicalAgentStatus(status);
+                globalStore.set(statusAtom, normalized);
+                // F1 initial-pull-recv (store instance): written directly to
+                // the atom WITHOUT observeAgentStatusTransition, so the D-ack
+                // reset that re-lights D on the next idle is skipped here too
+                // (matches the term-model initial-pull gap). The
+                // "transition/skipped" record makes this explicit so a grep
+                // catches it the same way it catches the term-model one.
+                pslogEvent({
+                    event: "agent.status",
+                    stage: "initial-pull-recv",
+                    blockid: blockId,
+                    traceid: makeAgentTraceId(blockId, normalized?.sessionId ?? ""),
+                    reason: normalized?.state ?? "",
+                });
+                pslogEvent({
+                    event: "agent.status",
+                    stage: "transition",
+                    blockid: blockId,
+                    traceid: makeAgentTraceId(blockId, normalized?.sessionId ?? ""),
+                    reason: "agent-status-store",
+                    outcome: "skipped",
+                });
             })
             .catch((error) => {
                 console.log("error getting initial agent status (inline-tab store)", blockId, error);

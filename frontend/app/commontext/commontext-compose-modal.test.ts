@@ -12,4 +12,19 @@ describe("CommonTextComposeModal hook order", () => {
 
         expect(closedReturnIndex).toBeGreaterThan(detailSaveEffectIndex);
     });
+
+    it("renders a direction-neutral focused-target insert action in each suggestion row", () => {
+        expect(source).toContain('className="item-insert-btn');
+        expect(source).toContain("fa fa-regular fa-paste");
+        expect(source).toContain("event.stopPropagation()");
+        expect(source).toContain("insertOrCopyCommonText(item.text)");
+        expect(source).toContain('"Copied (no target)"');
+    });
+
+    it("offers a tag-row action to dismiss editor-based filtering", () => {
+        expect(source).toContain("editorFilterDismissed");
+        expect(source).toContain("fa fa-solid fa-filter-circle-xmark");
+        expect(source).toContain('aria-label="Show all common text"');
+        expect(source).toContain("Cancel editor-based filtering");
+    });
 });

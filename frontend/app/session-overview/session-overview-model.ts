@@ -3,6 +3,7 @@
 
 import { BlockModel } from "@/app/block/block-model";
 import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
+import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import {
     SnorkelingBlockKindMetaKey,
     SnorkelingBlockKindOverview,
@@ -121,6 +122,18 @@ export class SessionOverviewModel {
         const next = { ...current, [blockId]: ackedAt };
         globalStore.set(this.agentStatusAckedAtAtom, next);
         writeAgentStatusAckedAt(next);
+        // F5 R-ack-write: paired with markDoneAcked (F4). Reason="R" separates
+        // the two ack families on the same timeline; durationms carries
+        // ackedAt so the "R → 0 unread" recompute can be matched to the exact
+        // click instant even on systems without monotonic FE-side perf clocks.
+        pslogEvent({
+            event: "agent.status",
+            stage: "ack-write",
+            blockid: blockId,
+            traceid: makeAgentTraceId(blockId, ""),
+            reason: "R",
+            durationms: ackedAt,
+        });
     }
 
     jumpToBlock(tabId: string, blockId: string): void {

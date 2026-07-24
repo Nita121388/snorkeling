@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 )
 
 const (
@@ -320,7 +322,10 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	bs.sources[report.Source] = sourceEntry{status: status}
 	nextCanonical := m.canonicalLocked(report.BlockId, nowMs)
 	attachPrevState(nextCanonical, prevCanonical)
-	return nextCanonical, !sameStatus(prevCanonical, nextCanonical), nil
+	same, diffField := sameStatus(prevCanonical, nextCanonical)
+	willEmit := !same
+	emitStatusDecisionEvent("report", report.BlockId, report.SessionId, prevCanonical, nextCanonical, willEmit, diffField)
+	return nextCanonical, willEmit, nil
 }
 
 func (m *statusManager) release(blockId string, source string, seq int64) (*AgentStatus, bool, error) {
@@ -366,7 +371,10 @@ func (m *statusManager) releaseLocked(blockId string, source string, seq int64, 
 	}
 	nextCanonical := m.canonicalLocked(blockId, nowMs)
 	attachPrevState(nextCanonical, prevCanonical)
-	return nextCanonical, !sameStatus(prevCanonical, nextCanonical), nil
+	same, diffField := sameStatus(prevCanonical, nextCanonical)
+	willEmit := !same
+	emitStatusDecisionEvent("release", blockId, "", prevCanonical, nextCanonical, willEmit, diffField)
+	return nextCanonical, willEmit, nil
 }
 
 func (m *statusManager) get(blockId string) *AgentStatus {
@@ -411,25 +419,81 @@ func attachPrevState(next *AgentStatus, prev *AgentStatus) {
 	next.PrevState = prev.State
 }
 
-func sameStatus(a *AgentStatus, b *AgentStatus) bool {
+// sameStatus reports equality of the two canonical statuses and, when they
+// differ, returns the first field name that differed (diffField). The diffField
+// is consumed by the agent.status/emit-decide pslog probe to pin down which
+// single field flipped a "same state" re-fire to "must emit". A nil side is
+// not a field diff and yields "".
+func sameStatus(a *AgentStatus, b *AgentStatus) (bool, string) {
 	if a == nil || b == nil {
-		return a == nil && b == nil
+		return a == nil && b == nil, ""
 	}
 	// UpdatedAt, ActiveSince are intentionally excluded from comparison.
 	// Hook reports may carry a new timestamp on each invocation even when
 	// the semantic state (state, phase, source) is unchanged. Including them
 	// would suppress valid state-change events after the user acks the badge,
 	// because the new UpdatedAt would always differ from the previous value.
-	return a.BlockId == b.BlockId &&
-		a.Provider == b.Provider &&
-		a.SessionId == b.SessionId &&
-		a.State == b.State &&
-		a.Phase == b.Phase &&
-		a.Source == b.Source &&
-		a.Confidence == b.Confidence &&
-		a.Reason == b.Reason &&
-		a.Message == b.Message &&
-		a.ToolName == b.ToolName &&
-		a.Seq == b.Seq &&
-		a.ExpiresAt == b.ExpiresAt
+	type fieldCmp struct {
+		name string
+		eq   bool
+	}
+	fields := []fieldCmp{
+		{"blockid", a.BlockId == b.BlockId},
+		{"provider", a.Provider == b.Provider},
+		{"sessionid", a.SessionId == b.SessionId},
+		{"state", a.State == b.State},
+		{"phase", a.Phase == b.Phase},
+		{"source", a.Source == b.Source},
+		{"confidence", a.Confidence == b.Confidence},
+		{"reason", a.Reason == b.Reason},
+		// intentional: Message / ToolName are user/tool content; we report their
+		// field-name when they differ but never their values (see pslog privacy).
+		{"message", a.Message == b.Message},
+		{"toolname", a.ToolName == b.ToolName},
+		{"seq", a.Seq == b.Seq},
+		{"expiresat", a.ExpiresAt == b.ExpiresAt},
+	}
+	for _, f := range fields {
+		if !f.eq {
+			return false, f.name
+		}
+	}
+	return true, ""
+}
+
+// emitStatusDecisionEvent writes the agent.status/emit-decide pslog record
+// from inside report()/releaseLocked(): whether the canonical status changed
+// and, when it changed, the single field whose diff flipped sameStatus to false.
+// WillEmit (the bool returned to the caller) is recorded as Outcome so a grep
+// on "noemit" surfaces the "absorbed a re-fire" path that symptom A blames.
+// All references are opaque: diffField is a field-name only (e.g. "state"),
+// never the field value. prevState/nextState are not droppable into the v1
+// Event schema (no field for them without misuse), so the state timeseries is
+// reconstructed from the publish/hook-send probes, not from this decision
+// point. sessionId is best-effort: present on the report() path, empty on
+// release(), so the cross-process traceId still seeds by blockId alone when
+// absent.
+//
+// The probe is a no-op unless pslog is enabled (debug:pslog setting on); the
+// gate short-circuits inside AppendEvent, so the cost in normal builds is one
+// nil-check plus the struct build here.
+func emitStatusDecisionEvent(path string, blockId string, sessionId string, prev *AgentStatus, next *AgentStatus, willEmit bool, diffField string) {
+	traceId := pslog.MakeAgentTraceId(blockId, sessionId)
+	sessionRef := pslog.MakeSessionRef(sessionId)
+	outcome := "noemit"
+	if willEmit {
+		outcome = "emit"
+	}
+	_ = path // path intentionally not on the wire (one family event covers both callers).
+	_ = prev
+	_ = next
+	pslog.AppendEvent(pslog.Event{
+		Name:       "agent.status",
+		Stage:      "emit-decide",
+		TraceId:    traceId,
+		BlockId:    blockId,
+		SessionRef: sessionRef,
+		Outcome:    outcome,
+		Reason:     diffField,
+	})
 }

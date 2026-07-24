@@ -56,6 +56,7 @@ import {
     type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { SpecializedViewProps } from "./preview";
+import { clearEditorViewState, getEditorViewState, setEditorViewState } from "./preview-model";
 import "./preview-edit.scss";
 import { previewSharedDraftDebugLog, summarizePreviewDraftContent } from "./preview-shared-draft";
 
@@ -1389,11 +1390,16 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         if (isFocused) {
             editor.focus();
         }
+        const cachedViewState = getEditorViewState(model.blockId);
+        if (cachedViewState != null) {
+            editor.restoreViewState(cachedViewState);
+        }
         revealSearchTargetLine(editor, globalStore.get(model.searchTargetLine));
         updateMarkdownMoveState();
         updateLiveScrollSourceLine();
 
         return () => {
+            setEditorViewState(model.blockId, editor.saveViewState() ?? undefined);
             searchDecorationIdsRef.current = editor.deltaDecorations(searchDecorationIdsRef.current, []);
             clearMarkdownMoveFeedback(editor);
             clearMarkdownMovePreview(editor);

@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommonText — 钉住详情 + 搜索插入箭头 交互原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  /* ============================================================
+     主题变量：明暗双套，沿用 snorkeling 现有 token（与
+     commontext-compose-modal-improved.html 一致）
+     ============================================================ */
+  :root {
+    --bg: #222222;
+    --fg: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --accent-hover: rgb(118, 223, 96);
+    --error: rgb(229, 77, 46);
+    --warning: rgb(224, 185, 86);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --modal-bg: #2a2a2a;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --highlight-bg: rgba(88, 193, 66, 0.12);
+    --editor-bg: rgba(0, 0, 0, 0.25);
+    --font-mono: "Hack", "JetBrains Mono", "Consolas", monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #ebe5d9;
+    --fg: #4c3924;
+    --secondary: #675033;
+    --muted: #777167;
+    --accent: #a76fca;
+    --accent-hover: #955ab8;
+    --error: #d32f2f;
+    --warning: #e65100;
+    --border: #ded8ca;
+    --border-soft: #d6cfbe;
+    --modal-bg: #fffdf8;
+    --hover-bg: rgba(167, 111, 202, 0.10);
+    --surface-soft: #f0ede6;
+    --highlight-bg: rgba(167, 111, 202, 0.20);
+    --editor-bg: #faf7f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    padding: 24px;
+    transition: background 0.2s, color 0.2s;
+  }
+  .page { max-width: 1280px; margin: 0 auto; }
+  h1 { font-size: 19px; font-weight: 600; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+
+  /* 顶部工具条 */
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 16px;
+    padding: 10px 14px;
+    background: var(--modal-bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .toolbar-left { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--secondary); }
+  .theme-switch {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .theme-switch button {
+    padding: 5px 12px; border: none; background: transparent;
+    color: var(--secondary); font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .theme-switch button.active { background: var(--accent); color: #fff; }
+  .toolbar-hint { font-size: 11px; color: var(--muted); }
+  .toolbar-hint b { color: var(--accent); }
+
+  /* 场景步骤 chips（顶部引导，可点击聚焦对应步骤演示） */
+  .scene-steps {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
+  }
+  .step-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--modal-bg);
+    font-size: 11.5px; color: var(--secondary); cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .step-chip:hover { background: var(--hover-bg); color: var(--fg); }
+  .step-chip .num {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--surface-soft); color: var(--muted);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600;
+  }
+  .step-chip.active { border-color: var(--accent); color: var(--accent); background: var(--highlight-bg); }
+  .step-chip.active .num { background: var(--accent); color: #fff; }
+
+  /* ============ 弹窗容器（沿用 .mock-modal 骨架） ============ */
+  .mock-modal {
+    display: flex; flex-direction: column;
+    padding: 20px 18px 16px; gap: 12px;
+    flex: 1; min-height: 560px;
+    background: var(--modal-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  /* —— 头部 —— */
+  .mm-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding-right: 28px;
+  }
+  .mm-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .mm-subtitle { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .mm-subtitle b { color: var(--accent); }
+  .mm-gear {
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--secondary);
+    cursor: pointer; font-size: 13px; flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mm-gear:hover { background: var(--hover-bg); color: var(--fg); }
+
+  /* —— 顶部 Editor —— 沿用 improved 版 collapsed/expanded 双态 */
+  .mm-editor {
+    width: 100%;
+    background: var(--editor-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 13.5px; line-height: 1.65; color: var(--fg);
+    outline: none; resize: vertical;
+    transition: border-color 0.15s, min-height 0.25s ease, box-shadow 0.15s;
+  }
+  .mm-editor.collapsed {
+    min-height: 44px; max-height: 44px; padding: 11px 12px;
+    resize: none; white-space: nowrap; overflow: hidden;
+  }
+  .mm-editor.expanded { min-height: 92px; max-height: 220px; padding: 12px 14px; }
+  .mm-editor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--highlight-bg); }
+  .mm-editor::placeholder { color: var(--muted); font-family: var(--font-sans); font-size: 13px; }
+
+  /* —— 操作行 —— */
+  .mm-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .mm-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; height: 30px; min-width: 30px; padding: 0 11px;
+    border-radius: 7px; font-size: 12.5px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--hover-bg); color: var(--fg);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    font-family: inherit;
+  }
+  .mm-btn:hover { background: var(--border-soft); border-color: var(--border); }
+  .mm-btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mm-btn.accent:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .mm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .mm-btn.icon-only { padding: 0; width: 30px; }
+  .mm-btn i { font-size: 12px; }
+  .mm-status {
+    font-size: 11.5px; margin-left: auto; padding-left: 8px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .mm-status.ok { color: var(--accent); }
+  .mm-status.err { color: var(--error); }
+  .mm-status.info { color: var(--muted); }
+
+  /* ============ master-detail 主体（md-body 核心） ============ */
+  .md-body {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 1.18fr);
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  /* —— 左：列表 —— */
+  .md-list-pane {
+    display: flex; flex-direction: column; min-width: 0;
+    border-right: 1px solid var(--border-soft);
+    background: var(--modal-bg);
+  }
+  /* 搜索区 */
+  .mm-search-area {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--hover-bg);
+  }
+  .mm-search-input-wrap { position: relative; }
+  .mm-search-input {
+    width: 100%;
+    background: var(--modal-bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 32px 8px 32px;
+    color: var(--fg); font-size: 13px; outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .mm-search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--highlight-bg); }
+  .mm-search-icon {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 12px;
+  }
+  /* 清除按钮（搜索框右侧） */
+  .mm-search-clear {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 22px;
+    border: none; background: transparent; color: var(--muted);
+    border-radius: 50%; cursor: pointer; font-size: 11px;
+    display: none; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mm-search-clear:hover { background: var(--hover-bg); color: var(--fg); }
+  .mm-search-clear.show { display: inline-flex; }
+
+  /* 列表 */
+  .mm-list { flex: 1; overflow-y: auto; min-height: 100px; }
+  .mm-list::-webkit-scrollbar { width: 8px; }
+  .mm-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .mm-list-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px 10px 14px;
+    cursor: pointer; transition: background 0.12s;
+    border-bottom: 1px solid var(--border-soft);
+    position: relative;
+  }
+  .mm-list-item:last-child { border-bottom: none; }
+  .mm-list-item:hover { background: var(--hover-bg); }
+  /* 钉住的当前详情行：左侧 accent 竖条 + 浅底 */
+  .mm-list-item.is-pinned {
+    background: var(--highlight-bg);
+  }
+  .mm-list-item.is-pinned::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--accent);
+  }
+  .mm-list-item.pinned-meta::after {
+    /* 置顶标记（数据层 pinned=true），右侧细角标 */
+    content: "\f08d"; /* fa-thumbtack */
+    font-family: "Font Awesome 6 Free"; font-weight: 900;
+    position: absolute; right: 10px; top: 8px;
+    font-size: 9px; color: var(--accent); opacity: 0.55;
+  }
+  .mm-item-content { flex: 1; min-width: 0; }
+  .mm-item-title {
+    font-size: 13px; font-weight: 600; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 2px;
+  }
+  .mm-item-preview {
+    font-size: 12px; color: var(--secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: var(--font-mono); line-height: 1.45;
+  }
+  .mm-item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .mm-item-tag {
+    display: inline-flex; align-items: center; height: 19px;
+    padding: 0 7px; border-radius: 999px;
+    border: 1px solid var(--border-soft); background: var(--hover-bg);
+    font-size: 11px; color: var(--secondary);
+  }
+  /* —— 行尾动作槽：钉住态下显示 Edit；非钉住态 hover 时显示插入右箭头 —— */
+  .mm-item-actions {
+    display: flex; align-items: center; align-self: center;
+    gap: 3px; flex-shrink: 0;
+    opacity: 0; transition: opacity 0.15s ease;
+  }
+  .mm-list-item:hover .mm-item-actions,
+  .mm-list-item.is-pinned .mm-item-actions { opacity: 1; }
+  .mm-action-btn {
+    width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 7px; border: none; background: transparent;
+    color: var(--secondary); font-size: 13px; cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .mm-action-btn:hover { background: var(--border-soft); color: var(--fg); }
+  /* —— 插入右箭头按钮：本次新交互的核心标识 —— */
+  .mm-action-btn.insert {
+    color: var(--accent);
+    position: relative;
+  }
+  .mm-action-btn.insert::after {
+    /* 提示气泡 */
+    content: "插入到右侧详情";
+    position: absolute; top: calc(100% + 6px); right: 0;
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.15s; z-index: 5;
+    font-family: var(--font-sans);
+  }
+  .mm-action-btn.insert:hover::after { opacity: 1; }
+  .mm-action-btn.insert:active { transform: scale(0.92); }
+
+  /* 空态 */
+  .mm-list-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px; min-height: 140px;
+    color: var(--secondary); font-size: 13px; padding: 20px; text-align: center;
+  }
+  .mm-list-empty i { font-size: 26px; opacity: 0.4; }
+  .mm-list-empty .small { font-size: 11.5px; color: var(--muted); }
+
+  /* ============ 右：详情面板 ============ */
+  .md-detail-pane {
+    display: flex; flex-direction: column; min-width: 0;
+    background: var(--bg); overflow: hidden;
+  }
+  /* 钉住提示条：醒目地告诉用户"详情只在点击列表项时切换，搜索不会动它" */
+  .md-detail-pinbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: var(--highlight-bg);
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 11.5px; color: var(--accent);
+    flex-shrink: 0;
+  }
+  .md-detail-pinbar i { font-size: 11px; }
+  .md-detail-pinbar .pinbar-text { flex: 1; }
+  .md-detail-pinbar .pinbar-ghost {
+    /* 列表筛选后详情脱离可见列表时的提示文本，默认隐藏 */
+    display: none; color: var(--warning); font-weight: 500;
+  }
+  .md-detail-pinbar.is-ghost .pinbar-ghost { display: inline; }
+  .md-detail-pinbar.is-ghost .pinbar-text { display: none; }
+
+  .md-detail {
+    flex: 1; overflow: hidden;
+    padding: 14px 16px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .md-detail-head { display: flex; align-items: center; gap: 10px; }
+  .md-detail-title-input {
+    flex: 1; height: 36px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--modal-bg); color: var(--fg);
+    padding: 0 12px; font-size: 14px; font-family: inherit;
+    outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .md-detail-title-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--highlight-bg); }
+  .pin-btn {
+    flex-shrink: 0; width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 7px; border: 1px solid var(--border);
+    background: var(--modal-bg); color: var(--secondary);
+    cursor: pointer; font-size: 13px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .pin-btn:hover { color: var(--fg); }
+  .pin-btn.on { border-color: var(--accent); background: var(--highlight-bg); color: var(--accent); }
+  /* 正文 textarea：吃满剩余高度，自身滚 */
+  .md-detail-body {
+    flex: 1;
+    background: var(--editor-bg);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px;
+    font-family: var(--font-mono); font-size: 13.5px; line-height: 1.7;
+    color: var(--fg); white-space: pre-wrap; word-break: break-word;
+    resize: none; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    min-height: 160px;
+  }
+  .md-detail-body:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--highlight-bg); }
+  .md-detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .md-detail-tags .mm-item-tag { height: 22px; padding: 0 9px; font-size: 11.5px; }
+  .md-detail-footer { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .md-detail-actions {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .md-detail-actions .mm-btn { height: 32px; padding: 0 12px; font-size: 12.5px; }
+  .md-detail-actions .mm-btn i { font-size: 12px; }
+  .md-detail-stat { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .save-indicator {
+    font-size: 11px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .save-indicator.show { opacity: 1; }
+  .save-indicator.ok { color: var(--accent); }
+
+  /* ============ 设计说明面板 ============ */
+  .note-panel {
+    background: var(--modal-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 20px; margin-top: 18px;
+    font-size: 12.5px; color: var(--secondary); line-height: 1.85;
+  }
+  .note-panel h3 { font-size: 13px; font-weight: 600; color: var(--fg); margin-bottom: 10px; }
+  .note-panel b { color: var(--accent); }
+  .note-panel ul { padding-left: 18px; margin: 6px 0; }
+  .note-panel li { margin-bottom: 3px; }
+  .note-panel .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .note-panel .row { grid-template-columns: 1fr; } }
+  code {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--editor-bg); padding: 1px 5px; border-radius: 3px;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <div class="page" id="app-root">
+    <h1>CommonText — 钉住详情 + 搜索插入箭头</h1>
+    <div class="sub">演示新交互：详情区被 <code>detailId</code> 钉住，搜索/筛选只过滤左侧列表，不动右侧正在编辑的详情；只在点击其他列表项时才切换详情；搜索时鼠标悬浮列表项显示右箭头按钮，点击把该项文本<b>插入</b>到右侧详情当前光标处。</div>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <span>主题：</span>
+        <div class="theme-switch" id="themeSwitch">
+          <button data-theme-val="dark" class="active">Dark</button>
+          <button data-theme-val="light">Light</button>
+        </div>
+      </div>
+      <div class="toolbar-hint">提示：试着<b>搜索一个常用短语</b>，再把鼠标悬浮到列表某一项上 → 点右箭头插入到右侧详情。</div>
+    </div>
+
+    <div class="scene-steps" id="sceneSteps">
+      <div class="step-chip" data-step="1"><span class="num">1</span>在 Editor 编辑文本，点 <b>＋ 添加</b> 新建一条</div>
+      <div class="step-chip" data-step="2"><span class="num">2</span>详情自动切到新建项并钉住，可继续就地编辑</div>
+      <div class="step-chip" data-step="3"><span class="num">3</span>左侧搜索常用短语，列表被筛掉但<b>详情不动</b></div>
+      <div class="step-chip" data-step="4"><span class="num">4</span>悬浮列表行 → 右箭头 → 点击插入到详情光标</div>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="mock-modal">
+      <!-- 头部 -->
+      <div class="mm-header">
+        <div>
+          <div class="mm-title">Common Text</div>
+          <div class="mm-subtitle">Compose text. Click <b>＋</b> to add a new item; the right pane <b>stays pinned</b> while you search — search only filters the list.</div>
+        </div>
+        <button class="mm-gear" title="Manage common text"><i class="fa fa-solid fa-gear"></i></button>
+      </div>
+
+      <!-- 顶部 Editor -->
+      <textarea class="mm-editor expanded" id="topEditor"
+        placeholder="Compose here. Click + to save this text as a new item; then keep editing it on the right."></textarea>
+
+      <!-- 操作行 -->
+      <div class="mm-actions">
+        <button class="mm-btn accent" id="addBtn"><i class="fa fa-solid fa-plus"></i> Add to list</button>
+        <button class="mm-btn" id="clearBtn"><i class="fa fa-solid fa-eraser"></i> Clear</button>
+        <span class="mm-status info" id="topStatus">Ready</span>
+      </div>
+
+      <!-- master-detail 主体 -->
+      <div class="md-body">
+        <!-- 左：列表 -->
+        <div class="md-list-pane">
+          <div class="mm-search-area">
+            <div class="mm-search-input-wrap">
+              <i class="fa fa-solid fa-magnifying-glass mm-search-icon"></i>
+              <input class="mm-search-input" id="searchInput" placeholder="Search to filter & insert…" autocomplete="off" />
+              <button class="mm-search-clear" id="searchClear" title="Clear"><i class="fa fa-solid fa-xmark"></i></button>
+            </div>
+          </div>
+          <div class="mm-list" id="listEl"></div>
+        </div>
+
+        <!-- 右：详情 -->
+        <div class="md-detail-pane">
+          <div class="md-detail-pinbar" id="pinbar">
+            <i class="fa fa-solid fa-thumbtack"></i>
+            <span class="pinbar-text">详情已钉住为正在编辑的项 · 搜索不会切换它</span>
+            <span class="pinbar-ghost"><i class="fa fa-solid fa-triangle-exclamation"></i> 当前编辑项不在筛选结果中（已隐藏于列表）</span>
+          </div>
+          <div class="md-detail">
+            <div class="md-detail-head">
+              <input class="md-detail-title-input" id="detailTitle" placeholder="Title" />
+              <button class="pin-btn" id="detailPin" title="Toggle pin"><i class="fa fa-solid fa-thumbtack"></i></button>
+            </div>
+            <textarea class="md-detail-body" id="detailBody" placeholder="Select or add an item to edit here…"></textarea>
+            <div class="md-detail-tags" id="detailTags"></div>
+            <div class="md-detail-footer">
+              <div class="md-detail-actions">
+                <button class="mm-btn accent" id="insertDetailBtn"><i class="fa fa-solid fa-arrow-right-to-bracket"></i> Insert into editor</button>
+                <button class="mm-btn" id="copyDetailBtn"><i class="fa fa-solid fa-copy"></i> Copy</button>
+                <span class="md-detail-stat" id="detailStat">—</span>
+                <span class="save-indicator" id="saveIndicator"><i class="fa fa-solid fa-check"></i> Saved</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设计说明 -->
+    <div class="note-panel">
+      <h3>交互要点（与现状对比）</h3>
+      <div class="row">
+        <div>
+          <b>现状问题</b>
+          <ul>
+            <li>详情用 <code>detailId</code> 跟踪，但有一段 effect 在 <code>filteredItems</code> 变化时强制把 <code>detailId</code> 回退到列表第一项</li>
+            <li>用户新增一条 → 想搜常用短语插进去 → 搜索把列表筛掉 → 详情被自动切走</li>
+            <li>用户正在编辑的草稿被静默丢弃（该回退路径不调用 save）</li>
+          </ul>
+        </div>
+        <div>
+          <b>新方案（本原型）</b>
+          <ul>
+            <li><b>钉住</b>：详情只在用户主动点击列表项时切换；搜索/标签筛选不写 <code>detailId</code></li>
+            <li><b>不丢草稿</b>：item 被筛掉时，详情从全集取数据继续编辑，dirty 草稿保留</li>
+            <li><b>右箭头插入</b>：搜索时列表行 hover 显示 → 按钮，点击把文本<b>插入</b>到详情 caret（不切换详情）</li>
+            <li>列表行 = 编辑入口；→ 按钮 = 插入入口；两动作彻底解耦</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================
+       交互脚本：演示"钉住详情 + 搜索插入箭头"语义
+       ============================================================ */
+
+    // —— 主题切换 ——
+    const themeSwitch = document.getElementById("themeSwitch");
+    themeSwitch.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-theme-val]");
+      if (!btn) return;
+      const val = btn.getAttribute("data-theme-val");
+      document.documentElement.setAttribute("data-theme", val === "light" ? "light" : "");
+      themeSwitch.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+    });
+
+    // —— 模拟数据（与 tsx 里 CommonTextItem 形状一致：id/title/text/pinned/tags/lastusedat） ——
+    const ITEMS = [
+      { id: "i-pin",   title: "项目背景说明", text: "我们正在做一个跨端 AI 协作工作流的项目，目标是把 agent 的状态/产物更直观地呈现给用户。", pinned: true,  tags: ["#fix"],          lastusedat: 100 },
+      { id: "i-1",     title: "常用问候语",   text: "你好，关于你刚才提到的问题，我想先确认一下我有没有理解准确。",                          pinned: false, tags: ["#问候"],         lastusedat: 95  },
+      { id: "i-2",     title: "代码评审常用语", text: "这段逻辑建议用 early-return 重构，可以减少一层嵌套也让正常路径更显眼。",                pinned: false, tags: ["#评审", "#重构"], lastusedat: 88  },
+      { id: "i-3",     title: "bug 复现步骤模板", text: "1. 启动 dev\n2. 打开 Common Text 弹窗\n3. 编辑后点 + 新增\n4. 在搜索框搜任意短语",  pinned: false, tags: ["#bug", "#fix"],  lastusedat: 80  },
+      { id: "i-4",     title: "会议结束语",     text: "那我们今天就先聊到这里，会后我把结论同步到开发细节里，下次复盘再对齐。",                 pinned: false, tags: ["#会务"],         lastusedat: 70  },
+      { id: "i-5",     title: "需求澄清提问",   text: "这个交互是希望搜索时切换详情，还是希望搜索时只过滤列表？我理解是后者。",                 pinned: false, tags: ["#评审"],         lastusedat: 60  },
+      { id: "i-6",     title: "JSON 字段命名提示", text: "JSON 字段统一小写、不带下划线；和 wshrpctypes.go 同步后跑 task generate。",          pinned: false, tags: ["#规范"],         lastusedat: 50  },
+    ];
+
+    // —— 应用状态 ——
+    // pinnedId：被钉住的"当前详情"的 id。这是本方案的语义核心：
+    //   只有点击列表行（userClickItem）或"Add to list"会改它；搜索/筛选永远不动它。
+    let pinnedId = "i-pin";
+    let manualQuery = "";
+    let detailDirty = false;            // 详情区草稿是否脏
+    let editorCaret = null;             // 详情 textarea 内的 caret 位置，用于插入
+
+    const listEl = document.getElementById("listEl");
+    const searchInput = document.getElementById("searchInput");
+    const searchClear = document.getElementById("searchClear");
+    const pinbar = document.getElementById("pinbar");
+    const detailTitle = document.getElementById("detailTitle");
+    const detailBody = document.getElementById("detailBody");
+    const detailTagsEl = document.getElementById("detailTags");
+    const detailStat = document.getElementById("detailStat");
+    const topEditor = document.getElementById("topEditor");
+    const topStatus = document.getElementById("topStatus");
+    const saveIndicator = document.getElementById("saveIndicator");
+    const sceneSteps = document.getElementById("sceneSteps");
+
+    // —— 工具：token 过滤（与 searchCommonTextItems 的简单 AND 一致，演示用） ——
+    const tokenize = (q) => q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const itemMatches = (item, tokens) => {
+      if (tokens.length === 0) return true;
+      const hay = (item.title + " " + item.text + " " + item.tags.join(" ")).toLowerCase();
+      return tokens.every(t => hay.includes(t));
+    };
+    const getFiltered = () => {
+      const tokens = tokenize(manualQuery);
+      return ITEMS.filter(i => itemMatches(i, tokens));
+    };
+    const getPinned = () => ITEMS.find(i => i.id === pinnedId) ?? null;
+
+    // —— 渲染列表（不过滤当前 pinned 项：它即使被筛掉也不影响详情，仅不在列表里出现） ——
+    function renderList() {
+      const filtered = getFiltered();
+      listEl.innerHTML = "";
+      if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "mm-list-empty";
+        empty.innerHTML = `
+          <i class="fa fa-solid fa-magnifying-glass"></i>
+          <div>没有匹配"<b>${escapeHtml(manualQuery)}</b>"的条目</div>
+          <div class="small">右侧详情仍在编辑你之前选定的项，未受影响</div>`;
+        listEl.appendChild(empty);
+        return;
+      }
+      filtered.forEach(item => {
+        const row = document.createElement("div");
+        row.className = "mm-list-item";
+        if (item.id === pinnedId) row.classList.add("is-pinned");
+        if (item.pinned) row.classList.add("pinned-meta");
+
+        const content = document.createElement("div");
+        content.className = "mm-item-content";
+        content.innerHTML = `
+          <div class="mm-item-title">${escapeHtml(item.title)}</div>
+          <div class="mm-item-preview">${escapeHtml(item.text).slice(0, 80)}</div>
+          ${item.tags.length ? `<div class="mm-item-tags">${item.tags.map(t => `<span class="mm-item-tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}`;
+
+        const actions = document.createElement("div");
+        actions.className = "mm-item-actions";
+
+        if (item.id === pinnedId) {
+          // 当前钉住项：显示 Edit 角标（仅作指示，因为详情已经在编辑它了）
+          const editBtn = document.createElement("button");
+          editBtn.className = "mm-action-btn";
+          editBtn.title = "正在编辑此项";
+          editBtn.innerHTML = `<i class="fa fa-solid fa-pen-to-square"></i>`;
+          actions.appendChild(editBtn);
+        } else {
+          // 非钉住项：hover 显示插入右箭头
+          const insertBtn = document.createElement("button");
+          insertBtn.className = "mm-action-btn insert";
+          insertBtn.title = "Insert this item into the right pane";
+          insertBtn.innerHTML = `<i class="fa fa-solid fa-arrow-right"></i>`;
+          insertBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            doInsertIntoDetail(item);
+            flashStep(4);
+          });
+          actions.appendChild(insertBtn);
+        }
+        row.appendChild(content);
+        row.appendChild(actions);
+
+        // 点击行（非插入按钮） → 切换详情（钉住新项）
+        row.addEventListener("click", () => {
+          pinTo(item.id);
+          flashStep(2);
+        });
+        listEl.appendChild(row);
+      });
+    }
+
+    // —— 钉住某项为详情（只有这里允许改 pinnedId） ——
+    function pinTo(id) {
+      const item = ITEMS.find(i => i.id === id);
+      if (!item) return;
+      if (detailDirty && id !== pinnedId) flushDetailSave();
+      pinnedId = id;
+      detailDirty = false;
+      renderDetail();
+      renderList();
+    }
+
+    // —— 详情区插入一项文本到 detailBody 当前 caret 处 ——
+    function doInsertIntoDetail(item) {
+      const ta = detailBody;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? start;
+      const before = ta.value.slice(0, start);
+      const after = ta.value.slice(end);
+      const insertText = (before.length > 0 && !before.endsWith("\n") ? "\n" : "") + item.text + (after.length > 0 && !after.startsWith("\n") ? "\n" : "");
+      ta.value = before + insertText + after;
+      const caret = start + insertText.length;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+      detailDirty = true;
+      flashSaved("Inserted ✓");
+      // 把被插入项排到前面（演示 lastusedat desc）
+      item.lastusedat = Date.now() / 1000;
+    }
+
+    // —— 渲染详情区 ——
+    function renderDetail() {
+      const item = getPinned();
+      if (!item) {
+        detailTitle.value = "";
+        detailBody.value = "";
+        detailTagsEl.innerHTML = `<span class="mm-item-tag" style="opacity:.6">无选中项</span>`;
+        detailStat.textContent = "—";
+        pinbar.style.display = "none";
+        return;
+      }
+      pinbar.style.display = "";
+      detailTitle.value = item.title;
+      detailBody.value = item.text;
+      detailTagsEl.innerHTML = item.tags.length ? item.tags.map(t => `<span class="mm-item-tag">${escapeHtml(t)}</span>`).join("") : `<span class="mm-item-tag" style="opacity:.5">no tags</span>`;
+      const wordCount = item.text.trim().length;
+      detailStat.textContent = `${wordCount} chars · ${item.tags.length} tag${item.tags.length === 1 ? "" : "s"}`;
+      document.getElementById("detailPin").classList.toggle("on", !!item.pinned);
+
+      // ghost 态提示：pinned 项不在当前过滤结果里
+      const inFiltered = getFiltered().some(i => i.id === pinnedId);
+      pinbar.classList.toggle("is-ghost", !inFiltered);
+    }
+
+    // —— 编辑详情：把草稿写回数据 ——
+    function onDetailEdit() {
+      const item = getPinned();
+      if (!item) return;
+      const newTitle = detailTitle.value;
+      const newText = detailBody.value;
+      if (item.title !== newTitle || item.text !== newText) {
+        item.title = newTitle;
+        item.text = newText;
+        detailDirty = true;
+        scheduleAutoSave();
+      }
+      // 更新 stat
+      const wordCount = item.text.trim().length;
+      detailStat.textContent = `${wordCount} chars · ${item.tags.length} tag${item.tags.length === 1 ? "" : "s"}`;
+    }
+
+    // —— auto-save 模拟（与 tsx 的 flushDetailSave debounce 对齐） ——
+    let saveTimer = null;
+    function scheduleAutoSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => flushDetailSave(), 800);
+    }
+    function flushDetailSave() {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      if (!detailDirty) return;
+      detailDirty = false;
+      flashSaved("Saved ✓");
+      renderList(); // 标题/正文可能变了，重画下列表 preview
+    }
+    function flashSaved(msg) {
+      saveIndicator.textContent = "";
+      saveIndicator.innerHTML = `<i class="fa fa-solid fa-check"></i> ${escapeHtml(msg)}`;
+      saveIndicator.classList.add("show", "ok");
+      setTimeout(() => saveIndicator.classList.remove("show"), 1400);
+    }
+
+    // —— 顶部 Editor 的"Add to list"：新建一条并钉住它，清空搜索框 ——
+    document.getElementById("addBtn").addEventListener("click", () => {
+      const text = topEditor.value;
+      if (text.trim() === "") { topStatus.textContent = "Nothing to save"; topStatus.className = "mm-status err"; return; }
+      const tagRe = /#(\S+)/g; const tags = []; let m; while ((m = tagRe.exec(text)) !== null) tags.push("#" + m[1]);
+      const newItem = {
+        id: "i-" + Math.random().toString(36).slice(2, 8),
+        title: text.split("\n")[0].slice(0, 24) || "Untitled",
+        text, pinned: false, tags, lastusedat: Date.now() / 1000,
+      };
+      ITEMS.unshift(newItem);
+      // 关键：新增后清空搜索框，让新项立刻排进列表第一行；并钉住详情为它
+      manualQuery = "";
+      searchInput.value = "";
+      searchClear.classList.remove("show");
+      pinnedId = newItem.id;
+      detailDirty = false;
+      renderDetail();
+      renderList();
+      topStatus.textContent = "Added ✓ — 详情已钉住为新项";
+      topStatus.className = "mm-status ok";
+      flashStep(2);
+    });
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      if (topEditor.value.trim() === "") return;
+      topEditor.value = ""; topEditor.focus();
+      topStatus.textContent = "Editor cleared"; topStatus.className = "mm-status info";
+    });
+
+    // —— 顶部 Editor 输入也派生标签提示（演示） ——
+    // —— 搜索框：只过滤列表，不动 pinnedId ——
+    searchInput.addEventListener("input", (e) => {
+      manualQuery = e.target.value;
+      searchClear.classList.toggle("show", manualQuery.length > 0);
+      renderList();
+      // ghost 态也要重算
+      const inFiltered = getFiltered().some(i => i.id === pinnedId);
+      pinbar.classList.toggle("is-ghost", !inFiltered);
+      if (manualQuery.trim() !== "") flashStep(3);
+    });
+    searchClear.addEventListener("click", () => {
+      manualQuery = ""; searchInput.value = ""; searchClear.classList.remove("show");
+      renderList();
+      const inFiltered = getFiltered().some(i => i.id === pinnedId);
+      pinbar.classList.toggle("is-ghost", !inFiltered);
+      searchInput.focus();
+    });
+
+    // —— 详情区编辑事件 ——
+    detailTitle.addEventListener("input", onDetailEdit);
+    detailBody.addEventListener("input", onDetailEdit);
+    detailBody.addEventListener("blur", flushDetailSave);
+    detailTitle.addEventListener("blur", flushDetailSave);
+    detailBody.addEventListener("keyup", () => { editorCaret = detailBody.selectionStart; });
+    detailBody.addEventListener("click", () => { editorCaret = detailBody.selectionStart; });
+
+    // —— Pin toggle ——
+    document.getElementById("detailPin").addEventListener("click", () => {
+      const item = getPinned(); if (!item) return;
+      item.pinned = !item.pinned;
+      document.getElementById("detailPin").classList.toggle("on", !!item.pinned);
+      flashSaved(item.pinned ? "Pinned" : "Unpinned");
+      renderList();
+    });
+    // —— Insert into top editor (从详情的正文插回顶部 editor，演示完整 flow) ——
+    document.getElementById("insertDetailBtn").addEventListener("click", () => {
+      const item = getPinned(); if (!item) return;
+      const ta = topEditor;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? start;
+      ta.value = ta.value.slice(0, start) + item.text + ta.value.slice(end);
+      ta.focus();
+      const c = start + item.text.length; ta.setSelectionRange(c, c);
+      topStatus.textContent = "Inserted into editor"; topStatus.className = "mm-status ok";
+    });
+    document.getElementById("copyDetailBtn").addEventListener("click", () => {
+      const item = getPinned(); if (!item) return;
+      navigator.clipboard?.writeText(item.text);
+      flashSaved("Copied");
+    });
+
+    // —— 步骤 chip 高亮 ——
+    function flashStep(n) {
+      sceneSteps.querySelectorAll(".step-chip").forEach(c => c.classList.toggle("active", c.getAttribute("data-step") === String(n)));
+      clearTimeout(flashStep._t);
+      flashStep._t = setTimeout(() => sceneSteps.querySelectorAll(".step-chip").forEach(c => c.classList.remove("active")), 2200);
+    }
+    sceneSteps.addEventListener("click", (e) => {
+      const chip = e.target.closest(".step-chip"); if (!chip) return;
+      const n = chip.getAttribute("data-step");
+      if (n === "1") { topEditor.focus(); flashStep(1); }
+      if (n === "3") { searchInput.focus(); flashStep(3); }
+      if (n === "4") { renderList(); flashStep(4); }
+    });
+
+    // —— 工具：HTML 转义 ——
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({"&":"&","<":"<",">":">","\"":""","'":"&#39;"}[c]));
+    }
+
+    // —— 初始化 ——
+    // 默认聚焦搜索框，方便直接体验"列表筛选 + 详情钉住"
+    renderList();
+    renderDetail();
+    setTimeout(() => searchInput.focus(), 100);
+  </script>
+</body>
+</html>

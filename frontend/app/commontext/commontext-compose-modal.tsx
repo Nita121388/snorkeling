@@ -12,7 +12,7 @@ import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
-import { copyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
+import { copyCommonText, insertOrCopyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
     deleteCommonTextItem,
     getCommonTextItemsFromSettings,
@@ -33,6 +33,7 @@ type ComposeState = {
     open: boolean;
     editor: string;
     editorCaret: number;
+    editorFilterDismissed: boolean;
     manualQuery: string;
     selectedTags: string[];
     selectedIndex: number;
@@ -58,6 +59,7 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     open: true,
     editor: "",
     editorCaret: 0,
+    editorFilterDismissed: false,
     manualQuery,
     selectedTags: [],
     selectedIndex: 0,
@@ -168,7 +170,7 @@ const CommonTextComposeModal = memo(() => {
 
     const filteredItems = useMemo(() => {
         if (!state.open) return [];
-        return searchCommonTextComposeItems(allItems, state.editor, state.manualQuery, {
+        return searchCommonTextComposeItems(allItems, state.editorFilterDismissed ? "" : state.editor, state.manualQuery, {
             limit: LIST_LIMIT,
             selectedTags: state.selectedTags,
             caret: state.editorCaret,
@@ -178,11 +180,14 @@ const CommonTextComposeModal = memo(() => {
         allItems,
         state.editor,
         state.editorCaret,
+        state.editorFilterDismissed,
         state.insertedIds,
         state.manualQuery,
         state.open,
         state.selectedTags,
     ]);
+    const editorFilterActive =
+        !state.editorFilterDismissed && state.manualQuery.trim() === "" && state.editor.trim() !== "";
 
     // 详情区当前展示/编辑的 item。以 detailId 为准；若 detailId 为 null 或已不在
     // 当前筛选结果里（被 tag 过滤掉等），回退到 selectedIndex 指向的行 —— 这样
@@ -331,7 +336,8 @@ const CommonTextComposeModal = memo(() => {
 
     const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
 
-    const setEditor = (editor: string, editorCaret: number) => update({ editor, editorCaret, selectedIndex: 0 });
+    const setEditor = (editor: string, editorCaret: number) =>
+        update({ editor, editorCaret, editorFilterDismissed: false, selectedIndex: 0 });
 
     const setManualQuery = (manualQuery: string) => update({ manualQuery, selectedIndex: 0 });
 
@@ -356,7 +362,7 @@ const CommonTextComposeModal = memo(() => {
         const editor = editorRef.current;
         const prevCaret = editor?.selectionStart ?? state.editor.length;
         const newText = removeSessionTagFromNote(state.editor, tag);
-        update({ editor: newText, editorCaret: Math.min(prevCaret, newText.length) });
+        update({ editor: newText, editorCaret: Math.min(prevCaret, newText.length), editorFilterDismissed: false });
         if (newText === state.editor) return;
         if (editor != null) {
             requestAnimationFrame(() => {
@@ -405,6 +411,7 @@ const CommonTextComposeModal = memo(() => {
             update({
                 editor: newEditor,
                 editorCaret: newEditor.length,
+                editorFilterDismissed: false,
                 selectedIndex: 0,
                 insertedIds,
             });
@@ -424,6 +431,7 @@ const CommonTextComposeModal = memo(() => {
         update({
             editor: newEditor,
             editorCaret: start + item.text.length,
+            editorFilterDismissed: false,
             selectedIndex: 0,
             insertedIds,
         });
@@ -777,7 +785,7 @@ const CommonTextComposeModal = memo(() => {
                 <textarea
                     ref={editorRef}
                     className={
-                        "shrink-0 resize-y rounded border border-border bg-background text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
+                        "shrink-0 resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
                         (editorExpanded
                             ? "min-h-[120px] max-h-[280px]"
                             : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
@@ -880,7 +888,7 @@ const CommonTextComposeModal = memo(() => {
                     （对齐 .mockup/_to-keep/commontext-compose-modal-improved.html 的 .md-body）。 */}
                 <div className="min-h-0 flex-1 flex border border-border rounded overflow-hidden">
                     {/* 左：列表 —— 去掉自己的 border/rounded，靠外层容器收口；右侧 border-r 作为内分隔线 */}
-                    <div className="flex-1 min-w-0 flex flex-col border-r border-border bg-modalbg overflow-hidden">
+                    <div className="flex-1 min-w-0 flex flex-col border-r border-border bg-panel overflow-hidden">
                         <div
                             className="shrink-0 p-2 border-b border-border"
                             onCompositionStart={handleCompositionStart}
@@ -903,17 +911,30 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {tagSummaries.length > 0 && (
-                                <SessionTagChips
-                                    tags={tagSummaries.map((s) => s.tag)}
-                                    selectedTags={state.selectedTags}
-                                    countMap={(() => {
-                                        const m = new Map<string, number>();
-                                        for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
-                                        return m;
-                                    })()}
-                                    onClick={toggleTag}
-                                    className="mt-2"
-                                />
+                                <div className="mt-2 flex min-w-0 items-center gap-1.5">
+                                    {editorFilterActive && (
+                                        <button
+                                            type="button"
+                                            aria-label="Show all common text"
+                                            title="Cancel editor-based filtering"
+                                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-primary"
+                                            onClick={() => update({ editorFilterDismissed: true, selectedIndex: 0 })}
+                                        >
+                                            <i className="fa fa-solid fa-filter-circle-xmark text-[12px]" />
+                                        </button>
+                                    )}
+                                    <SessionTagChips
+                                        tags={tagSummaries.map((s) => s.tag)}
+                                        selectedTags={state.selectedTags}
+                                        countMap={(() => {
+                                            const m = new Map<string, number>();
+                                            for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
+                                            return m;
+                                        })()}
+                                        onClick={toggleTag}
+                                        className="min-w-0"
+                                    />
+                                </div>
                             )}
                         </div>
                         <div
@@ -941,8 +962,10 @@ const CommonTextComposeModal = memo(() => {
                                         key={item.id}
                                         data-common-text-index={index}
                                     className={
-                                        "group flex items-start gap-1.5 px-3 py-1.5 cursor-pointer transition-colors " +
-                                        (state.selectedIndex === index ? "bg-highlightbg" : "hover:bg-hoverbg")
+                                        "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                                        (state.selectedIndex === index
+                                            ? "border-actionsoftborder bg-actionsoft"
+                                            : "border-transparent hover:bg-hoverbg")
                                     }
                                     // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
                                     // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
@@ -966,14 +989,33 @@ const CommonTextComposeModal = memo(() => {
                                                 </div>
                                             )}
                                         </div>
+                                        <span
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label="Insert this common text into the focused target"
+                                            title="Insert into focused target"
+                                            className="item-insert-btn inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                fireAndForget(async () => {
+                                                    const result = await insertOrCopyCommonText(item.text);
+                                                    setStatus(
+                                                        result === "inserted" ? "Inserted" : "Copied (no target)",
+                                                        result === "inserted" ? "ok" : "info"
+                                                    );
+                                                });
+                                            }}
+                                        >
+                                            <i className="fa fa-regular fa-paste text-[12px]" />
+                                        </span>
                                     </div>
                                 ))
                             )}
                         </div>
                     </div>
 
-                    {/* 右：详情 —— 同样去掉自己的 border/rounded，背景用 bg-background 让左右色差与原型一致 */}
-                    <div className="flex-1 min-w-0 flex flex-col bg-background overflow-hidden">
+                    {/* 右：详情 —— 与左侧共用 panel surface，靠中间分隔线组织层级 */}
+                    <div className="flex-1 min-w-0 flex flex-col bg-panel overflow-hidden">
                         {detailItem == null ? (
                             <div className="flex flex-1 flex-col items-center justify-center gap-2.5 text-muted text-[13px] px-5 py-10 text-center">
                                 <i className="fa fa-regular fa-square text-[28px] opacity-40" />
@@ -984,8 +1026,7 @@ const CommonTextComposeModal = memo(() => {
                             </div>
                         ) : (
                             <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5">
-                                {/* 详情区外层 padding+gap，子段间不再用 border-b 分隔；
-                                    唯一保留的 border 是 All tags 面板自身的卡片边框。 */}
+                                {/* 详情区外层 padding+gap；All tags 只用分隔线组织，不形成嵌套卡片。 */}
                                 {/* 详情 head：title input 卡片化 + 右侧 38×38 Pin toggle 按钮（平铺一行） */}
                                 <div className="shrink-0 flex items-center gap-2">
                                     <input
@@ -1021,14 +1062,14 @@ const CommonTextComposeModal = memo(() => {
                                             setState((cur) => ({ ...cur, detailText: e.target.value, detailDirty: true }))
                                         }
                                         placeholder="Text to insert — type #tag inline to tag this item"
-                                        className="w-full h-full min-h-[200px] resize-none rounded-lg border border-border bg-editorbg text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
+                                        className="w-full h-full min-h-[200px] resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />
                                 </div>
 
                                 {/* All tags 面板：恒渲染（只要详情有选中项）。chip 选中态来自 detailTags——
                                     即从 Text 正文抽出的 #tag 集合，点 chip 在 Text 里加/抹对应字面（草稿态，Save 落盘）。 */}
-                                <div className="shrink-0 rounded-lg border border-border bg-modalbg/60 px-3.5 py-3 flex flex-col gap-2">
+                                <div className="shrink-0 border-t border-border pt-2.5 flex flex-col gap-2">
                                     <div className="flex items-center justify-between">
                                         <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-secondary">
                                             All tags
@@ -1085,11 +1126,7 @@ const CommonTextComposeModal = memo(() => {
                                         <i className="fa fa-regular fa-copy mr-1" />
                                         Copy
                                     </Button>
-                                    <Button
-                                        className="grey"
-                                        onClick={() => handleInsertDetail(detailItem)}
-                                        title="Insert into editor at caret"
-                                    >
+                                    <Button onClick={() => handleInsertDetail(detailItem)} title="Insert into editor at caret">
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
                                         Insert
                                     </Button>

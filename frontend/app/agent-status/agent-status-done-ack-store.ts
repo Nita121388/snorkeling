@@ -3,6 +3,7 @@
 
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
+import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { atom, type PrimitiveAtom } from "jotai";
 
 // Per-block "Done 已阅" 时间戳. 与 SessionOverviewModel.agentStatusAckedAtAtom 平行但独立:
@@ -65,6 +66,19 @@ class AgentStatusDoneAckStore {
         const next = { ...current, [blockId]: ackedAt };
         globalStore.set(this.doneAckedAtAtom, next);
         writeAgentDoneAckedAt(next);
+        // F4 D-ack-write: the user clicked the agent header badge and this block's
+        // doneAckedAt is now ackedAt. Value of ackedAt recorded in durationms so
+        // the cross-event timing is recoverable without a separate field; the
+        // "D → 0 unread" arc is the comparison target. sessionId not available
+        // here (ack store has only the map), so traceId is block-scoped.
+        pslogEvent({
+            event: "agent.status",
+            stage: "ack-write",
+            blockid: blockId,
+            traceid: makeAgentTraceId(blockId, ""),
+            reason: "D",
+            durationms: ackedAt,
+        });
     }
 
     clearDoneAcked(blockId: string): void {
@@ -75,6 +89,18 @@ class AgentStatusDoneAckStore {
         delete next[blockId];
         globalStore.set(this.doneAckedAtAtom, next);
         writeAgentDoneAckedAt(next);
+        // F4 D-ack-clear: either via observeAgentStatusTransition (state bounced
+        // back to non-idle) so next idle re-lights D, or direct. Reason="D"
+        // keeps it in the same family as the ack-write; Outcome="cleared" tells
+        // a grep this is a removal not an addition.
+        pslogEvent({
+            event: "agent.status",
+            stage: "ack-clear",
+            blockid: blockId,
+            traceid: makeAgentTraceId(blockId, ""),
+            reason: "D",
+            outcome: "cleared",
+        });
     }
 
     getDoneAckedAt(blockId: string): number {

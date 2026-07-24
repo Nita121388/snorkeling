@@ -6,7 +6,7 @@ import { atoms } from "@/app/store/global";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useMemo, useState } from "react";
-import { copyCommonText } from "./commontext-insert";
+import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
 import {
     type CommonTextItem,
     deleteCommonTextItem,
@@ -162,7 +162,7 @@ const CommonTextManagerContent = memo(() => {
                                         key={item.id}
                                         type="button"
                                         className={cn(
-                                            "flex w-full items-start gap-2 px-3 py-2 text-left transition-colors",
+                                            "group flex w-full items-start gap-2 px-3 py-2 text-left transition-colors",
                                             selectedId === item.id ? "bg-highlightbg" : "hover:bg-hoverbg"
                                         )}
                                         onClick={() => {
@@ -180,13 +180,34 @@ const CommonTextManagerContent = memo(() => {
                                             <div className="truncate font-medium">{item.title}</div>
                                             {(item.tags?.length ?? 0) > 0 && (
                                                 <div className="mt-1">
-                                                    <CommonTextTagList tags={item.tags} maxVisible={3} compact />
+                                                    <CommonTextTagList tags={item.tags} maxVisible={3} />
                                                 </div>
                                             )}
                                             <div className="truncate text-xs text-secondary">
                                                 {item.text.replace(/\s+/g, " ")}
                                             </div>
                                         </div>
+                                        {/* hover 时显示的插入按钮：插入到当前外部焦点输入框/终端，
+                                             不切换右侧详情（stopPropagation + span，避免嵌套 button） */}
+                                        <span
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label="Insert this common text into focused input or terminal"
+                                            className="item-insert-btn flex shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                fireAndForget(async () => {
+                                                    const result = await insertOrCopyCommonText(item.text);
+                                                    setMessage(
+                                                        result === "inserted"
+                                                            ? "Inserted"
+                                                            : "Copied (no target)"
+                                                    );
+                                                });
+                                            }}
+                                        >
+                                            <i className="fa fa-solid fa-arrow-right-to-bracket text-[12px]" />
+                                        </span>
                                     </button>
                                 ))}
                             </div>

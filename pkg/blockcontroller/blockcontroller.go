@@ -24,6 +24,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"github.com/wavetermdev/waveterm/pkg/wslconn"
@@ -157,6 +158,19 @@ func releaseAgentStatus(blockId string) {
 	}
 	if !changed {
 		return
+	}
+	if status != nil {
+		// agent.status/publish from the blockclose path (not the wsh-RPC nor the
+		// blockservice path) — Reason="blockclose" lets symptom-A gaps be split
+		// across emit origins when one of them stays silent.
+		pslog.AppendEvent(pslog.Event{
+			Name:    "agent.status",
+			Stage:   "publish",
+			TraceId: pslog.MakeAgentTraceId(blockId, status.SessionId),
+			BlockId: blockId,
+			Reason:  "blockclose",
+			Outcome: "ok",
+		})
 	}
 	wps.Broker.Publish(wps.WaveEvent{
 		Event:  wps.Event_AgentStatus,

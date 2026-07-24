@@ -778,14 +778,19 @@
     padding: 0;
 
     &.is-working {
-        --agent-status-color: var(--success-color);
-        --agent-status-bg: rgb(from var(--success-color) r g b / 0.1);
+        // working/running 不上 tab 圆点, 为了减少噪音, 有必要的才提示用户
+        // (只在 Sessions Overview chip / term header / A 头部 pill 等 surface 提示).
+        // 颜色不取主色 (accent/action 偏绿) 而取独立的中性蓝 --agent-working-color,
+        // 与 done (绿) 视觉分离, 避免深色主题下与 accent 绿撞色.
+        --agent-status-color: var(--agent-working-color);
+        --agent-status-bg: rgb(from var(--agent-working-color) r g b / 0.1);
     }
 
     &.is-done {
-        // "done" 与 "working" 都属正常运转，用 success 微暗变体作区分。
-        --agent-status-color: rgb(from var(--success-color) r g b / 0.78);
-        --agent-status-bg: rgb(from var(--success-color) r g b / 0.1);
+        // "done" 用 --agent-done-color (绿, 默认与 success 对齐), 不复用 success-color 直接引用,
+        // 让 done token 后续可独立调而不动 success 语义.
+        --agent-status-color: rgb(from var(--agent-done-color) r g b / 0.78);
+        --agent-status-bg: rgb(from var(--agent-done-color) r g b / 0.1);
     }
 
     &.is-blocked {

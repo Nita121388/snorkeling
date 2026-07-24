@@ -93,6 +93,90 @@ const PreviewSearchLineMetaKey = "preview:searchline";
 const liveScrollSourceLineAtoms = new Map<string, PrimitiveAtom<number | null>>();
 const liveScrollSourceStateAtoms = new Map<string, PrimitiveAtom<LiveScrollSourceState>>();
 
+// Survives BlockInner remount (inline-tab switch / top-level tab switch) so Monaco
+// fold/scroll/cursor/selection are restored instead of reset. Keyed by blockId, same
+// lifetime approach as liveScrollSource*Atoms above.
+const editorViewStateCache = new Map<string, MonacoTypes.editor.ICodeEditorViewState>();
+
+export function getEditorViewState(blockId: string): MonacoTypes.editor.ICodeEditorViewState | undefined {
+    return editorViewStateCache.get(blockId);
+}
+
+export function setEditorViewState(blockId: string, vs: MonacoTypes.editor.ICodeEditorViewState | undefined): void {
+    if (vs == null) {
+        editorViewStateCache.delete(blockId);
+    } else {
+        editorViewStateCache.set(blockId, vs);
+    }
+}
+
+export function clearEditorViewState(blockId: string): void {
+    editorViewStateCache.delete(blockId);
+}
+
+// Markdown-preview heading/ordered-list collapse state. Same lifecycle approach as
+// editorViewStateCache — survives BlockInner remount on inline-tab / top-level tab switch.
+// The cached Set holds heading *element ids* (rehype-slug output with a stable idPrefix),
+// so it only round-trips correctly if the Markdown instance regenerates ids deterministically
+// (caller-supplied idPrefix derived from blockId+path).
+const markdownCollapsedHeadingsCache = new Map<string, Set<string>>();
+const markdownCollapsedOLItemsCache = new Map<string, Set<string>>();
+
+export function getMarkdownCollapsedHeadings(blockId: string): Set<string> | undefined {
+    return markdownCollapsedHeadingsCache.get(blockId);
+}
+
+export function setMarkdownCollapsedHeadings(blockId: string, value: Set<string> | undefined): void {
+    if (value == null) {
+        markdownCollapsedHeadingsCache.delete(blockId);
+    } else {
+        markdownCollapsedHeadingsCache.set(blockId, value);
+    }
+}
+
+export function getMarkdownCollapsedOLItems(blockId: string): Set<string> | undefined {
+    return markdownCollapsedOLItemsCache.get(blockId);
+}
+
+export function setMarkdownCollapsedOLItems(blockId: string, value: Set<string> | undefined): void {
+    if (value == null) {
+        markdownCollapsedOLItemsCache.delete(blockId);
+    } else {
+        markdownCollapsedOLItemsCache.set(blockId, value);
+    }
+}
+
+// Markdown-preview viewport scrollTop (px). Survives BlockInner remount on inline-tab / top-level
+// tab switch so the user's scroll position is restored when they come back. Disabled when a
+// searchTargetLine (block.meta "preview:searchline") jump is pending — that takes precedence.
+const markdownScrollPositionCache = new Map<string, number>();
+
+export function getMarkdownScrollPosition(blockId: string): number | undefined {
+    return markdownScrollPositionCache.get(blockId);
+}
+
+export function setMarkdownScrollPosition(blockId: string, value: number | undefined): void {
+    if (value == null || !Number.isFinite(value)) {
+        markdownScrollPositionCache.delete(blockId);
+    } else {
+        markdownScrollPositionCache.set(blockId, value);
+    }
+}
+
+// Build a stable DOM-id prefix for rehype-slug. blockId is unique per block for the session;
+// path disambiguates when the same md is opened in two blocks so their ids never collide.
+// Falls back to a random prefix when no caller-supplied key is available (vdom/markdown.preview).
+const mdIdPrefixCache = new Map<string, string>();
+
+export function getMarkdownIdPrefix(stableKey: string): string {
+    let prefix = mdIdPrefixCache.get(stableKey);
+    if (prefix == null) {
+        prefix = `m${stableKey.length.toString(36)}-${stableKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}-`;
+        mdIdPrefixCache.set(stableKey, prefix);
+    }
+    return prefix;
+}
+
 export type LiveScrollSourceState = {
     sequence: number;
     origin: "editor" | "preview" | "none";
@@ -554,6 +638,13 @@ export class PreviewModel implements ViewModel {
             }
             const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
             const tooltipText = headerPath == "~" ? "~ (C:/Users/chemclin)" : headerPath;
+            // Shared across code-edit AND preview inline-edit dirty signals so the preview branch
+            // can render a Save button with the same accent color the editor branch does — without
+            // this, a para dblclick→blur commit shows up as "nothing changed in the header".
+            let saveClassName = "grey";
+            if (get(this.newFileContent) !== null) {
+                saveClassName = "green";
+            }
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
@@ -591,10 +682,6 @@ export class PreviewModel implements ViewModel {
                     className: "compact-open-target-menubutton",
                     items: this.makeOpenTargetMenuItems(currentDirection),
                 });
-            }
-            let saveClassName = "grey";
-            if (get(this.newFileContent) !== null) {
-                saveClassName = "green";
             }
             if (isCeView) {
                 const fileInfo = globalStore.get(this.loadableFileInfo);
@@ -660,6 +747,18 @@ export class PreviewModel implements ViewModel {
                     title: "Edit",
                     className: "grey",
                     click: () => fireAndForget(() => this.setEditMode(true)),
+                });
+                // Preview-only inline edit (dblclick a paragraph) commits the draft atom on blur
+                // but never lands on disk without this — surface the same green Save affordance the
+                // code-edit branch shows, so the user sees that their dblclick edit is staged-and-unsaved
+                // and can flush it via one click. Revert / undo stays on the context-menu (line 2080),
+                // same as the editor view.
+                viewTextChildren.push({
+                    elemtype: "iconbutton",
+                    icon: "floppy-disk",
+                    title: "Save",
+                    iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
+                    click: () => fireAndForget(this.handleFileSave.bind(this)),
                 });
             }
             return [

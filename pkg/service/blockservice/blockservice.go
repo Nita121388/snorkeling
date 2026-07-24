@@ -12,6 +12,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -46,7 +47,27 @@ func (*BlockService) GetAgentStatus_Meta() tsgenmeta.MethodMeta {
 }
 
 func (bs *BlockService) GetAgentStatus(ctx context.Context, blockId string) (*agentstatus.AgentStatus, error) {
-	return agentstatus.Get(blockId), nil
+	status := agentstatus.Get(blockId)
+	if blockId != "" {
+		// agent.status/get-serve: the only GetAgentStatus RPC service entry,
+		// hit on every block load by FE (term-model + agent-status-store initial
+		// pull). Reason carries the resulting canonical state (or "" when nil)
+		// so the gap "initial pull has no PrevState vs event-emit does" is visible.
+		state := ""
+		sessionId := ""
+		if status != nil {
+			state = status.State
+			sessionId = status.SessionId
+		}
+		pslog.AppendEvent(pslog.Event{
+			Name:    "agent.status",
+			Stage:   "get-serve",
+			TraceId: pslog.MakeAgentTraceId(blockId, sessionId),
+			BlockId: blockId,
+			Reason:  state,
+		})
+	}
+	return status, nil
 }
 
 func (*BlockService) CheckAgentStatusHooks_Meta() tsgenmeta.MethodMeta {
@@ -91,7 +112,7 @@ func (bs *BlockService) ReportAgentStatus(ctx context.Context, report agentstatu
 		return nil, err
 	}
 	if changed {
-		publishAgentStatus(report.BlockId, status)
+		publishAgentStatus(report.BlockId, status, "fe-report")
 	}
 	return status, nil
 }
@@ -110,17 +131,27 @@ func (bs *BlockService) ReleaseAgentStatus(ctx context.Context, blockId string, 
 		return nil, err
 	}
 	if changed {
-		publishAgentStatus(blockId, status)
+		publishAgentStatus(blockId, status, "fe-release")
 	}
 	return status, nil
 }
 
-func publishAgentStatus(blockId string, status *agentstatus.AgentStatus) {
+func publishAgentStatus(blockId string, status *agentstatus.AgentStatus, source string) {
 	if blockId == "" && status != nil {
 		blockId = status.BlockId
 	}
 	if blockId == "" {
 		return
+	}
+	if status != nil {
+		pslog.AppendEvent(pslog.Event{
+			Name:    "agent.status",
+			Stage:   "publish",
+			TraceId: pslog.MakeAgentTraceId(blockId, status.SessionId),
+			BlockId: blockId,
+			Reason:  source,
+			Outcome: "ok",
+		})
 	}
 	wps.Broker.Publish(wps.WaveEvent{
 		Event:  wps.Event_AgentStatus,

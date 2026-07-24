@@ -7,9 +7,11 @@ import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
- * Block kinds the inline editor knows how to open. M1 ships "p" and "h" only — both are
- * single source lines. li-summary / table / code / wave / mermaid arrive in later milestones
- * and will extend this union; refactor users of `beginEdit` accordingly.
+ * Block kinds the inline editor knows how to open. M1 ships "p" and "h" — both may now span
+ * multiple source lines (a soft-broken paragraph renders as one <p> across N source lines, and
+ * the editor slices the whole [startLine..endLine] range for those). li-summary / table / code /
+ * wave / mermaid arrive in later milestones and will extend this union; refactor users of
+ * `beginEdit` accordingly.
  */
 export type InlineEditBlockKind = "p" | "h";
 
@@ -17,7 +19,14 @@ export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
     /** 1-based, inclusive, original text coordinate (NOT transformedText). */
     startLine: number;
-    /** 1-based, inclusive. Equal to startLine for single-line blocks (p, h). */
+    /**
+     * 1-based, inclusive. Equal to startLine for single-line blocks (h without trailing
+     * soft-break). Paragraphs (and soft-broken headings) render one visual block across multiple
+     * source lines once remarkSoftBreaks merges them — this endLine brackets that range so the
+     * initial draft and the commit-replaced slice both cover the whole visual block, not just
+     * its first line. Without it a paragraph like
+     *   "line A\nline B" (one <p>, two source lines) would lose "line B" on edit open.
+     */
     endLine: number;
     /** Original segment text captured when entering edit — used for cancel/Revert + initial draft. */
     initialContent: string;
@@ -59,7 +68,15 @@ export function replaceSourceRange(
     const before = lines.slice(0, safeStart - 1);
     const after = lines.slice(safeEnd); // endLine is inclusive → slice from endLine (index endLine-1+1)
     const replacement = newSegment.length > 0 ? newSegment.split(/\r\n|\n/) : [];
-    return [...before, ...replacement, ...after].join("\n");
+    // Preserve the source file's dominant EOL. split swallowed every \r\n / \n, so re-join with
+    // whichever style wins a simple count — without this, saving an Obsidian note that is entirely
+    // CRLF would silently flatten every line to LF and flood the diff for a one-paragraph edit.
+    // Mixed-EOL files resolve to the majority style; same heuristic most editors pick, and plenty
+    // for the "edit one paragraph" path this function serves.
+    const crlfCount = (text.match(/\r\n/g) || []).length;
+    const lfCount = (text.match(/\n/g) || []).length;
+    const eol = crlfCount > lfCount / 2 ? "\r\n" : "\n";
+    return [...before, ...replacement, ...after].join(eol);
 }
 
 type UseInlineEditArgs = {
@@ -67,6 +84,14 @@ type UseInlineEditArgs = {
     fullText: string;
     /** Called with the new full text on every successful commit; never on cancel. */
     onCommit: (newFullText: string) => void;
+    /**
+     * Optional: flush the committed draft to disk. Wired only by callers that own a model with a
+     * handleFileSave (preview-mode pair). When present, ⌘/Ctrl+S inside the textarea commits the
+     * draft then immediately runs this — replacing the old "let ⌘S bubble to Wave's save handler"
+     * comment, which described a path that no longer exists in preview mode (no global keydown
+     * is registered there).
+     */
+    onSave?: () => void;
     /** Lazily returns the OverlayScrollbars viewport element; called on every measure. */
     getViewportEl: () => HTMLElement | null;
     /**
@@ -76,7 +101,7 @@ type UseInlineEditArgs = {
     resetKey?: unknown;
 };
 
-export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: UseInlineEditArgs) {
+export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, resetKey }: UseInlineEditArgs) {
     const [editSession, setEditSession] = useState<InlineEditSession | null>(null);
     const [draftText, setDraftText] = useState<string>("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -188,17 +213,26 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
 
     const beginEdit = useCallback(
         (blockKind: InlineEditBlockKind, line: number, targetEl: HTMLElement) => {
-            // Single-line blocks (M1: p, h). Multi-line slice will land with M2's table/li/code.
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullText.split(/\r\n|\n/);
             if (safeLine > lines.length) {
                 return;
             }
-            const initialContent = lines[safeLine - 1];
+            // Multi-line visual blocks (soft-broken paragraphs/headings) carry an explicit
+            // data-source-line-end so we slice the whole range. Headings without a soft break and
+            // legacy renders without the end attr fall back to single-line — keeps the M1
+            // single-line behavior intact for anything that hasn't been re-rendered.
+            const endAttr = targetEl.dataset.sourceLineEnd;
+            const endLineRaw = endAttr != null ? Number(endAttr) : safeLine;
+            const endLine =
+                Number.isFinite(endLineRaw) && endLineRaw >= safeLine
+                    ? Math.min(Math.trunc(endLineRaw), lines.length)
+                    : safeLine;
+            const initialContent = lines.slice(safeLine - 1, endLine).join("\n");
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
-                endLine: safeLine,
+                endLine,
                 initialContent,
                 targetEl,
             };
@@ -209,21 +243,28 @@ export function useInlineEdit({ fullText, onCommit, getViewportEl, resetKey }: U
     );
 
     const commit = useCallback(() => {
-        setEditSession((current) => {
-            if (current == null) {
-                return null;
-            }
-            if (draftText === current.initialContent) {
-                // No-op commit: nothing to write. Don't touch the shared draft atom — keeps
-                // the dirty flag honest.
-                return null;
-            }
-            const newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
-            onCommit(newFull);
-            return null;
-        });
+        // Read editSession from closure (callback identity updates with session since it's in the
+        // dep array). The previous implementation called onCommit *inside* the setEditSession
+        // updater — that schedules an external jotai store write (globalStore.set(model.newFileContent))
+        // from within a React state updater, which React does not let through cleanly: the
+        // downstream async fileContentAtom subscribing to record.stateAtom misses the invalidate
+        // and ReactMarkdown keeps rendering the pre-edit text until something else (a Save, a tab
+        // blur) bumps the fileKey atom. Pulling the commit side effect out of the updater — and
+        // closing over the current session — fixes the live-preview-after-blur refresh path.
+        const current = editSession;
+        if (current == null) {
+            return;
+        }
+        setEditSession(null);
         setDraftText("");
-    }, [draftText, fullText, onCommit]);
+        if (draftText === current.initialContent) {
+            // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
+            // flag honest.
+            return;
+        }
+        const newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
+        onCommit(newFull);
+    }, [editSession, draftText, fullText, onCommit]);
 
     const cancel = useCallback(() => {
         setEditSession(null);
@@ -301,16 +342,16 @@ export function InlineEditOverlay({
  * Shared keydown handler for the textarea. Returns nothing; the caller threads commit/cancel.
  *
  * - Esc → cancel (drop draft)
- * - Cmd/Ctrl+S → commit (do NOT preventDefault browser save — Wave runs a Cmd+S handler at
- *   the global level that triggers handleFileSave on this block; we only commit draft-to-atom
- *   here, then re-dispatch a real Cmd+S so the global handler fires after our commit)
- *   ⚠️ We do not call preventDefault on Cmd+S — letting it bubble lets Wave's save pipeline
- *      consume the same keystroke. Order is safe because React onKeyDown fires before
- *      window keydown listeners (capture-stage global handler can also re-derive).
+ * - Cmd/Ctrl+S → commit, then if an `onSave` was wired, call it (the preview-side caller feeds
+ *   `model.handleFileSave` here). ⌘S must be `preventDefault`'d in preview mode because no
+ *   global ⌘S handler runs there to consume the keystroke — leaving the default would let the
+ *   browser try (and fail) to "Save Page". The old comment "let it bubble to Wave's save
+ *   handler" describes a path that no longer exists in preview mode, so we drive the flush
+ *   ourselves and stop the event.
  * - Cmd/Ctrl+Enter → commit
  * - plain blur (handled in onBlur, not here)
  */
-export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => void }) {
+export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => void; save?: () => void }) {
     return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Escape") {
             e.preventDefault();
@@ -319,9 +360,12 @@ export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => 
         }
         const isCmd = e.metaKey || e.ctrlKey;
         if (isCmd && (e.key === "s" || e.key === "S")) {
-            // commit synchronously so the live ReactMarkdown re-renders with the new text
-            // before Wave's save handler reads the draft atom.
+            // Commit synchronously so the draft atom carries the just-typed text before save runs.
+            // If the parent wired `save`, flush it directly — preview-mode has no global ⌘S
+            // listener, so bubbling would do nothing and the draft would sit unsaved.
+            e.preventDefault();
             opts.commit();
+            opts.save?.();
             return;
         }
         if (isCmd && e.key === "Enter") {

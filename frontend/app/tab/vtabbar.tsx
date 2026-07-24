@@ -8,7 +8,11 @@ import {
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { getTabBadgeAtom } from "@/app/store/badge";
-import { getTabAgentStatusDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
+import {
+    getTabAgentStatusDotsAtom,
+    getTabsWithUnreadDotsAtom,
+    useAcquireWorkspaceBlockStatuses,
+} from "@/app/agent-status/agent-status-tab-aggregate";
 import { confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
@@ -211,6 +215,12 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
+    // 让本工作区所有 tab (含 inline-tab 子 block) 在 AgentStatusStore 都持有订阅,
+    // 非激活 tab 的 agent 状态点才能在 VTab 栏渲染.
+    useAcquireWorkspaceBlockStatuses(tabIds);
+    // 有未阅状态点的 tab 集合: 这些 tab 必须强制 keep (不被 isHidden 折叠), 否则 VTabWrapper 不挂载,
+    // 用户不切过去就永远看不到状态 (本次修复的核心).
+    const tabsWithUnreadDots = useAtomValue(getTabsWithUnreadDotsAtom(tabIds));
 
     const [orderedTabIds, setOrderedTabIds] = useState<string[]>(tabIds);
     const [dragTabId, setDragTabId] = useState<string | null>(null);
@@ -432,7 +442,9 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
                     const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
-                    const isHidden = !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null;
+                    const hasUnreadDots = tabsWithUnreadDots.has(tabId);
+                    const isHidden =
+                        !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null && !hasUnreadDots;
                     if (isHidden) {
                         return null;
                     }

@@ -47,6 +47,13 @@
     --error-color: rgb(229, 77, 46);
     --warning-color: rgb(224, 185, 86);
     --success-color: rgb(78, 154, 6);
+    // agent status 专用语义色, 与 --accent / --success 解耦:
+    //   --agent-working-color (蓝): working/running 专用, 不复用主色 (主色偏绿, 会和 done 绿撞).
+    //                             工作中态用独立蓝通道, 完成/工作中两类信号天然分离.
+    //   --agent-done-color (绿): done/D 完成态专用, 默认与 success 对齐以稳定现有视觉,
+    //                          但单独成 token 以便后续独立调, 不再硬编码 #22c55e.
+    --agent-working-color: #3b82f6;
+    --agent-done-color: rgb(78, 154, 6);
     --hover-bg-color: rgba(255, 255, 255, 0.1);
     --hover-bg-color-strong: rgba(255, 255, 255, 0.2);
     --block-bg-color: rgba(0, 0, 0, 0.5);
@@ -222,6 +229,9 @@
     --error-color: #d32f2f;
     --warning-color: #e65100;
     --success-color: #2e7d32;
+    // agent status 专用语义色 (与 accent/success 解耦): working 蓝, done 绿.
+    --agent-working-color: #2563eb;
+    --agent-done-color: #2e7d32;
     --hover-bg-color: rgba(167, 111, 202, 0.1);
     --hover-bg-color-strong: rgba(60, 50, 40, 0.07);
     --block-bg-color: rgba(255, 253, 248, 0.72);
@@ -367,6 +377,9 @@
     --error-color: #8a6a6a;
     --warning-color: #8a7a4a;
     --success-color: #7a8a6a;
+    // monochrome 主题: agent working 用弱饱和蓝灰, done 用弱饱和绿灰, 与黑白调子调和.
+    --agent-working-color: #5a6a8a;
+    --agent-done-color: #7a8a6a;
     --hover-bg-color: rgba(0, 0, 0, 0.05);
     --hover-bg-color-strong: rgba(0, 0, 0, 0.1);
     --block-bg-color: rgba(255, 255, 255, 0.72);
@@ -495,6 +508,9 @@
     --error-color: #d32f2f;
     --warning-color: #e65100;
     --success-color: #2e7d32;
+    // agent status 专用语义色 (与 accent/success 解耦): working 蓝, done 绿.
+    --agent-working-color: #2563eb;
+    --agent-done-color: #2e7d32;
     --hover-bg-color: rgba(176, 101, 53, 0.1);
     --hover-bg-color-strong: rgba(176, 101, 53, 0.18);
     --block-bg-color: rgba(255, 253, 248, 0.72);
