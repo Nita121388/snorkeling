@@ -370,10 +370,15 @@ const InlineTabLabel = memo(
                                 data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
                                 title={statusDot.title}
                                 onClick={
-                                    statusDot.unread
+                                    statusDot.unread || statusDot.doneUnread
                                         ? (e) => {
                                               e.stopPropagation();
-                                              overviewModel.markAgentStatusAcked(blockId);
+                                              if (statusDot.unread) {
+                                                  overviewModel.markAgentStatusAcked(blockId);
+                                              }
+                                              if (statusDot.doneUnread) {
+                                                  agentStatusDoneAckStore.markDoneAcked(blockId);
+                                              }
                                           }
                                         : undefined
                                 }

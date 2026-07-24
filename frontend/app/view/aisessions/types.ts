@@ -13,6 +13,19 @@ export type DateRangeFilter = {
     to?: number;
 };
 
+// Path filter: root is the disk/home-prefix cluster short name (e.g. "E:\\", "~/"),
+// "" means All, "other" is the catch-all bucket for empty / unrecognized projectPath.
+// subPath is the further-narrowed prefix under root (without the root part).
+// Matching is delegated to backend `project` field (case-insensitive substring on projectPath).
+export type PathFilter = {
+    root: string;
+    subPath: string;
+};
+
+export const DefaultPathFilter: PathFilter = { root: "", subPath: "" };
+
+export const PathFilterOtherRoot = "other";
+
 export const DefaultDateRange: DateRangeFilter = { preset: "7d" };
 
 export function dateRangeToSinceBefore(range: DateRangeFilter, now: number): { since: number; before: number } {

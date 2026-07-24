@@ -309,6 +309,26 @@
     --button-red-outlined-color: #b71c1c;
     --button-yellow-bg: #f59e0b;
     --button-yellow-hover-bg: #fcd472;
+
+    // Light theme: bump the global font-size token scale one tier up so the
+    // lighter background reads with comparable visual weight to the dark theme.
+    // Tailwind v4 utilities pull these --text-* custom properties at runtime,
+    // so overriding them under [data-theme="light"] cascades to every view.
+    --text-xxs: 0.6875rem; // 10 → 11px
+    --text-xs: 0.8125rem; // 12 → 13px
+    --text-sm: 0.9375rem; // 14 → 15px
+    --text-default: 0.9375rem; // 14 → 15px (project custom token)
+    --text-base: 1.0625rem; // 16 → 17px
+    --text-lg: 1.1875rem; // 18 → 19px
+    --text-title: 1.1875rem; // 18 → 19px (project custom token)
+
+    // Default weight goes from 400 to 500; explicit utility weights take
+    // precedence so font-medium/semibold/bold keep their original look.
+    font-weight: 500;
+}
+
+[data-theme="light"] .font-normal {
+    font-weight: 500;
 }
 
 // White-dominant black-and-white theme. Black is auxiliary/contrast only.

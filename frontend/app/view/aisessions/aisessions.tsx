@@ -26,9 +26,21 @@ import {
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
-import { DefaultDateRange, dateRangeToSinceBefore } from "./types";
+import {
+    DefaultDateRange,
+    DefaultPathFilter,
+    PathFilterOtherRoot,
+    dateRangeToSinceBefore,
+} from "./types";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
-import type { SourceFilter, MarkedFilter, DateRangeFilter } from "./types";
+import type { SourceFilter, MarkedFilter, DateRangeFilter, PathFilter } from "./types";
+import {
+    computeBreadcrumb,
+    extractPathRoots,
+    otherRootMatcher,
+    pathFilterEqual,
+    pathFilterToPrefix,
+} from "./utils";
 import "../../session-overview/session-overview.scss";
 import {
     emptySessionsText,
@@ -81,6 +93,7 @@ export class AiSessionsViewModel implements ViewModel {
     tagFiltersAtom = jotai.atom<string[]>([]);
     markedFilterAtom = jotai.atom<MarkedFilter>("all");
     dateRangeAtom = jotai.atom(DefaultDateRange) as jotai.PrimitiveAtom<DateRangeFilter>;
+    pathFilterAtom = jotai.atom<PathFilter>(DefaultPathFilter) as jotai.PrimitiveAtom<PathFilter>;
     filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
@@ -166,6 +179,8 @@ export class AiSessionsViewModel implements ViewModel {
         const tagFilters = globalStore.get(this.tagFiltersAtom);
         const marked = globalStore.get(this.markedFilterAtom);
         const dateRange = globalStore.get(this.dateRangeAtom);
+        const pathFilter = globalStore.get(this.pathFilterAtom);
+        const projectPrefix = pathFilterToPrefix(pathFilter);
         const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, "");
@@ -180,11 +195,17 @@ export class AiSessionsViewModel implements ViewModel {
                 since,
                 before,
                 tagFilters,
+                project: projectPrefix,
             });
-            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
+            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
                 return;
             }
-            const sessions = response?.sessions ?? [];
+            let sessions = response?.sessions ?? [];
+            // Other bucket can't be expressed server-side (project="" matches all),
+            // so filter locally after the response arrives.
+            if (pathFilter.root === PathFilterOtherRoot) {
+                sessions = otherRootMatcher(sessions) as SessionSummary[];
+            }
             globalStore.set(this.sessionsAtom, sessions);
             globalStore.set(this.lastSessionsRefreshAtAtom, Date.now());
             void this.loadTags(refresh);
@@ -209,11 +230,11 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
             }
         } finally {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
                 globalStore.set(this.loadingAtom, false);
             }
         }
@@ -225,7 +246,8 @@ export class AiSessionsViewModel implements ViewModel {
         query: string,
         tagFilters: string[],
         marked: MarkedFilter,
-        dateRange: DateRangeFilter
+        dateRange: DateRangeFilter,
+        pathFilter: PathFilter
     ): boolean {
         const currentDateRange = globalStore.get(this.dateRangeAtom);
         return (
@@ -234,6 +256,7 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.get(this.queryAtom) === query &&
             tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters) &&
             globalStore.get(this.markedFilterAtom) === marked &&
+            pathFilterEqual(globalStore.get(this.pathFilterAtom), pathFilter) &&
             currentDateRange.preset === dateRange.preset &&
             (currentDateRange.from ?? 0) === (dateRange.from ?? 0) &&
             (currentDateRange.to ?? 0) === (dateRange.to ?? 0)
@@ -262,6 +285,7 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.markedFilterAtom, "all");
         globalStore.set(this.dateRangeAtom, DefaultDateRange);
         globalStore.set(this.tagFiltersAtom, []);
+        globalStore.set(this.pathFilterAtom, DefaultPathFilter);
     }
 
     getBoundSessionId(): string {
@@ -733,6 +757,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const availableTags = jotai.useAtomValue(model.availableTagsAtom);
     const [markedFilter, setMarkedFilter] = jotai.useAtom(model.markedFilterAtom);
     const [dateRange, setDateRange] = jotai.useAtom(model.dateRangeAtom);
+    const [pathFilter, setPathFilter] = jotai.useAtom(model.pathFilterAtom);
     const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
@@ -759,11 +784,17 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const tagFilterActive = normalizedTagFilters.length > 0;
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
-    const remoteFilterActive = queryActive || source !== "" || tagFilterActive || markedActive || dateActive;
+    const pathActive = pathFilter.root !== "";
+    const remoteFilterActive = queryActive || source !== "" || tagFilterActive || markedActive || dateActive || pathActive;
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
-        (markedActive ? 1 : 0) + (dateActive ? 1 : 0) + normalizedTagFilters.length;
+        (markedActive ? 1 : 0) + (dateActive ? 1 : 0) + normalizedTagFilters.length + (pathActive ? 1 : 0);
+    const availablePathRoots = useMemo(() => extractPathRoots(sessions), [sessions]);
+    const breadcrumbSegments = useMemo(
+        () => computeBreadcrumb(pathFilter, sessions),
+        [pathFilter, sessions]
+    );
     const autoRefreshIntervalMs = normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
     const autoRefreshEnabled = model.getConnection() === "";
 
@@ -829,7 +860,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source, tagFilters, markedFilter, dateRange, sortDescending]);
+    }, [model, query, source, tagFilters, markedFilter, dateRange, pathFilter, sortDescending]);
 
     useEffect(() => {
         writeSortPreference(sortDescending);
@@ -1103,6 +1134,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     tagFilters={normalizedTagFilters}
                                     toggleTagFilter={toggleTagFilter}
                                     onClearAll={() => model.clearAllFilters()}
+                                    pathFilter={pathFilter}
+                                    setPathFilter={setPathFilter}
+                                    availablePathRoots={availablePathRoots}
+                                    breadcrumbSegments={breadcrumbSegments}
                                 />
                             ) : null}
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">

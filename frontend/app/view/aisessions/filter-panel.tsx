@@ -3,7 +3,9 @@
 
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
-import type { DatePreset, DateRangeFilter, MarkedFilter } from "./types";
+import type { BreadcrumbSegment, PathRootOption } from "./utils";
+import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter } from "./types";
+import { DefaultPathFilter, PathFilterOtherRoot } from "./types";
 
 function msToDateInput(ms: number | undefined): string {
     if (!ms) return "";
@@ -119,6 +121,10 @@ export function FilterPanel({
     tagFilters,
     toggleTagFilter,
     onClearAll,
+    pathFilter,
+    setPathFilter,
+    availablePathRoots,
+    breadcrumbSegments,
 }: {
     markedFilter: MarkedFilter;
     setMarkedFilter: (value: MarkedFilter) => void;
@@ -128,11 +134,16 @@ export function FilterPanel({
     tagFilters: string[];
     toggleTagFilter: (tag: string) => void;
     onClearAll: () => void;
+    pathFilter: PathFilter;
+    setPathFilter: (value: PathFilter) => void;
+    availablePathRoots: PathRootOption[];
+    breadcrumbSegments: BreadcrumbSegment[];
 }) {
     const selectedTags = new Set(tagFilters);
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
-    const hasActive = markedActive || dateActive || selectedTags.size > 0;
+    const pathActive = pathFilter.root !== "";
+    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0;
     return (
         <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-panel shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
@@ -205,10 +216,83 @@ export function FilterPanel({
                         />
                     </div>
                 ) : null}
+                {availablePathRoots.length > 0 ? (
+                    <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
+                        <i className="fa-sharp fa-solid fa-folder-tree w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                        <SegTrack className="min-w-0 flex-1">
+                            <SegButton
+                                active={pathFilter.root === ""}
+                                title="All paths"
+                                onClick={() => setPathFilter(DefaultPathFilter)}
+                            >
+                                <span className="text-xs">All</span>
+                            </SegButton>
+                            {availablePathRoots.map((opt) => {
+                                if (opt.isMore) {
+                                    return null;
+                                }
+                                const active = pathFilter.root === opt.root;
+                                return (
+                                    <SegButton
+                                        key={opt.root}
+                                        active={active}
+                                        title={
+                                            opt.isOther
+                                                ? `Other (empty / unrecognized projectPath) — ${opt.count}`
+                                                : `${opt.label} (${opt.count})`
+                                        }
+                                        onClick={() => setPathFilter({ root: opt.root, subPath: "" })}
+                                    >
+                                        <span
+                                            className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                            style={{ backgroundColor: opt.color }}
+                                        />
+                                        <span className="truncate text-xs">{opt.label}</span>
+                                        <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
+                                            {opt.count}
+                                        </span>
+                                    </SegButton>
+                                );
+                            })}
+                        </SegTrack>
+                    </div>
+                ) : null}
+                {pathFilter.root !== "" && pathFilter.root !== PathFilterOtherRoot && breadcrumbSegments.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1 border-t border-border/40 py-1.5 pl-[24px]">
+                        {breadcrumbSegments.map((seg, index) => (
+                            <span key={seg.fullPrefix} className="inline-flex items-center gap-1">
+                                {index > 0 ? (
+                                    <i className="fa-sharp fa-solid fa-angle-right text-[9px] text-secondary/60" />
+                                ) : null}
+                                <button
+                                    type="button"
+                                    title={seg.fullPrefix}
+                                    onClick={() =>
+                                        setPathFilter({
+                                            root: pathFilter.root,
+                                            subPath: seg.fullPrefix.slice(pathFilter.root.length),
+                                        })
+                                    }
+                                    className={cn(
+                                        "inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] cursor-pointer",
+                                        seg.isLeaf
+                                            ? "bg-accent/10 text-accent"
+                                            : "text-secondary hover:bg-hover hover:text-primary"
+                                    )}
+                                >
+                                    <span className="truncate">{seg.label}</span>
+                                    <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
+                                        {seg.count}
+                                    </span>
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
                 {availableTags.length > 0 ? (
                     <div className="flex items-start gap-2.5 border-t border-border/40 py-1.5">
                         <i className="fa-sharp fa-solid fa-tag mt-1.5 w-3.5 shrink-0 text-center text-[11px] text-secondary" />
-                        <div className="flex min-w-0 flex-wrap gap-1">
+                        <div className="flex min-w-0 max-h-40 flex-wrap gap-1 overflow-y-auto pr-1">
                             {availableTags.map((tagSummary) => {
                                 const active = selectedTags.has(tagSummary.tag);
                                 return (
@@ -249,6 +333,17 @@ export function FilterPanel({
                     ) : null}
                     {dateActive ? (
                         <ActiveChip label={dateLabel(dateRange)} onRemove={() => setDateRange({ preset: "all" })} />
+                    ) : null}
+                    {pathActive ? (
+                        <ActiveChip
+                            icon="fa-solid fa-folder-tree"
+                            label={
+                                pathFilter.root === PathFilterOtherRoot
+                                    ? "Other"
+                                    : pathFilter.subPath || pathFilter.root
+                            }
+                            onRemove={() => setPathFilter(DefaultPathFilter)}
+                        />
                     ) : null}
                     {tagFilters.map((tag) => (
                         <ActiveChip

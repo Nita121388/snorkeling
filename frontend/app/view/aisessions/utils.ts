@@ -3,11 +3,12 @@
 
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { isWindows } from "@/util/platformutil";
-import type { MarkedFilter } from "./types";
+import type { MarkedFilter, PathFilter } from "./types";
 import {
     collapsedMessagePreviewLength,
     collapsibleMessageCharCount,
     collapsibleMessageLineCount,
+    PathFilterOtherRoot,
     sortPreferenceStorageKey,
 } from "./types";
 
@@ -303,4 +304,196 @@ export function getErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     if (typeof error === "string") return error;
     return String(error);
+}
+
+// ── Path filter helpers ──
+// Roots are clustered by disk drive / home prefix. Windows drive letter is
+// case-insensitive but we keep canonical uppercase form for display, lowercase
+// for match.
+
+const PathMaxRealRoots = 6;
+
+const RootColorPalette = ["#74a7cb", "#cc685c", "#e0b956", "#8bbf72", "#b58fcc", "#c97fa3"];
+
+export type PathRootOption = {
+    root: string;
+    label: string;
+    count: number;
+    color: string;
+    isOther?: boolean;
+    isMore?: boolean;
+};
+
+export type BreadcrumbSegment = {
+    label: string;
+    fullPrefix: string;
+    count: number;
+    isLeaf: boolean;
+};
+
+function hashStringToIndex(s: string, mod: number): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+        h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    }
+    return mod > 0 ? h % mod : 0;
+}
+
+// Extracts the canonical root prefix of a projectPath: Windows "X:\", *nix "/"
+// absolute, or "~/" home prefix. Returns "" if the path is empty or has no
+// recognized root.
+function extractRootOfPath(projectPath: string): string {
+    const trimmed = (projectPath ?? "").trim();
+    if (trimmed === "") return "";
+    // Windows drive: X:\...  (case-insensitive)
+    const driveMatch = /^([a-zA-Z]):[\\/]/.exec(trimmed);
+    if (driveMatch) {
+        return driveMatch[1].toUpperCase() + ":\\";
+    }
+    // *nix home
+    if (trimmed.startsWith("~") && (trimmed.length === 1 || trimmed[1] === "/" || trimmed[1] === "\\")) {
+        return "~/";
+    }
+    // *nix root
+    if (trimmed.startsWith("/")) {
+        return "/";
+    }
+    return "";
+}
+
+export function normalizePathForMatch(p: string): string {
+    return (p ?? "").replace(/[\\/]+$/g, "").toLowerCase();
+}
+
+export function pathFilterToPrefix(filter: PathFilter): string {
+    if (!filter) return "";
+    if (filter.root === "" || filter.root === PathFilterOtherRoot) return "";
+    const sub = filter.subPath ?? "";
+    return filter.root + sub;
+}
+
+export function pathFilterEqual(a: PathFilter, b: PathFilter): boolean {
+    if (!a || !b) return a === b;
+    return a.root === b.root && a.subPath === b.subPath;
+}
+
+export function extractPathRoots(sessions: { projectPath?: string }[]): PathRootOption[] {
+    const counts = new Map<string, number>();
+    let otherCount = 0;
+    for (const session of sessions) {
+        const root = extractRootOfPath(session.projectPath ?? "");
+        if (root === "") {
+            otherCount++;
+        } else {
+            counts.set(root, (counts.get(root) ?? 0) + 1);
+        }
+    }
+    const realRoots = Array.from(counts.entries())
+        .map(([root, count]) => ({
+            root,
+            count,
+            label: root,
+            color: RootColorPalette[hashStringToIndex(root.toLowerCase(), RootColorPalette.length)],
+        }))
+        .sort((a, b) => b.count - a.count);
+    const capped = realRoots.slice(0, PathMaxRealRoots);
+    const overflow = realRoots.length - capped.length;
+    // Overflow counts collapse into the Other bucket so its count stays accurate.
+    for (const dropped of realRoots.slice(PathMaxRealRoots)) {
+        otherCount += dropped.count;
+    }
+    const result: PathRootOption[] = capped.map((entry) => ({
+        root: entry.root,
+        label: entry.label,
+        count: entry.count,
+        color: entry.color,
+    }));
+    if (otherCount > 0) {
+        result.push({
+            root: PathFilterOtherRoot,
+            label: "Other",
+            count: otherCount,
+            color: RootColorPalette[hashStringToIndex("other", RootColorPalette.length)],
+            isOther: true,
+        });
+    }
+    if (overflow > 0) {
+        result.push({
+            root: "__more__",
+            label: "…",
+            count: 0,
+            color: "#888888",
+            isMore: true,
+        });
+    }
+    return result;
+}
+
+// Split on either separator, drop empty leading/trailing segments (handles
+// trailing slash and double separators). Keeps interior segments intact.
+function splitPathSegments(path: string): string[] {
+    return (path ?? "")
+        .split(/[\\/]/)
+        .map((seg) => seg)
+        .filter((seg) => seg.length > 0);
+}
+
+// Lowercased full string for prefix comparison — keeps the trailing separator
+// (e.g. "E:\", "/", "~/") so it prefixes correctly instead of matching all.
+function toMatchLower(p: string): string {
+    return (p ?? "").toLowerCase();
+}
+
+// Compute breadcrumb segments under a selected root by finding the longest
+// common path-prefix of every session whose projectPath starts with root.
+// Each returned segment is one ancestor level below root, with count = number
+// of sessions whose normalized projectPath starts with that prefix.
+export function computeBreadcrumb(filter: PathFilter, sessions: { projectPath?: string }[]): BreadcrumbSegment[] {
+    if (!filter || filter.root === "" || filter.root === PathFilterOtherRoot) return [];
+    const rootMatch = toMatchLower(filter.root);
+    if (rootMatch === "") return [];
+    const underRoot = sessions.filter((s) => toMatchLower(s.projectPath ?? "").startsWith(rootMatch));
+    if (underRoot.length === 0) return [];
+    // segment tails (the part of projectPath after the root), split into segments
+    const tailSegmentsList = underRoot.map((s) => {
+        const p = s.projectPath ?? "";
+        const tail = p.slice(filter.root.length);
+        return splitPathSegments(tail);
+    });
+    // longest common prefix of segment arrays
+    let commonLen = tailSegmentsList[0].length;
+    for (let i = 1; i < tailSegmentsList.length; i++) {
+        commonLen = Math.min(commonLen, tailSegmentsList[i].length);
+        let j = 0;
+        for (; j < commonLen; j++) {
+            if (tailSegmentsList[i][j].toLowerCase() !== tailSegmentsList[0][j].toLowerCase()) {
+                commonLen = j;
+                break;
+            }
+        }
+        if (commonLen === 0) break;
+    }
+    // Build prefixes by appending segments to the root string directly so the
+    // root's trailing separator (E:\ / ~/ / /) is preserved verbatim.
+    const sep = filter.root.endsWith("\\") ? "\\" : "/";
+    const segments: BreadcrumbSegment[] = [];
+    let acc = filter.root;
+    for (let level = 0; level < commonLen; level++) {
+        acc = acc + (acc.endsWith(sep) || acc === "" ? "" : sep) + tailSegmentsList[0][level];
+        const prefixLower = normalizePathForMatch(acc);
+        const count = underRoot.filter((s) => normalizePathForMatch(s.projectPath ?? "").startsWith(prefixLower)).length;
+        segments.push({
+            label: tailSegmentsList[0][level],
+            fullPrefix: acc,
+            count,
+            isLeaf: level === commonLen - 1,
+        });
+    }
+    return segments;
+}
+
+// Local filter for the "Other" root: keep sessions whose projectPath is empty or
+// does not start with any recognized root prefix.
+export function otherRootMatcher(sessions: { projectPath?: string }[]): { projectPath?: string }[] {
+    return sessions.filter((session) => extractRootOfPath(session.projectPath ?? "") === "");
 }

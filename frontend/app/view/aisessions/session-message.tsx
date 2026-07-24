@@ -72,7 +72,9 @@ export function MessageCard({
         normalizedSearchQuery !== "" && collapsedShownText.toLowerCase().includes(normalizedSearchQuery);
     // 展开后用全文，不再受 trimMessageText 的 2400 字截断；只在折叠时截断
     const useFullText = !effectiveCollapsed || (searchActive && searchMatched && !collapsedSearchShown);
-    const shownText = useFullText ? message.text : collapsedShownText;
+    // whitespace-pre-wrap 会原样保留首尾换行；纯文本消息原文常带前导/尾部空行，
+    // 这里只去掉首尾空白，保留中间换行避免把消息内容压扁。
+    const shownText = (useFullText ? message.text : collapsedShownText).replace(/^\s+|\s+$/g, "");
     const searchShown = normalizedSearchQuery !== "" && shownText.toLowerCase().includes(normalizedSearchQuery);
     const shouldClampText = effectiveCollapsed && !(searchActive && searchMatched && !collapsedSearchShown);
     return (

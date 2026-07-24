@@ -209,9 +209,15 @@
                         // kill shimmer/border animations, switch to a dashed neutral border so the
                         // outline/position remains but stops demanding attention. Re-lights when the
                         // agent's `status.updatedAt` flips newer than the ackedAt timestamp.
+                        // 必须显式 override is-idle/is-blocked/is-done/is-working 设置的
+                        // color/border-color/background, 否则同级 specificity 下 source order 让
+                        // 这些 state 的彩色仍胜出, 已读位点仍是 sky-blue/橙黄, 用户看不出"已读".
                         &.is-acked {
                             border-style: dashed;
-                            opacity: 0.78;
+                            border-color: rgb(from var(--secondary-text-color) r g b / 0.4);
+                            color: var(--secondary-text-color);
+                            background: rgb(from var(--main-text-color) r g b / 0.04);
+                            opacity: 0.7;
 
                             // Kill all running animations — covers shimmer (set above on `is-working span`)
                             // and the border-pulse set on `is-blocked`.
@@ -836,8 +842,12 @@
                 // specificity wins, stopping the dot from demanding attention while the
                 // outline/position remains. Re-lights when the agent's `status.updatedAt`
                 // flips newer than the ackedAt timestamp (is-acked class drops off).
+                // is-acked 必须显式 override is-blocked/is-done/is-working 设的 background, 否则
+                // 同级 specificity 下橙色/绿色背景仍胜出, 已读位点看不出"已读".
                 &.is-acked {
-                    opacity: 0.5;
+                    background: var(--secondary-text-color);
+                    opacity: 0.4;
+                    box-shadow: none;
                     animation: none;
                 }
             }
