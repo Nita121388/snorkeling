@@ -1,8 +1,9 @@
 # New-Agent 浮窗信息展示 + 继承项开关 — UI 原型
 
+> 2026-07-25 实施状态：阶段 1 与只读诊断动作已落地到 New Agent 齿轮打开的 `Agent Settings` Modal。当前 Tab 为 `Agent Hooks / Details`，不显示 `Target`；Details 按需读取、只返回脱敏内容，header/tab/footer 固定，只有内容区滚动。本文后续的 Inheritance 开关仍是 future concept，未进入当前验收范围。
+
 > 目的：在 New-Agent 浮窗里同时显示 vendor 列表 + 选中 vendor 的详情信息 + 用户可控的"继承项"开关。
-> 本文件先给三个布局变体的 ASCII mockup，挑一个再细化。
-> 真实落地走 snorkeling 私有"叠加层"路线（不动 cc-switch）：backend 新增 per-vendor inherit 选项存储 + RPC，前端这一块浮窗消费。本文档先于实施。
+> 下方三个布局变体保留为历史设计记录。当前采用独立设置 Modal 的 Tab 方案，不在 New Agent 主浮窗内扩高或增加抽屉。
 
 ---
 

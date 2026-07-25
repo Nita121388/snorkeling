@@ -10,10 +10,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
@@ -21,6 +23,8 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
 )
+
+const VendorConfigurationUnavailableError = "Vendor configuration is no longer available"
 
 type AISessionsService struct{}
 
@@ -115,6 +119,20 @@ type AISessionsSummaryRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
+}
+
+type AISessionsRestoreContextRequest struct {
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+}
+
+type AISessionsRestoreContextResponse struct {
+	SessionID   string `json:"sessionid"`
+	Source      string `json:"source"`
+	ProjectPath string `json:"projectpath,omitempty"`
+	VendorID    string `json:"vendorid,omitempty"`
+	VendorName  string `json:"vendorname,omitempty"`
+	ConfigDir   string `json:"configdir,omitempty"`
 }
 
 type AISessionsStatRequest struct {
@@ -526,6 +544,89 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 		return nil, err
 	}
 	return &summary, nil
+}
+
+func (svc *AISessionsService) RestoreContext_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "validate and resolve the runtime context for restoring an AI session",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "validated AI session restore context",
+	}
+}
+
+func (svc *AISessionsService) RestoreContext(ctx context.Context, request *AISessionsRestoreContextRequest) (*AISessionsRestoreContextResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.Summary(ctx, request.ID, false)
+	if err != nil {
+		return nil, err
+	}
+	response := &AISessionsRestoreContextResponse{
+		SessionID:   summary.ID,
+		Source:      summary.Source,
+		ProjectPath: summary.ProjectPath,
+	}
+	if summary.Source != aisessions.SourceClaude {
+		return response, nil
+	}
+	vendorID, configDir, vendorSession := ccswitch.ResolveClaudeVendorSessionPath(summary.FilePath)
+	if !vendorSession {
+		if summary.VendorID != "" || summary.ConfigDir != "" {
+			return nil, fmt.Errorf(VendorConfigurationUnavailableError)
+		}
+		return response, nil
+	}
+	if (summary.VendorID != "" && summary.VendorID != vendorID) ||
+		(summary.ConfigDir != "" && !sameCleanPath(summary.ConfigDir, configDir)) {
+		aiSessionsDebugf("RestoreContext provenance mismatch key=%q vendor=%q file=%q", summary.Key, vendorID, summary.FilePath)
+		return nil, fmt.Errorf(VendorConfigurationUnavailableError)
+	}
+	vendors, err := ccswitch.ListClaudeVendors(ctx)
+	if err != nil || vendors == nil || !vendors.Detected {
+		aiSessionsDebugf("RestoreContext vendor list unavailable key=%q vendor=%q err=%v", summary.Key, vendorID, err)
+		return nil, fmt.Errorf(VendorConfigurationUnavailableError)
+	}
+	for _, vendor := range vendors.Vendors {
+		if vendor.ID != vendorID || vendor.ClaudeConfigDir == "" || !sameCleanPath(vendor.ClaudeConfigDir, configDir) {
+			continue
+		}
+		if !regularVendorSettings(configDir) {
+			break
+		}
+		response.VendorID = vendorID
+		response.VendorName = vendor.Name
+		response.ConfigDir = configDir
+		aiSessionsDebugf("RestoreContext success key=%q vendor=%q configdir=%q", summary.Key, vendorID, configDir)
+		return response, nil
+	}
+	aiSessionsDebugf("RestoreContext stale vendor key=%q vendor=%q file=%q", summary.Key, vendorID, summary.FilePath)
+	return nil, fmt.Errorf(VendorConfigurationUnavailableError)
+}
+
+func sameCleanPath(left string, right string) bool {
+	leftAbs, leftErr := filepath.Abs(filepath.Clean(left))
+	rightAbs, rightErr := filepath.Abs(filepath.Clean(right))
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(leftAbs, rightAbs)
+	}
+	return leftAbs == rightAbs
+}
+
+func regularVendorSettings(configDir string) bool {
+	configInfo, err := os.Lstat(configDir)
+	if err != nil || !configInfo.IsDir() || configInfo.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	settingsInfo, err := os.Lstat(filepath.Join(configDir, "settings.json"))
+	return err == nil && settingsInfo.Mode().IsRegular() && settingsInfo.Mode()&os.ModeSymlink == 0
 }
 
 func isKnownAISessionFilePath(filePath string) bool {

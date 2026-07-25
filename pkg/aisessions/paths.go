@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 )
 
 func homeDir() string {
@@ -70,15 +72,15 @@ func DefaultCodexSessionsDir() string {
 
 func DefaultClaudeProjectDirs() []string {
 	home := homeDir()
-	if home == "" {
-		return nil
-	}
 	var dirs []string
 	if envDir := os.Getenv("CLAUDE_CONFIG_DIR"); envDir != "" {
 		dirs = append(dirs, filepath.Join(envDir, "projects"))
 	}
-	dirs = append(dirs, filepath.Join(home, ".claude", "projects"))
-	if runtime.GOOS != "windows" {
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, ".claude", "projects"))
+	}
+	dirs = append(dirs, ccswitch.ClaudeVendorProjectDirs()...)
+	if home != "" && runtime.GOOS != "windows" {
 		dirs = append(dirs, filepath.Join(home, ".cache", "claude", "projects"))
 	}
 	return uniqueStrings(dirs)

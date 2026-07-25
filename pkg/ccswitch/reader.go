@@ -20,7 +20,7 @@ import (
 
 // AppType values cc-switch stores in `providers.app_type`.
 const (
-	CcSwitchProviderAppType    = "claude" // legacy alias, kept for back-compat with the original commit
+	CcSwitchProviderAppType      = "claude" // legacy alias, kept for back-compat with the original commit
 	CcSwitchProviderAppTypeCodex = "codex"
 )
 
@@ -40,6 +40,7 @@ type Vendor struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Env             map[string]string `json:"env"`
+	Model           string            `json:"model,omitempty"`
 	IsCurrent       bool              `json:"is_current"`
 	ProviderType    string            `json:"provider_type"`
 	Category        string            `json:"category"`
@@ -49,6 +50,28 @@ type Vendor struct {
 	// this directory instead of ~/.codex/. Empty when the vendor is codex-official / has no auth+config
 	// (in which case launching against it inherits the user's global ~/.codex/ — official-login semantics).
 	CodexConfigDir string `json:"codex_config_dir,omitempty"`
+}
+
+func claudeVendorModel(env map[string]string) string {
+	if model := strings.TrimSpace(env["ANTHROPIC_MODEL"]); model != "" {
+		return model
+	}
+	models := make(map[string]struct{})
+	for key, value := range env {
+		if !strings.HasPrefix(key, "ANTHROPIC_DEFAULT_") || !strings.HasSuffix(key, "_MODEL") {
+			continue
+		}
+		if model := strings.TrimSpace(value); model != "" {
+			models[model] = struct{}{}
+		}
+	}
+	if len(models) != 1 {
+		return ""
+	}
+	for model := range models {
+		return model
+	}
+	return ""
 }
 
 // VendorList is the full RPC payload: vendors + metadata for the frontend (db path, whether the DB exists).
@@ -68,6 +91,11 @@ func DBPath() (string, error) {
 //	{"env": {"ANTHROPIC_BASE_URL": "...", "ANTHROPIC_AUTH_TOKEN": "...", "ANTHROPIC_DEFAULT_*_MODEL": "..."}, ...}
 type settingsConfigShape struct {
 	Env map[string]string `json:"env"`
+}
+
+type claudeVendorSettingsDoc struct {
+	Env   map[string]string `json:"env"`
+	Hooks json.RawMessage   `json:"hooks,omitempty"`
 }
 
 // codexSettingsConfigShape is the JSON shape cc-switch stores in `providers.settings_config` for codex:
@@ -191,6 +219,14 @@ func listVendors(ctx context.Context, appType string) (*VendorList, error) {
 		return &VendorList{Vendors: []Vendor{}, DbPath: path, Detected: false}, nil
 	}
 
+	var globalClaudeHooks json.RawMessage
+	if appType == CcSwitchProviderAppType {
+		globalClaudeHooks, err = readGlobalClaudeHooks()
+		if err != nil {
+			fmt.Printf("ccswitch: unable to read global Claude hooks: %v\n", err)
+		}
+	}
+
 	vendors := make([]Vendor, 0, len(rows))
 	for _, r := range rows {
 		v := Vendor{
@@ -208,6 +244,7 @@ func listVendors(ctx context.Context, appType string) (*VendorList, error) {
 				var sc settingsConfigShape
 				if json.Unmarshal([]byte(r.SettingsJSON), &sc) == nil && sc.Env != nil {
 					v.Env = sc.Env
+					v.Model = claudeVendorModel(sc.Env)
 				}
 				// JSON parse failure leaves that row's Env empty; the user can still pick it,
 				// it'll just inject no env.
@@ -229,7 +266,9 @@ func listVendors(ctx context.Context, appType string) (*VendorList, error) {
 				}
 			}
 			if shouldMaterialize {
-				if ccd, _ := materializeClaudeConfigDir(v.ID, v.Env); ccd != "" {
+				if ccd, materializeErr := materializeClaudeConfigDir(v.ID, v.Env, globalClaudeHooks); materializeErr != nil {
+					fmt.Printf("ccswitch: unable to materialize Claude vendor %q: %v\n", v.ID, materializeErr)
+				} else if ccd != "" {
 					v.ClaudeConfigDir = ccd
 				}
 			}
@@ -276,6 +315,73 @@ func claudeVendorsRoot() string {
 	return filepath.Join(wavebase.GetWaveDataDir(), "claude-vendors")
 }
 
+func ClaudeVendorProjectDirs() []string {
+	root := claudeVendorsRoot()
+	rootInfo, err := os.Lstat(root)
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !validVendorID(entry.Name()) {
+			continue
+		}
+		projectsDir := filepath.Join(root, entry.Name(), "projects")
+		info, err := os.Lstat(projectsDir)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		dirs = append(dirs, projectsDir)
+	}
+	return dirs
+}
+
+func ResolveClaudeVendorSessionPath(path string) (vendorID string, configDir string, ok bool) {
+	root, err := filepath.Abs(filepath.Clean(claudeVendorsRoot()))
+	if err != nil {
+		return "", "", false
+	}
+	rootInfo, err := os.Lstat(root)
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		return "", "", false
+	}
+	absPath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", "", false
+	}
+	rel, err := filepath.Rel(root, absPath)
+	if err != nil {
+		return "", "", false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 3 || !validVendorID(parts[0]) || parts[1] != "projects" {
+		return "", "", false
+	}
+	configDir = filepath.Join(root, parts[0])
+	info, err := os.Lstat(configDir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", "", false
+	}
+	projectsDir := filepath.Join(configDir, "projects")
+	realProjectsDir, err := filepath.EvalSymlinks(projectsDir)
+	if err != nil {
+		return "", "", false
+	}
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", "", false
+	}
+	realRel, err := filepath.Rel(realProjectsDir, realPath)
+	if err != nil || realRel == "." || realRel == ".." || strings.HasPrefix(realRel, ".."+string(filepath.Separator)) {
+		return "", "", false
+	}
+	return parts[0], configDir, true
+}
+
 // vendorsRoot returns the per-waveDataDir directory holding one subdirectory per vendor ID for the
 // given appType — claude-vendors/ for claude, codex-vendors/ for codex. Lives under GetWaveDataDir()
 // so dev/prod and local/remote instances stay isolated.
@@ -286,21 +392,9 @@ func vendorsRoot(appType string) string {
 	return claudeVendorsRoot()
 }
 
-// gcVendors removes orphaned per-vendor config dirs — entries under vendorsRoot(appType)/ whose names
-// are NOT present in the live cc-switch DB vendor set. This is the only producer of drift: cc-switch
-// can delete/rename a provider in its DB, but that leaves the dir Wave materialized on the prior run
-// on disk (containing auth tokens / config.toml for the deleted provider). On each successful list we
-// reconcile disk against the DB and rmdir the leftovers.
-//
-// Scope is deliberately narrow: only cc-switch-deleted orphans are removed. Dirs whose ID is still in
-// the DB but happens to be empty (e.g. claude-official placeholders) are left alone — they're cheap and
-// the next materialize pass keeps them. Running-block safety: we do NOT consult live runtime state
-// here. The reasoning an orphan (DB has no row with that ID) means the user already deleted it in
-// cc-switch, so no live chip can map to it; any block still pointing at it is already broken. False
-// positives are impossible: a dir is removed only if its ID literally is not a current provider ID.
-//
-// Best-effort: read-dir / stat / rmdir failures are logged and skipped; we never fail the surrounding
-// list on GC problems.
+// gcVendors removes only Wave-owned credential/config files for vendors no longer present in cc-switch.
+// Claude and Codex write session history and other user data below the same config directory, so the
+// directory must never be removed recursively. An orphan directory is removed only when it becomes empty.
 func gcVendors(ctx context.Context, appType string, liveVendors []Vendor) {
 	root := vendorsRoot(appType)
 	entries, err := os.ReadDir(root)
@@ -323,16 +417,71 @@ func gcVendors(ctx context.Context, appType string, liveVendors []Vendor) {
 			continue
 		}
 		orphanPath := filepath.Join(root, dirName)
-		if rerr := os.RemoveAll(orphanPath); rerr != nil {
-			// Log and keep going; a stubborn entry (locked file) survives to the next pass.
-			fmt.Printf("ccswitch: gcVendors: failed to remove orphan dir %s: %v\n", orphanPath, rerr)
-		} else {
-			fmt.Printf("ccswitch: gcVendors: removed orphan %s dir %s\n", appType, orphanPath)
+		removedConfig := false
+		for _, name := range vendorOwnedConfigFiles(appType) {
+			configPath := filepath.Join(orphanPath, name)
+			if removeErr := os.Remove(configPath); removeErr == nil {
+				removedConfig = true
+			} else if !os.IsNotExist(removeErr) {
+				fmt.Printf("ccswitch: gcVendors: unable to remove orphan %s config %s: %v\n", appType, name, removeErr)
+			}
+		}
+		if removeErr := os.Remove(orphanPath); removeErr == nil {
+			fmt.Printf("ccswitch: gcVendors: removed empty orphan %s vendor %q\n", appType, dirName)
+		} else if removedConfig {
+			fmt.Printf("ccswitch: gcVendors: retained orphan %s vendor %q because it contains non-config data\n", appType, dirName)
 		}
 	}
 }
 
-// materializeClaudeConfigDir writes a vendor-scoped settings.json ({"env": <vendorEnv>}) into
+func vendorOwnedConfigFiles(appType string) []string {
+	if appType == CcSwitchProviderAppTypeCodex {
+		return []string{"auth.json", "config.toml", "hooks.json", "cc-switch-model-catalog.json"}
+	}
+	return []string{"settings.json"}
+}
+
+func liveClaudeSettingsPath() (string, error) {
+	dir, err := wavebase.ExpandHomeDir("~/.claude")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "settings.json"), nil
+}
+
+func readGlobalClaudeHooks() (json.RawMessage, error) {
+	path, err := liveClaudeSettingsPath()
+	if err != nil {
+		return nil, err
+	}
+	return readClaudeHooks(path)
+}
+
+func readClaudeHooks(path string) (json.RawMessage, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	hooks := settings["hooks"]
+	if len(hooks) == 0 || string(hooks) == "null" {
+		return nil, nil
+	}
+	return hooks, nil
+}
+
+func validVendorID(vendorID string) bool {
+	return vendorID != "" && vendorID != "." && vendorID != ".." && filepath.Base(vendorID) == vendorID &&
+		!strings.ContainsAny(vendorID, `/\`)
+}
+
+// materializeClaudeConfigDir writes a vendor-scoped settings.json ({"env": <vendorEnv>, "hooks": ...}) into
 // <waveDataDir>/claude-vendors/<vendorID>/settings.json and returns the directory path.
 //
 // Idempotent: if the existing file already serializes to the same JSON bytes, we skip the rewrite so
@@ -340,21 +489,16 @@ func gcVendors(ctx context.Context, appType string, liveVendors []Vendor) {
 // vendor env may carry auth tokens; we don't want the file world-readable on shared hosts.
 //
 // Returns ("", nil) on any I/O error — caller silently degrades to the old OS-env-only path.
-func materializeClaudeConfigDir(vendorID string, vendorEnv map[string]string) (string, error) {
-	if vendorID == "" {
-		return "", nil
+func materializeClaudeConfigDir(vendorID string, vendorEnv map[string]string, hooks json.RawMessage) (string, error) {
+	if !validVendorID(vendorID) {
+		return "", fmt.Errorf("invalid vendor id %q", vendorID)
 	}
 	dir := filepath.Join(claudeVendorsRoot(), vendorID)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
 	settingsPath := filepath.Join(dir, "settings.json")
-	// Wrap vendorEnv in the {"env": {...}} shape Claude Code's settings.json spec expects.
-	// We only ever populate the "env" key — no hooks/permissions/outputStyle — so the vendor
-	// isolation never accidentally inherits or overrides other user preferences.
-	settingsDoc := struct {
-		Env map[string]string `json:"env"`
-	}{Env: vendorEnv}
+	settingsDoc := claudeVendorSettingsDoc{Env: vendorEnv, Hooks: hooks}
 	newBytes, err := json.MarshalIndent(settingsDoc, "", "  ")
 	if err != nil {
 		return "", err

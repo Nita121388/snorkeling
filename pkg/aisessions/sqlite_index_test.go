@@ -552,6 +552,45 @@ func TestSQLiteSummaryRefreshPreservesIndexedMessageCount(t *testing.T) {
 	}
 }
 
+func TestSQLiteSessionProvenanceSurvivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	metaPath := filepath.Join(dir, "meta.json")
+	summary := SessionSummary{
+		Key:       "claude:vendor:/tmp/vendor.jsonl",
+		ID:        "vendor",
+		Source:    SourceClaude,
+		FilePath:  "/tmp/vendor.jsonl",
+		VendorID:  "vendor-a",
+		ConfigDir: "/tmp/claude-vendors/vendor-a",
+		MTime:     1,
+		Size:      10,
+	}
+	idx, err := OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{summary}, true); len(errs) != 0 {
+		t.Fatalf("unexpected save errors: %v", errs)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err = OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	loaded, err := idx.GetSession(context.Background(), summary.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.VendorID != summary.VendorID || loaded.ConfigDir != summary.ConfigDir {
+		t.Fatalf("provenance did not survive reopen: %#v", loaded)
+	}
+}
+
 func TestSQLitePartialScanDoesNotMarkExistingSessionsMissing(t *testing.T) {
 	dir := t.TempDir()
 	sqlitePath := filepath.Join(dir, "index-v2.sqlite")

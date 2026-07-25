@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentHookActionLabel, agentHookStatusLabel } from "./agenthooksettingsmodal";
+import { agentHookActionLabel, agentHookStatusLabel, vendorIsolationStateLabel } from "./agentsettings-utils";
 
 function makeStatus(overrides: Partial<HookStatus>): HookStatus {
     return {
@@ -43,5 +43,12 @@ describe("agent hook settings status", () => {
         const status = makeStatus({ current: false, needsInstall: true, reason: "hook commands are missing" });
         expect(agentHookStatusLabel(status)).toBe("Repair required");
         expect(agentHookActionLabel(status)).toBe("Repair");
+    });
+
+    it("labels vendor isolation diagnostic states", () => {
+        expect(vendorIsolationStateLabel("ready")).toBe("Ready");
+        expect(vendorIsolationStateLabel("global")).toBe("Global configuration");
+        expect(vendorIsolationStateLabel("missing")).toBe("Configuration missing");
+        expect(vendorIsolationStateLabel("unknown")).toBe("Unavailable");
     });
 });

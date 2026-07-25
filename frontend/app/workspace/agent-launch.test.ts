@@ -857,4 +857,49 @@ describe("agent launch context", () => {
             'Agent command "claude" was not found on ssh://nita@NitadeMacBook-Pro'
         );
     });
+
+    it("keeps system mode global and pins an explicit vendor model", () => {
+        const settings = {
+            "agent:defaultprofile": "claude",
+            "agent:profiles": { claude: { cmd: "claude" } },
+        } as SettingsType;
+        const target: AgentLaunchTarget = {
+            blockId: "launch-target:home",
+            connection: null,
+            cwd: "~",
+            source: "home",
+            isLocal: true,
+            label: "local",
+            detail: "~",
+        };
+        const vendors = [
+            {
+                id: "vendor-a",
+                name: "Vendor A",
+                env: { ANTHROPIC_BASE_URL: "https://example.invalid", ANTHROPIC_AUTH_TOKEN: "redacted" },
+                model: "vendor-default",
+                is_current: true,
+                provider_type: "",
+                category: "",
+                claude_config_dir: "C:\\wave\\claude-vendors\\vendor-a",
+            },
+        ];
+
+        const systemBlock = createAgentBlockDefForTarget(settings, target, "claude", vendors, undefined, "ignored");
+        expect(systemBlock.meta?.["cmd:env"]).toBeUndefined();
+        expect(systemBlock.meta?.["cmd:args"]).toBeUndefined();
+        expect((systemBlock.meta as Record<string, unknown>)["agent:isolationmode"]).toBe("system");
+        expect((systemBlock.meta as Record<string, unknown>)["agent:claudevendorid"]).toBeUndefined();
+
+        const vendorBlock = createAgentBlockDefForTarget(settings, target, "claude", vendors, "vendor-a", "glm-5.2");
+        expect(vendorBlock.meta?.["cmd:args"]).toEqual(["--model", "glm-5.2"]);
+        expect(vendorBlock.meta?.["cmd:env"]).toMatchObject({
+            ANTHROPIC_BASE_URL: "https://example.invalid",
+            CLAUDE_CONFIG_DIR: "C:\\wave\\claude-vendors\\vendor-a",
+        });
+        const vendorMeta = vendorBlock.meta as Record<string, unknown>;
+        expect(vendorMeta["agent:isolationmode"]).toBe("vendor");
+        expect(vendorMeta["agent:requestedmodel"]).toBe("glm-5.2");
+        expect(vendorMeta["agent:claudevendorid"]).toBe("vendor-a");
+    });
 });

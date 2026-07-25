@@ -1,6 +1,59 @@
 # Claude Vendor 隔离：恢复 Hooks、AI Sessions 与只读诊断
 
-Written against: `73cd16d80ce0eb298d171f76cf134b9c5518e6cb`
+Written against: `47a0d90ba450e216448bb9f2c01bd546761cf92d`
+
+## Implementation status (2026-07-25)
+
+- Worktree: `E:/primary/projects/snorkeling-vendor-integration`
+- Branch: `feat/vendor-isolation-integration`
+- P0-A implemented: Claude vendor materialization now carries global hooks; unsafe vendor IDs are rejected; GC removes only Wave-owned config files and preserves `projects/`, `sessions/`, `skills/`, `plugins/` and unknown data.
+- P0-B implemented: disk-backed Claude vendor `projects/` roots participate in AI Sessions discovery, summaries carry `vendorid/configdir`, SQLite migrates those fields in place, and same-ID/different-path sessions remain distinct.
+- P0-C implemented: `AISessionsService.RestoreContext` validates the live cc-switch vendor and materialized `settings.json` before block creation. A stale vendor returns `Vendor configuration is no longer available` without falling back to global Claude.
+- P1 implemented: New Agent gear opens `Agent Settings` with `Agent Hooks / Details`; Details is read-only, lazy-loaded, redacted, scroll-bounded, and includes vendor/file/hook/source diagnostics.
+- Deferred: editable inheritance for Skills, Plugins, Agents, permissions, output style and enabled plugins. No policy or storage schema is being introduced without a user decision.
+- Runtime acceptance passed: an orphan Claude vendor session was discovered from disk, rendered with vendor provenance and parsed stats, accepted a Note, and rejected Resume with the stable stale-vendor error without creating a block or changing the source JSONL.
+
+### Verification evidence
+
+- `go test ./pkg/ccswitch/...`: passed with the local Go toolchain.
+- Real SQLite targeted tests with `CGO_ENABLED=1` and Zig: vendor discovery/provenance, Detail, Stat, Note persistence, valid ResumeContext and stale-vendor data retention passed.
+- `npm test -- --run frontend/app/view/aisessions/utils.test.ts frontend/app/modals/agenthooksettingsmodal.test.ts`: 22/22 passed.
+- `npm run build:prod`: passed for main, preload and renderer bundles. The existing image optimizer reported missing optional `svgo` after dependencies were installed with scripts disabled; build exit code remained 0.
+- Electron/CDP: `qa-vendor-session` rendered as `Vendor qa-orpha` with `2 msgs / 408 B`; Note `QA orphan vendor note` was saved and shown in the list; Resume returned `Vendor configuration is no longer available`; the fixture remained 408 bytes with its original mtime. Evidence: `tmp/qa/vendor-aisessions-before-resize.png` and `tmp/qa/vendor-aisessions-stale-resume.png`.
+- Log audit: `.runcfg/vendor-integration/data/waveapp.log` contained two `[ccswitch-diagnostic]` ready records; the redaction audit found zero potentially unsafe sensitive-keyword lines.
+
+## Deferred capability inheritance: Skills / Plugins / Agents
+
+The isolation boundary currently has three separate concerns and they must not be collapsed into one toggle:
+
+1. Identity and credentials: vendor `env`, `auth.json`, `config.toml`. These remain isolated.
+2. Observability: global agent-status hooks. These are inherited now because Wave owns the integration contract.
+3. Capabilities: Skills, Plugins, Agents, Commands and related enablement settings. Their ownership and mutation semantics are not yet confirmed.
+
+### Options for user decision
+
+| Option | Behavior | Data-safety / maintenance trade-off |
+| --- | --- | --- |
+| Native extra search roots | Configure Claude/Codex to read global capability directories in addition to the vendor root | Preferred if the installed CLI officially supports it; no copying and one source of truth. Must be proven against the pinned CLI versions first. |
+| Manifest-driven snapshot | Copy only selected resources into a Wave-owned staging directory, validate, then atomically publish the snapshot | Portable and auditable, but updates are not live and conflict/version rules are required. Source directories are never modified. |
+| Directory link/junction | Link vendor capability directories to global directories | Low storage cost but weak isolation, platform-specific behavior and confusing writes. Not recommended as the default. |
+| Full vendor-local capabilities | Do not inherit; users install capabilities independently per vendor | Strong isolation and simple ownership, but duplicated setup and inconsistent UX. |
+
+### Recommended investigation order
+
+1. Record the pinned Claude/Codex versions and verify official support for additional Skills/Plugins/Agents roots.
+2. Inventory only names, counts, paths and ownership; never read secrets or execute capability content during diagnostics.
+3. Decide inheritance granularity: one capability class at a time, not a generic “inherit everything” switch.
+4. If native roots are unavailable, design a manifest with source path, destination, content hash, last sync time and conflict state; publish via staging + atomic rename.
+5. Extend GC tests first: capability sources and vendor-generated data must never be recursively deleted.
+6. Add UI only after the policy exists: native checkboxes/toggles, explicit source and restart requirements, dirty draft + Apply.
+
+### Wake-up decisions
+
+- Should capability inheritance default to none, or inherit global Skills only?
+- Are Plugins and Agents trusted to share credentials/state across vendors, or must they remain vendor-local?
+- Is snapshot synchronization acceptable, or is immediate global update visibility required?
+- Should inheritance be per vendor or one policy per agent app?
 
 ## Evidence chain
 

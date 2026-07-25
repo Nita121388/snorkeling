@@ -236,13 +236,43 @@ function quoteWindowsPath(path: string): string {
     return `"${path}"`;
 }
 
+function quotePowerShellValue(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
+}
+
+export function restoreMetaForSession(context: AISessionsRestoreContextResponse): MetaType & Record<string, unknown> {
+    const meta: MetaType & Record<string, unknown> = {
+        view: "term",
+        controller: "cmd",
+        cmd: context.source === "claude" ? "claude" : "codex",
+        "cmd:shell": false,
+        "cmd:runonstart": true,
+        "cmd:jwt": true,
+        "agent:autoresume": true,
+        "agent:provider": context.source,
+        "agent:sessionid": context.sessionid,
+    };
+    if (context.projectpath) {
+        meta["cmd:cwd"] = context.projectpath;
+    }
+    if (context.configdir) {
+        meta["cmd:env"] = { CLAUDE_CONFIG_DIR: context.configdir };
+        meta["agent:claudevendorid"] = context.vendorid;
+        meta["agent:claudevendorname"] = context.vendorname;
+    }
+    return meta;
+}
+
 export function restoreCommandForSession(summary: SessionSummary): string {
     if (summary.source === "claude") {
-        const resumeCommand = `claude --resume ${summary.id}`;
+        let resumeCommand = `claude --resume ${summary.id}`;
+        if (summary.configdir) {
+            resumeCommand = isWindows()
+                ? `$env:CLAUDE_CONFIG_DIR = ${quotePowerShellValue(summary.configdir)}\n${resumeCommand}`
+                : `CLAUDE_CONFIG_DIR=${quoteShellPath(summary.configdir)} ${resumeCommand}`;
+        }
         if (!summary.projectPath) return resumeCommand;
-        const quotedPath = isWindows()
-            ? quoteWindowsPath(summary.projectPath)
-            : quoteShellPath(summary.projectPath);
+        const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);
         return `cd ${quotedPath}\n${resumeCommand}`;
     }
     return `codex resume ${summary.id}`;
@@ -481,7 +511,9 @@ export function computeBreadcrumb(filter: PathFilter, sessions: { projectPath?: 
     for (let level = 0; level < commonLen; level++) {
         acc = acc + (acc.endsWith(sep) || acc === "" ? "" : sep) + tailSegmentsList[0][level];
         const prefixLower = normalizePathForMatch(acc);
-        const count = underRoot.filter((s) => normalizePathForMatch(s.projectPath ?? "").startsWith(prefixLower)).length;
+        const count = underRoot.filter((s) =>
+            normalizePathForMatch(s.projectPath ?? "").startsWith(prefixLower)
+        ).length;
         segments.push({
             label: tailSegmentsList[0][level],
             fullPrefix: acc,

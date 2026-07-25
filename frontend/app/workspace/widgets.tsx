@@ -7,6 +7,7 @@ import { Tooltip } from "@/app/element/tooltip";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
+import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -30,16 +31,10 @@ import {
     resolveDefaultLaunchTarget,
     TerminalDefaultLaunchTargetMetaKey,
 } from "@/app/workspace/agent-launch";
+import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
+import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
-import { ClaudeLogo, GeminiLogo, OpencodeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
-import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
-import {
-    CcSwitchAppType,
-    CcSwitchVendor,
-    CcSwitchVendorList,
-    loadCcSwitchVendors,
-} from "@/app/workspace/ccswitch-vendors";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
@@ -53,8 +48,8 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
@@ -115,7 +110,15 @@ type WidgetPropsType = {
 };
 
 const Widget = memo(
-    ({ widgetId, widget, mode, onWidgetSelect, onWidgetContextMenu, onWidgetHover, onWidgetHoverEnd }: WidgetPropsType) => {
+    ({
+        widgetId,
+        widget,
+        mode,
+        onWidgetSelect,
+        onWidgetContextMenu,
+        onWidgetHover,
+        onWidgetHoverEnd,
+    }: WidgetPropsType) => {
         const [isTruncated, setIsTruncated] = useState(false);
         const labelRef = useRef<HTMLDivElement>(null);
         const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
@@ -371,6 +374,27 @@ type CreateToExistingTabRequest = {
 };
 
 const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+const VendorModelPreferencesStorageKey = "snorkeling:agentVendorModels";
+// ponytail: Temporarily disable vendor model pinning while vendor isolation is verified independently.
+// Keep the implementation and saved preferences intact so the experiment is reversible without data loss.
+const VendorModelPinningEnabled = false;
+
+function loadVendorModelPreferences(): Record<string, string> {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(VendorModelPreferencesStorageKey) ?? "{}");
+        return parsed != null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function saveVendorModelPreferences(preferences: Record<string, string>) {
+    try {
+        localStorage.setItem(VendorModelPreferencesStorageKey, JSON.stringify(preferences));
+    } catch {
+        // Local persistence is optional; the current launch still uses the entered model.
+    }
+}
 
 function useOutsideHoverClose(isOpen: boolean, onClose: () => void, delayMs = 1000) {
     const closeTimerRef = useRef<number | null>(null);
@@ -548,6 +572,8 @@ const AgentTargetFloatingWindow = memo(
         // hidden behind a "+N▾" inline toggle. Pure frontend; reset to collapsed each time the
         // floating window reopens (see the isOpen useEffect below) so a prior expand never leaks.
         const [vendorRestExpanded, setVendorRestExpanded] = useState(false);
+        const [vendorModelPreferences, setVendorModelPreferences] =
+            useState<Record<string, string>>(loadVendorModelPreferences);
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
 
@@ -582,6 +608,27 @@ const AgentTargetFloatingWindow = memo(
         const effectiveSelectedVendorId = isCodexProfileActive ? codexSelectedVendorId : selectedVendorId;
         const effectiveOnSelectVendor = isCodexProfileActive ? onCodexSelectVendor : onSelectVendor;
         const effectiveOnRefreshVendors = isCodexProfileActive ? onCodexRefreshVendors : onRefreshVendors;
+        const effectiveAppType: CcSwitchAppType = isCodexProfileActive ? "codex" : "claude";
+        const effectiveSelectedVendor = effectiveVendorOptions?.find(
+            (vendor) => vendor.id === effectiveSelectedVendorId
+        );
+        const vendorModelPreferenceKey = effectiveSelectedVendor
+            ? `${effectiveAppType}:${effectiveSelectedVendor.id}`
+            : "";
+        const configuredProfileModel = settings?.["agent:profiles"]?.[effectiveSelectedProfile]?.model?.trim() ?? "";
+        const effectiveVendorModel = effectiveSelectedVendor
+            ? (vendorModelPreferences[vendorModelPreferenceKey] ??
+              effectiveSelectedVendor.model?.trim() ??
+              configuredProfileModel)
+            : "";
+        const setEffectiveVendorModel = (model: string) => {
+            if (!vendorModelPreferenceKey) return;
+            setVendorModelPreferences((current) => {
+                const next = { ...current, [vendorModelPreferenceKey]: model };
+                saveVendorModelPreferences(next);
+                return next;
+            });
+        };
 
         // Split the vendor chip list into the "current/selected" chip (always shown) and the rest (collapsed
         // behind a "+N▾" inline toggle that reflows in place on click). Selection logic mirrors the live
@@ -612,6 +659,7 @@ const AgentTargetFloatingWindow = memo(
             onSelectVendor: ((id: string | undefined) => void) | undefined
         ) => {
             const isSelected = selectedVendorId === vendor.id || (selectedVendorId == null && vendor.is_current);
+            const selectVendor = () => onSelectVendor?.(vendor.is_current || isSelected ? undefined : vendor.id);
             return (
                 <div
                     key={vendor.id}
@@ -619,17 +667,15 @@ const AgentTargetFloatingWindow = memo(
                         "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
                         isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
                     )}
-                    onClick={() => onSelectVendor?.(isSelected ? undefined : vendor.id)}
+                    onClick={selectVendor}
                 >
-                    {isSelected && (
-                        <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
-                    )}
+                    {isSelected && <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />}
                     <button
                         type="button"
                         className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-2 rounded-md text-xs font-medium border-none bg-transparent cursor-pointer"
                         onClick={(event) => {
                             event.stopPropagation();
-                            onSelectVendor?.(isSelected ? undefined : vendor.id);
+                            selectVendor();
                         }}
                     >
                         <span
@@ -639,16 +685,20 @@ const AgentTargetFloatingWindow = memo(
                             )}
                             style={{ background: "#888" }}
                         />
-                        <span className={clsx(
-                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
-                        )}>
+                        <span
+                            className={clsx(isSelected ? "text-foreground" : "text-muted group-hover:text-secondary")}
+                        >
                             {vendor.name}
                         </span>
                         {vendor.is_current && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">·current</span>
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">
+                                ·current
+                            </span>
                         )}
                         {(vendor.category === "official" || vendor.provider_type === "official") && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">official</span>
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">
+                                official
+                            </span>
                         )}
                     </button>
                 </div>
@@ -681,7 +731,10 @@ const AgentTargetFloatingWindow = memo(
                                 event.stopPropagation();
                                 onClose();
                                 if (!modalsModel.isModalOpen("AgentHookSettingsModal")) {
-                                    modalsModel.pushModal("AgentHookSettingsModal");
+                                    modalsModel.pushModal("AgentHookSettingsModal", {
+                                        initialAppType: isCodexProfileActive ? "codex" : "claude",
+                                        initialVendorId: effectiveSelectedVendorId ?? currentVendor?.id ?? "",
+                                    });
                                 }
                             }}
                         >
@@ -704,9 +757,7 @@ const AgentTargetFloatingWindow = memo(
                                             key={profile.name}
                                             className={clsx(
                                                 "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
-                                                isSelected
-                                                    ? "bg-accent/12 relative"
-                                                    : "hover:bg-surface-soft"
+                                                isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
                                             )}
                                         >
                                             {isSelected && (
@@ -746,9 +797,13 @@ const AgentTargetFloatingWindow = memo(
                                                         />
                                                     );
                                                 })()}
-                                                <span className={clsx(
-                                                    isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
-                                                )}>
+                                                <span
+                                                    className={clsx(
+                                                        isSelected
+                                                            ? "text-foreground"
+                                                            : "text-muted group-hover:text-secondary"
+                                                    )}
+                                                >
                                                     {profile.label}
                                                 </span>
                                             </button>
@@ -769,65 +824,99 @@ const AgentTargetFloatingWindow = memo(
                     </div>
 
                     {/* cc-switch vendor chips (claude OR codex profile) — from cc-switch, chips wrap horizontally, same style as the profile chips above */}
-                    {(isClaudeProfileActive || isCodexProfileActive) && effectiveVendorDetected !== false && Array.isArray(effectiveVendorOptions) && (
-                        <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
-                            <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-xxs text-muted">Vendor · from cc-switch</span>
-                                <button
-                                    type="button"
-                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
-                                    aria-label="Refresh cc-switch vendors"
-                                    title="Refresh"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        effectiveOnRefreshVendors?.();
-                                    }}
-                                >
-                                    <i className="fa-sharp fa-regular fa-rotate-right text-[10px]" />
-                                </button>
-                            </div>
-                            {effectiveVendorOptions.length === 0 ? (
-                                <div className="px-2 py-1.5 text-xs text-muted">No vendors</div>
-                            ) : currentVendor == null ? (
-                                // No "current" chip found (cc-switch DB edge case). Lay the chips out fully
-                                // flat, identical to the pre-collapse behavior — degrade safely.
-                                <div className="flex flex-wrap gap-0.5">
-                                    {effectiveVendorOptions.map((vendor) => renderVendorChip(vendor, effectiveSelectedVendorId, effectiveOnSelectVendor))}
+                    {(isClaudeProfileActive || isCodexProfileActive) &&
+                        effectiveVendorDetected !== false &&
+                        Array.isArray(effectiveVendorOptions) && (
+                            <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-xxs text-muted">Vendor · from cc-switch</span>
+                                    <button
+                                        type="button"
+                                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
+                                        aria-label="Refresh cc-switch vendors"
+                                        title="Refresh"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            effectiveOnRefreshVendors?.();
+                                        }}
+                                    >
+                                        <i className="fa-sharp fa-regular fa-rotate-right text-[10px]" />
+                                    </button>
                                 </div>
-                            ) : (
-                                <div className="flex flex-wrap gap-0.5">
-                                    {/* The always-shown "current/selected" chip — highlight = effectiveSelectedVendorId ?? is_current */}
-                                    {renderVendorChip(currentVendor, effectiveSelectedVendorId, effectiveOnSelectVendor)}
-                                    {showVendorRestToggle && (
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                setVendorRestExpanded((prev) => !prev);
-                                            }}
-                                            title={vendorRestExpanded ? "Collapse" : "Expand the rest of the vendors"}
-                                            aria-expanded={vendorRestExpanded}
-                                            className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md text-xs font-medium text-secondary hover:bg-surface-soft hover:text-foreground transition-colors cursor-pointer"
-                                        >
-                                            <span className="text-[11px] font-semibold text-accent">{`+${restVendors.length}`}</span>
-                                            <span className="text-[10px] opacity-85">{vendorRestExpanded ? "▴" : "▾"}</span>
-                                        </button>
-                                    )}
-                                    {/* When expanded, reflow the rest in place — same chip styling, no panel/border */}
-                                    {vendorRestExpanded &&
-                                        restVendors.map((vendor) =>
+                                {effectiveVendorOptions.length === 0 ? (
+                                    <div className="px-2 py-1.5 text-xs text-muted">No vendors</div>
+                                ) : currentVendor == null ? (
+                                    // No "current" chip found (cc-switch DB edge case). Lay the chips out fully
+                                    // flat, identical to the pre-collapse behavior — degrade safely.
+                                    <div className="flex flex-wrap gap-0.5">
+                                        {effectiveVendorOptions.map((vendor) =>
                                             renderVendorChip(vendor, effectiveSelectedVendorId, effectiveOnSelectVendor)
                                         )}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-wrap gap-0.5">
+                                        {/* The current vendor is the system default; only another explicit vendor is isolated. */}
+                                        {renderVendorChip(
+                                            currentVendor,
+                                            effectiveSelectedVendorId,
+                                            effectiveOnSelectVendor
+                                        )}
+                                        {showVendorRestToggle && (
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    setVendorRestExpanded((prev) => !prev);
+                                                }}
+                                                title={
+                                                    vendorRestExpanded ? "Collapse" : "Expand the rest of the vendors"
+                                                }
+                                                aria-expanded={vendorRestExpanded}
+                                                className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md text-xs font-medium text-secondary hover:bg-surface-soft hover:text-foreground transition-colors cursor-pointer"
+                                            >
+                                                <span className="text-[11px] font-semibold text-accent">{`+${restVendors.length}`}</span>
+                                                <span className="text-[10px] opacity-85">
+                                                    {vendorRestExpanded ? "▴" : "▾"}
+                                                </span>
+                                            </button>
+                                        )}
+                                        {/* When expanded, reflow the rest in place — same chip styling, no panel/border */}
+                                        {vendorRestExpanded &&
+                                            restVendors.map((vendor) =>
+                                                renderVendorChip(
+                                                    vendor,
+                                                    effectiveSelectedVendorId,
+                                                    effectiveOnSelectVendor
+                                                )
+                                            )}
+                                    </div>
+                                )}
+                                {VendorModelPinningEnabled && effectiveSelectedVendor ? (
+                                    <div className="mt-2 grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+                                        <label htmlFor="agent-vendor-model" className="text-xxs font-medium text-muted">
+                                            Model
+                                        </label>
+                                        <input
+                                            id="agent-vendor-model"
+                                            value={effectiveVendorModel}
+                                            onChange={(event) => setEffectiveVendorModel(event.target.value)}
+                                            placeholder="Auto (project preference may apply)"
+                                            spellCheck={false}
+                                            className="h-7 min-w-0 rounded border border-border bg-surface px-2 font-mono text-xs text-primary outline-none focus:border-accent"
+                                        />
+                                        <span className="col-start-2 text-[10px] text-secondary">
+                                            {effectiveVendorModel
+                                                ? `Pinned for ${effectiveSelectedVendor.name}`
+                                                : "Not pinned; Claude may choose a different model for each project."}
+                                        </span>
+                                    </div>
+                                ) : null}
+                            </div>
+                        )}
 
                     {/* path list */}
                     <div className="px-1 pb-1">
-                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">
-                            Select a path.
-                        </div>
+                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
                         {targets.length === 0 ? (
                             <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
                         ) : (
@@ -906,7 +995,7 @@ const AgentTargetFloatingWindow = memo(
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {(selectedTarget.detail || selectedTarget.label)}
+                                {selectedTarget.detail || selectedTarget.label}
                             </span>
                             <button
                                 type="button"
@@ -921,7 +1010,8 @@ const AgentTargetFloatingWindow = memo(
                                         selectedTarget,
                                         effectiveSelectedProfile,
                                         effectiveVendorOptions,
-                                        effectiveSelectedVendorId
+                                        effectiveSelectedVendorId,
+                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -951,7 +1041,8 @@ const AgentTargetFloatingWindow = memo(
                                         selectedTarget,
                                         effectiveSelectedProfile,
                                         effectiveVendorOptions,
-                                        effectiveSelectedVendorId
+                                        effectiveSelectedVendorId,
+                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -982,7 +1073,8 @@ const AgentTargetFloatingWindow = memo(
                                         selectedTarget,
                                         effectiveSelectedProfile,
                                         effectiveVendorOptions,
-                                        effectiveSelectedVendorId
+                                        effectiveSelectedVendorId,
+                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1157,7 +1249,7 @@ const TerminalTargetFloatingWindow = memo(
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {(selectedTarget.detail || selectedTarget.label)}
+                                {selectedTarget.detail || selectedTarget.label}
                             </span>
                             <button
                                 type="button"
@@ -1626,7 +1718,9 @@ const Widgets = memo(() => {
             fireAndForget(async () => {
                 try {
                     await env.services.object.UpdateObjectMeta(WOS.makeORef("tab", currentTabId), {
-                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
+                        [TerminalDefaultLaunchTargetMetaKey]: isCurrentlyDefault
+                            ? (null as unknown as string)
+                            : targetKey,
                     } as MetaType);
                 } catch (error) {
                     showSettingsError("Terminal default target", error);

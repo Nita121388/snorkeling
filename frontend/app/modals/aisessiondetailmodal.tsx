@@ -6,7 +6,7 @@ import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { SessionDetailController, SessionDetailPane } from "@/app/view/aisessions/session-detail";
 import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
-import { getErrorMessage } from "@/app/view/aisessions/utils";
+import { getErrorMessage, restoreMetaForSession } from "@/app/view/aisessions/utils";
 import { createBlock, getApi } from "@/store/global";
 import { isBlank } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -237,22 +237,8 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 setRestoring(true);
                 setError("");
                 try {
-                    const cmd = session.source === "claude" ? "claude" : "codex";
-                    const meta: MetaType & Record<string, unknown> = {
-                        view: "term",
-                        controller: "cmd",
-                        cmd,
-                        "cmd:shell": false,
-                        "cmd:runonstart": true,
-                        "cmd:jwt": true,
-                        "agent:autoresume": true,
-                        "agent:provider": session.source,
-                        "agent:sessionid": session.id,
-                    };
-                    if (session.projectPath) {
-                        meta["cmd:cwd"] = session.projectPath;
-                    }
-                    await createBlock({ meta });
+                    const context = await service.RestoreContext({ id: session.key || session.id });
+                    await createBlock({ meta: restoreMetaForSession(context) });
                 } catch (e) {
                     setError(getErrorMessage(e));
                 } finally {

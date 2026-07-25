@@ -1,8 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
+import { describe, expect, it } from "vitest";
 import {
     buildSessionDetailTimeline,
     formatFileSize,
@@ -11,6 +11,7 @@ import {
     isCollapsibleMessage,
     isReadableMessage,
     restoreCommandForSession,
+    restoreMetaForSession,
 } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
@@ -171,6 +172,48 @@ describe("AI session detail timeline", () => {
                 projectPath: "",
             } as SessionSummary)
         ).toBe("claude --resume session-123");
+    });
+
+    it("keeps the Claude vendor config in copied resume commands", () => {
+        setPlatform(PlatformWindows);
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                projectPath: "C:\\work project",
+                configdir: "C:\\Wave Data\\claude-vendors\\vendor-a",
+            } as SessionSummary)
+        ).toBe(
+            `cd "C:\\work project"\n$env:CLAUDE_CONFIG_DIR = 'C:\\Wave Data\\claude-vendors\\vendor-a'\nclaude --resume session-123`
+        );
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "session-123",
+                source: "claude",
+                configdir: "/tmp/Wave Data/claude-vendors/vendor-a",
+            } as SessionSummary)
+        ).toBe("CLAUDE_CONFIG_DIR='/tmp/Wave Data/claude-vendors/vendor-a' claude --resume session-123");
+    });
+
+    it("builds vendor restore metadata only from validated context", () => {
+        expect(
+            restoreMetaForSession({
+                sessionid: "session-123",
+                source: "claude",
+                projectpath: "C:\\work",
+                vendorid: "vendor-a",
+                vendorname: "Vendor A",
+                configdir: "C:\\Wave Data\\claude-vendors\\vendor-a",
+            })
+        ).toMatchObject({
+            cmd: "claude",
+            "cmd:cwd": "C:\\work",
+            "cmd:env": { CLAUDE_CONFIG_DIR: "C:\\Wave Data\\claude-vendors\\vendor-a" },
+            "agent:sessionid": "session-123",
+            "agent:claudevendorid": "vendor-a",
+            "agent:claudevendorname": "Vendor A",
+        });
     });
 });
 

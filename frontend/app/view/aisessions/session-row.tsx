@@ -240,6 +240,14 @@ export function SessionRow({
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
                             {session.source}
                         </span>
+                        {session.vendorid ? (
+                            <span
+                                className="max-w-40 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"
+                                title={session.configdir || session.vendorid}
+                            >
+                                Vendor {session.vendorid.slice(0, 8)}
+                            </span>
+                        ) : null}
                         <span title={formatDateTimeToSecond(sessionTime)}>
                             {formatSessionRelativeTime(sessionTime)}
                         </span>
@@ -284,7 +292,11 @@ export function SessionRow({
                             }}
                         >
                             <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                {session.note ? <span className="min-w-0 flex-1 truncate">{stripSessionTagHashes(session.note)}</span> : null}
+                                {session.note ? (
+                                    <span className="min-w-0 flex-1 truncate">
+                                        {stripSessionTagHashes(session.note)}
+                                    </span>
+                                ) : null}
                                 {visibleSessionTags.map((tag) => (
                                     <span
                                         key={tag}

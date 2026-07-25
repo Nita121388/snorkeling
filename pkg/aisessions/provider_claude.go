@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 )
 
 type ClaudeProvider struct {
@@ -106,6 +108,7 @@ func parseClaudeMessageLine(line []byte, seq int) (Message, bool) {
 		Seq:       seq,
 		Role:      role,
 		Text:      text,
+		Model:     strValue(message, "model"),
 		Timestamp: parseTimestampToMS(value["timestamp"]),
 		CharCount: runeCount(text),
 	}, true
@@ -295,6 +298,10 @@ func (p *ClaudeProvider) parseSummaryFromLines(
 		Snippet:     snippet,
 		MTime:       mtime,
 		Size:        size,
+	}
+	if vendorID, configDir, ok := ccswitch.ResolveClaudeVendorSessionPath(path); ok {
+		summary.VendorID = vendorID
+		summary.ConfigDir = configDir
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary, summary.Validate() == nil

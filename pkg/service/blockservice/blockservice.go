@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
+	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
@@ -92,6 +93,18 @@ func (*BlockService) InstallAgentStatusHooks_Meta() tsgenmeta.MethodMeta {
 
 func (bs *BlockService) InstallAgentStatusHooks(ctx context.Context, target string) ([]agentstatus.HookInstallResult, error) {
 	return agentstatus.InstallHooks(target)
+}
+
+func (*BlockService) GetVendorIsolationStatus_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "get a redacted diagnostic snapshot for one isolated agent vendor",
+		ArgNames:   []string{"ctx", "apptype", "vendorid"},
+		ReturnDesc: "redacted vendor isolation status",
+	}
+}
+
+func (bs *BlockService) GetVendorIsolationStatus(ctx context.Context, appType string, vendorID string) (*ccswitch.VendorIsolationStatus, error) {
+	return ccswitch.GetVendorIsolationStatus(ctx, appType, vendorID)
 }
 
 func (*BlockService) ReportAgentStatus_Meta() tsgenmeta.MethodMeta {

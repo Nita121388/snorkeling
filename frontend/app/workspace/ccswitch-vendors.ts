@@ -20,6 +20,8 @@ export interface CcSwitchVendor {
     id: string;
     name: string;
     env: Record<string, string>;
+    /** Deterministic model inferred from cc-switch env; blank means the vendor does not pin one. */
+    model?: string;
     is_current: boolean;
     provider_type: string;
     category: string;
@@ -112,7 +114,10 @@ export function loadCcSwitchVendors(appType: CcSwitchAppType, force: boolean = f
  * Returns undefined if not loaded yet or no match. Callers that need a guaranteed-fresh value
  * should call loadCcSwitchVendors() first and search the resolved array themselves.
  */
-export function findVendorById(vendors: CcSwitchVendor[] | undefined, vendorId: string | undefined): CcSwitchVendor | undefined {
+export function findVendorById(
+    vendors: CcSwitchVendor[] | undefined,
+    vendorId: string | undefined
+): CcSwitchVendor | undefined {
     if (vendors == null || isBlank(vendorId)) {
         return undefined;
     }

@@ -107,6 +107,22 @@ declare global {
         count: number;
     };
 
+    // aisessionsservice.AISessionsRestoreContextRequest
+    type AISessionsRestoreContextRequest = {
+        id: string;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsRestoreContextResponse
+    type AISessionsRestoreContextResponse = {
+        sessionid: string;
+        source: string;
+        projectpath?: string;
+        vendorid?: string;
+        vendorname?: string;
+        configdir?: string;
+    };
+
     // aisessionsservice.AISessionsStatRequest
     type AISessionsStatRequest = {
         id?: string;
@@ -1531,6 +1547,7 @@ declare global {
         seq: number;
         role: string;
         text: string;
+        model?: string;
         timestamp?: number;
         toolName?: string;
         charCount: number;
@@ -1942,6 +1959,8 @@ declare global {
         updatedAt?: number;
         messageCount?: number;
         filePath?: string;
+        vendorid?: string;
+        configdir?: string;
         snippet?: string;
         marked?: boolean;
         note?: string;
@@ -2651,11 +2670,36 @@ declare global {
         id: string;
         name: string;
         env: {[key: string]: string};
+        model?: string;
         is_current: boolean;
         provider_type: string;
         category: string;
         claude_config_dir?: string;
         codex_config_dir?: string;
+    };
+
+    // ccswitch.VendorIsolationFileStatus
+    type VendorIsolationFileStatus = {
+        name: string;
+        exists: boolean;
+        size?: number;
+        lastmodified?: number;
+    };
+
+    // ccswitch.VendorIsolationStatus
+    type VendorIsolationStatus = {
+        apptype: string;
+        vendorid: string;
+        vendorname: string;
+        state: string;
+        configdir?: string;
+        files: VendorIsolationFileStatus[];
+        toplevelkeys?: string[];
+        envcount?: number;
+        hookeventcount?: number;
+        inheritancesource: string;
+        redactedjson?: string;
+        warning?: string;
     };
 
     // ccswitch.VendorList

@@ -34,6 +34,8 @@ type SessionSummary struct {
 	UpdatedAt    int64    `json:"updatedAt,omitempty"`
 	MessageCount int      `json:"messageCount,omitempty"`
 	FilePath     string   `json:"filePath,omitempty"`
+	VendorID     string   `json:"vendorid,omitempty"`
+	ConfigDir    string   `json:"configdir,omitempty"`
 	Snippet      string   `json:"snippet,omitempty"`
 	Marked       bool     `json:"marked,omitempty"`
 	Note         string   `json:"note,omitempty"`
@@ -47,6 +49,7 @@ type Message struct {
 	Seq       int    `json:"seq"`
 	Role      string `json:"role"`
 	Text      string `json:"text"`
+	Model     string `json:"model,omitempty"`
 	Timestamp int64  `json:"timestamp,omitempty"`
 	ToolName  string `json:"toolName,omitempty"`
 	CharCount int    `json:"charCount"`

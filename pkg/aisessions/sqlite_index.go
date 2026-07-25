@@ -25,7 +25,7 @@ import (
 const (
 	sqliteIndexSchemaVersion = "2"
 	summaryParserVersionKey  = "summary_parser_version"
-	summaryParserVersion     = "2"
+	summaryParserVersion     = "3"
 )
 
 type SQLiteIndex struct {
@@ -142,6 +142,8 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			updated_at INTEGER,
 			message_count INTEGER,
 			file_path TEXT NOT NULL,
+			vendor_id TEXT,
+			config_dir TEXT,
 			snippet TEXT,
 			mtime INTEGER,
 			size INTEGER,
@@ -191,6 +193,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := idx.ensureAISessionProvenanceColumns(ctx); err != nil {
+		return err
+	}
 	if err := idx.MigrateMetaJSON(ctx); err != nil {
 		return err
 	}
@@ -200,6 +205,31 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	}
 	if tagMigrationComplete {
 		if err := idx.setSchemaMeta(ctx, "schema_version", sqliteIndexSchemaVersion); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_sessions')`); err != nil {
+		return err
+	}
+	existing := make(map[string]bool, len(columns))
+	for _, column := range columns {
+		existing[column.Name] = true
+	}
+	for name, definition := range map[string]string{
+		"vendor_id":  "TEXT",
+		"config_dir": "TEXT",
+	} {
+		if existing[name] {
+			continue
+		}
+		if _, err := idx.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE ai_sessions ADD COLUMN %s %s", name, definition)); err != nil {
 			return err
 		}
 	}
@@ -1021,7 +1051,7 @@ func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]Sessi
 
 func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSummary, error) {
 	var rows []sqliteSessionRow
-	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, snippet, mtime, size, missing FROM ai_sessions`)
+	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions`)
 	if err != nil {
 		return nil, err
 	}
@@ -1086,7 +1116,7 @@ func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (Sess
 		return SessionSummary{}, fmt.Errorf("session id is required")
 	}
 	var rows []sqliteSessionRow
-	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, snippet, mtime, size, missing FROM ai_sessions WHERE missing = 0`)
+	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions WHERE missing = 0`)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -1138,6 +1168,8 @@ type sqliteSessionRow struct {
 	UpdatedAt    int64  `db:"updated_at"`
 	MessageCount int    `db:"message_count"`
 	FilePath     string `db:"file_path"`
+	VendorID     string `db:"vendor_id"`
+	ConfigDir    string `db:"config_dir"`
 	Snippet      string `db:"snippet"`
 	MTime        int64  `db:"mtime"`
 	Size         int64  `db:"size"`
@@ -1156,6 +1188,8 @@ func (row sqliteSessionRow) summary() SessionSummary {
 		UpdatedAt:    row.UpdatedAt,
 		MessageCount: row.MessageCount,
 		FilePath:     row.FilePath,
+		VendorID:     row.VendorID,
+		ConfigDir:    row.ConfigDir,
 		Snippet:      row.Snippet,
 		MTime:        row.MTime,
 		Size:         row.Size,
@@ -1165,8 +1199,8 @@ func (row sqliteSessionRow) summary() SessionSummary {
 
 func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary SessionSummary, messageIndexed bool) error {
 	now := time.Now().UnixMilli()
-	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, snippet, mtime, size, missing, indexed_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, indexed_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			id = excluded.id,
 			source = excluded.source,
@@ -1181,13 +1215,15 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 				ELSE ai_sessions.message_count
 			END,
 			file_path = excluded.file_path,
+			vendor_id = excluded.vendor_id,
+			config_dir = excluded.config_dir,
 			snippet = excluded.snippet,
 			mtime = excluded.mtime,
 			size = excluded.size,
 			missing = excluded.missing,
 			indexed_at = excluded.indexed_at`,
 		summary.Key, summary.ID, summary.Source, summary.Title, summary.TitleSource, summary.ProjectPath, summary.CreatedAt, summary.UpdatedAt,
-		summary.MessageCount, summary.FilePath, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing), now,
+		summary.MessageCount, summary.FilePath, summary.VendorID, summary.ConfigDir, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing), now,
 		boolToInt(messageIndexed))
 	if err != nil {
 		return err

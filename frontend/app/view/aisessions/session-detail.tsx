@@ -23,13 +23,13 @@ import {
     formatDateTimeToSecond,
     formatSessionDate,
     formatToolCallPreview,
+    isCollapsibleMessage,
     isReadableMessage,
     outlinePreview,
     outlineRoleClass,
     restoreCommandForSession,
     shortSessionId,
     trimMessageText,
-    isCollapsibleMessage,
 } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -305,8 +305,7 @@ export function SessionDetailPane({
     // 初始化持久化偏好标记
     useEffect(() => {
         try {
-            hasStoredPreferenceRef.current =
-                localStorage.getItem("snorkeling:sessionDetail:headerCollapsed") !== null;
+            hasStoredPreferenceRef.current = localStorage.getItem("snorkeling:sessionDetail:headerCollapsed") !== null;
         } catch {
             hasStoredPreferenceRef.current = false;
         }
@@ -330,6 +329,16 @@ export function SessionDetailPane({
         () => (detail?.messages ?? []).filter((message) => isReadableMessage(message)),
         [detail?.messages]
     );
+    const actualModels = useMemo(() => {
+        const models: string[] = [];
+        for (const message of detail?.messages ?? []) {
+            const modelName = message.model?.trim();
+            if (!modelName || modelName === "<synthetic>" || models.includes(modelName)) continue;
+            models.push(modelName);
+        }
+        return models;
+    }, [detail?.messages]);
+    const actualModel = actualModels.at(-1) ?? "";
     const detailMessages = useMemo(
         () => readableMessages.slice(-visibleMessageCount),
         [readableMessages, visibleMessageCount]
@@ -680,293 +689,318 @@ export function SessionDetailPane({
                                 {summary.title || summary.id}
                             </div>
                         </button>
-                        <IconButton
-                            icon="fa-chevron-down"
-                            label="Expand session header"
-                            onClick={toggleHeader}
-                        />
+                        <IconButton icon="fa-chevron-down" label="Expand session header" onClick={toggleHeader} />
                     </div>
                 ) : (
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                            <div className="min-w-0 truncate text-sm font-medium" title={summary.title || summary.id}>
-                                {summary.title || summary.id}
-                            </div>
-                            <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
-                                <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
-                                {summary.source}
-                            </span>
-                        </div>
-                        <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
-                            <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
-                                {projectDirectory ? (
-                                    <CopyTextButton
-                                        text={projectDirectory}
-                                        label="Copy project directory"
-                                        displayText={projectDirectory}
-                                        tooltipText={projectDirectory}
-                                        wrapperClassName="min-w-0"
-                                        className="justify-start"
-                                        textClassName="truncate"
-                                    />
-                                ) : (
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <div
+                                    className="min-w-0 truncate text-sm font-medium"
+                                    title={summary.title || summary.id}
+                                >
+                                    {summary.title || summary.id}
+                                </div>
+                                <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
+                                    <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
+                                    {summary.source}
+                                </span>
+                                {summary.vendorid ? (
                                     <span
-                                        className="min-w-0 truncate text-secondary"
-                                        title="Project directory unavailable"
+                                        className="max-w-48 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"
+                                        title={summary.configdir || summary.vendorid}
                                     >
-                                        No project directory
+                                        Vendor {summary.vendorid.slice(0, 8)}
                                     </span>
-                                )}
-                                {projectDirectory ? (
-                                    <IconButton
-                                        icon="fa-folder-open"
-                                        label="Open project directory"
-                                        size="xs"
-                                        className="!border-transparent"
-                                        onClick={() => void model.openProjectDirectory(summary)}
-                                    />
+                                ) : null}
+                                {actualModel ? (
+                                    <span
+                                        className={cn(
+                                            "max-w-48 truncate rounded border px-1.5 py-0.5 text-[10px]",
+                                            actualModels.length > 1
+                                                ? "border-warning/60 text-warning"
+                                                : "border-border text-primary"
+                                        )}
+                                        title={`Actual response model${actualModels.length > 1 ? "s" : ""}: ${actualModels.join(", ")}`}
+                                    >
+                                        Model {actualModel}
+                                    </span>
                                 ) : null}
                             </div>
-                            <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
-                                    <CopyIconButton
-                                        text={summary.id}
-                                        label="Copy session ID"
-                                        size="xs"
-                                        className="!border-transparent"
-                                    />
-                                </div>
-                                <div className="flex w-full min-w-0 items-center justify-end gap-2">
-                                    <span className="shrink-0 text-[10px] uppercase">Session file:</span>
-                                    {sessionFilePath ? (
+                            <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
+                                <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
+                                    {projectDirectory ? (
                                         <CopyTextButton
-                                            text={sessionFilePath}
-                                            label="Copy session file path"
-                                            displayText={formatSessionDate(summary.updatedAt || summary.createdAt || 0)}
-                                            tooltipText={sessionFilePath}
+                                            text={projectDirectory}
+                                            label="Copy project directory"
+                                            displayText={projectDirectory}
+                                            tooltipText={projectDirectory}
                                             wrapperClassName="min-w-0"
-                                            className="ml-auto justify-end text-right"
+                                            className="justify-start"
                                             textClassName="truncate"
                                         />
                                     ) : (
-                                        <span className="text-right text-secondary">No session file</span>
+                                        <span
+                                            className="min-w-0 truncate text-secondary"
+                                            title="Project directory unavailable"
+                                        >
+                                            No project directory
+                                        </span>
                                     )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
-                            <button
-                                className="flex h-7 items-center gap-2 rounded border border-action bg-action px-2 text-actiontext hover:bg-actionhover disabled:opacity-60 cursor-pointer disabled:cursor-default"
-                                disabled={restoring}
-                                onClick={() => void model.restoreSession(summary)}
-                            >
-                                <i className="fa-sharp fa-solid fa-square-terminal" />
-                                <span>{restoring ? "Resuming..." : "Resume"}</span>
-                            </button>
-                            <CopyIconButton text={restoreCommandForSession(summary)} label="Copy resume command" />
-                            <IconButton
-                                icon="fa-trash"
-                                label="Delete session"
-                                className={deleteConfirmOpen ? "border-error text-error" : ""}
-                                disabled={deleting}
-                                onClick={() => setDeleteConfirmOpen(true)}
-                            />
-                            <IconButton
-                                icon={showToolCalls && toolCallsLoading ? "fa-spinner animate-spin" : "fa-wrench"}
-                                label={showToolCalls ? "Hide tool calls" : "Show tool calls"}
-                                className={cn(showToolCalls && "border-accent bg-accent/10 text-accent")}
-                                disabled={toolCallsLoading && !toolsLoaded}
-                                onClick={toggleToolCalls}
-                            />
-                            {hasNoteInfo ? (
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-l-2 border-accent/50 pl-2 text-left text-xs text-primary hover:text-accent",
-                                        !noteCollapsed && "text-accent"
-                                    )}
-                                    title="Edit note and tags"
-                                    aria-label="Edit note and tags"
-                                    onClick={() => setNoteCollapsed((current) => !current)}
-                                >
-                                    <span className="flex min-w-0 max-w-full items-center gap-1.5">
-                                        {summary.note ? (
-                                            <span className="min-w-0 truncate">{stripSessionTagHashes(summary.note)}</span>
-                                        ) : null}
-                                        {visibleSummaryTags.map((tag) => (
-                                            <span
-                                                key={tag}
-                                                className="shrink-0 rounded-md bg-surface-soft px-1.5 py-0.5 text-[10px] leading-none text-secondary"
-                                            >
-                                                <span className="opacity-50">#</span>
-                                                {tag}
-                                            </span>
-                                        ))}
-                                        {summaryTags.length > visibleSummaryTags.length ? (
-                                            <span className="shrink-0 text-[10px] text-secondary">
-                                                +{summaryTags.length - visibleSummaryTags.length}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary">
-                                        <i className="fa-sharp fa-solid fa-pen text-[10px]" />
-                                    </span>
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                    title="Add note and tags"
-                                    onClick={() => setNoteCollapsed(false)}
-                                >
-                                    <i className="fa-sharp fa-solid fa-pen text-[10px]" />
-                                    <span>Add note</span>
-                                </button>
-                            )}
-                        </div>
-                        {deleteConfirmOpen ? (
-                            <div className="mt-2 flex items-center justify-between gap-3 rounded border border-error/40 bg-error/10 px-2 py-2 text-xs">
-                                <div className="min-w-0 text-error">
-                                    Delete this session? The source file will be moved to deleted storage.
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <button
-                                        className="h-7 rounded border border-border px-2 text-secondary hover:bg-hover hover:text-primary"
-                                        disabled={deleting}
-                                        onClick={() => setDeleteConfirmOpen(false)}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        className="flex h-7 items-center gap-2 rounded border border-error bg-error px-2 text-white disabled:opacity-60"
-                                        disabled={deleting}
-                                        onClick={() => void model.deleteSession(summary)}
-                                    >
-                                        <i
-                                            className={cn(
-                                                "fa-sharp fa-solid",
-                                                deleting ? "fa-spinner animate-spin" : "fa-trash"
-                                            )}
+                                    {projectDirectory ? (
+                                        <IconButton
+                                            icon="fa-folder-open"
+                                            label="Open project directory"
+                                            size="xs"
+                                            className="!border-transparent"
+                                            onClick={() => void model.openProjectDirectory(summary)}
                                         />
-                                        <span>{deleting ? "Deleting..." : "Delete"}</span>
-                                    </button>
+                                    ) : null}
+                                </div>
+                                <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
+                                    <div className="flex shrink-0 items-center gap-2">
+                                        <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
+                                        <CopyIconButton
+                                            text={summary.id}
+                                            label="Copy session ID"
+                                            size="xs"
+                                            className="!border-transparent"
+                                        />
+                                    </div>
+                                    <div className="flex w-full min-w-0 items-center justify-end gap-2">
+                                        <span className="shrink-0 text-[10px] uppercase">Session file:</span>
+                                        {sessionFilePath ? (
+                                            <CopyTextButton
+                                                text={sessionFilePath}
+                                                label="Copy session file path"
+                                                displayText={formatSessionDate(
+                                                    summary.updatedAt || summary.createdAt || 0
+                                                )}
+                                                tooltipText={sessionFilePath}
+                                                wrapperClassName="min-w-0"
+                                                className="ml-auto justify-end text-right"
+                                                textClassName="truncate"
+                                            />
+                                        ) : (
+                                            <span className="text-right text-secondary">No session file</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        ) : null}
-                        {!noteCollapsed ? (
-                            <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
-                                <SessionTagChips
-                                    tags={nextTags}
-                                    removable
-                                    onRemove={(tag) => {
-                                        const baseTags = normalizeSessionTags(summary?.tags ?? []).filter(
-                                            (item) => item !== tag
-                                        );
-                                        const nextNote = removeSessionTagFromNote(parsedNoteDraft.note, tag);
-                                        latestNoteDraftRef.current = nextNote;
-                                        setNoteDraft(nextNote);
-                                        void model.updateNote(summary, nextNote, baseTags);
-                                    }}
+                            <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
+                                <button
+                                    className="flex h-7 items-center gap-2 rounded border border-action bg-action px-2 text-actiontext hover:bg-actionhover disabled:opacity-60 cursor-pointer disabled:cursor-default"
+                                    disabled={restoring}
+                                    onClick={() => void model.restoreSession(summary)}
+                                >
+                                    <i className="fa-sharp fa-solid fa-square-terminal" />
+                                    <span>{restoring ? "Resuming..." : "Resume"}</span>
+                                </button>
+                                <CopyIconButton text={restoreCommandForSession(summary)} label="Copy resume command" />
+                                <IconButton
+                                    icon="fa-trash"
+                                    label="Delete session"
+                                    className={deleteConfirmOpen ? "border-error text-error" : ""}
+                                    disabled={deleting}
+                                    onClick={() => setDeleteConfirmOpen(true)}
                                 />
-                                <textarea
-                                    className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                    placeholder="Add a note, use #tag to add tags"
-                                    value={noteDraft}
-                                    onChange={(e) => {
-                                        latestNoteDraftRef.current = e.target.value;
-                                        setNoteDraft(e.target.value);
-                                        if (noteSaveStatus !== "saving") {
-                                            setNoteSaveStatus("idle");
-                                        }
-                                    }}
+                                <IconButton
+                                    icon={showToolCalls && toolCallsLoading ? "fa-spinner animate-spin" : "fa-wrench"}
+                                    label={showToolCalls ? "Hide tool calls" : "Show tool calls"}
+                                    className={cn(showToolCalls && "border-accent bg-accent/10 text-accent")}
+                                    disabled={toolCallsLoading && !toolsLoaded}
+                                    onClick={toggleToolCalls}
                                 />
-                                <div className="flex items-center gap-2">
+                                {hasNoteInfo ? (
                                     <button
                                         type="button"
-                                        title={noteStatusText || "Save note"}
-                                        disabled={noteSaving || noteUnchanged}
                                         className={cn(
-                                            "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
-                                            noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
-                                            noteSaveStatus === "error" && "border-error bg-error/10 text-error"
+                                            "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-l-2 border-accent/50 pl-2 text-left text-xs text-primary hover:text-accent",
+                                            !noteCollapsed && "text-accent"
                                         )}
-                                        onClick={() => void saveNote(noteDraft)}
+                                        title="Edit note and tags"
+                                        aria-label="Edit note and tags"
+                                        onClick={() => setNoteCollapsed((current) => !current)}
                                     >
-                                        <i
-                                            className={cn(
-                                                "fa-sharp fa-solid",
-                                                noteSaveStatus === "saving"
-                                                    ? "fa-spinner animate-spin"
-                                                    : noteSaveStatus === "saved"
-                                                      ? "fa-check"
-                                                      : noteSaveStatus === "error"
-                                                        ? "fa-triangle-exclamation"
-                                                        : "fa-floppy-disk"
-                                            )}
-                                        />
-                                        <span>Save</span>
+                                        <span className="flex min-w-0 max-w-full items-center gap-1.5">
+                                            {summary.note ? (
+                                                <span className="min-w-0 truncate">
+                                                    {stripSessionTagHashes(summary.note)}
+                                                </span>
+                                            ) : null}
+                                            {visibleSummaryTags.map((tag) => (
+                                                <span
+                                                    key={tag}
+                                                    className="shrink-0 rounded-md bg-surface-soft px-1.5 py-0.5 text-[10px] leading-none text-secondary"
+                                                >
+                                                    <span className="opacity-50">#</span>
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                            {summaryTags.length > visibleSummaryTags.length ? (
+                                                <span className="shrink-0 text-[10px] text-secondary">
+                                                    +{summaryTags.length - visibleSummaryTags.length}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary">
+                                            <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                        </span>
                                     </button>
-                                    <IconButton
-                                        icon="fa-eraser"
-                                        label="Clear note"
-                                        disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
-                                        onClick={() => {
-                                            latestNoteDraftRef.current = "";
-                                            setNoteDraft("");
-                                            void saveNote("");
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                        title="Add note and tags"
+                                        onClick={() => setNoteCollapsed(false)}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-pen text-[10px]" />
+                                        <span>Add note</span>
+                                    </button>
+                                )}
+                            </div>
+                            {deleteConfirmOpen ? (
+                                <div className="mt-2 flex items-center justify-between gap-3 rounded border border-error/40 bg-error/10 px-2 py-2 text-xs">
+                                    <div className="min-w-0 text-error">
+                                        Delete this session? The source file will be moved to deleted storage.
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                        <button
+                                            className="h-7 rounded border border-border px-2 text-secondary hover:bg-hover hover:text-primary"
+                                            disabled={deleting}
+                                            onClick={() => setDeleteConfirmOpen(false)}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="flex h-7 items-center gap-2 rounded border border-error bg-error px-2 text-white disabled:opacity-60"
+                                            disabled={deleting}
+                                            onClick={() => void model.deleteSession(summary)}
+                                        >
+                                            <i
+                                                className={cn(
+                                                    "fa-sharp fa-solid",
+                                                    deleting ? "fa-spinner animate-spin" : "fa-trash"
+                                                )}
+                                            />
+                                            <span>{deleting ? "Deleting..." : "Delete"}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
+                            {!noteCollapsed ? (
+                                <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
+                                    <SessionTagChips
+                                        tags={nextTags}
+                                        removable
+                                        onRemove={(tag) => {
+                                            const baseTags = normalizeSessionTags(summary?.tags ?? []).filter(
+                                                (item) => item !== tag
+                                            );
+                                            const nextNote = removeSessionTagFromNote(parsedNoteDraft.note, tag);
+                                            latestNoteDraftRef.current = nextNote;
+                                            setNoteDraft(nextNote);
+                                            void model.updateNote(summary, nextNote, baseTags);
                                         }}
                                     />
-                                    <span
-                                        className={cn(
-                                            "min-w-[64px] text-[11px] text-secondary",
-                                            noteSaveStatus === "saved" && "text-accent",
-                                            noteSaveStatus === "error" && "text-error"
-                                        )}
-                                        aria-live="polite"
-                                    >
-                                        {noteStatusText}
-                                    </span>
+                                    <textarea
+                                        className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
+                                        placeholder="Add a note, use #tag to add tags"
+                                        value={noteDraft}
+                                        onChange={(e) => {
+                                            latestNoteDraftRef.current = e.target.value;
+                                            setNoteDraft(e.target.value);
+                                            if (noteSaveStatus !== "saving") {
+                                                setNoteSaveStatus("idle");
+                                            }
+                                        }}
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            title={noteStatusText || "Save note"}
+                                            disabled={noteSaving || noteUnchanged}
+                                            className={cn(
+                                                "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
+                                                noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
+                                                noteSaveStatus === "error" && "border-error bg-error/10 text-error"
+                                            )}
+                                            onClick={() => void saveNote(noteDraft)}
+                                        >
+                                            <i
+                                                className={cn(
+                                                    "fa-sharp fa-solid",
+                                                    noteSaveStatus === "saving"
+                                                        ? "fa-spinner animate-spin"
+                                                        : noteSaveStatus === "saved"
+                                                          ? "fa-check"
+                                                          : noteSaveStatus === "error"
+                                                            ? "fa-triangle-exclamation"
+                                                            : "fa-floppy-disk"
+                                                )}
+                                            />
+                                            <span>Save</span>
+                                        </button>
+                                        <IconButton
+                                            icon="fa-eraser"
+                                            label="Clear note"
+                                            disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
+                                            onClick={() => {
+                                                latestNoteDraftRef.current = "";
+                                                setNoteDraft("");
+                                                void saveNote("");
+                                            }}
+                                        />
+                                        <span
+                                            className={cn(
+                                                "min-w-[64px] text-[11px] text-secondary",
+                                                noteSaveStatus === "saved" && "text-accent",
+                                                noteSaveStatus === "error" && "text-error"
+                                            )}
+                                            aria-live="polite"
+                                        >
+                                            {noteStatusText}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                        ) : null}
-                    </div>
-                    <div className="shrink-0 flex flex-col items-end gap-1">
-                        <IconButton
-                            icon="fa-chevron-up"
-                            label="Collapse session header"
-                            onClick={toggleHeader}
-                        />
-                        {onClose ? (
+                            ) : null}
+                        </div>
+                        <div className="shrink-0 flex flex-col items-end gap-1">
+                            <IconButton icon="fa-chevron-up" label="Collapse session header" onClick={toggleHeader} />
+                            {onClose ? (
+                                <button
+                                    className="h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
+                                    title="Close"
+                                    aria-label="Close"
+                                    onClick={onClose}
+                                >
+                                    <i className="fa-sharp fa-solid fa-xmark" />
+                                </button>
+                            ) : null}
                             <button
-                                className="h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="Close"
-                                aria-label="Close"
-                                onClick={onClose}
+                                className={cn(
+                                    "h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary",
+                                    summary.marked && "border-accent bg-accent/10 text-accent"
+                                )}
+                                title={summary.marked ? "Unmark session" : "Mark session"}
+                                aria-label={summary.marked ? "Unmark session" : "Mark session"}
+                                onClick={() => void model.toggleMark(summary)}
                             >
-                                <i className="fa-sharp fa-solid fa-xmark" />
+                                <i
+                                    className={cn(
+                                        "fa-sharp",
+                                        summary.marked ? "fa-solid fa-star" : "fa-regular fa-star"
+                                    )}
+                                />
                             </button>
-                        ) : null}
-                        <button
-                            className={cn(
-                                "h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary",
-                                summary.marked && "border-accent bg-accent/10 text-accent"
-                            )}
-                            title={summary.marked ? "Unmark session" : "Mark session"}
-                            aria-label={summary.marked ? "Unmark session" : "Mark session"}
-                            onClick={() => void model.toggleMark(summary)}
-                        >
-                            <i className={cn("fa-sharp", summary.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
-                        </button>
-                        <IconButton
-                            icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
-                            label="Refresh session detail"
-                            disabled={refreshing}
-                            onClick={() => void requestDetailDelta("manual")}
-                        />
+                            <IconButton
+                                icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
+                                label="Refresh session detail"
+                                disabled={refreshing}
+                                onClick={() => void requestDetailDelta("manual")}
+                            />
+                        </div>
                     </div>
-                </div>
                 )}
             </div>
             <div className="relative min-h-0 flex-1">
@@ -1078,7 +1112,9 @@ export function SessionDetailPane({
                                                     key={`message-${item.message.seq}`}
                                                     message={item.message}
                                                     collapsed={collapsedMessages[item.message.seq]}
-                                                    onToggleCollapsed={() => toggleMessageCollapsed(item.message.seq, item.message.text)}
+                                                    onToggleCollapsed={() =>
+                                                        toggleMessageCollapsed(item.message.seq, item.message.text)
+                                                    }
                                                     searchQuery={detailSearchQuery}
                                                     searchActive={item.message.seq === activeSearchSeq}
                                                     registerRef={(node) => {

@@ -81,6 +81,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "RenameTag", Array.from(arguments))
     }
 
+    // validate and resolve the runtime context for restoring an AI session
+    // @returns validated AI session restore context
+    RestoreContext(request: AISessionsRestoreContextRequest): Promise<AISessionsRestoreContextResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "RestoreContext", Array.from(arguments))
+    }
+
     // stat a local AI session file without loading messages
     // @returns AI session file stat
     Stat(request: AISessionsStatRequest): Promise<AISessionsStatResponse> {
@@ -141,6 +147,12 @@ export class BlockServiceType {
     }
     GetControllerStatus(arg2: string): Promise<BlockControllerRuntimeStatus> {
         return callBackendService(this?.waveEnv, "block", "GetControllerStatus", Array.from(arguments))
+    }
+
+    // get a redacted diagnostic snapshot for one isolated agent vendor
+    // @returns redacted vendor isolation status
+    GetVendorIsolationStatus(apptype: string, vendorid: string): Promise<VendorIsolationStatus> {
+        return callBackendService(this?.waveEnv, "block", "GetVendorIsolationStatus", Array.from(arguments))
     }
 
     // install agent status hooks after explicit user consent

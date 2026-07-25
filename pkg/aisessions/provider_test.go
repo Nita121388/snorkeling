@@ -10,8 +10,74 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
+
+func useVendorSessionsTestDirs(t *testing.T) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	previous := wavebase.DataHome_VarCache
+	dataDir := t.TempDir()
+	wavebase.DataHome_VarCache = dataDir
+	t.Cleanup(func() {
+		wavebase.DataHome_VarCache = previous
+	})
+	return home, dataDir
+}
+
+func TestDefaultProvidersFindClaudeVendorSessionWithProvenance(t *testing.T) {
+	home, dataDir := useVendorSessionsTestDirs(t)
+	globalPath := filepath.Join(home, ".claude", "projects", "global", "same-id.jsonl")
+	vendorConfigDir := filepath.Join(dataDir, "claude-vendors", "vendor-a")
+	vendorPath := filepath.Join(vendorConfigDir, "projects", "vendor", "same-id.jsonl")
+	for _, path := range []string{globalPath, vendorPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(
+			`{"type":"user","message":{"role":"user","content":"Vendor session"},"sessionId":"same-id","timestamp":"2026-07-25T00:00:00Z","cwd":"/tmp/project"}`+"\n",
+		), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	options := ManagerOptions{
+		Providers:  DefaultProviders(),
+		IndexPath:  filepath.Join(dataDir, "index.json"),
+		MetaPath:   filepath.Join(dataDir, "meta.json"),
+		SQLitePath: filepath.Join(dataDir, "index.sqlite"),
+	}
+	manager := NewManagerWithOptions(options)
+	summaries, err := manager.List(context.Background(), ListOptions{Refresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 2 || summaries[0].Key == summaries[1].Key {
+		t.Fatalf("expected same ID at two paths to remain unique, got %#v", summaries)
+	}
+	var vendorSummary SessionSummary
+	for _, summary := range summaries {
+		if summary.VendorID == "vendor-a" {
+			vendorSummary = summary
+		}
+	}
+	if vendorSummary.ConfigDir != vendorConfigDir || vendorSummary.FilePath != vendorPath {
+		t.Fatalf("unexpected vendor provenance: %#v", vendorSummary)
+	}
+	if _, err := manager.Note(context.Background(), vendorSummary.Key, "vendor note"); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := NewManagerWithOptions(options).Summary(context.Background(), vendorSummary.Key, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Note != "vendor note" || reloaded.VendorID != "vendor-a" {
+		t.Fatalf("vendor note or provenance did not survive manager reopen: %#v", reloaded)
+	}
+}
 
 func TestCodexSummarySkipsAgentsInjection(t *testing.T) {
 	dir := t.TempDir()
@@ -279,6 +345,25 @@ func TestClaudeToolResultUserMessageBecomesTool(t *testing.T) {
 	}
 	if messages[1].Role != RoleTool || messages[1].Text != "File written" {
 		t.Fatalf("unexpected tool result message: %#v", messages[1])
+	}
+}
+
+func TestClaudeAssistantMessageCarriesActualModel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session-model.jsonl")
+	err := os.WriteFile(path, []byte(
+		`{"message":{"role":"assistant","model":"glm-5.2","content":"response"},"timestamp":"2026-07-25T00:00:00Z"}`+"\n",
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages, err := NewClaudeProvider([]string{dir}).LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].Model != "glm-5.2" {
+		t.Fatalf("unexpected parsed model: %#v", messages)
 	}
 }
 

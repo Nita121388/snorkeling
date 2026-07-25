@@ -1,8 +1,8 @@
 import { atoms, getApi, getFocusedBlockId, globalStore } from "@/app/store/global";
 import * as WOS from "@/app/store/wos";
 import { PreviewExplorerRootMetaKey, PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
-import { isBlank } from "@/util/util";
 import type { CcSwitchVendor } from "@/app/workspace/ccswitch-vendors";
+import { isBlank } from "@/util/util";
 
 const DefaultAgentCommand = "codex";
 const DefaultAgentProfile = "codex";
@@ -15,6 +15,8 @@ const AgentClaudeVendorIdMetaKey = "agent:claudevendorid";
 const AgentClaudeVendorNameMetaKey = "agent:claudevendorname";
 const AgentCodexVendorIdMetaKey = "agent:codexvendorid";
 const AgentCodexVendorNameMetaKey = "agent:codexvendorname";
+const AgentIsolationModeMetaKey = "agent:isolationmode";
+const AgentRequestedModelMetaKey = "agent:requestedmodel";
 const DefaultHomeLaunchTargetBlockId = "launch-target:home";
 const DefaultHomeLaunchTargetCwd = "~";
 
@@ -124,7 +126,9 @@ function extractCommandBaseName(cmd: string): string {
 
 function isRemoteExecutionConnection(connection: unknown): boolean {
     const normalizedConnection = normalizeConnection(connection);
-    return normalizedConnection != null && normalizedConnection !== "local" && !normalizedConnection.startsWith("local:");
+    return (
+        normalizedConnection != null && normalizedConnection !== "local" && !normalizedConnection.startsWith("local:")
+    );
 }
 
 function isWindowsShimCommand(cmd: string): boolean {
@@ -935,9 +939,10 @@ export function createDefaultAgentBlockDef(
     settings?: SettingsType,
     context?: AgentLaunchContext,
     vendorOptions?: CcSwitchVendor[],
-    vendorId?: string
+    vendorId?: string,
+    vendorModel?: string
 ): BlockDef {
-    return createAgentBlockDef(settings, context, undefined, vendorOptions, vendorId);
+    return createAgentBlockDef(settings, context, undefined, vendorOptions, vendorId, vendorModel);
 }
 
 export function createAgentBlockDefForProfile(
@@ -945,9 +950,10 @@ export function createAgentBlockDefForProfile(
     settings?: SettingsType,
     context?: AgentLaunchContext,
     vendorOptions?: CcSwitchVendor[],
-    vendorId?: string
+    vendorId?: string,
+    vendorModel?: string
 ): BlockDef {
-    return createAgentBlockDef(settings, context, profileName, vendorOptions, vendorId);
+    return createAgentBlockDef(settings, context, profileName, vendorOptions, vendorId, vendorModel);
 }
 
 function createAgentBlockDef(
@@ -955,7 +961,8 @@ function createAgentBlockDef(
     context?: AgentLaunchContext,
     profileName?: string,
     vendorOptions?: CcSwitchVendor[],
-    vendorId?: string
+    vendorId?: string,
+    vendorModel?: string
 ): BlockDef {
     const contextMeta = resolveContextMeta(context);
     const profile = getProfileConfig(settings, profileName);
@@ -963,13 +970,17 @@ function createAgentBlockDef(
     const provider = resolveAgentProvider(settings, cmd);
     const resolvedCmd = resolveAgentCommandForContext(cmd, provider, contextMeta);
     const cmdArgs = sanitizeArgs(profile.args);
-    const model = !isBlank(profile.model) ? profile.model : null;
+    const profileModel = !isBlank(profile.model) ? profile.model!.trim() : null;
     const modelFlag = !isBlank(profile.modelflag) ? profile.modelflag : DefaultModelFlag;
-    if (model != null) {
+    let requestedModel = profileModel;
+    if (!isBlank(vendorId) && !isBlank(vendorModel)) {
+        requestedModel = vendorModel!.trim();
+    }
+    if (requestedModel != null) {
         if (!isBlank(modelFlag)) {
-            cmdArgs.push(modelFlag, model);
+            cmdArgs.push(modelFlag, requestedModel);
         } else {
-            cmdArgs.push(model);
+            cmdArgs.push(requestedModel);
         }
     }
     const cmdEnv = sanitizeEnv(profile.env);
@@ -1034,6 +1045,10 @@ function createAgentBlockDef(
     const blockMetaRecord = blockMeta as Record<string, unknown>;
     blockMetaRecord[AgentAutoResumeMetaKey] = true;
     blockMetaRecord[AgentProviderMetaKey] = provider;
+    blockMetaRecord[AgentIsolationModeMetaKey] = selectedVendor == null ? "system" : "vendor";
+    if (requestedModel != null) {
+        blockMetaRecord[AgentRequestedModelMetaKey] = requestedModel;
+    }
     if (selectedVendor != null) {
         // Persist the per-block vendor binding so the block's vendor survives Wave restart
         // and other UI can show "this <profile> block is using <vendorName>". The two sets of
@@ -1059,7 +1074,8 @@ export function createAgentBlockDefForTarget(
     target: AgentLaunchTarget,
     profileName?: string,
     vendorOptions?: CcSwitchVendor[],
-    vendorId?: string
+    vendorId?: string,
+    vendorModel?: string
 ): BlockDef {
     const context = {
         connection: target.connection,
@@ -1067,9 +1083,9 @@ export function createAgentBlockDefForTarget(
         inheritWorkspaceContext: false,
     };
     if (isBlank(profileName)) {
-        return createDefaultAgentBlockDef(settings, context, vendorOptions, vendorId);
+        return createDefaultAgentBlockDef(settings, context, vendorOptions, vendorId, vendorModel);
     }
-    return createAgentBlockDefForProfile(profileName!, settings, context, vendorOptions, vendorId);
+    return createAgentBlockDefForProfile(profileName!, settings, context, vendorOptions, vendorId, vendorModel);
 }
 
 export async function resolveAgentBlockCommandForLaunch(

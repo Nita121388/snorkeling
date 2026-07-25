@@ -48,6 +48,7 @@ import {
     formatRelativeRefreshTime,
     getErrorMessage,
     readSortPreference,
+    restoreMetaForSession,
     sortSessionsByTime,
     writeSortPreference,
 } from "./utils";
@@ -566,23 +567,12 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.restoringAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const cmd = session.source === "claude" ? "claude" : "codex";
-            const meta: MetaType & Record<string, unknown> = {
-                view: "term",
-                controller: "cmd",
-                cmd,
-                "cmd:shell": false,
-                "cmd:runonstart": true,
-                "cmd:jwt": true,
-                "agent:autoresume": true,
-                "agent:provider": session.source,
-                "agent:sessionid": session.id,
-            };
-            if (session.projectPath) {
-                meta["cmd:cwd"] = session.projectPath;
-            }
+            const context = await this.service.RestoreContext({
+                id: session.key || session.id,
+                connection: this.getConnection(),
+            });
             await createBlock({
-                meta,
+                meta: restoreMetaForSession(context),
             });
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
