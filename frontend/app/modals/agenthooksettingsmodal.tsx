@@ -8,6 +8,7 @@ import { ClaudeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
 import type { CcSwitchAppType, CcSwitchVendor } from "@/app/workspace/ccswitch-vendors";
 import { loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
 import { copyText } from "@/util/clipboard";
+import { offset as offsetMiddleware, useClick, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { agentHookActionLabel, agentHookStatusLabel, vendorIsolationStateLabel } from "./agentsettings-utils";
 
@@ -51,6 +52,82 @@ type AgentHookSettingsModalProps = {
 function formatDiagnosticTime(timestamp: number): string {
     if (!timestamp) return "-";
     return new Date(timestamp).toLocaleString();
+}
+
+// Native <select><option> popups render through the OS/Chromium popup path: on Windows the
+// option-list background follows the system UA chrome, not the document theme tokens, so a
+// dark-theme document still shows a white option panel. Render the option list ourselves via a
+// floating portal so it inherits the modal (opaque) theme tokens instead.
+function VendorSelect({
+    vendors,
+    value,
+    loading,
+    onChange,
+}: {
+    vendors: CcSwitchVendor[];
+    value: string;
+    loading: boolean;
+    onChange: (vendorId: string) => void;
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const { refs, floatingStyles, context } = useFloating({
+        placement: "bottom-start",
+        strategy: "absolute",
+        open: isOpen,
+        onOpenChange: setIsOpen,
+        middleware: [offsetMiddleware(2)],
+    });
+    const click = useClick(context);
+    const dismiss = useDismiss(context);
+    const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss]);
+
+    const selected = vendors.find((vendor) => vendor.id === value);
+    const triggerLabel = selected ? `${selected.name} ${selected.is_current ? "(current)" : ""}` : "No vendors";
+    const disabled = loading || vendors.length === 0;
+
+    return (
+        <div className="relative">
+            <button
+                type="button"
+                ref={refs.setReference}
+                disabled={disabled}
+                className="flex h-8 w-full items-center justify-between gap-2 rounded border border-border bg-surface px-2 text-xs text-primary focus:border-accent focus:outline-none disabled:opacity-50 cursor-pointer disabled:cursor-default"
+                {...getReferenceProps()}
+            >
+                <span className="truncate">{triggerLabel}</span>
+                <i className="fa-sharp fa-solid fa-chevron-down shrink-0 text-muted" />
+            </button>
+            {isOpen && (
+                <div
+                    ref={refs.setFloating}
+                    style={floatingStyles}
+                    {...getFloatingProps()}
+                    className="absolute z-[var(--zindex-typeahead-modal)] max-h-64 w-[min(280px,calc(100vw-32px))] overflow-y-auto rounded border border-border bg-modalbg shadow-lg"
+                >
+                    {vendors.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted">No vendors</div>
+                    ) : (
+                        vendors.map((vendor) => (
+                            <button
+                                type="button"
+                                key={vendor.id}
+                                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs cursor-pointer ${
+                                    vendor.id === value ? "bg-accentbg text-primary" : "text-primary hover:bg-hoverbg"
+                                }`}
+                                onClick={() => {
+                                    onChange(vendor.id);
+                                    setIsOpen(false);
+                                }}
+                            >
+                                <span className="truncate">{vendor.name}</span>
+                                {vendor.is_current ? <span className="shrink-0 text-success">(current)</span> : null}
+                            </button>
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "" }: AgentHookSettingsModalProps) {
@@ -318,33 +395,16 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                 </div>
                                 <div className="min-w-0">
                                     <label
-                                        htmlFor="agent-settings-vendor"
                                         className="mb-1 flex text-xxs font-medium text-muted"
                                     >
                                         Vendor
                                     </label>
-                                    <select
-                                        id="agent-settings-vendor"
-                                        className="h-8 w-full rounded border border-border bg-surface px-2 text-xs text-primary focus:border-accent focus:outline-none"
+                                    <VendorSelect
+                                        vendors={vendors}
                                         value={selectedVendorId}
-                                        disabled={vendorsLoading || vendors.length === 0}
-                                        onChange={(event) => setSelectedVendorId(event.target.value)}
-                                    >
-                                        {vendors.length === 0 ? (
-                                            <option className="bg-surface text-primary" value="">
-                                                No vendors
-                                            </option>
-                                        ) : null}
-                                        {vendors.map((vendor) => (
-                                            <option
-                                                className="bg-surface text-primary"
-                                                key={vendor.id}
-                                                value={vendor.id}
-                                            >
-                                                {vendor.name} {vendor.is_current ? "(current)" : ""}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        loading={vendorsLoading}
+                                        onChange={setSelectedVendorId}
+                                    />
                                 </div>
                                 <button
                                     type="button"
