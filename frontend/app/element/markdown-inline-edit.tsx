@@ -5,6 +5,52 @@ import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft
 import { globalStore } from "@/store/jotaiStore";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+// ---------------------------------------------------------------------------
+// Inline-edit debug log. Enable by setting `localStorage.snorkelingInlineEditDebug = "1"` in
+// devtools then open a markdown preview and double-click a block. Every measure / state write /
+// scroll listener hit / target-lost event is emitted to both console.info and a ring buffer
+// on window.__inlineEditLog so the running trace can be copied out for analysis. Disable by
+// clearing the localStorage key. Cheap when off — single key read + early return.
+// ---------------------------------------------------------------------------
+
+type InlineEditLogEntry = { t: number; seq: number; msg: string; details: Record<string, unknown> };
+
+function isInlineEditDebugEnabled(): boolean {
+    return typeof window !== "undefined" && (window.localStorage?.getItem("snorkelingInlineEditDebug") === "1");
+}
+
+const INLINE_EDIT_LOG_BUF: InlineEditLogEntry[] = [];
+let INLINE_EDIT_LOG_SEQ = 0;
+
+if (typeof window !== "undefined") {
+    // Expose the ring buffer on window so a devtools console copy of `__inlineEditLog` yields
+    // the post-mortem. Buffer caps at 500 entries (≈ ~30s of a hot flicker loop) and overwrites
+    // oldest on overflow so memory is bounded.
+    (window as any).__inlineEditLog = INLINE_EDIT_LOG_BUF;
+    (window as any).__inlineEditLogClear = () => {
+        INLINE_EDIT_LOG_BUF.length = 0;
+        INLINE_EDIT_LOG_SEQ = 0;
+    };
+}
+
+export function inlineEditDebug(msg: string, details: Record<string, unknown> = {}) {
+    if (!isInlineEditDebugEnabled()) {
+        return;
+    }
+    const entry: InlineEditLogEntry = {
+        t: typeof performance !== "undefined" ? performance.now() : 0,
+        seq: INLINE_EDIT_LOG_SEQ++,
+        msg,
+        details,
+    };
+    INLINE_EDIT_LOG_BUF.push(entry);
+    if (INLINE_EDIT_LOG_BUF.length > 500) {
+        INLINE_EDIT_LOG_BUF.shift();
+    }
+    console.info("[inline-edit]", msg, details);
+}
 
 /**
  * Block kinds the inline editor knows how to open. Each maps to a renderer-emitted block: the
@@ -110,7 +156,14 @@ type UseInlineEditArgs = {
 
 export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, resetKey }: UseInlineEditArgs) {
     const [editSession, setEditSession] = useState<InlineEditSession | null>(null);
-    const [draftText, setDraftText] = useState<string>("");
+    const [draftText, setDraftTextState] = useState<string>("");
+    // Wrap setText so each user keystroke / external draft write is observable in the debug
+    // ring buffer at equal granularity with the layout-effect measurements. A bare useState
+    // setter has no hook we can attach, so we route through this thunk instead.
+    const setDraftText = useCallback((v: string) => {
+        inlineEditDebug("setDraftText", { len: v.length });
+        setDraftTextState(v);
+    }, []);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     // The element rendered in the live markdown tree we mirror with the textarea. We keep a
     // React-side rect derived from the DOM element so we can reposition on scroll / resize;
@@ -138,18 +191,73 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     const measureOverlay = useCallback(() => {
         const viewport = getViewportEl();
         const target = viewport && editSession ? resolveInlineEditTarget(viewport, editSession) : null;
-        if (!viewport || !target) {
+        if (!viewport) {
+            inlineEditDebug("measure: no viewport");
+            setOverlayRect(null);
+            return;
+        }
+        if (!target) {
+            inlineEditDebug("measure: target lost (fallback miss or stale targetEl)", {
+                startLine: editSession?.startLine,
+                kind: editSession?.blockKind,
+                scrollTop: viewport.scrollTop,
+            });
             setOverlayRect(null);
             return;
         }
         const targetRect = target.getBoundingClientRect();
-        const viewportRect = viewport.getBoundingClientRect();
-        setOverlayRect({
-            top: targetRect.top - viewportRect.top + viewport.scrollTop,
-            left: targetRect.left - viewportRect.left + viewport.scrollLeft,
-            width: targetRect.width,
+        // Overlay is rendered to a `position: fixed` host (a sibling of body via portal), so it
+        // wants viewport-relative (screen) coordinates rather than content-absolute coordinates.
+        // Content-absolute (`+ scrollTop`) was the source of a flicker loop:
+        //   focus → selection auto-scrolls textarea into viewport → scrollTop jumps →
+        //   scroll-listener → re-measure → next.top drifts (targetRect.top also moves with
+        //   scrollTop, but by a DIFFERENT delta because the overlay's box added layout height to
+        //   a child of the OSB viewport at a different position than where the selection lands)
+        //   → setRect → textarea repositions → selection now off-screen again → scroll back …
+        // With fixed + viewport-relative coords, scroll-events don't displace the overlay; the
+        // textarea stays put where the user dblclicked and focus has nothing to scroll to.
+        //
+        // Width: anchor to the rendered target's left edge and span out to the markdown content
+        // root's right edge — not to the target's own width. List/table targets are narrower than
+        // the content area (list indent, table cell box), and an editor narrower than the
+        // surrounding text breaks the "type where you read" feel. Spanning content-area-wide keeps
+        // the editor visually continuous with the surrounding prose bar.
+        const renderRoot = viewport.querySelector<HTMLElement>(".markdown-render-root");
+        let width = targetRect.width;
+        let left = targetRect.left;
+        if (renderRoot != null) {
+            const renderRect = renderRoot.getBoundingClientRect();
+            // contentRect left=render.left,top=render.top; renderRect.right is content end.
+            width = Math.max(targetRect.width, renderRect.right - targetRect.left);
+            left = Math.min(targetRect.left, renderRect.left);
+        }
+        const next = {
+            top: targetRect.top,
+            left,
+            width,
             height: targetRect.height,
+        };
+        // Skip the state write when the rect is unchanged so re-measure churn (scroll events,
+        // RAF polls, child re-mounts) doesn't trigger a re-render → re-measure → re-render loop.
+        // We compare by value on all four fields; sub-pixel jitter from getBoundingClientRect is
+        // bounded by layout scale and below the threshold a user perceives as "flicker".
+        let skipped = true;
+        setOverlayRect((prev) => {
+            if (
+                prev != null &&
+                prev.top === next.top &&
+                prev.left === next.left &&
+                prev.width === next.width &&
+                prev.height === next.height
+            ) {
+                return prev;
+            }
+            skipped = false;
+            return next;
         });
+        inlineEditDebug(
+            `measure scrollTop=${viewport.scrollTop.toFixed(2)} tRectTop=${targetRect.top.toFixed(2)} tRectLeft=${targetRect.left.toFixed(2)} tRectW=${targetRect.width.toFixed(2)} tRectH=${targetRect.height.toFixed(2)} next(t=${next.top.toFixed(2)},l=${next.left.toFixed(2)},w=${next.width.toFixed(2)},h=${next.height.toFixed(2)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
+        );
     }, [editSession, getViewportEl]);
 
     useLayoutEffect(() => {
@@ -158,10 +266,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         }
         const viewport = getViewportEl();
         if (viewport == null) {
+            inlineEditDebug("anchor-hide: no viewport");
             return;
         }
         const target = resolveInlineEditTarget(viewport, editSession);
         if (target == null) {
+            inlineEditDebug("anchor-hide: target lost → clearing session", {
+                kind: editSession.blockKind,
+                startLine: editSession.startLine,
+            });
             setEditSession(null);
             setDraftText("");
             setOverlayRect(null);
@@ -175,6 +288,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         if (editSession == null) {
             return;
         }
+        inlineEditDebug("measure-effect fire", { kind: editSession.blockKind, startLine: editSession.startLine });
         measureOverlay();
     }, [editSession, measureOverlay]);
 
@@ -185,16 +299,29 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             return;
         }
         const viewport = getViewportEl();
-        const onScroll = () => measureOverlay();
-        const onResize = () => measureOverlay();
+        let scrollCalls = 0;
+        const onScroll = () => {
+            scrollCalls++;
+            inlineEditDebug("scroll-listener", { scrollTop: viewport?.scrollTop, n: scrollCalls });
+            measureOverlay();
+        };
+        const onResize = () => {
+            inlineEditDebug("resize-listener");
+            measureOverlay();
+        };
         viewport?.addEventListener("scroll", onScroll, { passive: true });
         window.addEventListener("resize", onResize);
         // Re-measure on next paint in case the latest layout pass shifted position.
-        const raf = requestAnimationFrame(measureOverlay);
+        inlineEditDebug("raf-arm");
+        const raf = requestAnimationFrame(() => {
+            inlineEditDebug("raf-fire");
+            measureOverlay();
+        });
         return () => {
             viewport?.removeEventListener("scroll", onScroll);
             window.removeEventListener("resize", onResize);
             cancelAnimationFrame(raf);
+            inlineEditDebug("scroll-effect cleanup", { kind: editSession?.blockKind });
         };
     }, [editSession, measureOverlay, getViewportEl]);
 
@@ -204,7 +331,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             return;
         }
         focusedSessionRef.current = editSession;
-        ta.focus();
+        inlineEditDebug("focus+select", { kind: editSession.blockKind, startLine: editSession.startLine });
+        // preventScroll stops the browser from auto-scrolling the textarea into the viewport,
+        // which on a tall block (list/table/code whose overlay exceeds the viewport height) sets
+        // off a feedback loop: focus → auto-scroll → scroll-listener → re-measure → reposition →
+        // new top is off-screen → focus rect auto-scrolls again. The textarea is positioned
+        // absolutely over the block the user double-clicked; the scroll position the user picked
+        // when dblclicking is the one we want to keep.
+        ta.focus({ preventScroll: true });
         ta.setSelectionRange(0, ta.value.length);
     }, [editSession, overlayRect]);
 
@@ -214,8 +348,18 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         if (ta == null || editSession == null) {
             return;
         }
+        const beforeH = ta.style.height;
         ta.style.height = "auto";
-        ta.style.height = `${ta.scrollHeight}px`;
+        const scrollH = ta.scrollHeight;
+        ta.style.height = `${scrollH}px`;
+        inlineEditDebug("auto-grow", {
+            beforeH,
+            scrollH,
+            clientH: ta.clientHeight,
+            scrollWidth: ta.scrollWidth,
+            clientWidth: ta.clientWidth,
+            draftLen: draftText.length,
+        });
     }, [draftText, editSession, overlayRect?.width]);
 
     const beginEdit = useCallback(
@@ -243,6 +387,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 initialContent,
                 targetEl,
             };
+            inlineEditDebug("beginEdit", {
+                kind: blockKind,
+                startLine: safeLine,
+                endLine,
+                initialLen: initialContent.length,
+                targetTag: targetEl.tagName,
+                targetConnected: targetEl.isConnected,
+                targetHasSourceLineEnd: targetEl.dataset.sourceLineEnd != null,
+            });
             setEditSession(session);
             setDraftText(initialContent);
         },
@@ -262,6 +415,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         if (current == null) {
             return;
         }
+        inlineEditDebug("commit", {
+            kind: current.blockKind,
+            startLine: current.startLine,
+            draftLen: draftText.length,
+            initialLen: current.initialContent.length,
+            changed: draftText !== current.initialContent,
+        });
         setEditSession(null);
         setDraftText("");
         if (draftText === current.initialContent) {
@@ -274,9 +434,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, [editSession, draftText, fullText, onCommit]);
 
     const cancel = useCallback(() => {
+        inlineEditDebug("cancel", { kind: editSession?.blockKind, startLine: editSession?.startLine });
         setEditSession(null);
         setDraftText("");
-    }, []);
+    }, [editSession]);
 
     return {
         editSession,
@@ -314,12 +475,19 @@ export function InlineEditOverlay({
     }
     // code blocks in M1+ would switch font-family to monospace here; for p/h we keep the
     // surrounding paragraph font so typing feels continuous with reading.
-    return (
+    //
+    // Render to document.body via portal: the overlay is `position: fixed` so it ignores the
+    // OverlayScrollbars inner viewport's scrollTop. Rendering inside the OSB viewport (the old
+    // approach) made the textarea a participant in OSB's scroll-content layout, which on tall
+    // blocks triggered a focus → auto-scroll → re-measure → reposition loop. The portal frees
+    // the overlay from that container's coordinate system; measureOverlay now writes viewport-
+    // relative (screen) coordinates so `position: fixed` lands at the right pixel.
+    return createPortal(
         <div
             className="inline-edit-overlay"
             data-block-kind={blockKind}
             style={{
-                position: "absolute",
+                position: "fixed",
                 top: `${overlayRect.top}px`,
                 left: `${overlayRect.left}px`,
                 width: `${overlayRect.width}px`,
@@ -342,7 +510,8 @@ export function InlineEditOverlay({
                 autoCapitalize="off"
                 autoCorrect="off"
             />
-        </div>
+        </div>,
+        document.body
     );
 }
 
