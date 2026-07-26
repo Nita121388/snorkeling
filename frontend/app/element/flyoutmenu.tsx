@@ -8,6 +8,37 @@ import ReactDOM from "react-dom";
 
 import "./flyoutmenu.scss";
 
+// Hover-then-delay-close: pointer leaves both anchor and floating panel starts a timer; pointer
+// re-enters either cancels it. Self-contained here so MenuButton's hoverMode (epsilon to the
+// AgentTargetFloatingWindow pattern in widgets.tsx's useOutsideHoverClose).
+function useHoverClose(isOpen: boolean, onClose: () => void, delayMs = 600) {
+    const closeTimerRef = useRef<number | null>(null);
+    const hasEnteredRef = useRef(false);
+    const cancelClose = () => {
+        if (closeTimerRef.current != null) {
+            window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+    const scheduleClose = () => {
+        cancelClose();
+        closeTimerRef.current = window.setTimeout(onClose, delayMs);
+    };
+    if (!isOpen) {
+        cancelClose();
+        hasEnteredRef.current = false;
+    }
+    return {
+        onPointerEnter: () => {
+            hasEnteredRef.current = true;
+            cancelClose();
+        },
+        onPointerLeave: () => {
+            scheduleClose();
+        },
+    };
+}
+
 type MenuProps = {
     items: MenuItem[];
     className?: string;
@@ -16,10 +47,14 @@ type MenuProps = {
     children: ReactNode | ReactNode[];
     renderMenu?: (subMenu: React.ReactElement, props: any) => React.ReactElement;
     renderMenuItem?: (item: MenuItem, props: any) => React.ReactElement;
+    // hoverMode=true: gate opens on pointer enter over the anchor (or the floating panel) and
+    // closes `hoverCloseDelayMs` after pointer leaves both. Click-toggle is suppressed.
+    hoverMode?: boolean;
+    hoverCloseDelayMs?: number;
 };
 
 const FlyoutMenuComponent = memo(
-    ({ items, children, className, placement, onOpenChange, renderMenu, renderMenuItem }: MenuProps) => {
+    ({ items, children, className, placement, onOpenChange, renderMenu, renderMenuItem, hoverMode, hoverCloseDelayMs }: MenuProps) => {
         const [visibleSubMenus, setVisibleSubMenus] = useState<{ [key: string]: any }>({});
         const [hoveredItems, setHoveredItems] = useState<string[]>([]);
         const [subMenuPosition, setSubMenuPosition] = useState<{
@@ -39,6 +74,7 @@ const FlyoutMenuComponent = memo(
         });
         const dismiss = useDismiss(context);
         const { getReferenceProps, getFloatingProps } = useInteractions([dismiss]);
+        const hoverHandlers = useHoverClose(isOpen, () => onOpenChangeMenu(false), hoverCloseDelayMs);
 
         items.forEach((_, idx) => {
             const key = `${idx}`;
@@ -136,7 +172,9 @@ const FlyoutMenuComponent = memo(
                     className="menu-anchor"
                     ref={refs.setReference}
                     {...getReferenceProps()}
-                    onClick={() => onOpenChangeMenu(!isOpen)}
+                    onClick={hoverMode ? undefined : () => onOpenChangeMenu(!isOpen)}
+                    onPointerEnter={hoverMode ? (e) => { e.stopPropagation(); hoverHandlers.onPointerEnter(); onOpenChangeMenu(true); } : undefined}
+                    onPointerLeave={hoverMode ? (e) => { e.stopPropagation(); hoverHandlers.onPointerLeave(); } : undefined}
                 >
                     {children}
                 </div>
@@ -147,6 +185,8 @@ const FlyoutMenuComponent = memo(
                             ref={refs.setFloating}
                             style={floatingStyles}
                             {...getFloatingProps()}
+                            onPointerEnter={hoverMode ? hoverHandlers.onPointerEnter : undefined}
+                            onPointerLeave={hoverMode ? hoverHandlers.onPointerLeave : undefined}
                         >
                             {items.map((item, index) => {
                                 const key = `${index}`;

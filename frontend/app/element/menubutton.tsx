@@ -9,7 +9,7 @@ const MenuButtonComponent = ({ items, className, text, icon, title }: MenuButton
     const [isOpen, setIsOpen] = useState(false);
     return (
         <div className={clsx("menubutton", className)}>
-            <FlyoutMenu items={items} onOpenChange={setIsOpen}>
+            <FlyoutMenu items={items} onOpenChange={setIsOpen} hoverMode hoverCloseDelayMs={600}>
                 <Button
                     className="grey rounded-[3px] py-[2px] px-[2px]"
                     style={{ borderColor: isOpen ? "var(--accent-color)" : "transparent" }}

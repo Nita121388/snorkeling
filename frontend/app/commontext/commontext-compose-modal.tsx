@@ -759,7 +759,7 @@ const CommonTextComposeModal = memo(() => {
 
     return (
         <Modal
-            className={"w-[min(960px,calc(100vw-32px))] h-[min(800px,calc(100vh-32px))] pt-6 pb-3"}
+            className={"w-[min(960px,calc(100vw-32px))] h-[min(600px,calc(100vh-32px))] pt-6 pb-3"}
             onClose={close}
             onClickBackdrop={close}
         >
@@ -888,7 +888,7 @@ const CommonTextComposeModal = memo(() => {
                     （对齐 .mockup/_to-keep/commontext-compose-modal-improved.html 的 .md-body）。 */}
                 <div className="min-h-0 flex-1 flex border border-border rounded overflow-hidden">
                     {/* 左：列表 —— 去掉自己的 border/rounded，靠外层容器收口；右侧 border-r 作为内分隔线 */}
-                    <div className="flex-1 min-w-0 flex flex-col border-r border-border bg-panel overflow-hidden">
+                    <div className="flex-1 min-w-0 flex flex-col border-r border-border bg-modalbg overflow-hidden">
                         <div
                             className="shrink-0 p-2 border-b border-border"
                             onCompositionStart={handleCompositionStart}
@@ -1015,7 +1015,7 @@ const CommonTextComposeModal = memo(() => {
                     </div>
 
                     {/* 右：详情 —— 与左侧共用 panel surface，靠中间分隔线组织层级 */}
-                    <div className="flex-1 min-w-0 flex flex-col bg-panel overflow-hidden">
+                    <div className="flex-1 min-w-0 flex flex-col bg-modalbg overflow-hidden">
                         {detailItem == null ? (
                             <div className="flex flex-1 flex-col items-center justify-center gap-2.5 text-muted text-[13px] px-5 py-10 text-center">
                                 <i className="fa fa-regular fa-square text-[28px] opacity-40" />

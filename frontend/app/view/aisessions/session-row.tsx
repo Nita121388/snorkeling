@@ -300,7 +300,7 @@ export function SessionRow({
                                 {visibleSessionTags.map((tag) => (
                                     <span
                                         key={tag}
-                                        className="shrink-0 rounded-md border border-accent/25 bg-accent/10 px-2 py-0.5 text-[11px] leading-none text-accent"
+                                        className="shrink-0 rounded-md border border-border bg-accent/10 px-2 py-0.5 text-[11px] leading-none text-accent"
                                     >
                                         <span className="opacity-50">#</span>
                                         {tag}

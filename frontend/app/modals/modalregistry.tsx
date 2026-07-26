@@ -8,6 +8,7 @@ import { UpgradeOnboardingPatch } from "@/app/onboarding/onboarding-upgrade-patc
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
+import { CloseTabModal } from "./closetabmodal";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
@@ -27,6 +28,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
     [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,
     [UnsavedFileModal.displayName || "UnsavedFileModal"]: UnsavedFileModal,
+    [CloseTabModal.displayName || "CloseTabModal"]: CloseTabModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,
     [RenameFileModal.displayName || "RenameFileModal"]: RenameFileModal,
     [DeleteFileModal.displayName || "DeleteFileModal"]: DeleteFileModal,

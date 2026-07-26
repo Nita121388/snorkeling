@@ -679,13 +679,6 @@ const AgentTargetFloatingWindow = memo(
                         }}
                     >
                         <span
-                            className={clsx(
-                                "w-[7px] h-[7px] rounded-full shrink-0 transition-all",
-                                isSelected ? "opacity-100 scale-110" : "opacity-50 group-hover:opacity-80"
-                            )}
-                            style={{ background: "#888" }}
-                        />
-                        <span
                             className={clsx(isSelected ? "text-foreground" : "text-muted group-hover:text-secondary")}
                         >
                             {vendor.name}

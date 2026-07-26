@@ -319,7 +319,7 @@ describe("directory VCS context menus", () => {
             }
         );
 
-        getMenuItem(menu, "Copy Full File Names").click?.();
+        getMenuItem(menu, "Copy Full Paths").click?.();
         await Promise.resolve();
 
         expect(writeText).toHaveBeenCalledWith("/repo/src/index.ts\n/repo/README.md");
@@ -636,7 +636,7 @@ describe("directory VCS context menus", () => {
             }
         );
 
-        getMenuItem(menu, "Copy Full File Name").click?.();
+        getMenuItem(menu, "Copy Full Path").click?.();
         await Promise.resolve();
 
         expect(writeText).toHaveBeenCalledWith("/repo/package.json");

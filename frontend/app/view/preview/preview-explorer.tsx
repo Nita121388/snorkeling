@@ -128,6 +128,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
     const [treeExpandingAll, setTreeExpandingAll] = useState(false);
     const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
+    const [selectedTreeNodes, setSelectedTreeNodes] = useState<TreeNodeData[]>([]);
+    const selectedTreeNodePaths = useMemo(() => new Set(selectedTreeNodes.map((n) => n.path ?? n.id)), [selectedTreeNodes]);
     const treeRef = useRef<TreeViewRef>(null);
     const lastRevealSeqRef = useRef<number | null>(null);
     const searchClickTimerRef = useRef<number | null>(null);
@@ -220,6 +222,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
 
     useEffect(() => {
         setSelectedTreeNode(null);
+        setSelectedTreeNodes([]);
     }, [connection, rootPath]);
 
     useEffect(() => {
@@ -439,10 +442,39 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [openRename]
     );
 
+    const handleTreeNodeClick = useCallback(
+        (event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
+            // ctrl/cmd 切换多选; 裸点击回到单选 (TreeView 内部仍会 commitSelection 设单选焦点)
+            if (event.ctrlKey || event.metaKey) {
+                event.stopPropagation();
+                const nodePath = node.path ?? node.id;
+                setSelectedTreeNodes((prev) => {
+                    const existing = prev.find((n) => (n.path ?? n.id) === nodePath);
+                    if (existing != null) {
+                        return prev.filter((n) => (n.path ?? n.id) !== nodePath);
+                    }
+                    return [...prev, node];
+                });
+                return;
+            }
+            setSelectedTreeNodes([node]);
+        },
+        []
+    );
+
     const handleTreeNodeContextMenu = useCallback(
         async (event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
             const finfo = treeNodeToFileInfo(node);
             const targetDir = finfo.isdir ? finfo.path : (finfo.dir ?? rootPath);
+            const isInMulti = selectedTreeNodePaths.has(finfo.path);
+            // 右键命中已选中节点 → 菜单作用于全部选中,否则只作用于当前命中(并重置多选集)
+            let effectiveSelectedFileInfos: FileInfo[];
+            if (isInMulti) {
+                effectiveSelectedFileInfos = selectedTreeNodes.map(treeNodeToFileInfo);
+            } else {
+                setSelectedTreeNodes([node]);
+                effectiveSelectedFileInfos = [finfo];
+            }
             const menu = await makeDirectoryEntryMenuItems(
                 model,
                 finfo,
@@ -457,11 +489,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     relativePathRoot: rootPath,
                     openInCurrentBlock: () =>
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                    selectedFileInfos: effectiveSelectedFileInfos,
                 }
             );
             ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
         },
-        [blockMoveMenuItems, connection, model, openCreateDirectory, openCreateFile, openRename, rootPath, setErrorMsg]
+        [blockMoveMenuItems, connection, model, openCreateDirectory, openCreateFile, openRename, rootPath, selectedTreeNodes, selectedTreeNodePaths, setErrorMsg]
     );
 
     const handleTreeBackgroundContextMenu = useCallback(
@@ -925,6 +958,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             );
                         }}
                         onSelectionChange={(_id, node) => setSelectedTreeNode(node)}
+                        onNodeClick={handleTreeNodeClick}
+                        extraSelectedIds={[...selectedTreeNodePaths]}
                         onRenameSelected={renameSelectedTreeNode}
                         onNodeContextMenu={handleTreeNodeContextMenu}
                         onBackgroundContextMenu={handleTreeBackgroundContextMenu}

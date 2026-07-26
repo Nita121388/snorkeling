@@ -171,6 +171,12 @@ function makeMockGlobalAtoms(
         fullConfigAtom,
         waveaiModeConfigAtom: atom({}) as any,
         settingsAtom,
+        systemAppThemeAtom: atom("dark") as any,
+        resolvedAppThemeAtom: atom((get) => {
+            const mode = get(settingsAtom)?.["app:theme"];
+            return mode === "light" ? "light" : mode === "monochrome" ? "monochrome" : "dark";
+        }) as any,
+        previewThemeOverrideAtom: atom(null) as any,
         hasCustomAIPresetsAtom: atom(false),
         hasConfigErrors: atom((get) => {
             const c = get(fullConfigAtom);

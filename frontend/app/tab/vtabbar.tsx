@@ -13,7 +13,7 @@ import {
     getTabsWithUnreadDotsAtom,
     useAcquireWorkspaceBlockStatuses,
 } from "@/app/agent-status/agent-status-tab-aggregate";
-import { confirmCurrentTabClose } from "@/app/store/global";
+import { confirmCloseTabIfHasContent, confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
@@ -472,6 +472,9 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                                 onClose={() =>
                                     fireAndForget(async () => {
                                         if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                                            return;
+                                        }
+                                        if (!(await confirmCloseTabIfHasContent(tabId))) {
                                             return;
                                         }
                                         await env.electron.closeTab(workspace.oid, tabId, false);

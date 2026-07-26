@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snorkeling — Settings · Terminal (原型)</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="settings-window">
+        <aside class="settings-sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-mark">◆</span>
+                <span class="brand-name">Snorkeling</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a class="nav-item">Appearance</a>
+                <a class="nav-item">Fonts</a>
+                <a class="nav-item is-active">Terminal</a>
+                <a class="nav-item">Shortcuts</a>
+                <a class="nav-item">AI Agents</a>
+                <a class="nav-item">Sync</a>
+                <a class="nav-item">Advanced</a>
+            </nav>
+        </aside>
+
+        <main class="settings-main">
+            <header class="settings-header">
+                <h1>Terminal</h1>
+                <p class="settings-subtitle">
+                    新建 terminal block 默认使用的 shell。已有 block 维持不变。
+                </p>
+            </header>
+
+            <section class="setting-card">
+                <div class="card-head">
+                    <div class="card-title">Default shell</div>
+                    <div class="card-hint" id="auto-resolve-hint" title="Auto detect 实际会落到哪个 shell">
+                        Auto 当前指向:<span id="auto-resolve-name">检测中…</span>
+                    </div>
+                </div>
+
+                <div class="shell-list" id="shell-list" role="radiogroup" aria-label="Default shell">
+                    <!-- Auto -->
+                    <label class="shell-row is-recommended" data-id="auto">
+                        <input type="radio" name="defaultshell" value="auto" checked />
+                        <span class="row-radio"></span>
+                        <div class="row-main">
+                            <div class="row-label">
+                                Auto detect
+                                <span class="badge badge-recommend">推荐</span>
+                            </div>
+                            <div class="row-meta" id="row-meta-auto">
+                                <span class="meta-shell-name">检测中…</span>
+                            </div>
+                        </div>
+                        <span class="row-path" id="row-path-auto">—</span>
+                    </label>
+
+                    <!-- Discovered 分组(由 JS 填充) -->
+                    <div class="shell-group-label" id="discovered-label" hidden>
+                        Discovered on this machine
+                    </div>
+                    <div id="discovered-rows"></div>
+
+                    <!-- 扫描中占位 -->
+                    <div class="shell-row is-loading" id="scanning-row" hidden>
+                        <div class="row-main">
+                            <div class="row-label">扫描本机 shell…</div>
+                            <div class="loading-bar"><span></span></div>
+                        </div>
+                    </div>
+
+                    <!-- WSL 超时说明(由 JS 决定显示) -->
+                    <div class="shell-row is-skip-note" id="wsl-skip-note" hidden>
+                        <div class="row-main">
+                            <div class="row-label">WSL 未列出</div>
+                            <div class="row-sub">列举超时(>1.5s)。如需使用请走 Custom path 手填。</div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced 分组 -->
+                    <div class="shell-group-label">Advanced</div>
+                    <label class="shell-row" data-id="custom">
+                        <input type="radio" name="defaultshell" value="custom" />
+                        <span class="row-radio"></span>
+                        <div class="row-main">
+                            <div class="row-label">Custom path…</div>
+                            <div class="row-sub">
+                                手填绝对路径。用于扫描未发现的 shell(nushell / nix 自带 bash 等)。
+                            </div>
+                        </div>
+                    </label>
+
+                    <div class="custom-input-block" id="custom-input-block" hidden>
+                        <label class="custom-label">Custom shell path</label>
+                        <div class="custom-input-row">
+                            <input
+                                type="text"
+                                id="custom-path"
+                                class="custom-input"
+                                placeholder="C:\\Program Files\\Git\\bin\\bash.exe"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                            <button class="btn-secondary" id="btn-validate" type="button">Validate</button>
+                        </div>
+                        <div class="custom-help" id="custom-help">
+                            保存前必须通过校验:路径存在且为可执行文件。
+                        </div>
+                        <div class="custom-status" id="custom-status" hidden></div>
+                    </div>
+                </div>
+            </section>
+
+            <footer class="settings-footer">
+                <div class="footer-status" id="footer-status" hidden></div>
+                <div class="footer-actions">
+                    <button class="btn-ghost" id="btn-cancel" type="button">Cancel</button>
+                    <button class="btn-primary" id="btn-save" type="button">Save</button>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <div class="toast" id="toast" hidden>
+        <span class="toast-icon">⚠</span>
+        <span class="toast-text" id="toast-text"></span>
+        <button class="toast-action" id="toast-action" type="button">Configure</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

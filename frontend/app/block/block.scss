@@ -691,6 +691,9 @@
     .inline-tab-block-tabs {
         display: flex;
         align-items: center;
+        // tab 作为整组 Block 的 header, 视觉上应靠左对齐 (handle + tabs 贴左, 剩余空白留到右侧),
+        // 而不是 flex-end 把 tab 顶到右边. 与 block-frame-default-header 的标题左对齐保持一致.
+        justify-content: flex-start;
         gap: 2px;
         min-height: 26px;
         max-height: 26px;
@@ -737,8 +740,10 @@
     .inline-tab-block-tab,
     .inline-tab-block-tab-input {
         height: 22px;
-        max-width: 180px;
-        min-width: 44px;
+        // 宽度上限作 "最宽 xxx": tab 内容短时由 flex:1 1 auto 分享 tabs 容器空闲空间, 长则截断到 max-width.
+        // 320 是默认上限 (留余量给 hover 360 兜底), hover 时进一步放到 360 看全标题.
+        max-width: 320px;
+        min-width: 0;
         border: 1px solid transparent;
         border-radius: 6px 6px 0 0;
         background: transparent;
@@ -749,20 +754,17 @@
     .inline-tab-block-tab {
         display: inline-flex;
         align-items: center;
-        padding: 0 4px 0 7px;
+        padding: 0 4px 0 4px;
         opacity: 0.65;
         flex: 0 1 auto;
-        // hover 时临时撑开, 让被 min-width:44px 压扁的标题可读:
-        // flex-shrink:0 让该 tab 拒绝压缩, 剩余空间从相邻 tab 让出;
-        // max-width 上限放宽到 360px, 配 transition 平滑撑开/收回.
+        width: auto;
+        // hover 时临时撑开, 让被 max-width 截断的标题全显示;
+        // 不再对 .active 用 flex-grow:2 拉宽 — active 也应按内容宽度, 仅靠样式区分.
         // dragging/drop-target 态禁用, 避免拖拽命中检测与 transform 抖动.
         transition: max-width 140ms ease;
         &:hover:not(.dragging):not(.drop-target) {
             flex-shrink: 0;
             max-width: 360px;
-            &.active {
-                flex-grow: 2;
-            }
         }
 
         button {
@@ -771,6 +773,17 @@
             color: inherit;
             font: inherit;
             padding: 0;
+        }
+
+        // 主区: 占据除 close 外的全部空间, 内部 icon+文字+状态点整组水平居中.
+        // close 与其平级 flex 容器, 故主区 flex:1 + close flex:0 形成 "文字居中 / close 居右".
+        .inline-tab-block-tab-main-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            flex: 0 1 auto;
+            overflow: hidden;
         }
 
         .inline-tab-block-tab-main {
@@ -784,7 +797,7 @@
             button {
                 display: inline-flex;
                 align-items: center;
-                gap: 5px;
+                gap: 2px;
                 min-width: 0;
                 flex: 1 1 auto;
                 overflow: hidden;
@@ -815,6 +828,7 @@
                 background: var(--secondary-text-color);
                 overflow: visible;
                 opacity: 0.85;
+                position: relative;
 
                 &.is-working {
                     // working 蓝 (与主色解耦), 不复用 success 绿 — 否则与 done/done-unread 绿撞色.
@@ -822,8 +836,22 @@
                     animation: agent-status-text-shimmer 1.6s ease-in-out infinite;
                 }
 
+                // 完成: 绿色实心圆 + 白色对勾 (GitHub 风格). 用 Font Awesome fa-solid fa-check 子节点
+                // 渲染勾 (block.tsx 注入), color:#fff 稳定不再受主题色影响. flexbox 居中替代 CSS ::after
+                // 画勾 — 后者依赖正方形 L + translate 比例, 不同圆点尺寸下易漂移.
                 &.is-done {
-                    background: rgb(from var(--agent-done-color, #22c55e) r g b / 0.78);
+                    width: 10px;
+                    height: 10px;
+                    background: var(--agent-done-color, #22c55e);
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+
+                    i {
+                        color: #fff;
+                        font-size: 7px;
+                        line-height: 1;
+                    }
                 }
 
                 &.is-blocked {
@@ -838,12 +866,22 @@
 
                 // D 类完成态点亮 (非 idle→idle 跳变后未阅): 加大 + 绿色呼吸, 与 is-idle 一致时
                 // 排在 is-idle/state 类之后胜出. state 是 idle 时通用灰点会被这里翻成绿色提示.
+                // 与 is-done 一致用 fa-check 白勾, 仅 8px 圆点勾字号略收, 保留呼吸光晕.
                 &.is-done-unread {
                     background: var(--agent-done-color, #22c55e);
                     width: 8px;
                     height: 8px;
                     box-shadow: 0 0 0 1px rgb(from var(--agent-done-color, #22c55e) r g b / 0.4);
                     animation: agent-status-done-pulse 2s ease-in-out infinite;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+
+                    i {
+                        color: #fff;
+                        font-size: 5.5px;
+                        line-height: 1;
+                    }
                 }
 
                 &.is-inferred {
@@ -865,20 +903,35 @@
                     opacity: 0.4;
                     box-shadow: none;
                     animation: none;
+
+                    i {
+                        display: none;
+                    }
                 }
             }
         }
 
+        // close 按钮: 默认折叠不占位 (width:0 + margin:0 + opacity:0), 避免非悬停时也常驻 19px
+        // 把 active/normal tab 右侧顶出一片"看似无物的空白". 悬停或 active 时再撑开 16px + 显形,
+        // 撑开给文字让位的同时由 100ms 过渡平滑出现, 不突兀. overflow:hidden 确保 0 宽时连图标都不漏.
         .inline-tab-block-tab-close {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 16px;
+            width: 0;
             height: 16px;
-            margin-left: 3px;
+            margin-left: 0;
+            flex: 0 0 auto;
+            border: 0;
             border-radius: 3px;
             cursor: pointer;
             opacity: 0;
+            overflow: hidden;
+            transition:
+                width 100ms ease,
+                margin-left 100ms ease,
+                opacity 100ms ease,
+                background 100ms ease;
 
             i {
                 font-size: 10px;
@@ -890,6 +943,8 @@
             background: rgb(from var(--main-text-color) r g b / 0.08);
 
             .inline-tab-block-tab-close {
+                width: 16px;
+                margin-left: 3px;
                 opacity: 0.7;
             }
         }
@@ -916,6 +971,8 @@
             }
 
             .inline-tab-block-tab-close {
+                width: 16px;
+                margin-left: 3px;
                 opacity: 0.72;
             }
         }
@@ -932,7 +989,7 @@
     }
 
     .inline-tab-block-tab-input {
-        padding: 0 7px;
+        padding: 0 4px;
         outline: none;
         border-color: var(--accent-color);
         background: var(--block-bg-color);

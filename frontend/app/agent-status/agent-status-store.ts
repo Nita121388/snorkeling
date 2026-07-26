@@ -9,7 +9,7 @@ import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import * as services from "@/store/services";
 import { makeORef } from "@/store/wos";
-import { PrimitiveAtom, atom } from "jotai";
+import { PrimitiveAtom, atom, type Getter } from "jotai";
 
 /**
  * 全局 blockId-keyed agent status 缓存.
@@ -171,4 +171,32 @@ export class AgentStatusStore {
         }
         return entry.atom;
     }
+
+    // [DIAG] D 复活排查: 暴露 entries 与 doneAckedAt 快照, 让 CDP eval
+    // 可在不写代码改动的情况下抓 atom 实时数值. 排查完删除该方法 + window 挂载.
+    diagDump(get: Getter): unknown {
+        const out: unknown[] = [];
+        for (const [blockId, entry] of this.entries.entries()) {
+            const status = get(entry.atom);
+            out.push({
+                blockId,
+                refCount: entry.refCount,
+                teardownTimer: entry.teardownTimer != null,
+                state: status?.state,
+                prevState: status?.prevState,
+                phase: status?.phase,
+                updatedAt: status?.updatedAt,
+                sessionId: status?.sessionId,
+            });
+        }
+        return out;
+    }
+}
+
+// [DIAG] 临时挂在 globalThis 供 inspect-electron-ui 拉数据. 排查后删除.
+if (typeof window !== "undefined") {
+    // @ts-ignore
+    window.__diagAgentStatusStore = AgentStatusStore.getInstance();
+    // @ts-ignore
+    window.__diagJotaiGet = (atom: unknown) => atom; // 占位, 实际 getter 由调用方注入
 }

@@ -3,6 +3,7 @@
 
 :root,
 [data-theme="dark"] {
+    color: var(--main-text-color);
     --title-font-size: 18px;
     --window-opacity: 1;
     --base-font: normal 14px / normal "Inter", sans-serif;
@@ -197,6 +198,7 @@
 }
 
 [data-theme="light"] {
+    color: var(--main-text-color);
     --main-text-color: #4c3924;
     --secondary-text-color: #675033;
     --grey-text-color: #777167;
@@ -345,6 +347,7 @@
 // Surfaces use layered soft whites (#fafafa / #f5f5f5 / #f0f0f0) so the app reads with
 // depth instead of a single flat sheet. All chromatic accents collapse to a grey ramp.
 [data-theme="monochrome"] {
+    color: var(--main-text-color);
     --main-text-color: #0a0a0a;
     --secondary-text-color: #4a4a4a;
     --grey-text-color: #808080;

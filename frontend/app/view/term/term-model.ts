@@ -611,7 +611,7 @@ export class TermViewModel implements ViewModel {
                 // Click the badge acknowledges both R (in-flight updates) and D (just-finished flash),
                 // so a single click fully clears the user's "I've seen this block's status" cue.
                 overview.markAgentStatusAcked(this.blockId);
-                agentStatusDoneAckStore.markDoneAcked(this.blockId);
+                agentStatusDoneAckStore.markDoneAcked(this.blockId, Date.now(), "term-header");
             },
             tooltipNode: titleText,
             tooltipProps: { hideOnClick: true, openDelay: 200, divClassName: "inline-flex" },

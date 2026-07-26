@@ -6,7 +6,8 @@ import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ac
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { isAgentStatusUnread, normalizeTimeMs } from "@/app/agent-status/agent-status-unread";
+import { makeAgentTraceId, pslogEvent } from "@/app/store/pslog-trace";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
 import { atom, Atom, Getter } from "jotai";
@@ -180,6 +181,22 @@ function collectBlockDots(
         if (!unread && !doneUnread) continue;
         if (doneUnread) {
             const elapsedMs = agentDoneElapsedMs(status, Date.now());
+            // [DIAG] D 复活排查探针: 每次 tab 圆点 derive 出一个 D 时, 打一份关键数值
+            // (updatedAt, doneAckedAt, prevState, 当前 state) 进 pslog, 让我能反推
+            // D 是"用户新一轮完成" (updatedAt > doneAckedAt 且 prevState=working) 还是
+            // "ack 丢失 / atom 重建漏 prev" 等场景. reason="D-derive", outcome=state,
+            // durationms=updatedAt(ms); doneAckedAt 与 prevState 因 pslog 字段定型放进
+            // trace 后缀 (用 trace 字段为控制零字符量限制,够 grep 即可). 排查完后删除.
+            const updatedAtMs = normalizeTimeMs(status.updatedAt);
+            pslogEvent({
+                event: "agent.status",
+                stage: "transition",
+                blockid: blockId,
+                traceid: makeAgentTraceId(blockId, status.sessionId ?? ""),
+                reason: "D-derive",
+                outcome: `${status.state}|prev=${status.prevState ?? ""}|ack=${doneAckedAt}|upd=${updatedAtMs}`,
+                durationms: updatedAtMs,
+            });
             dots.push({
                 blockId,
                 kind: "D",

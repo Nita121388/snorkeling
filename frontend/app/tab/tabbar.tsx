@@ -7,7 +7,7 @@ import {
     filterSessionOverviewTabIds,
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
-import { confirmCurrentTabClose } from "@/app/store/global";
+import { confirmCloseTabIfHasContent, confirmCurrentTabClose } from "@/app/store/global";
 import {
     getTabsWithUnreadDotsAtom,
     useAcquireWorkspaceBlockStatuses,
@@ -716,6 +716,9 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         event?.stopPropagation();
         fireAndForget(async () => {
             if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                return;
+            }
+            if (!(await confirmCloseTabIfHasContent(tabId))) {
                 return;
             }
             const didClose = await env.electron.closeTab(workspace.oid, tabId, confirmClose);

@@ -7,13 +7,15 @@ import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
- * Block kinds the inline editor knows how to open. M1 ships "p" and "h" — both may now span
- * multiple source lines (a soft-broken paragraph renders as one <p> across N source lines, and
- * the editor slices the whole [startLine..endLine] range for those). li-summary / table / code /
- * wave / mermaid arrive in later milestones and will extend this union; refactor users of
- * `beginEdit` accordingly.
+ * Block kinds the inline editor knows how to open. Each maps to a renderer-emitted block: the
+ * block's DOM carries data-source-line + data-source-line-end so the editor can slice the
+ * matching source range. Add a new kind in three places:
+ *   1) here in the union,
+ *   2) in markdown.tsx's dblclick handler (tag/class → blockKind branch),
+ *   3) optional CSS in markdown.scss keyed on `.inline-edit-overlay[data-block-kind="..."]`
+ *      if the textarea should match the rendered block's typography (e.g. `code` → monospace).
  */
-export type InlineEditBlockKind = "p" | "h";
+export type InlineEditBlockKind = "p" | "h" | "list" | "table" | "code";
 
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
@@ -34,6 +36,14 @@ export type InlineEditSession = {
     targetEl: HTMLElement;
 };
 
+// Fallback selector used to re-locate a block within the viewport by start line when the
+// initially-anchored element is gone (e.g. its list was re-rendered or replaced during edit).
+// Keep it block-kind-agnostic — any renderer-emitted block carries data-source-line — so list /
+// table / code blocks introduced after M1 resolve from the same path without a per-kind map.
+function fallbackSelector(startLine: number): string {
+    return `.markdown-render-root [data-source-line="${startLine}"]`;
+}
+
 export function resolveInlineEditTarget(
     viewport: HTMLElement,
     session: Pick<InlineEditSession, "blockKind" | "startLine" | "targetEl">
@@ -41,10 +51,7 @@ export function resolveInlineEditTarget(
     if (session.targetEl.isConnected && viewport.contains(session.targetEl)) {
         return session.targetEl;
     }
-    const blockClass = session.blockKind === "p" ? "paragraph" : "heading";
-    return viewport.querySelector<HTMLElement>(
-        `.markdown-render-root .${blockClass}[data-source-line="${session.startLine}"]`
-    );
+    return viewport.querySelector<HTMLElement>(fallbackSelector(session.startLine));
 }
 
 /**
@@ -310,6 +317,7 @@ export function InlineEditOverlay({
     return (
         <div
             className="inline-edit-overlay"
+            data-block-kind={blockKind}
             style={{
                 position: "absolute",
                 top: `${overlayRect.top}px`,

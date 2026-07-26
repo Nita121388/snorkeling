@@ -335,6 +335,7 @@ function TableBody({
     const dummyLineRef = useRef<HTMLDivElement>(null);
     const warningBoxRef = useRef<HTMLDivElement>(null);
     const conn = useAtomValue(model.connection);
+    const dirPath = useAtomValue(model.statFilePath);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const [selectionAnchorPath, setSelectionAnchorPath] = useState<string | null>(null);
     const blockMoveMenuItems = useBlockMoveMenuItems();
@@ -443,6 +444,7 @@ function TableBody({
                     openInCurrentBlock: () =>
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
                     selectedFileInfos: contextSelectedFileInfos,
+                    relativePathRoot: dirPath,
                 }
             );
             ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);

@@ -60,7 +60,7 @@ class AgentStatusDoneAckStore {
         AgentStatusDoneAckStore.instance = null;
     }
 
-    markDoneAcked(blockId: string, ackedAt = Date.now()): void {
+    markDoneAcked(blockId: string, ackedAt = Date.now(), source = "header-badge"): void {
         if (!blockId) return;
         const current = globalStore.get(this.doneAckedAtAtom) ?? {};
         const next = { ...current, [blockId]: ackedAt };
@@ -71,17 +71,20 @@ class AgentStatusDoneAckStore {
         // the cross-event timing is recoverable without a separate field; the
         // "D → 0 unread" arc is the comparison target. sessionId not available
         // here (ack store has only the map), so traceId is block-scoped.
+        // source 放进 reason 后缀 "D:<source>" — 复现 D 复活时, 一条 grep 就能确认每次
+        // doneAckedAt 是由哪条 caller 路径 (header-badge / term-model / 其他) 写入的,
+        // 排除"幽灵 ack" (如另一个 Wave 进程共写 localStorage).
         pslogEvent({
             event: "agent.status",
             stage: "ack-write",
             blockid: blockId,
             traceid: makeAgentTraceId(blockId, ""),
-            reason: "D",
+            reason: `D:${source}`,
             durationms: ackedAt,
         });
     }
 
-    clearDoneAcked(blockId: string): void {
+    clearDoneAcked(blockId: string, source = "header-badge"): void {
         if (!blockId) return;
         const current = globalStore.get(this.doneAckedAtAtom) ?? {};
         if (!(blockId in current)) return;
@@ -98,7 +101,8 @@ class AgentStatusDoneAckStore {
             stage: "ack-clear",
             blockid: blockId,
             traceid: makeAgentTraceId(blockId, ""),
-            reason: "D",
+            // source 放后缀区分是 transition reset (非用户驱动) 还是直接 clearDoneAcked.
+            reason: `D:${source}`,
             outcome: "cleared",
         });
     }
@@ -111,6 +115,19 @@ class AgentStatusDoneAckStore {
 
 export const agentStatusDoneAckStore = AgentStatusDoneAckStore.getInstance();
 
+// [DIAG] 临时挂载到 window 供 CDP eval 拉数据. 排查 D 复活时:
+// node scripts/inspect-electron-ui.mjs eval 'window.__diagDoneAck.get()'
+// 同时与 window.__JOTAI_DEFAULT_STORE__.get(window.__diagDoneAck.atom) 对比,
+// 验证 atom 内容是否与 localStorage 一致 (不一致就是多进程/HMR 漂移).
+if (typeof window !== "undefined") {
+    // @ts-ignore
+    window.__diagDoneAck = {
+        atom: agentStatusDoneAckStore.doneAckedAtAtom,
+        get: () => globalStore.get(agentStatusDoneAckStore.doneAckedAtAtom),
+        readLS: readAgentDoneAckedAt,
+    };
+}
+
 // Observe agentstatus status transitions to keep doneAckedAt aligned with D lifecycle:
 // when state jumps back to non-idle, clear this block's doneAckedAt so the next idle
 // transition can light D again (方案场景 4). Called from the agent-status-store event
@@ -120,7 +137,7 @@ export function observeAgentStatusTransition(next: AgentStatus | null): void {
     if (next == null) return;
     // 进入非 idle → 下一轮完成可再触发 D, 清掉旧的 ack.
     if (next.state !== "idle" && next.state !== "unknown") {
-        agentStatusDoneAckStore.clearDoneAcked(next.blockId);
+        agentStatusDoneAckStore.clearDoneAcked(next.blockId, "transition");
     }
     // idle 由消费方按 isAgentDoneUnread 判定, 这里不写 ack: 进入 idle 不算"已阅".
 }

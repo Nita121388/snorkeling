@@ -332,60 +332,67 @@ const InlineTabLabel = memo(
                     "drop-target": isOver,
                 })}
             >
-                <Tooltip
-                    content={
-                        <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
-                            {tooltip}
-                        </div>
-                    }
-                    placement="top"
-                    openDelay={300}
-                    disable={isBlank(tooltip)}
-                    divClassName="inline-tab-block-tab-main"
-                >
-                    <button
-                        type="button"
-                        className="inline-tab-block-tab-button"
-                        onClick={onActivate}
-                        onDoubleClick={() => setIsEditing(true)}
+                <div className="inline-tab-block-tab-main-wrapper">
+                    <Tooltip
+                        content={
+                            <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
+                                {tooltip}
+                            </div>
+                        }
+                        placement="top"
+                        openDelay={300}
+                        disable={isBlank(tooltip)}
+                        divClassName="inline-tab-block-tab-main"
                     >
-                        {agentLogo != null ? (
-                            <span
-                                className="agent-brand-icon inline-tab-block-tab-agentlogo"
-                                style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
-                            >
-                                {agentLogo.icon}
-                            </span>
-                        ) : (
-                            <i className={iconClass} />
-                        )}
-                        <span>{displayTitle}</span>
-                        {statusDot != null ? (
-                            <span
-                                className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
-                                    "is-inferred": statusDot.inferred,
-                                    "is-acked": !statusDot.unread && !statusDot.doneUnread,
-                                    "is-done-unread": statusDot.doneUnread,
-                                })}
-                                data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
-                                title={statusDot.title}
-                                onClick={
-                                    statusDot.unread || statusDot.doneUnread
-                                        ? (e) => {
-                                              e.stopPropagation();
-                                              if (statusDot.unread) {
-                                                  overviewModel.markAgentStatusAcked(blockId);
+                        <button
+                            type="button"
+                            className="inline-tab-block-tab-button"
+                            onClick={onActivate}
+                            onDoubleClick={() => setIsEditing(true)}
+                        >
+                            {agentLogo != null ? (
+                                <span
+                                    className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                                    style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
+                                >
+                                    {agentLogo.icon}
+                                </span>
+                            ) : (
+                                <i className={iconClass} />
+                            )}
+                            <span>{displayTitle}</span>
+                            {statusDot != null ? (
+                                <span
+                                    className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
+                                        "is-inferred": statusDot.inferred,
+                                        "is-acked": !statusDot.unread && !statusDot.doneUnread,
+                                        "is-done-unread": statusDot.doneUnread,
+                                    })}
+                                    data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
+                                    // [DIAG] D 复活排查: 把 blockId 标进 dataset, 让 inspect 可以直接
+                                    // 通过 DOM 读出 D 圆点对应哪个 block, 不再需要猜对应. 排查完后删除.
+                                    data-blockid={statusDot.doneUnread ? blockId : undefined}
+                                    title={statusDot.title}
+                                    onClick={
+                                        statusDot.unread || statusDot.doneUnread
+                                            ? (e) => {
+                                                  e.stopPropagation();
+                                                  if (statusDot.unread) {
+                                                      overviewModel.markAgentStatusAcked(blockId);
+                                                  }
+                                                  if (statusDot.doneUnread) {
+                                                      agentStatusDoneAckStore.markDoneAcked(blockId, Date.now(), "block-header");
+                                                  }
                                               }
-                                              if (statusDot.doneUnread) {
-                                                  agentStatusDoneAckStore.markDoneAcked(blockId);
-                                              }
-                                          }
-                                        : undefined
-                                }
-                            />
-                        ) : null}
-                    </button>
-                </Tooltip>
+                                            : undefined
+                                    }
+                                >
+                                    {statusDot.state === "done" ? <i className="fa-solid fa-check" /> : null}
+                                </span>
+                            ) : null}
+                        </button>
+                    </Tooltip>
+                </div>
                 <button
                     type="button"
                     className="inline-tab-block-tab-close"

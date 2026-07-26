@@ -8,12 +8,14 @@ type CommonTextTagChipProps = {
     count?: number;
     selected?: boolean;
     onClick?: () => void;
-};
+}; 
 
 function commonTextTagChipClassName(selected?: boolean, clickable?: boolean): string {
     return cn(
-        "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] leading-none transition-colors",
-        selected ? "bg-accent/10 text-accent" : "bg-surface-soft text-secondary",
+        "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] leading-none transition-colors",
+        selected
+            ? "border-transparent bg-accent/10 text-accent"
+            : "border-border bg-surface-soft text-secondary",
         clickable && "cursor-pointer hover:bg-hover hover:text-primary"
     );
 }

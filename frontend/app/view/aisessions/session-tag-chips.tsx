@@ -35,8 +35,10 @@ function SessionTagChips({
                         key={tag}
                         type="button"
                         className={cn(
-                            "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] leading-none cursor-pointer",
-                            active ? "bg-accent/10 text-accent" : "bg-surface-soft text-secondary",
+                            "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] leading-none cursor-pointer",
+                            active
+                                ? "border-transparent bg-accent/10 text-accent"
+                                : "border-border bg-surface-soft text-secondary",
                             clickable && "hover:bg-hover hover:text-primary"
                         )}
                         title={`#${tag}`}

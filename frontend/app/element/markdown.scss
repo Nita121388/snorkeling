@@ -409,6 +409,25 @@
             overflow: hidden;
             outline: none;
         }
+
+        // Per-kind typography: keep typing continuous with the rendered block. Each kind mirrors
+        // the matching renderer style — code → monospace like .codeblock, table → tabular numerals
+        // so column edges sit straight while editing, list → preserve list indent width so the
+        // textarea's box matches the list's marker+content gutter.
+        //
+        // white-space intentionally NOT overridden to `pre` on any kind: `pre` keeps long lines
+        // un-truncated but at a scrollWidth wider than the textarea, which makes auto-grow's
+        // scrollHeight recompute on every keystroke and visually flicker the box. `inherit` lets
+        // the textarea wrap exactly like the surrounding prose, so the height sits stable.
+        &[data-block-kind="code"] .inline-edit-textarea {
+            font-family: var(--markdown-code-font, var(--mono-font, monospace));
+            font-variant-ligatures: none;
+            tab-size: var(--markdown-tab-size, 4);
+        }
+
+        &[data-block-kind="table"] .inline-edit-textarea {
+            font-variant-numeric: tabular-nums;
+        }
     }
 
     .inline-edit-hidden {

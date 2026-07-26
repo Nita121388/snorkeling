@@ -10,9 +10,10 @@ describe("CommonTextTagChip", () => {
         const unselected = renderToStaticMarkup(<CommonTextTagChip tag="plain" />);
         const selected = renderToStaticMarkup(<CommonTextTagChip tag="active" selected />);
 
-        expect(unselected).toContain("h-6");
+        expect(unselected).toContain("py-0.5");
+        expect(unselected).toContain("border");
         expect(unselected).toContain("rounded-md");
-        expect(unselected).toContain("bg-surface-soft text-secondary");
-        expect(selected).toContain("bg-accent/10 text-accent");
+        expect(unselected).toContain("border-border bg-surface-soft text-secondary");
+        expect(selected).toContain("border-transparent bg-accent/10 text-accent");
     });
 });

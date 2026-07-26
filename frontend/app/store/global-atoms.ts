@@ -61,11 +61,13 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         return get(fullConfigAtom)?.settings ?? {};
     }) as Atom<SettingsType>;
     const systemAppThemeAtom = atom<ResolvedAppTheme>(getSystemAppTheme()) as PrimitiveAtom<ResolvedAppTheme>;
-    // transient hover-preview state for the theme picker; null = use persisted setting
+    // transient hover-preview state for the theme picker; null = use persisted setting.
+    // Hovering a card sets this; resolvedAppThemeAtom follows it so the whole app re-renders.
     const previewThemeOverrideAtom = atom<AppThemeMode | null>(null) as PrimitiveAtom<AppThemeMode | null>;
     const resolvedAppThemeAtom = atom((get) => {
         const override = get(previewThemeOverrideAtom);
         if (override != null) {
+            // system means "use whatever the OS gives right now", not the persisted setting
             return resolveAppTheme(override, get(systemAppThemeAtom));
         }
         return resolveAppTheme(get(settingsAtom)?.["app:theme"], get(systemAppThemeAtom));

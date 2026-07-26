@@ -286,6 +286,14 @@ function sourceLineAttrs(sourceLine?: number, endLine?: number): Record<string, 
     return attrs;
 }
 
+// Convenience: derive {data-source-line, [data-source-line-end]} from a rehype node's position
+// in one call. Use this at every block element that participates in inline editing so the
+// start+end pair stays consistent across p/h/ul/ol/li/table/pre — adding a new block kind is
+// a one-line `srcLineAttrs(props)` spread, no need to remember the end-attr fallback.
+function srcLineAttrs(props: any): Record<string, number> {
+    return sourceLineAttrs(getSourceLine(props), getSourceLineEnd(props));
+}
+
 const OrderedListContext = createContext(false);
 
 function getTextContent(children: React.ReactNode): string {
@@ -422,8 +430,6 @@ type HeadingProps = {
 };
 
 const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) => {
-    const sourceLine = getSourceLine(props);
-    const endLine = getSourceLineEnd(props);
     const headingId = typeof props.id === "string" ? props.id : "";
     return (
         <div
@@ -431,7 +437,7 @@ const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) 
             className={clsx("heading", `is-${hnum}`, { collapsed })}
             data-heading-level={hnum}
             data-heading-id={headingId}
-            {...sourceLineAttrs(sourceLine, endLine)}
+            {...srcLineAttrs(props)}
         >
             <button
                 type="button"
@@ -461,13 +467,13 @@ const MarkdownOrderedList = ({
     collapsible: boolean;
 }) => (
     <OrderedListContext.Provider value={collapsible}>
-        <ol {...props} {...sourceLineAttrs(getSourceLine(props))} />
+        <ol {...props} {...srcLineAttrs(props)} />
     </OrderedListContext.Provider>
 );
 
 const MarkdownUnorderedList = (props: React.HTMLAttributes<HTMLUListElement>) => (
     <OrderedListContext.Provider value={false}>
-        <ul {...props} {...sourceLineAttrs(getSourceLine(props))} />
+        <ul {...props} {...srcLineAttrs(props)} />
     </OrderedListContext.Provider>
 );
 
@@ -485,12 +491,12 @@ const CollapsibleOrderedListItem = ({
     const { summaryChildren, bodyChildren } = splitOrderedListItemChildren(props.children);
     const canCollapse = bodyChildren.length > 0 && itemId.length > 0;
     if (!canCollapse) {
-        return <li {...props} {...sourceLineAttrs(sourceLine)} />;
+        return <li {...props} {...srcLineAttrs(props)} />;
     }
     return (
         <li
             {...props}
-            {...sourceLineAttrs(sourceLine)}
+            {...srcLineAttrs(props)}
             className={clsx(props.className, "ordered-list-collapsible", { collapsed })}
         >
             <div className="ordered-list-summary-row">
@@ -527,11 +533,11 @@ const MarkdownListItem = ({
     if (orderedListCollapsible) {
         return <CollapsibleOrderedListItem props={props} collapsed={collapsed} onToggle={onToggle} />;
     }
-    return <li {...props} {...sourceLineAttrs(getSourceLine(props))} />;
+    return <li {...props} {...srcLineAttrs(props)} />;
 };
 
 const MarkdownTable = (props: React.HTMLAttributes<HTMLTableElement>) => (
-    <div className="table-wrapper" {...sourceLineAttrs(getSourceLine(props))}>
+    <div className="table-wrapper" {...srcLineAttrs(props)}>
         <table {...props} />
     </div>
 );
@@ -602,9 +608,10 @@ type CodeBlockProps = {
     children: React.ReactNode;
     onClickExecute?: (cmd: string) => void;
     sourceLine?: number;
+    sourceLineEnd?: number;
 };
 
-const CodeBlock = ({ children, onClickExecute, sourceLine }: CodeBlockProps) => {
+const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: CodeBlockProps) => {
     const getTextContent = (children: any): string => {
         if (typeof children === "string") {
             return children;
@@ -632,7 +639,7 @@ const CodeBlock = ({ children, onClickExecute, sourceLine }: CodeBlockProps) => 
     };
 
     return (
-        <pre className="codeblock" {...sourceLineAttrs(sourceLine)}>
+        <pre className="codeblock" {...sourceLineAttrs(sourceLine, sourceLineEnd)}>
             {children}
             <div className="codeblock-actions">
                 <CopyButton onClick={handleCopy} title="Copy" />
@@ -951,9 +958,18 @@ const Markdown = ({
             }
             // Capture phase: ensure we get one shot before any renderer's own dblclick toggles
             // (e.g. CollapsibleHeading would fold/unfold on dblclick otherwise).
-            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
+            // For block kinds that wrap inner content (li wraps list-item text), we deliberately
+            // step out to the outer list so dblclick edits the whole list rather than one item —
+            // M2 ships list-as-block, not listitem-as-block.
+            let target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
             if (target == null) {
                 return;
+            }
+            if (target.tagName === "LI") {
+                const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
+                if (parentList != null && (parentList.tagName === "OL" || parentList.tagName === "UL")) {
+                    target = parentList;
+                }
             }
             const lineAttr = target.dataset.sourceLine;
             if (lineAttr == null) {
@@ -979,9 +995,15 @@ const Markdown = ({
                 target.classList.contains("heading")
             ) {
                 blockKind = "h";
+            } else if (tag === "OL" || tag === "UL") {
+                blockKind = "list";
+            } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
+                blockKind = "table";
+            } else if (tag === "PRE" || target.classList.contains("codeblock")) {
+                blockKind = "code";
             } else {
-                // M1 only handles p / h. Other block kinds (li-summary, table, code) are
-                // plain dblclick → native selection for now; M2 will branch here.
+                // Block kind not yet supported by inline editing. Plain dblclick → native
+                // selection for now; add a branch above to enable a new kind.
                 return;
             }
             // Don't intercept on a heading that is currently collapsed. CollapsibleHeading
@@ -1456,7 +1478,7 @@ const Markdown = ({
             <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
         ),
         p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-            <div className="paragraph" {...props} {...sourceLineAttrs(getSourceLine(props), getSourceLineEnd(props))} />
+            <div className="paragraph" {...props} {...srcLineAttrs(props)} />
         ),
         h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
             <CollapsibleHeading
@@ -1524,7 +1546,12 @@ const Markdown = ({
         ),
         code: Code,
         pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-            <CodeBlock children={props.children} onClickExecute={onClickExecute} sourceLine={getSourceLine(props)} />
+            <CodeBlock
+                children={props.children}
+                onClickExecute={onClickExecute}
+                sourceLine={getSourceLine(props)}
+                sourceLineEnd={getSourceLineEnd(props)}
+            />
         ),
     };
     markdownComponents["waveblock"] = (props: any) => <WaveBlock {...props} blockmap={contentBlocksMap} />;

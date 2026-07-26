@@ -32,6 +32,7 @@ import { setupBadgesSubscription } from "./badge";
 import { atoms, blockComponentModelMap, ConnStatusMapAtom, initGlobalAtoms, orefAtomCache } from "./global-atoms";
 import { globalStore } from "./jotaiStore";
 import { modalsModel } from "./modalmodel";
+import type { CloseTabModalChoice } from "@/app/modals/closetabmodal";
 import { ClientService, ObjectService } from "./services";
 import { isPreviewWindow } from "./windowtype";
 import * as WOS from "./wos";
@@ -740,6 +741,24 @@ async function confirmCurrentTabClose(): Promise<boolean> {
     return true;
 }
 
+// user-triggered: closing a tab with content asks twice whether to discard its blocks.
+async function confirmCloseTabIfHasContent(tabId: string): Promise<boolean> {
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    const blockCount = tab?.blockids?.length ?? 0;
+    if (blockCount === 0) return true;
+    return await new Promise<boolean>((resolve) => {
+        modalsModel.pushModal(
+            "CloseTabModal",
+            {
+                blockCount,
+                tabName: tab?.name ?? "",
+                onResolve: (choice: CloseTabModalChoice) => resolve(choice === "close"),
+            },
+            () => resolve(false)
+        );
+    });
+}
+
 function recordTEvent(event: string, props?: TEventProps) {
     if (isPreviewWindow()) return;
     if (props == null) {
@@ -756,6 +775,7 @@ export {
     createTab,
     fetchWaveFile,
     confirmCurrentTabClose,
+    confirmCloseTabIfHasContent,
     getAllBlockComponentModels,
     getApi,
     getBlockComponentModel,

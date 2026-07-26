@@ -647,7 +647,7 @@ export async function makeDirectoryEntryMenuItems(
             click: () => fireAndForget(() => writeClipboardLines(fileNames)),
         },
         {
-            label: isMultiCopy ? "Copy Full File Names" : "Copy Full File Name",
+            label: isMultiCopy ? "Copy Full Paths" : "Copy Full Path",
             click: () => fireAndForget(() => writeClipboardLines(fullFileNames)),
         },
         ...(relativePaths == null
@@ -663,7 +663,7 @@ export async function makeDirectoryEntryMenuItems(
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fileNames))),
         },
         {
-            label: isMultiCopy ? "Copy Full File Names (Shell Quoted)" : "Copy Full File Name (Shell Quoted)",
+            label: isMultiCopy ? "Copy Full Paths (Shell Quoted)" : "Copy Full Path (Shell Quoted)",
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fullFileNames))),
         }
     );

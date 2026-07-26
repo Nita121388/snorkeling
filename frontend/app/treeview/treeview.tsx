@@ -73,9 +73,11 @@ export interface TreeViewProps {
     height?: number | string;
     className?: string;
     selectedId?: string;
+    extraSelectedIds?: string[];
     expandDirectoriesOnSingleClick?: boolean;
     onOpenFile?: (id: string, node: TreeNodeData, event: MouseEvent<HTMLDivElement>) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
+    onNodeClick?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onRenameSelected?: (id: string, node: TreeNodeData) => void;
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
@@ -390,16 +392,19 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         height = 360,
         className,
         selectedId: propSelectedId,
+        extraSelectedIds,
         expandDirectoriesOnSingleClick = false,
         onOpenFile,
         onSelectionChange,
         onRenameSelected,
         onNodeContextMenu,
         onBackgroundContextMenu,
+        onNodeClick,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
     const [selectedId, setSelectedId] = useState<string>(propSelectedId ?? rootIds[0]);
+    const extraSelectedSet = useMemo(() => new Set(extraSelectedIds ?? []), [extraSelectedIds]);
     const scrollRef = useRef<HTMLDivElement>(null);
     const nodesByIdRef = useRef(nodesById);
     const expandedIdsRef = useRef(expandedIds);
@@ -812,7 +817,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                         if (row.kind === "node" && row.node == null) {
                             return null;
                         }
-                        const selected = row.id === selectedId;
+                        const selected = row.id === selectedId || extraSelectedSet.has(row.id);
                         return (
                             <div
                                 key={row.id}
@@ -826,10 +831,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                     height: rowHeight,
                                     transform: `translateY(${virtualRow.start}px)`,
                                 }}
-                                onClick={() => {
-                                    if (row.kind !== "node") {
+                                onClick={(event) => {
+                                    if (row.kind !== "node" || row.node == null) {
                                         return;
                                     }
+                                    onNodeClick?.(event, row.id, row.node);
                                     commitSelection(row.id);
                                     if (expandDirectoriesOnSingleClick && row.isDirectory) {
                                         toggleExpand(row.id);
