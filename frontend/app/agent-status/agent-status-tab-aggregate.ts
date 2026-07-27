@@ -180,6 +180,10 @@ function collectBlockDots(
         const doneUnread = isAgentDoneUnread(status, doneAckedAt);
         if (!unread && !doneUnread) continue;
         if (doneUnread) {
+            // If R was already acked (fingerprint stored), the user has already
+            // dismissed this agent's status. D is just a state transition of
+            // the same agent, not a new unread event — suppress the dot.
+            if (ackedFpMap[blockId] != null) continue;
             const elapsedMs = agentDoneElapsedMs(status, Date.now());
             // [DIAG] D 复活排查探针: 每次 tab 圆点 derive 出一个 D 时, 打一份关键数值
             // (updatedAt, doneAckedAt, prevState, 当前 state) 进 pslog, 让我能反推
