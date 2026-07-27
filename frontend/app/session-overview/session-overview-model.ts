@@ -5,9 +5,9 @@ import { BlockModel } from "@/app/block/block-model";
 import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
 import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import {
-    SnorkelingBlockKindMetaKey,
-    SnorkelingBlockKindOverview,
-    toggleCurrentTabBlockByKind,
+	SnorkelingBlockKindMetaKey,
+	SnorkelingBlockKindOverview,
+	toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
 import { getHiddenBlockIdsFromTab, getLayoutModelForStaticTab } from "@/layout/index";
 import * as jotai from "jotai";
@@ -17,158 +17,172 @@ const SessionOverviewTabKind = "overview";
 const SessionOverviewTabKindMetaKey = "snorkeling:tab-kind";
 const SessionOverviewTabName = "Overview";
 
+// localStorage key for the fingerprint-based ack (R class). Parallel to the old
+// timestamp-based key; on first read, if old data contains numbers (timestamp format),
+// those keys will be migrated to fingerprint format when markAgentStatusAcked is called again.
+const AgentStatusAckedFpStorageKey = "snorkeling:agent-status:acked-fp";
+
 export class SessionOverviewModel {
-    private static instance: SessionOverviewModel | null = null;
-    private openPromise: Promise<void> | null = null;
+	private static instance: SessionOverviewModel | null = null;
+	private openPromise: Promise<void> | null = null;
 
-    isOpenAtom = jotai.atom((get) => {
-        const tabId = get(atoms.staticTabId);
-        if (!tabId) return false;
-        const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
-        const hiddenBlockIds = new Set(getHiddenBlockIdsFromTab(tab));
-        for (const blockId of tab?.blockids ?? []) {
-            const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
-            if (
-                block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview &&
-                !hiddenBlockIds.has(blockId)
-            ) {
-                return true;
-            }
-        }
-        return false;
-    });
-    isFocusedAtom = jotai.atom((get) => {
-        const tabId = get(atoms.staticTabId);
-        if (!tabId) return false;
-        const layoutModel = getLayoutModelForStaticTab();
-        if (layoutModel?.focusedNode == null) return false;
-        const focusedNode = get(layoutModel.focusedNode);
-        const focusedBlockId = focusedNode?.data?.blockId;
-        if (typeof focusedBlockId !== "string") return false;
-        const focusedBlock = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", focusedBlockId)));
-        return focusedBlock?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview;
-    });
-    displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
-    blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
-    agentStatusAckedAtAtom = jotai.atom(readAgentStatusAckedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
-    hideUnopenedTabsAtom = jotai.atom(readBoolean(HideUnopenedTabsStorageKey)) as jotai.PrimitiveAtom<boolean>;
-    agentsOnlyAtom = jotai.atom(readBoolean(AgentsOnlyStorageKey)) as jotai.PrimitiveAtom<boolean>;
+	isOpenAtom = jotai.atom((get) => {
+		const tabId = get(atoms.staticTabId);
+		if (!tabId) return false;
+		const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+		const hiddenBlockIds = new Set(getHiddenBlockIdsFromTab(tab));
+		for (const blockId of tab?.blockids ?? []) {
+			const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+			if (
+				block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview &&
+				!hiddenBlockIds.has(blockId)
+			) {
+				return true;
+			}
+		}
+		return false;
+	});
+	isFocusedAtom = jotai.atom((get) => {
+		const tabId = get(atoms.staticTabId);
+		if (!tabId) return false;
+		const layoutModel = getLayoutModelForStaticTab();
+		if (layoutModel?.focusedNode == null) return false;
+		const focusedNode = get(layoutModel.focusedNode);
+		const focusedBlockId = focusedNode?.data?.blockId;
+		if (typeof focusedBlockId !== "string") return false;
+		const focusedBlock = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", focusedBlockId)));
+		return focusedBlock?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindOverview;
+	});
+	displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
+	blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
+	agentStatusAckedAtAtom = jotai.atom(readAgentStatusAckedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
+	agentStatusAckedFpAtom = jotai.atom(readAgentStatusAckedFp()) as jotai.PrimitiveAtom<Record<string, string>>;
+	hideUnopenedTabsAtom = jotai.atom(readBoolean(HideUnopenedTabsStorageKey)) as jotai.PrimitiveAtom<boolean>;
+	agentsOnlyAtom = jotai.atom(readBoolean(AgentsOnlyStorageKey)) as jotai.PrimitiveAtom<boolean>;
 
-    private constructor() {}
+	private constructor() {}
 
-    static getInstance(): SessionOverviewModel {
-        if (SessionOverviewModel.instance == null) {
-            SessionOverviewModel.instance = new SessionOverviewModel();
-        }
-        return SessionOverviewModel.instance;
-    }
+	static getInstance(): SessionOverviewModel {
+		if (SessionOverviewModel.instance == null) {
+			SessionOverviewModel.instance = new SessionOverviewModel();
+		}
+		return SessionOverviewModel.instance;
+	}
 
-    open(): Promise<void> {
-        if (this.openPromise != null) {
-            return this.openPromise;
-        }
-        this.openPromise = this.openInternal().finally(() => {
-            this.openPromise = null;
-        });
-        return this.openPromise;
-    }
+	open(): Promise<void> {
+		if (this.openPromise != null) {
+			return this.openPromise;
+		}
+		this.openPromise = this.openInternal().finally(() => {
+			this.openPromise = null;
+		});
+		return this.openPromise;
+	}
 
-    private async openInternal(): Promise<void> {
-        await toggleCurrentTabBlockByKind({
-            kind: SnorkelingBlockKindOverview,
-            blockDef: {
-                meta: {
-                    view: SessionOverviewView,
-                    "frame:title": SessionOverviewTabName,
-                    icon: "list-tree",
-                },
-            },
-            hideInsteadOfClose: true,
-        });
-    }
+	private async openInternal(): Promise<void> {
+		await toggleCurrentTabBlockByKind({
+			kind: SnorkelingBlockKindOverview,
+			blockDef: {
+				meta: {
+					view: SessionOverviewView,
+					"frame:title": SessionOverviewTabName,
+					icon: "list-tree",
+				},
+			},
+			hideInsteadOfClose: true,
+		});
+	}
 
-    setDisplayLimit(limit: number): void {
-        const normalized = normalizeDisplayLimit(limit);
-        globalStore.set(this.displayLimitAtom, normalized);
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem(DisplayLimitStorageKey, String(normalized));
-        }
-    }
+	setDisplayLimit(limit: number): void {
+		const normalized = normalizeDisplayLimit(limit);
+		globalStore.set(this.displayLimitAtom, normalized);
+		if (typeof window !== "undefined") {
+			window.localStorage.setItem(DisplayLimitStorageKey, String(normalized));
+		}
+	}
 
-    setHideUnopenedTabs(value: boolean): void {
-        globalStore.set(this.hideUnopenedTabsAtom, value);
-        writeBoolean(HideUnopenedTabsStorageKey, value);
-    }
+	setHideUnopenedTabs(value: boolean): void {
+		globalStore.set(this.hideUnopenedTabsAtom, value);
+		writeBoolean(HideUnopenedTabsStorageKey, value);
+	}
 
-    setAgentsOnly(value: boolean): void {
-        globalStore.set(this.agentsOnlyAtom, value);
-        writeBoolean(AgentsOnlyStorageKey, value);
-    }
+	setAgentsOnly(value: boolean): void {
+		globalStore.set(this.agentsOnlyAtom, value);
+		writeBoolean(AgentsOnlyStorageKey, value);
+	}
 
-    markBlockViewed(blockId: string, viewedAt = Date.now()): void {
-        if (!blockId) return;
-        const current = globalStore.get(this.blockViewedAtAtom) ?? {};
-        const next = { ...current, [blockId]: viewedAt };
-        globalStore.set(this.blockViewedAtAtom, next);
-        writeViewedAt(next);
-    }
+	markBlockViewed(blockId: string, viewedAt = Date.now()): void {
+		if (!blockId) return;
+		const current = globalStore.get(this.blockViewedAtAtom) ?? {};
+		const next = { ...current, [blockId]: viewedAt };
+		globalStore.set(this.blockViewedAtAtom, next);
+		writeViewedAt(next);
+	}
 
-    // Ack the current agent status of a block: dismisses the pulsing status chip ("I've seen this state")
-    // until the agent's state changes again (status.updatedAt moves past ackedAt). Stored separately from
-    // markBlockViewed because that one tracks session-message unread (summary.updatedAt), not agent-state unread.
-    markAgentStatusAcked(blockId: string, ackedAt = Date.now()): void {
-        if (!blockId) return;
-        const current = globalStore.get(this.agentStatusAckedAtAtom) ?? {};
-        const next = { ...current, [blockId]: ackedAt };
-        globalStore.set(this.agentStatusAckedAtAtom, next);
-        writeAgentStatusAckedAt(next);
-        // F5 R-ack-write: paired with markDoneAcked (F4). Reason="R" separates
-        // the two ack families on the same timeline; durationms carries
-        // ackedAt so the "R → 0 unread" recompute can be matched to the exact
-        // click instant even on systems without monotonic FE-side perf clocks.
-        pslogEvent({
-            event: "agent.status",
-            stage: "ack-write",
-            blockid: blockId,
-            traceid: makeAgentTraceId(blockId, ""),
-            reason: "R",
-            durationms: ackedAt,
-        });
-    }
+	// Ack the current agent status of a block: dismisses the pulsing status chip ("I've seen this state")
+	// until the agent's state changes again (state fingerprint changes). Stored separately from
+	// markBlockViewed because that one tracks session-message unread (summary.updatedAt), not agent-state unread.
+	markAgentStatusAcked(blockId: string, ackedAt = Date.now(), status?: AgentStatus | null): void {
+		if (!blockId) return;
+		const current = globalStore.get(this.agentStatusAckedAtAtom) ?? {};
+		const next = { ...current, [blockId]: ackedAt };
+		globalStore.set(this.agentStatusAckedAtAtom, next);
+		writeAgentStatusAckedAt(next);
+		// Also store the state fingerprint for fingerprint-based unread comparison
+		if (status != null) {
+			const fp = status.state + "|" + status.phase + "|" + status.source;
+			const fpMap = globalStore.get(this.agentStatusAckedFpAtom) ?? {};
+			const nextFp = { ...fpMap, [blockId]: fp };
+			globalStore.set(this.agentStatusAckedFpAtom, nextFp);
+			writeAgentStatusAckedFp(nextFp);
+		}
+		// F5 R-ack-write: paired with markDoneAcked (F4). Reason="R" separates
+		// the two ack families on the same timeline; durationms carries
+		// ackedAt so the "R → 0 unread" recompute can be matched to the exact
+		// click instant even on systems without monotonic FE-side perf clocks.
+		pslogEvent({
+			event: "agent.status",
+			stage: "ack-write",
+			blockid: blockId,
+			traceid: makeAgentTraceId(blockId, ""),
+			reason: "R",
+			durationms: ackedAt,
+		});
+	}
 
-    jumpToBlock(tabId: string, blockId: string): void {
-        if (tabId) {
-            setActiveTab(tabId);
-        }
-        if (blockId) {
-            this.markBlockViewed(blockId);
-            BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
-            window.setTimeout(() => refocusNode(blockId), 80);
-            window.setTimeout(() => refocusNode(blockId), 220);
-            window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
-        }
-    }
+	jumpToBlock(tabId: string, blockId: string): void {
+		if (tabId) {
+			setActiveTab(tabId);
+		}
+		if (blockId) {
+			this.markBlockViewed(blockId);
+			BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
+			window.setTimeout(() => refocusNode(blockId), 80);
+			window.setTimeout(() => refocusNode(blockId), 220);
+			window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
+		}
+	}
 }
 
 export function isSessionOverviewTab(tab: Tab | null): boolean {
-    return tab?.meta?.[SessionOverviewTabKindMetaKey] === SessionOverviewTabKind;
+	return tab?.meta?.[SessionOverviewTabKindMetaKey] === SessionOverviewTabKind;
 }
 
 export function filterSessionOverviewTabIds(tabIds: string[], getTab: (tabId: string) => Tab | null): string[] {
-    return tabIds.filter((tabId) => !isSessionOverviewTab(getTab(tabId)));
+	return tabIds.filter((tabId) => !isSessionOverviewTab(getTab(tabId)));
 }
 
 export function mergeVisibleTabIdsWithSessionOverview(
-    workspaceTabIds: string[],
-    visibleTabIds: string[],
-    getTab: (tabId: string) => Tab | null
+	workspaceTabIds: string[],
+	visibleTabIds: string[],
+	getTab: (tabId: string) => Tab | null,
 ): string[] {
-    const overviewTabIds = workspaceTabIds.filter((tabId) => isSessionOverviewTab(getTab(tabId)));
-    const visibleSet = new Set(visibleTabIds);
-    const remainingHiddenTabIds = workspaceTabIds.filter(
-        (tabId) => !overviewTabIds.includes(tabId) && !visibleSet.has(tabId)
-    );
-    return [...overviewTabIds, ...visibleTabIds, ...remainingHiddenTabIds];
+	const overviewTabIds = workspaceTabIds.filter((tabId) => isSessionOverviewTab(getTab(tabId)));
+	const visibleSet = new Set(visibleTabIds);
+	const remainingHiddenTabIds = workspaceTabIds.filter(
+		(tabId) => !overviewTabIds.includes(tabId) && !visibleSet.has(tabId),
+	);
+	return [...overviewTabIds, ...visibleTabIds, ...remainingHiddenTabIds];
 }
 
 const DisplayLimitStorageKey = "snorkeling:session-overview:display-limit";
@@ -181,70 +195,104 @@ const MinDisplayLimit = 5;
 const MaxDisplayLimit = 100;
 
 function normalizeDisplayLimit(limit: number): number {
-    if (!Number.isFinite(limit)) return DefaultDisplayLimit;
-    return Math.max(MinDisplayLimit, Math.min(MaxDisplayLimit, Math.round(limit)));
+	if (!Number.isFinite(limit)) return DefaultDisplayLimit;
+	return Math.max(MinDisplayLimit, Math.min(MaxDisplayLimit, Math.round(limit)));
 }
 
 function readDisplayLimit(): number {
-    if (typeof window === "undefined") return DefaultDisplayLimit;
-    const raw = window.localStorage.getItem(DisplayLimitStorageKey);
-    return normalizeDisplayLimit(Number(raw));
+	if (typeof window === "undefined") return DefaultDisplayLimit;
+	const raw = window.localStorage.getItem(DisplayLimitStorageKey);
+	return normalizeDisplayLimit(Number(raw));
 }
 
 function readBoolean(key: string): boolean {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(key) === "true";
+	if (typeof window === "undefined") return false;
+	return window.localStorage.getItem(key) === "true";
 }
 
 function writeBoolean(key: string, value: boolean): void {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(key, String(value));
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(key, String(value));
 }
 
 function readViewedAt(): Record<string, number> {
-    if (typeof window === "undefined") return {};
-    try {
-        const parsed = JSON.parse(window.localStorage.getItem(ViewedAtStorageKey) ?? "{}");
-        if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            return {};
-        }
-        const result: Record<string, number> = {};
-        for (const [key, value] of Object.entries(parsed)) {
-            if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
-                result[key] = value;
-            }
-        }
-        return result;
-    } catch {
-        return {};
-    }
+	if (typeof window === "undefined") return {};
+	try {
+		const parsed = JSON.parse(window.localStorage.getItem(ViewedAtStorageKey) ?? "{}");
+		if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return {};
+		}
+		const result: Record<string, number> = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
+				result[key] = value;
+			}
+		}
+		return result;
+	} catch {
+		return {};
+	}
 }
 
 function writeViewedAt(value: Record<string, number>): void {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ViewedAtStorageKey, JSON.stringify(value));
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(ViewedAtStorageKey, JSON.stringify(value));
 }
 
 function readAgentStatusAckedAt(): Record<string, number> {
-    if (typeof window === "undefined") return {};
-    try {
-        const parsed = JSON.parse(window.localStorage.getItem(AgentStatusAckedAtStorageKey) ?? "{}");
-        if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            return {};
-        }
-        const result: Record<string, number> = {};
-        for (const [key, value] of Object.entries(parsed)) {
-            if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
-                result[key] = value;
-            }
-        }
-        return result;
-    } catch {
-        return {};
-    }
+	if (typeof window === "undefined") return {};
+	try {
+		const parsed = JSON.parse(window.localStorage.getItem(AgentStatusAckedAtStorageKey) ?? "{}");
+		if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return {};
+		}
+		const result: Record<string, number> = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
+				result[key] = value;
+			}
+		}
+		return result;
+	} catch {
+		return {};
+	}
 }
 
 function writeAgentStatusAckedAt(value: Record<string, number>): void {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(AgentStatusAckedAtStorageKey, JSON.stringify(value));
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(AgentStatusAckedAtStorageKey, JSON.stringify(value));
+}
+
+function readAgentStatusAckedFp(): Record<string, string> {
+	if (typeof window === "undefined") return {};
+	try {
+		const parsed = JSON.parse(window.localStorage.getItem(AgentStatusAckedFpStorageKey) ?? "{}");
+		if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return {};
+		}
+		// Migration: if old-format values are numbers (timestamps), that means the
+		// fingerprint store is still in the old format and needs a fresh start.
+		// Clear it and start fresh — callers will repopulate with fingerprints.
+		const hasOldFormat = Object.values(parsed).some(
+			(v) => typeof v === "number",
+		);
+		if (hasOldFormat) {
+			window.localStorage.removeItem(AgentStatusAckedFpStorageKey);
+			return {};
+		}
+		const result: Record<string, string> = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof key === "string" && typeof value === "string") {
+				result[key] = value;
+			}
+		}
+		return result;
+	} catch {
+		return {};
+	}
+}
+
+function writeAgentStatusAckedFp(value: Record<string, string>): void {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(AgentStatusAckedFpStorageKey, JSON.stringify(value));
 }

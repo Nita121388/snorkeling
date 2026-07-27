@@ -571,14 +571,14 @@ export class TermViewModel implements ViewModel {
             };
         }
         const presentation = agentStatusPresentation(status);
-        // Ack: read the shared `agentStatusAckedAtAtom` (sourced from SessionOverviewModel singleton
-        // — same atom the Session Overview chips consume, so term header and overview stay in sync).
+        // Ack: read the shared `agentStatusAckedFpAtom` (fingerprint map from SessionOverviewModel)
+        // — fingerprint comparison correctly determines unread state regardless of timestamp churn.
         // `get` is the viewText atom's getter on the same globalStore, so ack writes trigger a
         // re-derive of this elem and the badge re-renders.
         const overview = SessionOverviewModel.getInstance();
-        const ackedAtMap = get(overview.agentStatusAckedAtAtom) ?? {};
-        const ackedAt = ackedAtMap[this.blockId] ?? 0;
-        const unread = isAgentStatusUnread(status, ackedAt);
+        const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
+        const ackedFp = ackedFpMap[this.blockId] ?? null;
+        const unread = isAgentStatusUnread(status, ackedFp);
         // Done-state (D) ack lives in a parallel per-block map. Decision 6B: ack semantics & lifecycle
         // stay in the agent-status channel, sibling to R's ackedAt rather than reusing SessionOverview's.
         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
@@ -610,7 +610,9 @@ export class TermViewModel implements ViewModel {
                 e.stopPropagation();
                 // Click the badge acknowledges both R (in-flight updates) and D (just-finished flash),
                 // so a single click fully clears the user's "I've seen this block's status" cue.
-                overview.markAgentStatusAcked(this.blockId);
+                // Pass current status so R fingerprint is stored — otherwise read sites would still
+                // see unread on next re-derive.
+                overview.markAgentStatusAcked(this.blockId, Date.now(), status);
                 agentStatusDoneAckStore.markDoneAcked(this.blockId, Date.now(), "term-header");
             },
             tooltipNode: titleText,

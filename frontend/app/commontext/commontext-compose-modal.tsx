@@ -759,7 +759,7 @@ const CommonTextComposeModal = memo(() => {
 
     return (
         <Modal
-            className={"w-[min(960px,calc(100vw-32px))] h-[min(600px,calc(100vh-32px))] pt-6 pb-3"}
+            className={"w-[max(500px,min(85vw,960px))] h-[max(350px,min(78vh,620px))] pt-6 pb-3"}
             onClose={close}
             onClickBackdrop={close}
         >

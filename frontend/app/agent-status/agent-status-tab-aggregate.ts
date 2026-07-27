@@ -6,7 +6,7 @@ import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ac
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread, normalizeTimeMs } from "@/app/agent-status/agent-status-unread";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { makeAgentTraceId, pslogEvent } from "@/app/store/pslog-trace";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
@@ -161,7 +161,7 @@ function expandBlockIdsWithSubblocks(get: Getter, blockIds: string[]): string[] 
 function collectBlockDots(
     get: Getter,
     blockIds: string[],
-    ackedAtMap: Record<string, number>,
+    ackedFpMap: Record<string, string>,
     doneAckedAtMap: Record<string, number>
 ): TabAgentStatusDot[] {
     const store = AgentStatusStore.getInstance();
@@ -174,9 +174,9 @@ function collectBlockDots(
         if (statusAtom == null) continue;
         const status = get(statusAtom);
         if (status == null) continue;
-        const ackedAt = ackedAtMap[blockId] ?? 0;
+        const ackedFp = ackedFpMap[blockId] ?? null;
         const doneAckedAt = doneAckedAtMap[blockId] ?? 0;
-        const unread = isAgentStatusUnread(status, ackedAt);
+        const unread = isAgentStatusUnread(status, ackedFp);
         const doneUnread = isAgentDoneUnread(status, doneAckedAt);
         if (!unread && !doneUnread) continue;
         if (doneUnread) {
@@ -260,9 +260,9 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         const tab = get(tabAtom);
         const blockIds = tab?.blockids ?? [];
         if (blockIds.length === 0) return [];
-        const ackedAtMap = get(overview.agentStatusAckedAtAtom) ?? {};
+        const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
-        const dots = collectBlockDots(get, blockIds, ackedAtMap, doneAckedAtMap);
+        const dots = collectBlockDots(get, blockIds, ackedFpMap, doneAckedAtMap);
         // 仅在有 D 点亮时才订阅 nowMinuteTickAtom — 不必让无 D 的 tab 跟着分钟刷新空跑.
         // 把 get 放在后面, 没有产生 D 的就跳过这次订阅, 减少无谓 rederive.
         if (dots.some((d) => d.kind === "D")) {

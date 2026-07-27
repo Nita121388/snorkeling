@@ -368,7 +368,13 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
     //   - 找不到 br：整段是 summary，没有 body（不要把"第一个 inline 节点之后"
     //     当成 body，那样会把紧跟 text 的 inline code 错误地切下去——见 repro）。
     // 对宽松列表（li 第一个孩子是 <p>），<p>.children 同样按这个规则切，
-    // 因此先unwrap paragraph 再 split，行为统一。
+    // 因此先 unwrap paragraph 再 split，行为统一。
+    //
+    // 关键修复：br 之后的内容如果包含 <ul>/<ol> 等块级列表节点，
+    // 它们会被 cloneWithChildren 错误地保留在 summary 中（因为它们
+    // 出现在 br 之后、第一个非空文本之前）。这里在切分后、构建 summary
+    // 之前，把 after 中开头的所有块级列表节点移到 body 头部，
+    // 确保 summary 只包含内联文本。
     const firstChild = childArray[0];
     let inlineChildren: React.ReactNode[];
     let wrapper: React.ReactElement | null = null;
@@ -406,11 +412,28 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
 
     const before = inlineChildren.slice(0, breakIndex);
     const after = inlineChildren.slice(breakIndex + 1);
+    // Move any leading block-level list nodes from after into bodyHead.
+    // These are <ul>/<ol> that were siblings of the <br/> and must not
+    // end up in the summary (cloneWithChildren preserves them in summary).
+    let bodyHead: React.ReactNode[] = [];
+    let afterForSummary = after;
+    while (afterForSummary.length > 0) {
+        const node = afterForSummary[0];
+        if (isValidElement(node) && (node.type === "ul" || node.type === "ol")) {
+            bodyHead.push(afterForSummary.shift()!);
+        } else {
+            break;
+        }
+    }
     const summaryChildren = wrapper != null ? [cloneWithChildren(wrapper, before)] : before;
-    const bodyChildren = (wrapper != null ? [cloneWithChildren(wrapper, after)] : after).concat(childArray.slice(1));
+    const bodyChildren = trimBlankTextNodes(
+        bodyHead
+            .concat(wrapper != null ? [cloneWithChildren(wrapper, afterForSummary)] : afterForSummary)
+            .concat(childArray.slice(1))
+    );
     return {
         summaryChildren: trimBlankTextNodes(summaryChildren),
-        bodyChildren: trimBlankTextNodes(bodyChildren),
+        bodyChildren,
     };
 }
 

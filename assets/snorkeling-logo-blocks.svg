@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Abstract tile/block style -->
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#22d3ee;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow3">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Hexagon container -->
+  <polygon points="256,50 430,145 430,365 256,460 82,365 82,145"
+           fill="url(#bg3)" stroke="#334155" stroke-width="2"/>
+
+  <!-- Grid of blocks (representing terminal blocks/panels) -->
+  <g opacity="0.9">
+    <!-- Row 1 -->
+    <rect x="120" y="130" width="50" height="50" rx="8" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+    <rect x="180" y="130" width="50" height="50" rx="8" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+    <rect x="240" y="130" width="50" height="50" rx="8" fill="url(#gradCyan)" filter="url(#glow3)"/>
+
+    <!-- Row 2 - wave pattern -->
+    <rect x="120" y="195" width="50" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+    <rect x="180" y="195" width="50" height="50" rx="8" fill="url(#gradCyan)" opacity="0.7" filter="url(#glow3)"/>
+    <rect x="240" y="195" width="50" height="50" rx="8" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+    <rect x="300" y="195" width="50" height="50" rx="8" fill="url(#gradCyan)" opacity="0.5"/>
+
+    <!-- Row 3 - terminal lines -->
+    <rect x="120" y="260" width="50" height="50" rx="8" fill="url(#gradCyan)" opacity="0.5"/>
+    <rect x="180" y="260" width="50" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+    <rect x="240" y="260" width="50" height="50" rx="8" fill="url(#gradCyan)" opacity="0.3"/>
+    <rect x="300" y="260" width="50" height="50" rx="8" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+  </g>
+
+  <!-- >_ prompt at bottom -->
+  <text x="150" y="370" font-family="Consolas, monospace" font-size="48" font-weight="bold" fill="#f97316">&gt;_</text>
+
+  <!-- Floating dots (bubbles) -->
+  <circle cx="370" cy="320" r="10" fill="#22d3ee" opacity="0.8" filter="url(#glow3)"/>
+  <circle cx="390" cy="290" r="6" fill="#67e8f9" opacity="0.6"/>
+  <circle cx="355" cy="260" r="4" fill="#67e8f9" opacity="0.4"/>
+</svg>

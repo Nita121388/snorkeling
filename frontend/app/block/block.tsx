@@ -217,19 +217,20 @@ const InlineTabLabel = memo(
         // D 类 (非 idle → idle 跳变后未阅) 同样点亮, 用绿色呼吸表达"刚跑完可来看结果".
         // idle/unknown 默认不点亮, 但 D 触发后会以 is-done-unread 视觉盖过 is-idle 的灰蓝.
         const agentStatus = useInlineTabAgentStatus(blockId);
-        // 与 Session Overview chip / term header pill 共享同一份 ackedAt atom (SessionOverviewModel
-        // 单例上的 agentStatusAckedAtAtom), 任一 surface 点击 markAgentStatusAcked 时所有 surface
-        // 同帧 re-derive, 三处已读状态天然联动. idle/unknown 不算 unread (isAgentStatusUnread 已处理).
+        // 与 Session Overview chip / term header pill 共享同一份 fingerprint atom
+        // (SessionOverviewModel 单例上的 agentStatusAckedFpAtom), 任一 surface 点击
+        // markAgentStatusAcked 时所有 surface 同帧 re-derive, 三处已读状态天然联动.
+        // idle/unknown 不算 unread (isAgentStatusUnread 已处理).
         const overviewModel = SessionOverviewModel.getInstance();
-        const ackedAtMap = useAtomValueSafe(overviewModel.agentStatusAckedAtAtom) ?? {};
+        const ackedFpMap = useAtomValueSafe(overviewModel.agentStatusAckedFpAtom) ?? {};
         // D 类 done ack 走 agent-status 自有通道 (决策 6B), 与 R ack map 平行, 仅由 A 头部点击写入
         // (决策 2A) — 这里只读不写, B 处点击只 ack R (19 号方案既有行为), D 必须切回 block 点 A.
         const doneAckedAtMap = useAtomValueSafe(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
         const statusDot = useMemo(() => {
             if (agentStatus == null) return null;
             const state = agentStatus.state;
-            const ackedAt = ackedAtMap[blockId] ?? 0;
-            const unread = isAgentStatusUnread(agentStatus, ackedAt);
+            const ackedFp = ackedFpMap[blockId] ?? null;
+            const unread = isAgentStatusUnread(agentStatus, ackedFp);
             const doneAckedAt = doneAckedAtMap[blockId] ?? 0;
             const doneUnread = isAgentDoneUnread(agentStatus, doneAckedAt);
             // 22 号方案明确: idle/unknown 默认不渲染 R 状态点减噪; 但 D 触发后即便 state=idle,
@@ -249,7 +250,7 @@ const InlineTabLabel = memo(
                     unread ? " — click to mark as read" : doneUnread ? ` — done ${doneElapsedText} ago, switch to block to dismiss` : " — up to date"
                 }`,
             };
-        }, [agentStatus, ackedAtMap, doneAckedAtMap, blockId]);
+        }, [agentStatus, ackedFpMap, doneAckedAtMap, blockId]);
 
         useEffect(() => {
             if (isEditing) {
@@ -378,7 +379,9 @@ const InlineTabLabel = memo(
                                             ? (e) => {
                                                   e.stopPropagation();
                                                   if (statusDot.unread) {
-                                                      overviewModel.markAgentStatusAcked(blockId);
+                                                      // Pass current status so R fingerprint is stored;
+                                                      // otherwise read sites would still see unread.
+                                                      overviewModel.markAgentStatusAcked(blockId, Date.now(), agentStatus);
                                                   }
                                                   if (statusDot.doneUnread) {
                                                       agentStatusDoneAckStore.markDoneAcked(blockId, Date.now(), "block-header");

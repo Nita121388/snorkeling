@@ -93,6 +93,23 @@ describe("markdown preview ordered list rendering", () => {
         expect(split.summaryChildren).toEqual(["Summary"]);
         expect(split.bodyChildren).toEqual(["Details"]);
     });
+
+    it("moves a leading <ul> after a <br/> into the body, not the summary", () => {
+        const ulNode = { type: "ul", children: [{ type: "li", children: ["Item"] }] };
+        const split = splitOrderedListItemChildren([
+            "\n",
+            "Summary text",
+            "\n",
+            { type: "br" },
+            ulNode,
+            "\n",
+            "More body",
+            "\n",
+        ]);
+
+        expect(split.summaryChildren).toEqual(["Summary text"]);
+        expect(split.bodyChildren).toContain(ulNode);
+    });
 });
 
 describe("markdown preview file references", () => {
