@@ -41,8 +41,19 @@ function writeAgentDoneAckedAt(value: Record<string, number>): void {
     window.localStorage.setItem(AgentDoneAckedAtStorageKey, JSON.stringify(value));
 }
 
+// 单例容器. 使用 let 而非 static instance 字段, 便于 resetTestInstance 在测试间
+// 重新 new — 每次 new 都会重新读取 localStorage, 避免测试间 stale 数据污染.
+// 生产代码调用 getInstance() 拿到的始终是同一个单例, 不会重新读 localStorage.
+let singletonInstance: AgentStatusDoneAckStore | null = null;
+
+// Bump signal: markDoneAcked / clearDoneAcked 时 +1, 让所有订阅了它的 derived atom
+// 强制 invalidate 快照. 用于绕过 jotai "无订阅者时 atom 不会主动 recompute" 的
+// 盲区 — 切 Tab 走掉的 VTabWrapper unmount 期间, 它的 tabDotsAtom 失去订阅者,
+// jotai 仅标 dirty 但不重算, 重新订阅时按理会自动重算, 但有些场景下 cached
+// snapshot 会被 retain; bumpAtom 兜底强制触发一次重算.
+export const ackBumpAtom: PrimitiveAtom<number> = atom(0);
+
 class AgentStatusDoneAckStore {
-    private static instance: AgentStatusDoneAckStore | null = null;
     doneAckedAtAtom: PrimitiveAtom<Record<string, number>> = atom(
         readAgentDoneAckedAt()
     ) as PrimitiveAtom<Record<string, number>>;
@@ -50,14 +61,16 @@ class AgentStatusDoneAckStore {
     private constructor() {}
 
     static getInstance(): AgentStatusDoneAckStore {
-        if (!AgentStatusDoneAckStore.instance) {
-            AgentStatusDoneAckStore.instance = new AgentStatusDoneAckStore();
+        if (singletonInstance == null) {
+            singletonInstance = new AgentStatusDoneAckStore();
         }
-        return AgentStatusDoneAckStore.instance;
+        return singletonInstance;
     }
 
-    static resetInstance(): void {
-        AgentStatusDoneAckStore.instance = null;
+    // 仅测试用 — 强制重建单例, 让下一次 getInstance() 重新读 localStorage.
+    // 生产环境绝不应调用此方法.
+    static resetTestInstance(): void {
+        singletonInstance = null;
     }
 
     markDoneAcked(blockId: string, ackedAt = Date.now(), source = "header-badge"): void {
@@ -66,6 +79,10 @@ class AgentStatusDoneAckStore {
         const next = { ...current, [blockId]: ackedAt };
         globalStore.set(this.doneAckedAtAtom, next);
         writeAgentDoneAckedAt(next);
+        // bump ackBumpAtom 让所有订阅它的 derived atom (e.g. getTabAgentStatusDotsAtom) 强制
+        // invalidate 快照. 配合 mark/clearDoneAcked 一起调用, 防止切 Tab 切换 + 模块
+        // 缓存 + jotai "无订阅者不主动 recompute" 三者叠加导致 stale D 显示.
+        globalStore.set(ackBumpAtom, globalStore.get(ackBumpAtom) + 1);
         // F4 D-ack-write: the user clicked the agent header badge and this block's
         // doneAckedAt is now ackedAt. Value of ackedAt recorded in durationms so
         // the cross-event timing is recoverable without a separate field; the
@@ -92,6 +109,9 @@ class AgentStatusDoneAckStore {
         delete next[blockId];
         globalStore.set(this.doneAckedAtAtom, next);
         writeAgentDoneAckedAt(next);
+        // bump ackBumpAtom 让所有订阅它的 derived atom 强制 invalidate 快照,
+        // 同 markDoneAcked 的理由 — 防止 clearDoneAcked 后切 Tab 回来 D 仍残留.
+        globalStore.set(ackBumpAtom, globalStore.get(ackBumpAtom) + 1);
         // F4 D-ack-clear: either via observeAgentStatusTransition (state bounced
         // back to non-idle) so next idle re-lights D, or direct. Reason="D"
         // keeps it in the same family as the ack-write; Outcome="cleared" tells

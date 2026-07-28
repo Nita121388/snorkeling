@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
-import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { ackBumpAtom, agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { isAgentStatusUnread, normalizeTimeMs, type AgentStatusFp } from "@/app/agent-status/agent-status-unread";
 import { makeAgentTraceId, pslogEvent } from "@/app/store/pslog-trace";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
@@ -50,7 +50,6 @@ export interface TabAgentStatusDot {
     title: string;
 }
 
-const TabAgentStatusDotAtomCache = new Map<string, Atom<TabAgentStatusDot[]>>();
 
 // 对一组 tabIds 派生"本工作区该 acquire 的 blockId 全集 (顶层 + inline 子 block)".
 // 缓存以 tabIds.join("") 为 key, 避免每次渲染都重建一个 derived atom.
@@ -174,16 +173,22 @@ function collectBlockDots(
         if (statusAtom == null) continue;
         const status = get(statusAtom);
         if (status == null) continue;
-        const ackedFp = ackedFpMap[blockId] ?? null;
+        // ackedFpMap[blockId] 在写入时由 statusFingerprint(status) 产出 (state|phase|source),
+        // 结构上必为 AgentStatusFp 模板字面量类型; 但 localStorage 反序列化与 Record<string,string>
+        // 索引会让 TS 拿到宽 string, 这里窄化回 AgentStatusFp 以满足 isAgentStatusUnread 形参类型.
+        const ackedFpRaw = ackedFpMap[blockId] ?? null;
+        const ackedFp: AgentStatusFp | null = ackedFpRaw == null ? null : (ackedFpRaw as AgentStatusFp);
         const doneAckedAt = doneAckedAtMap[blockId] ?? 0;
         const unread = isAgentStatusUnread(status, ackedFp);
         const doneUnread = isAgentDoneUnread(status, doneAckedAt);
         if (!unread && !doneUnread) continue;
         if (doneUnread) {
-            // If R was already acked (fingerprint stored), the user has already
-            // dismissed this agent's status. D is just a state transition of
-            // the same agent, not a new unread event — suppress the dot.
-            if (ackedFpMap[blockId] != null) continue;
+            // D 与 R 是两条独立事件流, 各自有独立 ack map (doneAckedAtAtom vs ackedFpAtom).
+            // 用户点 header 同时写两边只是"当下清显示", 不应让上一轮 R 的 fp 残留把
+            // 下一轮 D 永久压死 — 否则一旦 block 在 ack 后又 working→idle 再跳一次,
+            // ackedFpMap[blockId] 永驻不清 (markAgentStatusAcked 只覆盖不删, transition
+            // 也只清 doneAckedAt), D 被这条 sticky fp 长期 silence, C 永远不亮完成态.
+            // D 是否已读全权交给 isAgentDoneUnread (updatedAt vs doneAckedAt) 判定即可.
             const elapsedMs = agentDoneElapsedMs(status, Date.now());
             // [DIAG] D 复活排查探针: 每次 tab 圆点 derive 出一个 D 时, 打一份关键数值
             // (updatedAt, doneAckedAt, prevState, 当前 state) 进 pslog, 让我能反推
@@ -255,17 +260,25 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         const empty = atom<TabAgentStatusDot[]>([]);
         return empty;
     }
-    let rtn = TabAgentStatusDotAtomCache.get(tabId);
-    if (rtn != null) return rtn;
     const tabOref = WOS.makeORef("tab", tabId);
     const tabAtom = WOS.getWaveObjectAtom<Tab>(tabOref);
     const overview = SessionOverviewModel.getInstance();
-    rtn = atom((get) => {
+    // 每次调用都创建新的 atom — 不缓存. 原因: 切 Tab 走掉 VTabWrapper unmount 后,
+    // useAtomValue 订阅断开, jotai 的 derived atom snapshot 停在 ack 前的旧值;
+    // 重新 mount 时若返回同一 cached atom, 可能拿到 stale snapshot (jotai 内部
+    // 在订阅断开→复 mount 间保留旧快照). 每次 new atom 保证 re-derive 读到最新
+    // doneAckedAtAtom 值. 性能: 每个 tab 一次 new atom 可忽略.
+    return atom((get) => {
         const tab = get(tabAtom);
         const blockIds = tab?.blockids ?? [];
         if (blockIds.length === 0) return [];
         const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
+        // 强制订阅 ackBumpAtom: markDoneAcked / clearDoneAcked 会 bump 它 (set +1),
+        // 让本 derived atom 即使在订阅者暂时断开 (VTabWrapper unmount) 又复 mount 的
+        // 边界场景中, 也能在 bump 瞬间被 jotai 标 dirty, 重新订阅时立即可重算到最新
+        // doneAckedAtAtom 值, 避免出现 stale "D 又亮" 现象.
+        get(ackBumpAtom);
         const dots = collectBlockDots(get, blockIds, ackedFpMap, doneAckedAtMap);
         // 仅在有 D 点亮时才订阅 nowMinuteTickAtom — 不必让无 D 的 tab 跟着分钟刷新空跑.
         // 把 get 放在后面, 没有产生 D 的就跳过这次订阅, 减少无谓 rederive.
@@ -274,8 +287,6 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         }
         return dots;
     });
-    TabAgentStatusDotAtomCache.set(tabId, rtn);
-    return rtn;
 }
 
 /**

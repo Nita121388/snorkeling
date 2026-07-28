@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import React from "react";
 import { describe, expect, it } from "vitest";
 import {
     linkifyMarkdownFileReferences,
@@ -87,20 +88,29 @@ describe("markdown preview ordered list rendering", () => {
         expect(split.bodyChildren).toEqual([]);
     });
 
-    it("keeps continuation content in the collapsible ordered list body", () => {
+    it("keeps all inline content as summary when there is no <br/> to split on", () => {
+        // No <br/> means no soft break to fold on; the entire inline run stays as the summary.
+        // (Earlier "split at first non-blank node" behavior was abandoned — see markdown.tsx comment.)
         const split = splitOrderedListItemChildren(["\n", "Summary", "\n", "Details", "\n"]);
 
-        expect(split.summaryChildren).toEqual(["Summary"]);
-        expect(split.bodyChildren).toEqual(["Details"]);
+        // trimBlankTextNodes only trims leading/trailing whitespace-only children, not interior ones.
+        expect(split.summaryChildren).toEqual(["Summary", "\n", "Details"]);
+        expect(split.bodyChildren).toEqual([]);
     });
 
-    it("moves a leading <ul> after a <br/> into the body, not the summary", () => {
-        const ulNode = { type: "ul", children: [{ type: "li", children: ["Item"] }] };
+    it("does not duplicate a leading <ul> after a <br/> in a tight list", () => {
+        // Tight list: react-markdown does NOT wrap li content in <p>, so
+        // children are the flat inline sequence [...text, <br/>, <ul>, text...].
+        // bodyChildren must contain the <ul> exactly once, not twice.
+        const ulNode = React.createElement(
+            "ul",
+            null,
+            React.createElement("li", null, "Sub")
+        );
         const split = splitOrderedListItemChildren([
-            "\n",
             "Summary text",
             "\n",
-            { type: "br" },
+            React.createElement("br", null),
             ulNode,
             "\n",
             "More body",
@@ -108,7 +118,44 @@ describe("markdown preview ordered list rendering", () => {
         ]);
 
         expect(split.summaryChildren).toEqual(["Summary text"]);
-        expect(split.bodyChildren).toContain(ulNode);
+        const ulInBody = split.bodyChildren.filter(
+            (c) => React.isValidElement(c) && c.type === "ul"
+        );
+        expect(ulInBody).toHaveLength(1);
+    });
+
+    it("moves a leading <ul> after a <br/> into the body, not the summary", () => {
+        // The <ul> must end up in bodyChildren (not summaryChildren) and survive trimBlankTextNodes.
+        const ulNode = React.createElement(
+            "ul",
+            null,
+            React.createElement("li", null, "Item")
+        );
+        const split = splitOrderedListItemChildren([
+            "\n",
+            "Summary text",
+            "\n",
+            React.createElement("br", null),
+            ulNode,
+            "\n",
+            "More body",
+            "\n",
+        ]);
+
+        expect(split.summaryChildren).toEqual(["Summary text"]);
+        // No <ul> leaked into the summary:
+        expect(
+            split.summaryChildren.some(
+                (c) => React.isValidElement(c) && c.type === "ul"
+            )
+        ).toBe(false);
+        // The body contains exactly one <ul> and the trailing text:
+        expect(
+            split.bodyChildren.filter(
+                (c) => React.isValidElement(c) && c.type === "ul"
+            )
+        ).toHaveLength(1);
+        expect(split.bodyChildren).toContain("More body");
     });
 });
 

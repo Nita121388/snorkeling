@@ -426,10 +426,16 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
         }
     }
     const summaryChildren = wrapper != null ? [cloneWithChildren(wrapper, before)] : before;
+    // body 拼接规则：
+    //   - loose list（wrapper != null）：inlineChildren = unwrap(<p>) 的内部 children，
+    //     只覆盖第一个 <p> 里的内容；<li> 顶层兄弟（如子列表 <ul>）由 childArray.slice(1) 补回。
+    //   - tight list（wrapper == null）：inlineChildren = childArray 本身，
+    //     <br/> 之后的 after 已经包含所有顶层节点（含子列表 <ul>），再 concat(childArray.slice(1)) 会重复。
+    const bodyBase = bodyHead.concat(
+        wrapper != null ? [cloneWithChildren(wrapper, afterForSummary)] : afterForSummary
+    );
     const bodyChildren = trimBlankTextNodes(
-        bodyHead
-            .concat(wrapper != null ? [cloneWithChildren(wrapper, afterForSummary)] : afterForSummary)
-            .concat(childArray.slice(1))
+        wrapper != null ? bodyBase.concat(childArray.slice(1)) : bodyBase
     );
     return {
         summaryChildren: trimBlankTextNodes(summaryChildren),
