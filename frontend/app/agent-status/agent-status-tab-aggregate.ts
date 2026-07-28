@@ -61,6 +61,16 @@ const WorkspaceBlockIdsAtomCache = new Map<string, Atom<string[]>>();
 // 供 TabBar/VTabBar 的 visibleTabIds 过滤使用: 即使某 tab 非激活、非悬停、非本次启动新开,
 // 只要有未阅点就强制 keep 到 visibleTabIds — 否则该 TabInner 不挂载, dots 永远画不出来,
 // 用户必须先点过去才看到状态 (这正是本次要修的 bug).
+//
+// 缓存: 以 tabIds.join(" ") 为 key. 每次调用都 new outer atom 会让 useAtomValue 重新订阅,
+// 触发 TabBar/VTabBar 重 render, 重 render 又调 getTabsWithUnreadDotsAtom 又 new atom →
+// 死循环 (Tooltip "Maximum update depth exceeded"). 用缓存复用同一个 outer atom.
+//
+// 但是单纯缓存会重蹈 stale 闭包的内层 atom snapshot bug —— 内层 `getTabAgentStatusDotsAtom`
+// 仍每次 new, cached outer atom 闭包里持有的 `tabDotAtoms[i]` 是首次构建的 inner atom 实例,
+// 那份 inner atom 不再被 bump 推动. 解法: outer atom 显式订阅 ackBumpAtom, 把 ack 写入
+// (markDoneAcked / clearDoneAcked) 当作 outer 的 invalidation 信号; bump 会强制 outer 重 derive,
+// 重新执行闭包读取内层 atom, 此时内层 atom 会重新读取 doneAckedAtAtom 最新值.
 const TabsWithUnreadDotsAtomCache = new Map<string, Atom<Set<string>>>();
 
 export function getTabsWithUnreadDotsAtom(tabIds: string[]): Atom<Set<string>> {
@@ -69,6 +79,11 @@ export function getTabsWithUnreadDotsAtom(tabIds: string[]): Atom<Set<string>> {
     if (cached != null) return cached;
     const tabDotAtoms = tabIds.map((id) => getTabAgentStatusDotsAtom(id));
     const derived = atom<Set<string>>((get) => {
+        // 订阅 ackBumpAtom 强制 outer 在任何 ack 写入 (markDoneAcked / clearDoneAcked /
+        // markAgentStatusAcked 现在也 bump) 时重 derive, 走一遍内层 atom 拿最新 doneAckedAtAtom.
+        // 否则 cached outer 闭包持有的 inner atom 实例在它首次被 inner 创建时已 "freeze",
+        // 后续 outer 重 derive 不会让那份 inner 重新读 atom.
+        get(ackBumpAtom);
         const out = new Set<string>();
         for (let i = 0; i < tabIds.length; i++) {
             const dots = get(tabDotAtoms[i]);
@@ -173,6 +188,23 @@ function collectBlockDots(
         if (statusAtom == null) continue;
         const status = get(statusAtom);
         if (status == null) continue;
+        // [DIAG] D 复活排查探针: 进入每个 block 的判定循环时, 记录 doneAckedAtMap 的来源,
+        // 用于排查 derive 是不是从 stale atom 读到 0. 排查完后删除.
+        // 触发条件: state=idle 且 prevState 非 idle (即可能产生 D 的状态), 每次循环都打一条,
+        // 确认 map 在 derive 入口处 selfVal 是否真的为 0 还是说已经被写入.
+        if (status.state === "idle" && status.prevState != null && status.prevState !== "idle" && status.prevState !== "unknown") {
+            const selfVal = doneAckedAtMap[blockId] ?? 0;
+            const updatedAtMs = normalizeTimeMs(status.updatedAt);
+            pslogEvent({
+                event: "agent.status",
+                stage: "transition",
+                blockid: blockId,
+                traceid: makeAgentTraceId(blockId, status.sessionId ?? ""),
+                reason: "D-derive-entry",
+                outcome: `${status.state}|prev=${status.prevState ?? ""}|selfAck=${selfVal}|upd=${updatedAtMs}`,
+                durationms: updatedAtMs,
+            });
+        }
         // ackedFpMap[blockId] 在写入时由 statusFingerprint(status) 产出 (state|phase|source),
         // 结构上必为 AgentStatusFp 模板字面量类型; 但 localStorage 反序列化与 Record<string,string>
         // 索引会让 TS 拿到宽 string, 这里窄化回 AgentStatusFp 以满足 isAgentStatusUnread 形参类型.
@@ -274,11 +306,20 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         if (blockIds.length === 0) return [];
         const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
-        // 强制订阅 ackBumpAtom: markDoneAcked / clearDoneAcked 会 bump 它 (set +1),
-        // 让本 derived atom 即使在订阅者暂时断开 (VTabWrapper unmount) 又复 mount 的
-        // 边界场景中, 也能在 bump 瞬间被 jotai 标 dirty, 重新订阅时立即可重算到最新
-        // doneAckedAtAtom 值, 避免出现 stale "D 又亮" 现象.
+        // Force re-derive on any ack write/clear — see agent-status-done-ack-store
+        // comment on ackBumpAtom for the reasoning (bypasses jotai "no subscribers
+        // → don't recompute" blind spot when VTabWrapper unmounts then remounts).
+        // Both R-class (ackedFpAtom) and D-class (doneAckedAtAtom) writes are covered.
         get(ackBumpAtom);
+        // Also subscribe to the R-class ack atom directly — markAgentStatusAcked
+        // writes to agentStatusAckedFpAtom but does NOT bump ackBumpAtom, so
+        // R-class stale snapshots survive tab switch-back when the derived atom
+        // was unsubscribed (VTabWrapper unmount) and the jotai snapshot was
+        // retained across the unmount boundary.  The R-class has no minute-tick
+        // to force a re-derive either (only D-class opts into nowMinuteTickAtom).
+        // Reading ackedFpAtom here creates the dependency so any write to it
+        // (markAgentStatusAcked) invalidates and re-renders this derived atom.
+        get(overview.agentStatusAckedFpAtom);
         const dots = collectBlockDots(get, blockIds, ackedFpMap, doneAckedAtMap);
         // 仅在有 D 点亮时才订阅 nowMinuteTickAtom — 不必让无 D 的 tab 跟着分钟刷新空跑.
         // 把 get 放在后面, 没有产生 D 的就跳过这次订阅, 减少无谓 rederive.

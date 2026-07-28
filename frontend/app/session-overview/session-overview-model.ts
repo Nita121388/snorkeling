@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockModel } from "@/app/block/block-model";
+import { ackBumpAtom } from "@/app/agent-status/agent-status-done-ack-store";
 import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
 import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import {
@@ -136,6 +137,14 @@ export class SessionOverviewModel {
 			globalStore.set(this.agentStatusAckedFpAtom, nextFp);
 			writeAgentStatusAckedFp(nextFp);
 		}
+		// Bump ackBumpAtom so derived atoms that subscribed to it (e.g. tab-aggregate's
+		// getTabAgentStatusDotsAtom) are invalidated on this R-class ack too. Without
+		// the bump, R-class writes would only invalidate atoms that read agentStatusAckedFpAtom
+		// directly — but the tab-aggregate also reads it via a `get()` and the jotai snapshot
+		// race on tab switch-back (VTabWrapper unmount→remount) can still return stale R values.
+		// Sharing the bump signal with D-class keeps both ack families invalidated by the same
+		// mechanism. Safe under strict-null because ackBumpAtom is a module-level singleton.
+		globalStore.set(ackBumpAtom, globalStore.get(ackBumpAtom) + 1);
 		// F5 R-ack-write: paired with markDoneAcked (F4). Reason="R" separates
 		// the two ack families on the same timeline; durationms carries
 		// ackedAt so the "R → 0 unread" recompute can be matched to the exact

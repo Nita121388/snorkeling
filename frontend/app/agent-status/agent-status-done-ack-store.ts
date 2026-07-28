@@ -83,6 +83,18 @@ class AgentStatusDoneAckStore {
         // invalidate 快照. 配合 mark/clearDoneAcked 一起调用, 防止切 Tab 切换 + 模块
         // 缓存 + jotai "无订阅者不主动 recompute" 三者叠加导致 stale D 显示.
         globalStore.set(ackBumpAtom, globalStore.get(ackBumpAtom) + 1);
+        // [DIAG] D 复活排查探针: 把 write 完成后的 doneAckedAtMap 真实读回, 验证 atom 内容.
+        // 排查完删除. reason="D-write-verify", outcome="map size + last blockId key".
+        const verified = globalStore.get(this.doneAckedAtAtom) ?? {};
+        pslogEvent({
+            event: "agent.status",
+            stage: "ack-write",
+            blockid: blockId,
+            traceid: makeAgentTraceId(blockId, ""),
+            reason: `D-write-verify:${source}`,
+            durationms: ackedAt,
+            outcome: `bump=${globalStore.get(ackBumpAtom)}|mapSize=${Object.keys(verified).length}|selfVal=${verified[blockId]}`,
+        });
         // F4 D-ack-write: the user clicked the agent header badge and this block's
         // doneAckedAt is now ackedAt. Value of ackedAt recorded in durationms so
         // the cross-event timing is recoverable without a separate field; the
