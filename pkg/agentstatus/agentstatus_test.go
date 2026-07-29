@@ -321,3 +321,319 @@ func TestToolNameDefaultsPhaseToTool(t *testing.T) {
 		t.Fatalf("expected tool phase, got %+v", status)
 	}
 }
+
+func TestGetRetainsCompletedTransitionForLateReader(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     20,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report working returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		Seq:     21,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report idle returned error: %v", err)
+	}
+
+	status := Get("block-1")
+	if status == nil {
+		t.Fatalf("expected canonical status")
+	}
+	if status.State != StateIdle || status.PrevState != StateWorking || status.CompletedAt != 1_700_000_001_000 {
+		t.Fatalf("late reader should recover completion transition, got %+v", status)
+	}
+}
+
+func TestCompletedTransitionFollowsCanonicalStateCycle(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report initial idle returned error: %v", err)
+	}
+	if status := Get("block-1"); status == nil || status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("initial idle should not create a completion transition, got %+v", status)
+	}
+
+	setTestNow(1_700_000_001_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     11,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report working returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_002_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		Seq:     12,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report first completion returned error: %v", err)
+	}
+	status := Get("block-1")
+	if status == nil || status.PrevState != StateWorking || status.CompletedAt != 1_700_000_002_000 {
+		t.Fatalf("expected first recoverable completion, got %+v", status)
+	}
+
+	setTestNow(1_700_000_003_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		Seq:     13,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report repeated idle returned error: %v", err)
+	}
+	status = Get("block-1")
+	if status == nil || status.PrevState != StateWorking || status.CompletedAt != 1_700_000_002_000 || status.UpdatedAt != 1_700_000_003_000 {
+		t.Fatalf("repeated idle should preserve the original completion, got %+v", status)
+	}
+
+	setTestNow(1_700_000_004_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     14,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report second working returned error: %v", err)
+	}
+	if status = Get("block-1"); status == nil || status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("working should clear the completed transition, got %+v", status)
+	}
+
+	setTestNow(1_700_000_005_000)
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		Seq:     15,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report second completion returned error: %v", err)
+	}
+	status = Get("block-1")
+	if status == nil || status.PrevState != StateWorking || status.CompletedAt != 1_700_000_005_000 {
+		t.Fatalf("expected a new recoverable completion, got %+v", status)
+	}
+}
+
+func TestTTLReadDoesNotInventCompletedTransition(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceShellIntegration,
+		State:   StateIdle,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report idle fallback returned error: %v", err)
+	}
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     10,
+		TtlMs:   1000,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report expiring working returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_001)
+	status := Get("block-1")
+	if status == nil || status.State != StateIdle {
+		t.Fatalf("expected idle fallback after TTL, got %+v", status)
+	}
+	if status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("a read-time TTL cleanup must not invent completion, got %+v", status)
+	}
+}
+
+func TestReportReattachesBlockAfterUnsequencedTTLExpiry(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateIdle,
+		TtlMs:   1000,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report expiring idle returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_001)
+	status, changed, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report after TTL returned error: %v", err)
+	}
+	if !changed || status == nil || status.State != StateWorking {
+		t.Fatalf("report after unsequenced TTL expiry was lost, status=%+v changed=%v", status, changed)
+	}
+	if stored := Get("block-1"); stored == nil || stored.State != StateWorking {
+		t.Fatalf("report after TTL expiry was not stored, got %+v", stored)
+	}
+}
+
+func TestReleaseCreatesCompletionFromCanonicalTransition(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceShellIntegration,
+		State:   StateIdle,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report idle fallback returned error: %v", err)
+	}
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateBlocked,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report blocked returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_000)
+	status, changed, err := Release("block-1", SourceHook, 11)
+	if err != nil {
+		t.Fatalf("Release blocked returned error: %v", err)
+	}
+	if !changed || status == nil || status.State != StateIdle ||
+		status.PrevState != StateBlocked || status.CompletedAt != 1_700_000_001_000 {
+		t.Fatalf("release should expose one recoverable completion, status=%+v changed=%v", status, changed)
+	}
+	if stored := Get("block-1"); stored == nil || stored.CompletedAt != 1_700_000_001_000 {
+		t.Fatalf("late reader lost release completion, got %+v", stored)
+	}
+}
+
+func TestCompletedTransitionDoesNotLeakIntoNewSessionIdle(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId:   "block-1",
+		Provider:  "codex",
+		SessionId: "session-a",
+		Source:    SourceHook,
+		State:     StateWorking,
+		Seq:       10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report session A working returned error: %v", err)
+	}
+	_, _, err = Report(AgentStatusReport{
+		BlockId:   "block-1",
+		Provider:  "codex",
+		SessionId: "session-a",
+		Source:    SourceHook,
+		State:     StateIdle,
+		Seq:       11,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report session A idle returned error: %v", err)
+	}
+	if status := Get("block-1"); status == nil || status.CompletedAt == 0 {
+		t.Fatalf("expected session A completion, got %+v", status)
+	}
+
+	setTestNow(1_700_000_001_000)
+	status, _, err := Report(AgentStatusReport{
+		BlockId:   "block-1",
+		Provider:  "codex",
+		SessionId: "session-b",
+		Source:    SourceHook,
+		State:     StateIdle,
+		Seq:       12,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report session B initial idle returned error: %v", err)
+	}
+	status = Get("block-1")
+	if status == nil || status.SessionId != "session-b" {
+		t.Fatalf("expected session B idle, got %+v", status)
+	}
+	if status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("session A completion leaked into session B, got %+v", status)
+	}
+}
+
+func TestCrossSessionWorkingToIdleDoesNotCreateCompletion(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId:   "block-1",
+		Provider:  "codex",
+		SessionId: "session-a",
+		Source:    SourceHook,
+		State:     StateWorking,
+		Seq:       10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report session A working returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_000)
+	status, _, err := Report(AgentStatusReport{
+		BlockId:   "block-1",
+		Provider:  "codex",
+		SessionId: "session-b",
+		Source:    SourceHook,
+		State:     StateIdle,
+		Seq:       11,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report session B idle returned error: %v", err)
+	}
+	if status == nil || status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("live session B event inherited session A completion, got %+v", status)
+	}
+
+	status = Get("block-1")
+	if status == nil || status.SessionId != "session-b" {
+		t.Fatalf("expected session B idle, got %+v", status)
+	}
+	if status.PrevState != "" || status.CompletedAt != 0 {
+		t.Fatalf("session A working leaked as a session B completion, got %+v", status)
+	}
+}

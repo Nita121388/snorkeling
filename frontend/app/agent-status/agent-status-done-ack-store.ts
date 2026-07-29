@@ -5,6 +5,8 @@ import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
 import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { atom, type PrimitiveAtom } from "jotai";
+import { atomWithStorage } from "jotai/vanilla/utils";
+import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
 
 // Per-block "Done 已阅" 时间戳. 与 SessionOverviewModel.agentStatusAckedAtAtom 平行但独立:
 // 那份管 R 类未读 (运行中, isAgentStatusUnread 用), 这份管 D 类未读 (完成态跳变,
@@ -17,10 +19,9 @@ import { atom, type PrimitiveAtom } from "jotai";
 
 const AgentDoneAckedAtStorageKey = "snorkeling:agent-status:done-acked-at";
 
-function readAgentDoneAckedAt(): Record<string, number> {
-    if (typeof window === "undefined") return {};
+function parseAgentDoneAckedAt(raw: string | null): Record<string, number> {
     try {
-        const parsed = JSON.parse(window.localStorage.getItem(AgentDoneAckedAtStorageKey) ?? "{}");
+        const parsed = JSON.parse(raw ?? "{}");
         if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
             return {};
         }
@@ -36,10 +37,38 @@ function readAgentDoneAckedAt(): Record<string, number> {
     }
 }
 
+function readAgentDoneAckedAt(): Record<string, number> {
+    if (typeof window === "undefined") return {};
+    try {
+        return parseAgentDoneAckedAt(window.localStorage.getItem(AgentDoneAckedAtStorageKey));
+    } catch {
+        return {};
+    }
+}
+
 function writeAgentDoneAckedAt(value: Record<string, number>): void {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(AgentDoneAckedAtStorageKey, JSON.stringify(value));
 }
+
+const AgentDoneAckStorage: SyncStorage<Record<string, number>> = {
+    getItem: () => readAgentDoneAckedAt(),
+    setItem: (_key, value) => writeAgentDoneAckedAt(value),
+    removeItem: () => {
+        if (typeof window === "undefined") return;
+        window.localStorage.removeItem(AgentDoneAckedAtStorageKey);
+    },
+    subscribe: (_key, callback) => {
+        if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key !== AgentDoneAckedAtStorageKey) return;
+            if (event.storageArea != null && event.storageArea !== window.localStorage) return;
+            callback(readAgentDoneAckedAt());
+        };
+        window.addEventListener("storage", handleStorage);
+        return () => window.removeEventListener("storage", handleStorage);
+    },
+};
 
 // 单例容器. 使用 let 而非 static instance 字段, 便于 resetTestInstance 在测试间
 // 重新 new — 每次 new 都会重新读取 localStorage, 避免测试间 stale 数据污染.
@@ -54,8 +83,11 @@ let singletonInstance: AgentStatusDoneAckStore | null = null;
 export const ackBumpAtom: PrimitiveAtom<number> = atom(0);
 
 class AgentStatusDoneAckStore {
-    doneAckedAtAtom: PrimitiveAtom<Record<string, number>> = atom(
-        readAgentDoneAckedAt()
+    doneAckedAtAtom = atomWithStorage<Record<string, number>>(
+        AgentDoneAckedAtStorageKey,
+        {},
+        AgentDoneAckStorage,
+        { getOnInit: true }
     ) as PrimitiveAtom<Record<string, number>>;
 
     private constructor() {}
@@ -75,10 +107,11 @@ class AgentStatusDoneAckStore {
 
     markDoneAcked(blockId: string, ackedAt = Date.now(), source = "header-badge"): void {
         if (!blockId) return;
-        const current = globalStore.get(this.doneAckedAtAtom) ?? {};
+        // ponytail: 先读取最新持久值以覆盖延迟事件竞态; 两个 renderer 真正同时写入仍是
+        // last-writer-wins. 若该边界变成可见问题, 再把 ack 所有权移到主进程 IPC.
+        const current = readAgentDoneAckedAt();
         const next = { ...current, [blockId]: ackedAt };
         globalStore.set(this.doneAckedAtAtom, next);
-        writeAgentDoneAckedAt(next);
         // bump ackBumpAtom 让所有订阅它的 derived atom (e.g. getTabAgentStatusDotsAtom) 强制
         // invalidate 快照. 配合 mark/clearDoneAcked 一起调用, 防止切 Tab 切换 + 模块
         // 缓存 + jotai "无订阅者不主动 recompute" 三者叠加导致 stale D 显示.
@@ -115,12 +148,11 @@ class AgentStatusDoneAckStore {
 
     clearDoneAcked(blockId: string, source = "header-badge"): void {
         if (!blockId) return;
-        const current = globalStore.get(this.doneAckedAtAtom) ?? {};
+        const current = readAgentDoneAckedAt();
         if (!(blockId in current)) return;
         const next = { ...current };
         delete next[blockId];
         globalStore.set(this.doneAckedAtAtom, next);
-        writeAgentDoneAckedAt(next);
         // bump ackBumpAtom 让所有订阅它的 derived atom 强制 invalidate 快照,
         // 同 markDoneAcked 的理由 — 防止 clearDoneAcked 后切 Tab 回来 D 仍残留.
         globalStore.set(ackBumpAtom, globalStore.get(ackBumpAtom) + 1);

@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "./agent-status-done-unread";
+import { normalizeCanonicalAgentStatus } from "./agent-status-service";
 import type { AgentStatus } from "./agent-status-types";
 
 const now = 1_790_000_000_000;
@@ -19,6 +20,19 @@ function baseStatus(overrides: Partial<AgentStatus> = {}): AgentStatus {
         ...overrides,
     };
 }
+
+describe("normalizeCanonicalAgentStatus", () => {
+    it("keeps the canonical completion timestamp for initial RPC readers", () => {
+        const status = normalizeCanonicalAgentStatus({
+            blockId: "block-agent",
+            state: "idle",
+            prevState: "working",
+            completedAt: now - 60_000,
+            updatedAt: now,
+        });
+        expect(status?.completedAt).toBe(now - 60_000);
+    });
+});
 
 describe("isAgentDoneUnread", () => {
     it("lights D when prevState is non-idle and current state is idle", () => {
@@ -67,6 +81,15 @@ describe("isAgentDoneUnread", () => {
         expect(isAgentDoneUnread(status, now - 120_000)).toBe(true);
     });
 
+    it("uses completedAt so a repeated idle report does not re-light an acked D", () => {
+        const status = baseStatus({
+            prevState: "working",
+            completedAt: now - 60_000,
+            updatedAt: now,
+        });
+        expect(isAgentDoneUnread(status, now - 30_000)).toBe(false);
+    });
+
     it("zero updatedAt is treated as not unread", () => {
         const status = baseStatus({ updatedAt: 0, prevState: "working" });
         expect(isAgentDoneUnread(status, 0)).toBe(false);
@@ -77,6 +100,11 @@ describe("agentDoneElapsedMs", () => {
     it("returns referenceMs - updatedAt", () => {
         const status = baseStatus({ updatedAt: now - 60_000 });
         expect(agentDoneElapsedMs(status, now)).toBe(60_000);
+    });
+
+    it("uses completedAt when the latest idle report is newer than the completion", () => {
+        const status = baseStatus({ completedAt: now - 120_000, updatedAt: now - 10_000 });
+        expect(agentDoneElapsedMs(status, now)).toBe(120_000);
     });
 
     it("clamps to 0 when updatedAt is in the future", () => {

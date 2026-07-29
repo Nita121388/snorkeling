@@ -62,6 +62,7 @@ type AgentStatus struct {
 	Message     string `json:"message,omitempty"`
 	ToolName    string `json:"toolName,omitempty"`
 	UpdatedAt   int64  `json:"updatedAt"`
+	CompletedAt int64  `json:"completedAt,omitempty"`
 	ActiveSince int64  `json:"activeSince,omitempty"`
 	Seq         int64  `json:"seq,omitempty"`
 	ExpiresAt   int64  `json:"expiresAt,omitempty"`
@@ -72,8 +73,12 @@ type sourceEntry struct {
 }
 
 type blockState struct {
-	sources map[string]sourceEntry
-	seqs    map[string]int64
+	sources            map[string]sourceEntry
+	seqs               map[string]int64
+	completedPrevState string
+	completedAt        int64
+	completedProvider  string
+	completedSessionId string
 }
 
 var manager = &statusManager{
@@ -278,6 +283,7 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	var prevCanonical *AgentStatus
 	if bs != nil {
 		prevCanonical = m.canonicalLocked(report.BlockId, nowMs)
+		bs = m.blocks[report.BlockId]
 	}
 	if bs == nil {
 		bs = &blockState{sources: make(map[string]sourceEntry), seqs: make(map[string]int64)}
@@ -321,6 +327,7 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	}
 	bs.sources[report.Source] = sourceEntry{status: status}
 	nextCanonical := m.canonicalLocked(report.BlockId, nowMs)
+	bs.updateCompletedTransition(prevCanonical, nextCanonical, nowMs)
 	attachPrevState(nextCanonical, prevCanonical)
 	same, diffField := sameStatus(prevCanonical, nextCanonical)
 	willEmit := !same
@@ -354,6 +361,10 @@ func (m *statusManager) releaseLocked(blockId string, source string, seq int64, 
 		return nil, false, nil
 	}
 	prevCanonical := m.canonicalLocked(blockId, nowMs)
+	bs = m.blocks[blockId]
+	if bs == nil {
+		return prevCanonical, false, nil
+	}
 	prevSeq := bs.seqs[source]
 	if seq < 0 {
 		// Force release bypasses the sequence check but keeps the guard so
@@ -370,6 +381,7 @@ func (m *statusManager) releaseLocked(blockId string, source string, seq int64, 
 		delete(m.blocks, blockId)
 	}
 	nextCanonical := m.canonicalLocked(blockId, nowMs)
+	bs.updateCompletedTransition(prevCanonical, nextCanonical, nowMs)
 	attachPrevState(nextCanonical, prevCanonical)
 	same, diffField := sameStatus(prevCanonical, nextCanonical)
 	willEmit := !same
@@ -404,11 +416,66 @@ func (m *statusManager) canonicalLocked(blockId string, nowMs int64) *AgentStatu
 	if len(bs.sources) == 0 && len(bs.seqs) == 0 {
 		delete(m.blocks, blockId)
 	}
+	bs.attachCompletedTransition(best)
 	return best
+}
+
+func (bs *blockState) updateCompletedTransition(prev *AgentStatus, next *AgentStatus, nowMs int64) {
+	if next == nil || next.State != StateIdle {
+		bs.clearCompletedTransition()
+		return
+	}
+	if prev != nil && prev.State != StateIdle && prev.State != StateUnknown && sameAgentIdentity(prev, next) {
+		bs.completedPrevState = prev.State
+		bs.completedAt = nowMs
+		bs.completedProvider = next.Provider
+		bs.completedSessionId = next.SessionId
+	}
+	bs.attachCompletedTransition(next)
+}
+
+func sameAgentIdentity(prev *AgentStatus, next *AgentStatus) bool {
+	if prev.SessionId != "" || next.SessionId != "" {
+		return prev.SessionId == next.SessionId
+	}
+	if prev.Provider != "" || next.Provider != "" {
+		return prev.Provider == next.Provider
+	}
+	return true
+}
+
+func (bs *blockState) attachCompletedTransition(status *AgentStatus) {
+	if status == nil || status.State != StateIdle {
+		bs.clearCompletedTransition()
+		return
+	}
+	if bs.completedAt <= 0 {
+		return
+	}
+	if (bs.completedSessionId != "" || status.SessionId != "") && bs.completedSessionId != status.SessionId {
+		bs.clearCompletedTransition()
+		return
+	}
+	if bs.completedSessionId == "" && status.SessionId == "" && bs.completedProvider != status.Provider {
+		bs.clearCompletedTransition()
+		return
+	}
+	status.PrevState = bs.completedPrevState
+	status.CompletedAt = bs.completedAt
+}
+
+func (bs *blockState) clearCompletedTransition() {
+	bs.completedPrevState = ""
+	bs.completedAt = 0
+	bs.completedProvider = ""
+	bs.completedSessionId = ""
 }
 
 func attachPrevState(next *AgentStatus, prev *AgentStatus) {
 	if next == nil {
+		return
+	}
+	if next.State == StateIdle {
 		return
 	}
 	if prev == nil {

@@ -350,6 +350,10 @@ const InlineTabLabel = memo(
                             className="inline-tab-block-tab-button"
                             onClick={onActivate}
                             onDoubleClick={() => setIsEditing(true)}
+                            role="tab"
+                            aria-selected={isActive}
+                            aria-label={`Tab ${displayTitle}${isActive ? ", active" : ""}`}
+                            tabIndex={isActive ? 0 : -1}
                         >
                             {agentLogo != null ? (
                                 <span
@@ -525,6 +529,38 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
 
+    const handleTabStripKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLDivElement>) => {
+            const target = e.target as HTMLElement;
+            const tabStrip = tabStripRef.current;
+            if (!tabStrip) return;
+            if (!target.classList.contains("inline-tab-block-tab-button")) return;
+            if (blockIds.length <= 1) return;
+            const buttons = Array.from(tabStrip.querySelectorAll<HTMLElement>(".inline-tab-block-tab-button"));
+            const currentIndex = buttons.indexOf(target);
+            if (currentIndex === -1) return;
+            let targetIndex = currentIndex;
+            if (e.key === "ArrowLeft") {
+                targetIndex = (currentIndex - 1 + blockIds.length) % blockIds.length;
+            } else if (e.key === "ArrowRight") {
+                targetIndex = (currentIndex + 1) % blockIds.length;
+            } else if (e.key === "Home") {
+                targetIndex = 0;
+            } else if (e.key === "End") {
+                targetIndex = blockIds.length - 1;
+            } else {
+                return;
+            }
+            e.preventDefault();
+            const targetBlockId = blockIds[targetIndex];
+            layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, targetBlockId);
+            buttons[targetIndex]?.focus({
+                preventScroll: true,
+            });
+        },
+        [blockIds, layoutModel, nodeModel.nodeId, tabStripRef]
+    );
+
     const cleanupMissingBlock = useCallback(
         (missingBlockId: string) => {
             if (!layoutModel) {
@@ -606,7 +642,13 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 />
             ))}
             {!preview && (
-                <div ref={tabStripRef} className="inline-tab-block-tabs">
+                <div
+                    ref={tabStripRef}
+                    className="inline-tab-block-tabs"
+                    role="tablist"
+                    aria-orientation="horizontal"
+                    onKeyDown={handleTabStripKeyDown}
+                >
                     <button
                         type="button"
                         className="inline-tab-block-group-handle"

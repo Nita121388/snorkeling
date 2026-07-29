@@ -12,6 +12,8 @@ import {
 } from "@/app/workspace/toggle-block";
 import { getHiddenBlockIdsFromTab, getLayoutModelForStaticTab } from "@/layout/index";
 import * as jotai from "jotai";
+import { atomWithStorage } from "jotai/vanilla/utils";
+import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
 
 const SessionOverviewView = "sessionoverview";
 const SessionOverviewTabKind = "overview";
@@ -21,7 +23,46 @@ const SessionOverviewTabName = "Overview";
 // localStorage key for the fingerprint-based ack (R class). Parallel to the old
 // timestamp-based key; on first read, if old data contains numbers (timestamp format),
 // those keys will be migrated to fingerprint format when markAgentStatusAcked is called again.
+const AgentStatusAckedAtStorageKey = "snorkeling:session-overview:agent-status-acked-at";
 const AgentStatusAckedFpStorageKey = "snorkeling:agent-status:acked-fp";
+
+const AgentStatusAckedAtStorage: SyncStorage<Record<string, number>> = {
+	getItem: () => readAgentStatusAckedAt(),
+	setItem: (_key, value) => writeAgentStatusAckedAt(value),
+	removeItem: () => {
+		if (typeof window === "undefined") return;
+		window.localStorage.removeItem(AgentStatusAckedAtStorageKey);
+	},
+	subscribe: (_key, callback) => {
+		if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+		const handleStorage = (event: StorageEvent) => {
+			if (event.key !== AgentStatusAckedAtStorageKey) return;
+			if (event.storageArea != null && event.storageArea !== window.localStorage) return;
+			callback(readAgentStatusAckedAt());
+		};
+		window.addEventListener("storage", handleStorage);
+		return () => window.removeEventListener("storage", handleStorage);
+	},
+};
+
+const AgentStatusAckedFpStorage: SyncStorage<Record<string, string>> = {
+	getItem: () => readAgentStatusAckedFp(),
+	setItem: (_key, value) => writeAgentStatusAckedFp(value),
+	removeItem: () => {
+		if (typeof window === "undefined") return;
+		window.localStorage.removeItem(AgentStatusAckedFpStorageKey);
+	},
+	subscribe: (_key, callback) => {
+		if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+		const handleStorage = (event: StorageEvent) => {
+			if (event.key !== AgentStatusAckedFpStorageKey) return;
+			if (event.storageArea != null && event.storageArea !== window.localStorage) return;
+			callback(readAgentStatusAckedFp());
+		};
+		window.addEventListener("storage", handleStorage);
+		return () => window.removeEventListener("storage", handleStorage);
+	},
+};
 
 export class SessionOverviewModel {
 	private static instance: SessionOverviewModel | null = null;
@@ -56,8 +97,18 @@ export class SessionOverviewModel {
 	});
 	displayLimitAtom = jotai.atom(readDisplayLimit()) as jotai.PrimitiveAtom<number>;
 	blockViewedAtAtom = jotai.atom(readViewedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
-	agentStatusAckedAtAtom = jotai.atom(readAgentStatusAckedAt()) as jotai.PrimitiveAtom<Record<string, number>>;
-	agentStatusAckedFpAtom = jotai.atom(readAgentStatusAckedFp()) as jotai.PrimitiveAtom<Record<string, string>>;
+	agentStatusAckedAtAtom = atomWithStorage<Record<string, number>>(
+		AgentStatusAckedAtStorageKey,
+		{},
+		AgentStatusAckedAtStorage,
+		{ getOnInit: true },
+	) as jotai.PrimitiveAtom<Record<string, number>>;
+	agentStatusAckedFpAtom = atomWithStorage<Record<string, string>>(
+		AgentStatusAckedFpStorageKey,
+		{},
+		AgentStatusAckedFpStorage,
+		{ getOnInit: true },
+	) as jotai.PrimitiveAtom<Record<string, string>>;
 	hideUnopenedTabsAtom = jotai.atom(readBoolean(HideUnopenedTabsStorageKey)) as jotai.PrimitiveAtom<boolean>;
 	agentsOnlyAtom = jotai.atom(readBoolean(AgentsOnlyStorageKey)) as jotai.PrimitiveAtom<boolean>;
 
@@ -125,17 +176,17 @@ export class SessionOverviewModel {
 	// markBlockViewed because that one tracks session-message unread (summary.updatedAt), not agent-state unread.
 	markAgentStatusAcked(blockId: string, ackedAt = Date.now(), status?: AgentStatus | null): void {
 		if (!blockId) return;
-		const current = globalStore.get(this.agentStatusAckedAtAtom) ?? {};
+		// ponytail: 先读取最新持久值以覆盖延迟事件竞态; 两个 renderer 真正同时写入仍是
+		// last-writer-wins. 若该边界变成可见问题, 再把 ack 所有权移到主进程 IPC.
+		const current = readAgentStatusAckedAt();
 		const next = { ...current, [blockId]: ackedAt };
 		globalStore.set(this.agentStatusAckedAtAtom, next);
-		writeAgentStatusAckedAt(next);
 		// Also store the state fingerprint for fingerprint-based unread comparison
 		if (status != null) {
 			const fp = status.state + "|" + status.phase + "|" + status.source;
-			const fpMap = globalStore.get(this.agentStatusAckedFpAtom) ?? {};
+			const fpMap = readAgentStatusAckedFp();
 			const nextFp = { ...fpMap, [blockId]: fp };
 			globalStore.set(this.agentStatusAckedFpAtom, nextFp);
-			writeAgentStatusAckedFp(nextFp);
 		}
 		// Bump ackBumpAtom so derived atoms that subscribed to it (e.g. tab-aggregate's
 		// getTabAgentStatusDotsAtom) are invalidated on this R-class ack too. Without
@@ -196,7 +247,6 @@ export function mergeVisibleTabIdsWithSessionOverview(
 
 const DisplayLimitStorageKey = "snorkeling:session-overview:display-limit";
 const ViewedAtStorageKey = "snorkeling:session-overview:block-viewed-at";
-const AgentStatusAckedAtStorageKey = "snorkeling:session-overview:agent-status-acked-at";
 const HideUnopenedTabsStorageKey = "snorkeling:session-overview:hide-unopened-tabs";
 const AgentsOnlyStorageKey = "snorkeling:session-overview:agents-only";
 const DefaultDisplayLimit = 20;
@@ -275,7 +325,8 @@ function writeAgentStatusAckedAt(value: Record<string, number>): void {
 function readAgentStatusAckedFp(): Record<string, string> {
 	if (typeof window === "undefined") return {};
 	try {
-		const parsed = JSON.parse(window.localStorage.getItem(AgentStatusAckedFpStorageKey) ?? "{}");
+		const raw = window.localStorage.getItem(AgentStatusAckedFpStorageKey);
+		const parsed = JSON.parse(raw ?? "{}");
 		if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
 			return {};
 		}
@@ -286,7 +337,12 @@ function readAgentStatusAckedFp(): Record<string, string> {
 			(v) => typeof v === "number",
 		);
 		if (hasOldFormat) {
-			window.localStorage.removeItem(AgentStatusAckedFpStorageKey);
+			const currentRaw = window.localStorage.getItem(AgentStatusAckedFpStorageKey);
+			if (currentRaw === raw) {
+				window.localStorage.removeItem(AgentStatusAckedFpStorageKey);
+			} else {
+				return readAgentStatusAckedFp();
+			}
 			return {};
 		}
 		const result: Record<string, string> = {};

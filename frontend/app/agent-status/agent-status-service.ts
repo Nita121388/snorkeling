@@ -16,6 +16,7 @@ type RawCanonicalAgentStatus = {
     message?: unknown;
     toolName?: unknown;
     updatedAt?: unknown;
+    completedAt?: unknown;
     activeSince?: unknown;
     seq?: unknown;
     expiresAt?: unknown;
@@ -93,6 +94,7 @@ export function normalizeCanonicalAgentStatus(
         message: typeof raw.message === "string" && raw.message.trim() !== "" ? raw.message.trim() : undefined,
         toolName: typeof raw.toolName === "string" && raw.toolName.trim() !== "" ? raw.toolName.trim() : undefined,
         updatedAt: numberValue(raw.updatedAt) ?? Date.now(),
+        completedAt: numberValue(raw.completedAt),
         activeSince: numberValue(raw.activeSince),
         seq: numberValue(raw.seq),
         expiresAt: numberValue(raw.expiresAt),

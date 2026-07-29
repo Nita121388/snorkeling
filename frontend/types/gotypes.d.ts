@@ -247,6 +247,7 @@ declare global {
         message?: string;
         toolName?: string;
         updatedAt: number;
+        completedAt?: number;
         activeSince?: number;
         seq?: number;
         expiresAt?: number;
