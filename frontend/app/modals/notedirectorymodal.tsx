@@ -38,21 +38,28 @@ function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
         const normalizedDir = normalizeNoteDirectory(noteDir);
         setSaving(true);
         setError("");
-        const saveRequest = blockId
-            ? RpcApi.SetMetaCommand(TabRpcClient, {
-                  oref: WOS.makeORef("block", blockId),
-                  meta: {
-                      file: normalizedDir,
-                      [PreviewExplorerRootMetaKey]: normalizedDir,
-                      [PreviewDirectoryDisplayMetaKey]: "tree",
-                      "frame:title": "Note",
-                      icon: "note-sticky",
-                  } as MetaType,
-              })
-            : RpcApi.SetConfigCommand(TabRpcClient, {
-                  [NoteDirectorySettingKey]: normalizedDir,
-              } as SettingsType);
-        void saveRequest
+        // Per-block meta so the open Note block re-targets immediately, but also persist to note:dir
+        // so the next Note button click (which recreates the block from settings) keeps the chosen path.
+        const requests: Promise<unknown>[] = [
+            RpcApi.SetConfigCommand(TabRpcClient, {
+                [NoteDirectorySettingKey]: normalizedDir,
+            } as SettingsType),
+        ];
+        if (blockId) {
+            requests.push(
+                RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef("block", blockId),
+                    meta: {
+                        file: normalizedDir,
+                        [PreviewExplorerRootMetaKey]: normalizedDir,
+                        [PreviewDirectoryDisplayMetaKey]: "tree",
+                        "frame:title": "Note",
+                        icon: "note-sticky",
+                    } as MetaType,
+                })
+            );
+        }
+        void Promise.all(requests)
             .then(() => modalsModel.popModal())
             .catch((nextError) => {
                 setError(nextError instanceof Error ? nextError.message : String(nextError));

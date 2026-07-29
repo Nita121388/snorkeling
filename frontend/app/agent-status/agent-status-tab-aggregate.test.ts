@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ackBumpAtom, agentStatusDoneAckStore } from "./agent-status-done-ack-store";
-import { getTabAgentStatusDotsAtom } from "./agent-status-tab-aggregate";
+import { __resetTabAgentStatusDotAtomCacheForTests, getTabAgentStatusDotsAtom } from "./agent-status-tab-aggregate";
 import { AgentStatusStore } from "./agent-status-store";
 import type { AgentStatus } from "./agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -79,6 +79,7 @@ describe("R-class ack bump signal (F5 fix)", () => {
         globalStore.set(ackBumpAtom, 0);
         globalStore.set(SessionOverviewModel.getInstance().agentStatusAckedAtAtom, {});
         globalStore.set(SessionOverviewModel.getInstance().agentStatusAckedFpAtom, {});
+        __resetTabAgentStatusDotAtomCacheForTests();
     });
 
     afterEach(() => {

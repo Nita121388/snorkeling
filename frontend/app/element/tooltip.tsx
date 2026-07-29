@@ -120,6 +120,16 @@ function TooltipInner({
     const hover = useHover(context, { enabled: !clickDisabled });
     const { getReferenceProps, getFloatingProps } = useInteractions([hover]);
 
+    const setReferenceRef = useCallback(
+        (node: HTMLDivElement | null) => {
+            refs.setReference(node);
+            if (divRef) {
+                divRef.current = node;
+            }
+        },
+        [refs, divRef]
+    );
+
     const handleClick = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
             if (hideOnClick) {
@@ -144,12 +154,7 @@ function TooltipInner({
     return (
         <>
             <div
-                ref={(node) => {
-                    refs.setReference(node);
-                    if (divRef) {
-                        divRef.current = node;
-                    }
-                }}
+                ref={setReferenceRef}
                 {...getReferenceProps({ onClick: handleClick, onPointerEnter: handlePointerEnter })}
                 onContextMenu={divOnContextMenu}
                 onPointerEnter={divOnPointerEnter}

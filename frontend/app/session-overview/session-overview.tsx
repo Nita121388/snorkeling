@@ -2626,7 +2626,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     overviewModel.markBlockViewed(nextBlock.blockId);
                                     setSelected({ block: nextBlock, message });
                                 }}
-                                agentStatusAckedFp={agentStatusAckedFp}
+                                agentStatusAckedFp={agentStatusAckedFp[block.blockId] ?? null}
                                 onAckAgentStatus={ackAgentStatus}
                                 onAckTabAgentStatuses={() => ackTabAgentStatuses(group.blocks)}
                             />

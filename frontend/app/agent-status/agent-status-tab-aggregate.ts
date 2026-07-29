@@ -50,6 +50,18 @@ export interface TabAgentStatusDot {
     title: string;
 }
 
+// 按 tabId 缓存 derived atom — 见 getTabAgentStatusDotsAtom 注释 (回归修复 c2f8862a).
+const TabAgentStatusDotAtomCache = new Map<string, Atom<TabAgentStatusDot[]>>();
+
+/**
+ * 测试专用: 清掉 getTabAgentStatusDotsAtom 的 tab atom 缓存.
+ * 生产代码不应调用 — 同一 tabId 在组件 mount/unmount 全周期内应返回同一 atom 引用,
+ * 调用本函数会破坏 useAtomValue 内部 useEffect 的 dep `atom` 稳定性, 引发 setState 死循环.
+ */
+export function __resetTabAgentStatusDotAtomCacheForTests(): void {
+    TabAgentStatusDotAtomCache.clear();
+}
+
 
 // 对一组 tabIds 派生"本工作区该 acquire 的 blockId 全集 (顶层 + inline 子 block)".
 // 缓存以 tabIds.join("") 为 key, 避免每次渲染都重建一个 derived atom.
@@ -292,15 +304,22 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         const empty = atom<TabAgentStatusDot[]>([]);
         return empty;
     }
+    // 缓存按 tabId — 每次返回同一 atom 引用. 原因 (回归修复 c2f8862a):
+    // 不缓存时每次组件 render 都 new atom, useAtomValue 的内部 useEffect dep `[store, atom, delay]`
+    // 看到 atom 引用变化 → 旧 effect cleanup (unsub) → 新 effect 立刻 rerender() →
+    // 组件 rerender → 又调 getTabAgentStatusDotsAtom → 又 new atom → 又 rerender →
+    // 嵌套 50 次后 React 报 "Maximum update depth exceeded" (chunk-6FTAPBNO:87).
+    //
+    // c2f8862a 担心的 "unmount 后复 mount 拿 stale snapshot" 在 jotai v2 不成立:
+    // derived atom 重新被订阅时会重新执行 derive 读最新 ackedFpAtom / doneAckedAtAtom /
+    // ackBumpAtom 值, 不会停在旧快照.  ackBumpAtom 订阅已覆盖曾经的 "no subscribers → 不重算"
+    // 盲区.
+    let rtn = TabAgentStatusDotAtomCache.get(tabId);
+    if (rtn != null) return rtn;
     const tabOref = WOS.makeORef("tab", tabId);
     const tabAtom = WOS.getWaveObjectAtom<Tab>(tabOref);
     const overview = SessionOverviewModel.getInstance();
-    // 每次调用都创建新的 atom — 不缓存. 原因: 切 Tab 走掉 VTabWrapper unmount 后,
-    // useAtomValue 订阅断开, jotai 的 derived atom snapshot 停在 ack 前的旧值;
-    // 重新 mount 时若返回同一 cached atom, 可能拿到 stale snapshot (jotai 内部
-    // 在订阅断开→复 mount 间保留旧快照). 每次 new atom 保证 re-derive 读到最新
-    // doneAckedAtAtom 值. 性能: 每个 tab 一次 new atom 可忽略.
-    return atom((get) => {
+    rtn = atom((get) => {
         const tab = get(tabAtom);
         const blockIds = tab?.blockids ?? [];
         if (blockIds.length === 0) return [];
@@ -328,6 +347,8 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         }
         return dots;
     });
+    TabAgentStatusDotAtomCache.set(tabId, rtn);
+    return rtn;
 }
 
 /**
