@@ -44,7 +44,6 @@ const TabTargetRow = React.memo(
             >
                 <div className="min-w-0">
                     <div className="truncate text-sm text-primary">{tabName}</div>
-                    <div className="truncate text-[10.5px] leading-tight text-secondary">{tabId}</div>
                 </div>
                 <span className="tab-target-action shrink-0">
                     {working ? (

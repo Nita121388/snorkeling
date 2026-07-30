@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { statusFingerprint } from "@/app/agent-status/agent-status-unread";
 import { BlockModel } from "@/app/block/block-model";
 import { ackBumpAtom } from "@/app/agent-status/agent-status-done-ack-store";
 import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
@@ -181,9 +182,9 @@ export class SessionOverviewModel {
 		const current = readAgentStatusAckedAt();
 		const next = { ...current, [blockId]: ackedAt };
 		globalStore.set(this.agentStatusAckedAtAtom, next);
-		// Also store the state fingerprint for fingerprint-based unread comparison
+		// Also store the current canonical event fingerprint for unread comparison.
 		if (status != null) {
-			const fp = status.state + "|" + status.phase + "|" + status.source;
+			const fp = statusFingerprint(status);
 			const fpMap = readAgentStatusAckedFp();
 			const nextFp = { ...fpMap, [blockId]: fp };
 			globalStore.set(this.agentStatusAckedFpAtom, nextFp);

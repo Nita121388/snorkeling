@@ -183,7 +183,7 @@ const CommonTextManagerContent = memo(() => {
                                                     <CommonTextTagList tags={item.tags} maxVisible={3} />
                                                 </div>
                                             )}
-                                            <div className="truncate text-xs text-secondary">
+                                            <div className="mt-1 truncate text-xs text-secondary">
                                                 {item.text.replace(/\s+/g, " ")}
                                             </div>
                                         </div>

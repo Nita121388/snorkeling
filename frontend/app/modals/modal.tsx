@@ -14,6 +14,7 @@ interface ModalProps {
     okLabel?: string;
     cancelLabel?: string;
     className?: string;
+    style?: React.CSSProperties;
     onClickBackdrop?: () => void;
     onOk?: () => void;
     onCancel?: () => void;
@@ -27,6 +28,7 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
         {
             children,
             className,
+            style,
             cancelLabel,
             okLabel,
             onCancel,
@@ -47,7 +49,7 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
         const renderModal = () => (
             <div className="modal-wrapper">
                 {renderBackdrop(onClickBackdrop)}
-                <div ref={ref} className={clsx(`modal`, className)}>
+                <div ref={ref} className={clsx(`modal`, className)} style={style}>
                     <Button className="grey ghost modal-close-btn" onClick={onClose} title="Close (ESC)">
                         <i className="fa-sharp fa-solid fa-xmark"></i>
                     </Button>

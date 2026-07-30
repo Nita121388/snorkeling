@@ -55,6 +55,37 @@ type ComposeState = {
 type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "insertedIds">;
 let composeDraft: ComposeDraft | null = null;
 
+// 弹窗尺寸偏好持久化：用户拖动右下角 resize 手柄后无感记入 localStorage，下次打开沿用。
+// 无设置 UI、无 schema 文件；存储失败（隐私模式等）静默 fallback 到默认尺寸。
+const ComposeModalSizeKey = "commontext:composeModalSize";
+const ComposeModalDefaultW = "min(85vw, 900px)";
+const ComposeModalDefaultH = "min(78vh, 620px)";
+const ComposeModalMinW = 500;
+const ComposeModalMinH = 350;
+
+type ComposeModalSize = { w: string; h: string };
+
+function loadComposeModalSize(): ComposeModalSize | null {
+    try {
+        const raw = localStorage.getItem(ComposeModalSizeKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<ComposeModalSize>;
+        if (typeof parsed.w !== "string" || typeof parsed.h !== "string") return null;
+        if (parsed.w.trim() === "" || parsed.h.trim() === "") return null;
+        return { w: parsed.w, h: parsed.h };
+    } catch {
+        return null;
+    }
+}
+
+function saveComposeModalSize(size: ComposeModalSize): void {
+    try {
+        localStorage.setItem(ComposeModalSizeKey, JSON.stringify(size));
+    } catch {
+        // 隐私模式 / 配额满：静默忽略，下次仍可临时 resize 当次会话内有效。
+    }
+}
+
 const initialOpenState = (manualQuery = ""): ComposeState => ({
     open: true,
     editor: "",
@@ -140,6 +171,11 @@ const CommonTextComposeModal = memo(() => {
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
+    // Modal root div ref — 用于读取 resize 后的实际尺寸写回 localStorage 无感持久化用户偏好。
+    const modalRef = useRef<HTMLDivElement>(null);
+    // 当前生效的尺寸样式；打开弹窗时由 loadComposeModalSize() 初始化，resize 时实时更新。
+    // useState 而非纯 ref：尺寸变化要触发 modal 节点 style 重渲染，光改 ref 不够。
+    const [modalSize, setModalSize] = useState<ComposeModalSize>(() => loadComposeModalSize() ?? { w: ComposeModalDefaultW, h: ComposeModalDefaultH });
     const isComposingRef = useRef(false);
     const compositionEndTimerRef = useRef<number>(null);
     // editor blur 后延时折叠的 timer：onFocus 时取消，给用户从 editor 移动到
@@ -227,6 +263,38 @@ const CommonTextComposeModal = memo(() => {
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
     }, []);
+
+    // 弹窗打开时自动聚焦搜索框——用户可直接打字搜索，无需手动点一下。
+    useEffect(() => {
+        if (!state.open) return;
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+    }, [state.open]);
+
+    // 用户拖动 resize 手柄（右下角）改变弹窗尺寸 → ResizeObserver 写入 localStorage 无感持久化。
+    // 节流靠 rAF：连拖过程中每帧最多落一次 storage，避免高频写入；double-debounce 已无必要。
+    // 注意：尺寸最小值由 CSS min-w/min-h 限定（与 ComposeModalMinW/MinH 对应），此处不再 clamp。
+    useEffect(() => {
+        if (!state.open) return;
+        const node = modalRef.current;
+        if (node == null) return;
+        let raf: number | null = null;
+        const ro = new ResizeObserver(() => {
+            if (raf != null) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = null;
+                const w = node.offsetWidth;
+                const h = node.offsetHeight;
+                if (w < ComposeModalMinW || h < ComposeModalMinH) return;
+                setModalSize({ w: `${w}px`, h: `${h}px` });
+                saveComposeModalSize({ w: `${w}px`, h: `${h}px` });
+            });
+        });
+        ro.observe(node);
+        return () => {
+            ro.disconnect();
+            if (raf != null) window.cancelAnimationFrame(raf);
+        };
+    }, [state.open]);
 
     // detailId 与 selectedIndex 的联动：列表过滤变化、键盘导航移动、外部 detailId
     // 失效时，统一回退到 selectedIndex 指向的行，并丢弃就地编辑态草稿。
@@ -759,7 +827,19 @@ const CommonTextComposeModal = memo(() => {
 
     return (
         <Modal
-            className={"w-[max(500px,min(85vw,960px))] h-[max(350px,min(78vh,620px))] pt-6 pb-3"}
+            ref={modalRef}
+            // 尺寸由 modalSize state 驱动：用户 resize 后写成 px 精确尺寸，再次打开沿用；
+            // 首次打开用兜底值（max(500px, min(85vw,900px)) / max(350px, min(78vh,620px))）。
+            // min-w/min-h 写死，避免用户拖太小后塌缩；max-w/max-h 留屏幕边界。
+            className={`commontext-compose-modal pt-6 pb-3`}
+            style={{
+                width: modalSize.w,
+                height: modalSize.h,
+                minWidth: `${ComposeModalMinW}px`,
+                minHeight: `${ComposeModalMinH}px`,
+                maxWidth: "96vw",
+                maxHeight: "92vh",
+            }}
             onClose={close}
             onClickBackdrop={close}
         >
@@ -830,6 +910,30 @@ const CommonTextComposeModal = memo(() => {
 
                 {/* Action row */}
                 <div className="shrink-0 flex items-center gap-2">
+                    <button
+                        type="button"
+                        title={
+                            state.editor.trim() === ""
+                                ? "Filter list by editor content (type in editor to enable)"
+                                : state.editorFilterDismissed
+                                  ? "Filter list by editor content"
+                                  : "Stop filtering by editor content"
+                        }
+                        disabled={state.editor.trim() === ""}
+                        onClick={() =>
+                            update({ editorFilterDismissed: !state.editorFilterDismissed, selectedIndex: 0 })
+                        }
+                        className={
+                            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors " +
+                            (state.editor.trim() === ""
+                                ? "text-secondary/40 cursor-default"
+                                : state.editorFilterDismissed
+                                  ? "text-secondary hover:bg-hoverbg hover:text-primary cursor-pointer"
+                                  : "text-accent bg-actionsoft hover:bg-actionsoft cursor-pointer")
+                        }
+                    >
+                        <i className="fa fa-solid fa-filter text-[12px]" />
+                    </button>
                     <Button
                         className="grey"
                         disabled={state.editor.trim() === ""}
@@ -912,17 +1016,6 @@ const CommonTextComposeModal = memo(() => {
                             </InputGroup>
                             {tagSummaries.length > 0 && (
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5">
-                                    {editorFilterActive && (
-                                        <button
-                                            type="button"
-                                            aria-label="Show all common text"
-                                            title="Cancel editor-based filtering"
-                                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-primary"
-                                            onClick={() => update({ editorFilterDismissed: true, selectedIndex: 0 })}
-                                        >
-                                            <i className="fa fa-solid fa-filter-circle-xmark text-[12px]" />
-                                        </button>
-                                    )}
                                     <SessionTagChips
                                         tags={tagSummaries.map((s) => s.tag)}
                                         selectedTags={state.selectedTags}

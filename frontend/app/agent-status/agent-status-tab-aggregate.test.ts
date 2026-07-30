@@ -1,15 +1,16 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ackBumpAtom, agentStatusDoneAckStore } from "./agent-status-done-ack-store";
-import { __resetTabAgentStatusDotAtomCacheForTests, getTabAgentStatusDotsAtom } from "./agent-status-tab-aggregate";
-import { AgentStatusStore } from "./agent-status-store";
-import type { AgentStatus } from "./agent-status-types";
-import { globalStore } from "@/app/store/jotaiStore";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
+import { globalStore } from "@/app/store/jotaiStore";
 import * as WOS from "@/store/wos";
 import { atom, createStore } from "jotai";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ackBumpAtom, agentStatusDoneAckStore } from "./agent-status-done-ack-store";
+import { AgentStatusStore } from "./agent-status-store";
+import { __resetTabAgentStatusDotAtomCacheForTests, getTabAgentStatusDotsAtom } from "./agent-status-tab-aggregate";
+import type { AgentStatus } from "./agent-status-types";
+import { statusFingerprint } from "./agent-status-unread";
 
 const ACKED_FP_STORAGE_KEY = "snorkeling:agent-status:acked-fp";
 const ACKED_AT_STORAGE_KEY = "snorkeling:session-overview:agent-status-acked-at";
@@ -113,9 +114,7 @@ describe("R-class ack bump signal (F5 fix)", () => {
 
         lsMock.dispatchStorage(ACKED_FP_STORAGE_KEY);
 
-        expect(rendererTwoStore.get(overview.agentStatusAckedFpAtom)["block-1"]).toBe(
-            "blocked|approval|hook"
-        );
+        expect(rendererTwoStore.get(overview.agentStatusAckedFpAtom)["block-1"]).toBe(statusFingerprint(status));
         unsubscribe();
     });
 
@@ -135,18 +134,23 @@ describe("R-class ack bump signal (F5 fix)", () => {
 
     it("merges the latest persisted R ack maps before writing from a stale renderer", () => {
         const overview = SessionOverviewModel.getInstance();
+        const blockOneStatus = makeStatus({});
+        const blockTwoStatus = makeStatus({ blockId: "block-2", phase: "tool" });
         lsMock.localStorage.setItem(ACKED_AT_STORAGE_KEY, JSON.stringify({ "block-1": 1_000 }));
-        lsMock.localStorage.setItem(ACKED_FP_STORAGE_KEY, JSON.stringify({ "block-1": "blocked|approval|hook" }));
+        lsMock.localStorage.setItem(
+            ACKED_FP_STORAGE_KEY,
+            JSON.stringify({ "block-1": statusFingerprint(blockOneStatus) })
+        );
 
-        overview.markAgentStatusAcked("block-2", 2_000, makeStatus({ blockId: "block-2", phase: "tool" }));
+        overview.markAgentStatusAcked("block-2", 2_000, blockTwoStatus);
 
         expect(JSON.parse(lsMock.localStorage.getItem(ACKED_AT_STORAGE_KEY) ?? "{}")).toEqual({
             "block-1": 1_000,
             "block-2": 2_000,
         });
         expect(JSON.parse(lsMock.localStorage.getItem(ACKED_FP_STORAGE_KEY) ?? "{}")).toEqual({
-            "block-1": "blocked|approval|hook",
-            "block-2": "blocked|tool|hook",
+            "block-1": statusFingerprint(blockOneStatus),
+            "block-2": statusFingerprint(blockTwoStatus),
         });
     });
 
@@ -154,24 +158,26 @@ describe("R-class ack bump signal (F5 fix)", () => {
         const overview = SessionOverviewModel.getInstance();
         const rendererTwoStore = createStore();
         const unsubscribe = rendererTwoStore.sub(overview.agentStatusAckedFpAtom, () => {});
-        const currentValue = JSON.stringify({ "block-1": "blocked|approval|hook" });
+        const blockOneFp = statusFingerprint(makeStatus({}));
+        const currentValue = JSON.stringify({ "block-1": blockOneFp });
         lsMock.localStorage.setItem(ACKED_FP_STORAGE_KEY, currentValue);
 
         lsMock.dispatchStorage(ACKED_FP_STORAGE_KEY, JSON.stringify({ "block-old": 1_000 }));
 
         expect(lsMock.localStorage.getItem(ACKED_FP_STORAGE_KEY)).toBe(currentValue);
         expect(rendererTwoStore.get(overview.agentStatusAckedFpAtom)).toEqual({
-            "block-1": "blocked|approval|hook",
+            "block-1": blockOneFp,
         });
         unsubscribe();
     });
 
-    it("clears C across renderer remounts and lights it again only for a new fingerprint", () => {
+    it("re-lights C for a new blocked event but not a new working event across remounts", () => {
         const overview = SessionOverviewModel.getInstance();
         const rendererTwoStore = createStore();
         const tabAtom = atom({ blockids: ["block-1"] } as unknown as Tab);
         const blockAtom = atom({ blockid: "block-1", subblockids: [] } as unknown as Block);
-        const statusAtom = atom<AgentStatus | null>(makeStatus({ updatedAt: 1_000 }));
+        const acknowledged = makeStatus({ seq: 101, updatedAt: 1_000 });
+        const statusAtom = atom<AgentStatus | null>(acknowledged);
         vi.spyOn(WOS, "getWaveObjectAtom").mockImplementation((oref: string) => {
             return (oref === WOS.makeORef("tab", "tab-1") ? tabAtom : blockAtom) as never;
         });
@@ -182,7 +188,7 @@ describe("R-class ack bump signal (F5 fix)", () => {
         let unsubscribe = rendererTwoStore.sub(dotsAtom, () => {});
         expect(rendererTwoStore.get(dotsAtom)).toHaveLength(1);
 
-        overview.markAgentStatusAcked("block-1", 1_500, makeStatus({ updatedAt: 1_000 }));
+        overview.markAgentStatusAcked("block-1", 1_500, acknowledged);
         lsMock.dispatchStorage(ACKED_FP_STORAGE_KEY);
         expect(rendererTwoStore.get(dotsAtom)).toEqual([]);
 
@@ -191,8 +197,16 @@ describe("R-class ack bump signal (F5 fix)", () => {
         unsubscribe = rendererTwoStore.sub(dotsAtom, () => {});
         expect(rendererTwoStore.get(dotsAtom)).toEqual([]);
 
-        rendererTwoStore.set(statusAtom, makeStatus({ phase: "tool", updatedAt: 2_000 }));
-        expect(rendererTwoStore.get(dotsAtom)).toHaveLength(1);
+        const nextBlocked = makeStatus({ seq: 102, updatedAt: 2_000 });
+        rendererTwoStore.set(statusAtom, nextBlocked);
+        expect(rendererTwoStore.get(dotsAtom)).toMatchObject([{ kind: "R", state: "blocked" }]);
+
+        overview.markAgentStatusAcked("block-1", 2_500, nextBlocked);
+        lsMock.dispatchStorage(ACKED_FP_STORAGE_KEY);
+        expect(rendererTwoStore.get(dotsAtom)).toEqual([]);
+
+        rendererTwoStore.set(statusAtom, makeStatus({ state: "working", phase: "tool", seq: 103, updatedAt: 3_000 }));
+        expect(rendererTwoStore.get(dotsAtom)).toEqual([]);
         unsubscribe();
     });
 });

@@ -92,3 +92,17 @@
         transform: scale(1) translateY(0);
     }
 }
+
+// 用户可手动调整弹窗尺寸：右下角原生 resize 手柄。仅 .commontext-compose-modal 启用，
+// 避免影响其他 modal。配合 commontext-compose-modal.tsx 里的 ResizeObserver 写回 localStorage。
+.modal.commontext-compose-modal {
+    resize: both;
+    overflow: hidden;
+
+    // 给右下角 resize 手柄留出更显眼的命中区（默认手柄只有 ~12px 且与 scrollbar 重叠）。
+    &::-webkit-resizer {
+        background: linear-gradient(135deg, transparent 50%, var(--border-color) 50%);
+        width: 14px;
+        height: 14px;
+    }
+}
