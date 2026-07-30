@@ -26,6 +26,8 @@ import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } fr
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
+import { partitionAndOrderTabs } from "./tab-pinned-order";
+import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
 
 const TAB_HEADER_HOVER_DELAY_MS = 2000;
@@ -159,6 +161,8 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+    // 订阅 recency bump: markTabOpened 后强制重算 setSizeAndPosition 的 pinned 段, 避免切 Tab 期间 stale.
+    useAtomValue(tabRecencyBumpAtom);
 
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const [isWrapperHovered, setIsWrapperHovered] = useState(false);
@@ -310,17 +314,19 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             idealTabWidth = spaceForTabs / numberOfTabs;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         } else {
-            const pinnedIds = visibleTabIds.filter(
-                (tabId) =>
-                    activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+            // pinned 段按时序 (lastOpenedAt 降序, active 置顶) 排前, 跨重启 7 天窗口内续命;
+            // hoverRevealed 段保持原序追加在后. 横竖栏共用同一份 partitionAndOrderTabs,
+            // 避免 pinned 排序在这两栏漂移.
+            const { pinnedTabIds, hoverRevealedTabIds } = partitionAndOrderTabs(
+                visibleTabIds,
+                activeTabId,
+                openedThisLaunchTabIds
             );
-            const pinnedIdSet = new Set(pinnedIds);
-            const hoverRevealedIds = visibleTabIds.filter((tabId) => !pinnedIdSet.has(tabId));
-            layoutOrderedIds = [...pinnedIds, ...hoverRevealedIds];
+            layoutOrderedIds = [...pinnedTabIds, ...hoverRevealedTabIds];
             // Width is sized for the pinned subset so the pinned tabs don't resize/reposition when
-            // hover reveals more tabs. If nothing is pinned (no active, none opened this launch),
-            // fall back to sizing against the full set.
-            const widthBasisCount = Math.max(1, pinnedIds.length);
+            // hover reveals more tabs. If nothing is pinned (no active, none opened this launch,
+            // 且无 7 天内 recency 记录), fall back to sizing against the full set.
+            const widthBasisCount = Math.max(1, pinnedTabIds.length);
             idealTabWidth = spaceForTabs / widthBasisCount;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         }

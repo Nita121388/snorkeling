@@ -24,7 +24,13 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
+import {
+    markTabOpenedThisLaunch,
+    openedThisLaunchTabIdsAtom,
+    wasTabOpenedThisLaunch,
+} from "./tab-open-state";
+import { partitionAndOrderTabs } from "./tab-pinned-order";
+import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
 import { VTab, VTabItem } from "./vtab";
@@ -212,6 +218,8 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+    // 订阅 recency bump: markTabOpened 后强制重算 renderOrderedTabIds, 避免切 Tab 期间 stale.
+    useAtomValue(tabRecencyBumpAtom);
     const tabIds = filterSessionOverviewTabIds(workspace?.tabids ?? [], (tabId) =>
         globalStore.get(env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId)))
     );
@@ -354,12 +362,12 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
         if (dragTabId != null) {
             return orderedTabIds;
         }
-        const pinnedTabIds = orderedTabIds.filter(
-            (tabId) => activeTabId === tabId || wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)
+        const { pinnedTabIds, hoverRevealedTabIds } = partitionAndOrderTabs(
+            orderedTabIds,
+            activeTabId,
+            openedThisLaunchTabIds
         );
-        const pinnedTabIdSet = new Set(pinnedTabIds);
-        const hoverTabIds = orderedTabIds.filter((tabId) => !pinnedTabIdSet.has(tabId));
-        return [...pinnedTabIds, ...hoverTabIds];
+        return [...pinnedTabIds, ...hoverRevealedTabIds];
     }, [activeTabId, dragTabId, openedThisLaunchTabIds, orderedTabIds]);
 
     const reorder = (targetIndex: number) => {

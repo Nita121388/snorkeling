@@ -201,6 +201,12 @@ func makeWindowsStreamToTempCommand(remoteTempPath string) string {
 		`$ErrorActionPreference = "Stop"`,
 		`$ProgressPreference = "SilentlyContinue"`,
 		`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(relativeTempPath),
+		// Defense in depth: prepareCmd should already have created the parent dir, but
+		// [System.IO.File]::Open with FileMode.Create creates only the file, not parent dirs.
+		// Repeat the mkdir here so an interrupted/absent prepare step cannot surface as a
+		// DirectoryNotFoundException from Open. -Force makes this a no-op when the dir exists.
+		`$TempParent = Split-Path -Parent $TempPath`,
+		`[System.IO.Directory]::CreateDirectory($TempParent) | Out-Null`,
 		`$InputStream = [Console]::OpenStandardInput()`,
 		`$OutputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)`,
 		`try { $InputStream.CopyTo($OutputStream) } finally { $OutputStream.Close() }`,

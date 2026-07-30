@@ -18,6 +18,8 @@ import {
     transformBlocks,
 } from "@/app/element/markdown-util";
 import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
+import { makeRemarkPlugins } from "@/app/element/remark";
+export { linkifyMarkdownFileReferences } from "@/app/element/remark";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
@@ -69,72 +71,9 @@ function liveScrollDebug(message: string, details: Record<string, unknown> = {})
     console.info("[live-scroll]", message, details);
 }
 
-function remarkSoftBreaks() {
-    return (tree: any) => {
-        const visitNode = (node: any) => {
-            if (!node || !Array.isArray(node.children)) {
-                return;
-            }
-            const nextChildren: any[] = [];
-            for (const child of node.children) {
-                if (child?.type === "text" && typeof child.value === "string" && child.value.includes("\n")) {
-                    const lines = child.value.split("\n");
-                    lines.forEach((line, index) => {
-                        if (index > 0) {
-                            nextChildren.push({ type: "break" });
-                        }
-                        if (line.length > 0) {
-                            nextChildren.push({ ...child, value: line });
-                        }
-                    });
-                    continue;
-                }
-                visitNode(child);
-                nextChildren.push(child);
-            }
-            node.children = nextChildren;
-        };
-        visitNode(tree);
-    };
-}
-
-export function linkifyMarkdownFileReferences(tree: any): void {
-    const visitNode = (node: any) => {
-        if (!node || !Array.isArray(node.children) || ["code", "inlineCode", "link"].includes(node.type)) {
-            return;
-        }
-        node.children = node.children.map((child: any) => {
-            if (child?.type === "text") {
-                const reference = parseMarkdownFileLineReference(child.value);
-                if (reference != null) {
-                    const label = child.value.trim();
-                    return {
-                        type: "link",
-                        url: label,
-                        children: [{ type: "text", value: label }],
-                        position: child.position,
-                    };
-                }
-                const wikiLink = parseMarkdownWikiLink(child.value);
-                if (wikiLink != null) {
-                    return {
-                        type: "link",
-                        url: makeMarkdownWikiLinkHref(wikiLink.target, wikiLink.heading),
-                        children: [{ type: "text", value: wikiLink.label }],
-                        position: child.position,
-                    };
-                }
-            }
-            visitNode(child);
-            return child;
-        });
-    };
-    visitNode(tree);
-}
-
-function remarkMarkdownFileReferences() {
-    return linkifyMarkdownFileReferences;
-}
+// Soft-breaks, file-refs, and blank-line spacers live in the remark/ directory
+// (`frontend/app/element/remark/`) so new pipeline stages can be added without
+// growing this file. `makeRemarkPlugins` assembles the full chain.
 
 export function shouldOpenMarkdownLinkInNewBlock(event: Pick<React.MouseEvent, "ctrlKey" | "metaKey">): boolean {
     return event.ctrlKey || event.metaKey;

@@ -3,6 +3,7 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { atom } from "jotai";
+import { tabRecencyStore } from "./tab-recency-store";
 
 function getApi(): ElectronApi | null {
     return typeof window === "undefined" ? null : ((window as any).api ?? null);
@@ -41,6 +42,9 @@ export function markTabOpenedThisLaunch(tabId: string) {
         return;
     }
     getApi()?.markTabOpenedThisLaunch?.(tabId);
+    // 双写持久化时序: 跨重启保留 "上次打开过的顺序" (按 lastOpenedAt 降序排前).
+    // openedThisLaunch 仅本启动有效, 重启即失; recencyStore 走 localStorage 跨重启续命.
+    tabRecencyStore.markTabOpened(tabId);
     globalStore.set(openedThisLaunchTabIdsAtom, (openedTabIds) => {
         if (openedTabIds.has(tabId)) {
             return openedTabIds;

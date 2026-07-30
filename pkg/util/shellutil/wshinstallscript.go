@@ -77,6 +77,7 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`$ErrorActionPreference = "Stop"`,
 		`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
 		`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
+		`$AutoRoot = Join-Path $TempRoot "wsh-auto"`,
 		`$BinRoot = Join-Path $SnorkelingRoot "bin"`,
 		`function Assert-SafeInstallDirectory {`,
 		`    param([string]$Path)`,
@@ -86,11 +87,17 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`}`,
 		`Assert-SafeInstallDirectory $SnorkelingRoot`,
 		`Assert-SafeInstallDirectory $TempRoot`,
+		`Assert-SafeInstallDirectory $AutoRoot`,
 		`Assert-SafeInstallDirectory $BinRoot`,
+		// $AutoRoot must exist before makeWindowsStreamToTempCommand opens $TempPath under
+		// ~/.snorkeling/tmp/wsh-auto/. [System.IO.File]::Open with FileMode.Create creates the
+		// file but NOT its parent directory, so without this the Open throws DirectoryNotFoundException.
+		`[System.IO.Directory]::CreateDirectory($AutoRoot) | Out-Null`,
 		`[System.IO.Directory]::CreateDirectory($TempRoot) | Out-Null`,
 		`[System.IO.Directory]::CreateDirectory($BinRoot) | Out-Null`,
 		`Assert-SafeInstallDirectory $SnorkelingRoot`,
 		`Assert-SafeInstallDirectory $TempRoot`,
+		`Assert-SafeInstallDirectory $AutoRoot`,
 		`Assert-SafeInstallDirectory $BinRoot`,
 	}, "\n")
 	remoteInstallScript := strings.Join([]string{

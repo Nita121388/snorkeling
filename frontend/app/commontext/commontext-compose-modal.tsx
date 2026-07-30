@@ -171,7 +171,8 @@ const CommonTextComposeModal = memo(() => {
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
-    // Modal root div ref — 用于读取 resize 后的实际尺寸写回 localStorage 无感持久化用户偏好。
+    // 详情区 textarea 聚焦目标：新建条目落库后聚焦这里，承接后续原地编辑。
+    const detailTextRef = useRef<HTMLTextAreaElement>(null);
     const modalRef = useRef<HTMLDivElement>(null);
     // 当前生效的尺寸样式；打开弹窗时由 loadComposeModalSize() 初始化，resize 时实时更新。
     // useState 而非纯 ref：尺寸变化要触发 modal 节点 style 重渲染，光改 ref 不够。
@@ -714,6 +715,12 @@ const CommonTextComposeModal = memo(() => {
                 pinned: false,
             });
             await recordCommonTextUse(item.id);
+            // 新条目落库后：
+            // 1. 清空 editor + 折叠回单行——编辑已完成，左栏角色回到匹配/过滤通道
+            // 2. 把新条目拉进详情区就地编辑
+            // 3. 下一帧把光标聚焦到详情 textarea，让用户直接继续 refine
+            setEditor("", 0);
+            setEditorExpanded(false);
             setState((cur) => ({
                 ...cur,
                 detailId: item.id,
@@ -721,6 +728,7 @@ const CommonTextComposeModal = memo(() => {
                 detailText: item.text,
                 detailDirty: false,
             }));
+            requestAnimationFrame(() => detailTextRef.current?.focus());
         });
     };
 
@@ -1150,6 +1158,7 @@ const CommonTextComposeModal = memo(() => {
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸 */}
                                 <div className="flex-1 min-h-0">
                                     <textarea
+                                        ref={detailTextRef}
                                         value={state.detailText}
                                         onChange={(e) =>
                                             setState((cur) => ({ ...cur, detailText: e.target.value, detailDirty: true }))
