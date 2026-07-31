@@ -244,7 +244,6 @@ func (b *BrokerType) Publish(event WaveEvent) {
 			}
 			log.Printf("[ps-publish] event=waveobj:update otype=%s oid=%s%s client=%v scopes=%v",
 				data.OType, data.OID, verStr, client != nil, event.Scopes)
-			pslog.Append("ps-publish", "otype", data.OType, "oid", data.OID, "ver", verStr, "client", client != nil, "scopes", fmt.Sprintf("%v", event.Scopes))
 			if data.OType == waveobj.OType_Block && data.Obj != nil {
 				sessionId := waveobj.GetMeta(data.Obj).GetString("agent:sessionid", "")
 				if sessionId != "" {
@@ -258,7 +257,6 @@ func (b *BrokerType) Publish(event WaveEvent) {
 	}
 	if client == nil {
 		log.Printf("[ps-publish] DROP client=nil event=%v", event.Event)
-		pslog.Append("ps-publish", "stage", "drop", "reason", "client-nil", "event", event.Event)
 		if agentTraceId != "" {
 			pslog.AppendEvent(pslog.Event{Name: "agent.pubsub", Stage: "route", TraceId: agentTraceId, BlockId: agentBlockId, SessionRef: agentSessionRef, Outcome: "error", Reason: "client-missing"})
 		}
@@ -267,7 +265,6 @@ func (b *BrokerType) Publish(event WaveEvent) {
 	routeIds := b.getMatchingRouteIds(event)
 	if event.Event == Event_WaveObjUpdate {
 		log.Printf("[ps-route] event=waveobj:update routes=%d", len(routeIds))
-		pslog.Append("ps-route", "event", "waveobj:update", "routes", len(routeIds))
 		if agentTraceId != "" {
 			outcome := "ok"
 			reason := ""

@@ -67,6 +67,68 @@ func normalizeArch(arch string) string {
 	return arch
 }
 
+// UploadMinTimeout is the floor for the adaptive upload timeout. Anything
+// below this risks false-failing a healthy ~10MB upload over a slow link.
+const UploadMinTimeout = 90 * time.Second
+
+// UploadMaxTimeout caps the adaptive upload timeout so a stuck upload still
+// surfaces as "Failed" (and triggers the Manual install fallback) in finite
+// time, instead of hanging indefinitely on a multi-GB wsh binary over a
+// saturated link (a real binary is ~10MB; we leave generous headroom).
+const UploadMaxTimeout = 5 * time.Minute
+
+// UploadBytesPerSecond is the assumed slow-link throughput used to compute the
+// adaptive upload timeout. 256 KiB/s is conservative — it's roughly a
+// struggling mobile link or a heavily contended ADSL upstream — so a healthy
+// 10MB wsh binary still finishes in ~40s, well under the floor. We round up
+// (size+rate-1)/rate so the timeout is never less than the actual transfer
+// time at this rate.
+const UploadBytesPerSecond int64 = 256 * 1024
+
+// UploadTimeoutFor returns the bounded upload timeout to apply for a binary
+// of the given byte size. It returns UploadMinTimeout for any size up to
+// (UploadMinTimeout * UploadBytesPerSecond), grows linearly with size
+// beyond that, and caps at UploadMaxTimeout. The mathematical shape is:
+//
+//	timeout = clamp(UploadMinTimeout + extraSecondsFor(size), UploadMinTimeout, UploadMaxTimeout)
+//	extraSecondsFor(size) = max(0, (size - UploadMinTimeout*rate) / rate)
+//
+// Callers should always pass the actual local binary size; if size <= 0 the
+// function returns UploadMinTimeout as a safe default.
+func UploadTimeoutFor(size int64) time.Duration {
+	if size <= 0 {
+		return UploadMinTimeout
+	}
+	floorBytes := int64(UploadMinTimeout/time.Second) * UploadBytesPerSecond
+	var timeout time.Duration
+	if size <= floorBytes {
+		timeout = UploadMinTimeout
+	} else {
+		extra := (size - floorBytes + UploadBytesPerSecond - 1) / UploadBytesPerSecond
+		timeout = UploadMinTimeout + time.Duration(extra)*time.Second
+	}
+	if timeout > UploadMaxTimeout {
+		timeout = UploadMaxTimeout
+	}
+	return timeout
+}
+
+// GetLocalWshBinarySize returns the byte size of the local wsh binary that
+// would be uploaded for (version, goos, goarch). Returns 0 on any error so
+// callers fall back to UploadMinTimeout, matching the size<=0 branch of
+// UploadTimeoutFor.
+func GetLocalWshBinarySize(version string, goos string, goarch string) int64 {
+	path, err := shellutil.GetLocalWshBinaryPath(version, goos, goarch)
+	if err != nil {
+		return 0
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
 func IsWindowsCmdUnknownCommandOutput(output string, command string) bool {
 	outputLower := strings.ToLower(output)
 	command = strings.ToLower(command)
@@ -110,9 +172,289 @@ func detectWindowsClientPlatform(ctx context.Context, shell genconn.ShellClient)
 	return getClientPlatformFromOutput(ctx, stdout)
 }
 
+// ErrUnknownRemotePlatform is returned by DetectRemotePlatform when no probe
+// produced a definitive (os, arch) answer. The error wraps all per-probe
+// diagnostics so the caller can surface them verbatim in logs.
+var ErrUnknownRemotePlatform = errors.New("could not determine remote platform")
+
+// platformProbeDiag records one probe's outcome. Each probe is independent; we
+// keep stdout/stderr only for diagnostics, never for the platform decision
+// itself (decisions come from stdout parsing + exit code, not stderr text).
+type platformProbeDiag struct {
+	Probe   string
+	Cmd     string
+	Stdout  string
+	Stderr  string
+	RunErr  error
+	Outcome string // "ok", "skip", "fail", "timeout", "cancelled"
+}
+
+// DetectRemotePlatform detects the (os, arch) of the remote reachable via the
+// given ssh.Client. It is robust to the remote being Windows (cmd-only),
+// Windows with sh.exe on PATH (Git Bash / MSYS / WSL bash), WSL, macOS, Linux,
+// and any environment where at least one of cmd, POSIX sh, or PowerShell is
+// available. It does NOT rely on stderr text or assume a specific default shell.
+//
+// Detection runs as three independent probes over their own bounded ssh
+// sessions; the first probe to produce a definitive (os, arch) wins. If all
+// probes fail to classify the remote, DetectRemotePlatform returns
+// ErrUnknownRemotePlatform wrapping a *platformProbeDiag slice so the caller
+// can surface every probe's stdout/stderr in the diagnostic state.
+//
+// Probes (ordered cheapest-to-most-expensive to keep the common case fast):
+//   1. "ver" — runs on cmd.exe (prints "Microsoft Windows [...]") and on
+//      POSIX shells where `ver` is usually absent; we parse stdout for the
+//      substring "windows" (case-insensitive). Definitive for Windows.
+//   2. "uname -sm" — runs on POSIX sh and on Windows-with-bash; on POSIX it
+//      returns "Linux x86_64" / "Darwin arm64" verbatim, on MSYS/Cygwin it
+//      returns "MINGW64_NT-... x86_64" / "CYGWIN_NT-... x86_64" which we
+//      normalize to windows. On bare-Windows-cmd `uname` is rejected; that
+//      exit-with-no-stdout is recorded and we fall through.
+//   3. PowerShell-encoded probe — `powershell -NoProfile -NonInteractive
+//      -EncodedCommand <payload>` where the payload prints
+//      `[System.Environment]::OSVersion.Platform` and
+//      `$env:PROCESSOR_ARCHITECTURE` separated by a space. PowerShell is
+//      available on every supported Windows (7+) and on Linux/macOS via
+//      PowerShell Core; on Windows Platform=Win32NT is definitive, on
+//      non-Windows Platform=Unix is reported back as-is and the caller can
+//      match against ValidateWshSupportedArch.
+//
+// Each probe is wrapped in its own context-bounded 5s timeout and runs in a
+// dedicated ssh session, so a single stuck probe cannot block detection.
+// Cancellation from ctx is propagated to the running probe's session.
+//
+// Returns (os, arch, error). os is one of "windows", "linux", "darwin", or
+// any other value ValidateWshSupportedArch accepts; error is non-nil ONLY
+// when no probe produced a definitive answer OR ctx was cancelled mid-flight.
+func DetectRemotePlatform(ctx context.Context, client *ssh.Client) (string, string, error) {
+	if client == nil {
+		return "", "", fmt.Errorf("%w: nil ssh client", ErrUnknownRemotePlatform)
+	}
+	// Each probe closes over the outer `client` so we can call it with just
+	// the probe's own bounded context.
+	probes := []func(ctx context.Context, client *ssh.Client) (string, string, *platformProbeDiag){
+		probeRemotePlatformVer,
+		probeRemotePlatformUname,
+		probeRemotePlatformPowerShell,
+	}
+	diags := make([]*platformProbeDiag, 0, len(probes))
+	for _, probe := range probes {
+		pCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		os, arch, diag := probe(pCtx, client)
+		cancel()
+		diags = append(diags, diag)
+		if os == "" || arch == "" {
+			continue
+		}
+		// Probe gave us a definitive answer; validate against the supported-arch
+		// table so a stray "linux riscv64" doesn't slip through unnoticed.
+		if err := wavebase.ValidateWshSupportedArch(os, arch); err != nil {
+			blocklogger.Infof(ctx, "[conndebug] probe %q returned unsupported %s/%s, falling through\n", diag.Probe, os, arch)
+			continue
+		}
+		blocklogger.Infof(ctx, "[conndebug] remote platform detected by probe %q: os=%s arch=%s\n", diag.Probe, os, arch)
+		return os, arch, nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return "", "", ctxErr
+	}
+	// All probes failed to classify the remote; wrap every probe's diagnostics
+	// so the user can see what each probe saw and fix the remote accordingly.
+	var b strings.Builder
+	b.WriteString(ErrUnknownRemotePlatform.Error())
+	b.WriteString(" (probes:")
+	for _, d := range diags {
+		fmt.Fprintf(&b, " %s=%s", d.Probe, d.Outcome)
+	}
+	b.WriteString(")")
+	return "", "", fmt.Errorf("%w; diagnostics: %s",
+		ErrUnknownRemotePlatform,
+		formatProbeDiags(diags))
+}
+
+func formatProbeDiags(diags []*platformProbeDiag) string {
+	var b strings.Builder
+	for i, d := range diags {
+		fmt.Fprintf(&b, "\n  [%d] probe=%s cmd=%q outcome=%s", i, d.Probe, d.Cmd, d.Outcome)
+		if d.RunErr != nil {
+			fmt.Fprintf(&b, " err=%v", d.RunErr)
+		}
+		if strings.TrimSpace(d.Stdout) != "" {
+			fmt.Fprintf(&b, " stdout=%q", strings.TrimSpace(d.Stdout))
+		}
+		if strings.TrimSpace(d.Stderr) != "" {
+			fmt.Fprintf(&b, " stderr=%q", strings.TrimSpace(d.Stderr))
+		}
+	}
+	return b.String()
+}
+
+// classifyProbeCtxErr trims a probe's ctx.Err into an "outcome" string. The
+// inner ctx is the probe's 5s-timeout child of the caller's ctx; we use the
+// error type to distinguish natural timeout from outer cancellation.
+func classifyProbeCtxErr(ctx context.Context) string {
+	err := ctx.Err()
+	if err == nil {
+		return "fail"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
+	}
+	return "fail"
+}
+
+// probeRemotePlatformVer runs `ver` and parses stdout for "windows". Works on
+// Windows cmd.exe (prints "Microsoft Windows [Version ...]") and silently
+// exits non-zero on most POSIX shells (which have no `ver`), in which case we
+// fall through to the next probe. We deliberately ignore stderr text — if
+// `ver` ran at all we trust stdout; if it didn't run we move on.
+func probeRemotePlatformVer(ctx context.Context, client *ssh.Client) (string, string, *platformProbeDiag) {
+	const cmd = "ver"
+	stdout, stderr, err := runRemoteCommandOutput(ctx, client, cmd)
+	diag := &platformProbeDiag{Probe: "ver", Cmd: cmd, Stdout: stdout, Stderr: stderr, Outcome: "fail"}
+	if err != nil {
+		diag.RunErr = err
+		diag.Outcome = classifyProbeCtxErr(ctx)
+		return "", "", diag
+	}
+	outLower := strings.ToLower(stdout)
+	if strings.Contains(outLower, "windows") {
+		arch := detectWindowsArchFromEnv(client)
+		diag.Outcome = "ok"
+		return "windows", arch, diag
+	}
+	diag.Outcome = "skip"
+	return "", "", diag
+}
+
+// probeRemotePlatformUname runs `uname -sm` and parses output. On POSIX it
+// returns "Linux x86_64" / "Darwin arm64" / etc; on Windows-with-bash it
+// returns "MINGW64_NT-... x86_64" / "CYGWIN_NT-... x86_64", which normalizeOs
+// maps back to "windows". On bare-Windows-cmd `uname` is rejected; that
+// exit-with-no-classifiable-stdout is recorded and we fall through.
+func probeRemotePlatformUname(ctx context.Context, client *ssh.Client) (string, string, *platformProbeDiag) {
+	const cmd = "uname -sm"
+	stdout, stderr, err := runRemoteCommandOutput(ctx, client, cmd)
+	diag := &platformProbeDiag{Probe: "uname", Cmd: cmd, Stdout: stdout, Stderr: stderr, Outcome: "fail"}
+	if err != nil {
+		diag.RunErr = err
+		diag.Outcome = classifyProbeCtxErr(ctx)
+		return "", "", diag
+	}
+	parts := strings.Fields(strings.ToLower(strings.TrimSpace(stdout)))
+	if len(parts) != 2 {
+		diag.Outcome = "skip"
+		return "", "", diag
+	}
+	os := normalizeOs(parts[0])
+	arch := normalizeArch(parts[1])
+	diag.Outcome = "ok"
+	return os, arch, diag
+}
+
+// probeRemotePlatformPowerShell runs a PowerShell-encoded probe via
+// `powershell -NoProfile -NonInteractive -EncodedCommand <payload>`. The
+// payload prints
+//   <OSVersion.Platform> <normalized PROCESSOR_ARCHITECTURE>
+// e.g. "Win32NT x64" on Windows, "Unix x64" on Linux/macOS PowerShell Core.
+// We normalize Platform=Win32NT to "windows" and otherwise pass the os token
+// through normalizeOs. This probe is the only one that does NOT depend on
+// `sh` existing on the remote — ssh sends powershell.exe directly to the
+// remote's shell, and we expect powershell to be on PATH.
+func probeRemotePlatformPowerShell(ctx context.Context, client *ssh.Client) (string, string, *platformProbeDiag) {
+	// PowerShell payload: print "<Platform> <Arch>" — uses [System.Environment]
+	// (always available) and $env:PROCESSOR_ARCHITECTURE (Windows / PowerShell
+	// Core on Linux exposes it as well). On Linux/macOS PowerShell Core
+	// Platform is "Unix", so we cannot distinguish linux vs darwin here; we
+	// emit "unix" and let ValidateWshSupportedArch reject it; the caller's
+	// fallback (uname) handles the posix case.
+	script := strings.Join([]string{
+		`$Platform = [string]([System.Environment]::OSVersion.Platform)`,
+		`$Arch = $env:PROCESSOR_ARCHITECTURE`,
+		`if ($Arch -match "ARM64|AARCH64") { $Arch = "arm64" }`,
+		`elseif ($Arch -match "AMD64|x86_64|x64") { $Arch = "x64" }`,
+		`else { $Arch = $Arch.ToLower() }`,
+		`Write-Output ($Platform + " " + $Arch)`,
+	}, "\n")
+	cmd := shellutil.MakePowerShellEncodedCommand(script)
+	diag := &platformProbeDiag{Probe: "powershell", Cmd: "powershell -EncodedCommand ...", Outcome: "fail"}
+	stdout, stderr, err := runRemoteCommandOutput(ctx, client, cmd)
+	diag.Stdout = stdout
+	diag.Stderr = stderr
+	if err != nil {
+		diag.RunErr = err
+		diag.Outcome = classifyProbeCtxErr(ctx)
+		return "", "", diag
+	}
+	parts := strings.Fields(strings.TrimSpace(stdout))
+	if len(parts) != 2 {
+		diag.Outcome = "skip"
+		return "", "", diag
+	}
+	plat := strings.ToLower(parts[0])
+	arch := normalizeArch(parts[1])
+	var os string
+	switch {
+	case plat == "win32nt":
+		os = "windows"
+	case strings.HasPrefix(plat, "unix"):
+		// PowerShell Core on Linux/macOS reports Platform=Unix; we can't tell
+		// them apart from here. Mark as skip so the unix uname probe wins.
+		diag.Outcome = "skip"
+		return "", "", diag
+	default:
+		os = normalizeOs(plat)
+	}
+	diag.Outcome = "ok"
+	return os, arch, diag
+}
+
+// detectWindowsArchFromEnv is a best-effort secondary probe: once we've
+// decided the remote is Windows via `ver`, we still need the architecture. We
+// run a tiny PowerShell one-liner to read $env:PROCESSOR_ARCHITECTURE and
+// normalize to "x64" or "arm64". If this fails for any reason we default to
+// "x64" (still a value ValidateWshSupportedArch accepts); the caller's
+// install validation will reject the wrong arch if we guessed wrong.
+func detectWindowsArchFromEnv(client *ssh.Client) string {
+	if client == nil {
+		return "x64"
+	}
+	archScript := `if ($env:PROCESSOR_ARCHITECTURE -match "ARM64|AARCH64") { "arm64" } else { "x64" }`
+	archCmd := shellutil.MakePowerShellEncodedCommand(archScript)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stdout, _, err := runRemoteCommandOutput(ctx, client, archCmd)
+	if err != nil {
+		return "x64"
+	}
+	out := strings.TrimSpace(stdout)
+	switch out {
+	case "arm64":
+		return "arm64"
+	default:
+		return "x64"
+	}
+}
+
 // returns (os, arch, error)
 // guaranteed to return a supported platform
 func GetClientPlatform(ctx context.Context, shell genconn.ShellClient) (string, string, error) {
+	// Fast path: if shell wraps an ssh.Client, use DetectRemotePlatform which
+	// is robust to remote shell being cmd.exe (no sh.exe) by probing
+	// `ver` / `uname -sm` / PowerShell directly over ssh, bypassing the
+	// `sh -c` wrapper that BuildShellCommand would otherwise inject.
+	if sshShell, ok := shell.(*genconn.SSHShellClient); ok {
+		if client := sshShell.GetSSHClient(); client != nil {
+			return DetectRemotePlatform(ctx, client)
+		}
+	}
+	// Slow path / non-SSH shell (e.g. wslconn): keep the legacy uname -sm +
+	// IsWindowsCmdUnknownCommandOutput fallback. This path is still
+	// vulnerable to the sh-c wrapper failing on Windows-cmd remotes, but
+	// WslConn remotes are always WSL (POSIX), so the legacy path is fine there.
 	blocklogger.Infof(ctx, "[conndebug] running `uname -sm` to detect client platform\n")
 	stdout, stderr, err := genconn.RunSimpleCommand(ctx, shell, genconn.CommandSpec{
 		Cmd: "uname -sm",

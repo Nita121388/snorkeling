@@ -23,6 +23,17 @@ func MakeSSHShellClient(client *ssh.Client) *SSHShellClient {
 	return &SSHShellClient{client: client}
 }
 
+// GetSSHClient returns the underlying *ssh.Client. Used by callers (e.g.
+// remote.DetectRemotePlatform) that need to send raw ssh commands without the
+// BuildShellCommand `sh -c` wrapper, so they can detect remote platforms on
+// hosts that have no sh.exe (bare-Windows-cmd).
+func (c *SSHShellClient) GetSSHClient() *ssh.Client {
+	if c == nil {
+		return nil
+	}
+	return c.client
+}
+
 func (c *SSHShellClient) MakeProcessController(cmdSpec CommandSpec) (ShellProcessController, error) {
 	return MakeSSHCmdClient(c.client, cmdSpec)
 }

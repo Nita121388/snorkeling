@@ -1017,9 +1017,11 @@ func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, re
 	}
 	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
 	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
-	// "Uploading" forever. 120s leaves headroom over a healthy ~10MB upload (which finishes in
-	// single-digit seconds on any reasonable link) while being well under the 180s frontend retry.
-	uploadCtx, uploadCancel := context.WithTimeout(ctx, 120*time.Second)
+	// "Uploading" forever. Adaptive: scales with the actual binary size and a conservative slow-link
+	// throughput, bounded to [UploadMinTimeout, UploadMaxTimeout]. Healthy ~10MB uploads still
+	// finish in single-digit seconds on a reasonable link, well under the floor.
+	uploadTimeout := remote.UploadTimeoutFor(remote.GetLocalWshBinarySize(wavebase.WaveVersion, remoteInfo.ClientOs, remoteInfo.ClientArch))
+	uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
 	defer uploadCancel()
 	err := remote.CpWshToRemoteWithProgress(uploadCtx, client, remoteInfo.ClientOs, remoteInfo.ClientArch, func(written, total int64) {
 		conn.updateWshInstallState(WshInstallStatus_Uploading, fmt.Sprintf("Uploading wsh binary: %d/%d bytes", written, total), "", true)
@@ -1092,8 +1094,14 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 		conn.updateWshInstallState(WshInstallStatus_DetectingPlatform, fmt.Sprintf("Using detected remote platform: %s", osArchStr), "", true)
 		clientOs, clientArch, err = remote.GetClientPlatformFromOsArchStr(ctx, osArchStr)
 	} else {
+		// Use DetectRemotePlatform instead of GetClientPlatform(MakeSSHShellClient),
+		// because the latter routes every command through BuildShellCommand's
+		// `sh -c` wrapper, which fails with "'sh' is not recognized" on Windows
+		// OpenSSH remotes whose default shell is cmd.exe and that don't have
+		// sh.exe on PATH. DetectRemotePlatform probes ver / uname / PowerShell
+		// directly over ssh sessions, bypassing the wrapper.
 		conn.updateWshInstallState(WshInstallStatus_DetectingPlatform, "Detecting remote platform", "", true)
-		clientOs, clientArch, err = remote.GetClientPlatform(ctx, genconn.MakeSSHShellClient(client))
+		clientOs, clientArch, err = remote.DetectRemotePlatform(ctx, client)
 	}
 	if err != nil {
 		conn.Infof(ctx, "ERROR detecting client platform: %v\n", err)
@@ -1109,9 +1117,11 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
 	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
 	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
-	// "Uploading" forever. 120s leaves headroom over a healthy ~10MB upload (which finishes in
-	// single-digit seconds on any reasonable link) while being well under the 180s frontend retry.
-	uploadCtx, uploadCancel := context.WithTimeout(ctx, 120*time.Second)
+	// "Uploading" forever. Adaptive: scales with the actual binary size and a conservative slow-link
+	// throughput, bounded to [UploadMinTimeout, UploadMaxTimeout]. Healthy ~10MB uploads still
+	// finish in single-digit seconds on a reasonable link, well under the floor.
+	uploadTimeout := remote.UploadTimeoutFor(remote.GetLocalWshBinarySize(wavebase.WaveVersion, clientOs, clientArch))
+	uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
 	defer uploadCancel()
 	err = remote.CpWshToRemoteWithProgress(uploadCtx, client, clientOs, clientArch, func(written, total int64) {
 		conn.updateWshInstallState(WshInstallStatus_Uploading, fmt.Sprintf("Uploading wsh binary: %d/%d bytes", written, total), "", true)
