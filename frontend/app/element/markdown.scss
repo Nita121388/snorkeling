@@ -169,6 +169,36 @@
             margin-bottom: 10px;
         }
 
+        // Spacers emitted by remark/blank-line-spacers represent authored blank
+        // lines. Each `data-spacer-lines="N"` corresponds to N source blanks;
+        // we size the box at N line-heights so vertical rhythm is preserved
+        // verbatim. margin resets keep the rhythm pure (no double counting
+        // against `.paragraph { margin-bottom }`).
+        .paragraph.blank-spacer {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            min-height: 0;
+
+            &[data-spacer-lines="1"] {
+                min-height: 1.5em;
+            }
+            &[data-spacer-lines="2"] {
+                min-height: 3em;
+            }
+            &[data-spacer-lines="3"] {
+                min-height: 4.5em;
+            }
+            &[data-spacer-lines="4"] {
+                min-height: 6em;
+            }
+            &[data-spacer-lines="5"] {
+                min-height: 7.5em;
+            }
+            &[data-spacer-lines="6"] {
+                min-height: 9em;
+            }
+        }
+
         img {
             border-style: none;
             max-width: 100%;

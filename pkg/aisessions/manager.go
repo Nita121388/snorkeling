@@ -137,12 +137,13 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		}
 	}
 	return m.ScanList(ctx, ListOptions{
-		Source:     opts.Source,
-		Project:    opts.Project,
-		Limit:      opts.Limit,
-		Refresh:    opts.Refresh,
-		Marked:     "",
-		TagFilters: opts.TagFilters,
+		Source:      opts.Source,
+		Project:     opts.Project,
+		Limit:       opts.Limit,
+		Refresh:     opts.Refresh,
+		Marked:      "",
+		TagFilters:  opts.TagFilters,
+		TagPresence: opts.TagPresence,
 	}, opts.Query)
 }
 
@@ -315,13 +316,15 @@ func (m *Manager) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagS
 		debugf("Manager.ListTags sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
 	}
 	sessions, err := m.ScanList(ctx, ListOptions{
-		Source:  opts.Source,
-		Project: opts.Project,
-		Since:   opts.Since,
-		Before:  opts.Before,
-		Marked:  opts.Marked,
-		Refresh: opts.Refresh,
-		Limit:   0,
+		Source:      opts.Source,
+		Project:     opts.Project,
+		Since:       opts.Since,
+		Before:      opts.Before,
+		Marked:      opts.Marked,
+		TagFilters:  opts.TagFilters,
+		TagPresence: opts.TagPresence,
+		Refresh:     opts.Refresh,
+		Limit:       0,
 	}, "")
 	if err != nil {
 		return nil, err

@@ -476,6 +476,13 @@ type WaveNotificationOptions struct {
 	Title  string `json:"title,omitempty"`
 	Body   string `json:"body,omitempty"`
 	Silent bool   `json:"silent,omitempty"`
+
+	// Agent toast — when AgentKind is set, the main process routes the call through the
+	// agent-status OS-notify module (settings-driven suppression, focused-window check, click
+	// → focus the originating block). Omit for plain notifications (updater / wsh notify).
+	AgentKind     string `json:"agentkind,omitempty"`     // "done" | "blocked"
+	AgentBlockId  string `json:"agentblockid,omitempty"`  // emit block; click focuses its tab
+	AgentProvider string `json:"agentprovider,omitempty"` // claude/codex/... for the body label
 }
 
 type VDomUrlRequestData struct {

@@ -5,6 +5,15 @@ export type SourceFilter = "" | "codex" | "claude";
 
 export type MarkedFilter = "all" | "starred" | "unstarred";
 
+// Tag-presence filter. "any" = no constraint (default). "untagged" = sessions
+// whose normalized tag list is empty (note may still contain a "#" token that
+// fails isSessionTagRune, but if any valid tag parsed it counts as tagged).
+// Mutually exclusive with a non-empty tagFilters list at the UI layer; the
+// ViewModel enforces the reset on either side, and the backend defends again.
+export type TagPresenceFilter = "any" | "untagged";
+
+export const DefaultTagPresence: TagPresenceFilter = "any";
+
 export type DatePreset = "all" | "today" | "7d" | "30d" | "custom";
 
 export type DateRangeFilter = {

@@ -1067,6 +1067,13 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 		if !summaryMatchesList(summary, opts) {
 			continue
 		}
+		// Defensive double-check: summaryMatchesList already covers both
+		// TagPresence and TagFilters, but a historical duplicate filter call
+		// stays here to keep behavior identical if anyone reorders the
+		// sqlite path away from summaryMatchesList.
+		if !sessionMatchesTagPresence(summary, opts.TagPresence, opts.TagFilters) {
+			continue
+		}
 		if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
 			continue
 		}

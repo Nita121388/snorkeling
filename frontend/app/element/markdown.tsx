@@ -3,7 +3,6 @@
 
 import { CopyButton } from "@/app/element/copybutton";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
-import { createContentBlockPlugin } from "@/app/element/markdown-contentblock-plugin";
 import {
     InlineEditOverlay,
     makeInlineEditKeydown,
@@ -17,7 +16,6 @@ import {
     resolveSrcSet,
     transformBlocks,
 } from "@/app/element/markdown-util";
-import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
 import { makeRemarkPlugins } from "@/app/element/remark";
 export { linkifyMarkdownFileReferences } from "@/app/element/remark";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
@@ -48,7 +46,6 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
-import remarkGfm from "remark-gfm";
 import { openLink } from "../store/global";
 import {
     makeMarkdownWikiLinkHref,
@@ -916,22 +913,20 @@ const Markdown = ({
         resetKey: onInlineEditCommit,
     });
 
-    const handleInlineEditDblClick = useCallback(
-        (e: React.MouseEvent<HTMLDivElement>) => {
-            // Only intercept when inline editing has been opted in by the parent
-            // (onInlineEditCommit wired). Without that, dblclick should fall through to
-            // native text selection behavior.
-            if (!onInlineEditCommit) {
-                return;
-            }
-            // Capture phase: ensure we get one shot before any renderer's own dblclick toggles
-            // (e.g. CollapsibleHeading would fold/unfold on dblclick otherwise).
-            // For block kinds that wrap inner content (li wraps list-item text), we deliberately
-            // step out to the outer list so dblclick edits the whole list rather than one item —
-            // M2 ships list-as-block, not listitem-as-block.
+    // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
+    // to its enclosing [data-source-line] block, promoting <LI> to its parent <OL>/<UL> so the
+    // editor owns the whole list (M2 ships list-as-block, not listitem-as-block), then maps the
+    // element's tag/class to one of the InlineEditBlockKind values the editor knows how to slice.
+    //
+    // Returns null when the click didn't land on a block the editor supports — caller returns and
+    // native behavior (selection, link navigation, heading toggle) takes over. Also returns null
+    // for a heading currently in the `collapsed` state: a folded heading should expand on click
+    // rather than open the editor, mirroring the dblclick path's long-standing guard.
+    const resolveEditTargetFromEvent = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
             let target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
             if (target == null) {
-                return;
+                return null;
             }
             if (target.tagName === "LI") {
                 const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
@@ -941,11 +936,11 @@ const Markdown = ({
             }
             const lineAttr = target.dataset.sourceLine;
             if (lineAttr == null) {
-                return;
+                return null;
             }
             const line = Number(lineAttr);
             if (!Number.isFinite(line) || line < 1) {
-                return;
+                return null;
             }
             const tag = target.tagName;
             let blockKind: InlineEditBlockKind | null = null;
@@ -958,8 +953,8 @@ const Markdown = ({
                 tag === "H4" ||
                 tag === "H5" ||
                 tag === "H6" ||
-                // CollapseableHeading renders as <div class="heading is-N"> rather than <hN>;
-                // match by class so dblclick-to-edit works for the headings the user actually sees.
+                // CollapsibleHeading renders as <div class="heading is-N"> rather than <hN>;
+                // match by class so click-to-edit works for the headings the user actually sees.
                 target.classList.contains("heading")
             ) {
                 blockKind = "h";
@@ -970,24 +965,111 @@ const Markdown = ({
             } else if (tag === "PRE" || target.classList.contains("codeblock")) {
                 blockKind = "code";
             } else {
-                // Block kind not yet supported by inline editing. Plain dblclick → native
+                // Block kind not yet supported by inline editing. Plain click/dblclick → native
                 // selection for now; add a branch above to enable a new kind.
-                return;
+                return null;
             }
             // Don't intercept on a heading that is currently collapsed. CollapsibleHeading
             // expresses state via the `collapsed` class (no aria-expanded on the div), so a
-            // dblclick on a folded heading should expand it, not open the editor. For raw <hN>
+            // click on a folded heading should expand it, not open the editor. For raw <hN>
             // tags (non-collapsible render path) there's no collapsed class, so this check is a
             // no-op and the editor opens normally.
             if (blockKind === "h" && target.classList.contains("collapsed")) {
+                return null;
+            }
+            return { target, line, blockKind };
+        },
+        []
+    );
+
+    const handleInlineEditDblClick = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            // Only intercept when inline editing has been opted in by the parent
+            // (onInlineEditCommit wired). Without that, dblclick should fall through to
+            // native text selection behavior.
+            if (!onInlineEditCommit) {
+                return;
+            }
+            // Capture phase: ensure we get one shot before any renderer's own dblclick toggles
+            // (e.g. CollapsibleHeading would fold/unfold on dblclick otherwise).
+            const resolved = resolveEditTargetFromEvent(e);
+            if (resolved == null) {
                 return;
             }
             e.preventDefault();
             e.stopPropagation();
-            inlineEdit.beginEdit(blockKind, line, target);
+            inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
         },
-        [inlineEdit, onInlineEditCommit]
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent]
     );
+
+    // Records the selection string present at mousedown time so the click handler can tell
+    // whether the mousedown→mouseup cycle produced NEW selection (drag-select) or just
+    // preserved/cleared pre-existing selection (pure click intent). Set from a capture-phase
+    // mousedown on the render root so it's in place before any mousemove-driven selection
+    // changes the global selection.
+    const mousedownSelectionRef = useRef<string>("");
+
+    // Single-click entry path. Differs from dblclick in two ways:
+    //   1. Bound on bubble phase (onClick, not onClickCapture) so <Link>'s onClick and the
+    //      CollapsibleHeading chevron button's onClick (which calls stopPropagation) get first
+    //      crack. We additionally bail when e.defaultPrevented is true (the Link handler calls
+    //      preventDefault to route the href through WaveTerm's openFileLinkInPreview/openLink)
+    //      and when the click landed inside an <a>/<button> — defensive in case a future
+    //      component forgets to call preventDefault.
+    //   2. Suppresses drag-select gestures: a click that arrived after the user dragged to
+    //      select text (so the global selection grew during this mousedown cycle) must NOT
+    //      enter edit, or every "select a phrase" gesture would also pop the editor. We
+    //      compare the live selection length against the mousedown-captured baseline; growth
+    //      during the press cycle = drag intent, skip.
+    const handleInlineEditClick = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!onInlineEditCommit) {
+                return;
+            }
+            // Already editing — let the overlay/textarea own clicks while a session is open
+            // (e.g. clicking another block while the textarea is focused commits on blur first).
+            if (inlineEdit.editSession != null) {
+                return;
+            }
+            if (e.button !== 0) {
+                return;
+            }
+            // A child element already consumed this click (Link navigation, button activation).
+            if (e.defaultPrevented) {
+                return;
+            }
+            // Defensive: even without defaultPrevented, never enter edit when the press landed
+            // on an interactive element. Headings' chevron button calls stopPropagation so its
+            // clicks never reach here, but <a> only calls preventDefault — belt-and-braces.
+            const interactive = (e.target as HTMLElement | null)?.closest<HTMLElement>("a, button, .heading-collapse-button, input, textarea, [contenteditable]");
+            if (interactive != null) {
+                return;
+            }
+            // Drag-select suppression. Baseline was captured at mousedown (capture phase,
+            // before any selectionchange fired). If the live selection is now longer, the
+            // user dragged to select — keep native selection, don't open the editor.
+            const curSel = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
+            if (curSel.length > mousedownSelectionRef.current.length) {
+                return;
+            }
+            const resolved = resolveEditTargetFromEvent(e);
+            if (resolved == null) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
+        },
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent]
+    );
+
+    const handleInlineEditMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) {
+            return;
+        }
+        mousedownSelectionRef.current = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
+    }, []);
 
     const inlineEditKeyDown = useMemo(
         () =>
@@ -1594,13 +1676,9 @@ const Markdown = ({
             () => rehypeSlug({ prefix: idPrefix }),
         ];
     }
-    const remarkPlugins: any = [
-        remarkMermaidToTag,
-        remarkMarkdownFileReferences,
-        remarkSoftBreaks,
-        remarkGfm,
-        [createContentBlockPlugin, { blocks: contentBlocksMap }],
-    ];
+    const remarkPlugins: any = makeRemarkPlugins({
+        contentBlocksMap,
+    });
 
     const mergedStyle = { ...style };
     if (fontSizeOverride != null) {
@@ -1628,6 +1706,13 @@ const Markdown = ({
                     // and any native selection side effects. The handler no-ops unless the
                     // parent wired onInlineEditCommit (i.e. opt-in to inline editing).
                     onDoubleClickCapture={handleInlineEditDblClick}
+                    // Mousedown (capture) records the pre-press selection so the bubble-phase
+                    // click handler can tell drag-select from pure click.
+                    onMouseDownCapture={handleInlineEditMouseDown}
+                    // Bubble-phase click — single-click-to-edit. Runs after <Link> and chevron
+                    // button onClick, so e.defaultPrevented / e.target.closest(...) guard
+                    // interactive children, and a grown live selection guards drag-select.
+                    onClick={handleInlineEditClick}
                 >
                     <ReactMarkdown
                         remarkPlugins={remarkPlugins}

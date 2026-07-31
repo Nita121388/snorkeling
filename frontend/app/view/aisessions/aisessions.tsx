@@ -29,11 +29,12 @@ import { normalizeSessionTags } from "./session-tags";
 import {
     DefaultDateRange,
     DefaultPathFilter,
+    DefaultTagPresence,
     PathFilterOtherRoot,
     dateRangeToSinceBefore,
 } from "./types";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
-import type { SourceFilter, MarkedFilter, DateRangeFilter, PathFilter } from "./types";
+import type { SourceFilter, MarkedFilter, DateRangeFilter, PathFilter, TagPresenceFilter } from "./types";
 import {
     computeBreadcrumb,
     extractPathRoots,
@@ -92,6 +93,7 @@ export class AiSessionsViewModel implements ViewModel {
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
     tagFiltersAtom = jotai.atom<string[]>([]);
+    tagPresenceAtom = jotai.atom<TagPresenceFilter>(DefaultTagPresence);
     markedFilterAtom = jotai.atom<MarkedFilter>("all");
     dateRangeAtom = jotai.atom(DefaultDateRange) as jotai.PrimitiveAtom<DateRangeFilter>;
     pathFilterAtom = jotai.atom<PathFilter>(DefaultPathFilter) as jotai.PrimitiveAtom<PathFilter>;
@@ -178,6 +180,7 @@ export class AiSessionsViewModel implements ViewModel {
         const source = globalStore.get(this.sourceAtom);
         const query = globalStore.get(this.queryAtom);
         const tagFilters = globalStore.get(this.tagFiltersAtom);
+        const tagPresence = globalStore.get(this.tagPresenceAtom);
         const marked = globalStore.get(this.markedFilterAtom);
         const dateRange = globalStore.get(this.dateRangeAtom);
         const pathFilter = globalStore.get(this.pathFilterAtom);
@@ -196,9 +199,10 @@ export class AiSessionsViewModel implements ViewModel {
                 since,
                 before,
                 tagFilters,
+                tagPresence,
                 project: projectPrefix,
             });
-            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
+            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
                 return;
             }
             let sessions = response?.sessions ?? [];
@@ -231,11 +235,11 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
             }
         } finally {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, marked, dateRange, pathFilter)) {
+            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
                 globalStore.set(this.loadingAtom, false);
             }
         }
@@ -246,6 +250,7 @@ export class AiSessionsViewModel implements ViewModel {
         source: SourceFilter,
         query: string,
         tagFilters: string[],
+        tagPresence: TagPresenceFilter,
         marked: MarkedFilter,
         dateRange: DateRangeFilter,
         pathFilter: PathFilter
@@ -256,6 +261,7 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.get(this.sourceAtom) === source &&
             globalStore.get(this.queryAtom) === query &&
             tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters) &&
+            globalStore.get(this.tagPresenceAtom) === tagPresence &&
             globalStore.get(this.markedFilterAtom) === marked &&
             pathFilterEqual(globalStore.get(this.pathFilterAtom), pathFilter) &&
             currentDateRange.preset === dateRange.preset &&
@@ -274,6 +280,8 @@ export class AiSessionsViewModel implements ViewModel {
                 marked: globalStore.get(this.markedFilterAtom),
                 since,
                 before,
+                tagFilters: globalStore.get(this.tagFiltersAtom),
+                tagPresence: globalStore.get(this.tagPresenceAtom),
                 refresh,
             });
             globalStore.set(this.availableTagsAtom, response.tags ?? []);
@@ -286,7 +294,36 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.markedFilterAtom, "all");
         globalStore.set(this.dateRangeAtom, DefaultDateRange);
         globalStore.set(this.tagFiltersAtom, []);
+        globalStore.set(this.tagPresenceAtom, DefaultTagPresence);
         globalStore.set(this.pathFilterAtom, DefaultPathFilter);
+    }
+
+    // Tag-presence setter. Centralizes the mutual-exclusion rule:
+    // "untagged AND specific tag chips" is logically empty (an untagged
+    // session has no tags, so it cannot satisfy a tag-include filter),
+    // so activating Untagged must reset tagFilters atomically.
+    // Resetting to Any leaves any prior tagFilters alone (they may have
+    // been picked intentionally after the user already cleared Untagged).
+    setTagPresence(next: TagPresenceFilter): void {
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.tagPresenceAtom, next);
+        if (next !== DefaultTagPresence) {
+            globalStore.set(this.tagFiltersAtom, []);
+        }
+    }
+
+    // Tag-include setter. Centralizes the opposite direction of the same
+    // mutual-exclusion rule: any non-empty tagFilters list turns TagPresence
+    // back to Any so the active filter set stays internally consistent.
+    // Empty tagFilters (cleared from Untagged side or all chips toggled off)
+    // intentionally leaves TagPresence alone.
+    setTagFilters(next: string[]): void {
+        const normalized = normalizeSessionTags(next);
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.tagFiltersAtom, normalized);
+        if (normalized.length > 0) {
+            globalStore.set(this.tagPresenceAtom, DefaultTagPresence);
+        }
     }
 
     getBoundSessionId(): string {
@@ -744,6 +781,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const source = jotai.useAtomValue(model.sourceAtom);
     const query = jotai.useAtomValue(model.queryAtom);
     const tagFilters = jotai.useAtomValue(model.tagFiltersAtom);
+    const tagPresence = jotai.useAtomValue(model.tagPresenceAtom);
     const availableTags = jotai.useAtomValue(model.availableTagsAtom);
     const [markedFilter, setMarkedFilter] = jotai.useAtom(model.markedFilterAtom);
     const [dateRange, setDateRange] = jotai.useAtom(model.dateRangeAtom);
@@ -772,6 +810,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
+    const tagPresenceActive = tagPresence !== DefaultTagPresence;
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
     const pathActive = pathFilter.root !== "";
@@ -779,7 +818,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
-        (markedActive ? 1 : 0) + (dateActive ? 1 : 0) + normalizedTagFilters.length + (pathActive ? 1 : 0);
+        (markedActive ? 1 : 0) +
+        (dateActive ? 1 : 0) +
+        normalizedTagFilters.length +
+        (pathActive ? 1 : 0) +
+        (tagPresenceActive ? 1 : 0);
     const availablePathRoots = useMemo(() => extractPathRoots(sessions), [sessions]);
     const breadcrumbSegments = useMemo(
         () => computeBreadcrumb(pathFilter, sessions),
@@ -850,7 +893,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source, tagFilters, markedFilter, dateRange, pathFilter, sortDescending]);
+    }, [model, query, source, tagFilters, tagPresence, markedFilter, dateRange, pathFilter, sortDescending]);
 
     useEffect(() => {
         writeSortPreference(sortDescending);
@@ -902,12 +945,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         (tag: string) => {
             const normalizedTag = normalizeSessionTags([tag])[0];
             if (!normalizedTag) return;
-            globalStore.set(model.loadingAtom, true);
             const currentTags = normalizeSessionTags(globalStore.get(model.tagFiltersAtom));
             const nextTags = currentTags.includes(normalizedTag)
                 ? currentTags.filter((item) => item !== normalizedTag)
                 : [...currentTags, normalizedTag];
-            globalStore.set(model.tagFiltersAtom, nextTags);
+            model.setTagFilters(nextTags);
         },
         [model]
     );
@@ -1122,6 +1164,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     setDateRange={setDateRange}
                                     availableTags={availableTags}
                                     tagFilters={normalizedTagFilters}
+                                    tagPresence={tagPresence}
+                                    setTagPresence={(next) => model.setTagPresence(next)}
                                     toggleTagFilter={toggleTagFilter}
                                     onClearAll={() => model.clearAllFilters()}
                                     pathFilter={pathFilter}

@@ -1,0 +1,627 @@
+<!doctype html>
+<!--
+  Prototype: AI Sessions — Untagged filter (查询没有标记标签 Note 的会话)
+
+  User request: "aisession filter 新增支持查询没有标记标签 Note 的会话" + "aisessions-path-filter.html 落地原型到这里吧"
+
+  Context (verify-existing-impl-before-redesign 检查过现状):
+    - 真实 FilterPanel (frontend/app/view/aisessions/filter-panel.tsx) 当前四行:
+      Marked (all/starred/unstarred) / Date / Path / Tags. Tags 行是 chip 多选,
+      数据源 tagFiltersAtom: string[], 后端 ListOptions.TagFilters []string.
+    - 后端入口 pkg/aisessions/index.go:418 与 sqlite_index.go:1070 都只调
+      sessionTagsContainAll(summary.Tags, opts.TagFilters). 该函数 tags.go:84-102
+      只能表达 "包含全部所选 tag"; 没有 tag 时 len(filters)==0 直接 return true.
+    - 即: 语义层无法表达 "Tags 集合为空" (无任何标签). 用户要的"没有标记标签的
+      note 会话"缺一个 RPC/过滤入口, 不止 UI 缺一项.
+    - session.note 是单串含内嵌 #tag, 真实入索引由 ExtractSessionTagsFromNote
+      拆出, 落 ai_session_tags 表 (sqlite_index.go 的 migrateSessionTags +
+      SetNoteAndTags).Tags 为 [] = "note 没有 #tag token" (含 note 全空).
+      这与 docs/CLAUDE.md "session.note 语义 — tags live inside the note string"
+      一致, "无标签"判定应基于 summary.Tags 而非 Boolean(note), 否则纯 #tag
+      note (非空但无 prose) 会被错算.
+    - MarkedFilter 走独立 string 字段 (all|starred|unstarred), 不和 TagFilters
+      混, 是平行入口的范式先例. Untagged 应同款: 单独字段, 不挤进 tagFilters.
+
+  Decisions (当场确定 — 见 ask-position-before-placing-ui / decisions-go-into-file-comments):
+    [1] 字段命名与位置: 后端 ListOptions 新增独立 string 字段 TagPresence, 常量
+        TagPresenceUntagged = "untagged", 空串/"any" 视为不过滤. 不复用 tagFilters
+        数组塞哨兵字符串 (会和 NormalizeSessionTags trim '#' 后产生歧义),
+        不新造 enum 类型 (本仓 Go 规则: 用 string const 而非 enum).
+        — 与 Marked/starred 范式一致, 后端把一阶布尔判断保留在 summaryMatchesList,
+        避免给 sqlite_index 加新 WHERE clause 时漏 missing==0 等既有约束.
+    [2] 语义边界: "Untagged" = NormalizeSessionTags(summary.Tags) 长度为 0.
+        即 note 里没拆出任何 #tag token (含 note 完全为空, note 纯文本无 #,
+        note 纯 #tag 但被 NormalizeSessionTags 判废 like ' #' 这种边界). 不用
+        Boolean(note), 否则纯 "#fix" 这种纯 tag note 会被错误归到"无标签".
+        — 遵循 CLAUDE.md "session.note 语义 — tags live inside the note string".
+    [3] 与具体 tag chip 的关系 (互斥): UI 上选了任何具体 tag chip 就先把
+        tagPresence 复位回 "any"; 反过来在 tagPresence="untagged" 时点任意 tag
+        chip, 先把 tagPresence 复位. 逻辑上 "Untagged AND has #fix" 矛盾,
+        不允许并存. 后端在 summaryMatchesList 也加防御: tagPresence==untagged
+        且 TagFilters 非空时直接 return false (整批结果为空, 不报错).
+        — 避免让用户组合出一个永远空结果的查询还以为 UI 坏了.
+    [4] UI 形态: Tags 行采用 SegTrack + chip 双层区, 在 SegTrack 段加两枚
+        [Any | Untagged], 与 Marked 行 [All|Starred|Unstarred] 平行视觉语义.
+        选 "Untagged" 后 Tags 行下方 chip 区收起 (不展示具体标签, 因为结果不
+        含任何 tag); active strip 多一枚 "Untagged" chip 一键清除回 Any.
+        — 与 path-filter 原型的 "选 root 后 breadcrumb 展开/收起" 同款分区逻辑.
+    [5] 与 Marked/Date/Path 的关系: AND 复合 (如 starred + untagged + 7d 同存),
+        不互斥. 这与现有所有筛选维度一致, 不需要特例.
+    [6] 可见性: SegTrack [Any | Untagged] 一直常驻 Tags 行左侧, 即使当前没有任何
+        具体标签被选, 用户也能一眼看到 "可以按 'no tags' 过滤" 是可选项. 隐藏成
+        长按 / 右键菜单会让人发现不到.
+        — 用户的真实诉求: "找出没打标签的 session 去补打", 应该是高可发现性的
+        一阶入口, 不是隐藏功能.
+
+  Scope (prototype-html-static-not-interactive):
+    只画样式 + 占位状态视觉. 无 JS 行为 (除 theme switch), 数据写死.
+    三个变体展示: A idle (Any) / B Untagged 选中 / C 互斥点击具体 tag 后复位.
+-->
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI Sessions — Untagged Note Filter (Prototype)</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+        <style>
+            /* ── Design tokens (copied from .mockup/_to-keep/design-system.html) ── */
+            * {
+                box-sizing: border-box;
+                letter-spacing: 0;
+            }
+            :root,
+            [data-theme="dark"] {
+                color-scheme: dark;
+                --canvas: #222222;
+                --panel: #1f211f;
+                --surface: #2b2d2b;
+                --surface-strong: #343734;
+                --overlay: #212121;
+                --text: #f7f7f7;
+                --text-secondary: #c3c8c2;
+                --text-muted: #858a84;
+                --border: rgba(255, 255, 255, 0.16);
+                --border-soft: rgba(255, 255, 255, 0.08);
+                --hover: rgba(255, 255, 255, 0.1);
+                --action: #58c142;
+                --action-hover: #76df60;
+                --action-text: #000000;
+                --action-soft: rgba(88, 193, 66, 0.12);
+                --action-soft-text: #6ee785;
+                --action-soft-border: rgba(88, 193, 66, 0.3);
+                --focus: #58c142;
+                --error: #e54d2e;
+                --error-soft: rgba(229, 77, 46, 0.12);
+                --shadow: rgba(0, 0, 0, 0.55);
+            }
+            [data-theme="light"] {
+                color-scheme: light;
+                --canvas: #ebe5d9;
+                --panel: #f3efe4;
+                --surface: #fffdf8;
+                --surface-strong: #f0ede6;
+                --overlay: #f3efe4;
+                --text: #4c3924;
+                --text-secondary: #675033;
+                --text-muted: #777167;
+                --border: #d6cfbe;
+                --hover: rgba(167, 111, 202, 0.1);
+                --action: #7c49a1;
+                --action-hover: #955ab8;
+                --action-text: #ffffff;
+                --action-soft: rgba(167, 111, 202, 0.12);
+                --action-soft-text: #63387f;
+                --action-soft-border: rgba(167, 111, 202, 0.3);
+                --focus: #a76fca;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background: var(--canvas);
+                color: var(--text);
+                font: 14px/1.45 Inter, "Segoe UI", sans-serif;
+            }
+            button,
+            input {
+                font: inherit;
+                color: inherit;
+            }
+            button {
+                cursor: pointer;
+                background: transparent;
+                border: none;
+            }
+            button:focus-visible,
+            input:focus-visible {
+                outline: 2px solid var(--focus);
+                outline-offset: 2px;
+            }
+
+            /* ── Layout shell ── */
+            .app-shell {
+                display: grid;
+                grid-template-columns: 380px minmax(0, 1fr);
+                gap: 0;
+                min-height: 100vh;
+            }
+            .main {
+                padding: 24px 28px;
+                background: var(--canvas);
+                border-left: 1px solid var(--border);
+            }
+            .meta {
+                background: var(--panel);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 14px 16px;
+                color: var(--text-secondary);
+                font-size: 12px;
+                line-height: 1.6;
+                max-width: 560px;
+            }
+            .meta code {
+                background: var(--surface);
+                padding: 1px 5px;
+                border-radius: 4px;
+                font-size: 11px;
+                color: var(--text);
+            }
+            .theme-row {
+                display: flex;
+                gap: 6px;
+                margin: 16px 0 18px;
+            }
+            .theme-row button {
+                padding: 5px 10px;
+                border-radius: 6px;
+                border: 1px solid var(--border);
+                color: var(--text-secondary);
+                font-size: 11px;
+            }
+            .theme-row button.active {
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                border-color: var(--action-soft-border);
+            }
+
+            /* ── Filter panel (mirrors filter-panel.tsx classes) ── */
+            .filter-panel {
+                margin: 10px;
+                border: 1px solid var(--border-soft);
+                border-radius: 12px;
+                background: var(--panel);
+                box-shadow: 0 1px 3px var(--shadow);
+                overflow: hidden;
+            }
+            .filter-top {
+                display: flex;
+                justify-content: flex-end;
+                padding: 8px 10px 4px;
+            }
+            .clear-all {
+                width: 24px;
+                height: 24px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                color: var(--text-muted);
+                font-size: 11px;
+            }
+            .clear-all:hover {
+                background: var(--hover);
+                color: var(--text);
+            }
+            .filter-rows {
+                padding: 4px 10px;
+            }
+            .filter-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 6px 0;
+            }
+            .filter-row + .filter-row {
+                border-top: 1px solid var(--border-soft);
+            }
+            .filter-row.start {
+                align-items: flex-start;
+            }
+            .row-icon {
+                flex: 0 0 14px;
+                text-align: center;
+                font-size: 11px;
+                color: var(--text-secondary);
+            }
+            .filter-row.start .row-icon {
+                margin-top: 6px;
+            }
+            .row-label {
+                font-size: 11px;
+                color: var(--text-muted);
+                margin-left: 6px;
+            }
+
+            /* SegTrack */
+            .seg-track {
+                display: inline-flex;
+                border: 1px solid var(--border-soft);
+                border-radius: 8px;
+                background: var(--surface);
+                padding: 2px;
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+            }
+            .seg-track.grow {
+                flex: 1;
+            }
+            .seg-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                height: 24px;
+                padding: 0 8px;
+                border-radius: 6px;
+                border: 1px solid transparent;
+                font-size: 12px;
+                color: var(--text-secondary);
+                transition: background 0.12s, color 0.12s;
+            }
+            .seg-btn:hover {
+                background: var(--hover);
+                color: var(--text);
+            }
+            .seg-btn.active {
+                border-color: var(--border);
+                background: var(--overlay);
+                color: var(--text);
+                box-shadow: 0 1px 2px var(--shadow);
+            }
+
+            /* ── Tags row specific (left SegTrack + right chip cluster) ── */
+            .tags-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+            }
+            .tags-row .tags-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .tags-chips {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                padding-left: 24px; /* indent past icon */
+            }
+            .tag-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 22px;
+                padding: 0 8px;
+                border-radius: 6px;
+                font-size: 11px;
+                color: var(--text-secondary);
+                background: var(--surface);
+                border: 1px solid transparent;
+            }
+            .tag-chip:hover {
+                color: var(--text);
+                background: var(--hover);
+            }
+            .tag-chip.active {
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                border-color: var(--action-soft-border);
+                font-weight: 600;
+            }
+            .tag-chip .count {
+                font-size: 10px;
+                color: var(--text-muted);
+                background: var(--surface-strong);
+                padding: 0 5px;
+                border-radius: 999px;
+            }
+            .tag-chip.active .count {
+                color: var(--action-soft-text);
+                background: rgba(88, 193, 66, 0.18);
+            }
+
+            /* "no tags available" / collapsed state */
+            .tag-chips-empty {
+                font-size: 11px;
+                color: var(--text-muted);
+                padding-left: 24px;
+                line-height: 1.4;
+            }
+            .tag-chips-empty code {
+                background: var(--surface);
+                padding: 1px 5px;
+                border-radius: 4px;
+                font-size: 10px;
+                color: var(--text-secondary);
+            }
+
+            /* ActiveChip (mirrors ActiveChip in filter-panel.tsx) */
+            .active-strip {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                border-top: 1px solid var(--border-soft);
+                padding: 8px 10px;
+            }
+            .active-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 24px;
+                padding: 0 6px 0 10px;
+                border-radius: 999px;
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                font-size: 11px;
+            }
+            .active-chip .x {
+                width: 16px;
+                height: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                font-size: 9px;
+                opacity: 0.65;
+            }
+            .active-chip .x:hover {
+                opacity: 1;
+                background: var(--surface-strong);
+            }
+
+            /* variant label header above each instance */
+            .variant-title {
+                padding: 14px 14px 6px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--text-secondary);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .variant-hint {
+                padding: 0 14px 4px;
+                font-size: 11px;
+                color: var(--text-muted);
+            }
+
+            /* reduction to only the Tags row for this prototype */
+            .filter-panel.condensed .filter-rows {
+                padding: 8px 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app-shell">
+            <!-- Left: filter panel (focus on Tags row variations) -->
+            <div>
+                <!-- ============ Variant A: Tags idle (Any + a few tag chips) ============ -->
+                <div class="variant-title">A · Tags idle (Any)</div>
+                <div class="variant-hint">
+                    SegTrack [Any · Untagged] 常驻 Tags 行左侧. Any 选中, 下方 chip 区列出所有可一键过滤的具体 tag.
+                </div>
+                <div class="filter-panel condensed">
+                    <div class="filter-top">
+                        <button class="clear-all" title="Clear all filters" aria-label="Clear all filters">
+                            <i class="fa-solid fa-broom"></i>
+                        </button>
+                    </div>
+                    <div class="filter-rows">
+                        <!-- Tags row: head SegTrack + body chip cluster -->
+                        <div class="filter-row start tags-row">
+                            <div class="tags-head">
+                                <i class="fa-solid fa-tag row-icon"></i>
+                                <!-- NEW: presence SegTrack before chip cluster -->
+                                <div class="seg-track">
+                                    <button class="seg-btn active" title="All sessions, no tag presence constraint">Any</button>
+                                    <button class="seg-btn" title="Only sessions whose note contains no #tag">Untagged</button>
+                                </div>
+                            </div>
+                            <div class="tags-chips">
+                                <button class="tag-chip" title="3 sessions">#fix <span class="count">3</span></button>
+                                <button class="tag-chip" title="5 sessions">#snork <span class="count">5</span></button>
+                                <button class="tag-chip" title="2 sessions">#release <span class="count">2</span></button>
+                                <button class="tag-chip" title="1 session">#减熵 <span class="count">1</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant B: Untagged selected ============ -->
+                <div class="variant-title">B · Untagged 选中</div>
+                <div class="variant-hint">
+                    Untagged 点亮, 下方 chip 区收起 (结果不含任何 tag, 列具体 chip 无意义);
+                    active strip 多一枚 Untagged chip 可一键清回 Any.
+                </div>
+                <div class="filter-panel condensed">
+                    <div class="filter-top">
+                        <button class="clear-all" title="Clear all filters"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <div class="filter-row start tags-row">
+                            <div class="tags-head">
+                                <i class="fa-solid fa-tag row-icon"></i>
+                                <div class="seg-track">
+                                    <button class="seg-btn" title="All sessions, no tag presence constraint">Any</button>
+                                    <button class="seg-btn active" title="Only sessions whose note contains no #tag">Untagged</button>
+                                </div>
+                            </div>
+                            <div class="tag-chips-empty">
+                                Showing sessions with <code>no #tag</code> in their note. Pick a tag above to filter by a specific tag instead.
+                            </div>
+                        </div>
+                        <!-- active strip with Untagged chip -->
+                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                            <span class="active-chip">
+                                <i class="fa-solid fa-tag" style="font-size: 10px"></i>
+                                Untagged
+                                <button class="x" aria-label="Remove untagged filter"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant C: Untagged + Marked/Date compound ============ -->
+                <div class="variant-title">C · Untagged + 7d ★ 复合</div>
+                <div class="variant-hint">
+                    Untagged 与 Marked(starred) / Date(7d) 是 AND 复合, active strip 平铺所有可一键清.
+                </div>
+                <div class="filter-panel condensed">
+                    <div class="filter-top">
+                        <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <!-- Marked row (context) -->
+                        <div class="filter-row">
+                            <i class="fa-solid fa-star row-icon"></i>
+                            <div class="seg-track">
+                                <button class="seg-btn"><i class="fa-solid fa-list" style="font-size: 11px"></i></button>
+                                <button class="seg-btn active"><i class="fa-solid fa-star" style="font-size: 11px"></i></button>
+                                <button class="seg-btn"><i class="fa-regular fa-star" style="font-size: 11px"></i></button>
+                            </div>
+                            <span class="row-label">Starred</span>
+                        </div>
+                        <!-- Date row (context) -->
+                        <div class="filter-row">
+                            <i class="fa-regular fa-calendar row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn">All</button>
+                                <button class="seg-btn">Today</button>
+                                <button class="seg-btn active">7d</button>
+                                <button class="seg-btn">30d</button>
+                                <button class="seg-btn">Custom</button>
+                            </div>
+                        </div>
+                        <!-- Tags row with Untagged active -->
+                        <div class="filter-row start tags-row">
+                            <div class="tags-head">
+                                <i class="fa-solid fa-tag row-icon"></i>
+                                <div class="seg-track">
+                                    <button class="seg-btn">Any</button>
+                                    <button class="seg-btn active">Untagged</button>
+                                </div>
+                            </div>
+                            <div class="tag-chips-empty">
+                                Showing starred sessions from last 7d with <code>no #tag</code> in their note.
+                            </div>
+                        </div>
+                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                            <span class="active-chip">
+                                <i class="fa-solid fa-star" style="font-size: 10px"></i>
+                                Starred
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                7d
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                <i class="fa-solid fa-tag" style="font-size: 10px"></i>
+                                Untagged
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant D: mutual exclusion edge case ============ -->
+                <div class="variant-title">D · 互斥 (点具体 tag → Untagged 自动复位为 Any)</div>
+                <div class="variant-hint">
+                    若先选 Untagged 再点 #fix: tagPresence 自动复位为 Any, #fix chip 激活.
+                    "Untagged AND #fix" 永远空结果, UI 不让用户组合出. active strip 不再有 Untagged.
+                </div>
+                <div class="filter-panel condensed">
+                    <div class="filter-top">
+                        <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <div class="filter-row start tags-row">
+                            <div class="tags-head">
+                                <i class="fa-solid fa-tag row-icon"></i>
+                                <div class="seg-track">
+                                    <button class="seg-btn active" title="Restore: presence auto-reset because a tag chip was picked">Any</button>
+                                    <button class="seg-btn">Untagged</button>
+                                </div>
+                            </div>
+                            <div class="tags-chips">
+                                <button class="tag-chip active">#fix <span class="count">3</span></button>
+                                <button class="tag-chip">#snork <span class="count">5</span></button>
+                                <button class="tag-chip">#release <span class="count">2</span></button>
+                                <button class="tag-chip">#减熵 <span class="count">1</span></button>
+                            </div>
+                        </div>
+                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                            <span class="active-chip">
+                                #fix
+                                <button class="x"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: explanation + theme switcher -->
+            <div class="main">
+                <div class="theme-row">
+                    <button data-theme="dark" class="active">dark</button>
+                    <button data-theme="light">light</button>
+                </div>
+                <div class="meta">
+                    <strong>原型: AI Sessions — Untagged Note Filter</strong><br />
+                    在 FilterPanel 的 Tags 行加 SegTrack <code>[Any · Untagged]</code> 作为新的"标签存在性"筛选维度.<br /><br />
+
+                    <strong>根因</strong>: 后端 <code>summaryMatchesList</code> (pkg/aisessions/index.go:418) 与
+                    sqlite 端 List (sqlite_index.go:1070) 都只调 <code>sessionTagsContainAll</code>
+                    (tags.go:84), 它只能表达"包含全部所选 tag", 没有"无任何 tag"的入口.
+                    前端 <code>tagFiltersAtom: string[]</code> 同款无法表达. 所以这是 RPC 入参到
+                    SQL 都缺的一阶能力, 不止 UI 缺一项.<br /><br />
+
+                    <strong>语义</strong>: Untagged = <code>NormalizeSessionTags(summary.Tags).length === 0</code>.
+                    不用 <code>Boolean(note)</code> — 纯 <code>"#fix"</code> 这种纯 tag note (无 prose)
+                    按 CLAUDE.md "session.note 语义 — tags live inside the note string",
+                    应算"有标签", 不能被错归到"无标签".<br /><br />
+
+                    <strong>形态</strong>: 常驻 SegTrack, 不藏菜单. <code>Untagged</code> 与具体 tag chip
+                    互斥 (Variant D): 逻辑上永远空结果, UI 自动复位.<br />
+                    <strong>关系</strong>: 与 Marked/Date/Path 是 AND 复合 (Variant C), active strip 一键清.<br /><br />
+
+                    <strong>四个变体</strong>:<br />
+                    A · Tags idle (Any) — Untagged 入口可见<br />
+                    B · Untagged 选中 — chip 区收起<br />
+                    C · Untagged + 7d + ★ 复合 — active strip 平铺<br />
+                    D · 互斥 — 点 #fix 后 Untagged 自动复位回 Any<br /><br />
+
+                    <strong>Static only</strong> (除 theme switch 无 JS 行为).<br />
+                    决策全部写入文件头 HTML 注释. 实装时改:
+                    <code>types.ts</code> 加 TagPresenceFilter / atom,
+                    <code>filter-panel.tsx</code> 加 SegTrack + 互斥,
+                    <code>aisessions.tsx</code> 把 tagPresence 接进 List RPC 入参,
+                    后端 <code>ListOptions</code> 加 <code>TagPresence string</code>,
+                    <code>summaryMatchesList</code> 加防御,
+                    <code>task generate</code> 重生 TS 类型.
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // theme switch only (prototype-html-static-not-interactive)
+            document.querySelectorAll("[data-theme] button[data-theme], .theme-row button").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const theme = btn.getAttribute("data-theme") || btn.textContent;
+                    document.documentElement.setAttribute("data-theme", theme);
+                    document.querySelectorAll(".theme-row button").forEach((b) => b.classList.remove("active"));
+                    btn.classList.add("active");
+                });
+            });
+        </script>
+    </body>
+</html>

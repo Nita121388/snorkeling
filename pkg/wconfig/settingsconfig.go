@@ -100,6 +100,17 @@ type SettingsType struct {
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
 
+	// agentstatus:osnotify — system (OS-level) notifications for agent state transitions.
+	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except
+	// blockedminintervalms (0 = no per-block rate limit). Pointer types so "false" is observable
+	// distinct from "unset" once defaults are applied by the resolver.
+	AgentStatusClear                  bool   `json:"agentstatus:*,omitempty"`
+	AgentStatusOsNotify               *bool  `json:"agentstatus:osnotify,omitempty"`
+	AgentStatusOsNotifyDone           *bool  `json:"agentstatus:osnotifydone,omitempty"`
+	AgentStatusOsNotifyBlocked        *bool  `json:"agentstatus:osnotifyblocked,omitempty"`
+	AgentStatusOsNotifyWhenFocused    *bool  `json:"agentstatus:osnotifywhenfocused,omitempty"`
+	AgentStatusOsNotifyBlockedMinMs   *int64 `json:"agentstatus:osnotifyblockedminms,omitempty"`
+
 	AiClear         bool    `json:"ai:*,omitempty"`
 	AiPreset        string  `json:"ai:preset,omitempty"`
 	AiApiType       string  `json:"ai:apitype,omitempty"`

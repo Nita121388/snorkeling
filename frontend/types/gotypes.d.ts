@@ -81,6 +81,7 @@ declare global {
         since?: number;
         before?: number;
         tagFilters?: string[];
+        tagPresence?: string;
     };
 
     // aisessionsservice.AISessionsListResponse
@@ -153,6 +154,8 @@ declare global {
         marked?: string;
         since?: number;
         before?: number;
+        tagFilters?: string[];
+        tagPresence?: string;
         refresh?: boolean;
     };
 
@@ -1996,6 +1999,12 @@ declare global {
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
+        "agentstatus:*"?: boolean;
+        "agentstatus:osnotify"?: boolean;
+        "agentstatus:osnotifydone"?: boolean;
+        "agentstatus:osnotifyblocked"?: boolean;
+        "agentstatus:osnotifywhenfocused"?: boolean;
+        "agentstatus:osnotifyblockedminms"?: number;
         "ai:*"?: boolean;
         "ai:preset"?: string;
         "ai:apitype"?: string;
@@ -2792,6 +2801,9 @@ declare global {
         title?: string;
         body?: string;
         silent?: boolean;
+        agentkind?: string;
+        agentblockid?: string;
+        agentprovider?: string;
     };
 
     // waveobj.WaveObj

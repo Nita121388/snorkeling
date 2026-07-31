@@ -146,6 +146,24 @@
           },
           "type": "object"
         },
+        "agentstatus:*": {
+          "type": "boolean"
+        },
+        "agentstatus:osnotify": {
+          "type": "boolean"
+        },
+        "agentstatus:osnotifydone": {
+          "type": "boolean"
+        },
+        "agentstatus:osnotifyblocked": {
+          "type": "boolean"
+        },
+        "agentstatus:osnotifywhenfocused": {
+          "type": "boolean"
+        },
+        "agentstatus:osnotifyblockedminms": {
+          "type": "integer"
+        },
         "ai:*": {
           "type": "boolean"
         },

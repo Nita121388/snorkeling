@@ -144,23 +144,25 @@ type UserLinesResult struct {
 }
 
 type ListOptions struct {
-	Source     string
-	Project    string
-	Since      int64
-	Before     int64
-	Limit      int
-	Marked     string
-	TagFilters []string
-	Refresh    bool
+	Source       string
+	Project      string
+	Since        int64
+	Before       int64
+	Limit        int
+	Marked       string
+	TagFilters   []string
+	TagPresence  string
+	Refresh      bool
 }
 
 type SearchOptions struct {
-	Query      string
-	Source     string
-	Project    string
-	Limit      int
-	TagFilters []string
-	Refresh    bool
+	Query       string
+	Source      string
+	Project     string
+	Limit       int
+	TagFilters  []string
+	TagPresence string
+	Refresh     bool
 }
 
 func StableKey(source string, id string, filePath string) string {

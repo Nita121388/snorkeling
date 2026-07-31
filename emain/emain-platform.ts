@@ -44,6 +44,18 @@ const paths = envPaths("snorkeling", { suffix: waveDirNameSuffix });
 const WaveAppNameVarName = "WAVETERM_APP_NAME";
 const overrideAppName = process.env[WaveAppNameVarName];
 app.setName(isDev ? (overrideAppName || "Snorkeling (Dev)") : "Snorkeling");
+
+// Windows requires an explicit AppUserModelID for toast notifications to be properly attributed
+// (icon, app name in Action Center, "open" deep-link). Without it, Electron falls back to the
+// raw executable path which Windows often shows as a generic "Electron" toast that doesn't
+// group under Snorkeling in Action Center / notification history. Set this before any window
+// is created and before any Notification.show(); it's the documented precondition for
+// app.setUserNotificationProvider-style toast on Windows.
+if (process.platform === "win32") {
+    const AppUserModelId = isDev ? "io.github.nita121388.snorkeling.dev" : "io.github.nita121388.snorkeling";
+    app.setAppUserModelId(AppUserModelId);
+}
+
 const unamePlatform = process.platform;
 const unameArch: string = process.arch;
 keyutil.setKeyUtilPlatform(unamePlatform);

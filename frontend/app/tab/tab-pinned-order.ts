@@ -1,16 +1,20 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// 共享 pinned 判定 + 时序排序. 横向 tabbar.tsx 与竖向 vtabbar.tsx 必须共用同一份,
+// 共享 pinned 判定 + 物理顺序分段. 横向 tabbar.tsx 与竖向 vtabbar.tsx 必须共用同一份,
 // 否则两栏 hover 排序会漂移.
 //
-// pinned 判定:
-//   - activeTabId 永远 pinned.
-//   - openedThisLaunchTabIds (本启动点过的) 算 pinned.
-//   - tabRecencyStore 7 天窗口内点过的也算 pinned (跨重启续命).
+// 排序规则 (A 方案, 物理顺序优先):
+//   - 段内顺序 = workspace.tabids 的物理顺序. 不做 active 提顶, 不按 lastOpenedAt 排,
+//     不引入排序键.
+//   - 用户在 hover 段点一个 tab → 该 tab 从 hover 段"升入" pinned 段, 相对顺序按物理
+//     位置决定, 不会跳位. 已经 pinned 的 tab 永远不动.
+//   - 拖动 tab → workspace.tabids 落盘, 段内顺序自动跟着新物理顺序走.
 //
-// pinned 子集排序: active 永远第一, 其余按 lastOpenedAt 降序 (最近点的最前).
-// hoverRevealed 子集: 保持 orderedTabIds 原序.
+// pinned 判定 (三路叠加, 任一为真即 pinned):
+//   1. activeTabId (当前激活的)
+//   2. openedThisLaunchTabIds (本启动内点过的)
+//   3. tabRecencyStore 7 天窗口内点过的 (跨重启续命)
 
 import { tabRecencyStore, TabRecencyAgeWindowMs } from "./tab-recency-store";
 
@@ -24,18 +28,6 @@ export function isPinnedTab(
     const lastOpenedAt = tabRecencyStore.getRecencyMap()[tabId];
     if (lastOpenedAt == null) return false;
     return Date.now() - lastOpenedAt < TabRecencyAgeWindowMs;
-}
-
-export function orderPinnedByRecency(
-    pinnedTabIds: string[],
-    activeTabId: string | null
-): string[] {
-    const map = tabRecencyStore.getRecencyMap();
-    return [...pinnedTabIds].sort((a, b) => {
-        if (a === activeTabId) return -1;
-        if (b === activeTabId) return 1;
-        return (map[b] ?? -Infinity) - (map[a] ?? -Infinity);
-    });
 }
 
 export function partitionAndOrderTabs(
@@ -52,8 +44,5 @@ export function partitionAndOrderTabs(
             hoverRevealedTabIds.push(tabId);
         }
     }
-    return {
-        pinnedTabIds: orderPinnedByRecency(pinnedTabIds, activeTabId),
-        hoverRevealedTabIds,
-    };
+    return { pinnedTabIds, hoverRevealedTabIds };
 }

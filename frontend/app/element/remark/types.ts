@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Paragraph } from "mdast";
+import type { Properties } from "hast";
 
 export interface BlankSpacerOptions {
     /**
@@ -41,17 +42,16 @@ export const DEFAULT_BLANK_SPACER_OPTIONS: Required<BlankSpacerOptions> = {
  */
 export const SPACER_DATA = {
     hName: "p",
-    hProperties: (spacerLines: number) =>
-        ({
-            className: ["paragraph", "blank-spacer"],
-            "data-spacer-lines": String(spacerLines),
-            "data-empty-spacer": "true",
-        }) as Record<string, unknown>,
+    hProperties: (spacerLines: number): Properties => ({
+        className: ["paragraph", "blank-spacer"],
+        "data-spacer-lines": String(spacerLines),
+        "data-empty-spacer": "true",
+    }),
 } as const;
 
 export interface SpacerParagraph extends Paragraph {
     data?: {
         hName?: string;
-        hProperties?: Record<string, unknown>;
+        hProperties?: Properties;
     };
 }

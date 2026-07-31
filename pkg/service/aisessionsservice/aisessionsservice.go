@@ -38,7 +38,8 @@ type AISessionsListRequest struct {
 	Marked     string   `json:"marked,omitempty"`
 	Since      int64    `json:"since,omitempty"`
 	Before     int64    `json:"before,omitempty"`
-	TagFilters []string `json:"tagFilters,omitempty"`
+	TagFilters  []string `json:"tagFilters,omitempty"`
+	TagPresence  string   `json:"tagPresence,omitempty"`
 }
 
 type AISessionsListResponse struct {
@@ -46,13 +47,15 @@ type AISessionsListResponse struct {
 }
 
 type AISessionsTagsRequest struct {
-	Source     string `json:"source,omitempty"`
-	Project    string `json:"project,omitempty"`
-	Connection string `json:"connection,omitempty"`
-	Marked     string `json:"marked,omitempty"`
-	Since      int64  `json:"since,omitempty"`
-	Before     int64  `json:"before,omitempty"`
-	Refresh    bool   `json:"refresh,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Project     string `json:"project,omitempty"`
+	Connection  string `json:"connection,omitempty"`
+	Marked      string `json:"marked,omitempty"`
+	Since       int64  `json:"since,omitempty"`
+	Before      int64  `json:"before,omitempty"`
+	TagFilters  []string `json:"tagFilters,omitempty"`
+	TagPresence string `json:"tagPresence,omitempty"`
+	Refresh     bool   `json:"refresh,omitempty"`
 }
 
 type AISessionsTagsResponse struct {
@@ -273,14 +276,15 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		return nil, err
 	}
 	sessions, err := manager.ScanList(ctx, aisessions.ListOptions{
-		Source:     request.Source,
-		Project:    request.Project,
-		Limit:      limit,
-		Marked:     request.Marked,
-		Since:      request.Since,
-		Before:     request.Before,
-		TagFilters: request.TagFilters,
-		Refresh:    request.Refresh,
+		Source:      request.Source,
+		Project:     request.Project,
+		Limit:       limit,
+		Marked:      request.Marked,
+		Since:       request.Since,
+		Before:      request.Before,
+		TagFilters:  request.TagFilters,
+		TagPresence: request.TagPresence,
+		Refresh:     request.Refresh,
 	}, request.Query)
 	if err != nil {
 		return nil, err
@@ -347,12 +351,14 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 		return nil, err
 	}
 	tags, err := manager.ListTags(ctx, aisessions.ListOptions{
-		Source:  request.Source,
-		Project: request.Project,
-		Marked:  request.Marked,
-		Since:   request.Since,
-		Before:  request.Before,
-		Refresh: request.Refresh,
+		Source:      request.Source,
+		Project:     request.Project,
+		Marked:      request.Marked,
+		Since:       request.Since,
+		Before:      request.Before,
+		TagFilters:  request.TagFilters,
+		TagPresence: request.TagPresence,
+		Refresh:     request.Refresh,
 	})
 	if err != nil {
 		return nil, err

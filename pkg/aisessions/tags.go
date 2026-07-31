@@ -81,6 +81,41 @@ func isValidSessionTag(tag string) bool {
 	return true
 }
 
+// TagPresence values for ListOptions.TagPresence / SearchOptions.TagPresence.
+// Empty string and TagPresenceAny mean "no presence constraint".
+// TagPresenceUntagged means "session has no tags after normalization".
+// See docs/CLAUDE.md "session.note 语义 — tags live inside the note string":
+// "no tags" is defined by NormalizeSessionTags(summary.Tags) being empty,
+// NOT by Boolean(note) — a pure "#fix" note still counts as tagged.
+const (
+	TagPresenceAny      = ""
+	TagPresenceUntagged = "untagged"
+)
+
+// SessionHasTags reports whether summary has at least one normalized tag.
+// Centralized so List/Search filter logic and tests share one definition.
+func SessionHasTags(summary SessionSummary) bool {
+	return len(NormalizeSessionTags(summary.Tags)) > 0
+}
+
+// sessionMatchesTagPresence returns true when summary satisfies the requested
+// tag-presence constraint. Defensive: when both TagPresence and TagFilters are
+// set, the two are mutually exclusive at the UI layer (an "untagged AND has #x"
+// query is logically empty); we returns false here so a misuse can never produce
+// a confusing partial result instead of an obvious empty one.
+func sessionMatchesTagPresence(summary SessionSummary, tagPresence string, tagFilters []string) bool {
+	switch tagPresence {
+	case TagPresenceUntagged:
+		if len(tagFilters) > 0 {
+			return false
+		}
+		return !SessionHasTags(summary)
+	default:
+		// TagPresenceAny or any unrecognized value: no constraint.
+		return true
+	}
+}
+
 func sessionTagsContainAll(tags []string, filters []string) bool {
 	filters = NormalizeSessionTags(filters)
 	if len(filters) == 0 {

@@ -9,6 +9,16 @@ import { getResolvedUpdateChannel } from "emain/updater";
 import { unamePlatform } from "./emain-platform";
 import { getWebContentsByBlockId, webGetSelector } from "./emain-web";
 import { createBrowserWindow, getWaveWindowById, getWaveWindowByWorkspaceId } from "./emain-window";
+import {
+    AgentOsNotificationDescriptor,
+    AgentOsNotifyKind,
+    AgentOsNotifySettings,
+    decideSuppression,
+    defaultIsAnyWindowFocused,
+    defaultShowNotification,
+    makeDefaultFocusApp,
+    sendAgentOsNotification,
+} from "./os-notify";
 
 export class ElectronWshClientType extends WshClient {
     constructor() {
@@ -32,6 +42,10 @@ export class ElectronWshClientType extends WshClient {
     }
 
     async handle_notify(rh: RpcResponseHelper, notificationOptions: WaveNotificationOptions) {
+        if (notificationOptions.agentkind) {
+            await handleAgentOsNotification(notificationOptions);
+            return;
+        }
         new Notification({
             title: notificationOptions.title,
             body: notificationOptions.body,
@@ -125,4 +139,64 @@ export let ElectronWshClient: ElectronWshClientType;
 
 export function initElectronWshClient() {
     ElectronWshClient = new ElectronWshClientType();
+}
+
+// ---------------- Agent OS notification ----------------
+// Per-block last-fired timestamps (epoch ms) for rate limiting. One entry per (blockId, kind)
+// so a noisy block doesn't starve an unrelated one. Lives in the main process so the
+// suppression decision is consistent across renderer crashes / reloads.
+const lastFiredByBlock = new Map<string, number>();
+const lastFiredKey = (blockId: string, kind: string) => `${blockId}#${kind}`;
+
+async function handleAgentOsNotification(opts: WaveNotificationOptions): Promise<void> {
+    if (opts.agentkind !== "done" && opts.agentkind !== "blocked") {
+        console.warn(`[os-notify] unsupported agentkind "${opts.agentkind}", dropping`);
+        return;
+    }
+    if (!opts.agentblockid) {
+        console.warn("[os-notify] agentblockid is required, dropping");
+        return;
+    }
+
+    const kind: AgentOsNotifyKind = opts.agentkind;
+    const desc: AgentOsNotificationDescriptor = {
+        kind,
+        blockId: opts.agentblockid,
+        provider: opts.agentprovider || "",
+        body: opts.body,
+    };
+
+    // Settings are read once per call so subsequent setting changes take effect immediately.
+    // The agentstatus:* flags are *bool — *bool with default true means "off" is observable
+    // distinct from unset; we treat unset as the default (true) too.
+    const settings = (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
+    const osNotifySettings: AgentOsNotifySettings = {
+        masterEnabled: boolValue(settings.agentstatusosnotify, true),
+        doneEnabled: boolValue(settings.agentstatusosnotifydone, true),
+        blockedEnabled: boolValue(settings.agentstatusosnotifyblocked, true),
+        notifyWhenFocused: boolValue(settings.agentstatusosnotifywhenfocused, false),
+        blockedMinIntervalMs: intValue(settings.agentstatusosnotifyblockedminms, 0),
+    };
+
+    const ctx = {
+        settings: osNotifySettings,
+        isAnyWindowFocused: defaultIsAnyWindowFocused,
+        now: () => Date.now(),
+        lastFiredAt: (blockId: string, k: AgentOsNotifyKind) => lastFiredByBlock.get(lastFiredKey(blockId, k)) ?? 0,
+        showNotification: defaultShowNotification,
+        focusApp: makeDefaultFocusApp(),
+    };
+
+    const outcome = sendAgentOsNotification(desc, ctx);
+    if (outcome.fired) {
+        lastFiredByBlock.set(lastFiredKey(desc.blockId, kind), ctx.now());
+    }
+}
+
+function boolValue(v: boolean | undefined, def: boolean): boolean {
+    return v == null ? def : v;
+}
+
+function intValue(v: number | undefined, def: number): number {
+    return v == null ? def : v;
 }

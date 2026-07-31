@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { fireAgentOsNotification } from "@/app/agent-status/agent-status-notify";
 import { globalStore } from "@/app/store/jotaiStore";
 import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { atom, type PrimitiveAtom } from "jotai";
@@ -179,6 +180,24 @@ class AgentStatusDoneAckStore {
 
 export const agentStatusDoneAckStore = AgentStatusDoneAckStore.getInstance();
 
+// lastObservedByBlock is an in-memory prev-state cache per blockId so observeAgentStatusTransition
+// can classify prev→next transitions for OS-toast dispatch. Intentionally NOT persisted:
+// a renderer cold-start that re-derives state from a fresh event will see prev=undefined, which
+// decideNotifyKind already treats as "cannot fire 'done' without a prior working state" — the
+// worst case is missing one toast on the very first cycle after a window reopen, which is fine.
+// Cross-renderer: every renderer that observes the transition owns its own prev snapshot, but
+// the OS notify path is deduped at the main-process level (lastFiredByBlock in os-notify.ts) via
+// blockId-keyed rate limiting, so multiple windows each firing on the same completion collapse
+// to a single toast.
+const lastObservedByBlock = new Map<string, AgentStatus>();
+
+// For tests: clear the in-memory prev cache so test cases don't leak state across each other.
+// Production code has no reason to call this — the cache rebuilds itself from the live event
+// stream on the very next transition for any block whose entry was cleared.
+export function _resetLastObservedForTests(): void {
+    lastObservedByBlock.clear();
+}
+
 // [DIAG] 临时挂载到 window 供 CDP eval 拉数据. 排查 D 复活时:
 // node scripts/inspect-electron-ui.mjs eval 'window.__diagDoneAck.get()'
 // 同时与 window.__JOTAI_DEFAULT_STORE__.get(window.__diagDoneAck.atom) 对比,
@@ -199,9 +218,20 @@ if (typeof window !== "undefined") {
 // authoritative event drives both the D atom and the ack reset.
 export function observeAgentStatusTransition(next: AgentStatus | null): void {
     if (next == null) return;
+    const prev = lastObservedByBlock.get(next.blockId);
+    lastObservedByBlock.set(next.blockId, next);
     // 进入非 idle → 下一轮完成可再触发 D, 清掉旧的 ack.
     if (next.state !== "idle" && next.state !== "unknown") {
         agentStatusDoneAckStore.clearDoneAcked(next.blockId, "transition");
     }
     // idle 由消费方按 isAgentDoneUnread 判定, 这里不写 ack: 进入 idle 不算"已阅".
+
+    // OS-toast dispatch: classify the prev→next transition and fire an OS notification when the
+    // transition is "done" (working→idle) or "blocked" (*→blocked). Classifying inside this
+    // observer means the cross-renderer initial-pull path (which intentionally skips
+    // observeAgentStatusTransition per F1) won't fire a toast on renderer load — we only toast on
+    // real transition events. fireAgentOsNotification is defensive and never throws into the
+    // transition handler; settings/suppression/rate-limit all live in the main process
+    // (emain/os-notify.ts).
+    fireAgentOsNotification(next, prev);
 }

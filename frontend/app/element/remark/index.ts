@@ -49,8 +49,12 @@ const DEFAULT_BLANK_SPACER: BlankSpacerOptions = {
  * paragraphs hold an empty text node, which soft-breaks leaves untouched.
  */
 export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any, Root> | any> {
-    const blankSpacerOpts = opts.blankSpacer ?? DEFAULT_BLANK_SPACER;
-    const enableBlankSpacers = opts.enableBlankSpacers !== false;
+    // blankSpacer: undefined = use defaults; {...} = use those opts; null = disable.
+    const blankSpacerDisabled = opts.blankSpacer === null;
+    const blankSpacerOpts = blankSpacerDisabled
+        ? null
+        : { ...DEFAULT_BLANK_SPACER, ...(opts.blankSpacer ?? {}) };
+    const enableBlankSpacers = opts.enableBlankSpacers !== false && !blankSpacerDisabled;
     return [
         remarkMermaidToTag,
         remarkMarkdownFileReferences,

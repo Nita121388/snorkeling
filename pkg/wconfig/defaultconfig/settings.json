@@ -42,6 +42,11 @@
     "waveai:showcloudmodes": true,
     "waveai:defaultmode": "waveai@balanced",
     "note:dir": "~",
+    "agentstatus:osnotify": true,
+    "agentstatus:osnotifydone": true,
+    "agentstatus:osnotifyblocked": true,
+    "agentstatus:osnotifywhenfocused": false,
+    "agentstatus:osnotifyblockedminms": 0,
     "preview:defaultsort": "name",
     "preview:defaultdirectorydisplay": "tree",
     "preview:defaultopentarget": "right"

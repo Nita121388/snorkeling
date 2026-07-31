@@ -415,6 +415,9 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if opts.Marked == "unstarred" && summary.Marked {
 		return false
 	}
+	if !sessionMatchesTagPresence(summary, opts.TagPresence, opts.TagFilters) {
+		return false
+	}
 	if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
 		return false
 	}

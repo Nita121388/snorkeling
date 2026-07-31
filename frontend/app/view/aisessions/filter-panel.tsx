@@ -4,8 +4,8 @@
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import type { BreadcrumbSegment, PathRootOption } from "./utils";
-import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter } from "./types";
-import { DefaultPathFilter, PathFilterOtherRoot } from "./types";
+import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, TagPresenceFilter } from "./types";
+import { DefaultPathFilter, DefaultTagPresence, PathFilterOtherRoot } from "./types";
 
 function msToDateInput(ms: number | undefined): string {
     if (!ms) return "";
@@ -40,8 +40,17 @@ const MarkedOptions: { value: MarkedFilter; icon: string; label: string }[] = [
     { value: "unstarred", icon: "fa-regular fa-star", label: "Unstarred" },
 ];
 
+const TagPresenceOptions: { value: TagPresenceFilter; icon: string; label: string }[] = [
+    { value: "any", icon: "fa-solid fa-tag", label: "Any tags" },
+    { value: "untagged", icon: "fa-regular fa-tag", label: "Untagged" },
+];
+
 function markedLabel(value: MarkedFilter): string {
     return MarkedOptions.find((o) => o.value === value)?.label ?? "";
+}
+
+function tagPresenceLabel(value: TagPresenceFilter): string {
+    return TagPresenceOptions.find((o) => o.value === value)?.label ?? "";
 }
 
 function dateLabel(range: DateRangeFilter): string {
@@ -119,6 +128,8 @@ export function FilterPanel({
     setDateRange,
     availableTags,
     tagFilters,
+    tagPresence,
+    setTagPresence,
     toggleTagFilter,
     onClearAll,
     pathFilter,
@@ -132,6 +143,8 @@ export function FilterPanel({
     setDateRange: (value: DateRangeFilter) => void;
     availableTags: SessionTagSummary[];
     tagFilters: string[];
+    tagPresence: TagPresenceFilter;
+    setTagPresence: (value: TagPresenceFilter) => void;
     toggleTagFilter: (tag: string) => void;
     onClearAll: () => void;
     pathFilter: PathFilter;
@@ -143,7 +156,13 @@ export function FilterPanel({
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
     const pathActive = pathFilter.root !== "";
-    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0;
+    const tagPresenceActive = tagPresence !== DefaultTagPresence;
+    // Untagged is mutually exclusive with tag-include at the ViewModel layer
+    // (setTagPresence / setTagFilters enforce the reset on the other side).
+    // We visually dim the tag chip row while Untagged is active so the user
+    // sees the constraint instead of clicking into a no-op.
+    const tagSectionDim = tagPresence === "untagged";
+    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0 || tagPresenceActive;
     return (
         <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-panel shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
@@ -289,41 +308,72 @@ export function FilterPanel({
                         ))}
                     </div>
                 ) : null}
-                {availableTags.length > 0 ? (
-                    <div className="flex items-start gap-2.5 border-t border-border/40 py-1.5">
-                        <i className="fa-sharp fa-solid fa-tag mt-1.5 w-3.5 shrink-0 text-center text-[11px] text-secondary" />
-                        <div className="flex min-w-0 max-h-40 flex-wrap gap-1 overflow-y-auto pr-1">
-                            {availableTags.map((tagSummary) => {
-                                const active = selectedTags.has(tagSummary.tag);
-                                return (
-                                    <button
-                                        key={tagSummary.tag}
-                                        type="button"
-                                        title={`#${tagSummary.tag}`}
-                                        onClick={() => toggleTagFilter(tagSummary.tag)}
-                                        className={cn(
-                                            "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] cursor-pointer",
-                                            active
-                                                ? "bg-accent/10 text-accent"
-                                                : "bg-surface-soft text-secondary hover:bg-hover hover:text-primary"
-                                        )}
-                                    >
-                                        <span className="truncate">
-                                            <span className="opacity-50">#</span>
-                                            {tagSummary.tag}
-                                        </span>
-                                        <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
-                                            {tagSummary.count}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                <div className="flex flex-col gap-1.5 border-t border-border/40 py-1.5">
+                    <div className="flex items-center gap-2.5">
+                        <i className="fa-sharp fa-solid fa-tag w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                        <SegTrack>
+                            {TagPresenceOptions.map((opt) => (
+                                <SegButton
+                                    key={opt.value}
+                                    active={tagPresence === opt.value}
+                                    title={opt.label}
+                                    onClick={() => setTagPresence(opt.value)}
+                                >
+                                    <i className={cn("fa-sharp text-[11px]", opt.icon)} />
+                                </SegButton>
+                            ))}
+                        </SegTrack>
+                        {tagPresenceActive ? (
+                            <span className="text-[11px] text-secondary">{tagPresenceLabel(tagPresence)}</span>
+                        ) : null}
                     </div>
-                ) : null}
+                    {availableTags.length > 0 ? (
+                        <div
+                            className={cn(
+                                "flex items-start gap-2.5 pl-[24px]",
+                                tagSectionDim && "opacity-40 pointer-events-none"
+                            )}
+                        >
+                            <div className="flex min-w-0 max-h-40 flex-wrap gap-1 overflow-y-auto pr-1">
+                                {availableTags.map((tagSummary) => {
+                                    const active = selectedTags.has(tagSummary.tag);
+                                    return (
+                                        <button
+                                            key={tagSummary.tag}
+                                            type="button"
+                                            title={`#${tagSummary.tag}`}
+                                            onClick={() => toggleTagFilter(tagSummary.tag)}
+                                            className={cn(
+                                                "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] cursor-pointer",
+                                                active
+                                                    ? "bg-accent/10 text-accent"
+                                                    : "bg-surface-soft text-secondary hover:bg-hover hover:text-primary"
+                                            )}
+                                        >
+                                            <span className="truncate">
+                                                <span className="opacity-50">#</span>
+                                                {tagSummary.tag}
+                                            </span>
+                                            <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
+                                                {tagSummary.count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
             </div>
             {hasActive ? (
                 <div className="flex flex-wrap items-center gap-1 border-t border-border/40 px-2.5 py-2">
+                    {tagPresenceActive ? (
+                        <ActiveChip
+                            icon="fa-regular fa-tag"
+                            label={tagPresenceLabel(tagPresence)}
+                            onRemove={() => setTagPresence(DefaultTagPresence)}
+                        />
+                    ) : null}
                     {markedActive ? (
                         <ActiveChip
                             icon={markedFilter === "starred" ? "fa-solid fa-star" : "fa-regular fa-star"}

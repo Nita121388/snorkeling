@@ -28,6 +28,13 @@ const (
 	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"
 	ConfigKey_AgentProfiles                  = "agent:profiles"
 
+	ConfigKey_AgentStatusClear               = "agentstatus:*"
+	ConfigKey_AgentStatusOsNotify            = "agentstatus:osnotify"
+	ConfigKey_AgentStatusOsNotifyDone        = "agentstatus:osnotifydone"
+	ConfigKey_AgentStatusOsNotifyBlocked     = "agentstatus:osnotifyblocked"
+	ConfigKey_AgentStatusOsNotifyWhenFocused = "agentstatus:osnotifywhenfocused"
+	ConfigKey_AgentStatusOsNotifyBlockedMinMs = "agentstatus:osnotifyblockedminms"
+
 	ConfigKey_AiClear                        = "ai:*"
 	ConfigKey_AiPreset                       = "ai:preset"
 	ConfigKey_AiApiType                      = "ai:apitype"
