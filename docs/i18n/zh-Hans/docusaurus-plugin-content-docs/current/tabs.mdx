@@ -49,7 +49,7 @@ import { Kbd } from "@site/src/components/kbd";
 
 标签页由平铺的 block 组成。每个 block 的内容都是一个 widget。你可以移动 block，并将它们排列成最适合自己工作流的布局。也可以放大 block，专注查看某个特定 widget。
 
-![screenshot showing a block being dragged over another block, with the placeholder depicting a out-of-line before outer drop](./img/drag-edge.png)
+![将一个 block 拖到另一个 block 上方，占位提示显示将投放到目标 block 父节点之前（外侧投放）](./img/drag-edge.png)
 
 ### 布局系统内部机制 {#layout-system-under-the-hood}
 
@@ -99,8 +99,8 @@ import { Kbd } from "@site/src/components/kbd";
 除 Swap 外，所有 block 移动都会导致布局中的其他部分移动，以适应 block 的新位置。
 :::
 
-![screenshot showing a block being dragged over another block, with the placeholder depicting a swap movement](./img/drag-swap.png)
-![annotated example showing the drop targets within a block](./img/block-drag-example.jpg)
+![将一个 block 拖到另一个 block 上方，占位提示显示将交换两者位置](./img/drag-swap.png)
+![标注示例，展示一个 block 内的投放目标](./img/block-drag-example.jpg)
 
 1. Inline before：将 block 投放到与目标 block 相同的节点下，并在相同平铺方向上放到目标之前
 2. Inline after：将 block 投放到与目标 block 相同的节点下，并在相同平铺方向上放到目标之后
@@ -116,8 +116,8 @@ import { Kbd } from "@site/src/components/kbd";
   <source src="./img/resize-24fps-crf43.mp4" type="video/mp4" />
 </video>
 
-![screenshot showing the line that appears when the cursor hovers over the margin of a block, indicating which blocks
-will be resized by dragging the margin](./img/node-resize.png)
+![光标悬停在 block 边距上时出现的线条，指示拖动该边距将调整哪些 block
+的大小](./img/node-resize.png)
 
 你并不是直接调整 block 的大小，而是调整包含这些 block 的节点。将鼠标悬停在 block 边距上时，光标会变为 <i className="fa-sharp fa-arrows-left-right" title="left/right arrows"/> 或 <i className="fa-sharp fa-arrows-up-down" title="up/down arrows"/>，表示该节点可调整大小的方向。500ms 后还会出现一条线，显示拖动该边距会影响多少个 block。点击并拖动该边距即可调整对应 block 的大小。
 
