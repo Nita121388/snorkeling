@@ -8,58 +8,52 @@ hide_table_of_contents: true
 
 import { Card, CardGroup } from "@site/src/components/card";
 
-# Welcome to Wave Terminal
+# Welcome to Snorkeling
 
-Wave is an [open-source](https://github.com/wavetermdev/waveterm) terminal that combines traditional terminal features with graphical capabilities like file previews, web browsing, and AI assistance. It runs on MacOS, Linux, and Windows.
+Snorkeling is an open-source AI coding workspace built on top of [Wave Terminal](https://github.com/wavetermdev/waveterm). It keeps Wave's terminal, remote connection, file preview, editor, AI, widget, and layout foundations, then adds workflow features for day-to-day AI-assisted development.
 
-Modern development involves constantly switching between terminals and browsers - checking documentation, previewing files, monitoring systems, and using AI tools. Wave brings these graphical tools directly into the terminal, letting you control them from the command line. This means you can stay in your terminal workflow while still having access to the visual interfaces you need.
+The goal is simple: keep terminals, files, version control, and AI coding agents in one workspace so you switch windows less and keep more context attached to the work you are doing.
 
-Check out [Getting Started](./gettingstarted) for installation instructions.
+Check out [Getting Started](./gettingstarted) for installation instructions, or start with [Snorkeling Features](./snorkeling-features) to see what this fork adds.
 
-![Wave Screenshot](./img/wave-screenshot.webp)
+![Snorkeling Screenshot](./img/wave-screenshot.webp)
 
 <CardGroup>
   <Card
-    href="./waveai"
+    href="./snorkeling-features"
     icon="fa-sparkles"
-    title="Wave AI"
-    description="Context-aware terminal assistant with access to terminal output, widgets, and filesystem."
+    title="Snorkeling Features"
+    description="Agent launch, AI session browsing, file workflows, VCS blocks, and Snorkeling-specific release behavior."
   />
   <Card
-    href="./customization"
-    icon="fa-paintbrush"
-    title="Customization"
-    description="Set up tabs and terminals to match your workflow needs."
-  />
-  <Card
-    href="./keybindings"
-    icon="fa-keyboard"
-    title="Key Bindings"
-    description="Boost efficiency with keyboard shortcuts for faster navigation."
-  />
-  <Card
-    href="./layout"
-    icon="fa-grid-2"
-    title="Layout"
-    description="Organize your workspace using our layout system."
+    href="./gettingstarted"
+    icon="fa-rocket"
+    title="Getting Started"
+    description="Install Snorkeling from GitHub Releases and learn the core workspace model."
   />
   <Card
     href="./connections"
     icon="fa-network-wired"
     title="Remote Connections"
-    description="Quickly SSH or connect to remote machines in one step."
+    description="Connect to SSH and WSL environments, with Snorkeling's wsh helper installed under ~/.snorkeling."
   />
   <Card
-    href="./widgets"
-    icon="fa-rocket"
-    title="Widgets"
-    description="Explore built-in tools to extend your terminal’s functionality."
+    href="./config"
+    icon="fa-sliders"
+    title="Configuration"
+    description="Understand settings.json, config/data directories, and the legacy WAVETERM_* environment variables still used by the runtime."
+  />
+  <Card
+    href="./waveai"
+    icon="fa-message-bot"
+    title="AI"
+    description="Use inherited Wave AI modes and combine them with Snorkeling's local Agent and Sessions workflows."
   />
   <Card
     href="./wsh"
     icon="fa-rectangle-terminal"
     title="wsh Command"
-    description="Control Wave and launch widgets directly from the command line."
+    description="Control Snorkeling widgets and connections from the command line. The CLI name remains wsh."
   />
 </CardGroup>
 
@@ -67,7 +61,7 @@ Check out [Getting Started](./gettingstarted) for installation instructions.
 
 :::info
 
-If you have a question, please feel free to ask us in [Discord](https://discord.gg/XfvZ334gwU). If you'd like to file a bug/enchancement, please use [Github Issues](https://github.com/wavetermdev/waveterm/issues). These docs are also open-source and we do accept PRs for docs [here](https://github.com/wavetermdev/waveterm/blob/main/docs). You can click the "Edit this page" link at the bottom of the page to get taken directly to the editor page for that document in GitHub.
+Snorkeling is a customization fork. Some internal names, command names, and environment variables still intentionally use Wave or `WAVETERM_*` identifiers because the current runtime still exposes those interfaces.
 
 :::
 
@@ -76,6 +70,7 @@ If you have a question, please feel free to ask us in [Discord](https://discord.
 Other References:
 
 - [Configuration](./config)
+- [Connections](./connections)
 - [Custom Widgets](./customwidgets)
 - [Full wsh reference](./wsh-reference)
 - [Telemetry](./telemetry)
@@ -84,17 +79,7 @@ Other References:
 
 </div>
 
-## Roadmap
-
-Want to provide input to our future releases? Connect with us on [Discord](https://discord.gg/XfvZ334gwU) or open a [Feature Request](https://github.com/wavetermdev/waveterm/issues/new/choose)!
-
 ## Links
 
-- **Homepage** https://waveterm.dev
-- **Download** https://waveterm.dev/download
-- **Discord** https://discord.gg/XfvZ334gwU
-- **GitHub** https://github.com/wavetermdev/waveterm/
-
-## Looking for WaveLegacy documentation?
-
-WaveLegacy docs can be found at [legacydocs.waveterm.dev](https://legacydocs.waveterm.dev).
+- **GitHub** https://github.com/Nita121388/snorkeling
+- **Upstream Wave Terminal** https://github.com/wavetermdev/waveterm

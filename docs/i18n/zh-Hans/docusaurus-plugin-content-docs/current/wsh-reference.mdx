@@ -12,7 +12,7 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # wsh 命令 {#wsh-command}
 
-`wsh` 命令始终可以在 Wave block 中使用。它是一个强大的工具，可用于和 Wave block 交互，并在 CLI 与 widget GUI 之间桥接数据。
+`wsh` 命令始终可以在 Snorkeling block 中使用。它是一个强大的工具，可用于和 Snorkeling block 交互，并在 CLI 与 widget GUI 之间桥接数据。
 
 本文是详细的 `wsh` 参考文档。关于 `wsh` 功能概览，请参阅 [wsh 命令文档](/wsh)。
 
@@ -27,7 +27,7 @@ wsh view [path]
 wsh view -m [path]           # 以放大 block 打开
 ```
 
-你可以用这个命令快速预览图片、Markdown 文件和目录。对于代码/文本文件，它会打开一个 codeedit block，你可以在 Wave 的内嵌图形编辑器中快速编辑文件。
+你可以用这个命令快速预览图片、Markdown 文件和目录。对于代码/文本文件，它会打开一个 codeedit block，你可以在 Snorkeling 的内嵌图形编辑器中快速编辑文件。
 
 ---
 
@@ -38,7 +38,7 @@ wsh edit [path]
 wsh edit -m [path]           # 以放大 block 打开
 ```
 
-这会为指定文件打开一个 codeedit block，适合在 Wave 的图形编辑器中快速编辑本地或远程机器上的文件。该命令会在打开 block 后立即返回。
+这会为指定文件打开一个 codeedit block，适合在 Snorkeling 的图形编辑器中快速编辑本地或远程机器上的文件。该命令会在打开 block 后立即返回。
 
 如需集成 `$EDITOR`（例如配合 `git commit` 使用），请参阅 [`wsh editor`](#editor)。它会阻塞直到编辑器关闭。
 
@@ -51,7 +51,7 @@ wsh editor [path]
 wsh editor -m [path]         # 以放大 block 打开
 ```
 
-该命令会为指定文件打开一个 codeedit block，并且**阻塞直到编辑器关闭**。这适合设置 `$EDITOR` 环境变量，让 CLI 工具（例如 `git commit`、`crontab -e`）在 Wave 的图形编辑器中打开文件：
+该命令会为指定文件打开一个 codeedit block，并且**阻塞直到编辑器关闭**。这适合设置 `$EDITOR` 环境变量，让 CLI 工具（例如 `git commit`、`crontab -e`）在 Snorkeling 的图形编辑器中打开文件：
 
 ```sh
 export EDITOR="wsh editor"
@@ -107,7 +107,7 @@ blockid 格式：
 ```sh
 wsh setmeta -b [blockid] [key]=[value]
 wsh setmeta -b [blockid] file=~/myfile.txt
-wsh setmeta -b [blockid] url=https://waveterm.dev/
+wsh setmeta -b [blockid] url=https://github.com/Nita121388/snorkeling
 
 # 使用给定 JSON 文件设置当前 tab 的元数据
 wsh setmeta -b tab --json [jsonfile]
@@ -130,7 +130,7 @@ wsh getmeta -b [other-tab-id] "bg:*" --clear-prefix | wsh setmeta -b tab --json 
 
 ## ai
 
-将内容追加到 Wave AI 侧边栏。文件会作为真正的文件附件添加（支持图片、PDF 和文本），而不是编码成文本。默认情况下，内容会添加到侧边栏但不会自动提交，方便你在发送给 AI 前检查并补充更多上下文。
+将内容追加到 Snorkeling AI 侧边栏。文件会作为真正的文件附件添加（支持图片、PDF 和文本），而不是编码成文本。默认情况下，内容会添加到侧边栏但不会自动提交，方便你在发送给 AI 前检查并补充更多上下文。
 
 你可以一次附加多个文件（最多 15 个）。使用 `-m` 可以随文件添加消息，使用 `-s` 可以立即自动提交，使用 `-n` 可以开始新的聊天对话。使用 `-` 可从 stdin 读取。
 
@@ -173,7 +173,7 @@ wsh ai architecture.png api-spec.pdf server.go -m "review the system design"
 
 ## editconfig
 
-你可以使用这个命令轻松打开 Wave 的任意配置文件。
+你可以使用这个命令轻松打开 Snorkeling 的配置文件。
 
 ```sh
 wsh editconfig [config-file-name]
@@ -421,7 +421,7 @@ wsh wsl [-d <distribution-name>]
 
 ## web
 
-`web` 命令会在 Wave Terminal 的 Web block 中打开 URL。
+`web` 命令会在 Snorkeling 的 Web block 中打开 URL。
 
 ```sh
 wsh web open [url] [-m] [-r blockid]
@@ -438,10 +438,10 @@ wsh web open [url] [-m] [-r blockid]
 
 ```sh
 # 打开 URL
-wsh web open https://waveterm.dev
+wsh web open https://github.com/Nita121388/snorkeling
 
 # 使用已配置搜索引擎搜索
-wsh web open "wave terminal documentation"
+wsh web open "snorkeling documentation"
 
 # 以放大模式打开
 wsh web open -m https://github.com
@@ -456,7 +456,7 @@ wsh web open -r 2 https://example.com
 
 ## notify
 
-`notify` 命令会从 Wave Terminal 创建桌面通知。
+`notify` 命令会从 Snorkeling 创建桌面通知。
 
 ```sh
 wsh notify [message] [-t title] [-s]
@@ -512,7 +512,7 @@ wsh conn reinstall [user@host]
 wsh conn reinstall [wsl://<distribution-name>]
 ```
 
-该命令会在指定连接上重新安装 Wave Shell Extensions。
+该命令会在指定连接上重新安装 Snorkeling 远程 shell helper。
 
 ### disconnect
 
@@ -580,17 +580,17 @@ wsh setconfig [<config-name>=<config-value>]
 
 :::note
 
-Wave Terminal 可以管理远程 SSH 主机上的文件。文件通过 URI 寻址，具体格式取决于存储系统。如果未指定 scheme，该文件会被视为本地连接上的文件。
+Snorkeling 可以管理远程 SSH 主机上的文件。文件通过 URI 寻址，具体格式取决于存储系统。如果未指定 scheme，该文件会被视为本地连接上的文件。
 
 URI 格式：`[profile]:[uri-scheme]://[connection]/[path]`
 
 支持的 URI scheme：
 
-- `wsh` - 用于通过 WSH helper 经 SSH 访问远程主机上的文件。支持将文件流式传输到 Wave 和其他远程端。
+- `wsh` - 用于通过 WSH helper 经 SSH 访问远程主机上的文件。支持将文件流式传输到 Snorkeling 和其他远程端。
 
   对于 WSH URI，如果你已经在 `"connections.json"` 或 `"~/.ssh/config"` 中配置了远程主机，则 profile 是可选的。
 
-  如果提供 profile，则必须在 Wave 配置目录中的 `"profiles.json"` 中定义。
+  如果提供 profile，则必须在 Snorkeling 配置目录中的 `"profiles.json"` 中定义。
 
   格式：`wsh://[remote]/[path]`
 
@@ -781,7 +781,7 @@ widget 的配置决定初始 block 设置，包括视图类型、元数据和默
 
 ## getvar/setvar
 
-Wave Terminal 提供命令，用于在不同作用域（block、tab、workspace 或整个客户端）管理持久变量。
+Snorkeling 提供命令，用于在不同作用域（block、tab、workspace 或整个客户端）管理持久变量。
 
 ### setvar
 
@@ -923,13 +923,13 @@ wsh termscrollback --lastcommand | grep "ERROR"
 
 ## wavepath
 
-`wavepath` 命令用于获取多个 Wave Terminal 目录和文件的路径，包括配置、数据存储和日志。
+`wavepath` 命令用于获取多个 Snorkeling 目录和文件的路径，包括配置、数据存储和日志。这个命令名继承自上游 Wave，用于保持兼容。
 
 ```sh
 wsh wavepath {config|data|log}
 ```
 
-该命令会返回所请求的 Wave Terminal 系统目录或文件的完整路径。它适合访问 Wave 配置文件、数据存储或检查日志。
+该命令会返回所请求的 Snorkeling 系统目录或文件的完整路径。它适合访问 Snorkeling 配置文件、数据存储或检查日志。
 
 标志：
 
@@ -961,9 +961,9 @@ wsh wavepath -t log
 
 该命令会显示以下内容的完整路径：
 
-- `config` - Wave Terminal 存储配置文件的位置
-- `data` - Wave Terminal 存储持久数据的位置
-- `log` - Wave Terminal 主日志文件
+- `config` - Snorkeling 存储配置文件的位置
+- `data` - Snorkeling 存储持久数据的位置
+- `log` - Snorkeling 主日志文件
 
 :::tip
 使用 `-t` 标志配合 log 路径，可以快速查看最近日志条目，而无需打开完整日志文件。这对故障排除尤其有用。

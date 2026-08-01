@@ -7,7 +7,7 @@ title: "入门指南"
 import { PlatformProvider, PlatformSelectorButton, PlatformItem } from "@site/src/components/platformcontext";
 import { Kbd } from "@site/src/components/kbd";
 
-Wave Terminal 是一个现代终端，在传统终端功能之外，还包含网页浏览、文件预览和 AI 辅助等图形化能力。本指南会帮助你开始使用。
+Snorkeling 是基于 Wave Terminal 的现代 AI 编程工作台。它包含终端、图形化组件、文件预览、远程连接、内置编辑器、AI 能力，以及 Snorkeling 专属的 Agent 和 Sessions 工作流。
 
 ## 安装
 
@@ -28,99 +28,87 @@ Wave Terminal 是一个现代终端，在传统终端功能之外，还包含网
 - 支持架构：x64
 - 支持系统版本：Windows 10 1809 或更高版本、Windows 11
 
-:::note
-
-ARM64 支持已经在计划中，但目前被上游依赖阻塞。详情见 [Windows ARM Support](https://github.com/wavetermdev/waveterm/issues/928)。
-
-:::
-
 </PlatformItem>
 
 <PlatformItem platforms={["linux"]}>
 
 - 支持架构：x64、ARM64
-- 支持系统版本：需要 glibc-2.28 或更高版本，例如 Debian >=10、RHEL >=8、Ubuntu >=20.04 等
+- 支持系统版本：需要 glibc 2.28 或更高版本，例如 Debian >=10、RHEL >=8、Ubuntu >=20.04 等
 
 </PlatformItem>
 
-### 包管理器
+### 从 GitHub Releases 下载
+
+Snorkeling 发布产物位于 [Snorkeling GitHub Releases](https://github.com/Nita121388/snorkeling/releases)。请下载与你的平台匹配的安装包。
 
 <PlatformItem platforms={["mac"]}>
 
-#### Homebrew
-
-```bash
-brew install --cask wave
-```
+macOS 使用 `.dmg` 或 `.zip` 产物。如果构建未签名，首次启动前 macOS 可能要求你在 **系统设置 > 隐私与安全性** 中允许该应用。
 
 </PlatformItem>
 
 <PlatformItem platforms={["windows"]}>
 
-#### Windows Package Manager
-
-```powershell
-winget install CommandLine.Wave
-```
-
-#### Chocolatey
-
-```powershell
-choco install wave
-```
+Windows 使用 `.exe`、`.msi` 或 `.zip` 产物。
 
 </PlatformItem>
 
 <PlatformItem platforms={["linux"]}>
 
-#### Snap
-
-```bash
-sudo snap install --classic waveterm
-```
-
-其他选择：[AUR package](https://aur.archlinux.org/packages/waveterm)（社区维护）、[Nix package](https://search.nixos.org/packages?channel=unstable&show=waveterm)（社区维护）
+Linux 可根据发行版和安装偏好选择 `.deb`、`.rpm`、`.pacman`、`.snap` 或 `.AppImage` 等产物。
 
 </PlatformItem>
 
-你也可以直接从 [Downloads page](https://www.waveterm.dev/download) 下载安装包。
+:::note
+
+旧的 Wave 包管理器命令会安装上游 Wave Terminal，不会安装 Snorkeling。除非后续明确提供 Snorkeling 专属包源，否则请使用 Snorkeling release 产物。
+
+:::
 
 ## 核心概念
 
-### 标签页和块
+### 标签页和区块
 
-- **标签页**：类似浏览器标签页，用来整理工作。使用 <Kbd k="Cmd:t"/> 创建新标签页。
-- **块**：Wave 的基本工作单元。每个块都可以是终端、网页浏览器、文件预览或其他组件。
-- **布局**：可以拖拽、放置和调整块大小，创建适合你的布局。
+- **标签页**：类似浏览器标签页，用来组织工作。使用 <Kbd k="Cmd:t"/> 创建新标签页。
+- **区块**：Snorkeling 的基本工作单元。区块可以是终端、网页浏览器、文件预览、编辑器、AI 面板、Sessions 视图、Version Control 视图或其他组件。
+- **布局**：区块可以拖拽、放置、调整大小、最小化、复制到其他标签页，也可以移动到另一个窗口。
 
 ### 主要功能
 
-1. **终端功能**
+1. **终端能力**
 
-   - 支持常见 shell，例如 bash、zsh、fish
-   - 支持标准终端功能，例如 readline、控制序列等
-   - 包含 `wsh` 命令，可与 Wave 的 GUI 功能交互
-   - 大多数平台支持 GPU 加速
+   - 支持 bash、zsh、fish、PowerShell、Git Bash 等常见 shell。
+   - 支持 readline、控制序列等标准终端行为。
+   - 内置 `wsh` 命令，用来和 Snorkeling 图形化功能交互。
+   - 大多数平台使用 GPU 加速。
 
-2. **图形化组件**
+2. **AI 编程工作流**
 
-   - 预览文件，例如图片、视频、Markdown、带语法高亮的代码
-   - 浏览网页
-   - 直接在终端中提问并获得 AI 帮助，也可以设置多个 AI 模型
-   - 基础系统监控图表
+   - 从当前终端、SSH 连接或 Files 路径启动 Agent 区块。
+   - 在 Sessions 视图中浏览本地 Codex 和 Claude Code 会话历史。
+   - 将支持的会话恢复到新的终端区块。
+   - 通过 `settings.json` 配置 Agent profiles。
 
-3. **远程连接**
-   - 使用连接按钮 <i className="fa-sharp fa-laptop"/> 轻松建立 SSH 连接
-   - Windows 上支持 WSL 集成
-   - 本地和远程会话体验一致
+3. **图形化工作区**
+
+   - 预览图片、视频、Markdown、带语法高亮的代码等文件。
+   - 浏览网页并使用自定义组件。
+   - 使用 Files 完成复制、粘贴、重命名、删除、路径复制和 Agent 启动。
+   - 使用 Version Control 区块查看 Git/SVN 状态、diff、历史、提交和同步。
+
+4. **远程连接**
+
+   - 点击连接按钮 <i className="fa-sharp fa-laptop"/> 连接 SSH 主机。
+   - Windows 上支持 WSL 集成。
+   - 将 `wsh` helper 安装到远端机器的 `~/.snorkeling/bin/wsh` 后，可以获得更完整的远程组件和命令能力。
 
 ## 快速开始
 
 1. **打开第一个新标签页**
 
-   - 新的 Wave 标签页会从一个终端块开始
-   - 像使用普通终端一样使用它
-   - 使用 <Kbd k="Cmd:n"/> 创建更多终端块
+   - 新的 Snorkeling 标签页默认从一个终端区块开始。
+   - 像普通终端一样使用它。
+   - 使用 <Kbd k="Cmd:n"/> 创建更多终端区块。
 
 2. **试几个基础命令**
 
@@ -135,30 +123,36 @@ sudo snap install --classic waveterm
    wsh ai -m "how do I find large files in my current directory?" -s
    ```
 
-3. **自定义布局**
+3. **启动 Agent**
 
-   - 拖拽块标题来重新排列
-   - 悬停在块之间可调整大小
-   - 右键点击标签页标题，可设置背景选项
-   - 右键点击块标题，可查看该块专属选项
+   - 使用侧边栏 `Agent` 入口，从当前工作区上下文启动 Agent。
+   - 如果有多个终端或文件上下文匹配，请在选择器中确认目标上下文。
+   - 可在 [配置](./config) 中通过 `agent:defaultprofile` 和 `agent:profiles` 配置默认 Agent 行为。
 
-4. **连接远程机器**
-   - 点击 <i className="fa-sharp fa-laptop"/> 按钮
-   - 输入 `username@hostname` 建立 SSH 连接
-   - 或在 Windows 上选择一个 WSL 发行版
+4. **浏览 AI Sessions**
+
+   - 从侧边栏打开 `Sessions`。
+   - 筛选 Codex 和 Claude Code 会话。
+   - 标记重要会话、添加备注、复制会话信息，或恢复支持的会话。
+
+5. **连接远程机器**
+
+   - 点击 <i className="fa-sharp fa-laptop"/> 按钮。
+   - 输入 `username@hostname` 建立 SSH 连接。
+   - 或在 Windows 上选择一个 WSL 发行版。
 
 ## 下一步
 
-- 查看 [快捷键](./keybindings)，提高使用效率
-- 学习 [标签页布局](./layout)，整理工作空间
-- 设置 [自定义组件](./customwidgets)，快速访问你的工具
-- 配置 [Wave AI](./waveai)，使用你偏好的 AI 模型
-- 查看 [配置](./config)，了解更详细的自定义选项
+- 阅读 [Snorkeling 功能概览](./snorkeling-features)，了解这个二次开发版本增加了什么。
+- 查看 [快捷键](./keybindings)，提高使用效率。
+- 学习 [标签页布局](./layout)，整理工作空间。
+- 配置 [AI](./waveai) 和 [AI Modes](./waveai-modes)，接入你偏好的服务商。
+- 查看 [配置](./config)，了解更详细的自定义选项。
 
 ## 获取帮助
 
-- 加入 [Discord community](https://discord.gg/XfvZ334gwU) 获取帮助和参与讨论
-- 在 [GitHub](https://github.com/wavetermdev/waveterm/issues) 报告问题
-- 查看 [FAQ](./faq) 了解常见问题
+- 在 [GitHub](https://github.com/Nita121388/snorkeling/issues) 报告 Snorkeling 问题。
+- 查看 [FAQ](./faq) 了解常见问题。
+- 如果问题来自继承的上游行为，[Wave Terminal 仓库](https://github.com/wavetermdev/waveterm) 可作为背景参考。
 
 </PlatformProvider>

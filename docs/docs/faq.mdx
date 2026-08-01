@@ -8,63 +8,62 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # FAQ
 
+### Is Snorkeling the same as Wave Terminal?
+
+No. Snorkeling is a customization fork built on top of Wave Terminal. It inherits many Wave capabilities, then adds Snorkeling-specific workflows such as Agent launch, AI Sessions browsing, Files improvements, Version Control blocks, and Snorkeling release packaging.
+
+### Why do some names still say Wave or WAVETERM?
+
+Some command names, config keys, environment variables, package names, and internal code paths still use upstream Wave names. The most visible examples are the `wsh` CLI, the `WAVETERM_*` environment variables, and the inherited `waveai:*` configuration keys. These are runtime compatibility facts, not documentation typos.
+
 ### How can I see the block numbers?
 
-The block numbers will appear when you hold down Ctrl-Shift (and disappear once you release the key combo).
+The block numbers appear when you hold down Ctrl-Shift and disappear once you release the key combo.
 
 ### How do I make a remote connection?
 
-There is a button in the header. Click the <i className="fa-sharp fa-laptop"/> or <i className="fa-sharp fa-arrow-right-arrow-left"/>
-and type the `[user]@[host]` that you wish to connect to.
+There is a button in the header. Click the <i className="fa-sharp fa-laptop"/> or <i className="fa-sharp fa-arrow-right-arrow-left"/> icon and type the `[user]@[host]` that you wish to connect to.
 
 ### On Windows, how can I use Git Bash as my default shell?
 
-Wave automatically detects Git Bash installations and adds them to the connection dropdown. Simply click the <i className="fa-sharp fa-laptop"/> or <i className="fa-sharp fa-arrow-right-arrow-left"/> button in the block header and select "Git Bash" from the list.
+Snorkeling automatically detects Git Bash installations and adds them to the connection dropdown. Click the <i className="fa-sharp fa-laptop"/> or <i className="fa-sharp fa-arrow-right-arrow-left"/> button in the block header and select "Git Bash" from the list.
 
-Alternatively, you can manually set Git Bash as your default shell by setting the configuration variable `term:localshellpath` to
-the location of the Git Bash "bash.exe" binary. By default it is located at "C:\Program Files\Git\bin\bash.exe".
-Just remember in JSON, backslashes need to be escaped. So add this to your [settings.json](./config) file:
+Alternatively, you can manually set Git Bash as your default shell by setting the configuration variable `term:localshellpath` to the location of the Git Bash `bash.exe` binary. By default it is located at `C:\Program Files\Git\bin\bash.exe`.
+
+Remember that backslashes need to be escaped in JSON:
 
 ```json
 "term:localshellpath": "C:\\Program Files\\Git\\bin\\bash.exe"
 ```
 
-### Can I use WSH outside of Wave?
+### Can I use wsh outside of Snorkeling?
 
-`wsh` is an internal CLI for extending control over Wave to the command line, you can learn more about it [here](./wsh). To prevent misuse by other applications, `wsh` requires an access token provided by Wave to work and will not function outside of the app.
+`wsh` is an internal CLI for extending control over Snorkeling to the command line. To prevent misuse by other applications, `wsh` requires an access token provided by Snorkeling for most app-control operations and will not behave as a standalone general-purpose CLI.
 
+### Why does Snorkeling warn me about ARM64 translation when it launches?
 
-## Why does Wave warn me about ARM64 translation when it launches?
+macOS and Windows both have compatibility layers that allow x64 applications to run on ARM computers. This helps more apps run on these systems while developers work to add native ARM support, but it can have performance costs.
 
-macOS and Windows both have compatibility layers that allow x64 applications to run on ARM computers. This helps more apps run on these systems while developers work to add native ARM support to their applications. However, it comes with significant performance tradeoffs.
+For the best experience, use a Snorkeling build that matches your machine architecture. You can find available artifacts on the [Snorkeling GitHub Releases page](https://github.com/Nita121388/snorkeling/releases).
 
-To get the best experience using Wave, it is recommended that you uninstall Wave and reinstall the version that is natively compiled for your computer. You can find the right version by consulting our [Installation Instructions](./gettingstarted#installation).
+You can disable this warning by setting `app:dismissarchitecturewarning=true` in [your configuration](./config).
 
-You can disable this warning by setting `app:dismissarchitecturewarning=true` in [your configurations](./config).
+### How do I get Snorkeling beta or release builds?
 
-## How do I join the beta builds of Wave?
+Snorkeling builds are published from the `Nita121388/snorkeling` repository. Use the [GitHub Releases page](https://github.com/Nita121388/snorkeling/releases) and download the artifact for your platform.
 
-Wave publishes to two channels, `latest` and `beta`. If you've installed the app for macOS, Windows, or Linux via DEB or RPM, you can set the following configurations in your `settings.json` (see [Configuration](./config) for more info):
+Do not use upstream Wave package-manager commands if you intend to install Snorkeling; they install Wave Terminal.
 
-```json
-"autoupdate:enabled": true,
-"autoupdate:channel": "beta"
-```
-
-If you've installed via Snap, you can use the following command:
-
-```sh
-sudo snap install waveterm --classic --beta
-```
-
-## Can I use Wave AI without enabling telemetry?
+### Can I use inherited Wave AI features without enabling telemetry?
 
 <VersionBadge version="v0.13.1" noLeftMargin={true}/>
 
-Yes! Wave AI is normally disabled when telemetry is not enabled. However, you can enable Wave AI features without telemetry by configuring your own custom AI model (either a local model or using your own API key).
+Yes. Inherited Wave AI cloud modes may depend on telemetry-related settings, but you can use your own custom AI mode with a local model or your own API key.
 
-To enable Wave AI without telemetry:
-1. Configure a custom AI mode (see [Wave AI documentation](./waveai-modes))
-2. Set `waveai:defaultmode` to your custom mode's key in your Wave settings
+To use AI without telemetry:
 
-Once you've completed both steps, Wave AI will be enabled and you can use it completely privately without telemetry. This allows you to use local models like Ollama or your own API keys with providers like OpenAI, OpenRouter, or others.
+1. Configure a custom AI mode. See [AI Modes](./waveai-modes).
+2. Set `waveai:defaultmode` to your custom mode's key in Snorkeling settings.
+3. Set `telemetry:enabled=false` if you want telemetry disabled.
+
+After that, Snorkeling can use providers such as Ollama, OpenAI-compatible APIs, OpenRouter, or others through your own configuration.

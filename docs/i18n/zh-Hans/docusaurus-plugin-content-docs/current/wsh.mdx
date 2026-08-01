@@ -4,13 +4,13 @@ id: "wsh"
 title: "wsh 概览"
 ---
 
-`wsh` 命令提供 Wave Terminal 的核心命令行接口，让用户可以从命令行同时操作终端和图形化元素。本指南介绍 `wsh` 的基础用法和主要功能。
+`wsh` 命令提供 Snorkeling 的核心命令行接口。这个命令名继承自上游 Wave，用于保持兼容；它让用户可以从命令行同时操作终端和图形化元素。本指南介绍 `wsh` 的基础用法和主要功能。
 
 所有 `wsh` 命令及其参数请参阅 [wsh 参考](/wsh-reference)。
 
 ## 概览
 
-从核心上看，`wsh` 让终端命令和 Wave 的图形化 block 可以无缝交互。你可以用它：
+从核心上看，`wsh` 让终端命令和 Snorkeling 的图形化 block 可以无缝交互。你可以用它：
 
 - 直接从命令行控制图形化 widget
 - 在终端会话和 GUI 组件之间共享数据
@@ -23,7 +23,7 @@ title: "wsh 概览"
 
 ### 与 Block 交互
 
-`wsh` 支持通过命令行直接与 Wave 的图形化 block 交互。例如：
+`wsh` 支持通过命令行直接与 Snorkeling 的图形化 block 交互。例如：
 
 ```bash
 # 在编辑器中打开文件
@@ -80,14 +80,14 @@ wsh file cat /~/config/app.json
 
 ### Block 管理
 
-Wave 中的每个可视元素都是一个 block，`wsh` 可以完整控制这些 block（按住 Ctrl+Shift 可查看 block 编号）：
+Snorkeling 中的每个可视元素都是一个 block，`wsh` 可以完整控制这些 block（按住 Ctrl+Shift 可查看 block 编号）：
 
 ```bash
 # 创建一个显示网页的新 block
 wsh web open github.com
 
 # 在新 block 中执行网页搜索
-wsh web open "wave terminal"
+wsh web open "snorkeling docs"
 
 # 在新 block 中运行命令，完成后自动关闭
 wsh run -x -- npm test
@@ -135,7 +135,7 @@ wsh setvar -b tab SHARED_ENV=staging
 
 ### AI 辅助开发
 
-`wsh ai` 命令会把内容追加到 Wave AI 侧边栏。默认情况下，文件会被附加但不会自动提交，方便你在发送前检查并补充更多上下文。
+`wsh ai` 命令会把内容追加到 Snorkeling AI 侧边栏。默认情况下，文件会被附加但不会自动提交，方便你在发送前检查并补充更多上下文。
 
 ```bash
 # 将输出管道传入 AI 侧边栏（在 UI 中提问）

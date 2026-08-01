@@ -8,7 +8,7 @@ import { VersionBadge } from "@site/src/components/versionbadge";
 
 # 连接 {#connections}
 
-Wave 允许用户连接到各种机器，并以保留各自独特行为的方式将它们统一到一起。目前，这包括 SSH 远程连接和本地 WSL 连接。
+Snorkeling 允许用户连接到各种机器，并以保留各自独特行为的方式将它们统一到一起。目前，这包括 SSH 远程连接和本地 WSL 连接。
 
 ## 在块中访问连接 {#access-a-connection-in-a-block}
 
@@ -34,14 +34,14 @@ Wave 允许用户连接到各种机器，并以保留各自独特行为的方式
 
 ## 什么是 wsh Shell 扩展？ {#what-are-wsh-shell-extensions}
 
-`wsh` 是一个小程序，无论你当前连接到哪台机器，它都可以帮助管理 waveterm。它始终包含在你的主机上；连接 SSH 和 WSL 连接时，也可以选择安装它。如果安装到连接中，它会位于 `~/.waveterm/bin/wsh`。随后，当 wave 连接到你的连接时（并且仅在 wave 连接到你的连接时），会发生以下事情：
+`wsh` 是一个小程序，无论你当前连接到哪台机器，它都可以帮助管理 Snorkeling。它始终包含在你的主机上；连接 SSH 和 WSL 连接时，也可以选择安装它。如果安装到连接中，它会位于 `~/.snorkeling/bin/wsh`。随后，当 Snorkeling 连接到你的连接时（并且仅在 Snorkeling 连接到你的连接时），会发生以下事情：
 
-- `~/.waveterm/bin` 会被添加到该独立会话的 `PATH` 中。这样用户无需提供完整路径即可使用 `wsh` 命令。
+- `~/.snorkeling/bin` 会被添加到该独立会话的 `PATH` 中。这样用户无需提供完整路径即可使用 `wsh` 命令。
 - 多个环境变量会被注入到会话中，让某些 `wsh` 任务更容易完成。这些变量在[下方列出](#additional-environment-variables)。
 - `connections.json` 中 `cmd:env` 条目里的用户自定义环境变量会被注入到会话中。
 - 会运行位于 `connections.json` 中的用户自定义初始化脚本。关于这些脚本的更多信息，请参阅下面的章节。
 
-如果由于某些原因失败，Wave 会尝试在没有 `wsh` 的情况下运行。块标题中会出现一个小的 **<code><i className="fa-link-slash fa-solid fa-sharp"/></code>** 图标来表示这一点。关于 `wsh` 能力的更多信息，请参阅 [wsh 命令](/wsh)。如果想查看 `wsh` 源代码，可以在[这里](https://github.com/wavetermdev/waveterm/tree/main/cmd/wsh)找到。
+如果由于某些原因失败，Snorkeling 会尝试在没有 `wsh` 的情况下运行。块标题中会出现一个小的 **<code><i className="fa-link-slash fa-solid fa-sharp"/></code>** 图标来表示这一点。关于 `wsh` 能力的更多信息，请参阅 [wsh 命令](/wsh)。当前 CLI 名称仍然是 `wsh`，这是兼容当前运行时的真实接口。
 
 安装 `wsh` 后，你可以像查看主机一样查看远程机器上的某些 widget，例如 `files` 和 `sysinfo` widget。此外，`wsh` 还可用于影响多台机器上的 widget。举个简单例子，你可以在远程机器的终端窗口中使用 `wsh` 命令关闭主机上的某个 widget。关于可以用 `wsh` 完成哪些事情，请查看[这里](/wsh)。
 
@@ -51,18 +51,18 @@ Wave 允许用户连接到各种机器，并以保留各自独特行为的方式
 
 | 变量名        | 说明                                                                   |
 | -------------------- | ----------------------------------------------------------------------------- |
-| TERM_PROGRAM         | 在 wave 中设置为 `waveterm`。                                                    |
-| WAVETERM             | 在 wave 中设置为 1。                                                     |
+| TERM_PROGRAM         | 当前仍设置为 `waveterm`，用于兼容上游接口。                                                    |
+| WAVETERM             | 在 Snorkeling 管理的会话中设置，用于兼容上游接口。                                                     |
 | WAVETERM_BLOCKID     | 包含当前终端 widget 的块 ID。                  |
 | WAVETERM_CLIENTID    | 当前终端 widget 使用的 RPC Client ID。          |
 | WAVETERM_CONN        | 当前终端 widget 使用的远程连接名称。 |
 | WAVETERM_TABID       | 包含当前终端 widget 的标签页 ID。                    |
-| WAVETERM_VERSION     | 当前 wave 的 semver 版本。                                           |
+| WAVETERM_VERSION     | 当前 Snorkeling 应用版本。                                           |
 | WAVETERM_WORKSPACEID | 包含当前终端 widget 的 workspace ID。              |
 
 # 初始化脚本 {#initialization-scripts}
 
-Wave 提供了在连接远程机器时运行初始化脚本的选项。这些脚本定义在 `connections.json` 中，可以是脚本路径，也可以是直接写在文件中的短脚本。如果定义了多个脚本，会应用与当前 shell 最匹配的那个。脚本关键字如下：
+Snorkeling 提供了在连接远程机器时运行初始化脚本的选项。这些脚本定义在 `connections.json` 中，可以是脚本路径，也可以是直接写在文件中的短脚本。如果定义了多个脚本，会应用与当前 shell 最匹配的那个。脚本关键字如下：
 
 | 脚本关键字      | 应用的 Shell |
 | ------------------- | -------------------- |
@@ -122,14 +122,14 @@ Host myhost
 
 ## 内部 SSH 配置 {#internal-ssh-configuration}
 
-除了常规 ssh config 文件，wave 还拥有自己的配置文件，用于管理单独变量。这些变量包括：
+除了常规 ssh config 文件，Snorkeling 还拥有自己的配置文件，用于管理单独变量。这些变量包括：
 | 关键字 | 说明 |
 |---------|-------------|
 | conn:wshenabled | 此布尔值允许连接使用 `wsh`；如果设置为 `false`，该连接将永远不会使用 `wsh`。默认为 `true`。|
 | conn:askbeforewshinstall | 此布尔值用于在安装 wsh 前提示用户。如果设置为 false，`wsh` 会自动安装且不提示。默认为 `true`。|
-| conn:wshpath | 表示连接上 `wsh` 可执行文件路径的字符串。默认为 `"~/.waveterm/bin/wsh"`。|
+| conn:wshpath | 表示连接上 `wsh` 可执行文件路径的字符串。默认为 `"~/.snorkeling/bin/wsh"`。|
 | conn:shellpath | 表示连接上 shell 可执行文件路径的字符串。如果未设置，将使用连接上 `$SHELL` 的输出。|
-| conn:ignoresshconfig | 此布尔值允许 wave 在解析此连接关键字时忽略 `~/.ssh/config` 文件。会使用常规默认值，但对这些默认值的所有修改都必须改为在 `connections.json` 文件中指定。默认值为 false。|
+| conn:ignoresshconfig | 此布尔值允许 Snorkeling 在解析此连接关键字时忽略 `~/.ssh/config` 文件。会使用常规默认值，但对这些默认值的所有修改都必须改为在 `connections.json` 文件中指定。默认值为 false。|
 | display:hidden | 此布尔值会从下拉列表中隐藏该连接。默认为 `false`。 |
 | display:order | 此浮点数决定连接在连接下拉列表中的顺序。默认为 `0`。|
 | term:fontsize | 此整数可用于覆盖使用此连接的块的终端字号。块元数据优先于此设置。默认为 null，表示改用全局设置。 |
@@ -161,11 +161,11 @@ Host myhost
 
 ### SSH Agent 检测 {#ssh-agent-detection}
 
-Wave 会按以下顺序解析 identity agent 路径：
+Snorkeling 会按以下顺序解析 identity agent 路径：
 
 - 如果为连接设置了 `ssh:identityagent`（或 SSH config 中的 `IdentityAgent`），则使用该 socket 或 pipe。
-- 如果未在 Windows 上设置，Wave 会回退到内置 OpenSSH agent pipe `\\.\pipe\openssh-ssh-agent`。请确保 **OpenSSH Authentication Agent** 服务正在运行。
-- 如果未在 macOS/Linux 上设置，Wave 会查询你的 shell 环境中的 `SSH_AUTH_SOCK`，以自动检测 agent 路径。
+- 如果未在 Windows 上设置，Snorkeling 会回退到内置 OpenSSH agent pipe `\\.\pipe\openssh-ssh-agent`。请确保 **OpenSSH Authentication Agent** 服务正在运行。
+- 如果未在 macOS/Linux 上设置，Snorkeling 会查询你的 shell 环境中的 `SSH_AUTH_SOCK`，以自动检测 agent 路径。
 
 ### 内部配置示例 {#example-internal-configurations}
 
@@ -238,7 +238,7 @@ Wave 会按以下顺序解析 identity agent 路径：
 
 ### 为某个连接禁用 wsh {#disabling-wsh-for-a-connection}
 
-虽然 Wave 在首次连接远程时提供了禁用 `wsh` 的选项，但有些情况下你可能希望之后再禁用它。最简单的方法是编辑 `connections.json` 文件。假设该连接在下拉列表中显示为 `root@wshless`，那么可以使用下面这一行手动禁用：
+虽然 Snorkeling 在首次连接远程时提供了禁用 `wsh` 的选项，但有些情况下你可能希望之后再禁用它。最简单的方法是编辑 `connections.json` 文件。假设该连接在下拉列表中显示为 `root@wshless`，那么可以使用下面这一行手动禁用：
 
 ```json
 {
@@ -262,7 +262,7 @@ Wave 会按以下顺序解析 identity agent 路径：
 
 如果连接出现问题，最简单的第一步是在尝试连接的终端 widget 中启用调试。为此，请点击 **<code><i className="fa-gear fa-solid fa-sharp"/></code>** 按钮，并悬停在 **`Debug Connection`** 项上。随后可以选择两个日志级别：`Info` 和 `Verbose`。完成后，连接期间调试信息会打印到终端中。
 
-如果这还不够，也可以查看完整日志文件。为此，可以运行命令 `wsh wavepath log` 获取日志文件位置。
+如果这还不够，也可以查看完整日志文件。为此，可以运行命令 `wsh wavepath log` 获取日志文件位置。`wavepath` 子命令名当前仍保留用于兼容。
 
 ### 已知限制 {#known-limitations}
 
@@ -270,15 +270,15 @@ Wave 会按以下顺序解析 identity agent 路径：
 
 #### Shell 类型 {#shell-type}
 
-Wave 可以在以下 shell 中注入 `wsh`：
+Snorkeling 可以在以下 shell 中注入 `wsh`：
 
 - bash
 - zsh
 - pwsh (powershell)
 - fish
 
-如果 shell 不属于以上类型，`wsh` 命令可能默认无法工作。目前最简单的修复方式是切换 shell 类型。可以在要使用的连接对应的 `connections.json` 中，将 `conn:shellpath` 值设置为上述某个 shell 的路径。或者，也可以使用 `chsh` 命令更改该连接中的 shell，但这也会在 wave 之外生效。完成后，重启 wave 让更改生效。
+如果 shell 不属于以上类型，`wsh` 命令可能默认无法工作。目前最简单的修复方式是切换 shell 类型。可以在要使用的连接对应的 `connections.json` 中，将 `conn:shellpath` 值设置为上述某个 shell 的路径。或者，也可以使用 `chsh` 命令更改该连接中的 shell，但这也会在 Snorkeling 之外生效。完成后，重启 Snorkeling 让更改生效。
 
 #### sshd 中的 AllowTcpForwarding {#allowtcpforwarding-in-sshd}
 
-某些系统的 sshd 默认配置为禁用 TCP 转发。可以在该连接上的 `/etc/ssh/sshd_config` 文件中找到此配置。在该文件中搜索包含 `AllowTcpForwarding` 的行。如果它被设置为 `no`，这很可能就是 `wsh` 无法在该连接上工作的原因。为了让 `wsh` 正常工作，请将 `AllowTcpForwarding` 的值设置为 `yes` 或 `local`（两者提供的权限级别不同，但在此场景下都可用）。然后，使用远程机器提供的任意方法重启 `sshd` 服务。完成后重启 wave，使其用这项更改重新连接。
+某些系统的 sshd 默认配置为禁用 TCP 转发。可以在该连接上的 `/etc/ssh/sshd_config` 文件中找到此配置。在该文件中搜索包含 `AllowTcpForwarding` 的行。如果它被设置为 `no`，这很可能就是 `wsh` 无法在该连接上工作的原因。为了让 `wsh` 正常工作，请将 `AllowTcpForwarding` 的值设置为 `yes` 或 `local`（两者提供的权限级别不同，但在此场景下都可用）。然后，使用远程机器提供的任意方法重启 `sshd` 服务。完成后重启 Snorkeling，使其用这项更改重新连接。

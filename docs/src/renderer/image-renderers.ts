@@ -3,8 +3,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import React, { ReactNode } from "react";
 
-const waveLogo = join(__dirname, "../../static/img/logo/wave-dark.png");
-const waveLogoBase64 = `data:image/png;base64,${readFileSync(waveLogo).toString("base64")}`;
+const snorkelingLogo = join(__dirname, "../../static/img/logo/snorkeling-logo.svg");
+const snorkelingLogoBase64 = `data:image/svg+xml;base64,${readFileSync(snorkelingLogo).toString("base64")}`;
 
 const titleElement = ({ children }) =>
     React.createElement(
@@ -22,10 +22,10 @@ const titleElement = ({ children }) =>
         children
     );
 
-const waveLogoElement = React.createElement("img", {
-    src: waveLogoBase64,
+const snorkelingLogoElement = React.createElement("img", {
+    src: snorkelingLogoBase64,
     style: {
-        width: 300,
+        width: 160,
     },
 });
 
@@ -74,7 +74,7 @@ export const docOgRenderer: ImageRenderer<DocsPageData> = async (data, context) 
     const element = React.createElement(
         "div",
         { style: rootDivStyle },
-        waveLogoElement,
+        snorkelingLogoElement,
         headerElement("Documentation", null),
         React.createElement(titleElement, null, data.metadata.title),
         React.createElement("div", null, data.metadata.description.replace("&mdash;", "-"))

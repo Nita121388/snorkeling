@@ -1,0 +1,89 @@
+---
+sidebar_position: 0
+id: "snorkeling-features"
+title: "Snorkeling Features"
+---
+
+# Snorkeling Features
+
+Snorkeling inherits Wave Terminal's core workspace model and adds user-facing features for AI coding workflows. This page focuses on capabilities that are specific to the Snorkeling fork or materially changed from upstream Wave.
+
+## Product Identity
+
+- The desktop app is packaged as `Snorkeling`.
+- Release artifacts are published from the `Nita121388/snorkeling` GitHub repository.
+- Release tags use the `snorkeling-v...` format and app versions include a `snorkeling` suffix.
+- Local app data and remote helper paths use `.snorkeling` directories.
+
+## Agent Workflow
+
+Snorkeling adds an `Agent` entry in the workspace sidebar. It is designed for launching AI coding agents such as Codex or Claude Code from the current workspace context.
+
+Key behavior:
+
+- Launch an Agent from the current local terminal directory.
+- Launch an Agent from the current SSH terminal connection and directory when available.
+- Launch from a focused Files path, using the containing directory for files.
+- Choose between candidate contexts when more than one matching terminal or file context exists.
+- Configure agent profiles through `agent:defaultprofile` and `agent:profiles` in `settings.json`.
+
+## AI Sessions
+
+Snorkeling adds a `Sessions` view for browsing local AI coding session history.
+
+Current local sources:
+
+- Codex sessions under `~/.codex/sessions`
+- Claude Code projects under `~/.claude/projects`
+- Claude Code cache projects under `~/.cache/claude/projects`
+
+Snorkeling stores its own session index and metadata under `~/.snorkeling/ai-sessions`. Marks, notes, and delete staging are stored in Snorkeling data files rather than written into Codex or Claude's original session files.
+
+Supported workflows include filtering, search, marking, notes, detail view, copying session information, and starting a new terminal block to resume a session when enough metadata is available.
+
+## Files And Context Copy
+
+The Files workflow has been extended beyond simple preview behavior:
+
+- Directory tree browsing with natural sorting.
+- Hidden-file display control.
+- File and folder creation, rename, delete, copy, and paste actions.
+- Copy file name, full path, relative path, or shell-quoted path.
+- Open files or folders into a specific layout direction.
+- Run Agent from a selected file or directory.
+- Open local folders in VS Code from the Files context menu.
+
+Editor and preview workflows also include context-copy actions so selected code, paths, and line references are easier to send to an AI agent.
+
+## Version Control
+
+Snorkeling adds a `Version Control` block for Git and SVN repositories.
+
+Capabilities include:
+
+- Detect repositories from the current path and nearby parent/child paths.
+- Show changed, untracked, and remote-related files.
+- Open file diffs, file history, and repository commit views.
+- Commit selected files with a message.
+- Run common sync actions such as Git fetch, pull, push, and SVN update.
+- Use VCS actions from the Files context menu.
+
+## Workspace Layout
+
+Snorkeling adds workflow-focused layout improvements:
+
+- Minimize blocks and restore them from a floating minimized-block control.
+- Copy blocks to another tab or to a new tab.
+- Move a tab to a new window and move it back.
+- Preserve more context when opening files and returning to the related tab.
+
+## Current Boundaries
+
+The Snorkeling fork still intentionally keeps some upstream names and interfaces:
+
+- The CLI is still named `wsh`.
+- Many environment variables are still named `WAVETERM_*`.
+- Some internal package, file, socket, and database names still use `wave` naming.
+- `TERM_PROGRAM` is still currently set to `waveterm` by the shell integration.
+
+These names should be documented as runtime facts, not blindly renamed in user instructions.

@@ -13,16 +13,16 @@ import { VersionBadge, DeprecatedBadge } from "@site/src/components/versionbadge
 <PlatformSelectorButton />
 <div style={{ marginBottom: 20 }}></div>
 
-Wave's configuration files are located at `~/.config/waveterm/`.
+Snorkeling's configuration files are located at `~/.config/snorkeling/` by default.
 
-The main configuration file is `settings.json` (`~/.config/waveterm/settings.json`).
+The main configuration file is `settings.json` (`~/.config/snorkeling/settings.json`). In development builds this directory may use a `snorkeling-dev` suffix.
 
 The file is structured as a mostly flat JSON file. Instead of using sub-objects we prefer to
 use ":" as level separators.
 
 :::info
 
-The easiest way to edit your config files is to use the wsh editconfig command which will open your Wave config file in our built-in preview editor.
+The easiest way to edit your config files is to use the `wsh editconfig` command, which opens your Snorkeling config file in the built-in preview editor.
 
 ```
 wsh editconfig
@@ -34,12 +34,12 @@ wsh editconfig
 
 | Key Name                             | Type     | Function                                                                                                                                                                                                                                                      |
 | ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| app:globalhotkey                     | string   | A systemwide keybinding to open your most recent wave window. This is a set of key names separated by `:`. For more info, see [Customizable Systemwide Global Hotkey](#customizable-systemwide-global-hotkey)                                                 |
-| app:dismissarchitecturewarning       | bool     | Disable warnings on app start when you are using a non-native architecture for Wave. For more info, see [Why does Wave warn me about ARM64 translation when it launches?](./faq#why-does-wave-warn-me-about-arm64-translation-when-it-launches).              |
+| app:globalhotkey                     | string   | A systemwide keybinding to open your most recent Snorkeling window. This is a set of key names separated by `:`. For more info, see [Customizable Systemwide Global Hotkey](#customizable-systemwide-global-hotkey)                                                 |
+| app:dismissarchitecturewarning       | bool     | Disable warnings on app start when you are using a non-native architecture for Snorkeling. For more info, see [Why does Snorkeling warn me about ARM64 translation when it launches?](./faq#why-does-snorkeling-warn-me-about-arm64-translation-when-it-launches).              |
 | app:defaultnewblock                  | string   | Sets the default new block (Cmd:n, Cmd:d). "term" for terminal block, "launcher" for launcher block (default = "term")                                                                                                                                        |
 | app:showoverlayblocknums             | bool     | Set to false to disable the Ctrl+Shift block number overlay that appears when holding Ctrl+Shift (defaults to true)                                                                                                                                           |
 | app:ctrlvpaste                       | bool     | On Windows/Linux, when null (default) uses Control+V on Windows only. Set to true to force Control+V on all non-macOS platforms, false to disable the accelerator. macOS always uses Command+V regardless of this setting                                     |
-| app:confirmquit <VersionBadge version="v0.14" />                     | bool     | Set to false to disable the quit confirmation dialog when closing Wave Terminal (defaults to true, requires app restart)                                                                                                                                      |
+| app:confirmquit <VersionBadge version="v0.14" />                     | bool     | Set to false to disable the quit confirmation dialog when closing Snorkeling (defaults to true, requires app restart)                                                                                                                                      |
 | app:hideaibutton <VersionBadge version="v0.14" />                    | bool     | Set to true to hide the AI button in the tab bar (defaults to false)                                                                                                                                                                                          |
 | app:disablectrlshiftarrows <VersionBadge version="v0.14" />          | bool     | Set to true to disable Ctrl+Shift block-navigation keybindings (`Arrow` and `h/j/k/l`) (defaults to false)                                                                                                                                                    |
 | app:disablectrlshiftdisplay <VersionBadge version="v0.14" />         | bool     | Set to true to disable the Ctrl+Shift visual indicator display (defaults to false)                                                                                                                                                                            |
@@ -55,7 +55,9 @@ wsh editconfig
 | ai:orgid                             | string   |                                                                                                                                                                                                                                                               |
 | ai:maxtokens                         | int      | max tokens to pass to API                                                                                                                                                     |
 | ai:timeoutms                         | int      | timeout (in milliseconds) for AI calls                                                                                                                                        |
-| ai:proxyurl                          | string   | HTTP proxy URL for AI API requests (does not apply to Wave Cloud AI)                                                                                                          |
+| ai:proxyurl                          | string   | HTTP proxy URL for AI API requests (does not apply to inherited Wave Cloud AI modes)                                                                                                          |
+| agent:defaultprofile                 | string   | default Agent profile to use when launching an Agent block                                                                                                                                                                                                    |
+| agent:profiles                       | object   | map of Agent profile definitions, such as command, args, model args, and environment variables                                                                                                                                                                |
 | conn:askbeforewshinstall             | bool     | set to false to disable popup asking if you want to install wsh extensions on new machines                                                                                                                                                                    |
 | conn:localhostdisplayname <VersionBadge version="v0.14" />           | string   | override the display name for localhost in the UI (e.g., set to "My Laptop" or "Local", or set to empty string to hide the name)                                                                                                                                                                       |
 | term:fontsize                        | float    | the fontsize for the terminal block                                                                                                                                                                                                                           |
@@ -117,7 +119,7 @@ wsh editconfig
 | window:dimensions                    | string   | set the default dimensions for new windows using the format "WIDTHxHEIGHT" (e.g. "1920x1080"). when a new window is created, these dimensions will be automatically applied. The width and height values should be specified in pixels.                       |
 | telemetry:enabled                    | bool     | set to enable/disable telemetry                                                                                                                                                                                                                               |
 
-For reference, this is the current default configuration (v0.14.0):
+For reference, this is the current default configuration:
 
 ```json
 {
@@ -126,8 +128,10 @@ For reference, this is the current default configuration (v0.14.0):
     "ai:maxtokens": 4000,
     "ai:timeoutms": 60000,
     "app:defaultnewblock": "term",
+    "app:tabbar": "top",
     "app:confirmquit": true,
     "app:hideaibutton": false,
+    "term:showsplitbuttons": false,
     "app:disablectrlshiftarrows": false,
     "app:disablectrlshiftdisplay": false,
     "app:focusfollowscursor": "off",
@@ -143,7 +147,7 @@ For reference, this is the current default configuration (v0.14.0):
     "window:maxtabcachesize": 10,
     "window:nativetitlebar": true,
     "window:magnifiedblockopacity": 0.6,
-    "window:magnifiedblocksize": 0.9,
+    "window:magnifiedblocksize": 0.95,
     "window:magnifiedblockblurprimarypx": 10,
     "window:fullscreenonlaunch": false,
     "window:magnifiedblockblursecondarypx": 2,
@@ -151,29 +155,37 @@ For reference, this is the current default configuration (v0.14.0):
     "window:savelastwindow": true,
     "telemetry:enabled": true,
     "term:bellsound": false,
-    "term:bellindicator": false,
+    "term:bellindicator": true,
     "term:osc52": "always",
     "term:cursor": "block",
     "term:cursorblink": false,
     "term:copyonselect": true,
+    "term:trimtrailingwhitespace": true,
     "term:durable": false,
     "waveai:showcloudmodes": true,
     "waveai:defaultmode": "waveai@balanced",
-    "preview:defaultsort": "name"
+    "note:dir": "~",
+    "preview:defaultsort": "name",
+    "preview:defaultdirectorydisplay": "tree",
+    "preview:defaultopentarget": "right"
 }
 ```
 
+:::note
+
+The current source default for `web:defaulturl` still points to the upstream Wave repository. You can set it to `https://github.com/Nita121388/snorkeling` if you want web widgets to open the Snorkeling repository by default.
+
+:::
+
 :::warning
 
-If you installed Wave pre-v0.9.0 your configuration file will be located at
-`~/.waveterm/config/settings.json`. This includes all of the other configuration
-files as well: `termthemes.json`, `presets.json`, and `widgets.json`.
+If an old combined app-home directory exists, Snorkeling can still read compatible data from `~/.snorkeling/config/settings.json`. This includes other configuration files such as `termthemes.json`, `presets.json`, and `widgets.json`.
 
 :::
 
 ## Environment Variable Resolution
 
-To avoid putting secrets directly in config files, Wave supports environment variable resolution using `$ENV:VARIABLE_NAME` or `$ENV:VARIABLE_NAME:fallback` syntax.  This works for any string value in any config file (settings.json, presets.json, ai.json, etc.).
+To avoid putting secrets directly in config files, Snorkeling supports environment variable resolution using `$ENV:VARIABLE_NAME` or `$ENV:VARIABLE_NAME:fallback` syntax. This works for any string value in any config file (settings.json, presets.json, ai.json, etc.).
 
 ```json
 {
@@ -222,23 +234,23 @@ Each bookmark follows this structure (only `url` is required):
     "url": "https://claude.ai",
     "title": "Claude AI"
   },
-  "bookmark@wave": {
-    "url": "https://waveterm.dev",
-    "title": "Wave Terminal",
+  "bookmark@snorkeling-docs": {
+    "url": "https://nita121388.github.io/snorkeling/",
+    "title": "Snorkeling Docs",
     "display:order": -1
   },
-  "bookmark@wave-github": {
-    "url": "https://github.com/wavetermdev/waveterm",
-    "title": "Wave Github",
+  "bookmark@snorkeling-github": {
+    "url": "https://github.com/Nita121388/snorkeling",
+    "title": "Snorkeling GitHub",
     "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
   },
   "bookmark@chatgpt": {
     "url": "https://chatgpt.com",
     "iconurl": "https://cdn.oaistatic.com/assets/favicon-miwirzcw.ico"
   },
-  "bookmark@wave-pulls": {
-    "url": "https://github.com/wavetermdev/waveterm/pulls",
-    "title": "Wave Pull Requests",
+  "bookmark@snorkeling-pulls": {
+    "url": "https://github.com/Nita121388/snorkeling/pulls",
+    "title": "Snorkeling Pull Requests",
     "iconurl": "https://github.githubassets.com/favicons/favicon-dark.png"
   }
 }
@@ -253,7 +265,7 @@ Each bookmark follows this structure (only `url` is required):
 
 ## Terminal Theming
 
-User-defined terminal themes are located in `~/.config/waveterm/termthemes.json`.
+User-defined terminal themes are located in `~/.config/snorkeling/termthemes.json`.
 
 This JSON file is structured as an object, with each sub-key defining a theme.
 Themes are applied by right-clicking on the terminal's header bar and selecting an entry from the "Themes" sub-menu. Alternatively they can be applied to
@@ -263,7 +275,7 @@ the block's metadata key `term:theme`. This uses the JSON key value as the ident
 wsh setmeta this term:theme="default-dark"
 ```
 
-Here is an example of defining a full terminal theme. All of the built-in themes are defined here: https://github.com/wavetermdev/waveterm/blob/main/pkg/wconfig/defaultconfig/termthemes.json (if you'd like to add a popular terminal theme, please submit a PR!)
+Here is an example of defining a full terminal theme. Snorkeling currently inherits the upstream default terminal themes from the source tree.
 
 ```json
 {
@@ -335,11 +347,11 @@ wsh editconfig termthemes.json
 
 ## Customizable Systemwide Global Hotkey
 
-Wave allows settings a custom global hotkey to open your most recent window from anywhere in your computer. This has the name `"app:globalhotkey"` in the `settings.json` file and takes the form of a series of key names separated by the `:` character.
+Snorkeling allows setting a custom global hotkey to open your most recent window from anywhere in your computer. This has the name `"app:globalhotkey"` in the `settings.json` file and takes the form of a series of key names separated by the `:` character.
 
 ### Examples
 
-As a practical example, suppose you want a value of `F5` as your global hotkey. Then you can simply set the value of `"app:globalhotkey"` to `"F5"` and reboot Wave to make that your global hotkey.
+As a practical example, suppose you want a value of `F5` as your global hotkey. Then you can simply set the value of `"app:globalhotkey"` to `"F5"` and reboot Snorkeling to make that your global hotkey.
 
 As a less practical example, suppose you use the combination of the keys `Ctrl`, `Option`, and `e`. Then the value for this keybinding would be `"Ctrl:Option:e"`.
 
