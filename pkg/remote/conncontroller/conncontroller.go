@@ -21,7 +21,6 @@ import (
 	"github.com/kevinburke/ssh_config"
 	"github.com/skeema/knownhosts"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
-	"github.com/wavetermdev/waveterm/pkg/genconn"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/telemetry"

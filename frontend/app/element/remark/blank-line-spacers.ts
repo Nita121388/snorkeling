@@ -40,32 +40,6 @@ const remarkBlankLineSpacers: Plugin<[BlankSpacerOptions?], Root> = function (op
     const config = { ...DEFAULT_BLANK_SPACER_OPTIONS, ...opts };
     return (tree: Root, file: VFile) => {
         const children = tree.children as any[];
-        // TEMP DEBUG: capture plugin run details on window so CDP can read it without console scrape.
-        try {
-            (window as any).__blankSpacerDiag = {
-                runAt: Date.now(),
-                childCount: children.length,
-                hasPositionOnFirst: children[0]?.position != null,
-                firstType: children[0]?.type,
-                firstStartLine: children[0]?.position?.start?.line,
-                firstEndLine: children[0]?.position?.end?.line,
-                types: children.slice(0, 12).map((c) => c.type),
-                gapSamples: children.slice(0, 8).map((c, i) => {
-                    const n = children[i + 1];
-                    if (!c?.position || !n?.position) return null;
-                    return {
-                        curType: c.type,
-                        curStart: c.position.start?.line,
-                        curEnd: c.position.end?.line,
-                        nextType: n.type,
-                        nextStart: n.position.start?.line,
-                        gap: n.position.start?.line - c.position.end?.line - 1,
-                    };
-                }),
-            };
-        } catch (e) {
-            // ignore — diagnostic only
-        }
         if (!children.length) return;
 
         const result: any[] = [];

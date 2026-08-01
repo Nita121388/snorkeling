@@ -174,28 +174,21 @@
         // we size the box at N line-heights so vertical rhythm is preserved
         // verbatim. margin resets keep the rhythm pure (no double counting
         // against `.paragraph { margin-bottom }`).
+        //
+        // The Plugin also caps emitted spacers per gap by `linesPerSpacer`
+        // (default 1), so individual `data-spacer-lines` values stay small in
+        // normal prose; 12 covers deliberate stanzas. Beyond that the spacer
+        // falls back to min-height:0 — extensible here without touching the
+        // plugin.
         .paragraph.blank-spacer {
             margin-top: 0 !important;
             margin-bottom: 0 !important;
             min-height: 0;
 
-            &[data-spacer-lines="1"] {
-                min-height: 1.5em;
-            }
-            &[data-spacer-lines="2"] {
-                min-height: 3em;
-            }
-            &[data-spacer-lines="3"] {
-                min-height: 4.5em;
-            }
-            &[data-spacer-lines="4"] {
-                min-height: 6em;
-            }
-            &[data-spacer-lines="5"] {
-                min-height: 7.5em;
-            }
-            &[data-spacer-lines="6"] {
-                min-height: 9em;
+            @for $n from 1 through 12 {
+                &[data-spacer-lines="#{$n}"] {
+                    min-height: #{$n * 1.5}em;
+                }
             }
         }
 

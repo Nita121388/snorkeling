@@ -1648,6 +1648,21 @@ const Markdown = ({
                     ...defaultSchema,
                     attributes: {
                         ...defaultSchema.attributes,
+                        p: [
+                            // blank-line-spacers plugin emits spacer paragraphs tagged with
+                            // className=["paragraph","blank-spacer"] + dataSpacerLines +
+                            // dataEmptySpacer. defaultSchema has no `p` entry so sanitize
+                            // would strip these and the .paragraph.blank-spacer CSS sizing
+                            // rules would never match.
+                            //
+                            // hast property names are camelCased (hastscript normalises
+                            // kebab `data-spacer-lines` -> `dataSpacerLines`); a regex like
+                            // /^data./ would also work, but pinning the exact names keeps
+                            // the surface tight.
+                            ["className", "paragraph", "blank-spacer"],
+                            "dataSpacerLines",
+                            "dataEmptySpacer",
+                        ],
                         span: [
                             ...(defaultSchema.attributes?.span || []),
                             // Allow all class names starting with `hljs-`.
