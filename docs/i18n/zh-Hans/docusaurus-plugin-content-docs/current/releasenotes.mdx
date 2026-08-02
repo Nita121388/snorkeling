@@ -6,6 +6,110 @@ sidebar_position: 200
 
 # 发布说明 {#release-notes}
 
+## Snorkeling 发布 {#snorkeling-releases}
+
+Snorkeling 从 `Nita121388/snorkeling` GitHub 仓库发布自己的 release，使用 `snorkeling-v...` tag。应用版本号包含 `snorkeling` 后缀。自动更新从 GitHub Releases 分发；更新错误会在 UI 中提示，应用会从 tag 推导版本号。
+
+近期 Snorkeling 发布对应的功能集见 [Snorkeling 功能](./snorkeling-features)，以及 [Agent 工作流](./agent-workflow)、[AI 会话](./ai-sessions)、[版本控制](./version-control) 等专门页面。
+
+Snorkeling 的发布线跟随 fork 自己的开发分支（`main`）。下面按版本从新到旧列出面向用户的主要更新。`0.0.36` 之前的版本因提交边界被合并/重放、在仓库中无法可靠拆分，按功能领域分组说明。
+
+### v0.0.68 &mdash; 2026 年 8 月 1 日
+
+- **Markdown** – 内联编辑打磨与 `remark` 空行占位处理；有序列表与空行分隔编辑更稳定。
+- **远程 / 平台** – 慢速远程链路下 `wsh` 上传超时自适应；更好的远程平台检测（`DetectRemotePlatform`）。
+- **Agent 状态 / 会话** – 会话 untagged 筛选；Agent 完成或受阻时发送桌面通知（toast）。
+- **标签页** – 固定标签页物理顺序处理。
+- **Windows** – 自动 `wsh` 安装更可靠（自动创建 `wsh` 目录）。
+
+### v0.0.67 &mdash; 2026 年 7 月 30 日
+
+- **Agent 状态** – 引入 v2 状态指纹，按区块状态更新更可靠。
+- **Compose / 弹窗** – 编辑弹窗支持缩放，并标准化 `.modal-input` 样式，输入控件更一致。
+
+### v0.0.66 &mdash; 2026 年 7 月 30 日
+
+- **Agent 状态** – 每行确认指纹；Agent 状态新增 `completedAt` 字段；通过 `atomWithStorage` 持久化。
+- **Session Overview** – 每行渲染完整的确认映射，行更新更稳定。
+- **无障碍** – 内联标签页的 Agent 状态点支持键盘导航。
+- **Markdown** – 修复表格（tbody）回归与闪烁问题。
+
+### v0.0.62 &mdash; 2026 年 7 月 25 日
+
+- **Agent 设置** – 自定义 floating-ui 供应商选择器，主题一致更好。
+- **会话** – 供应商隔离的 Claude 会话恢复并附带诊断信息。
+
+### v0.0.61 &mdash; 2026 年 7 月 25 日
+
+- **AI 会话** – 路径筛选面板；会话界面亮色主题强调样式。
+- **Agent 状态** – Agent 由空闲转为忙碌时新增未读点；内联标签页与总览/终端状态点共享。
+- **Commontext** – 编辑器筛选；发送后自动关闭编辑弹窗；详情自动保存防抖；悬停 token 重命名。
+- **按区块供应商隔离（`ccswitch`）** – Claude 通过 `CLAUDE_CONFIG_DIR` 按区块隔离运行，并在选择器中提供供应商芯片行。
+- **Markdown / 主题** – 打磨与清理。
+
+### v0.0.56 &mdash; 2026 年 7 月 19 日
+
+- **主题** – 亮色主题强调色重设计、控件基础状态，以及亮/单色感知的终端光标颜色。
+- **预览** – 标签组内文件打开去重（聚焦已有标签页而非重新打开）。
+- **Markdown** – 内联编辑（双击段落/标题）与 Commontext 编辑器芯片/条。
+- **区块 / 标签页** – 内联标签页标签上的 Agent 状态点；移动/复制区块弹窗刷新。
+
+### v0.0.55 &mdash; 2026 年 7 月 19 日
+
+- **内联标签页** – 跨节点拖放、拖拽排序、运行中会话区块导航、四圆点 `RunningDot` 徽标；触发键改为 `Cmd+Shift+Space`。
+- **Agent** – Agent hook 设置弹窗、多供应商安装、Claude PowerShell hook。
+- **会话** – 折叠列表悬浮按钮、头部清理、展开时全文加载。
+- **Commontext** – 列表行悬停操作（编辑/发送/删除）、标签对话框、编辑弹窗清空按钮。
+- **工具** – `pslog` 追踪设施，由 `debug:pslog` 设置控制。
+
+### v0.0.50&ndash;0.0.51 &mdash; 2026 年 7 月 14&ndash;15 日
+
+- **终端 / Agent** – 在远程连接上解析 Agent 命令；修复 Codex Windows hook；新增 Codex/Claude 会话 id 捕获与会话环境弹窗；笔记编辑器。
+- **Windows** – 通过共享 shell 脚本强化自动 `wsh` 安装。
+- **Commontext** – 光标感知的编辑搜索，带加权排序与 IME 保护。
+
+### v0.0.45&ndash;0.0.47 &mdash; 2026 年 6 月 28 日&ndash;7 月 8 日
+
+- **主题** – 可视化应用主题选择器（带悬停预览）；新增单色（黑白）主题；扩展亮/单色调色板；VCS 与会话样式 token 化；红色按钮改用 `--button-text-color`。
+- **会话** – 渲染备注开关强调条；跳过 Codex guardian 会话。
+- **远程 / Agent** – 在远程连接上解析 Agent 命令；macOS GUI PATH 回退。
+- **终端** – 终端复制变体；内联标签页路径 tooltip；会话备注 hash-strip。
+
+### v0.0.43&ndash;0.0.44 &mdash; 2026 年 6 月 24 日
+
+- **内联标签页** – 核心布局类型、模型、树与平铺；内联标签页接入区块/头部/标签页/按键模型。
+- **会话** – AI 会话存入 SQLite；会话搜索、详情分页与大小调整诊断；从项目 cwd 恢复 Claude 会话。
+- **Markdown** – 有序列表编辑与编辑器内 Markdown 大纲。
+- **文件 / 预览** – Windows 盘符根目录导航；跨标签页共享预览草稿并同步。
+- **Home** – 新增 Home 启动目标。
+
+### v0.0.39&ndash;0.0.42 &mdash; 2026 年 6 月 7&ndash;18 日
+
+- **会话 / 笔记** – 改进笔记与启动工作流；终端会话头部布局；工作区与 Markdown 工作流。
+- **AI 会话** – 后台刷新会话摘要；更好的筛选与恢复元数据。
+- **布局 / 区块** – 优化标签栏渲染；约束弹窗内容高度使 Commontext 正常滚动；稳定左侧固定 helper 区块顺序。
+- **终端** – 手动 `wsh` 安装 RPC 绑定；关闭保护与 `wsh` 修复。
+
+### 更早版本（0.0.1&ndash;0.0.36）&mdash; 功能领域
+
+`0.0.39` 之前的版本奠定了 fork 的基础。其用户可见成果由以下功能领域概括（当前行为见 [Snorkeling 功能](./snorkeling-features)）：
+
+- **Agent 工作流** – `Agent` 侧边栏入口、终端/Files 上下文继承、Agent profile（`agent:defaultprofile`、`agent:profiles`）与会话自动续接。
+- **AI 会话** – `Sessions` 侧边栏入口、会话列表/详情/大纲、标记、备注、删除确认与恢复。
+- **文件** – 目录树浏览、自然排序、路径复制/粘贴、定向打开、`Open VS Code Here`、`Copy Context`。
+- **版本控制** – `VCS` 区块、变更分组、Diff/历史/提交、图形化提交与远程同步。
+- **布局** – 区块最小化、跨标签页复制区块、`Move Tab to New Window`。
+- **发布 / 更新** – `snorkeling-v...` tag 流水线、应用版本后缀与更新机制。
+
+:::note
+
+这些说明根据 `main` 分支上的 Snorkeling 提交历史整理。当前已交付用户功能的权威清单见 [Snorkeling 功能](./snorkeling-features) 与事实源 `docs/project/snorkeling-user-facing-features.md`。
+:::
+
+### 上游 Wave 历史 {#upstream-wave-history}
+
+以下各节记录 Snorkeling 所基于的上游 Wave 发布历史。
+
 ### v0.14.5 &mdash; 2026 年 4 月 16 日
 
 Wave v0.14.5 引入了新的进程查看器 widget、全局热键的 Quake Mode，以及多项体验改进。

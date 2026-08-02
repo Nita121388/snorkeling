@@ -81,4 +81,90 @@ wsh setbg --print "#ff0000"
 
 For more advanced customization options including gradients, colors, and saving your own custom backgrounds, check out our [Tab Backgrounds](/tab-backgrounds) documentation.
 
+## Files Workflow Enhancements
+
+The Snorkeling fork extends the Files block from a simple directory preview into a fuller file workbench:
+
+- Stronger directory-tree browsing.
+- Natural sorting for folders so numbered directories read in human order.
+- Hidden-file display setting.
+- Sort by name, modification time, and more.
+- Create file, create folder, rename, and delete.
+- Recursive-delete confirmation when deleting a directory.
+
+### Copy and paste files
+
+The Files right-click menu and drag-and-drop flow support:
+
+- Copy one or multiple files.
+- Paste into the current directory or a chosen folder.
+- `Copy File Name`, `Copy Full File Name`, `Copy Relative Path`.
+- Copy a shell-quoted path for pasting into a command line.
+- When a drag-and-drop copy hits a conflict, overwrite/merge prompts are shown.
+
+### Open to a directed target
+
+Files can open a file/folder into a specific direction or target block:
+
+- Open in the current block.
+- Open left, right, up, or down.
+- Open by target area to reduce layout clutter.
+- Connection info is preserved when opening a path (local and remote both work).
+
+### Run Agent from Files
+
+Files is wired into the Agent workflow:
+
+- Right-click a file or folder to launch an Agent with the current path as its context.
+- A file path is automatically converted to its containing directory.
+- Remote Files carry the remote connection.
+
+### Open VS Code Here
+
+Local-connection Files right-click menu supports `Open VS Code Here`:
+
+- Open a local directory directly in VS Code.
+- Useful for locating a path in Snorkeling, then switching to an external IDE for heavier editing.
+
+## Editor Search and Replace
+
+The built-in editor's search experience is enhanced:
+
+- Search inside the editor.
+- Previous / next navigation.
+- Case, whole-word, and regex search options.
+- Single replacement.
+- Replace all.
+- Read-only files disable replacement to avoid mistakes.
+- Search and replace focus stability is improved.
+
+## Copy Context
+
+The editor and Diff views can copy context:
+
+- Copy the absolute path.
+- Copy the line number.
+- Copy the selected code snippet.
+- Automatically wrap in a Markdown code block.
+- Ideal for sending error code, file location, and context snippets to an AI agent.
+
+Example format:
+
+```md
+/path/to/file.ts:42
+```typescript
+selected code
+```
+```
+
+## Markdown Ordered List Helpers
+
+Markdown editing adds ordered-list handling:
+
+- Recognizes Markdown ordered lists.
+- Move the current list item up / down.
+- Numbers are renumbered automatically after a move.
+- Renumber within a selection.
+- Movement has visual feedback to reduce mistakes.
+
 

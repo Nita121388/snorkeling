@@ -79,3 +79,90 @@ wsh setbg --print "#ff0000"
 
 关于渐变、颜色、保存自定义背景等更高级的自定义选项，请查看我们的[标签页背景](/tab-backgrounds)文档。
 
+## Files 工作流增强 {#files-workflow-enhancements}
+
+Snorkeling fork 把 Files 区块从普通目录预览扩展为更完整的文件工作台：
+
+- 更强的目录树浏览。
+- 文件夹自然排序，数字命名的目录更符合人的阅读顺序。
+- 隐藏文件显示设置。
+- 支持按名称、修改时间等排序。
+- 支持新建文件、新建文件夹、重命名、删除。
+- 删除目录时会提示递归删除确认。
+
+### 文件复制与粘贴 {#copy-and-paste-files}
+
+Files 右键菜单和拖放流程支持：
+
+- 复制单个或多个文件。
+- 粘贴到当前目录或指定文件夹。
+- `Copy File Name`、`Copy Full File Name`、`Copy Relative Path`。
+- 复制 shell quoted 路径，方便粘贴到命令行。
+- 拖放复制遇到冲突时提供覆盖/合并相关提示。
+
+### 定向打开目标 {#open-to-a-directed-target}
+
+Files 支持把文件/目录打开到指定方向或目标区块：
+
+- 在当前区块打开。
+- 向左、右、上、下打开。
+- 按目标区域打开，减少布局混乱。
+- 打开路径时保留连接信息，本地和远程都可用。
+
+### 从 Files 启动 Agent {#run-agent-from-files}
+
+Files 与 Agent 工作流打通：
+
+- 右键文件或目录可以以当前路径作为 Agent 上下文启动。
+- 文件路径会自动转换为所在目录。
+- 远程 Files 会带上远程连接。
+
+### Open VS Code Here {#open-vs-code-here}
+
+本地连接的 Files 右键菜单支持 `Open VS Code Here`：
+
+- 对本地目录可直接用 VS Code 打开。
+- 适合在 Snorkeling 中定位路径后，临时切到外部 IDE 做复杂编辑。
+
+## 编辑器搜索与替换 {#editor-search-and-replace}
+
+内置编辑器增强了搜索体验：
+
+- 支持编辑器内搜索。
+- 支持上一条/下一条跳转。
+- 支持大小写、整词、正则等搜索选项。
+- 支持单个替换。
+- 支持全部替换。
+- 只读文件禁用替换，避免误操作。
+- 搜索焦点和替换焦点稳定性做了修复。
+
+## Copy Context {#copy-context}
+
+编辑器和 Diff 视图支持复制上下文：
+
+- 复制绝对路径。
+- 复制行号。
+- 复制选中的代码片段。
+- 自动加上 Markdown 代码块。
+- 适合把错误代码、文件位置、上下文片段直接发给 AI Agent。
+
+示例格式：
+
+```md
+/path/to/file.ts:42
+```typescript
+selected code
+```
+```
+
+## Markdown 有序列表辅助 {#markdown-ordered-list-helpers}
+
+Markdown 编辑增加了有序列表处理能力：
+
+- 识别 Markdown 有序列表。
+- 支持把当前列表项上移/下移。
+- 移动后自动调整编号。
+- 支持选区内重新编号。
+- 移动时有视觉反馈，降低误操作风险。
+
+

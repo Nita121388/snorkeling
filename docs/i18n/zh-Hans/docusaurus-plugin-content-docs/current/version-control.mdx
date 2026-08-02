@@ -1,0 +1,103 @@
+---
+sidebar_position: 1.8
+id: "version-control"
+title: "版本控制"
+---
+
+# 版本控制
+
+Snorkeling 增加了 `Version Control` 区块，用于在工作区内直接操作 Git 和 SVN 仓库。你可以在不离开
+终端的情况下审查变更、对比文件、浏览历史、提交和同步。
+
+## VCS 区块
+
+`Version Control` 区块：
+
+- 自动扫描当前路径及附近父级 / 子级目录中的仓库。
+- 支持 Git 与 SVN。
+- 显示仓库名、类型、分支、改动数量、未跟踪数量与远端差异数量。
+- 支持手动刷新。
+- 本地连接与远程连接都可用。
+
+## 变更分组
+
+变更文件会分组展示：
+
+- `Changes` — 已跟踪文件改动。
+- `Untracked` — 未跟踪文件。
+- `Remote` — 远端相关变更。
+- 分组可折叠 / 展开。
+- 支持多选文件。
+- `Select All` / `Select None`。
+
+## Diff、历史与提交
+
+独立区块包括：
+
+- `File Diff` — 单文件工作区 diff 或历史 revision diff。
+- `File History` — 某个文件的历史提交。
+- `Repo Commits` — 整个仓库的提交列表。
+
+能力包括：
+
+- 从文件行直接打开 Diff。
+- 从文件行直接打开 History。
+- 点击历史提交打开对应 Diff。
+- Diff 支持 side-by-side 与 inline 模式。
+- 无法渲染成单文件视觉 diff 的内容，回退显示 raw patch。
+
+## 提交
+
+VCS 区块支持图形化提交：
+
+- 多选变更文件。
+- 输入 commit message。
+- 点击 `Commit` 提交。
+- 成功后刷新仓库状态。
+- 失败时展示错误详情。
+- 默认提交信息为 `chore: update selected files`（可修改）。
+
+## 远端同步
+
+支持常见同步动作：
+
+- Git：`Fetch`、`Pull`、`Push`。
+- SVN：`Update`。
+- 显示 Git ahead / behind。
+- 显示 Git incoming / outgoing commits。
+- 显示 SVN remote files。
+- 操作成功或失败都有提示。
+
+## 仓库右键菜单
+
+仓库头部右键菜单支持：
+
+- Copy Repository Path。
+- Copy Repository URL。
+- Open Remote Repository。
+- Move / Copy block 相关布局菜单。
+
+## Files 右键集成
+
+Files 检测到 Git / SVN 仓库时，右键菜单会出现版本管理入口：
+
+- View History。
+- View Diff。
+- View Repository Log。
+- Open VCS Block。
+- Pull 或 SVN Update。
+- 解析失败时可 Copy Debug Info。
+
+## 远程仓库
+
+VCS 与文件搜索走已有 remote RPC：
+
+- 可在远程连接上执行 Git / SVN 状态扫描。
+- 支持远程文件名与文件内容搜索。
+- 操作超时和错误会返回 UI 提示。
+
+## 相关内容
+
+- [Agent 工作流](./agent-workflow) — 启动与恢复 AI Agent。
+- [AI 会话](./ai-sessions) — 浏览并恢复本机 Codex / Claude 会话。
+- [定制](./customization) — Files 与编辑器工作流。

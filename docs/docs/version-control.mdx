@@ -1,0 +1,105 @@
+---
+sidebar_position: 1.8
+id: "version-control"
+title: "Version Control"
+---
+
+# Version Control
+
+Snorkeling adds a `Version Control` block for working with Git and SVN repositories inside the
+workspace. You can review changes, diff files, browse history, commit, and sync without leaving the
+terminal.
+
+## VCS Block
+
+The `Version Control` block:
+
+- Automatically scans the current path and nearby parent / child directories for repositories.
+- Supports Git and SVN.
+- Shows repository name, type, branch, number of changes, number of untracked files, and remote-delta
+  counts.
+- Supports manual refresh.
+- Works on both local and remote connections.
+
+## Change Groups
+
+Changed files are grouped for review:
+
+- `Changes` — tracked file modifications.
+- `Untracked` — untracked files.
+- `Remote` — remote-related changes.
+- Groups can be collapsed / expanded.
+- Supports multi-select of files.
+- `Select All` / `Select None`.
+
+## Diff, History, and Commits
+
+Distinct blocks are available:
+
+- `File Diff` — a single file's working-tree diff or a historical revision diff.
+- `File History` — a file's commit history.
+- `Repo Commits` — the repository's commit list.
+
+Capabilities:
+
+- Open a Diff directly from a file line.
+- Open History directly from a file line.
+- Click a historical commit to open its Diff.
+- Diff supports side-by-side and inline modes.
+- Content that cannot render as a single-file visual diff falls back to a raw patch.
+
+## Committing
+
+The VCS block supports graphical commits:
+
+- Multi-select the changed files.
+- Enter a commit message.
+- Click `Commit`.
+- On success, the repository state refreshes.
+- On failure, the error details are shown.
+- The default commit message is `chore: update selected files` (you can edit it).
+
+## Remote Sync
+
+Common sync actions are available:
+
+- Git: `Fetch`, `Pull`, `Push`.
+- SVN: `Update`.
+- Shows Git ahead / behind.
+- Shows Git incoming / outgoing commits.
+- Shows SVN remote files.
+- Success or failure of an action is reported.
+
+## Repository Context Menu
+
+The repository header's right-click menu supports:
+
+- Copy Repository Path.
+- Copy Repository URL.
+- Open Remote Repository.
+- Move / Copy block layout menu items.
+
+## Files Context Menu Integration
+
+When Files detects a Git / SVN repository, the right-click menu shows version-control entries:
+
+- View History.
+- View Diff.
+- View Repository Log.
+- Open VCS Block.
+- Pull or SVN Update.
+- Copy Debug Info when parsing fails.
+
+## Remote Repositories
+
+VCS and file search run over the existing remote RPC:
+
+- Git / SVN status scans can run on a remote connection.
+- Remote filename and file-content search are supported.
+- Timeouts and errors are surfaced in the UI.
+
+## Related
+
+- [Agent Workflow](./agent-workflow) — launch and resume AI agents.
+- [AI Sessions](./ai-sessions) — browse and resume local Codex / Claude sessions.
+- [Customization](./customization) — Files and editor workflows.

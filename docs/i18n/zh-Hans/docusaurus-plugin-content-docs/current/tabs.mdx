@@ -131,4 +131,43 @@ import { Kbd } from "@site/src/components/kbd";
 
 block 之间的间距默认为 3px，但可以通过修改 `window:tilegapsize` 配置值来调整。关于如何修改配置值，请参阅[配置](./config)。
 
+## Snorkeling 布局增强
+
+除了上游 Wave 的上述布局能力，Snorkeling fork 还增加了几项面向工作流的布局能力。
+
+### 区块最小化 {#minimize-blocks}
+
+区块可以最小化。当前 Tab 右下角会出现一个浮动的 minimized blocks 控制按钮：
+
+- 浮动按钮可拖动，位置按 Tab 记忆。
+- 可预览最小化区块。
+- 可把区块恢复到布局中。
+- 可删除最小化区块。
+
+### 区块复制到其他 Tab {#copy-a-block-to-another-tab}
+
+区块可以在 Tab 之间复制：
+
+- 把区块复制到指定 Tab。
+- 把区块复制到新 Tab。
+- 复制后的区块保留原始 meta 和视图信息。
+
+### Move Tab to New Window {#move-tab-to-new-window}
+
+Tab 右键菜单新增窗口拆分操作：
+
+- `Move Tab to New Window` — 把当前 Tab 移到新窗口。
+- `Move Tab Back` — 把拆出去的 Tab 移回主窗口。
+
+很适合把某个项目或远程会话单独放到另一块屏幕。
+
+### 回到 Tab 与布局修复 {#returning-to-a-tab-and-layout-fixes}
+
+fork 还改善了若干布局细节：
+
+- 从 Files 打开文件后，回到相关 Tab 更自然。
+- 定向打开与区块移动菜单结合。
+- 修复部分布局与焦点状态的异常情况。
+- 终端 xterm 焦点恢复更稳定。
+
 </PlatformProvider>

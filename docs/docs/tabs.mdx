@@ -131,4 +131,43 @@ You can magnify a block by clicking the <i className="custom-icon-inline custom-
 
 The gap between blocks defaults to 3px, but this value can be changed by modifying the `window:tilegapsize` configuration value. See [Configuration](./config) for more information on how to change configuration values.
 
+## Snorkeling Layout Additions
+
+Beyond the upstream Wave layout features above, the Snorkeling fork adds several workflow-focused layout capabilities.
+
+### Minimize blocks
+
+Blocks can be minimized. A floating minimized-blocks control appears at the lower-right of the current tab:
+
+- The floating button is draggable and its position is remembered per tab.
+- You can preview minimized blocks.
+- You can restore a block back into the layout.
+- You can delete a minimized block.
+
+### Copy a block to another tab
+
+Blocks can be copied between tabs:
+
+- Copy a block to a specific tab.
+- Copy a block to a new tab.
+- A copied block keeps its original meta and view information.
+
+### Move Tab to New Window
+
+Tab right-click menu adds window-splitting operations:
+
+- `Move Tab to New Window` — move the current tab to a new window.
+- `Move Tab Back` — move a split-out tab back to the main window.
+
+This is convenient for putting a project or remote session on a separate screen.
+
+### Returning to a tab and layout fixes
+
+The fork also improves several layout details:
+
+- Opening a file from Files returns to the related tab more naturally.
+- Directed open and block-move menus are combined.
+- Some layout and focus state edge cases are fixed.
+- Terminal xterm focus restoration is more stable.
+
 </PlatformProvider>

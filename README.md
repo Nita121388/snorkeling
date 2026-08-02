@@ -89,7 +89,9 @@ Wave AI is your context-aware terminal assistant with access to your workspace:
 - **Free Beta**: Included AI credits while we refine the experience
 - **Coming Soon**: Command execution (with approval)
 
-Learn more in our [Wave AI documentation](https://docs.waveterm.dev/waveai) and [Wave AI Modes documentation](https://docs.waveterm.dev/waveai-modes).
+Learn more in our [Wave AI documentation](https://nita121388.github.io/snorkeling/waveai) and [Wave AI Modes documentation](https://nita121388.github.io/snorkeling/waveai-modes).
+
+For Snorkeling-specific features, see the [Snorkeling docsite](https://nita121388.github.io/snorkeling/) pages: [Snorkeling Features](https://nita121388.github.io/snorkeling/snorkeling-features), [Agent Workflow](https://nita121388.github.io/snorkeling/agent-workflow), [AI Sessions](https://nita121388.github.io/snorkeling/ai-sessions), and [Version Control](https://nita121388.github.io/snorkeling/version-control).
 
 ## Installation
 

@@ -1,0 +1,127 @@
+---
+sidebar_position: 1.75
+id: "ai-sessions"
+title: "AI Sessions"
+---
+
+# AI Sessions
+
+Snorkeling adds a `Sessions` entry in the workspace sidebar for browsing your local AI coding session
+history (Codex and Claude Code). You can search, filter, mark, annotate, and resume sessions without
+leaving the workspace.
+
+:::note
+
+The current scope is **local** sessions. Browsing sessions stored on remote SSH hosts is a later
+extension and is not yet delivered.
+
+:::
+
+## Local Session Sources
+
+Sessions reads from these local directories:
+
+| Provider      | Source directory                    |
+| ------------- | ----------------------------------- |
+| Codex         | `~/.codex/sessions`                 |
+| Claude Code   | `~/.claude/projects`                |
+| Claude Cache  | `~/.cache/claude/projects`          |
+
+Snorkeling keeps its own session index, marks, notes, and delete staging under Snorkeling data files
+(under `~/.snorkeling/ai-sessions`) rather than writing into the original Codex or Claude session files.
+
+:::info 需确认
+
+`settings.json` includes a default `note:dir` key. Its relationship to where session notes are stored is
+not expanded in the fact source; this page only states that notes are saved in Snorkeling's own data
+files.
+
+:::
+
+## Session List
+
+The Sessions page provides a list of sessions:
+
+- Sorted by last-updated time, with `newest` / `oldest` toggle.
+- Filter by source: `All`, `Codex`, `Claude Code`.
+- Search across fields such as title, note, and path.
+- Manual refresh of the list.
+- Index caching for long sessions so the list does not fully re-parse every open.
+
+## Session Detail
+
+Selecting a session shows the conversation in the detail area:
+
+- User and AI messages are shown per role.
+- Timestamps to the second.
+- Most-recent-messages-first loading avoids rendering overly long sessions in one shot.
+- Continue loading earlier messages.
+- Long messages can be collapsed / expanded.
+- Tool-call content can be loaded.
+- Copy a single message.
+
+## Session Outline
+
+Sessions can generate an outline from user messages:
+
+- The outline is formed from user questions.
+- Clicking an outline item jumps to that message.
+- Useful for recalling what a long session did.
+
+## Mark, Note, and Delete
+
+Snorkeling adds local session management:
+
+- Mark / unmark important sessions.
+- View only marked sessions.
+- Write a Note on a session.
+- Notes participate in search.
+- Deleting a session asks for confirmation.
+- Deletion does not permanently erase source files; it moves them to a Snorkeling deleted storage.
+
+## Resume a Session
+
+Sessions can be resumed from the detail view:
+
+- Codex sessions create a new terminal block and attempt `resume`.
+- Claude sessions create a new terminal block and attempt `resume`.
+- If the session record has a project path, that directory is used as the launch directory.
+- The newly launched agent block carries provider and session id for later identification.
+
+## Open Directory and Copy Operations
+
+Sessions provides helper actions:
+
+- Open the directory where the session file lives.
+- Copy the session id.
+- Copy the session folder path.
+- Copy the resume command.
+- Copy a single message's content.
+
+## Session Overview
+
+The Session Overview panel looks at the workspace-level view of currently open agent / session blocks:
+
+- Groups blocks by tab.
+- Recognizes agent-like blocks.
+- Shows block title, type, the tab it lives in, and the associated session id.
+- Jumps to the corresponding tab and block.
+
+The overview reads session file state and shows summary content:
+
+- Shows a preview of the most recently readable messages.
+- Detects session file `mtime` / size changes and refreshes.
+- Supports manual refresh.
+- Reacts to session-note updates.
+
+Management actions are available directly in the overview:
+
+- Open the session detail modal.
+- Open the session Note modal.
+- Delete / close the corresponding block.
+- Handle error states such as a missing session file or a failed parse.
+
+## Related
+
+- [Agent Workflow](./agent-workflow) — launching and resuming agents.
+- [Version Control](./version-control) — commit and diff from the workspace.

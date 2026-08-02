@@ -6,6 +6,110 @@ sidebar_position: 200
 
 # Release Notes
 
+## Snorkeling Releases
+
+Snorkeling publishes its own releases from the `Nita121388/snorkeling` GitHub repository using `snorkeling-v...` tags. App versions include a `snorkeling` suffix. Automatic updates are delivered from GitHub Releases; update errors are shown in the UI and the app derives its version from the tag.
+
+The feature set behind recent Snorkeling releases is described in [Snorkeling Features](./snorkeling-features) and the dedicated pages for [Agent Workflow](./agent-workflow), [AI Sessions](./ai-sessions), and [Version Control](./version-control).
+
+Snorkeling's release line follows the fork's own development branch (`main`). The sections below list user-facing highlights for each Snorkeling release, newest first. Releases before `0.0.36` are grouped by feature area because their per-version commit boundaries were merged/replayed and are not reliably separable in this repository.
+
+### v0.0.68 &mdash; Aug 1, 2026
+
+- **Markdown** – inline editing polish and `remark` blank-line spacer handling; more stable editing of ordered lists and blank-line separation.
+- **Remote / platform** – adaptive `wsh` upload timeout for slow remote links; better platform detection (`DetectRemotePlatform`) for remote connections.
+- **Agent status / sessions** – untagged filter for sessions, and desktop notifications (toast) when an agent finishes or becomes blocked.
+- **Tabs** – pinned-tab physical order handling.
+- **Windows** – more reliable auto `wsh` install (auto-creates the `wsh` directory).
+
+### v0.0.67 &mdash; Jul 30, 2026
+
+- **Agent status** – a v2 status fingerprint for more reliable per-block status updates.
+- **Compose / modal** – compose modal resizing and standardized `.modal-input` styling for consistent input controls.
+
+### v0.0.66 &mdash; Jul 30, 2026
+
+- **Agent status** – per-row acknowledgement fingerprint; `completedAt` field on agent status; persistence via `atomWithStorage`.
+- **Session Overview** – renders the full acknowledgement map per row; more stable row updates.
+- **Accessibility** – inline-tab keyboard navigation for agent status dots.
+- **Markdown** – fixed a table (tbody) regression and a flashing/flicker issue.
+
+### v0.0.62 &mdash; Jul 25, 2026
+
+- **Agent settings** – a custom floating-ui vendor selector for better theme parity.
+- **Sessions** – vendor-isolated Claude session restore with diagnostics.
+
+### v0.0.61 &mdash; Jul 25, 2026
+
+- **AI Sessions** – path-filter panel; light-theme accent styling for the sessions UI.
+- **Agent status** – an unread-dot layer when an agent transitions from idle to non-idle; status-dot sharing between inline tabs and overview/term pill.
+- **Commontext** – editor filter; compose modal closes on Send; detail auto-save debounce; hover token rename.
+- **Per-block vendor isolation** (`ccswitch`) – Claude runs isolated per block via `CLAUDE_CONFIG_DIR`, with a vendor chip row in the picker.
+- **Markdown / theme** – polish and cleanup.
+
+### v0.0.56 &mdash; Jul 19, 2026
+
+- **Theme** – light-theme accent redesign, control foundation states, and light/monochrome-aware terminal cursor color.
+- **Preview** – deduplicate file open in a tab group (focus an existing tab instead of reopening).
+- **Markdown** – inline edit (double-click a paragraph/heading) and Commontext editor chips/strip.
+- **Block / tab** – agent status dot on inline tab labels; move/copy block modal refresh.
+
+### v0.0.55 &mdash; Jul 19, 2026
+
+- **Inline tabs** – cross-node drag-and-drop, drag reorder, running-session block navigation, and a four-dot `RunningDot` badge; trigger replaced with `Cmd+Shift+Space`.
+- **Agent** – agent-hook settings modal, multi-provider install, and Claude PowerShell hook.
+- **Sessions** – collapsed-list overlay button, header cleanup, full-text-on-expand.
+- **Commontext** – list row hover actions (edit/send/delete), tags dialog, compose-modal clear button.
+- **Tooling** – `pslog` trace facility gated behind a `debug:pslog` setting.
+
+### v0.0.50&ndash;0.0.51 &mdash; Jul 14&ndash;15, 2026
+
+- **Terminal / agent** – resolve the agent command on remote connections; fix the Codex Windows hook; add Codex/Claude session-id capture and a session env modal; note editor.
+- **Windows** – harden automatic `wsh` install via shared shell scripts.
+- **Commontext** – caret-aware compose search with weighted ranking and IME guard.
+
+### v0.0.45&ndash;0.0.47 &mdash; Jun 28&ndash;Jul 8, 2026
+
+- **Theme** – visual App Theme picker with hover preview; a monochrome (black-and-white) theme; expanded light/monochrome palette; tokenized VCS and session styles; `--button-text-color` for red buttons.
+- **Sessions** – render note-toggle accent bar; skip Codex guardian sessions.
+- **Remote / agent** – resolve agent command on remote connections; macOS GUI PATH fallbacks.
+- **Terminal** – terminal copy variants; inline-tab tooltip path; session note hash-strip.
+
+### v0.0.43&ndash;0.0.44 &mdash; Jun 24, 2026
+
+- **Inline tabs** – core layout types, model, tree, and tiling; inline tabs wired into block/header/tab/keymodel.
+- **Sessions** – store AI sessions in SQLite; session search, detail paging, and resize diagnostics; resume Claude sessions from project cwd.
+- **Markdown** – ordered-list editing and markdown outline in the editor.
+- **Files / preview** – Windows drive-root navigation; share preview drafts across tabs; sync drafts.
+- **Home** – a Home launch target.
+
+### v0.0.39&ndash;0.0.42 &mdash; Jun 7&ndash;18, 2026
+
+- **Sessions / notes** – improve note and launch workflows; terminal session header layout; workspace and markdown workflows.
+- **AI session** – background refresh of session summaries; better filtering and resume metadata.
+- **Layout / block** – optimize tab bar rendering; constrain modal content height so Commontext scrolls correctly; stabilize fixed left helper block order.
+- **Terminal** – manual `wsh` install RPC bindings; close guards and `wsh` repair.
+
+### Earlier releases (0.0.1&ndash;0.0.36) &mdash; feature areas
+
+Releases before `0.0.39` laid the foundation of the fork. Their user-visible work is captured by these feature areas (see [Snorkeling Features](./snorkeling-features) for the current behavior):
+
+- **Agent workflow** – the `Agent` sidebar entry, terminal/Files context inheritance, agent profiles (`agent:defaultprofile`, `agent:profiles`), and session auto-resume.
+- **AI Sessions** – the `Sessions` sidebar entry, session list/detail/outline, marks, notes, delete confirmation, and resume.
+- **Files** – directory-tree browsing, natural sorting, copy/paste paths, directed open, `Open VS Code Here`, and `Copy Context`.
+- **Version Control** – the `VCS` block, change groups, diff/history/commits, graphical commit, and remote sync.
+- **Layout** – block minimize, copy blocks across tabs, and `Move Tab to New Window`.
+- **Release / updater** – the `snorkeling-v...` tag pipeline, app version suffix, and update mechanism.
+
+:::note
+
+These notes are derived from the Snorkeling commit history on `main`. For the authoritative list of currently delivered user-facing features, see [Snorkeling Features](./snorkeling-features) and the fact source `docs/project/snorkeling-user-facing-features.md`.
+:::
+
+### Upstream Wave History
+
+The sections below record the upstream Wave release history that Snorkeling is built on.
+
 ### v0.14.5 &mdash; Apr 16, 2026
 
 Wave v0.14.5 introduces a new Process Viewer widget, Quake Mode for global hotkey, and several quality-of-life improvements.

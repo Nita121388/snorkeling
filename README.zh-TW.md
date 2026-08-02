@@ -50,7 +50,9 @@ Wave AI 不只是一個聊天機器人——它能直接讀取你的終端機輸
 - **免費 Beta**：體驗優化期間提供免費 AI 額度
 - **即將推出**：命令執行功能（需使用者核准）
 
-詳細說明請參閱 [Wave AI 文件](https://docs.waveterm.dev/waveai) 與 [Wave AI Modes 文件](https://docs.waveterm.dev/waveai-modes)。
+詳細說明請參閱 [Wave AI 文件](https://nita121388.github.io/snorkeling/waveai) 與 [Wave AI Modes 文件](https://nita121388.github.io/snorkeling/waveai-modes)。
+
+Snorkeling 專屬功能請見 [Snorkeling 文件站](https://nita121388.github.io/snorkeling/) 中的 [Snorkeling 功能](https://nita121388.github.io/snorkeling/snorkeling-features)、[Agent 工作流](https://nita121388.github.io/snorkeling/agent-workflow)、[AI 會話](https://nita121388.github.io/snorkeling/ai-sessions)、[版本控制](https://nita121388.github.io/snorkeling/version-control) 頁面。
 
 ### 🔗 持久化 SSH 連線
 

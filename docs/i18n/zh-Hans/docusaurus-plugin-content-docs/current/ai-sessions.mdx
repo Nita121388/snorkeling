@@ -1,0 +1,124 @@
+---
+sidebar_position: 1.75
+id: "ai-sessions"
+title: "AI 会话"
+---
+
+# AI 会话
+
+Snorkeling 在工作区侧边栏增加了 `Sessions` 入口，用于浏览本机 AI 编程会话历史（Codex 与
+Claude Code）。你可以在不离开工作台的情况下搜索、筛选、标记、备注和恢复会话。
+
+:::note
+
+当前范围是**本机**会话。浏览存储在远程 SSH 主机上的会话仍是后续扩展方向，尚未交付。
+
+:::
+
+## 本机会话来源
+
+Sessions 读取以下本地目录：
+
+| 提供方        | 来源目录                    |
+| ------------- | --------------------------- |
+| Codex         | `~/.codex/sessions`         |
+| Claude Code   | `~/.claude/projects`        |
+| Claude Cache  | `~/.cache/claude/projects`  |
+
+Snorkeling 把自己的会话索引、标记、备注与删除暂存放在 Snorkeling 自己的数据文件里（位于
+`~/.snorkeling/ai-sessions`），不会写入 Codex 或 Claude 的原始 session 文件。
+
+:::info 需确认
+
+`settings.json` 中有默认的 `note:dir` 配置键。它与会话备注存储路径的关系在事实源中未展开；本页只
+说明备注保存在 Snorkeling 自己的数据文件中。
+
+:::
+
+## 会话列表
+
+Sessions 页面提供会话列表：
+
+- 按最后更新时间排序，支持 `newest` / `oldest` 切换。
+- 按来源筛选：`All`、`Codex`、`Claude Code`。
+- 支持按标题、备注、路径等字段搜索。
+- 可手动刷新列表。
+- 对长会话做索引缓存，避免每次打开都全量解析。
+
+## 会话详情
+
+选中会话后，可在详情区查看对话内容：
+
+- 用户消息与 AI 消息按角色分开展示。
+- 时间精确到秒。
+- 最近消息优先加载，避免超长会话一次性渲染卡顿。
+- 可继续加载更早消息。
+- 长消息可折叠 / 展开。
+- 可加载 tool calls 相关内容。
+- 可复制单条消息。
+
+## 会话大纲
+
+Sessions 可根据用户消息生成大纲：
+
+- 用用户提问形成 outline。
+- 点击大纲项跳转到对应消息。
+- 适合快速回忆一次长会话里做过什么。
+
+## 标记、备注与删除
+
+Snorkeling 增加了本机会话管理：
+
+- 标记 / 取消标记重点会话。
+- 只看 marked 会话。
+- 可给会话写 Note。
+- Note 参与搜索。
+- 删除会话前有二次确认。
+- 删除不会永久删除源文件，而是移动到 Snorkeling 的 deleted storage。
+
+## 恢复会话
+
+可从会话详情恢复会话：
+
+- Codex 会话会创建新的 terminal block 并尝试 `resume`。
+- Claude 会话会创建新的 terminal block 并尝试 `resume`。
+- 如果会话记录里有 project path，会使用该目录作为启动目录。
+- 新启动的 Agent 区块会带上 provider 与 session id，方便之后继续识别。
+
+## 打开目录与复制操作
+
+Sessions 提供辅助操作：
+
+- 打开 session 文件所在目录。
+- 复制 session id。
+- 复制 session folder path。
+- 复制 resume command。
+- 复制单条消息内容。
+
+## Session Overview 会话总览
+
+Session Overview 面板从工作区角度查看当前打开的 Agent / session 相关区块：
+
+- 按 Tab 分组显示区块。
+- 识别 Agent-like 区块。
+- 显示区块标题、类型、所在 Tab 和关联 session id。
+- 支持跳转到对应 Tab 和区块。
+
+总览面板读取 session 文件状态并展示摘要：
+
+- 显示最近可读消息预览。
+- 检测 session 文件 `mtime` / size 变化并刷新。
+- 支持手动刷新。
+- 会话备注更新后能同步响应。
+
+在总览里可以直接处理会话相关操作：
+
+- 打开会话详情弹窗。
+- 打开会话 Note 弹窗。
+- 删除 / 关闭对应区块。
+- 处理 session 文件缺失、解析失败等错误状态。
+
+## 相关内容
+
+- [Agent 工作流](./agent-workflow) — 启动与恢复 Agent。
+- [版本控制](./version-control) — 在工作区内提交与对比。

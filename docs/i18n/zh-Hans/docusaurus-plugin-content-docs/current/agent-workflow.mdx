@@ -1,0 +1,91 @@
+---
+sidebar_position: 1.7
+id: "agent-workflow"
+title: "Agent 工作流"
+---
+
+# Agent 工作流
+
+Snorkeling 在工作区右侧边栏增加了 `Agent` 入口（位于 `Terminal` 与 `Files` 之间）。你不必手动新建
+普通终端再输入 Agent 命令，可以直接从当前工作区上下文启动 Codex、Claude Code 等 AI 编程 Agent。
+
+本页描述 fork 专属的 Agent 启动与会话行为。配置键（`agent:defaultprofile` 与
+`agent:profiles`）位于你的 `settings.json`；如何编辑配置文件请见 [配置](./config)。
+
+## 启动 Agent
+
+点击右侧边栏的 `Agent` 入口，即可从当前工作区上下文启动 Agent。
+
+### 上下文继承
+
+Snorkeling 根据当前聚焦对象决定在哪里启动 Agent：
+
+- 当前聚焦的是**本地终端**，则在终端当前目录启动 Agent。
+- 当前聚焦的是**远程 SSH 终端**，则在同一远程连接和目录启动 Agent。
+- 没有明确聚焦终端时，回退使用当前 Tab 中最近的终端上下文。
+- 当前 Tab 有多个候选环境时，会展示**选择器**，让你选择要在哪个环境启动。
+
+目标很简单：「我正在某个项目目录工作，Agent 应该自动进入这个目录」。
+
+### 结合 Files 路径启动
+
+Agent 启动也会参考 Files / Preview 当前路径：
+
+- 当前聚焦的是 Files 中的**文件**，则使用文件所在目录。
+- 当前聚焦的是**目录**，则使用该目录。
+- Files 路径与某终端的连接、目录一致时，Snorkeling 会自动命中对应终端环境。
+- Files 与终端上下文不一致时，选择器会列出候选路径，避免误启动到错误目录。
+- 支持多个 Files 上下文，而不只依赖最后一个终端。
+
+## Agent Profile 配置
+
+Agent 启动命令不再硬编码为单一命令，而是由 *profile* 驱动：
+
+- 默认 profile 是 `codex`。
+- 内置支持 `codex`、`claude`、`gemini`、`opencode`。
+- 可在 `settings.json` 中配置 `agent:defaultprofile` 与 `agent:profiles`。
+- 每个 profile 可配置命令、固定参数、模型参数和环境变量。
+- 如果配置缺失，则回退到内置默认 profile。
+
+:::info 需确认
+
+`agent:profiles` 中每个条目内部的确切 JSON 字段名（比如命令、args、模型、env 用哪个键）在事实
+源中未给出文档。这里只写明配置键名（`agent:defaultprofile` / `agent:profiles`）与各字段的概念。
+
+:::
+
+典型用途：
+
+- 默认用 Codex。
+- 某些机器上切换到 Claude Code。
+- 为不同 Agent 固定模型名和环境变量。
+
+## 会话自动续接
+
+Snorkeling 会在 Agent 终端区块中记录 provider 与 session 信息，用于之后的识别与恢复：
+
+- 支持解析 Codex `resume` 会话。
+- 支持解析 Claude `--resume`、`-r`、`--session-id`。
+- 可从启动命令、最后执行命令或持久化 meta 中识别 session id。
+- Windows 命令提示符、PowerShell 提示符等输出格式也已兼容。
+- 新 Agent 区块默认带有自动续接标记。
+
+:::info
+
+这与 [AI Sessions](./ai-sessions) 视图配合：在那里浏览到的会话，可以恢复为新的 Agent 区块。
+
+:::
+
+## Agent 命令区块信息
+
+Agent 相关区块携带更多可见信息：
+
+- 命令区块头部显示启动目录。
+- 可复制 Agent / session 调试信息。
+- 在缺少 `wsh` 的 SSH 场景下，Agent 命令也可运行。
+- 强化了 Codex 会话发现与 Windows resume 绑定。
+
+## 相关内容
+
+- [AI Sessions](./ai-sessions) — 浏览并恢复本机 Codex / Claude 会话。
+- [版本控制](./version-control) — 在工作区内提交与对比。

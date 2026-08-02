@@ -1,0 +1,104 @@
+---
+sidebar_position: 1.7
+id: "agent-workflow"
+title: "Agent Workflow"
+---
+
+import { Kbd } from "@site/src/components/kbd";
+
+# Agent Workflow
+
+Snorkeling adds an `Agent` entry in the workspace sidebar (between `Terminal` and `Files`). Instead of
+creating a plain terminal and typing an agent command yourself, you can launch an AI coding agent —
+such as Codex or Claude Code — directly from the context you are already working in.
+
+This page describes the fork-specific Agent launch and session behavior. The configuration keys
+(`agent:defaultprofile` and `agent:profiles`) live in your `settings.json`; see
+[Configuration](./config) for how to edit config files.
+
+## Launching an Agent
+
+Click the `Agent` entry in the right sidebar to start an agent from the current workspace context.
+
+### Context inheritance
+
+Snorkeling decides where to launch the agent based on what is currently focused:
+
+- If the focused block is a **local terminal**, the agent starts in that terminal's current directory.
+- If the focused block is a **remote SSH terminal**, the agent starts on the same remote connection and
+  directory.
+- If there is no clearly focused terminal, Snorkeling falls back to the most recent terminal context in
+  the current tab.
+- If the current tab has multiple candidate environments, a **chooser** is shown so you can pick the
+  environment in which to start the agent.
+
+The goal is: "I'm working in a project directory, the agent should automatically land in that
+directory."
+
+### Files-path launch
+
+Agent launch also considers the current path in the Files / Preview area:
+
+- When a **file** is focused in Files, the agent uses the file's containing directory.
+- When a **directory** is focused, the agent uses that directory.
+- If the Files path matches a terminal's connection and directory, Snorkeling automatically targets that
+  terminal environment.
+- If the Files context and the terminal context disagree, the chooser lists the candidate paths to avoid
+  launching in the wrong directory.
+- Multiple Files contexts are supported, not just the last terminal.
+
+## Agent Profiles
+
+The agent launch command is not hard-coded to a single command. It is driven by a *profile*:
+
+- The default profile is `codex`.
+- Built-in profiles include `codex`, `claude`, `gemini`, and `opencode`.
+- You can configure `agent:defaultprofile` and `agent:profiles` in `settings.json`.
+- Each profile can configure the command, fixed arguments, model arguments, and environment variables.
+- If a profile is missing, Snorkeling falls back to the built-in default profile.
+
+:::info 需确认
+
+The exact JSON field names used inside each `agent:profiles` entry (for example the keys for command,
+args, model, and env) are not documented in the fact source. Only the config key names
+(`agent:defaultprofile` / `agent:profiles`) and the concept of each field are described here.
+
+:::
+
+Typical uses:
+
+- Use Codex by default.
+- Switch to Claude Code on certain machines.
+- Pin a model and environment variables for different agents.
+
+## Automatic Session Resume
+
+Snorkeling records the provider and session information in the agent terminal block so it can identify
+and resume sessions later:
+
+- Supports parsing Codex `resume` sessions.
+- Supports parsing Claude `--resume`, `-r`, and `--session-id`.
+- Session ids can be recognized from the launch command, the last executed command, or persisted meta.
+- Windows Command Prompt / PowerShell prompt output formats are also handled.
+- New agent blocks are tagged with an auto-resume marker by default.
+
+:::info
+
+This pairs with the [AI Sessions](./ai-sessions) view: sessions browsed there can be resumed as new agent
+blocks.
+
+:::
+
+## Agent Block Information
+
+Agent-related blocks carry more visible information:
+
+- The command block header shows the launch directory.
+- Agent / session debug information can be copied.
+- Agent command execution works in SSH scenarios that lack `wsh`.
+- Codex session discovery and Windows resume binding have been hardened.
+
+## Related
+
+- [AI Sessions](./ai-sessions) — browse and resume local Codex / Claude sessions.
+- [Version Control](./version-control) — commit and diff from the workspace.

@@ -91,7 +91,9 @@ Wave AI 是具备工作区上下文感知能力的终端助手：
 - **免费 Beta**：体验优化期间提供 AI 额度
 - **即将上线**：命令执行（需用户授权）
 
-更多说明请参考 [Wave AI 文档](https://docs.waveterm.dev/waveai) 和 [Wave AI Modes 文档](https://docs.waveterm.dev/waveai-modes)。
+更多说明请参考 [Wave AI 文档](https://nita121388.github.io/snorkeling/waveai) 和 [Wave AI Modes 文档](https://nita121388.github.io/snorkeling/waveai-modes)。
+
+Snorkeling 专属功能请见 [Snorkeling 文档站](https://nita121388.github.io/snorkeling/) 中的 [Snorkeling 功能](https://nita121388.github.io/snorkeling/snorkeling-features)、[Agent 工作流](https://nita121388.github.io/snorkeling/agent-workflow)、[AI 会话](https://nita121388.github.io/snorkeling/ai-sessions)、[版本控制](https://nita121388.github.io/snorkeling/version-control) 页面。
 
 ## 安装
 
