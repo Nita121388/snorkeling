@@ -137,9 +137,9 @@ func (p *OpenCodeProvider) ListFiles(ctx context.Context) ([]SessionFile, error)
 	if err != nil {
 		return nil, err
 	}
+	mtime, size := fileStatFields(p.dbPath)
 	files := make([]SessionFile, 0, len(summaries))
 	for _, s := range summaries {
-		mtime, size := fileStatFields(p.dbPath)
 		files = append(files, SessionFile{
 			Source: SourceOpenCode,
 			Path:   s.FilePath,
@@ -260,6 +260,9 @@ ORDER BY time_created ASC, id ASC
 	return scanOpenCodeMessages(ctx, rows)
 }
 
+// loadMessagesV1 is the terminal fallback in the V2→V1 chain: its errors propagate
+// (unlike loadMessagesV2 which swallows `no such table`), because there is no
+// further schema to retry against.
 func (p *OpenCodeProvider) loadMessagesV1(ctx context.Context, db *sql.DB, sessionID string) ([]Message, error) {
 	rows, err := db.QueryContext(ctx, `
 SELECT role, content, time_created
