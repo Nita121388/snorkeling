@@ -1,0 +1,54 @@
+---
+sidebar_position: 1.76
+id: "opencode-sessions"
+title: "OpenCode Sessions"
+---
+
+# OpenCode Sessions
+
+Snorkeling surfaces [OpenCode](https://opencode.ai) sessions alongside Codex and Claude Code in the
+workspace `Sessions` sidebar. You can browse OpenCode conversation history, search and filter it, and
+resume a session without leaving the workspace.
+
+## Local Session Source
+
+OpenCode stores its session history in a single SQLite database. Snorkeling locates that database the
+same way OpenCode itself does:
+
+- If `OPENCODE_DB` is set in the environment, Snorkeling uses that path.
+- Otherwise Snorkeling reads the platform default at `<userCacheDir>/opencode/opencode.db`
+  (for example `~/.cache/opencode/opencode.db` on Linux, `~/Library/Caches/opencode/opencode.db` on
+  macOS, and `%LOCALAPPDATA%\opencode\opencode.db` on Windows).
+
+Snorkeling opens the SQLite database in **read-only mode**. It never writes to the database and never
+contends on OpenCode's write locks; it only runs `SELECT` queries against the session tables. Snorkeling's
+own session index, marks, notes, and delete staging live in Snorkeling's data files under
+`~/.snorkeling/ai-sessions`, exactly as for Codex and Claude Code.
+
+## Resume a Session
+
+From the Sessions detail view you can resume an OpenCode session:
+
+- Snorkeling creates a new terminal block and runs the OpenCode `resume` command for that session id.
+- If the session record has a project path, that directory is used as the launch directory.
+- The newly launched agent block carries provider and session id for later identification, mirroring
+  the resume flow used for Codex and Claude.
+
+## cc-switch Vendor Setup
+
+When [cc-switch](./cc-switch) stores an `opencode` provider, Snorkeling materializes a per-vendor
+`OPENCODE_HOME` directory for that vendor before launch:
+
+- The directory is `<waveDataDir>/opencode-vendors/<vendor-id>/`, and an `opencode.json` file is
+  written inside it holding the vendor's environment variables (API key, base URL, model, and so on).
+- The directory path is exposed on the cc-switch vendor entry as `opencode_config_dir`.
+- On resume or launch, Snorkeling points `OPENCODE_HOME` at that per-vendor directory so the OpenCode
+  process picks up the vendor's credentials and configuration without touching your global OpenCode
+  config.
+
+This mirrors the per-vendor directory pattern already used for Codex and Claude providers.
+
+## Related
+
+- [AI Sessions](./ai-sessions) — shared Sessions UI for all providers.
+- [Agent Workflow](./agent-workflow) — launching and resuming agents.

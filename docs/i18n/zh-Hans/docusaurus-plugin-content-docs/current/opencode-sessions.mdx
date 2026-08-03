@@ -1,0 +1,50 @@
+---
+sidebar_position: 1.76
+id: "opencode-sessions"
+title: "OpenCode 会话"
+---
+
+# OpenCode 会话
+
+Snorkeling 在工作区侧边栏的 `Sessions` 入口中，把 [OpenCode](https://opencode.ai) 的会话与
+Codex、Claude Code 一并展示。你可以在不离开工作台的情况下浏览 OpenCode 的对话历史，进行搜索、筛选与恢复。
+
+## 本机会话来源
+
+OpenCode 把会话历史存放在单个 SQLite 数据库中。Snorkeling 按 OpenCode 自身的方式定位该数据库：
+
+- 如果环境变量 `OPENCODE_DB` 已设置，Snorkeling 使用该路径。
+- 否则读取平台默认路径 `<userCacheDir>/opencode/opencode.db`
+  （Linux 上例如 `~/.cache/opencode/opencode.db`，macOS 上
+  `~/Library/Caches/opencode/opencode.db`，Windows 上
+  `%LOCALAPPDATA%\opencode\opencode.db`）。
+
+Snorkeling 以**只读模式**打开该 SQLite 数据库，从不写入数据库，也不会与 OpenCode 的写锁竞争，只会对
+会话表执行 `SELECT` 查询。Snorkeling 自己的会话索引、标记、备注与删除暂存仍存放在 Snorkeling 自己的数据
+文件中（`~/.snorkeling/ai-sessions`），与 Codex、Claude Code 的处理一致。
+
+## 恢复会话
+
+可在会话详情区恢复 OpenCode 会话：
+
+- Snorkeling 会创建一个新的 terminal block 并运行该 session id 对应的 OpenCode `resume` 命令。
+- 如果会话记录里有 project path，会以该目录作为启动目录。
+- 新启动的 Agent 区块会带上 provider 与 session id，便于之后继续识别，和 Codex、Claude 的恢复流程一致。
+
+## cc-switch 供应商配置
+
+当 [cc-switch](./cc-switch) 存储了 `opencode` 供应商时，Snorkeling 会在启动前为该供应商物化一个独立的
+`OPENCODE_HOME` 目录：
+
+- 目录位于 `<waveDataDir>/opencode-vendors/<vendor-id>/`，其下写入 `opencode.json`，存放该供应商的环境变量
+  （API key、base URL、模型等）。
+- 该目录路径通过 cc-switch 供应商条目的 `opencode_config_dir` 字段暴露。
+- 在恢复或启动时，Snorkeling 把 `OPENCODE_HOME` 指向这个按供应商划分的目录，使 OpenCode 进程加载该供应商的
+  凭据与配置，不会污染你的全局 OpenCode 配置。
+
+这与 Codex、Claude 供应商已有的按供应商划分目录的形态一致。
+
+## 相关内容
+
+- [AI 会话](./ai-sessions) — 所有供应商共用的 Sessions 界面。
+- [Agent 工作流](./agent-workflow) — 启动与恢复 Agent。

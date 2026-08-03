@@ -1,0 +1,56 @@
+---
+sidebar_position: 1.77
+id: "pi-sessions"
+title: "Pi 会话"
+---
+
+# Pi 会话
+
+Snorkeling 在工作区侧边栏的 `Sessions` 入口中，把 Pi coding-agent 的会话与 Codex、Claude Code、
+OpenCode 一并展示。你可以在不离开工作台的情况下浏览 Pi 的对话历史，进行搜索、筛选与恢复。
+
+## 本机会话来源
+
+与 OpenCode 把历史存放在单个 SQLite 数据库不同，Pi 把每个会话存为 JSONL v3 文件，
+位于会话目录的树形结构中。Snorkeling 遍历该树，而非查询数据库。
+
+Snorkeling 按 Pi 自身的方式定位会话目录：
+
+- 如果环境变量 `PI_CODING_AGENT_SESSION_DIR` 已设置，Snorkeling 使用该目录。
+- 否则读取平台默认路径 `~/.pi/agent/sessions`。
+
+Snorkeling 以**只读**方式遍历该目录树并解析 JSONL v3 文件，从不写入 Pi 的会话文件，
+也不与 Pi 的锁竞争。Snorkeling 自己的会话索引、标记、备注与删除暂存仍存放在 Snorkeling
+自己的数据文件中（`~/.snorkeling/ai-sessions`），与 Codex、Claude Code、OpenCode 的处理一致。
+
+## 恢复会话
+
+可在会话详情区恢复 Pi 会话：
+
+- Snorkeling 会创建一个新的 terminal block 并运行该 session id 对应的 Pi `resume` 命令。
+- 如果会话记录里有 project path，会以该目录作为启动目录。
+- 新启动的 Agent 区块会带上 provider 与 session id，便于之后继续识别，和 Codex、Claude、OpenCode
+  的恢复流程一致。
+
+## cc-switch 供应商配置
+
+当 [cc-switch](./cc-switch) 存储了 `pi` 供应商时，Snorkeling 会在启动前为该供应商物化一个独立的
+`PI_CODING_AGENT_SESSION_DIR` 目录：
+
+- 目录位于 `<waveDataDir>/pi-vendors/<vendor-id>/`，其下写入 `config.json`，存放该供应商的环境变量
+  （API key、base URL、模型等）。
+- 该目录路径通过 cc-switch 供应商条目的 `pi_config_dir` 字段暴露。
+- 在恢复或启动时，Snorkeling 把 `PI_CODING_AGENT_SESSION_DIR` 指向这个按供应商划分的目录，使 Pi
+  进程加载该供应商的凭据与配置，不会污染你的全局 Pi 配置。
+
+:::note
+
+cc-switch 上游尚未将 `pi` 识别为 `app_type`，因此 cc-switch 的 Pi 供应商选择器目前处于休眠状态，
+需等待上游支持落地。Pi 会话查看器本身——浏览 Pi 原生的 JSONL v3 会话历史——不受 cc-switch 支持的影响，始终可用。
+
+:::
+
+## 相关内容
+
+- [AI 会话](./ai-sessions) — 所有供应商共用的 Sessions 界面。
+- [Agent 工作流](./agent-workflow) — 启动与恢复 Agent。
