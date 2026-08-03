@@ -20,8 +20,8 @@ import (
 
 // AppType values cc-switch stores in `providers.app_type`.
 const (
-	CcSwitchProviderAppType      = "claude" // legacy alias, kept for back-compat with the original commit
-	CcSwitchProviderAppTypeCodex = "codex"
+	CcSwitchProviderAppType         = "claude" // legacy alias, kept for back-compat with the original commit
+	CcSwitchProviderAppTypeCodex    = "codex"
 	CcSwitchProviderAppTypeOpenCode = "opencode"
 	CcSwitchProviderAppTypePi       = "pi"
 )
