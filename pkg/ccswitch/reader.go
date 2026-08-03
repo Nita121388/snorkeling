@@ -22,6 +22,8 @@ import (
 const (
 	CcSwitchProviderAppType      = "claude" // legacy alias, kept for back-compat with the original commit
 	CcSwitchProviderAppTypeCodex = "codex"
+	CcSwitchProviderAppTypeOpenCode = "opencode"
+	CcSwitchProviderAppTypePi       = "pi"
 )
 
 // DefaultDBRelPath is the default location of the cc-switch SQLite DB relative to the user's home dir.
@@ -50,6 +52,10 @@ type Vendor struct {
 	// this directory instead of ~/.codex/. Empty when the vendor is codex-official / has no auth+config
 	// (in which case launching against it inherits the user's global ~/.codex/ — official-login semantics).
 	CodexConfigDir string `json:"codex_config_dir,omitempty"`
+	// OpencodeConfigDir is the absolute path to a per-vendor OPENCODE_HOME we materialize on disk for opencode blocks.
+	OpencodeConfigDir string `json:"opencode_config_dir,omitempty"`
+	// PiConfigDir is the absolute path to a per-vendor PI_CODING_AGENT_SESSION_DIR we materialize on disk for pi blocks.
+	PiConfigDir string `json:"pi_config_dir,omitempty"`
 }
 
 func claudeVendorModel(env map[string]string) string {
