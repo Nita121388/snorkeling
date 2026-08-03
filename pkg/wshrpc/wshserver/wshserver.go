@@ -1638,6 +1638,20 @@ func (ws *WshServer) CcSwitchListCodexVendorsCommand(ctx context.Context) (*ccsw
 	return ccswitch.ListCodexVendors(ctx)
 }
 
+// CcSwitchListOpenCodeVendorsCommand reads the user's cc-switch SQLite DB read-only and returns the list of
+// OpenCode vendors (providers) with each one's env plus a materialized per-vendor OPENCODE_HOME path.
+// Same soft-degrade contract as the Claude variant — never blocks agent launch.
+func (ws *WshServer) CcSwitchListOpenCodeVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error) {
+	return ccswitch.ListOpenCodeVendors(ctx)
+}
+
+// CcSwitchListPiVendorsCommand reads the user's cc-switch SQLite DB read-only and returns the list of
+// Pi vendors (providers) with each one's env plus a materialized per-vendor PI_CODING_AGENT_SESSION_DIR path.
+// Same soft-degrade contract as the Claude variant — never blocks agent launch.
+func (ws *WshServer) CcSwitchListPiVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error) {
+	return ccswitch.ListPiVendors(ctx)
+}
+
 func (ws *WshServer) GetSecretsCommand(ctx context.Context, names []string) (map[string]string, error) {
 	result := make(map[string]string)
 	for _, name := range names {

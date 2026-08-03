@@ -185,6 +185,28 @@ func ListCodexVendors(ctx context.Context) (*VendorList, error) {
 	return vl, err
 }
 
+// ListOpenCodeVendors reads all cc-switch providers where app_type='opencode', extracting each one's env
+// and materializing a per-vendor OpenCodeCodeConfigDir containing opencode.json with just the vendor env.
+// Mirrors ListClaudeVendors' soft-failure contract (DB-missing → Detected=false, nil err) — never blocks agent launch.
+func ListOpenCodeVendors(ctx context.Context) (*VendorList, error) {
+	vl, err := listVendors(ctx, CcSwitchProviderAppTypeOpenCode)
+	if err == nil && vl != nil && vl.Detected {
+		gcVendors(ctx, CcSwitchProviderAppTypeOpenCode, vl.Vendors)
+	}
+	return vl, err
+}
+
+// ListPiVendors reads all cc-switch providers where app_type='pi', extracting each one's env and
+// materializing a per-vendor PiConfigDir containing config.json with just the vendor env.
+// Mirrors ListClaudeVendors' soft-failure contract (DB-missing → Detected=false, nil err) — never blocks agent launch.
+func ListPiVendors(ctx context.Context) (*VendorList, error) {
+	vl, err := listVendors(ctx, CcSwitchProviderAppTypePi)
+	if err == nil && vl != nil && vl.Detected {
+		gcVendors(ctx, CcSwitchProviderAppTypePi, vl.Vendors)
+	}
+	return vl, err
+}
+
 // listVendors is the shared implementation behind ListClaudeVendors / ListCodexVendors. Same row schema
 // for both app_types (see openReadOnly's doc comment); only the per-row settings_config interpretation
 // and the materialized config dir differ.
