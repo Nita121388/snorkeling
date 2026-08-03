@@ -67,6 +67,10 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
         cmd: "opencode",
         modelflag: "--model",
     },
+    pi: {
+        cmd: "pi",
+        modelflag: "--model",
+    },
 };
 
 const BuiltinAgentProfileLabels: Record<string, string> = {
@@ -74,6 +78,7 @@ const BuiltinAgentProfileLabels: Record<string, string> = {
     claude: "Claude Code",
     gemini: "Gemini",
     opencode: "OpenCode",
+    pi: "Pi",
 };
 
 type AgentLaunchSource = "terminal" | "files" | "agent" | "home";
