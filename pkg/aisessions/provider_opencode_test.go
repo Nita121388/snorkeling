@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // opencodeRowV2 holds one row of the OpenCode V2 session table.
@@ -38,7 +38,7 @@ type opencodeMessageRowV2 struct {
 // createTestOpenCodeDBV2 builds an in-memory SQLite DB with the V2 schema and two sessions + messages.
 func createTestOpenCodeDBV2(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory sqlite: %v", err)
 	}
@@ -108,7 +108,7 @@ CREATE TABLE message (
 // createTestOpenCodeDBV1 builds an in-memory SQLite DB using only the V1 `message` table.
 func createTestOpenCodeDBV1(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory sqlite: %v", err)
 	}

@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 const SourceOpenCode = "opencode"
@@ -45,8 +45,12 @@ func (p *OpenCodeProvider) openDB() (*sql.DB, error) {
 	if _, err := os.Stat(p.dbPath); err != nil {
 		return nil, err
 	}
-	dsn := fmt.Sprintf("file:%s?mode=ro&_journal_mode=WAL&_busy_timeout=5000&txlock=immediate", p.dbPath)
-	db, err := sql.Open("sqlite3", dsn)
+	// We do not request _journal_mode=WAL here: this connection is read-only,
+	// and modernc.org/sqlite rejects attempts to set WAL on a ro DB. The DB's
+	// own journal mode (possibly WAL set by OpenCode's writers) is honoured
+	// automatically by SQLite when opening the file.
+	dsn := fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000&txlock=immediate", p.dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +74,16 @@ func parseSessionFilePath(filePath string) (string, string, bool) {
 		return filePath, "", true
 	}
 	return filePath[:idx], filePath[idx+1:], true
+}
+
+// isOpenCodeNoSuchTableError reports whether err indicates the given
+// SQLite table does not exist, so callers can fall back to a V1 schema.
+func isOpenCodeNoSuchTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table")
 }
 
 func (p *OpenCodeProvider) List(ctx context.Context) ([]SessionSummary, error) {
@@ -189,11 +203,6 @@ func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated
 		titleSource = "id"
 	}
 
-	model := modelID
-	if model == "" {
-		model = modelProvider
-	}
-
 	summary := SessionSummary{
 		ID:          id,
 		Source:      SourceOpenCode,
@@ -203,7 +212,6 @@ func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated
 		CreatedAt:   timeCreated,
 		UpdatedAt:   timeUpdated,
 		FilePath:    p.sessionFilePath(id),
-		Model:       model,
 		VendorID:    modelProvider,
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
@@ -242,8 +250,11 @@ WHERE session_id = ?
 ORDER BY time_created ASC, id ASC
 `, sessionID)
 	if err != nil {
-		// session_message table may not exist on V1-only DBs.
-		return nil, nil
+		// V1-only DBs have no session_message table; let the caller fall back.
+		if isOpenCodeNoSuchTableError(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	defer rows.Close()
 	return scanOpenCodeMessages(ctx, rows)
@@ -354,7 +365,11 @@ WHERE session_id = ? AND role = 'assistant'
 ORDER BY time_created ASC, id ASC
 `, sessionID)
 	if err != nil {
-		return nil, nil
+		// V1-only DBs have no session_message table; let the caller fall back.
+		if isOpenCodeNoSuchTableError(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	defer rows.Close()
 	return scanOpenCodeToolCalls(ctx, rows)
