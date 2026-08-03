@@ -305,6 +305,52 @@ func listVendors(ctx context.Context, appType string) (*VendorList, error) {
 					}
 				}
 			}
+		case CcSwitchProviderAppTypeOpenCode:
+			// OpenCode settings_config: {"env": {...}}. Same shape as claude — opencode's
+			// settings.json equivalent is opencode.json, which only carries the vendor env.
+			if r.SettingsJSON != "" {
+				var sc settingsConfigShape
+				if json.Unmarshal([]byte(r.SettingsJSON), &sc) == nil && sc.Env != nil {
+					v.Env = sc.Env
+				}
+			}
+			shouldMaterialize := false
+			for _, val := range v.Env {
+				if strings.TrimSpace(val) != "" {
+					shouldMaterialize = true
+					break
+				}
+			}
+			if shouldMaterialize {
+				if ocd, materializeErr := materializeOpenCodeConfigDir(v.ID, v.Env); materializeErr != nil {
+					fmt.Printf("ccswitch: unable to materialize OpenCode vendor %q: %v\n", v.ID, materializeErr)
+				} else if ocd != "" {
+					v.OpencodeConfigDir = ocd
+				}
+			}
+		case CcSwitchProviderAppTypePi:
+			// Pi settings_config: {"env": {...}}. Same shape as claude/opencode — pi's
+			// settings.json equivalent is config.json, which only carries the vendor env.
+			if r.SettingsJSON != "" {
+				var sc settingsConfigShape
+				if json.Unmarshal([]byte(r.SettingsJSON), &sc) == nil && sc.Env != nil {
+					v.Env = sc.Env
+				}
+			}
+			shouldMaterialize := false
+			for _, val := range v.Env {
+				if strings.TrimSpace(val) != "" {
+					shouldMaterialize = true
+					break
+				}
+			}
+			if shouldMaterialize {
+				if pcd, materializeErr := materializePiConfigDir(v.ID, v.Env); materializeErr != nil {
+					fmt.Printf("ccswitch: unable to materialize Pi vendor %q: %v\n", v.ID, materializeErr)
+				} else if pcd != "" {
+					v.PiConfigDir = pcd
+				}
+			}
 		}
 		vendors = append(vendors, v)
 	}
@@ -388,14 +434,21 @@ func ResolveClaudeVendorSessionPath(path string) (vendorID string, configDir str
 	return parts[0], configDir, true
 }
 
-// vendorsRoot returns the per-waveDataDir directory holding one subdirectory per vendor ID for the
-// given appType — claude-vendors/ for claude, codex-vendors/ for codex. Lives under GetWaveDataDir()
+// vendorsRoot returns the per-waveDataDir directory holding one subdirectory per vendor ID for
+// the given appType — claude-vendors/ for claude, codex-vendors/ for codex,
+// opencode-vendors/ for opencode, pi-vendors/ for pi. Lives under GetWaveDataDir()
 // so dev/prod and local/remote instances stay isolated.
 func vendorsRoot(appType string) string {
-	if appType == CcSwitchProviderAppTypeCodex {
+	switch appType {
+	case CcSwitchProviderAppTypeCodex:
 		return codexVendorsRoot()
+	case CcSwitchProviderAppTypeOpenCode:
+		return opencodeVendorsRoot()
+	case CcSwitchProviderAppTypePi:
+		return piVendorsRoot()
+	default:
+		return claudeVendorsRoot()
 	}
-	return claudeVendorsRoot()
 }
 
 // gcVendors removes only Wave-owned credential/config files for vendors no longer present in cc-switch.
@@ -441,10 +494,16 @@ func gcVendors(ctx context.Context, appType string, liveVendors []Vendor) {
 }
 
 func vendorOwnedConfigFiles(appType string) []string {
-	if appType == CcSwitchProviderAppTypeCodex {
+	switch appType {
+	case CcSwitchProviderAppTypeCodex:
 		return []string{"auth.json", "config.toml", "hooks.json", "cc-switch-model-catalog.json"}
+	case CcSwitchProviderAppTypeOpenCode:
+		return []string{"opencode.json"}
+	case CcSwitchProviderAppTypePi:
+		return []string{"config.json"}
+	default:
+		return []string{"settings.json"}
 	}
-	return []string{"settings.json"}
 }
 
 func liveClaudeSettingsPath() (string, error) {

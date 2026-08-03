@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,5 +193,81 @@ func TestGCVendorsRemovesOnlyEmptyOrphans(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(live, "settings.json")); err != nil {
 		t.Fatalf("live vendor was modified: %v", err)
+	}
+}
+
+func TestMaterializeOpenCodeConfigDir(t *testing.T) {
+	useTestWaveDataDir(t)
+	dir, err := materializeOpenCodeConfigDir("vendor-a", map[string]string{"OPENCODE_PROVIDER": "test-opencode", "OPENCODE_API_KEY": "sk-opencode-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir == "" {
+		t.Fatal("materializeOpenCodeConfigDir returned empty dir")
+	}
+	document := readJSONDocument(t, filepath.Join(dir, "opencode.json"))
+	if len(document) != 1 || document["env"] == nil {
+		t.Fatalf("expected env-only document, got keys %#v", document)
+	}
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(document["env"], &env); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(env["OPENCODE_PROVIDER"]); !strings.Contains(got, "test-opencode") {
+		t.Fatalf("OPENCODE_PROVIDER = %q, want %q", got, "test-opencode")
+	}
+}
+
+func TestMaterializeOpenCodeConfigDirRejectsUnsafeVendorIDs(t *testing.T) {
+	dataDir := useTestWaveDataDir(t)
+	for _, vendorID := range []string{"", ".", "..", "../escape", `..\escape`, "nested/vendor"} {
+		if _, err := materializeOpenCodeConfigDir(vendorID, map[string]string{"A": "B"}); err == nil {
+			t.Fatalf("expected %q to be rejected", vendorID)
+		}
+	}
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("invalid IDs created data: %#v", entries)
+	}
+}
+
+func TestMaterializePiConfigDir(t *testing.T) {
+	useTestWaveDataDir(t)
+	dir, err := materializePiConfigDir("vendor-a", map[string]string{"PI_CODING_AGENT_API_KEY": "sk-pi-test", "PI_CODING_AGENT_BASE_URL": "https://pi.example.invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir == "" {
+		t.Fatal("materializePiConfigDir returned empty dir")
+	}
+	document := readJSONDocument(t, filepath.Join(dir, "config.json"))
+	if len(document) != 1 || document["env"] == nil {
+		t.Fatalf("expected env-only document, got keys %#v", document)
+	}
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(document["env"], &env); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(env["PI_CODING_AGENT_API_KEY"]); !strings.Contains(got, "sk-pi-test") {
+		t.Fatalf("PI_CODING_AGENT_API_KEY = %q, want %q", got, "sk-pi-test")
+	}
+}
+
+func TestMaterializePiConfigDirRejectsUnsafeVendorIDs(t *testing.T) {
+	dataDir := useTestWaveDataDir(t)
+	for _, vendorID := range []string{"", ".", "..", "../escape", `..\escape`, "nested/vendor"} {
+		if _, err := materializePiConfigDir(vendorID, map[string]string{"A": "B"}); err == nil {
+			t.Fatalf("expected %q to be rejected", vendorID)
+		}
+	}
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("invalid IDs created data: %#v", entries)
 	}
 }
