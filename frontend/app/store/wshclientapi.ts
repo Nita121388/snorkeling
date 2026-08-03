@@ -114,6 +114,18 @@ export class RpcApiType {
         return client.wshRpcCall("ccswitchlistcodexvendors", null, opts);
     }
 
+    // command "ccswitchlistopencodevendors" [call]
+    CcSwitchListOpenCodeVendorsCommand(client: WshClient, opts?: RpcOpts): Promise<VendorList> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "ccswitchlistopencodevendors", null, opts);
+        return client.wshRpcCall("ccswitchlistopencodevendors", null, opts);
+    }
+
+    // command "ccswitchlistpivendors" [call]
+    CcSwitchListPiVendorsCommand(client: WshClient, opts?: RpcOpts): Promise<VendorList> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "ccswitchlistpivendors", null, opts);
+        return client.wshRpcCall("ccswitchlistpivendors", null, opts);
+    }
+
     // command "checkgoversion" [call]
     CheckGoVersionCommand(client: WshClient, opts?: RpcOpts): Promise<CommandCheckGoVersionRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "checkgoversion", null, opts);
