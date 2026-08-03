@@ -86,6 +86,40 @@ func DefaultClaudeProjectDirs() []string {
 	return uniqueStrings(dirs)
 }
 
+func DefaultPiSessionsDir() string {
+	home := homeDir()
+	if home == "" {
+		return ""
+	}
+	if envDir := os.Getenv("PI_CODING_AGENT_SESSION_DIR"); envDir != "" {
+		return envDir
+	}
+	return filepath.Join(home, ".pi", "agent", "sessions")
+}
+
+// userCacheDir returns the OS cache dir, or "" when unavailable. OpenCode stores
+// its sqlite db under <userCacheDir>/opencode/opencode.db by default.
+func userCacheDir() string {
+	dir, err := os.UserCacheDir()
+	if err != nil || dir == "" {
+		return ""
+	}
+	return dir
+}
+
+// DefaultOpenCodeDBPath returns the configured/default OpenCode sqlite db path,
+// or "" when neither env nor a cache dir is available.
+func DefaultOpenCodeDBPath() string {
+	if envPath := os.Getenv("OPENCODE_DB"); envPath != "" {
+		return envPath
+	}
+	cache := userCacheDir()
+	if cache == "" {
+		return ""
+	}
+	return filepath.Join(cache, "opencode", "opencode.db")
+}
+
 func DefaultProviders() []Provider {
 	var providers []Provider
 	if dir := DefaultCodexSessionsDir(); dir != "" {
@@ -93,6 +127,21 @@ func DefaultProviders() []Provider {
 	}
 	if dirs := DefaultClaudeProjectDirs(); len(dirs) > 0 {
 		providers = append(providers, NewClaudeProvider(dirs))
+	}
+	// Gated on os.Stat (unlike codex/claude above) because the default OpenCode
+	// DB path may not exist on machines that never ran OpenCode; List() would
+	// otherwise surface a misleading "no such file" error on every scan.
+	if dbPath := DefaultOpenCodeDBPath(); dbPath != "" {
+		if _, err := os.Stat(dbPath); err == nil {
+			providers = append(providers, NewOpenCodeProvider(dbPath))
+		}
+	}
+	// Gated on os.Stat for the same reason: only register Pi when its dir actually
+	// exists, so machines that never ran Pi get a clean empty list rather than an error.
+	if piDir := DefaultPiSessionsDir(); piDir != "" {
+		if info, err := os.Stat(piDir); err == nil && info.IsDir() {
+			providers = append(providers, NewPiProvider(piDir))
+		}
 	}
 	return providers
 }
