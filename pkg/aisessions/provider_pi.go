@@ -190,7 +190,7 @@ func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
 	if !ok {
 		return piMessageEntry{}, false
 	}
-	if toolName != "" {
+	if toolName != "" && strings.TrimSpace(text) == "" {
 		text = "[Tool: " + toolName + "]"
 	}
 
@@ -228,40 +228,13 @@ func piExtractContent(content any, role string) (string, string, bool) {
 
 	if role == RoleAssistant {
 		if arr, ok := content.([]any); ok {
-			var toolName string
-			var text string
-			for _, item := range arr {
-				itemMap, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				if kind, _ := itemMap["kind"].(string); kind == "bashExecution" {
-					toolName = "bash"
-					if t := strValue(itemMap, "bashOutput"); t != "" {
-						text = t
-					}
-					break
-				}
-				if strValue(itemMap, "type") == "bashExecution" {
-					toolName = "bash"
-					if t := strValue(itemMap, "bashOutput"); t != "" {
-						text = t
-					}
-					break
-				}
-				if strValue(itemMap, "type") == "toolcall" {
-					toolName = strValue(itemMap, "name")
-					if toolName == "" {
-						toolName = "unknown"
-					}
-					break
-				}
-			}
-			if text == "" {
-				text = extractText(arr)
-			}
+			text := extractText(arr)
+			toolName, bashOutput := piScanAssistantTool(arr)
 			if strings.TrimSpace(text) == "" && toolName == "" {
 				return "", "", false
+			}
+			if strings.TrimSpace(text) == "" && bashOutput != "" {
+				text = bashOutput
 			}
 			if toolName != "" && strings.TrimSpace(text) == "" {
 				return "", toolName, true
@@ -275,6 +248,34 @@ func piExtractContent(content any, role string) (string, string, bool) {
 		return "", "", false
 	}
 	return text, "", true
+}
+
+// piScanAssistantTool scans an assistant content array for the first
+// bashExecution (by kind or type) or toolcall item and returns the
+// tool name and bashOutput (if bashExecution). Returns ("", "") when
+// no tool item is found.
+func piScanAssistantTool(arr []any) (toolName, bashOutput string) {
+	for _, item := range arr {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		kind := strValue(itemMap, "kind")
+		itemType := strValue(itemMap, "type")
+		if kind == "bashExecution" || itemType == "bashExecution" {
+			toolName = "bash"
+			bashOutput = strValue(itemMap, "bashOutput")
+			return toolName, bashOutput
+		}
+		if itemType == "toolcall" {
+			toolName = strValue(itemMap, "name")
+			if toolName == "" {
+				toolName = "unknown"
+			}
+			return toolName, ""
+		}
+	}
+	return "", ""
 }
 
 func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
@@ -295,7 +296,7 @@ func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
 	if !ok {
 		return Message{}, false
 	}
-	if toolName != "" {
+	if toolName != "" && strings.TrimSpace(text) == "" {
 		text = "[Tool: " + toolName + "]"
 	}
 

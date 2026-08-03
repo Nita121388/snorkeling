@@ -197,6 +197,33 @@ func TestPiProvider_LoadMessagesBashExecution(t *testing.T) {
 	}
 }
 
+func TestPiProvider_LoadMessagesMixedTextAndBash(t *testing.T) {
+	// Mixed array: text item comes first, bashExecution second.
+	// The real text must be preserved; bashOutput is NOT used when text exists.
+	dir := t.TempDir()
+	content := `{"type":"session","version":3,"id":"pi-sess-5","timestamp":1700000004,"cwd":"/home/user/mixed"}` + "\n" +
+		`{"type":"message","id":"x1","parentId":"","role":"user","content":"run build"}` + "\n" +
+		`{"type":"message","id":"x2","parentId":"x1","role":"assistant","content":[{"type":"text","text":"internal step"},{"type":"bashExecution","bashOutput":"build success"}]}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	messages, err := p.LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d: %#v", len(messages), messages)
+	}
+	if messages[1].Role != RoleAssistant {
+		t.Fatalf("expected second message role assistant, got %q", messages[1].Role)
+	}
+	if messages[1].Text != "internal step" {
+		t.Fatalf("expected assistant text 'internal step' (preserved), got %q", messages[1].Text)
+	}
+	if messages[1].ToolName != "bash" {
+		t.Fatalf("expected ToolName bash, got %q", messages[1].ToolName)
+	}
+}
+
 func TestPiProvider_LoadToolCalls(t *testing.T) {
 	dir := t.TempDir()
 	content := `{"type":"session","version":3,"id":"pi-sess-4","timestamp":1700000003,"cwd":"/home/user/repo"}` + "\n" +
