@@ -275,6 +275,28 @@ export function restoreCommandForSession(summary: SessionSummary): string {
         const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);
         return `cd ${quotedPath}\n${resumeCommand}`;
     }
+    if (summary.source === "opencode") {
+        let resumeCommand = `opencode --session ${summary.id}`;
+        if (summary.configdir) {
+            resumeCommand = isWindows()
+                ? `$env:OPENCODE_HOME = ${quotePowerShellValue(summary.configdir)}\n${resumeCommand}`
+                : `OPENCODE_HOME=${quoteShellPath(summary.configdir)} ${resumeCommand}`;
+        }
+        if (!summary.projectPath) return resumeCommand;
+        const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);
+        return `cd ${quotedPath}\n${resumeCommand}`;
+    }
+    if (summary.source === "pi") {
+        let resumeCommand = `pi --session-id ${summary.id}`;
+        if (summary.configdir) {
+            resumeCommand = isWindows()
+                ? `$env:PI_CODING_AGENT_SESSION_DIR = ${quotePowerShellValue(summary.configdir)}\n${resumeCommand}`
+                : `PI_CODING_AGENT_SESSION_DIR=${quoteShellPath(summary.configdir)} ${resumeCommand}`;
+        }
+        if (!summary.projectPath) return resumeCommand;
+        const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);
+        return `cd ${quotedPath}\n${resumeCommand}`;
+    }
     return `codex resume ${summary.id}`;
 }
 

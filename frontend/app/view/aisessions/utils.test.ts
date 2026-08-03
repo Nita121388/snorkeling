@@ -196,6 +196,94 @@ describe("AI session detail timeline", () => {
         ).toBe("CLAUDE_CONFIG_DIR='/tmp/Wave Data/claude-vendors/vendor-a' claude --resume session-123");
     });
 
+    it("builds OpenCode resume commands with --session flag", () => {
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "oc-session-456",
+                source: "opencode",
+                projectPath: "/Users/nita/dev/proj",
+            } as SessionSummary)
+        ).toBe(`cd /Users/nita/dev/proj\nopencode --session oc-session-456`);
+        expect(
+            restoreCommandForSession({
+                id: "oc-session-456",
+                source: "opencode",
+                projectPath: "",
+            } as SessionSummary)
+        ).toBe("opencode --session oc-session-456");
+    });
+
+    it("injects OPENCODE_HOME into OpenCode resume commands when configdir is set", () => {
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "oc-session-456",
+                source: "opencode",
+                projectPath: "/Users/nita/dev/proj",
+                configdir: "/tmp/Wave Data/opencode-vendors/vendor-a",
+            } as SessionSummary)
+        ).toBe(
+            `cd /Users/nita/dev/proj\nOPENCODE_HOME='/tmp/Wave Data/opencode-vendors/vendor-a' opencode --session oc-session-456`
+        );
+        setPlatform(PlatformWindows);
+        expect(
+            restoreCommandForSession({
+                id: "oc-session-456",
+                source: "opencode",
+                projectPath: "C:\\dev\\proj",
+                configdir: "C:\\Wave Data\\opencode-vendors\\vendor-a",
+            } as SessionSummary)
+        ).toBe(
+            `cd "C:\\dev\\proj"\n$env:OPENCODE_HOME = 'C:\\Wave Data\\opencode-vendors\\vendor-a'\nopencode --session oc-session-456`
+        );
+        setPlatform(PlatformMacOS);
+    });
+
+    it("builds Pi resume commands with --session-id flag", () => {
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "pi-session-789",
+                source: "pi",
+                projectPath: "/Users/nita/dev/proj",
+            } as SessionSummary)
+        ).toBe(`cd /Users/nita/dev/proj\npi --session-id pi-session-789`);
+        expect(
+            restoreCommandForSession({
+                id: "pi-session-789",
+                source: "pi",
+                projectPath: "",
+            } as SessionSummary)
+        ).toBe("pi --session-id pi-session-789");
+    });
+
+    it("injects PI_CODING_AGENT_SESSION_DIR into Pi resume commands when configdir is set", () => {
+        setPlatform(PlatformMacOS);
+        expect(
+            restoreCommandForSession({
+                id: "pi-session-789",
+                source: "pi",
+                projectPath: "/Users/nita/dev/proj",
+                configdir: "/tmp/Wave Data/pi-sessions/vendor-a",
+            } as SessionSummary)
+        ).toBe(
+            `cd /Users/nita/dev/proj\nPI_CODING_AGENT_SESSION_DIR='/tmp/Wave Data/pi-sessions/vendor-a' pi --session-id pi-session-789`
+        );
+        setPlatform(PlatformWindows);
+        expect(
+            restoreCommandForSession({
+                id: "pi-session-789",
+                source: "pi",
+                projectPath: "C:\\dev\\proj",
+                configdir: "C:\\Wave Data\\pi-sessions\\vendor-a",
+            } as SessionSummary)
+        ).toBe(
+            `cd "C:\\dev\\proj"\n$env:PI_CODING_AGENT_SESSION_DIR = 'C:\\Wave Data\\pi-sessions\\vendor-a'\npi --session-id pi-session-789`
+        );
+        setPlatform(PlatformMacOS);
+    });
+
     it("builds vendor restore metadata only from validated context", () => {
         expect(
             restoreMetaForSession({
