@@ -14,17 +14,19 @@ import (
 	"math/rand"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
 	"time"
 
+	"github.com/pkg/sftp"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
 	"github.com/wavetermdev/waveterm/pkg/genconn"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/util/iterfn"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
-	"github.com/wavetermdev/waveterm/pkg/util/syncbuf"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"golang.org/x/crypto/ssh"
@@ -33,7 +35,7 @@ import (
 const windowsWshAutoTempNamePattern = `^wsh[.]exe[.][0-9]{19}[.][0-9]{1,19}[.]temp$`
 const windowsWshQuarantineNamePattern = `^wsh[.]exe[.][0-9]{19}[.][0-9]{1,19}[.]temp[.]quarantine[.][0-9]{18}$`
 
-var ErrWindowsAutoWshInstallRequiresManual = errors.New("windows automatic wsh install is temporarily disabled; manual install required")
+var ErrWindowsAutoWshInstallRequiresManual = errors.New("windows automatic wsh install is unavailable; manual install required")
 
 var userHostRe = regexp.MustCompile(`^([a-zA-Z0-9][a-zA-Z0-9._@\\-]*@)?([a-zA-Z0-9][a-zA-Z0-9.-]*)(?::([0-9]+))?$`)
 
@@ -202,22 +204,22 @@ type platformProbeDiag struct {
 // can surface every probe's stdout/stderr in the diagnostic state.
 //
 // Probes (ordered cheapest-to-most-expensive to keep the common case fast):
-//   1. "ver" — runs on cmd.exe (prints "Microsoft Windows [...]") and on
-//      POSIX shells where `ver` is usually absent; we parse stdout for the
-//      substring "windows" (case-insensitive). Definitive for Windows.
-//   2. "uname -sm" — runs on POSIX sh and on Windows-with-bash; on POSIX it
-//      returns "Linux x86_64" / "Darwin arm64" verbatim, on MSYS/Cygwin it
-//      returns "MINGW64_NT-... x86_64" / "CYGWIN_NT-... x86_64" which we
-//      normalize to windows. On bare-Windows-cmd `uname` is rejected; that
-//      exit-with-no-stdout is recorded and we fall through.
-//   3. PowerShell-encoded probe — `powershell -NoProfile -NonInteractive
-//      -EncodedCommand <payload>` where the payload prints
-//      `[System.Environment]::OSVersion.Platform` and
-//      `$env:PROCESSOR_ARCHITECTURE` separated by a space. PowerShell is
-//      available on every supported Windows (7+) and on Linux/macOS via
-//      PowerShell Core; on Windows Platform=Win32NT is definitive, on
-//      non-Windows Platform=Unix is reported back as-is and the caller can
-//      match against ValidateWshSupportedArch.
+//  1. "ver" — runs on cmd.exe (prints "Microsoft Windows [...]") and on
+//     POSIX shells where `ver` is usually absent; we parse stdout for the
+//     substring "windows" (case-insensitive). Definitive for Windows.
+//  2. "uname -sm" — runs on POSIX sh and on Windows-with-bash; on POSIX it
+//     returns "Linux x86_64" / "Darwin arm64" verbatim, on MSYS/Cygwin it
+//     returns "MINGW64_NT-... x86_64" / "CYGWIN_NT-... x86_64" which we
+//     normalize to windows. On bare-Windows-cmd `uname` is rejected; that
+//     exit-with-no-stdout is recorded and we fall through.
+//  3. PowerShell-encoded probe — `powershell -NoProfile -NonInteractive
+//     -EncodedCommand <payload>` where the payload prints
+//     `[System.Environment]::OSVersion.Platform` and
+//     `$env:PROCESSOR_ARCHITECTURE` separated by a space. PowerShell is
+//     available on every supported Windows (7+) and on Linux/macOS via
+//     PowerShell Core; on Windows Platform=Win32NT is definitive, on
+//     non-Windows Platform=Unix is reported back as-is and the caller can
+//     match against ValidateWshSupportedArch.
 //
 // Each probe is wrapped in its own context-bounded 5s timeout and runs in a
 // dedicated ssh session, so a single stuck probe cannot block detection.
@@ -358,7 +360,9 @@ func probeRemotePlatformUname(ctx context.Context, client *ssh.Client) (string, 
 // probeRemotePlatformPowerShell runs a PowerShell-encoded probe via
 // `powershell -NoProfile -NonInteractive -EncodedCommand <payload>`. The
 // payload prints
-//   <OSVersion.Platform> <normalized PROCESSOR_ARCHITECTURE>
+//
+//	<OSVersion.Platform> <normalized PROCESSOR_ARCHITECTURE>
+//
 // e.g. "Win32NT x64" on Windows, "Unix x64" on Linux/macOS PowerShell Core.
 // We normalize Platform=Win32NT to "windows" and otherwise pass the os token
 // through normalizeOs. This probe is the only one that does NOT depend on
@@ -537,32 +541,27 @@ fi;
 `)
 var installTemplate = template.Must(template.New("wsh-install-template").Parse(installTemplateRawDefault))
 
-func makeWindowsStreamToTempCommand(remoteTempPath string) string {
-	relativeTempPath := strings.ReplaceAll(strings.TrimPrefix(remoteTempPath, "~/"), "/", `\`)
-	script := strings.Join([]string{
-		`$ErrorActionPreference = "Stop"`,
-		`$ProgressPreference = "SilentlyContinue"`,
-		`$TempPath = Join-Path $HOME ` + shellutil.HardQuotePowerShell(relativeTempPath),
-		// Defense in depth: prepareCmd should already have created the parent dir, but
-		// [System.IO.File]::Open with FileMode.Create creates only the file, not parent dirs.
-		// Repeat the mkdir here so an interrupted/absent prepare step cannot surface as a
-		// DirectoryNotFoundException from Open. -Force makes this a no-op when the dir exists.
-		`$TempParent = Split-Path -Parent $TempPath`,
-		`[System.IO.Directory]::CreateDirectory($TempParent) | Out-Null`,
-		`$InputStream = [Console]::OpenStandardInput()`,
-		`$OutputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)`,
-		`try { $InputStream.CopyTo($OutputStream) } finally { $OutputStream.Close() }`,
-	}, "\n")
-	return shellutil.MakePowerShellEncodedCommand(script)
+func makeWindowsSFTPPath(remoteHomePath string, remoteTempPath string) string {
+	remoteHomePath = strings.TrimRight(strings.ReplaceAll(remoteHomePath, `\`, "/"), "/")
+	remoteTempPath = strings.ReplaceAll(remoteTempPath, `\`, "/")
+	remoteTempPath = strings.TrimPrefix(remoteTempPath, "~/")
+	return path.Join(remoteHomePath, remoteTempPath)
+}
+
+func appendWshUploadDiag(stage string, kv ...any) {
+	fields := make([]any, 0, len(kv)+2)
+	fields = append(fields, "stage", stage)
+	fields = append(fields, kv...)
+	pslog.Append("ssh-wsh-upload", fields...)
 }
 
 // cpWshToWindowsRemote installs the bundled wsh.exe on a Windows remote using the
 // hardened install path shared with the manual install flow.
 //
-// Steps (each over its own ssh session):
+// Steps (each over its own ssh session or SFTP channel):
 //  1. Compute the local wsh.exe size + SHA-256 by seeking through `input`.
 //  2. Run prepareCmd (creates ~/.snorkeling/{tmp,bin}, asserts they are safe dirs).
-//  3. Stream `input` over ssh into $TempPath via a stdin-receiving PowerShell command.
+//  3. Upload `input` over the Windows remote's SFTP subsystem into $TempPath.
 //  4. Run installCmd: verifies uploaded size+SHA-256, takes the install lock, atomically
 //     replaces the existing wsh.exe (with a backup), runs `wsh version` to confirm the
 //     exact expected version line, rolls back to the backup on any failure, and cleans
@@ -575,6 +574,9 @@ func makeWindowsStreamToTempCommand(remoteTempPath string) string {
 // needed here (the legacy single-shot path did one; the hardened path does it under the
 // lock, which is strictly safer).
 func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string, onProgress func(written, total int64)) error {
+	uploadStarted := time.Now()
+	appendWshUploadDiag("start", "remote_os", "windows", "bytes", inputSize, "temp_path", remoteTempPath)
+	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=start os=windows bytes=%d temp=%s\n", inputSize, remoteTempPath)
 	// 1. SHA-256 the local binary by streaming `input` once, then rewind so the upload
 	//    copy below sees the file from the start.
 	if _, err := input.Seek(0, io.SeekStart); err != nil {
@@ -592,59 +594,110 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	prepareCmd, installCmd, cleanupCmd := shellutil.BuildWindowsWshInstallScripts(remoteTempPath, remoteWshPath, inputSize, expectedSHA256, expectedVersion)
 
 	// 2. prepare: make sure remote tmp/bin dirs exist and are plain directories.
+	appendWshUploadDiag("prepare-start")
 	if err := runRemoteCommandQuiet(ctx, client, prepareCmd); err != nil {
+		appendWshUploadDiag("prepare-failed", "error", err.Error())
+		blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-failed error=%v\n", err)
 		return fmt.Errorf("remote wsh prepare failed: %w", err)
 	}
+	appendWshUploadDiag("prepare-complete")
+	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-complete\n")
 
-	// 3. stream the wsh.exe bytes into $TempPath over stdin.
-	streamCmd := makeWindowsStreamToTempCommand(remoteTempPath)
-	session, err := client.NewSession()
+	// 3. Upload the binary through the remote SFTP subsystem. SFTP gives the binary
+	// an explicit remote file lifecycle and avoids PowerShell stdin EOF handling.
+	appendWshUploadDiag("sftp-client-create-start")
+	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		return fmt.Errorf("failed to create remote upload session: %w", err)
+		appendWshUploadDiag("sftp-client-create-failed", "error", err.Error())
+		return fmt.Errorf("%w: failed to open SFTP subsystem: %v", ErrWindowsAutoWshInstallRequiresManual, err)
 	}
-	defer session.Close()
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdin pipe: %w", err)
-	}
-	stderrBuf := syncbuf.MakeSyncBuffer()
-	session.Stderr = stderrBuf
-	if err := session.Start(streamCmd); err != nil {
-		return fmt.Errorf("failed to start remote upload command: %w", err)
-	}
-	copyDone := make(chan error, 1)
-	go func() {
-		defer close(copyDone)
-		defer stdin.Close()
-		var writer io.Writer = stdin
-		if onProgress != nil {
-			writer = newProgressWriter(stdin, inputSize, onProgress)
-		}
-		if _, err := io.Copy(writer, input); err != nil && err != io.EOF {
-			copyDone <- fmt.Errorf("failed to copy data: %w", err)
-		} else {
-			copyDone <- nil
+	sftpClosed := false
+	defer func() {
+		if !sftpClosed {
+			_ = sftpClient.Close()
 		}
 	}()
-	procErr := runSessionWaitWithContext(ctx, session)
-	copyErr := <-copyDone
-	if procErr != nil {
-		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
-		return fmt.Errorf("remote upload command failed: %w (stderr: %s)", procErr, stderrBuf.String())
+	remoteHomePath, err := sftpClient.Getwd()
+	if err != nil {
+		appendWshUploadDiag("sftp-home-failed", "error", err.Error())
+		return fmt.Errorf("%w: failed to resolve remote SFTP home: %v", ErrWindowsAutoWshInstallRequiresManual, err)
 	}
-	if copyErr != nil {
+	sftpTempPath := makeWindowsSFTPPath(remoteHomePath, remoteTempPath)
+	appendWshUploadDiag("sftp-client-created", "remote_home", remoteHomePath, "remote_path", sftpTempPath)
+	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=sftp-client-created remote_home=%s remote_path=%s\n", remoteHomePath, sftpTempPath)
+	uploadErr := uploadFileViaSFTP(ctx, func(path string) (io.WriteCloser, error) {
+		return sftpClient.Create(path)
+	}, sftpTempPath, input, inputSize, onProgress)
+	closeErr := sftpClient.Close()
+	sftpClosed = true
+	if uploadErr != nil {
+		appendWshUploadDiag("sftp-upload-failed", "error", uploadErr.Error(), "duration_ms", time.Since(uploadStarted).Milliseconds())
 		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
-		return fmt.Errorf("failed to copy data: %w (stderr: %s)", copyErr, stderrBuf.String())
+		return uploadErr
 	}
+	if closeErr != nil {
+		appendWshUploadDiag("sftp-client-close-failed", "error", closeErr.Error())
+		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		return fmt.Errorf("failed to close SFTP upload: %w", closeErr)
+	}
+	appendWshUploadDiag("sftp-upload-complete", "duration_ms", time.Since(uploadStarted).Milliseconds())
+	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=sftp-upload-complete duration_ms=%d\n", time.Since(uploadStarted).Milliseconds())
 
 	// 4. install: size + SHA-256 + atomic replace + version verify + rollback, under lock.
+	appendWshUploadDiag("install-start")
 	installStdout, installStderr, err := runRemoteCommandOutput(ctx, client, installCmd)
 	if err != nil {
+		appendWshUploadDiag("install-failed", "error", err.Error(), "stdout_bytes", len(strings.TrimSpace(installStdout)), "stderr_bytes", len(strings.TrimSpace(installStderr)))
 		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
 		return fmt.Errorf("remote wsh install failed: %w (stdout: %s; stderr: %s)",
 			err, strings.TrimSpace(installStdout), strings.TrimSpace(installStderr))
 	}
+	appendWshUploadDiag("install-complete", "stdout_bytes", len(strings.TrimSpace(installStdout)), "stderr_bytes", len(strings.TrimSpace(installStderr)), "duration_ms", time.Since(uploadStarted).Milliseconds())
 	return nil
+}
+
+type sftpCopyResult struct {
+	written int64
+	err     error
+}
+
+func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteCloser, error), remotePath string, input io.Reader, inputSize int64, onProgress func(written, total int64)) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+	default:
+	}
+	remoteFile, err := openFile(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote SFTP file %s: %w", remotePath, err)
+	}
+	copyDone := make(chan sftpCopyResult, 1)
+	go func() {
+		var writer io.Writer = remoteFile
+		if onProgress != nil {
+			writer = newProgressWriter(remoteFile, inputSize, onProgress)
+		}
+		written, copyErr := io.Copy(writer, input)
+		copyDone <- sftpCopyResult{written: written, err: copyErr}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = remoteFile.Close()
+		<-copyDone
+		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+	case result := <-copyDone:
+		closeErr := remoteFile.Close()
+		if result.err != nil && result.err != io.EOF {
+			return fmt.Errorf("failed to copy data to remote SFTP file: %w", result.err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close remote SFTP file: %w", closeErr)
+		}
+		if onProgress != nil {
+			onProgress(result.written, inputSize)
+		}
+		return nil
+	}
 }
 
 // runRemoteCommandQuiet runs cmd on client, discarding stdout/stderr. Used for
@@ -655,7 +708,11 @@ func runRemoteCommandQuiet(ctx context.Context, client *ssh.Client, cmd string) 
 		return err
 	}
 	defer session.Close()
-	return runSessionWithContext(ctx, session, cmd)
+	started := time.Now()
+	pslog.AppendRaw("ssh-raw-session-start", fmt.Sprintf("cmd=%q", cmd))
+	err = runSessionWithContext(ctx, session, cmd)
+	pslog.AppendRaw("ssh-raw-session-result", fmt.Sprintf("duration_ms=%d err=%v", time.Since(started).Milliseconds(), err))
+	return err
 }
 
 func runSessionWaitWithContext(ctx context.Context, session *ssh.Session) error {
@@ -786,9 +843,8 @@ func makeWindowsWshTempCleanupScript(now time.Time) string {
 	}, "\n")
 }
 
-// CleanupRemoteWshTemp quarantines only stale, recognizably auto-generated upload
-// files. Best-effort errors are ignored so cleanup cannot block connection repair.
-func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs string) {
+// CleanupRemoteWshTemp 仅隔离过期且可识别为自动生成的上传文件；Windows 远端可能没有 sh.exe，因而使用原始 SSH 会话。
+func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs string) error {
 	var cmdStr string
 	if clientOs == "windows" {
 		cmdStr = shellutil.MakePowerShellEncodedCommand(makeWindowsWshTempCleanupScript(time.Now()))
@@ -803,8 +859,15 @@ func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs stri
 	// already broken — failing here is fine; we still proceed to the upload attempt.
 	cleanupCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	blocklogger.Debugf(cleanupCtx, "[conndebug] cleanupRemoteWshTemp: %s\n", cmdStr)
-	_, _, _ = genconn.RunSimpleCommand(cleanupCtx, genconn.MakeSSHShellClient(client), genconn.CommandSpec{Cmd: cmdStr})
+	started := time.Now()
+	blocklogger.Debugf(cleanupCtx, "[conndebug] cleanupRemoteWshTemp start os=%s command=%s\n", clientOs, cmdStr)
+	err := runRemoteCommandQuiet(cleanupCtx, client, cmdStr)
+	if err != nil {
+		blocklogger.Debugf(ctx, "[conndebug] cleanupRemoteWshTemp failed after %dms: %v\n", time.Since(started).Milliseconds(), err)
+		return err
+	}
+	blocklogger.Debugf(ctx, "[conndebug] cleanupRemoteWshTemp complete after %dms\n", time.Since(started).Milliseconds())
+	return nil
 }
 
 // progressWriter wraps an io.Writer and reports byte progress at most every 500ms.
@@ -862,13 +925,6 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 	if ok {
 		blocklogger.Debugf(ctx, "[conndebug] CpWshToRemote, timeout: %v\n", time.Until(deadline))
 	}
-	if clientOs == "windows" {
-		// Best-effort sweep of any stale .temp residue from a prior interrupted upload.
-		// The hardened cpWshToWindowsRemote path below also runs a cleanup command on
-		// its own failures, but this pre-clean avoids a half-written temp sitting next
-		// to the wsh binary before we even start. See CleanupRemoteWshTemp for details.
-		CleanupRemoteWshTemp(ctx, client, clientOs)
-	}
 	wshLocalPath, err := shellutil.GetLocalWshBinaryPath(wavebase.WaveVersion, clientOs, clientArch)
 	if err != nil {
 		return err
@@ -876,7 +932,9 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 	// Best-effort sweep of stale .temp residue from any prior interrupted install, BEFORE we
 	// create the upload session. See CleanupRemoteWshTemp for why. Done first (before os.Open)
 	// so a half-written temp file cannot sit beside the wsh binary while we install.
-	CleanupRemoteWshTemp(ctx, client, clientOs)
+	if cleanupErr := CleanupRemoteWshTemp(ctx, client, clientOs); cleanupErr != nil {
+		blocklogger.Debugf(ctx, "[conndebug] cleanupRemoteWshTemp ignored before upload: %v\n", cleanupErr)
+	}
 	input, err := os.Open(wshLocalPath)
 	if err != nil {
 		return fmt.Errorf("cannot open local file %s: %w", wshLocalPath, err)
@@ -940,7 +998,13 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 		}
 	}()
 	procErr := genconn.ProcessContextWait(ctx, genCmd)
-	copyErr := <-copyDone
+	var copyErr error
+	select {
+	case copyErr = <-copyDone:
+	case <-ctx.Done():
+		_ = stdin.Close()
+		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+	}
 	if procErr != nil {
 		return fmt.Errorf("remote command failed: %w (stderr: %s)", procErr, stderrBuf.String())
 	}

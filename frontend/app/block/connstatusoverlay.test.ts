@@ -9,6 +9,7 @@ describe("wsh recovery actions", () => {
         expect(resolveWshRecoveryActions("failed", false, "wsh-manual-install-required")).toEqual({
             showActions: true,
             showAutoRetry: false,
+            showCancel: false,
         });
     });
 
@@ -16,13 +17,32 @@ describe("wsh recovery actions", () => {
         expect(resolveWshRecoveryActions("failed", false, "install-error")).toEqual({
             showActions: true,
             showAutoRetry: true,
+            showCancel: false,
         });
     });
 
-    it("does not expose recovery actions while an upload is in progress", () => {
+    it("shows cancel while an upload is in progress", () => {
         expect(resolveWshRecoveryActions("uploading", false, "wsh-manual-install-required")).toEqual({
             showActions: false,
             showAutoRetry: false,
+            showCancel: true,
         });
+    });
+
+    it("shows cancel for every active install phase", () => {
+        for (const status of [
+            "checking",
+            "detecting-platform",
+            "finding-binary",
+            "uploading",
+            "verifying",
+            "restarting-server",
+        ]) {
+            expect(resolveWshRecoveryActions(status, false, "")).toEqual({
+                showActions: false,
+                showAutoRetry: false,
+                showCancel: true,
+            });
+        }
     });
 });

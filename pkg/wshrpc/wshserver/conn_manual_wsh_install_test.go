@@ -259,8 +259,10 @@ func TestManualInstallWrappersDisconnectBeforeUploadAndCleanupOnExit(t *testing.
 		`$RemoteCleanupCmd = "REMOTE-CLEANUP-EXACT"`,
 		`& ssh @SshArgs $Remote $RemoteCleanupCmd`,
 		`Write-Warning "exact remote temp cleanup failed`,
+		`$InstallSucceeded = $false`,
+		`if ($Disconnected -and $InstallSucceeded)`,
+		`automatic connection recovery skipped after install failure`,
 	)
-
 	posixCmd := buildManualWshInstallPosixCommand(
 		"break@example.test",
 		"/local/wsh",
@@ -278,6 +280,9 @@ func TestManualInstallWrappersDisconnectBeforeUploadAndCleanupOnExit(t *testing.
 		`remote_cleanup_cmd=REMOTE-CLEANUP-EXACT`,
 		`if ! ssh -p 2222 "$remote" "$remote_cleanup_cmd"`,
 		`warning: exact remote temp cleanup failed`,
+		`install_succeeded=0`,
+		`if [ "$disconnected" -eq 1 ] && [ "$install_succeeded" -eq 1 ]`,
+		`automatic connection recovery skipped after install failure`,
 	)
 	assertPosixSyntax(t, posixCmd)
 }

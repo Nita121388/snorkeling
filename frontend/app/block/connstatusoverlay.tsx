@@ -15,6 +15,14 @@ import * as React from "react";
 import { BlockEnv } from "./blockenv";
 
 const WshManualInstallRequiredErrorCode = "wsh-manual-install-required";
+const ActiveWshInstallStatuses = new Set([
+    "checking",
+    "detecting-platform",
+    "finding-binary",
+    "uploading",
+    "verifying",
+    "restarting-server",
+]);
 
 function formatElapsedTime(elapsedMs: number): string {
     if (elapsedMs <= 0) {
@@ -68,17 +76,14 @@ function formatWshInstallStatus(status: string): string {
     }
 }
 
-export function resolveWshRecoveryActions(
-    wshInstallStatus: string,
-    hasWshRuntimeError: boolean,
-    wshErrorCode: string
-) {
+export function resolveWshRecoveryActions(wshInstallStatus: string, hasWshRuntimeError: boolean, wshErrorCode: string) {
     const showActions = hasWshRuntimeError || wshInstallStatus == "failed";
-    const manualInstallRequired =
-        wshInstallStatus == "failed" && wshErrorCode == WshManualInstallRequiredErrorCode;
+    const manualInstallRequired = wshInstallStatus == "failed" && wshErrorCode == WshManualInstallRequiredErrorCode;
+    const showCancel = ActiveWshInstallStatuses.has(wshInstallStatus);
     return {
         showActions,
         showAutoRetry: showActions && !manualInstallRequired,
+        showCancel,
     };
 }
 
@@ -169,16 +174,16 @@ export const ConnStatusOverlay = React.memo(
         const wshConfigEnabled = jotai.useAtomValue(waveEnv.getConnConfigKeyAtom(connName, "conn:wshenabled")) ?? true;
         const [showWshError, setShowWshError] = React.useState(false);
         const [wshRepairStatus, setWshRepairStatus] = React.useState("");
-        const [isRetryingWshInstall, setIsRetryingWshInstall] = React.useState(false);
+        const [isWshActionRunning, setIsWshActionRunning] = React.useState(false);
         const wshInstallStatus = connStatus.wshinstallstatus ?? "";
         const wshInstallStatusText = formatWshInstallStatus(wshInstallStatus);
         const hasWshInstallProgress = wshInstallStatus != "" && wshInstallStatus != "complete";
         const hasWshRuntimeError = connStatus.status == "connected" && !!connStatus.wsherror;
-        const { showActions: showWshActions, showAutoRetry } = resolveWshRecoveryActions(
-            wshInstallStatus,
-            hasWshRuntimeError,
-            connStatus.wsherrorcode
-        );
+        const {
+            showActions: showWshActions,
+            showAutoRetry,
+            showCancel: showWshCancel,
+        } = resolveWshRecoveryActions(wshInstallStatus, hasWshRuntimeError, connStatus.wsherrorcode);
 
         React.useEffect(() => {
             if (width) {
@@ -198,6 +203,8 @@ export const ConnStatusOverlay = React.memo(
         }, [connName, nodeModel.blockId, waveEnv]);
 
         const handleDisableWsh = React.useCallback(async () => {
+            setIsWshActionRunning(true);
+            setWshRepairStatus("Disabling wsh and reconnecting with SSH...");
             const metamaptype: unknown = {
                 "conn:wshenabled": false,
             };
@@ -207,13 +214,39 @@ export const ConnStatusOverlay = React.memo(
             };
             try {
                 await waveEnv.rpc.SetConnectionsConfigCommand(TabRpcClient, data);
+                await waveEnv.rpc.ConnDisconnectCommand(TabRpcClient, connName, { timeout: 10000 });
+                await waveEnv.rpc.ConnConnectCommand(
+                    TabRpcClient,
+                    { host: connName, logblockid: nodeModel.blockId },
+                    { timeout: 180000 }
+                );
+                setWshRepairStatus("Reconnected with wsh disabled.");
             } catch (e) {
-                console.log("problem setting connection config: ", e);
+                const message = e instanceof Error ? e.message : String(e);
+                setWshRepairStatus(`Unable to disable wsh: ${message}`);
+                console.log("problem disabling wsh and reconnecting: ", e);
+            } finally {
+                setIsWshActionRunning(false);
+            }
+        }, [connName, nodeModel.blockId, waveEnv]);
+
+        const handleCancelWshInstall = React.useCallback(async () => {
+            setIsWshActionRunning(true);
+            setWshRepairStatus("Cancelling wsh install...");
+            try {
+                await waveEnv.rpc.ConnDisconnectCommand(TabRpcClient, connName, { timeout: 10000 });
+                setWshRepairStatus("wsh install canceled.");
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                setWshRepairStatus(`Unable to cancel wsh install: ${message}`);
+                console.log("error cancelling wsh install", connName, e);
+            } finally {
+                setIsWshActionRunning(false);
             }
         }, [connName, waveEnv]);
 
         const handleRetryWshInstall = React.useCallback(async () => {
-            setIsRetryingWshInstall(true);
+            setIsWshActionRunning(true);
             setWshRepairStatus("Retrying wsh install...");
             try {
                 await waveEnv.rpc.ConnReinstallWshCommand(
@@ -234,7 +267,7 @@ export const ConnStatusOverlay = React.memo(
                 setWshRepairStatus(`wsh install failed: ${message}`);
                 console.log("error retrying wsh install", connName, e);
             } finally {
-                setIsRetryingWshInstall(false);
+                setIsWshActionRunning(false);
             }
         }, [connName, nodeModel.blockId, waveEnv]);
 
@@ -368,25 +401,44 @@ export const ConnStatusOverlay = React.memo(
                                     {wshRepairStatus ? <div>{wshRepairStatus}</div> : null}
                                 </OverlayScrollbarsComponent>
                             )}
-                            {showWshActions && (
+                            {(showWshActions || showWshCancel) && (
                                 <div className="connstatus-inline-actions">
-                                    {showAutoRetry && (
+                                    {showWshCancel && (
                                         <Button
                                             className={reconClassName}
-                                            disabled={isRetryingWshInstall}
-                                            onClick={handleRetryWshInstall}
+                                            disabled={isWshActionRunning}
+                                            onClick={handleCancelWshInstall}
                                         >
-                                            {isRetryingWshInstall ? "Retrying..." : "Retry auto install"}
+                                            {isWshActionRunning ? "Cancelling..." : "Cancel install"}
                                         </Button>
                                     )}
-                                    <Button className={reconClassName} onClick={handleOpenManualWshInstall}>
-                                        Manual install wsh
-                                    </Button>
+                                    {showWshActions && showAutoRetry && (
+                                        <Button
+                                            className={reconClassName}
+                                            disabled={isWshActionRunning}
+                                            onClick={handleRetryWshInstall}
+                                        >
+                                            {isWshActionRunning ? "Retrying..." : "Retry auto install"}
+                                        </Button>
+                                    )}
+                                    {showWshActions && (
+                                        <Button
+                                            className={reconClassName}
+                                            disabled={isWshActionRunning}
+                                            onClick={handleOpenManualWshInstall}
+                                        >
+                                            Manual install wsh
+                                        </Button>
+                                    )}
                                 </div>
                             )}
-                            {showWshActions && (
-                                <Button className={reconClassName} onClick={handleDisableWsh}>
-                                    always disable wsh
+                            {(showWshActions || showWshCancel) && (
+                                <Button
+                                    className={reconClassName}
+                                    disabled={isWshActionRunning}
+                                    onClick={handleDisableWsh}
+                                >
+                                    Disable wsh and reconnect
                                 </Button>
                             )}
                         </div>

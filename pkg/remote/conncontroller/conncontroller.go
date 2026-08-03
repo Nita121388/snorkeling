@@ -93,24 +93,26 @@ type SSHConn struct {
 	lock          *sync.Mutex // this lock protects the fields in the struct from concurrent access
 	lifecycleLock *sync.Mutex // this protects the lifecycle from concurrent calls
 
-	Status             string
-	ConnHealthStatus   string
-	WshEnabled         *atomic.Bool
-	Opts               *remote.SSHOpts
-	Client             *ssh.Client
-	DomainSockName     string // if "", then no domain socket
-	DomainSockListener net.Listener
-	ConnController     *ssh.Session
-	Error              string
-	WshError           string
-	NoWshReason        string
-	WshErrorCode       string
-	WshInstallStatus   string
-	WshInstallMsg      string
-	WshVersion         string
-	LastConnectTime    int64
-	ActiveConnNum      int
-	Monitor            *ConnMonitor // will not be nil
+	Status                 string
+	ConnHealthStatus       string
+	WshEnabled             *atomic.Bool
+	Opts                   *remote.SSHOpts
+	Client                 *ssh.Client
+	DomainSockName         string // if "", then no domain socket
+	DomainSockListener     net.Listener
+	ConnController         *ssh.Session
+	Error                  string
+	WshError               string
+	NoWshReason            string
+	WshErrorCode           string
+	WshInstallStatus       string
+	WshInstallMsg          string
+	WshVersion             string
+	LastConnectTime        int64
+	ActiveConnNum          int
+	Monitor                *ConnMonitor // will not be nil
+	connectCancel          context.CancelFunc
+	connectCancelRequested bool
 }
 
 type recentLinesBuffer struct {
@@ -285,6 +287,7 @@ func (conn *SSHConn) clearWshInstallState() {
 }
 
 func (conn *SSHConn) Close() error {
+	conn.cancelConnect()
 	conn.lifecycleLock.Lock()
 	defer conn.lifecycleLock.Unlock()
 
@@ -292,11 +295,25 @@ func (conn *SSHConn) Close() error {
 	conn.WithLock(func() {
 		if conn.Status == Status_Connected || conn.Status == Status_Connecting {
 			// if status is init, disconnected, or error don't change it
+			if conn.Status == Status_Connecting {
+				conn.WshInstallStatus = ""
+				conn.WshInstallMsg = ""
+			}
 			conn.Status = Status_Disconnected
 		}
 	})
 	conn.closeInternal_withlifecyclelock()
 	return nil
+}
+
+func (conn *SSHConn) cancelConnect() {
+	conn.WithLock(func() {
+		if conn.Status != Status_Connecting || conn.connectCancel == nil {
+			return
+		}
+		conn.connectCancel()
+		conn.connectCancelRequested = true
+	})
 }
 
 func (conn *SSHConn) closeInternal_withlifecyclelock() {
@@ -1176,6 +1193,8 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 	conn.lifecycleLock.Lock()
 	defer conn.lifecycleLock.Unlock()
 
+	connectCtx, connectCancel := context.WithCancel(ctx)
+	defer connectCancel()
 	blocklogger.Infof(ctx, "\n")
 	var connectAllowed bool
 	conn.WithLock(func() {
@@ -1189,6 +1208,8 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 			conn.WshErrorCode = ""
 			conn.WshInstallStatus = ""
 			conn.WshInstallMsg = ""
+			conn.connectCancel = connectCancel
+			conn.connectCancelRequested = false
 			connectAllowed = true
 		}
 	})
@@ -1198,7 +1219,25 @@ func (conn *SSHConn) Connect(ctx context.Context, connFlags *wconfig.ConnKeyword
 	}
 	conn.Infof(ctx, "trying to connect to %q...\n", conn.GetName())
 	conn.FireConnChangeEvent()
-	err := conn.connectInternal(ctx, connFlags)
+	err := conn.connectInternal(connectCtx, connFlags)
+	wasCanceled := false
+	conn.WithLock(func() {
+		wasCanceled = conn.connectCancelRequested
+		conn.connectCancel = nil
+		conn.connectCancelRequested = false
+	})
+	if wasCanceled {
+		conn.Infof(ctx, "connection canceled by user\n")
+		conn.WithLock(func() {
+			conn.Status = Status_Disconnected
+			conn.Error = ""
+			conn.WshInstallStatus = ""
+			conn.WshInstallMsg = ""
+		})
+		conn.closeInternal_withlifecyclelock()
+		conn.FireConnChangeEvent()
+		return context.Canceled
+	}
 	if err != nil {
 		errorCode, subCode := remote.ClassifyConnError(err)
 		isContextError := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
@@ -1329,7 +1368,7 @@ func diagnoseWshInstallError(err error) string {
 		return ""
 	}
 	if errors.Is(err, remote.ErrWindowsAutoWshInstallRequiresManual) {
-		return "Windows automatic wsh install is temporarily disabled. Use Manual install wsh."
+		return "Windows automatic wsh install is unavailable. Use Manual install wsh."
 	}
 	errStr := strings.ToLower(err.Error())
 	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(errStr, "deadline exceeded") || strings.Contains(errStr, "timeout") {

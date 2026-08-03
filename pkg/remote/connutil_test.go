@@ -9,12 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/genconn"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 )
 
 type fakePlatformShell struct {
@@ -70,6 +73,50 @@ type nopWriteCloser struct {
 }
 
 func (w nopWriteCloser) Close() error {
+	return nil
+}
+
+type fakeSFTPFile struct {
+	bytes.Buffer
+	closeCh    chan struct{}
+	closeCount int
+}
+
+func (f *fakeSFTPFile) Close() error {
+	f.closeCount++
+	if f.closeCh != nil {
+		select {
+		case <-f.closeCh:
+		default:
+			close(f.closeCh)
+		}
+	}
+	return nil
+}
+
+type blockingSFTPFile struct {
+	writeStarted chan struct{}
+	closed       chan struct{}
+	closeCount   int
+}
+
+func (f *blockingSFTPFile) Write(_ []byte) (int, error) {
+	select {
+	case <-f.writeStarted:
+	default:
+		close(f.writeStarted)
+	}
+	<-f.closed
+	return 0, context.Canceled
+}
+
+func (f *blockingSFTPFile) Close() error {
+	f.closeCount++
+	select {
+	case <-f.closed:
+	default:
+		close(f.closed)
+	}
 	return nil
 }
 
@@ -218,19 +265,111 @@ func TestWindowsAutoInstallRequiresManualSentinel(t *testing.T) {
 	}
 }
 
-func TestMakeWindowsStreamToTempCommandUsesEncodedPowerShell(t *testing.T) {
-	cmd := makeWindowsStreamToTempCommand("~/.snorkeling/tmp/wsh.exe.tmp")
-	if !strings.Contains(cmd, "powershell -NoProfile -NonInteractive") {
-		t.Fatalf("expected windows stream-to-temp command to use powershell")
+func TestMakeWindowsSFTPPathResolvesHome(t *testing.T) {
+	got := makeWindowsSFTPPath("/C:/Users/nita", "~/.snorkeling/tmp/wsh-auto/wsh.exe.temp")
+	want := "/C:/Users/nita/.snorkeling/tmp/wsh-auto/wsh.exe.temp"
+	if got != want {
+		t.Fatalf("expected SFTP path %q, got %q", want, got)
 	}
-	if !strings.Contains(cmd, "-EncodedCommand") {
-		t.Fatalf("expected windows stream-to-temp command to be encoded")
+}
+
+func TestUploadFileViaSFTPClosesRemoteFileAndReportsFinalProgress(t *testing.T) {
+	remoteFile := &fakeSFTPFile{}
+	var openedPath string
+	var progress []string
+	err := uploadFileViaSFTP(
+		context.Background(),
+		func(path string) (io.WriteCloser, error) {
+			openedPath = path
+			return remoteFile, nil
+		},
+		"/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp",
+		strings.NewReader("wsh"),
+		3,
+		func(written, total int64) {
+			progress = append(progress, fmt.Sprintf("%d/%d", written, total))
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected SFTP upload to succeed, got %v", err)
 	}
-	// The raw PowerShell (CopyTo, OpenStandardInput, FileShare::None) must not appear
-	// verbatim in the command — it should be base64-encoded inside -EncodedCommand.
-	for _, forbidden := range []string{"CopyTo", "OpenStandardInput", "FileShare"} {
-		if strings.Contains(cmd, forbidden) {
-			t.Fatalf("expected raw stream script to be encoded, but found %q", forbidden)
+	if openedPath != "/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp" {
+		t.Fatalf("unexpected opened path %q", openedPath)
+	}
+	if remoteFile.String() != "wsh" {
+		t.Fatalf("expected uploaded bytes %q, got %q", "wsh", remoteFile.String())
+	}
+	if remoteFile.closeCount != 1 {
+		t.Fatalf("expected remote file to close once, got %d", remoteFile.closeCount)
+	}
+	if len(progress) == 0 || progress[len(progress)-1] != "3/3" {
+		t.Fatalf("expected final progress 3/3, got %v", progress)
+	}
+}
+
+func TestUploadFileViaSFTPCancellationClosesRemoteFile(t *testing.T) {
+	remoteFile := &blockingSFTPFile{
+		writeStarted: make(chan struct{}),
+		closed:       make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- uploadFileViaSFTP(
+			ctx,
+			func(string) (io.WriteCloser, error) { return remoteFile, nil },
+			"/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp",
+			strings.NewReader("wsh"),
+			3,
+			nil,
+		)
+	}()
+	<-remoteFile.writeStarted
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected cancellation error, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("SFTP upload did not stop after cancellation")
+	}
+	if remoteFile.closeCount == 0 {
+		t.Fatal("expected cancellation to close the remote file")
+	}
+}
+
+func TestAppendWshUploadDiagRecordsStageMetadata(t *testing.T) {
+	pslog.ResetForTesting()
+	logDir := t.TempDir()
+	pslog.SetDataDirForTesting(logDir)
+	pslog.SetEnabled(true)
+	t.Cleanup(func() {
+		pslog.SetEnabled(false)
+		pslog.ResetForTesting()
+	})
+
+	appendWshUploadDiag("session-started", "remote_os", "windows", "bytes", int64(42))
+	matches, err := filepath.Glob(filepath.Join(logDir, "pslog-*.log"))
+	if err != nil {
+		t.Fatalf("glob pslog files: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one pslog file, got %d", len(matches))
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read pslog file: %v", err)
+	}
+	text := string(content)
+	for _, expected := range []string{
+		"[ssh-wsh-upload]",
+		"stage=session-started",
+		"remote_os=windows",
+		"bytes=42",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected pslog to contain %q, got %q", expected, text)
 		}
 	}
 }

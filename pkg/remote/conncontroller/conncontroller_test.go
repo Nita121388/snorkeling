@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,12 +32,37 @@ func TestIsStreamlocalForwardDeniedRejectsOtherErrors(t *testing.T) {
 	}
 }
 
+func TestCancelConnectRequestsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn := &SSHConn{
+		lock:          &sync.Mutex{},
+		lifecycleLock: &sync.Mutex{},
+		Status:        Status_Connecting,
+		connectCancel: cancel,
+	}
+
+	conn.cancelConnect()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("expected connect context to be canceled")
+	}
+	conn.lock.Lock()
+	cancelRequested := conn.connectCancelRequested
+	conn.lock.Unlock()
+	if !cancelRequested {
+		t.Fatal("expected connect cancellation to be marked as user requested")
+	}
+}
+
 func TestWindowsManualInstallRequiredClassification(t *testing.T) {
 	err := fmt.Errorf("install failed: %w", remote.ErrWindowsAutoWshInstallRequiresManual)
 	if got := wshInstallErrorCode(err); got != NoWshCode_ManualInstallRequired {
 		t.Fatalf("expected manual install error code, got %q", got)
 	}
-	if got := diagnoseWshInstallError(err); !strings.Contains(got, "Manual install wsh") {
+	if got := diagnoseWshInstallError(err); !strings.Contains(got, "Manual install wsh") || !strings.Contains(got, "unavailable") {
 		t.Fatalf("expected manual install guidance, got %q", got)
 	}
 }
