@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -85,7 +86,36 @@ const UploadMaxTimeout = 5 * time.Minute
 // 10MB wsh binary still finishes in ~40s, well under the floor. We round up
 // (size+rate-1)/rate so the timeout is never less than the actual transfer
 // time at this rate.
+//
+// Note: UploadTimeoutFor uses this only to compute the *initial* conservative
+// deadline. The actual upload timeout is now adaptive: uploadFileViaSFTP's
+// watchdog reads real-time progress and extends the deadline based on the
+// observed throughput, so a link slower than UploadBytesPerSecond no longer
+// false-fails a healthy upload.
 const UploadBytesPerSecond int64 = 256 * 1024
+
+// UploadStalledRate is the throughput floor below which an upload is considered
+// "stalled" rather than merely slow. While the upload keeps progressing above
+// this rate, the adaptive watchdog will extend the deadline to match the real
+// throughput. Below it, the watchdog stops extending and lets the deadline
+// expire — surfacing "Failed" / Manual install fallback instead of hanging
+// forever on a link that has effectively died. 8 KiB/s is well below any real
+// slow-but-alive link (a saturated Tailscale relay still moves tens of KiB/s).
+const UploadStalledRate int64 = 8 * 1024
+
+// UploadStalledTicks is how many consecutive 1-second watchdog ticks with
+// sub-UploadStalledRate throughput must accumulate before the upload is
+// considered stalled. Three ticks (3s) absorbs single-window jitter — a
+// health upload can stall for one or two SFTP read cycles without being
+// declared dead.
+const UploadStalledTicks = 3
+
+// UploadProgressWarmupSec is how long the adaptive watchdog waits after the
+// upload starts before it begins adjusting the deadline. The first few
+// seconds are dominated by SFTP handshake / TLS / remote fs open costs that
+// don't reflect steady-state throughput, so a rate sampled there would be
+// misleadingly low and trigger spurious deadline extensions.
+const UploadProgressWarmup = 2 * time.Second
 
 // UploadTimeoutFor returns the bounded upload timeout to apply for a binary
 // of the given byte size. It returns UploadMinTimeout for any size up to
@@ -883,10 +913,15 @@ func CleanupRemoteWshTemp(ctx context.Context, client *ssh.Client, clientOs stri
 // Throttle keeps updateWshInstallState churn low; the frontend overlay doesn't need 60fps.
 // onUpdate is called from Write — it must be safe to call from the writer goroutine
 // (in our case the upload io.Copy goroutine) and should not block on slow ops.
+//
+// written is atomic.Int64 (the first field, for guaranteed 8-byte alignment) so a
+// concurrent upload-progress watchdog goroutine in uploadFileViaSFTP can read it
+// without racing the io.Copy goroutine's writes. atomic.Int64 is required for
+// race-detector cleanliness — a plain int64 would be a data race.
 type progressWriter struct {
+	written  atomic.Int64
 	dest     io.Writer
 	total    int64
-	written  int64
 	last     time.Time
 	onUpdate func(written, total int64)
 }
@@ -902,9 +937,9 @@ func newProgressWriter(dest io.Writer, total int64, onUpdate func(written, total
 
 func (p *progressWriter) Write(buf []byte) (int, error) {
 	n, err := p.dest.Write(buf)
-	p.written += int64(n)
+	p.written.Add(int64(n))
 	if time.Since(p.last) >= 500*time.Millisecond {
-		p.onUpdate(p.written, p.total)
+		p.onUpdate(p.written.Load(), p.total)
 		p.last = time.Now()
 	}
 	return n, err
