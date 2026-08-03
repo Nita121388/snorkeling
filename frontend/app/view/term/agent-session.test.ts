@@ -73,6 +73,45 @@ describe("resolveAgentSessionIdFromMeta", () => {
         );
     });
 
+    it("parses opencode resume commands from cmd text and args", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode resume opencode-session" })).toBe("opencode-session");
+        expect(
+            resolveAgentSessionIdFromMeta({ cmd: "opencode", "cmd:args": ["resume", "opencode-args-session"] })
+        ).toBe("opencode-args-session");
+    });
+
+    it("parses pi resume commands from cmd text and args", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi resume pi-session" })).toBe("pi-session");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi", "cmd:args": ["resume", "pi-args-session"] })).toBe(
+            "pi-args-session"
+        );
+    });
+
+    it("parses opencode and pi resume commands from Windows shim executables", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode.ps1 resume opencode-ps1-session" })).toBe(
+            "opencode-ps1-session"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode.cmd resume opencode-cmd-session" })).toBe(
+            "opencode-cmd-session"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi.exe resume pi-exe-session" })).toBe("pi-exe-session");
+    });
+
+    it("parses opencode and pi resume session ids around options", () => {
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode --model gpt-5 resume opencode-after-global-option" })).toBe(
+            "opencode-after-global-option"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode resume --model gpt-5 opencode-after-resume-option" })).toBe(
+            "opencode-after-resume-option"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi --model gpt-5 resume pi-after-global-option" })).toBe(
+            "pi-after-global-option"
+        );
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi resume --model gpt-5 pi-after-resume-option" })).toBe(
+            "pi-after-resume-option"
+        );
+    });
+
     it("parses agent resume commands wrapped with env assignments", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "env CODEX_HOME=/tmp/codex codex resume env-codex" })).toBe(
             "env-codex"
@@ -80,12 +119,23 @@ describe("resolveAgentSessionIdFromMeta", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: 'ANTHROPIC_API_KEY="test" claude -r env-claude' })).toBe(
             "env-claude"
         );
+        expect(
+            resolveAgentSessionIdFromMeta({ cmd: "OPENCODE_HOME=/tmp/oc opencode resume env-opencode" })
+        ).toBe("env-opencode");
+        expect(resolveAgentSessionIdFromMeta({ cmd: 'PI_CODING_AGENT_SESSION_DIR="/tmp/pi" pi resume env-pi' })).toBe(
+            "env-pi"
+        );
     });
 
     it("returns an empty string when no agent session id is available", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "codex" })).toBe("");
         expect(resolveAgentSessionIdFromMeta({ cmd: "claude --model sonnet" })).toBe("");
-        expect(resolveAgentSessionIdFromMeta({ cmd: "echo codex resume nope" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "echo opencode resume nope" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "codex resume --last" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode resume --last" })).toBe("");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi resume --last" })).toBe("");
     });
 });
 
@@ -103,6 +153,20 @@ describe("resolveAgentSessionIdFromCommand", () => {
         expect(resolveAgentSessionIdFromCommand("claude --session-id shell-claude-session")).toBe(
             "shell-claude-session"
         );
+        expect(resolveAgentSessionIdFromCommand("opencode resume shell-opencode")).toBe("shell-opencode");
+        expect(resolveAgentSessionIdFromCommand("opencode --model gpt-5 resume shell-opencode-global-option")).toBe(
+            "shell-opencode-global-option"
+        );
+        expect(resolveAgentSessionIdFromCommand("opencode resume --model gpt-5 shell-opencode-resume-option")).toBe(
+            "shell-opencode-resume-option"
+        );
+        expect(resolveAgentSessionIdFromCommand("pi resume shell-pi")).toBe("shell-pi");
+        expect(resolveAgentSessionIdFromCommand("pi --model gpt-5 resume shell-pi-global-option")).toBe(
+            "shell-pi-global-option"
+        );
+        expect(resolveAgentSessionIdFromCommand("pi resume --model gpt-5 shell-pi-resume-option")).toBe(
+            "shell-pi-resume-option"
+        );
     });
 
     it("parses agent resume ids from shell command segments", () => {
@@ -111,6 +175,12 @@ describe("resolveAgentSessionIdFromCommand", () => {
         );
         expect(resolveAgentSessionIdFromCommand("export FOO=bar; claude --resume=shell-segment-claude")).toBe(
             "shell-segment-claude"
+        );
+        expect(resolveAgentSessionIdFromCommand("cd /tmp && opencode resume shell-segment-opencode")).toBe(
+            "shell-segment-opencode"
+        );
+        expect(resolveAgentSessionIdFromCommand("export FOO=bar; pi resume shell-segment-pi")).toBe(
+            "shell-segment-pi"
         );
     });
 
@@ -121,6 +191,12 @@ describe("resolveAgentSessionIdFromCommand", () => {
         expect(resolveAgentSessionIdFromCommand('ANTHROPIC_API_KEY="test" claude -r env-shell-claude')).toBe(
             "env-shell-claude"
         );
+        expect(resolveAgentSessionIdFromCommand("OPENCODE_HOME=/tmp/oc opencode resume env-shell-opencode")).toBe(
+            "env-shell-opencode"
+        );
+        expect(resolveAgentSessionIdFromCommand('PI_CODING_AGENT_SESSION_DIR="/tmp/pi" pi resume env-shell-pi')).toBe(
+            "env-shell-pi"
+        );
     });
 
     it("does not parse commands that only mention resume syntax as arguments", () => {
@@ -128,6 +204,10 @@ describe("resolveAgentSessionIdFromCommand", () => {
         expect(resolveAgentSessionIdFromCommand("printf 'claude --resume nope'")).toBe("");
         expect(resolveAgentSessionIdFromCommand("codex resume --last")).toBe("");
         expect(resolveAgentSessionIdFromCommand("claude --resume --model sonnet")).toBe("");
+        expect(resolveAgentSessionIdFromCommand("echo opencode resume nope")).toBe("");
+        expect(resolveAgentSessionIdFromCommand("printf 'pi resume nope'")).toBe("");
+        expect(resolveAgentSessionIdFromCommand("opencode resume --last")).toBe("");
+        expect(resolveAgentSessionIdFromCommand("pi resume --last")).toBe("");
     });
 });
 
@@ -153,6 +233,22 @@ describe("resolveAgentCommandBinding", () => {
             provider: "claude",
             sessionId: "claude-session",
         });
+        expect(resolveAgentCommandBinding("opencode resume opencode-session")).toEqual({
+            provider: "opencode",
+            sessionId: "opencode-session",
+        });
+        expect(resolveAgentCommandBinding("opencode resume --model gpt-5 opencode-option-session")).toEqual({
+            provider: "opencode",
+            sessionId: "opencode-option-session",
+        });
+        expect(resolveAgentCommandBinding("pi resume pi-session")).toEqual({
+            provider: "pi",
+            sessionId: "pi-session",
+        });
+        expect(resolveAgentCommandBinding("pi resume --model gpt-5 pi-option-session")).toEqual({
+            provider: "pi",
+            sessionId: "pi-option-session",
+        });
     });
 
     it("binds new agent commands without session ids", () => {
@@ -162,6 +258,14 @@ describe("resolveAgentCommandBinding", () => {
         });
         expect(resolveAgentCommandBinding("claude --model sonnet")).toEqual({
             provider: "claude",
+            sessionId: "",
+        });
+        expect(resolveAgentCommandBinding("opencode")).toEqual({
+            provider: "opencode",
+            sessionId: "",
+        });
+        expect(resolveAgentCommandBinding("pi")).toEqual({
+            provider: "pi",
             sessionId: "",
         });
         expect(resolveAgentCommandBinding("cd repo && codex")).toEqual({
@@ -222,6 +326,16 @@ describe("resolveAgentSessionId", () => {
             isAgent: true,
             provider: "claude",
             sessionId: "claude-session",
+        });
+        expect(resolveAgentSessionId({ cmd: "opencode resume opencode-session" })).toMatchObject({
+            isAgent: true,
+            provider: "opencode",
+            sessionId: "opencode-session",
+        });
+        expect(resolveAgentSessionId({ cmd: "pi resume pi-session" })).toMatchObject({
+            isAgent: true,
+            provider: "pi",
+            sessionId: "pi-session",
         });
     });
 
