@@ -283,6 +283,7 @@ func TestUploadFileViaSFTPClosesRemoteFileAndReportsFinalProgress(t *testing.T) 
 			openedPath = path
 			return remoteFile, nil
 		},
+		func() {},
 		"/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp",
 		strings.NewReader("wsh"),
 		3,
@@ -313,11 +314,16 @@ func TestUploadFileViaSFTPCancellationClosesRemoteFile(t *testing.T) {
 		closed:       make(chan struct{}),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	transportClosed := false
 	done := make(chan error, 1)
 	go func() {
 		done <- uploadFileViaSFTP(
 			ctx,
 			func(string) (io.WriteCloser, error) { return remoteFile, nil },
+			func() {
+				transportClosed = true
+				_ = remoteFile.Close()
+			},
 			"/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp",
 			strings.NewReader("wsh"),
 			3,
@@ -336,6 +342,9 @@ func TestUploadFileViaSFTPCancellationClosesRemoteFile(t *testing.T) {
 	}
 	if remoteFile.closeCount == 0 {
 		t.Fatal("expected cancellation to close the remote file")
+	}
+	if !transportClosed {
+		t.Fatal("expected cancellation to close the SFTP transport")
 	}
 }
 

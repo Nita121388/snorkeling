@@ -612,10 +612,15 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 		return fmt.Errorf("%w: failed to open SFTP subsystem: %v", ErrWindowsAutoWshInstallRequiresManual, err)
 	}
 	sftpClosed := false
-	defer func() {
-		if !sftpClosed {
-			_ = sftpClient.Close()
+	closeSFTP := func() error {
+		if sftpClosed {
+			return nil
 		}
+		sftpClosed = true
+		return sftpClient.Close()
+	}
+	defer func() {
+		_ = closeSFTP()
 	}()
 	remoteHomePath, err := sftpClient.Getwd()
 	if err != nil {
@@ -627,9 +632,10 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=sftp-client-created remote_home=%s remote_path=%s\n", remoteHomePath, sftpTempPath)
 	uploadErr := uploadFileViaSFTP(ctx, func(path string) (io.WriteCloser, error) {
 		return sftpClient.Create(path)
+	}, func() {
+		_ = closeSFTP()
 	}, sftpTempPath, input, inputSize, onProgress)
-	closeErr := sftpClient.Close()
-	sftpClosed = true
+	closeErr := closeSFTP()
 	if uploadErr != nil {
 		appendWshUploadDiag("sftp-upload-failed", "error", uploadErr.Error(), "duration_ms", time.Since(uploadStarted).Milliseconds())
 		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
@@ -661,7 +667,7 @@ type sftpCopyResult struct {
 	err     error
 }
 
-func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteCloser, error), remotePath string, input io.Reader, inputSize int64, onProgress func(written, total int64)) error {
+func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteCloser, error), abortTransport func(), remotePath string, input io.Reader, inputSize int64, onProgress func(written, total int64)) error {
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
@@ -682,6 +688,9 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 	}()
 	select {
 	case <-ctx.Done():
+		if abortTransport != nil {
+			abortTransport()
+		}
 		_ = remoteFile.Close()
 		<-copyDone
 		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
