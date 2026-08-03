@@ -231,4 +231,10 @@ describe("aggregateAgentStatuses", () => {
         expect(formatAgentProvider("claude-code")).toBe("Claude");
         expect(formatAgentProvider("custom-agent")).toBe("Custom Agent");
     });
+
+    it("labels opencode and pi providers", () => {
+        expect(formatAgentProvider("opencode")).toBe("Opencode");
+        expect(formatAgentProvider("open-code")).toBe("Opencode");
+        expect(formatAgentProvider("pi")).toBe("Pi");
+    });
 });

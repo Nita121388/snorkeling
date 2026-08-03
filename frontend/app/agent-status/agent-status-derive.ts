@@ -219,6 +219,8 @@ export function formatAgentProvider(provider: string): string {
         case "opencode":
         case "open-code":
             return "Opencode";
+        case "pi":
+            return "Pi";
         default:
             return normalized
                 .split(/[-_\s]+/)
