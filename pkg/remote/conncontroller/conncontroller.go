@@ -1031,12 +1031,19 @@ func (conn *SSHConn) UpdateWsh(ctx context.Context, clientDisplayName string, re
 		conn.updateWshInstallState(WshInstallStatus_Failed, diagnoseWshInstallError(err), NoWshCode_InstallError, true)
 		return err
 	}
-	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
-	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
-	// "Uploading" forever. Adaptive: scales with the actual binary size and a conservative slow-link
-	// throughput, bounded to [UploadMinTimeout, UploadMaxTimeout]. Healthy ~10MB uploads still
-	// finish in single-digit seconds on a reasonable link, well under the floor.
-	uploadTimeout := remote.UploadTimeoutFor(remote.GetLocalWshBinarySize(wavebase.WaveVersion, remoteInfo.ClientOs, remoteInfo.ClientArch))
+	// Dedicated upload deadline. The watchdog inside uploadFileViaSFTP
+	// (used by the Windows/SFTP path) reads real-time progress and
+	// adaptively tightens or extends the effective upload deadline
+	// within [UploadMinTimeout, UploadMaxTimeout] based on observed
+	// throughput, so a slow-but-alive link no longer false-fails a
+	// healthy upload. The outer ctx deadline below just needs to be wide
+	// enough that the post-upload install/verify stages (which don't have
+	// their own watchdog) still complete after the watchdog has had to
+	// push the upload out toward UploadMaxTimeout. We use
+	// UploadMaxTimeout + a 60s install budget for that, which is the cap
+	// beyond which a real stuck upload has already been aborted by the
+	// watchdog and we want the Manual-install fallback to surface.
+	uploadTimeout := remote.UploadMaxTimeout + 60*time.Second
 	uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
 	defer uploadCancel()
 	err := remote.CpWshToRemoteWithProgress(uploadCtx, client, remoteInfo.ClientOs, remoteInfo.ClientArch, func(written, total int64) {
@@ -1131,12 +1138,9 @@ func (conn *SSHConn) InstallWsh(ctx context.Context, osArchStr string) error {
 		return err
 	}
 	conn.updateWshInstallState(WshInstallStatus_Uploading, "Uploading wsh binary to remote", "", true)
-	// Dedicated upload deadline: shorter than the caller's retry/inherited ctx, so a stuck upload
-	// fails into "Failed" — surfacing the Manual install fallback button — instead of hanging in
-	// "Uploading" forever. Adaptive: scales with the actual binary size and a conservative slow-link
-	// throughput, bounded to [UploadMinTimeout, UploadMaxTimeout]. Healthy ~10MB uploads still
-	// finish in single-digit seconds on a reasonable link, well under the floor.
-	uploadTimeout := remote.UploadTimeoutFor(remote.GetLocalWshBinarySize(wavebase.WaveVersion, clientOs, clientArch))
+	// Dedicated upload deadline. See the first call site above for the
+	// rationale; both paths share the same UploadMaxTimeout + 60s budget.
+	uploadTimeout := remote.UploadMaxTimeout + 60*time.Second
 	uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
 	defer uploadCancel()
 	err = remote.CpWshToRemoteWithProgress(uploadCtx, client, clientOs, clientArch, func(written, total int64) {

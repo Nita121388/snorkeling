@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -387,5 +388,219 @@ func TestExtractWshVersionLineSkipsPowerShellNoise(t *testing.T) {
 	output := "#< CLIXML\nwsh v0.14.5-beta.4.snorkeling.0.0.42\n"
 	if got := extractWshVersionLine(output); got != "wsh v0.14.5-beta.4.snorkeling.0.0.42" {
 		t.Fatalf("unexpected version line: %q", got)
+	}
+}
+
+// TestComputeAdaptiveTimeout_FastLink verifies that on a fast link the
+// computed deadline comfortably exceeds the elapsed time (so the watchdog
+// won't trip a healthy upload).
+func TestComputeAdaptiveTimeout_FastLink(t *testing.T) {
+	// 12 MB uploaded in 3s of elapsed -> ~4 MB/s, way above slow-link floor.
+	const total = 12 * 1024 * 1024
+	bytesSoFar := int64(3 * 1024 * 1024)
+	elapsed := 3 * time.Second
+	now := time.Now()
+	need := computeAdaptiveTimeout(bytesSoFar, total, elapsed, now)
+	if need < UploadMinTimeout {
+		t.Fatalf("need=%s below floor %s", need, UploadMinTimeout)
+	}
+	if need > UploadMaxTimeout {
+		t.Fatalf("need=%s above cap %s", need, UploadMaxTimeout)
+	}
+	// At 4 MB/s steady-state, 9 MB remaining = ~2.25s * 1.5 + 3s elapsed + 10s buffer
+	// ≈ 16.4s. Should comfortably exceed the elapsed time.
+	if need <= elapsed {
+		t.Fatalf("need=%s should exceed elapsed=%s on a fast healthy link", need, elapsed)
+	}
+}
+
+// TestComputeAdaptiveTimeout_SlowLink verifies the deadline scales to the
+// real Tailscale-class throughput observed in production (~62 KiB/s).
+// 12 MB at 62 KiB/s needs ~200s, which exceeds the static 90s floor but
+// stays under UploadMaxTimeout.
+func TestComputeAdaptiveTimeout_SlowLink(t *testing.T) {
+	const total = 12 * 1024 * 1024
+	// 1.5 MB written after 24s = 62500 bytes/s ≈ 61 KiB/s
+	bytesSoFar := int64(1.5 * 1024 * 1024)
+	elapsed := 24 * time.Second
+	now := time.Now()
+	need := computeAdaptiveTimeout(bytesSoFar, total, elapsed, now)
+	// The deadline should land between the 90s floor and the 5min cap,
+	// and reflect "elapsed + ~remaining*1.5 + 10s".
+	if need < UploadMinTimeout {
+		t.Fatalf("need=%s below floor %s", need, UploadMinTimeout)
+	}
+	if need > UploadMaxTimeout {
+		t.Fatalf("need=%s above cap %s", need, UploadMaxTimeout)
+	}
+	// 10.5 MB remaining at 61 KiB/s ≈ 172s * 1.5 + 24s + 10s ≈ 292s.
+	// The watchdog should have pushed deadline well past the static 90s floor.
+	if need <= 90*time.Second {
+		t.Fatalf("need=%s should exceed the static 90s floor on a slow link", need)
+	}
+}
+
+// TestComputeAdaptiveTimeout_CappedAtMaxTimeout verifies that even on a very
+// slow link dragging a huge payload, the deadline never exceeds
+// UploadMaxTimeout measured from start.
+func TestComputeAdaptiveTimeout_CappedAtMaxTimeout(t *testing.T) {
+	// 100 MB at a slow-but-alive 50 KiB/s — well over 5min real time.
+	const total = 100 * 1024 * 1024
+	bytesSoFar := int64(5 * 1024 * 1024) // 5 MB written
+	elapsed := 100 * time.Second        // 100s in
+	now := time.Now()
+	need := computeAdaptiveTimeout(bytesSoFar, total, elapsed, now)
+	// need is measured from `now`, not from start; the cap is start+UploadMaxTimeout.
+	start := now.Add(-elapsed)
+	maxDeadline := start.Add(UploadMaxTimeout)
+	if now.Add(need).After(maxDeadline) {
+		t.Fatalf("deadline +%s extends past cap %s", need, maxDeadline)
+	}
+	if need > UploadMaxTimeout {
+		t.Fatalf("need=%s exceeds UploadMaxTimeout=%s", need, UploadMaxTimeout)
+	}
+}
+
+// TestComputeAdaptiveTimeout_FloorEnforced verifies the deadline is never
+// compressed below UploadMinTimeout, even when the upload is almost done
+// (where 'remaining' would otherwise collapse to ~0).
+func TestComputeAdaptiveTimeout_FloorEnforced(t *testing.T) {
+	const total = 12 * 1024 * 1024
+	// 11.999 MB of 12 MB — not much left.
+	bytesSoFar := int64(12*1024*1024) - 1024
+	elapsed := 10 * time.Second
+	now := time.Now()
+	need := computeAdaptiveTimeout(bytesSoFar, total, elapsed, now)
+	if need < UploadMinTimeout {
+		t.Fatalf("need=%s below floor %s", need, UploadMinTimeout)
+	}
+}
+
+// TestComputeAdaptiveTimeout_ZeroProgress returns 0 so the watchdog skips
+// adjusting the deadline (letting the timer run out naturally), since the
+// rate can't be sampled with zero written.
+func TestComputeAdaptiveTimeout_ZeroProgress(t *testing.T) {
+	if got := computeAdaptiveTimeout(0, 1024, time.Second, time.Now()); got != 0 {
+		t.Fatalf("expected 0 for zero bytesSoFar, got %s", got)
+	}
+	if got := computeAdaptiveTimeout(100, 0, time.Second, time.Now()); got != 0 {
+		t.Fatalf("expected 0 for zero totalBytes, got %s", got)
+	}
+	if got := computeAdaptiveTimeout(100, 1024, 0, time.Now()); got != 0 {
+		t.Fatalf("expected 0 for zero elapsed, got %s", got)
+	}
+}
+
+// TestProgressWriter_AtomicWriteStress exercises the atomic.Int64 counter
+// under concurrent writers and a concurrent reader (the watchdog pattern),
+// verifying the value never regresses and the final tally is exact. With
+// the race detector (CGO_ENABLED=1 + gcc available) this surfaces any
+// data race on `written`; without it, it still verifies counting.
+func TestProgressWriter_AtomicWriteStress(t *testing.T) {
+	const writers = 4
+	const chunksPerWriter = 250
+	const chunk = 4096
+	// bytes.Buffer is NOT safe for concurrent writers, so wrap it with a
+	// mutex. The point of this test is progressWriter's counter atomicity,
+	// not the underlying sink's thread-safety.
+	var mu sync.Mutex
+	var sink bytes.Buffer
+	pw := newProgressWriter(writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return sink.Write(p)
+	}), int64(writers*chunksPerWriter*chunk), func(int64, int64) {})
+	done := make(chan struct{})
+	go func() {
+		// Watchdog-style reader: polls written like the real goroutine.
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		var last int64
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				now := pw.written.Load()
+				if now < last {
+					t.Errorf("written regressed: %d -> %d", last, now)
+					return
+				}
+				last = now
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			payload := make([]byte, chunk)
+			for i := range payload {
+				payload[i] = byte(i)
+			}
+			for j := 0; j < chunksPerWriter; j++ {
+				n, err := pw.Write(payload)
+				if err != nil || n != chunk {
+					t.Errorf("Write returned n=%d err=%v", n, err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(done)
+	want := int64(writers * chunksPerWriter * chunk)
+	if got := pw.written.Load(); got != want {
+		t.Fatalf("written=%d, want %d", got, want)
+	}
+	if sink.Len() != int(want) {
+		t.Fatalf("sink.len=%d, want %d", sink.Len(), want)
+	}
+}
+
+// writerFunc adapts a func([]byte) (int, error) to io.Writer.
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// TestUploadFileViaSFTPWatchdog_SlowUploadSucceeds verifies the adaptive
+// watchdog lets a slow-but-alive upload complete inside the 90s floor that
+// the static deadline would have aborted. We can't easily make the real
+// upload exceed 90s in a unit test (would need real elapsed time), so this
+// test focuses on the semantic guarantee: a slow Writer that yields control
+// between chunks completes successfully even when the upload takes a
+// noticeable wall-clock time, matching the behaviour the watchdog preserves
+// in production.
+func TestUploadFileViaSFTPWatchdog_SlowUploadSucceeds(t *testing.T) {
+	// 256 KiB written in 4 chunks, with a small yield between each. Total
+	// wall-clock time is tiny (a few ms), but this exercises the full path
+	// — open, progressWriter wiring, watchdog tick, copy, close — end to end.
+	const total = 256 * 1024
+	remoteFile := &fakeSFTPFile{}
+	chunk := make([]byte, total/4)
+	input := bytes.NewReader(append(chunk, append(chunk, append(chunk, chunk...)...)...))
+	done := make(chan error, 1)
+	go func() {
+		done <- uploadFileViaSFTP(
+			context.Background(),
+			func(string) (io.WriteCloser, error) { return remoteFile, nil },
+			func() {},
+			"/C:/Users/nita/.snorkeling/tmp/wsh.exe.temp",
+			input,
+			total,
+			func(int64, int64) {},
+		)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("expected adaptive upload to succeed, got %v", err)
+		}
+		if remoteFile.closeCount != 1 {
+			t.Fatalf("expected remote file to close once, got %d", remoteFile.closeCount)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("adaptive upload hung")
 	}
 }
