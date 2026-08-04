@@ -11,6 +11,21 @@ import (
 	"strings"
 )
 
+const powerShellStdinTerminator = "__SNORKELING_POWERSHELL_STDIN_EOF_9A37C4D2__"
+
+var PowerShellStdinCommand = MakePowerShellEncodedCommand(strings.Join([]string{
+	`$ErrorActionPreference = "Stop"`,
+	`$End = ` + HardQuotePowerShell(powerShellStdinTerminator),
+	`$Text = New-Object System.Text.StringBuilder`,
+	`while ($true) {`,
+	`    $Line = [Console]::In.ReadLine()`,
+	`    if ($null -eq $Line) { throw "missing PowerShell stdin terminator" }`,
+	`    if ($Line -ceq $End) { break }`,
+	`    [void]$Text.AppendLine($Line)`,
+	`}`,
+	`& ([ScriptBlock]::Create($Text.ToString()))`,
+}, "\n"))
+
 // WshFileMetadata returns the size and hex SHA-256 hash of the local wsh binary at path.
 // It is a regular-file-only check: a reparse point (symlink/junction) or non-regular
 // file is rejected so a malicious swap cannot piggyback on the install. The hash is
@@ -44,8 +59,10 @@ func WshFileMetadata(path string) (size int64, sha256Hex string, err error) {
 }
 
 // BuildWindowsWshInstallScripts generates the prepare, install, and cleanup PowerShell
-// commands for installing the wsh binary on a Windows remote. All three are returned
-// in encoded form (ready to run via `powershell -EncodedCommand ...`).
+// scripts for installing the wsh binary on a Windows remote. Callers send the framed
+// scripts through stdin while running PowerShellStdinCommand, which keeps the SSH
+// command below the Windows cmd.exe command-line limit and executes the full script
+// without relying on PowerShell 5.1's multiline-incompatible `-Command -` mode.
 //
 // The install command embeds a copy of the prepare script at its head, so running
 // `install` alone is sufficient; the standalone `prepare` is provided so callers can
@@ -66,15 +83,14 @@ func WshFileMetadata(path string) (size int64, sha256Hex string, err error) {
 //   - Post-install `wsh version` verification that the installed binary reports the
 //     exact expected version line before the lock is released.
 //
-// remoteTempPath is expected to be relative to $HOME (e.g. ".snorkeling/tmp/wsh.exe.<ts>.temp");
-// it will be backslash-escaped. remoteWshPath is currently ignored — the install path
+// remoteTempPath 应为相对于 $HOME 的路径（例如 ".snorkeling/tmp/wsh.exe.<ts>.temp"），也可以带有 "~/" 前缀；生成脚本时会统一规范化并转义为反斜杠路径。remoteWshPath 当前被忽略，安装路径
 // is hardcoded to $HOME\.snorkeling\bin\wsh.exe to match the canonical RemoteFullWshBinPath
 // — but is kept on the signature for parity with the posix variant and future flexibility.
 func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, expectedSize int64, expectedSHA256 string, expectedVersion string) (prepareCmd string, installCmd string, cleanupCmd string) {
 	_ = remoteWshPath // reserved; canonical install path is $HOME\.snorkeling\bin\wsh.exe
 	remoteTempPath = strings.ReplaceAll(remoteTempPath, "/", `\`)
-	remotePrepareScript := strings.Join([]string{
-		`$ErrorActionPreference = "Stop"`,
+	remoteTempPath = strings.TrimPrefix(remoteTempPath, `~\`)
+	remotePrepareBody := strings.Join([]string{
 		`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
 		`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
 		`$AutoRoot = Join-Path $TempRoot "wsh-auto"`,
@@ -100,8 +116,9 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`Assert-SafeInstallDirectory $AutoRoot`,
 		`Assert-SafeInstallDirectory $BinRoot`,
 	}, "\n")
-	remoteInstallScript := strings.Join([]string{
-		remotePrepareScript,
+	remoteInstallBody := strings.Join([]string{
+		remotePrepareBody,
+		`$InstallStage = "verify-upload"`,
 		`$TempPath = Join-Path $HOME ` + HardQuotePowerShell(remoteTempPath),
 		`$WshPath = Join-Path $HOME ".snorkeling\bin\wsh.exe"`,
 		fmt.Sprintf(`$ExpectedSize = [Int64]%d`, expectedSize),
@@ -118,6 +135,7 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`    if ($TempFile.Length -ne $ExpectedSize) { throw ("uploaded wsh size mismatch: expected {0}, got {1}" -f $ExpectedSize, $TempFile.Length) }`,
 		`    $ActualHash = (Get-FileHash -LiteralPath $TempPath -Algorithm SHA256).Hash`,
 		`    if (-not [string]::Equals($ActualHash, $ExpectedHash, [System.StringComparison]::OrdinalIgnoreCase)) { throw ("uploaded wsh SHA-256 mismatch: expected {0}, got {1}" -f $ExpectedHash, $ActualHash) }`,
+		`    $InstallStage = "lock"`,
 		`    if (Test-Path -LiteralPath $InstallLockPath) {`,
 		`        $InstallLockItem = Get-Item -LiteralPath $InstallLockPath -Force`,
 		`        if ($InstallLockItem.PSIsContainer -or (($InstallLockItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "wsh install lock path is not a regular file" }`,
@@ -125,6 +143,7 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`    try {`,
 		`        $InstallLockStream = [System.IO.File]::Open($InstallLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)`,
 		`    } catch { throw ("another manual wsh install is running or the install lock is unavailable: {0}" -f $_.Exception.Message) }`,
+		`    $InstallStage = "replace"`,
 		`    if (Test-Path -LiteralPath $WshPath) {`,
 		`        $WshFile = Get-Item -LiteralPath $WshPath -Force`,
 		`        if ($WshFile.PSIsContainer -or (($WshFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) { throw "existing wsh path is not a regular file" }`,
@@ -134,12 +153,14 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`        Move-Item -LiteralPath $TempPath -Destination $WshPath`,
 		`        $InstalledWithoutBackup = $true`,
 		`    }`,
+		`    $InstallStage = "version"`,
 		`    $VersionLines = @(& $WshPath version)`,
 		`    $VersionExitCode = $LASTEXITCODE`,
 		`    $VersionOutput = ($VersionLines | Out-String).Trim()`,
 		`    if ($VersionExitCode -ne 0) { throw ("installed wsh version command failed with exit code {0}" -f $VersionExitCode) }`,
 		`    $VersionMatches = @($VersionLines | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ceq $ExpectedVersion })`,
 		`    if ($VersionMatches.Count -eq 0) { throw ("installed wsh version mismatch: expected exact line '{0}', got '{1}'" -f $ExpectedVersion, $VersionOutput) }`,
+		`    $InstallStage = "backup-cleanup"`,
 		`    if (($null -ne $BackupPath) -and (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {`,
 		`        try { Remove-Item -LiteralPath $BackupPath -ErrorAction Stop } catch { Write-Warning ("installed wsh is valid, but backup cleanup failed: {0}" -f $_.Exception.Message) }`,
 		`    }`,
@@ -169,8 +190,7 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`    }`,
 		`}`,
 	}, "\n")
-	remoteCleanupScript := strings.Join([]string{
-		`$ErrorActionPreference = "Stop"`,
+	remoteCleanupBody := strings.Join([]string{
 		`$SnorkelingRoot = Join-Path $HOME ".snorkeling"`,
 		`$TempRoot = Join-Path $SnorkelingRoot "tmp"`,
 		`function Assert-SafeCleanupDirectory {`,
@@ -188,5 +208,19 @@ func BuildWindowsWshInstallScripts(remoteTempPath string, remoteWshPath string, 
 		`    Remove-Item -LiteralPath $TempPath -ErrorAction Stop`,
 		`}`,
 	}, "\n")
-	return MakePowerShellEncodedCommand(remotePrepareScript), MakePowerShellEncodedCommand(remoteInstallScript), MakePowerShellEncodedCommand(remoteCleanupScript)
+	return wrapWindowsWshInstallScript("prepare", remotePrepareBody), wrapWindowsWshInstallScript("prepare", remoteInstallBody), wrapWindowsWshInstallScript("cleanup", remoteCleanupBody)
+}
+
+func wrapWindowsWshInstallScript(stage string, body string) string {
+	return strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`$InstallStage = ` + HardQuotePowerShell(stage),
+		`try {`,
+		body,
+		`} catch {`,
+		`    [Console]::Error.WriteLine(("wsh-install-error stage={0}: {1}" -f $InstallStage, $_.Exception.Message))`,
+		`    exit 1`,
+		`}`,
+		powerShellStdinTerminator,
+	}, "\n")
 }

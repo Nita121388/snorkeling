@@ -4,6 +4,7 @@
 import { computeConnColorNum } from "@/app/block/blockutil";
 import { TypeAheadModal } from "@/app/modals/typeaheadmodal";
 import { ConnectionsModel } from "@/app/store/connections-model";
+import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
 import {
     atoms,
     createBlock,
@@ -133,7 +134,7 @@ function getReconnectItem(
             const prtn = RpcApi.ConnConnectCommand(
                 TabRpcClient,
                 { host: connStatus.connection, logblockid: blockId },
-                { timeout: 60000 }
+                { timeout: ConnectionOperationTimeoutMs }
             );
             prtn.catch((e) => console.log("error reconnecting", connStatus.connection, e));
         },
@@ -366,7 +367,7 @@ const ChangeConnectionBlockModal = React.memo(
                     await RpcApi.ConnEnsureCommand(
                         TabRpcClient,
                         { connname: connName, logblockid: blockId },
-                        { timeout: 60000 }
+                        { timeout: ConnectionOperationTimeoutMs }
                     );
                 } catch (e) {
                     console.log("error connecting", blockId, connName, e);

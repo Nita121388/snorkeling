@@ -4,6 +4,7 @@
 import { Button } from "@/app/element/button";
 import { CopyButton } from "@/app/element/copybutton";
 import { useDimensionsWithCallbackRef } from "@/app/hook/useDimensions";
+import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { NodeModel } from "@/layout/index";
@@ -197,7 +198,7 @@ export const ConnStatusOverlay = React.memo(
             const prtn = waveEnv.rpc.ConnConnectCommand(
                 TabRpcClient,
                 { host: connName, logblockid: nodeModel.blockId },
-                { timeout: 60000 }
+                { timeout: ConnectionOperationTimeoutMs }
             );
             prtn.catch((e) => console.log("error reconnecting", connName, e));
         }, [connName, nodeModel.blockId, waveEnv]);
@@ -218,7 +219,7 @@ export const ConnStatusOverlay = React.memo(
                 await waveEnv.rpc.ConnConnectCommand(
                     TabRpcClient,
                     { host: connName, logblockid: nodeModel.blockId },
-                    { timeout: 180000 }
+                    { timeout: ConnectionOperationTimeoutMs }
                 );
                 setWshRepairStatus("Reconnected with wsh disabled.");
             } catch (e) {
@@ -252,14 +253,14 @@ export const ConnStatusOverlay = React.memo(
                 await waveEnv.rpc.ConnReinstallWshCommand(
                     TabRpcClient,
                     { connname: connName, logblockid: nodeModel.blockId },
-                    { timeout: 180000 }
+                    { timeout: ConnectionOperationTimeoutMs }
                 );
                 setWshRepairStatus("wsh installed. Reconnecting...");
                 await waveEnv.rpc.ConnDisconnectCommand(TabRpcClient, connName, { timeout: 10000 });
                 await waveEnv.rpc.ConnConnectCommand(
                     TabRpcClient,
                     { host: connName, logblockid: nodeModel.blockId },
-                    { timeout: 180000 }
+                    { timeout: ConnectionOperationTimeoutMs }
                 );
                 setWshRepairStatus("wsh install complete.");
             } catch (e) {

@@ -19,9 +19,9 @@
 |---|---|---|---|---|
 | **Agent 状态与识别** | `frontend/app/agent-status/`, `session-overview/` | `_to-keep/agent-status-current.html`(旧), `aisessions-*.html` | `方案/Agent状态与识别/` | ✅ 已巡检（2026-08-04，见下） |
 | **AI 面板 / 输入** | `frontend/app/aipanel/`, `suggestion/` | `new-agent-panel/prototype.html` | `方案/Agent数据与标签/` | 🟡 部分 |
-| **Common Text** | `frontend/app/commontext/` | `_to-keep/commontext-*.html`(4个) | `方案/Common Text/` | 🟡 部分 |
+| **Common Text** | `frontend/app/commontext/` | `_to-keep/commontext-*.html`(3个) | `方案/Common Text/` | ✅ 已巡检（见下） |
 | **Sessions 与列表** | `frontend/app/session-overview/`, `aisessions/` | `_to-keep/combine-dashboard.html`, `sessions-redesign.html`(删) | `方案/Sessions与列表/` | 🟡 部分 |
-| **UI 布局与 Block** | `frontend/app/block/`, `tab/`, `workspace/` | `_to-keep/combine-dashboard.html`, `vcs-block-redesign.html` | `方案/UI布局与Block/` | 🔴 待深度巡检 |
+| **UI 布局与 Block** | `frontend/app/block/`, `tab/`, `workspace/` | `_to-keep/combine-dashboard.html`, `vcs-block-redesign.html` | `方案/UI布局与Block/` | 🟡 已抽检（见下） |
 | **主题 / 设计系统** | `frontend/app/theme.scss`, `app.scss`, `element/` | `_to-keep/design-system.html`, `light-theme-variations.html`, `shell-settings/index.html` | `方案/主题/` | 🟡 部分 |
 | **终端 / 环境启动** | `frontend/app/view/term/`, `waveenv/`, `view/launcher/` | `env-launch-entry/index.html`, `shell-settings/index.html` | `方案/架构与文档/` | ✅ 已巡检（2026-08-04，见下） |
 
@@ -66,6 +66,13 @@
 - **代码**：功能已完整实现并 UI 落地 —— `agent-status-*.ts` 数据模型（AgentDisplayState/Phase/Source/Confidence）+ `block.tsx` 状态点渲染 + `session-overview` 三层 tab/block/session 汇聚。
 - **方案**：`Agent 状态识别方案.md` ⏳进行中，20-26 号方案记录根因修复。代码与方案目标一致。
 - **原型**：`_to-delete/` 中 4 个旧深色 mockup（agent-status-current / agent-card-responsive / agent-terminal-redesign / terminal-agent-redesign）无同步标记，已被真实实现取代 → 登记 P05 建议清理。
+
+### 2026-08-04 Common Text / UI 布局（深度巡检完成）
+
+- **Common Text**：三处对齐 ✅。代码 `commontext-*.tsx`（compose-modal 实现 master-detail/pinned）+ 3 原型 + 方案 对齐。
+  `search-virtual.html` 是「提案未实现」（真实只采纳 limit 500），作为设计资产保留 → 登记 P06 无需处理。
+- **UI 布局 / Block**：抽检 ✅。`combine-dashboard.html`（V3 当前方案）对应未实现 `combinedashboard/`（设计活跃待落地）；
+  block/ tab/ workspace 代码齐全，方案文档丰富。`_to-keep` 9 项落地矩阵：8 项代码存在 + 1 项设计待落地 → P03 补登记全部保留。
 
 ## 同步状态标记
 

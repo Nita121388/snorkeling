@@ -217,6 +217,7 @@ func buildManualRemoteInstallCommands(clientOs string, remoteTempPath string, re
 }
 
 func buildManualWshInstallPowerShellCommand(connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remotePrepareCmd string, remoteInstallCmd string, remoteCleanupCmd string) string {
+	remoteUsesPowerShellStdin := strings.HasPrefix(strings.TrimSpace(remotePrepareCmd), `$ErrorActionPreference = "Stop"`)
 	var sb strings.Builder
 	sb.WriteString("$ErrorActionPreference = \"Stop\"\n")
 	sb.WriteString("$LocalWsh = " + shellutil.HardQuotePowerShell(localWshPath) + "\n")
@@ -224,6 +225,9 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 	sb.WriteString("$RemoteTemp = " + shellutil.HardQuotePowerShell(remoteTempPath) + "\n")
 	sb.WriteString("$ConnName = " + shellutil.HardQuotePowerShell(connName) + "\n")
 	sb.WriteString("$RemoteCleanupCmd = " + shellutil.HardQuotePowerShell(remoteCleanupCmd) + "\n")
+	if remoteUsesPowerShellStdin {
+		sb.WriteString("$RemotePowerShellCmd = " + shellutil.HardQuotePowerShell(shellutil.PowerShellStdinCommand) + "\n")
+	}
 	sb.WriteString("$ScpArgs = @()\n")
 	sb.WriteString("$SshArgs = @()\n")
 	if sshPort != "" {
@@ -254,7 +258,11 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 	sb.WriteString("Write-Host \"\"\n")
 	sb.WriteString("Write-Host \"==> Preparing remote directories\" -ForegroundColor Cyan\n")
 	sb.WriteString("$RemotePrepareCmd = " + shellutil.HardQuotePowerShell(remotePrepareCmd) + "\n")
-	sb.WriteString("& ssh @SshArgs $Remote $RemotePrepareCmd\n")
+	if remoteUsesPowerShellStdin {
+		sb.WriteString("$RemotePrepareCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd\n")
+	} else {
+		sb.WriteString("& ssh @SshArgs $Remote $RemotePrepareCmd\n")
+	}
 	sb.WriteString("if ($LASTEXITCODE -ne 0) { throw \"remote prepare failed with exit code $LASTEXITCODE\" }\n")
 	sb.WriteString("Write-Host \"\"\n")
 	sb.WriteString("Write-Host \"==> Uploading wsh binary with scp\" -ForegroundColor Cyan\n")
@@ -264,7 +272,11 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 	sb.WriteString("Write-Host \"\"\n")
 	sb.WriteString("Write-Host \"==> Installing and verifying remote wsh\" -ForegroundColor Cyan\n")
 	sb.WriteString("$RemoteInstallCmd = " + shellutil.HardQuotePowerShell(remoteInstallCmd) + "\n")
-	sb.WriteString("& ssh @SshArgs $Remote $RemoteInstallCmd\n")
+	if remoteUsesPowerShellStdin {
+		sb.WriteString("$RemoteInstallCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd\n")
+	} else {
+		sb.WriteString("& ssh @SshArgs $Remote $RemoteInstallCmd\n")
+	}
 	sb.WriteString("if ($LASTEXITCODE -ne 0) { throw \"remote install failed with exit code $LASTEXITCODE\" }\n")
 	sb.WriteString("$InstallSucceeded = $true\n")
 	sb.WriteString("Write-Host \"\"\n")
@@ -280,7 +292,11 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 	sb.WriteString("    Write-Host \"\"\n")
 	sb.WriteString("    Write-Host \"==> Cleaning this upload's remote temp file\" -ForegroundColor Cyan\n")
 	sb.WriteString("    try {\n")
-	sb.WriteString("        & ssh @SshArgs $Remote $RemoteCleanupCmd\n")
+	if remoteUsesPowerShellStdin {
+		sb.WriteString("        $RemoteCleanupCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd\n")
+	} else {
+		sb.WriteString("        & ssh @SshArgs $Remote $RemoteCleanupCmd\n")
+	}
 	sb.WriteString("        if ($LASTEXITCODE -ne 0) { Write-Warning \"exact remote temp cleanup failed with exit code $LASTEXITCODE\" }\n")
 	sb.WriteString("    } catch { Write-Warning (\"exact remote temp cleanup failed: {0}\" -f $_.Exception.Message) }\n")
 	sb.WriteString("    if ($Disconnected -and $InstallSucceeded) {\n")
@@ -298,6 +314,7 @@ func buildManualWshInstallPowerShellCommand(connName string, localWshPath string
 }
 
 func buildManualWshInstallPosixCommand(connName string, localWshPath string, remoteSshTarget string, sshPort string, remoteTempPath string, remotePrepareCmd string, remoteInstallCmd string, remoteCleanupCmd string) string {
+	remoteUsesPowerShellStdin := strings.HasPrefix(strings.TrimSpace(remotePrepareCmd), `$ErrorActionPreference = "Stop"`)
 	var sb strings.Builder
 	sb.WriteString("set -eu\n")
 	sb.WriteString("local_wsh=" + shellutil.HardQuote(localWshPath) + "\n")
@@ -306,6 +323,10 @@ func buildManualWshInstallPosixCommand(connName string, localWshPath string, rem
 	sb.WriteString("conn_name=" + shellutil.HardQuote(connName) + "\n")
 	sb.WriteString("remote_prepare_cmd=" + shellutil.HardQuote(remotePrepareCmd) + "\n")
 	sb.WriteString("remote_cleanup_cmd=" + shellutil.HardQuote(remoteCleanupCmd) + "\n")
+	if remoteUsesPowerShellStdin {
+		sb.WriteString("remote_install_cmd=" + shellutil.HardQuote(remoteInstallCmd) + "\n")
+		sb.WriteString("remote_powershell_cmd=" + shellutil.HardQuote(shellutil.PowerShellStdinCommand) + "\n")
+	}
 	sb.WriteString("local_wsh_exe=\n")
 	sb.WriteString("disconnected=0\n")
 	sb.WriteString("install_succeeded=0\n")
@@ -314,7 +335,11 @@ func buildManualWshInstallPosixCommand(connName string, localWshPath string, rem
 	sb.WriteString("    trap - EXIT HUP INT TERM\n")
 	sb.WriteString("    echo\n")
 	sb.WriteString("    echo \"==> Cleaning this upload's remote temp file\"\n")
-	if sshPort != "" {
+	if remoteUsesPowerShellStdin && sshPort != "" {
+		sb.WriteString("    if ! printf '%s\\n' \"$remote_cleanup_cmd\" | ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" \"$remote_powershell_cmd\"; then echo 'warning: exact remote temp cleanup failed' >&2; fi\n")
+	} else if remoteUsesPowerShellStdin {
+		sb.WriteString("    if ! printf '%s\\n' \"$remote_cleanup_cmd\" | ssh \"$remote\" \"$remote_powershell_cmd\"; then echo 'warning: exact remote temp cleanup failed' >&2; fi\n")
+	} else if sshPort != "" {
 		sb.WriteString("    if ! ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" \"$remote_cleanup_cmd\"; then echo 'warning: exact remote temp cleanup failed' >&2; fi\n")
 	} else {
 		sb.WriteString("    if ! ssh \"$remote\" \"$remote_cleanup_cmd\"; then echo 'warning: exact remote temp cleanup failed' >&2; fi\n")
@@ -348,7 +373,11 @@ func buildManualWshInstallPosixCommand(connName string, localWshPath string, rem
 	sb.WriteString("fi\n")
 	sb.WriteString("echo\n")
 	sb.WriteString("echo '==> Preparing remote directories'\n")
-	if sshPort != "" {
+	if remoteUsesPowerShellStdin && sshPort != "" {
+		sb.WriteString("printf '%s\\n' \"$remote_prepare_cmd\" | ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" \"$remote_powershell_cmd\"\n")
+	} else if remoteUsesPowerShellStdin {
+		sb.WriteString("printf '%s\\n' \"$remote_prepare_cmd\" | ssh \"$remote\" \"$remote_powershell_cmd\"\n")
+	} else if sshPort != "" {
 		sb.WriteString("ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" \"$remote_prepare_cmd\"\n")
 	} else {
 		sb.WriteString("ssh \"$remote\" \"$remote_prepare_cmd\"\n")
@@ -362,7 +391,11 @@ func buildManualWshInstallPosixCommand(connName string, localWshPath string, rem
 	}
 	sb.WriteString("echo\n")
 	sb.WriteString("echo '==> Installing and verifying remote wsh'\n")
-	if sshPort != "" {
+	if remoteUsesPowerShellStdin && sshPort != "" {
+		sb.WriteString("printf '%s\\n' \"$remote_install_cmd\" | ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" \"$remote_powershell_cmd\"\n")
+	} else if remoteUsesPowerShellStdin {
+		sb.WriteString("printf '%s\\n' \"$remote_install_cmd\" | ssh \"$remote\" \"$remote_powershell_cmd\"\n")
+	} else if sshPort != "" {
 		sb.WriteString("ssh -p " + shellutil.HardQuote(sshPort) + " \"$remote\" " + shellutil.HardQuote(remoteInstallCmd) + "\n")
 	} else {
 		sb.WriteString("ssh \"$remote\" " + shellutil.HardQuote(remoteInstallCmd) + "\n")

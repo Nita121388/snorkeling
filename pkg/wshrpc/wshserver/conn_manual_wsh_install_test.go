@@ -4,14 +4,11 @@
 package wshserver
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 )
@@ -34,28 +31,27 @@ func TestMakeManualRemoteWshPathUsesExeForWindows(t *testing.T) {
 }
 
 func TestBuildManualWshInstallPowerShellCommandPreparesRemoteDirs(t *testing.T) {
-	remotePrepareCmd, _, remoteCleanupCmd := buildManualRemoteInstallCommands("windows", ".snorkeling/tmp/wsh.tmp", "$HOME/.snorkeling/bin/wsh.exe", 123, strings.Repeat("a", 64), "wsh v1.2.3")
-	prepareScript := decodeRemotePowerShellCommand(t, remotePrepareCmd)
-	cmd := buildManualWshInstallPowerShellCommand("break@100.65.122.71", `E:\wsh.exe`, "break@100.65.122.71", "", ".snorkeling/tmp/wsh.tmp", remotePrepareCmd, "true", remoteCleanupCmd)
+	remotePrepareCmd, remoteInstallCmd, remoteCleanupCmd := buildManualRemoteInstallCommands("windows", ".snorkeling/tmp/wsh.tmp", "$HOME/.snorkeling/bin/wsh.exe", 123, strings.Repeat("a", 64), "wsh v1.2.3")
+	cmd := buildManualWshInstallPowerShellCommand("break@100.65.122.71", `E:\wsh.exe`, "break@100.65.122.71", "", ".snorkeling/tmp/wsh.tmp", remotePrepareCmd, remoteInstallCmd, remoteCleanupCmd)
 	if !strings.Contains(cmd, "==> Preparing remote directories") {
 		t.Fatalf("expected powershell installer to prepare remote directories")
 	}
-	if !strings.Contains(cmd, "powershell -NoProfile -NonInteractive") {
-		t.Fatalf("expected powershell installer to invoke remote powershell")
+	assertContainsAll(t, cmd,
+		`$RemotePowerShellCmd = `+shellutil.HardQuotePowerShell(shellutil.PowerShellStdinCommand),
+		`$RemotePrepareCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd`,
+		`$RemoteInstallCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd`,
+		`$RemoteCleanupCmd | & ssh @SshArgs $Remote $RemotePowerShellCmd`,
+	)
+	if strings.Contains(cmd, "-Command -") {
+		t.Fatalf("expected remote PowerShell scripts to use the framed stdin loader")
 	}
-	if !strings.Contains(cmd, "-EncodedCommand") {
-		t.Fatalf("expected remote powershell command to be encoded")
-	}
-	if strings.Contains(cmd, "Out-Null") {
-		t.Fatalf("expected remote powershell script to be encoded before passing to ssh")
-	}
-	assertContainsAll(t, prepareScript,
+	assertContainsAll(t, remotePrepareCmd,
 		`Assert-SafeInstallDirectory $SnorkelingRoot`,
 		`Assert-SafeInstallDirectory $TempRoot`,
 		`Assert-SafeInstallDirectory $BinRoot`,
 		`[System.IO.FileAttributes]::ReparsePoint`,
 	)
-	assertBefore(t, prepareScript, `Assert-SafeInstallDirectory $SnorkelingRoot`, `[System.IO.Directory]::CreateDirectory($TempRoot)`)
+	assertBefore(t, remotePrepareCmd, `Assert-SafeInstallDirectory $SnorkelingRoot`, `[System.IO.Directory]::CreateDirectory($TempRoot)`)
 }
 
 func TestBuildManualRemoteInstallCommandsUsesPosixForNonWindows(t *testing.T) {
@@ -110,8 +106,8 @@ func TestWindowsRemoteInstallValidatesBeforeAtomicReplaceAndRollsBack(t *testing
 		strings.Repeat("a", 64),
 		"wsh v1.2.3",
 	)
-	installScript := decodeRemotePowerShellCommand(t, installCmd)
-	cleanupScript := decodeRemotePowerShellCommand(t, cleanupCmd)
+	installScript := installCmd
+	cleanupScript := cleanupCmd
 
 	assertContainsAll(t, installScript,
 		`$ExpectedSize = [Int64]123`,
@@ -147,6 +143,34 @@ func TestWindowsRemoteInstallValidatesBeforeAtomicReplaceAndRollsBack(t *testing
 		`Remove-Item -LiteralPath $TempPath`,
 		`ReparsePoint`,
 	)
+}
+
+func TestManualWindowsRemoteInstallUsesSSHStdinOnPosixLocal(t *testing.T) {
+	remotePrepareCmd, remoteInstallCmd, remoteCleanupCmd := buildManualRemoteInstallCommands(
+		"windows",
+		".snorkeling/tmp/wsh.tmp",
+		"$HOME/.snorkeling/bin/wsh.exe",
+		123,
+		strings.Repeat("a", 64),
+		"wsh v1.2.3",
+	)
+	cmd := buildManualWshInstallPosixCommand(
+		"break@example.test",
+		"/local/wsh.exe",
+		"break@example.test",
+		"2222",
+		".snorkeling/tmp/wsh.tmp",
+		remotePrepareCmd,
+		remoteInstallCmd,
+		remoteCleanupCmd,
+	)
+	assertContainsAll(t, cmd,
+		`remote_powershell_cmd=`+shellutil.HardQuote(shellutil.PowerShellStdinCommand),
+		`printf '%s\n' "$remote_prepare_cmd" | ssh -p 2222 "$remote" "$remote_powershell_cmd"`,
+		`printf '%s\n' "$remote_install_cmd" | ssh -p 2222 "$remote" "$remote_powershell_cmd"`,
+		`printf '%s\n' "$remote_cleanup_cmd" | ssh -p 2222 "$remote" "$remote_powershell_cmd"`,
+	)
+	assertPosixSyntax(t, cmd)
 }
 
 func TestPosixRemoteInstallValidatesBeforeMoveAndCleansExactTemp(t *testing.T) {
@@ -285,27 +309,6 @@ func TestManualInstallWrappersDisconnectBeforeUploadAndCleanupOnExit(t *testing.
 		`automatic connection recovery skipped after install failure`,
 	)
 	assertPosixSyntax(t, posixCmd)
-}
-
-func decodeRemotePowerShellCommand(t *testing.T, command string) string {
-	t.Helper()
-	const marker = "-EncodedCommand "
-	markerIndex := strings.Index(command, marker)
-	if markerIndex == -1 {
-		t.Fatalf("expected encoded PowerShell command, got %q", command)
-	}
-	data, err := base64.StdEncoding.DecodeString(command[markerIndex+len(marker):])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data)%2 != 0 {
-		t.Fatalf("expected UTF-16LE data, got %d bytes", len(data))
-	}
-	words := make([]uint16, len(data)/2)
-	for index := range words {
-		words[index] = binary.LittleEndian.Uint16(data[index*2:])
-	}
-	return string(utf16.Decode(words))
 }
 
 func assertContainsAll(t *testing.T, value string, expected ...string) {

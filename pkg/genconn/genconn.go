@@ -147,7 +147,13 @@ func BuildShellCommand(opts CommandSpec) (string, error) {
 	// Build the command
 	shellCmd := opts.Cmd
 	if opts.Cwd != "" {
-		shellCmd = fmt.Sprintf("cd %s && %s", shellutil.HardQuote(opts.Cwd), shellCmd)
+		quotedCwd := shellutil.HardQuote(opts.Cwd)
+		if opts.Cwd == "~" {
+			quotedCwd = "~"
+		} else if strings.HasPrefix(opts.Cwd, "~/") {
+			quotedCwd = "~/" + shellutil.HardQuote(strings.TrimPrefix(opts.Cwd, "~/"))
+		}
+		shellCmd = fmt.Sprintf("cd %s && {\n%s\n}", quotedCwd, shellCmd)
 	}
 
 	// Quote the command for `sh -c`

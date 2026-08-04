@@ -629,22 +629,27 @@ func appendWshUploadDiag(stage string, kv ...any) {
 //
 // Steps (each over its own ssh session or SFTP channel):
 //  1. Compute the local wsh.exe size + SHA-256 by seeking through `input`.
-//  2. Run prepareCmd (creates ~/.snorkeling/{tmp,bin}, asserts they are safe dirs).
+//  2. Run the prepare script through PowerShell stdin (creates
+//     ~/.snorkeling/{tmp,bin}, asserts they are safe dirs).
 //  3. Upload `input` over the Windows remote's SFTP subsystem into $TempPath.
-//  4. Run installCmd: verifies uploaded size+SHA-256, takes the install lock, atomically
+//  4. Run the install script through PowerShell stdin: verifies uploaded size+SHA-256, takes the install lock, atomically
 //     replaces the existing wsh.exe (with a backup), runs `wsh version` to confirm the
 //     exact expected version line, rolls back to the backup on any failure, and cleans
 //     up the temp file in a finally block.
-//  5. On any failure in steps 2-4, run cleanupCmd (best-effort) to remove the half-written
+//  5. On any failure in steps 2-4, run the cleanup script (best-effort) to remove the half-written
 //     temp file so a later install is not blocked by it.
 //
-// Because installCmd already runs `wsh version` and refuses to commit the swap unless
+// Because the install script already runs `wsh version` and refuses to commit the swap unless
 // the exact expected version line is produced, no separate post-install verify step is
 // needed here (the legacy single-shot path did one; the hardened path does it under the
 // lock, which is strictly safer).
 func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.File, inputSize int64, remoteWshPath string, remoteTempPath string, diagnosticsCmd string, onProgress func(written, total int64)) error {
 	uploadStarted := time.Now()
-	appendWshUploadDiag("start", "remote_os", "windows", "bytes", inputSize, "temp_path", remoteTempPath)
+	deadlineRemainingMs := int64(-1)
+	if deadline, ok := ctx.Deadline(); ok {
+		deadlineRemainingMs = time.Until(deadline).Milliseconds()
+	}
+	appendWshUploadDiag("start", "remote_os", "windows", "bytes", inputSize, "temp_path", remoteTempPath, "context_deadline_ms", deadlineRemainingMs)
 	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=start os=windows bytes=%d temp=%s\n", inputSize, remoteTempPath)
 	// 1. SHA-256 the local binary by streaming `input` once, then rewind so the upload
 	//    copy below sees the file from the start.
@@ -660,14 +665,32 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 		return fmt.Errorf("cannot rewind local wsh binary after hashing: %w", err)
 	}
 	expectedVersion := fmt.Sprintf("wsh v%s", wavebase.WaveVersion)
-	prepareCmd, installCmd, cleanupCmd := shellutil.BuildWindowsWshInstallScripts(remoteTempPath, remoteWshPath, inputSize, expectedSHA256, expectedVersion)
+	prepareScript, installScript, cleanupScript := shellutil.BuildWindowsWshInstallScripts(remoteTempPath, remoteWshPath, inputSize, expectedSHA256, expectedVersion)
+	runPowerShellScript := func(script string) (string, string, error) {
+		session, err := client.NewSession()
+		if err != nil {
+			return "", "", err
+		}
+		defer session.Close()
+		stdoutBuf := &strings.Builder{}
+		stderrBuf := &strings.Builder{}
+		session.Stdin = strings.NewReader(script + "\n")
+		session.Stdout = stdoutBuf
+		session.Stderr = stderrBuf
+		started := time.Now()
+		pslog.AppendRaw("ssh-raw-session-start", fmt.Sprintf("cmd=%q stdin_bytes=%d", shellutil.PowerShellStdinCommand, len(script)))
+		err = runSessionWithContext(ctx, session, shellutil.PowerShellStdinCommand)
+		pslog.AppendRaw("ssh-raw-session-result", fmt.Sprintf("duration_ms=%d err=%v", time.Since(started).Milliseconds(), err))
+		return stdoutBuf.String(), stderrBuf.String(), err
+	}
 
 	// 2. prepare: make sure remote tmp/bin dirs exist and are plain directories.
 	appendWshUploadDiag("prepare-start")
-	if err := runRemoteCommandQuiet(ctx, client, prepareCmd); err != nil {
+	prepareStdout, prepareStderr, err := runPowerShellScript(prepareScript)
+	if err != nil {
 		appendWshUploadDiag("prepare-failed", "error", err.Error())
 		blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-failed error=%v\n", err)
-		return fmt.Errorf("remote wsh prepare failed: %w", err)
+		return fmt.Errorf("remote wsh prepare failed: %w (stdout: %s; stderr: %s)", err, strings.TrimSpace(prepareStdout), strings.TrimSpace(prepareStderr))
 	}
 	appendWshUploadDiag("prepare-complete")
 	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-complete\n")
@@ -707,12 +730,12 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	closeErr := closeSFTP()
 	if uploadErr != nil {
 		appendWshUploadDiag("sftp-upload-failed", "error", uploadErr.Error(), "duration_ms", time.Since(uploadStarted).Milliseconds())
-		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		_, _, _ = runPowerShellScript(cleanupScript)
 		return uploadErr
 	}
 	if closeErr != nil {
 		appendWshUploadDiag("sftp-client-close-failed", "error", closeErr.Error())
-		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		_, _, _ = runPowerShellScript(cleanupScript)
 		return fmt.Errorf("failed to close SFTP upload: %w", closeErr)
 	}
 	appendWshUploadDiag("sftp-upload-complete", "duration_ms", time.Since(uploadStarted).Milliseconds())
@@ -720,10 +743,10 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 
 	// 4. install: size + SHA-256 + atomic replace + version verify + rollback, under lock.
 	appendWshUploadDiag("install-start")
-	installStdout, installStderr, err := runRemoteCommandOutput(ctx, client, installCmd)
+	installStdout, installStderr, err := runPowerShellScript(installScript)
 	if err != nil {
 		appendWshUploadDiag("install-failed", "error", err.Error(), "stdout_bytes", len(strings.TrimSpace(installStdout)), "stderr_bytes", len(strings.TrimSpace(installStderr)))
-		_ = runRemoteCommandQuiet(ctx, client, cleanupCmd)
+		_, _, _ = runPowerShellScript(cleanupScript)
 		return fmt.Errorf("remote wsh install failed: %w (stdout: %s; stderr: %s)",
 			err, strings.TrimSpace(installStdout), strings.TrimSpace(installStderr))
 	}
@@ -825,6 +848,8 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 	}()
 	select {
 	case <-ctx.Done():
+		ctxErr := ctx.Err()
+		appendWshUploadDiag("sftp-upload-canceled", "written", pwd.written.Load(), "context_error", ctxErr.Error())
 		close(stopCh)
 		wg.Wait()
 		if abortTransport != nil {
@@ -832,8 +857,9 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 		}
 		_ = remoteFile.Close()
 		<-copyDone
-		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+		return fmt.Errorf("remote wsh upload canceled: %w", ctxErr)
 	case <-timer.C:
+		appendWshUploadDiag("sftp-upload-timeout", "written", pwd.written.Load(), "context_error", context.DeadlineExceeded.Error())
 		close(stopCh)
 		wg.Wait()
 		if abortTransport != nil {
