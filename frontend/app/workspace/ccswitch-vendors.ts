@@ -14,7 +14,7 @@
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 
-export type CcSwitchAppType = "claude" | "codex";
+export type CcSwitchAppType = "claude" | "codex" | "opencode" | "pi";
 
 export interface CcSwitchVendor {
     id: string;
@@ -40,6 +40,19 @@ export interface CcSwitchVendor {
      * ~/.codex/ (official OAuth login path).
      */
     codex_config_dir?: string;
+    /**
+     * Absolute path to a per-vendor OPENCODE_HOME we materialize on the wshserver side (reader.go).
+     * When set, agent-launch.ts adds `OPENCODE_HOME=<this>` to the block's cmd:env so the spawned
+     * opencode reads *this* vendor's config instead of the user's global ~/.opencode/ or XDG config.
+     * Absent when the vendor has no opencode-specific config content.
+     */
+    opencode_config_dir?: string;
+    /**
+     * Absolute path to a per-vendor PI_CODING_AGENT_SESSION_DIR we materialize on the wshserver side.
+     * Pi vendor isolation is dormant until cc-switch upstream adds "pi" to VisibleApps.
+     * When set, agent-launch.ts adds `PI_CODING_AGENT_SESSION_DIR=<this>` to the block's cmd:env.
+     */
+    pi_config_dir?: string;
 }
 
 export interface CcSwitchVendorList {

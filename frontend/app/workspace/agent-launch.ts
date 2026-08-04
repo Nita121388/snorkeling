@@ -15,6 +15,10 @@ const AgentClaudeVendorIdMetaKey = "agent:claudevendorid";
 const AgentClaudeVendorNameMetaKey = "agent:claudevendorname";
 const AgentCodexVendorIdMetaKey = "agent:codexvendorid";
 const AgentCodexVendorNameMetaKey = "agent:codexvendorname";
+const AgentOpenCodeVendorIdMetaKey = "agent:opencodevendorid";
+const AgentOpenCodeVendorNameMetaKey = "agent:opencodevendorname";
+const AgentPiVendorIdMetaKey = "agent:pivendorid";
+const AgentPiVendorNameMetaKey = "agent:pivendorname";
 const AgentIsolationModeMetaKey = "agent:isolationmode";
 const AgentRequestedModelMetaKey = "agent:requestedmodel";
 const DefaultHomeLaunchTargetBlockId = "launch-target:home";
@@ -67,6 +71,10 @@ const BuiltinAgentProfiles: Record<string, AgentProfileConfig> = {
         cmd: "opencode",
         modelflag: "--model",
     },
+    pi: {
+        cmd: "pi",
+        modelflag: "--model",
+    },
 };
 
 const BuiltinAgentProfileLabels: Record<string, string> = {
@@ -74,6 +82,7 @@ const BuiltinAgentProfileLabels: Record<string, string> = {
     claude: "Claude Code",
     gemini: "Gemini",
     opencode: "OpenCode",
+    pi: "Pi",
 };
 
 type AgentLaunchSource = "terminal" | "files" | "agent" | "home";
@@ -1013,7 +1022,10 @@ function createAgentBlockDef(
     let selectedVendor: CcSwitchVendor | undefined = undefined;
     const isClaudeProvider = provider === "claude" || provider === "anthropic";
     const isCodexProvider = provider === "codex";
-    if ((isClaudeProvider || isCodexProvider) && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
+    const isOpenCodeProvider = provider === "opencode";
+    const isPiProvider = provider === "pi";
+    const isVendorAwareProvider = isClaudeProvider || isCodexProvider || isOpenCodeProvider || isPiProvider;
+    if (isVendorAwareProvider && !isBlank(vendorId) && Array.isArray(vendorOptions)) {
         selectedVendor = vendorOptions.find((v) => v != null && v.id === vendorId);
     }
     if (selectedVendor != null && selectedVendor.env != null) {
@@ -1025,6 +1037,10 @@ function createAgentBlockDef(
         cmdEnv["CLAUDE_CONFIG_DIR"] = selectedVendor.claude_config_dir;
     } else if (isCodexProvider && selectedVendor != null && !isBlank(selectedVendor.codex_config_dir)) {
         cmdEnv["CODEX_HOME"] = selectedVendor.codex_config_dir;
+    } else if (isOpenCodeProvider && selectedVendor != null && !isBlank(selectedVendor.opencode_config_dir)) {
+        cmdEnv["OPENCODE_HOME"] = selectedVendor.opencode_config_dir;
+    } else if (isPiProvider && selectedVendor != null && !isBlank(selectedVendor.pi_config_dir)) {
+        cmdEnv["PI_CODING_AGENT_SESSION_DIR"] = selectedVendor.pi_config_dir;
     }
 
     const blockMeta: MetaType = {
@@ -1061,6 +1077,12 @@ function createAgentBlockDef(
         } else if (isCodexProvider) {
             blockMetaRecord[AgentCodexVendorIdMetaKey] = selectedVendor.id;
             blockMetaRecord[AgentCodexVendorNameMetaKey] = selectedVendor.name;
+        } else if (isOpenCodeProvider) {
+            blockMetaRecord[AgentOpenCodeVendorIdMetaKey] = selectedVendor.id;
+            blockMetaRecord[AgentOpenCodeVendorNameMetaKey] = selectedVendor.name;
+        } else if (isPiProvider) {
+            blockMetaRecord[AgentPiVendorIdMetaKey] = selectedVendor.id;
+            blockMetaRecord[AgentPiVendorNameMetaKey] = selectedVendor.name;
         }
     }
 
