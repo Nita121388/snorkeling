@@ -61,7 +61,7 @@ func sshRun(cmd *cobra.Command, args []string) (rtnErr error) {
 			SshIdentityFile: identityFiles,
 		},
 	}
-	wshclient.ConnConnectCommand(RpcClient, connOpts, &wshrpc.RpcOpts{Timeout: 60000})
+	wshclient.ConnConnectCommand(RpcClient, connOpts, &wshrpc.RpcOpts{Timeout: wshrpc.ConnectionOperationTimeoutMs})
 
 	if newBlock {
 		tabId := getTabIdFromEnv()

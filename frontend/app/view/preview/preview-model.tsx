@@ -4,6 +4,7 @@
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import type { UnsavedFileModalChoice } from "@/app/modals/unsavedfilemodal";
 import { ContextMenuModel } from "@/app/store/contextmenu";
+import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
 import { globalStore } from "@/app/store/jotaiStore";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
@@ -865,7 +866,7 @@ export class PreviewModel implements ViewModel {
         this.connection = atom<Promise<string>>(async (get) => {
             const connName = get(this.blockAtom)?.meta?.connection;
             try {
-                await this.env.rpc.ConnEnsureCommand(TabRpcClient, { connname: connName }, { timeout: 60000 });
+                await this.env.rpc.ConnEnsureCommand(TabRpcClient, { connname: connName }, { timeout: ConnectionOperationTimeoutMs });
                 globalStore.set(this.connectionError, "");
             } catch (e) {
                 globalStore.set(this.connectionError, e as string);

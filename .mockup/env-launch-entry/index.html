@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Env Launch Entry — New Agent / New Terminal 自定义环境变量原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-title">Env Launch Entry — 运行前自定义环境变量原型</div>
+    <div class="page-sub">
+        结构严格对齐真实 <code>frontend/app/workspace/widgets.tsx</code>（New Agent ~L717 / New Terminal ~L1162）。
+        点击两个 header 的 <b>env 图标按钮</b>打开「升级为可编辑」的环境变量弹窗。
+    </div>
+
+    <!-- Tab 切换：New Agent / New Terminal（真实里的两个独立浮窗，此处并列便于对比入口位置） -->
+    <div class="tabs">
+        <button class="btn tab-btn active" data-tab="agent">New Agent 弹窗</button>
+        <button class="btn tab-btn" data-tab="terminal">New Terminal 弹窗</button>
+    </div>
+
+    <div class="stage">
+        <!-- ===== New Agent 弹窗（对齐真实 widgets.tsx ~L717）===== -->
+        <div class="floating tab-panel active" id="panel-agent">
+            <!-- header：标题 + gear（Agent hook settings）—— 新增 env 按钮在 gear 左侧 -->
+            <div class="hdr">
+                <span>New Agent</span>
+                <div class="hdr-actions">
+                    <button class="icon-btn env-btn" data-open-env title="Set environment variables for launch">
+                        <i class="ic">⠿</i>
+                    </button>
+                    <button class="icon-btn" title="Agent hook settings">
+                        <i class="ic gear">⚙</i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 区块 1：Select an agent type（profile chips，横向；选中左侧 accent 竖条）-->
+            <div class="section">
+                <div class="sec-title">Select an agent type</div>
+                <div class="chips">
+                    <div class="chip sel">
+                        <span class="tick"></span>
+                        <button class="chip-main"><i class="star">★</i><span class="lab">Claude Code</span></button>
+                        <span class="chk on" title="set default"><i class="fa-solid fa-check">✓</i></span>
+                    </div>
+                    <div class="chip">
+                        <button class="chip-main"><span class="ic-dot" style="background:#38bdf8"></span><span class="lab">Codex</span></button><span class="chk"></span>
+                    </div>
+                    <div class="chip">
+                        <button class="chip-main"><span class="ic-dot" style="background:#a855f7"></span><span class="lab">Gemini</span></button><span class="chk"></span>
+                    </div>
+                    <div class="chip">
+                        <button class="chip-main"><span class="ic-dot" style="background:#22c55e"></span><span class="lab">OpenCode</span></button><span class="chk"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 区块 2：Vendor · from cc-switch（claude/codex profile 显示，带 refresh）-->
+            <div class="section">
+                <div class="sec-head">
+                    <span class="sec-title">Vendor · from <b>cc-switch</b></span>
+                    <button class="icon-btn tiny" title="Refresh"><i class="fa fa-rotate-right">⟳</i></button>
+                </div>
+                <div class="chips">
+                    <div class="chip sel">
+                        <span class="chip-main plain"><span class="lab">质谱-无限</span><span class="tag cur">·当前</span></span><span class="chk on">✓</span>
+                    </div>
+                    <div class="chip">
+                        <span class="chip-main plain"><span class="lab"> combizee-官方</span><span class="tag off">官方</span></span><span class="chk"></span>
+                    </div>
+                    <button class="more-chip" title="更多 vendor">+3 ▾</button>
+                </div>
+            </div>
+
+            <!-- 区块 3：Select a path. -->
+            <div class="path-block">
+                <div class="sec-title">Select a path.</div>
+                <div class="path-row sel">
+                    <i class="ic">⌂</i>
+                    <div class="lab">E:\primary\projects\snorkeling-light-theme</div>
+                    <span class="chk on"><i>✓</i></span>
+                </div>
+                <div class="path-row">
+                    <i class="ic">⌂</i>
+                    <div class="lab">~</div>
+                    <span class="chk"></span>
+                </div>
+            </div>
+
+            <!-- actionbar（border-t）：crumb + 启动按钮 -->
+            <div class="actionbar">
+                <span class="crumb">E:\primary\projects\snorkeling-light-theme</span>
+                <button class="act-btn primary"><i>＋</i>Current Tab</button>
+                <span class="dot"></span>
+                <button class="act-btn ghost"><i>→</i>New</button>
+                <span class="dot"></span>
+                <button class="act-btn ghost">Existing…</button>
+            </div>
+        </div>
+
+        <!-- ===== New Terminal 弹窗（对齐真实 widgets.tsx ~L1162）===== -->
+        <div class="floating tab-panel" id="panel-terminal">
+            <!-- header：标题 —— 新增 env 按钮放 header 右侧（原来 New Terminal header 无图标钮，此为最小改动落点）-->
+            <div class="hdr">
+                <span>New Terminal</span>
+                <button class="icon-btn" data-open-env title="Set environment variables" aria-label="Set environment variables">
+                    <span class="ic">⠿</span>
+                </button>
+            </div>
+
+            <!-- path list -->
+            <div class="path-block">
+                <div class="path-row">
+                    <i class="ic">⌂</i>
+                    <div class="lab">~/code/snorkeling</div>
+                    <span class="chk"></span>
+                </div>
+                <div class="path-row sel">
+                    <i class="ic">≋</i>
+                    <div class="lab">~/Documents</div>
+                    <span class="chk on"><i>✓</i></span>
+                </div>
+            </div>
+
+            <div class="actionbar">
+                <span class="crumb">~/Documents</span>
+                <button class="act-btn primary"><i>＋</i>Current Tab</button>
+                <span class="dot"></span>
+                <button class="act-btn ghost"><i>→</i>New</button>
+                <span class="dot"></span>
+                <button class="act-btn ghost">Existing…</button>
+            </div>
+        </div>
+
+        <!-- ===== 可编辑 Env 弹窗（升级版 EnvModalView，对齐真实 envmodal.tsx / envmodal.scss）===== -->
+        <div class="env-modal" id="env-modal" style="display:none">
+            <div class="env-modal-header">
+                <div class="env-modal-title">
+                    Terminal Environment
+                    <span class="env-modal-tag-remote">remote</span>
+                </div>
+                <div class="env-modal-subtitle">
+                    9 variables · 1 masked · OS baseline not shown（remote）
+                </div>
+            </div>
+            <div class="env-toolbar">
+                <input class="env-search" placeholder="filter keys/values…">
+                <button class="btn" id="copy-all">Copy All</button>
+                <button class="btn" id="reveal-all">Show All</button>
+                <button class="btn" id="hide-all">Hide All</button>
+            </div>
+
+            <!-- 上半：生效环境变量（只读，保留现有能力） -->
+            <div class="env-section-label">生效环境变量（只读）</div>
+            <div class="env-table" id="live-env">
+                <div class="env-row"><span class="k">COLORTERM</span><span class="v">truecolor</span></div>
+                <div class="env-row"><span class="k">TERM</span><span class="v">xterm-256color</span></div>
+                <div class="env-row"><span class="k">OPENAI_API_KEY</span><span class="v"><span class="mask">••••••••</span><span class="tag">SENS</span></span></div>
+                <div class="env-row"><span class="k">PATH</span><span class="v">/opt/homebrew/bin:…</span></div>
+                <div class="env-row"><span class="k">HOME</span><span class="v">/Users/nita</span></div>
+            </div>
+
+            <!-- 下半：本次启动自定义变量（新增可编辑区） -->
+            <div class="env-section-label">本次启动自定义变量
+                <span class="env-section-count">（<span id="custom-count">2</span> 项）</span>
+            </div>
+            <div class="custom-editor" id="custom-body"></div>
+            <button class="btn add-btn" id="add-custom">+ Add Variable</button>
+            <div class="env-hint">
+                空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；
+                敏感 key（TOKEN/KEY/SECRET/PASSWORD…）自动掩码。
+                <span class="env-preset">浅色主题预设：<code>COLORTERM</code> · <code>TERM</code></span>
+            </div>
+
+            <div class="env-footer">
+                <div id="saved-tip" class="saved-tip"></div>
+                <button class="btn" id="env-cancel">Cancel</button>
+                <button class="btn primary" id="env-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-note">
+        💡 <b>入口落点（与真实同步）</b>：New Agent 在 header 的 <code>gear</code> 左侧新增同级 env 按钮；New Terminal 在 header 右侧新增（原来无按钮）。
+        Save 后由后端写入 block <code>cmd:env</code>，Terminal/Agent 启动即生效——用于修复 Codex 浅色主题输入框深色。
+    </div>
+
+<script src="script.js"></script>
+</body>
+</html>

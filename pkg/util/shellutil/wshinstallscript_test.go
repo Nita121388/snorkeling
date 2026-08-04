@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -42,6 +44,52 @@ func decodePowerShellEncodedCommand(t *testing.T, cmd string) string {
 	return string(utf16.Decode(units))
 }
 
+func TestPowerShellStdinCommandUsesFramedLoader(t *testing.T) {
+	if len(PowerShellStdinCommand) >= 8191 {
+		t.Fatalf("PowerShell stdin launcher exceeds the cmd.exe command-line limit: %d", len(PowerShellStdinCommand))
+	}
+	if strings.Contains(PowerShellStdinCommand, "-Command -") {
+		t.Errorf("PowerShell stdin launcher must not use the multiline-incompatible -Command - mode")
+	}
+	loader := decodePowerShellEncodedCommand(t, PowerShellStdinCommand)
+	for _, marker := range []string{"[Console]::In.ReadLine()", "[ScriptBlock]::Create", powerShellStdinTerminator, "missing PowerShell stdin terminator"} {
+		if !strings.Contains(loader, marker) {
+			t.Errorf("PowerShell stdin loader is missing %q: %s", marker, loader)
+		}
+	}
+}
+
+func TestPowerShellStdinCommandExecutesMultilineScript(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows PowerShell 5.1 regression test")
+	}
+	commandParts := strings.Fields(PowerShellStdinCommand)
+	if len(commandParts) < 2 {
+		t.Fatalf("invalid PowerShell stdin launcher: %q", PowerShellStdinCommand)
+	}
+	cmd := exec.Command(commandParts[0], commandParts[1:]...)
+	cmd.Stdin = strings.NewReader(strings.Join([]string{
+		`$ErrorActionPreference = "Stop"`,
+		`try {`,
+		`    Write-Output "stdin-multiline-ran"`,
+		`} catch {`,
+		`    exit 1`,
+		`}`,
+		powerShellStdinTerminator,
+		``,
+	}, "\n"))
+	var stdout strings.Builder
+	var stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("PowerShell stdin launcher failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "stdin-multiline-ran" {
+		t.Fatalf("PowerShell stdin launcher did not execute the multiline script; stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 // TestBuildWindowsWshInstallScriptsHardeningMarkers asserts that the generated install
 // command carries the full set of hardening features the manual install flow was
 // written to provide. These markers are what makes the install safe, not just functional;
@@ -49,7 +97,8 @@ func decodePowerShellEncodedCommand(t *testing.T, cmd string) string {
 // this code. If a marker is missing the install has lost a safety property and the test
 // must fail loudly.
 func TestBuildWindowsWshInstallScriptsHardeningMarkers(t *testing.T) {
-	const tempPath = ".snorkeling/tmp/wsh.exe.050101.000000.0000.tmp"
+	const tempPath = "~/.snorkeling/tmp/wsh.exe.050101.000000.0000.tmp"
+	const expectedPowerShellTempPath = `.snorkeling\tmp\wsh.exe.050101.000000.0000.tmp`
 	const wshPath = "$HOME/.snorkeling/bin/wsh.exe"
 	const expectedSize = int64(12345)
 	const expectedSHA256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
@@ -57,17 +106,21 @@ func TestBuildWindowsWshInstallScriptsHardeningMarkers(t *testing.T) {
 
 	prepareCmd, installCmd, cleanupCmd := BuildWindowsWshInstallScripts(tempPath, wshPath, expectedSize, expectedSHA256, expectedVersion)
 
-	// All three commands must be encoded PowerShell invocations, not raw script text.
-	for _, cmd := range []struct{ name, value string }{
+	// SSH must receive only the fixed short PowerShell launcher as its command;
+	// these generated values are sent through stdin and therefore must be raw scripts.
+	for _, script := range []struct{ name, value string }{
 		{"prepare", prepareCmd},
 		{"install", installCmd},
 		{"cleanup", cleanupCmd},
 	} {
-		if !strings.Contains(cmd.value, "powershell -NoProfile -NonInteractive") {
-			t.Errorf("%s cmd must be a powershell invocation: %q", cmd.name, cmd.value)
+		if strings.TrimSpace(script.value) == "" {
+			t.Errorf("%s script must not be empty", script.name)
 		}
-		if !strings.Contains(cmd.value, "-EncodedCommand") {
-			t.Errorf("%s cmd must use -EncodedCommand: %q", cmd.name, cmd.value)
+		if strings.Contains(script.value, "-EncodedCommand") || strings.Contains(script.value, "powershell -NoProfile") {
+			t.Errorf("%s must be raw PowerShell sent through stdin, got command wrapper: %q", script.name, script.value)
+		}
+		if !strings.HasSuffix(strings.TrimSpace(script.value), powerShellStdinTerminator) {
+			t.Errorf("%s script must end with the PowerShell stdin terminator", script.name)
 		}
 	}
 
@@ -96,6 +149,8 @@ func TestBuildWindowsWshInstallScriptsHardeningMarkers(t *testing.T) {
 		{"rollback-replace", `[System.IO.File]::Replace($BackupPath, $WshPath, $null, $true)`},
 		{"rollback-remove", `Remove-Item -LiteralPath $WshPath -ErrorAction Stop`},
 		{"install-failure-throw", `throw ("wsh install failed:`},
+		{"stage-version", `$InstallStage = "version"`},
+		{"plain-stderr", `[Console]::Error.WriteLine(("wsh-install-error stage={0}: {1}"`},
 		{"temp-finally-cleanup", `finally {`},
 		{"reparse-point-trap-reject", `refusing to clean non-regular wsh temp path`},
 	}
@@ -121,21 +176,26 @@ func TestBuildWindowsWshInstallScriptsHardeningMarkers(t *testing.T) {
 		t.Errorf("install script must reference expected version line %q", expectedVersion)
 	}
 
-	// The temp path is backslash-escaped (Windows) when injected into the PowerShell
-	// scripts; verify the install script carries the escaped form, not the forward-slash form.
+	// SFTP 和 PowerShell 都使用相对于 home 的临时路径，确认脚本不会把 shell 的 ~ 标记当作普通目录名。
 	if strings.Contains(installScript, tempPath) {
 		t.Errorf("install script must not contain the un-escaped forward-slash temp path: %q", tempPath)
 	}
-	if !strings.Contains(installScript, strings.ReplaceAll(tempPath, "/", `\`)) {
-		t.Errorf("install script must contain the backslash-escaped temp path")
+	if strings.Contains(installScript, `~\.snorkeling`) {
+		t.Errorf("install script must not join $HOME with a literal tilde path")
+	}
+	if !strings.Contains(installScript, expectedPowerShellTempPath) {
+		t.Errorf("install script must contain the normalized home-relative temp path")
 	}
 
 	// The cleanup script must remove the half-written temp file when an upload/install
 	// aborted, so a later install is not blocked by it. Decode and check it references
 	// the temp path and a Remove-Item with -LiteralPath (no wildcards).
 	cleanupScript := decodePowerShellEncodedCommand(t, cleanupCmd)
-	if !strings.Contains(cleanupScript, strings.ReplaceAll(tempPath, "/", `\`)) {
-		t.Errorf("cleanup script must reference the backslash-escaped temp path:\n%s", cleanupScript)
+	if strings.Contains(cleanupScript, `~\.snorkeling`) {
+		t.Errorf("cleanup script must not join $HOME with a literal tilde path")
+	}
+	if !strings.Contains(cleanupScript, expectedPowerShellTempPath) {
+		t.Errorf("cleanup script must reference the normalized home-relative temp path:\n%s", cleanupScript)
 	}
 	if !strings.Contains(cleanupScript, "Remove-Item -LiteralPath $TempPath") {
 		t.Errorf("cleanup script must Remove-Item -LiteralPath $TempPath:\n%s", cleanupScript)

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snorkeling 同步审批</title>
+<style>
+  :root{
+    --bg:#f5f6f8;--card:#fff;--line:#e3e6eb;--text:#1c2333;--muted:#6b7280;
+    --green:#16a34a;--red:#dc2626;--blue:#2563eb;--amber:#d97706;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+  h1{font-size:20px;display:flex;align-items:center;gap:10px}
+  .progressbar{height:10px;background:#e3e6eb;border-radius:6px;overflow:hidden;margin:14px 0}
+  .progressbar>span{display:block;height:100%;background:var(--blue);width:0;transition:width .3s}
+  .meta{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;color:#fff}
+  .b-red{background:var(--red)}.b-yellow{background:var(--amber)}.b-green{background:var(--green)}
+  .title{font-size:17px;font-weight:700;margin:12px 0 4px}
+  .desc{color:var(--muted);font-size:14px;margin:4px 0 14px;line-height:1.6}
+  .sugg{background:#f0f6ff;border:1px solid #d7e4fb;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:14px}
+  .sugg b{color:var(--blue)}
+  .rec{display:inline-block;font-weight:700;padding:4px 12px;border-radius:6px;margin-bottom:6px}
+  .rec.v-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+  .rec.v-no{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .rec.v-note{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .rec.v-later{background:#f3f4f6;border:1px solid #d1d5db;color:#374151}
+  .rest{color:var(--muted);font-size:13px;margin:4px 0}
+  .steps{margin:6px 0 0;padding-left:20px;font-size:13.5px;line-height:1.8}
+  .steps li::marker{color:var(--blue);font-weight:700}
+  .evidence{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:18px}
+  .evidence summary{cursor:pointer;padding:9px 14px;font-size:13px;color:var(--muted);background:#fafbfc;user-select:none}
+  .evidence div{padding:12px 14px;font-family:monospace;font-size:12.5px;background:#1e1e1e;color:#d4d4d4;white-space:pre-wrap;margin:0}
+  .actions{display:flex;gap:10px;flex-wrap:wrap}
+  button{border:1px solid var(--line);background:var(--card);color:var(--text);padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;flex:1;min-width:120px;transition:.12s}
+  button:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+  button:active{transform:translateY(0)}
+  .ok{background:var(--green);border-color:var(--green);color:#fff}
+  .no{background:var(--red);border-color:var(--red);color:#fff}
+  .note{background:var(--amber);border-color:var(--amber);color:#fff}
+  .later{background:#f3f4f6;border-color:#d1d5db;color:#374151}
+  .edit{background:#6d28d9;border-color:#6d28d9;color:#fff}
+  .batchBtn{background:var(--blue);border-color:var(--blue);color:#fff;flex:1;min-width:100%}
+  .kbd{font-family:monospace;font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;border-radius:4px;background:#fafbfc}
+  .empty{text-align:center;color:var(--muted);padding:60px 20px}
+  .empty h2{margin:0 0 12px}
+  .foot{color:var(--muted);font-size:12px;margin-top:18px;text-align:center;line-height:1.8}
+  .auto-zone{margin-top:28px}
+  .auto-zone h3{font-size:15px;margin:0 0 10px;color:var(--amber)}
+  .auto-zone table{width:100%;border-collapse:collapse;font-size:13px}
+  .auto-zone td{border:1px solid var(--line);padding:8px;text-align:left}
+  .reason-popup{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:99}
+  .reason-box{background:var(--card);border-radius:var(--r);padding:24px;width:min(520px,92vw)}
+  .reason-box h3{margin:0 0 12px;font-size:16px}
+  .reason-box textarea{width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px;font-family:inherit;resize:vertical}
+  .reason-box .row{display:flex;gap:10px;margin-top:14px}
+  .reason-box .row button{flex:1}
+  .fld{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-weight:600}
+  .hidden{display:none!important}
+  /* 导航条 */
+  .nav{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .nav button{flex:0 0 auto;min-width:110px;padding:10px 14px}
+  .navinfo{flex:1;text-align:center;color:var(--muted);font-size:13px}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+  /* 已处理徽章 */
+  .verdict{margin:12px 0;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.6}
+  .v-ok{background:#f0fdf4;border:1px solid #bbf7d0}
+  .v-no{background:#fef2f2;border:1px solid #fecaca}
+  .v-note{background:#fffbeb;border:1px solid #fde68a}
+  .v-later{background:#f3f4f6;border:1px solid #d1d5db}
+  .v-reason{margin-top:6px;color:var(--muted);font-size:13px;white-space:pre-wrap}
+  /* 进度小点 */
+  .dots{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+  .dot{width:9px;height:9px;border-radius:50%;background:#e3e6eb}
+  .dot.done{background:#16a34a}.dot.cur{background:#2563eb;outline:2px solid rgba(37,99,235,.25)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛡️ Snorkeling 同步审批</h1>
+  <div class="meta" id="meta">…</div>
+  <div class="progressbar"><span id="bar"></span></div>
+  <div id="toolbar" class="actions" style="margin-bottom:16px">
+    <button class="batchBtn" id="batchBtn">✅ 先批量通过所有 🟢（<span id="greenCount">0</span>）</button>
+  </div>
+  <div id="queue"></div>
+
+  <div id="empty" class="empty hidden">
+    <h2>🎉 待审批清单为空</h2>
+    <p>没有需要你处理的条目。</p>
+  </div>
+
+  <div class="auto-zone" id="autoZone">
+    <h3>📦 已自动修正（机械修正，无需审批，可回滚）</h3>
+    <table><tbody id="autoBody"></tbody></table>
+  </div>
+
+  <div class="foot">
+    键盘：<span class="kbd">←</span>/<span class="kbd">→</span> 导航 · <span class="kbd">1</span>通过 · <span class="kbd">2</span>拒绝 · <span class="kbd">3</span>批注 · <span class="kbd">4</span>稍后 · <span class="kbd">g</span>批量绿灯 · <span class="kbd">Esc</span>取消弹窗<br>
+    进度存本地，随时可退出续审 · 审批结果导出后写回 <code>TODOS.md</code>
+  </div>
+</div>
+
+<div id="popup" class="reason-popup hidden">
+  <div class="reason-box">
+    <h3 id="popTitle">理由</h3>
+    <textarea id="popText" placeholder="输入内容…"></textarea>
+    <div class="row">
+      <button class="ok" id="popOk">确认</button>
+      <button class="later" id="popCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="editPopup" class="reason-popup hidden">
+  <div class="reason-box">
+    <h3>✏️ 编辑本条</h3>
+    <label class="fld">问题描述</label>
+    <textarea id="edIssue" placeholder="问题…"></textarea>
+    <label class="fld">建议处理</label>
+    <textarea id="edAction" placeholder="建议…"></textarea>
+    <label class="fld">证据</label>
+    <textarea id="edEvidence" placeholder="证据…"></textarea>
+    <div class="row">
+      <button class="ok" id="edOk">保存</button>
+      <button class="later" id="edCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 数据模型 ----------
+// 条目字段对齐 TODOS.md：{id, level, asset, issue, action, evidence, created}
+const LEVEL_LABEL = {"🔴":"谨慎决策","🟡":"建议细看","🟢":"建议通过"};
+const PROGRESS_KEY = "snorkeling-approval-progress";
+let items = [];        // 待审批（未被处理）
+let decisions = {};    // id -> {action, reason}  持久化到 localStorage
+let autoFixes = [];    // 已自动修正（从 TODOS 读入，只读展示）
+
+// ---------- 初始化调度数据 ----------
+// 实际接入时：从解析后的 TODOS.md 的 ⏳待审批 分区读取。这里给内置样例，
+// 并提供一个 "粘 JSON" 入口（7.1 降级模式）。
+const DEMO = [
+  {id:"P01", level:"🔴", asset:".mockup/shell-settings/", issue:"镜像 pkg/util/shellutil/scanshells.go 已不存在，shellutil.go 无 ScanShells 函数（彻底死引用）", action:"推荐：✅ 通过（更新镜像源）。① 改 README 镜像源为 shellutil.go, theme.scss, blockcontroller.go；② 重跑 audit-sync.mjs 验证", evidence:"grep -rn ScanShells pkg → 无输出\nls pkg/util/shellutil/ → 无 scanshells.go", created:"2026-08-04"},
+  {id:"P02", level:"🟡", asset:".mockup/new-agent-panel/README.md", issue:"无状态标记、无镜像源、无最后同步", action:"推荐：✅ 通过（补标记）。① 加同步状态：● 已落地；② 填镜像源 frontend/xxx.tsx；③ 填最后同步日期", evidence:"L1 报告未标注", created:"2026-08-04"},
+  {id:"P03", level:"🟡", asset:".mockup/_to-keep/", issue:"实为 9 项，比登记多 3 项，new-agent-vendor.html 未登记", action:"推荐：✅ 通过（补登记）。① 比对 __REVIEW_GUIDE__ 分类；② 补 3 项进总表；③ 保留全部 9 项不删", evidence:"首轮对账", created:"2026-08-04"},
+  {id:"P04", level:"🔴", asset:"未提交工作区", issue:"9 文件 44+/66- 未提交（wsh 上传超时诊断），与巡检无关", action:"推荐：✅ 通过（独立 commit）。① 确认是 wsh 超时诊断功能；② 单独 git add 9 文件提交；③ package-lock.json 无关改动单独处理", evidence:"git status → 9 个 M/?? 文件", created:"2026-08-04"}
+];
+const AUTODEMO = [
+  {id:"A01", action:"版本号过期 0.0.32→0.0.68", commit:"633296a5", time:"2026-08-04"}
+];
+
+// ---------- 状态恢复 ----------
+function loadProgress(){
+  try{ return JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}"); }catch(e){ return {}; }
+}
+function saveProgress(){ localStorage.setItem(PROGRESS_KEY, JSON.stringify(decisions)); }
+
+// ---------- 渲染 ----------
+let cursor = 0; // 当前浏览位置（可前后移动）
+
+function render(){
+  const total = items.length;
+  const done = items.filter(it=>decisions[it.id]).length;
+  const pct = total? Math.round(done/total*100) : 0;
+  document.getElementById("bar").style.width = pct+"%";
+  document.getElementById("meta").textContent =
+    `${done}/${total} 已处理 · 浏览 ${cursor+1}/${total} · 完成 ${pct}%`;
+  const g = items.filter(it=>it.level==="🟢" && !decisions[it.id]).length;
+  document.getElementById("greenCount").textContent = g;
+  document.getElementById("toolbar").classList.toggle("hidden", g===0);
+
+  const q = document.getElementById("queue");
+  q.innerHTML = "";
+  const cur = items[cursor];
+  if(!cur){ document.getElementById("empty").classList.remove("hidden"); return; }
+  document.getElementById("empty").classList.add("hidden");
+
+  const card = document.createElement("div");
+  card.className = "card";
+  const d = decisions[cur.id];
+  const verdict = d ? renderVerdict(d) : "";
+  const sugg = renderSugg(cur.action||"");
+  card.innerHTML = `
+    <span class="badge b-${cur.level==="🔴"?"red":cur.level==="🟡"?"yellow":"green"}">${LEVEL_LABEL[cur.level]}</span>
+    <div class="title">${esc(cur.issue)}</div>
+    <div class="desc">资产：<code>${esc(cur.asset||"")}</code></div>
+    ${sugg}
+    <details class="evidence"><summary>[证据] 点开查看</summary><div>${esc(cur.evidence||"无")}</div></details>
+    ${verdict}
+    <div class="actions">
+      ${d ? `<button class="later" data-a="revoke">↩ 撤销决定</button>` : `
+        <button class="ok" data-a="approved">✅ 通过</button>
+        <button class="no" data-a="rejected">❌ 拒绝</button>
+        <button class="note" data-a="annotated">💬 批注</button>
+        <button class="edit" data-a="edit" title="修改本条问题/建议内容">✏️ 编辑</button>
+        <button class="later" data-a="deferred">⏭ 稍后</button>`}
+    </div>`;
+
+  // 导航条（上一个/下一个 + 进度点）
+  const nav = document.createElement("div");
+  nav.className = "nav";
+  nav.innerHTML = `
+    <button class="later" data-a="prev" ${cursor===0?"disabled":""}>⬅ 上一个</button>
+    <span class="navinfo">${cursor+1} / ${total}</span>
+    <button class="later" data-a="next" ${cursor>=total-1?"disabled":""}>下一个 ➡</button>`;
+  const dots = document.createElement("div");
+  dots.className = "dots";
+  dots.innerHTML = items.map((it,i)=>`
+    <span class="dot ${decisions[it.id]?"done":""} ${i===cursor?"cur":""}" data-a="goto" data-i="${i}"></span>`).join("");
+  card.appendChild(nav);
+  card.appendChild(dots);
+  q.appendChild(card);
+
+  // 已自动修正区
+  const ab = document.getElementById("autoBody");
+  ab.innerHTML = autoFixes.length? autoFixes.map(a=>
+    `<tr><td>${a.id}</td><td>${esc(a.action||"")}</td><td><code>${esc(a.commit||"")}</code></td><td>${a.time||""}</td></tr>`
+  ).join("") : `<tr><td colspan="4">（无。自动修正产生的条目执行后追加到此，commit 号可回滚）</td></tr>`;
+}
+
+function renderSugg(action){
+  if(!action) return "";
+  const parts = action.split(/[。\n]+/).map(s=>s.trim()).filter(Boolean);
+  const recIdx = parts.findIndex(p=>p.includes("推荐："));
+  let recHtml = "", stepHtml = "";
+  if(recIdx>=0){
+    const rec = parts[recIdx];
+    const m = rec.match(/推荐：([✅❌💬⏭])[^）]*（?([^）]*)）?/);
+    const cls = m&&m[1]==="✅"?"v-ok":m&&m[1]==="❌"?"v-no":m&&m[1]==="💬"?"v-note":"v-later";
+    recHtml = `<div class="rec ${cls}">${esc(rec)}</div>`;
+    parts.splice(recIdx,1);
+  }
+  const steps = parts.filter(p=>/^\d+\./.test(p));
+  const rest = parts.filter(p=>!/^\d+\./.test(p));
+  if(rest.length) stepHtml += `<div class="rest">${rest.map(esc).join("<br>")}</div>`;
+  if(steps.length) stepHtml += `<ol class="steps">${steps.map(s=>`<li>${esc(s.replace(/^\d+\.\s*/,""))}</li>`).join("")}</ol>`;
+  return `<div class="sugg">${recHtml||"<b>建议处理：</b>"}${stepHtml}</div>`;
+}
+
+function renderVerdict(d){
+  const map = {
+    approved:["✅ 已通过","v-ok"],
+    rejected:["❌ 已拒绝","v-no"],
+    annotated:["💬 已批注（待回复）","v-note"],
+    deferred:["⏭ 已稍后（挂起）","v-later"],
+  };
+  const [label,cls] = map[d.action] || ["已处理","v-later"];
+  return `<div class="verdict ${cls}">${label}${d.reason?`<div class="v-reason">${esc(d.reason)}</div>`:""}</div>`;
+}
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---------- 决策 ----------
+let popupResolve = null;
+function askPopup(title, placeholder){
+  return new Promise(res=>{
+    popupResolve = res;
+    document.getElementById("popTitle").textContent = title;
+    document.getElementById("popText").value = "";
+    document.getElementById("popText").placeholder = placeholder;
+    document.getElementById("popup").classList.remove("hidden");
+    setTimeout(()=>document.getElementById("popText").focus(),50);
+  });
+}
+function closePopup(val){ document.getElementById("popup").classList.add("hidden"); if(popupResolve){popupResolve(val);popupResolve=null;} }
+
+let currentAction = null;
+// 导航 + 决策事件（事件委托到 queue）
+function move(dir){
+  const next = cursor + dir;
+  if(next<0 || next>=items.length) return;
+  cursor = next;
+  render();
+}
+document.getElementById("queue").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-a]");
+  if(b){
+    const a = b.dataset.a;
+    if(a==="prev"){ move(-1); return; }
+    if(a==="next"){ move(1); return; }
+    if(a==="revoke"){
+      delete decisions[items[cursor].id];
+      saveProgress(); render();
+      return;
+    }
+    if(a==="edit"){ openEdit(items[cursor]); return; }
+    currentAction = a;
+    handleAction(currentAction, items[cursor]);
+    return;
+  }
+  // 进度点跳转
+  const dot = e.target.closest(".dot[data-i]");
+  if(dot){ cursor = +dot.dataset.i; render(); }
+});
+
+afterDecision();
+function afterDecision(){
+  // 处理完一条：优先向后找下一条未处理，找不到则向前找
+  for(let i=cursor+1;i<items.length;i++){ if(!decisions[items[i].id]){ cursor=i; render(); return; } }
+  for(let i=cursor-1;i>=0;i--){ if(!decisions[items[i].id]){ cursor=i; render(); return; } }
+  render(); // 全部处理完
+}
+
+async function handleAction(action, cur){
+  if(action==="approved"){ decisions[cur.id]={action:"approved"}; saveProgress(); afterDecision(); }
+  else if(action==="deferred"){ decisions[cur.id]={action:"deferred"}; saveProgress(); afterDecision(); }
+  else if(action==="rejected" || action==="annotated"){
+    const reason = await askPopup(action==="rejected"?"输入拒绝原因（必填）：":"输入你的批注（原话）：",
+      action==="rejected"?"为什么拒绝这个改动？":"你有其他想说/想改的建议…");
+    if(reason!==null){
+      if(!reason.trim()){ alert("必填内容不能为空"); return; }
+      decisions[cur.id]={action, reason:reason.trim()}; saveProgress(); afterDecision();
+    }
+  }
+}
+
+// 批量绿灯
+document.getElementById("batchBtn").addEventListener("click", ()=>{
+  const count = items.reduce((c,it)=> it.level==="🟢"&&!decisions[it.id]?c+1:c,0);
+  if(!confirm(`批量通过 ${count} 条 🟢？仅影响 🟢，🟡🔴 仍需逐条人工处理。`)) return;
+  items.forEach(it=>{ if(it.level==="🟢"&&!decisions[it.id]) decisions[it.id]={action:"approved"}; });
+  saveProgress(); render();
+});
+
+// 弹窗按钮
+document.getElementById("popOk").addEventListener("click",()=>closePrompt(document.getElementById("popText").value));
+document.getElementById("popCancel").addEventListener("click",()=>closePopup(null));
+document.getElementById("popText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) closePopup(e.target.value); });
+
+// 编辑弹窗
+function openEdit(it){
+  document.getElementById("edIssue").value = it.issue||"";
+  document.getElementById("edAction").value = it.action||"";
+  document.getElementById("edEvidence").value =
+    Array.isArray(it.evidence) ? it.evidence.join("\n") : (it.evidence||"");
+  document.getElementById("editPopup").classList.remove("hidden");
+  document.getElementById("edIssue").focus();
+}
+function closeEdit(){
+  document.getElementById("editPopup").classList.add("hidden");
+  // 把「人工修订」记入教训，让下次巡检更准
+  logEvolution("人工修订巡检条目", items[cursor]?items[cursor].id:"");
+}
+document.getElementById("edOk").addEventListener("click", ()=>{
+  const it = items[cursor];
+  if(!it) return;
+  it.issue = document.getElementById("edIssue").value.trim();
+  it.action = document.getElementById("edAction").value.trim();
+  const ev = document.getElementById("edEvidence").value.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  it.evidence = ev.length? ev : "—";
+  logEvolution("人工修订巡检条目", it.id);
+  document.getElementById("editPopup").classList.add("hidden");
+  render();
+});
+document.getElementById("edCancel").addEventListener("click", ()=>document.getElementById("editPopup").classList.add("hidden"));
+
+function logEvolution(content, obj){
+  const el = document.createElement("div");
+  el.style.display = "none";
+  document.body.appendChild(el);
+  try{
+    const log = JSON.parse(localStorage.getItem("snorkeling-evo" ) || "[]");
+    log.push({date:new Date().toISOString().slice(0,10), content, obj});
+    localStorage.setItem("snorkeling-evo", JSON.stringify(log));
+  }catch(e){}
+  el.remove();
+}
+function closePrompt(v){ closePopup(v); }
+
+// 键盘全局
+function keyHandler(e){
+  if(!document.getElementById("popup").classList.contains("hidden")){
+    if(e.key==="Escape") closePopup(null);
+    return;
+  }
+  const cur = items[cursor];
+  if(!cur) return;
+  if(e.key==="ArrowLeft") move(-1);
+  else if(e.key==="ArrowRight") move(1);
+  else if(e.key==="1") handleAction("approved", cur);
+  else if(e.key==="2") handleAction("rejected", cur);
+  else if(e.key==="3") handleAction("annotated", cur);
+  else if(e.key==="4") handleAction("deferred", cur);
+  else if(e.key==="g") document.getElementById("batchBtn").click();
+}
+document.addEventListener("keydown", keyHandler);
+
+// ---------- 导出/导入 ----------
+// 降级模式：导出为可直接粘贴回 TODOS 的 JSON 分段；真实接入由 agent 读 decisions 写回 TODOS.md
+window.exportDecisions = ()=> JSON.stringify(decisions, null, 2);
+window.loadDecisions = (json)=>{ decisions = JSON.parse(json); saveProgress(); render(); };
+
+// ---------- 初始化 ----------
+items = DEMO.slice();
+autoFixes = AUTODEMO.slice();
+// 载入本次会话的进度（如果有）
+try{
+  const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
+  Object.assign(decisions, saved);
+}catch(e){}
+render();
+
+// 顶部说明
+document.addEventListener("DOMContentLoaded", ()=>{
+  const tip = document.createElement("div");
+  tip.className = "desc";
+  tip.style.cssText = "background:#fff7ed;border:1px solid #fed7aa;padding:12px 16px;border-radius:8px;margin-bottom:16px";
+  tip.innerHTML = "💡 数据源：<b>TODOS.md</b>。当前为<b>内置示例</b>（仅演示交互）。真实接入时以 agent 解析 TODOS.md 生成的 JSON 为准——在控制台执行 <code>loadDecisions(…)</code> 导入，或用 <code>exportDecisions()</code> 导出后由 agent 写回 TODOS.md。";
+  document.querySelector("h1").after(tip);
+});
+</script>
+</body>
+</html>

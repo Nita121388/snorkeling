@@ -14,6 +14,7 @@ import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
 import { getBlockComponentModel, globalStore, useBlockAtom } from "@/app/store/global";
 import { useTabModel } from "@/app/store/tab-model";
+import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -156,7 +157,7 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                 .ConnEnsureCommand(
                     TabRpcClient,
                     { connname: connName, logblockid: nodeModel.blockId },
-                    { timeout: 60000 }
+                    { timeout: ConnectionOperationTimeoutMs }
                 )
                 .catch((e) => {
                     console.log("error ensuring connection", nodeModel.blockId, connName, e);
