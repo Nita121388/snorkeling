@@ -35,8 +35,8 @@ require (
 	golang.org/x/crypto v0.49.0
 	golang.org/x/mod v0.37.0
 	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/term v0.41.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 	google.golang.org/api v0.275.0
 	modernc.org/sqlite v1.55.0
 )
