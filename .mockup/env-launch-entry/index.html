@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Env Launch Entry — New Agent / New Terminal 自定义环境变量原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-title">Env Launch Entry — 运行前自定义环境变量原型</div>
+    <div class="page-sub">
+        关联方案：<code>My Projects/Snorkling/方案/主题/Terminal与Agent运行前自定义环境变量-设计方案.md</code>
+        · 点 New Agent / New Terminal 浮窗 footer 的 <b>⛭ Env</b> 按钮打开可编辑环境变量弹窗
+    </div>
+
+    <!-- Tab 切换：New Agent / New Terminal -->
+    <div>
+        <button class="btn tab-btn active" data-tab="agent">New Agent</button>
+        <button class="btn tab-btn" data-tab="terminal">New Terminal</button>
+    </div>
+
+    <div class="stage">
+        <!-- ===== New Agent 弹窗 ===== -->
+        <div class="float-panel tab-panel active" id="panel-agent">
+            <div class="float-panel-header">
+                <span>New Agent</span>
+                <button class="icon-btn" style="border:none;background:transparent;color:var(--muted)" title="close">×</button>
+            </div>
+            <div class="float-panel-body">
+                <div class="row" style="padding:8px;display:flex;gap:8px;flex-wrap:wrap">
+                    <select class="panel-select"><option>Codex</option><option>Claude</option><option>Gemini</option></select>
+                    <select class="panel-select"><option>Current Tab</option><option>Home</option></select>
+                </div>
+                <div class="path-item selected">
+                    <span class="label">~ / codex</span><span class="src">agent</span>
+                </div>
+                <div class="path-item">
+                    <span class="label">~/Documents/demo</span><span class="src">terminal</span>
+                </div>
+                <div class="hint">上游提示：Codex 浅色主题可注入 <code>COLORTERM=truecolor TERM=xterm-256color</code></div>
+            </div>
+            <div class="float-panel-footer">
+                <button class="icon-btn" data-open-env title="Environment variables"><span class="glyph">⛭</span> Env</button>
+                <div class="spacer"></div>
+                <button class="btn">Cancel</button>
+                <button class="btn primary">Continue</button>
+            </div>
+        </div>
+
+        <!-- ===== New Terminal 弹窗 ===== -->
+        <div class="float-panel tab-panel" id="panel-terminal">
+            <div class="float-panel-header">
+                <span>New Terminal</span>
+            </div>
+            <div class="float-panel-body">
+                <div class="path-item selected">
+                    <span class="label">~/code/snorkeling</span><span class="src">terminal</span>
+                </div>
+                <div class="path-item">
+                    <span class="label">~/Documents</span><span class="src">home</span>
+                </div>
+            </div>
+            <div class="float-panel-footer">
+                <button class="icon-btn" data-open-env title="Environment variables"><span class="glyph">⛭</span> Env</button>
+                <div class="spacer"></div>
+                <button class="btn">Cancel</button>
+                <button class="btn primary">Continue</button>
+            </div>
+        </div>
+
+        <!-- ===== 可编辑 Env 弹窗（复用升级版 EnvModalView）===== -->
+        <div class="env-modal" id="env-modal" style="display:none">
+            <div class="env-modal-header">
+                <div class="env-modal-title">
+                    Terminal Environment
+                    <span class="env-modal-tag-remote">remote</span>
+                </div>
+                <div class="env-modal-subtitle">
+                    9 variables · 1 masked · remote（OS baseline not shown）
+                    · 本次启动自定义：<span id="custom-count">2</span>
+                </div>
+            </div>
+            <div class="env-modal-toolbar">
+                <input class="env-search" placeholder="filter keys/values…">
+                <button class="btn" id="copy-all">Copy All</button>
+                <button class="btn" id="reveal-all">Show All</button>
+                <button class="btn" id="hide-all">Hide All</button>
+            </div>
+
+            <!-- 上半：生效环境变量（只读，保留现有全部能力） -->
+            <div class="env-section-label">生效环境变量（只读）</div>
+            <div class="env-table" id="live-env">
+                <div class="env-row"><span class="env-row k">PATH</span><span class="env-row v">/opt/homebrew/bin:…</span></div>
+                <div class="env-row"><span class="env-row k">COLORTERM</span><span class="env-row v">truecolor</span></div>
+                <div class="env-row"><span class="env-row k">TERM</span><span class="env-row v">xterm-256color</span></div>
+                <div class="env-row"><span class="env-row k">OPENAI_API_KEY</span><span class="env-row v"><span class="mask">••••••••</span> <span class="tag">SENS</span></span></div>
+                <div class="env-row"><span class="env-row k">HOME</span><span class="env-row v">/Users/nita</span></div>
+            </div>
+
+            <!-- 下半：本次启动自定义变量（新增可编辑区） -->
+            <div class="env-section-label">本次启动自定义变量</div>
+            <div class="custom-editor" id="custom-body"></div>
+            <button class="btn add-btn" id="add-custom">+ Add Variable</button>
+            <div class="env-hint">空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；敏感 key（TOKEN/KEY/SECRET…）自动掩码。</div>
+
+            <div class="env-footer">
+                <div id="saved-tip" style="font-size:11px;color:var(--muted);margin-right:auto;align-self:center"></div>
+                <button class="btn" id="env-cancel">Cancel</button>
+                <button class="btn primary" id="env-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-note" style="margin-top:8px">
+        💡 定位：修复 Codex 浅色主题输入框深色——用户在此填入
+        <code>COLORTERM=truecolor</code> / <code>TERM=xterm-256color</code>（原型已预置），
+        Save 后由后端写入 block <code>cmd:env</code>，Terminal/Agent 启动即生效。
+    </div>
+
+<script src="script.js"></script>
+</body>
+</html>
