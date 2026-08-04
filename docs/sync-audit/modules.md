@@ -17,7 +17,7 @@
 
 | 模块 | 代码 | 原型 .mockup | 方案 Obsidian | 同步状态 |
 |---|---|---|---|---|
-| **Agent 状态与识别** | `frontend/app/agent-status/`, `session-overview/` | `_to-keep/agent-status-current.html`(旧), `aisessions-*.html` | `方案/Agent状态与识别/` | 🔴 待深度巡检 |
+| **Agent 状态与识别** | `frontend/app/agent-status/`, `session-overview/` | `_to-keep/agent-status-current.html`(旧), `aisessions-*.html` | `方案/Agent状态与识别/` | ✅ 已巡检（2026-08-04，见下） |
 | **AI 面板 / 输入** | `frontend/app/aipanel/`, `suggestion/` | `new-agent-panel/prototype.html` | `方案/Agent数据与标签/` | 🟡 部分 |
 | **Common Text** | `frontend/app/commontext/` | `_to-keep/commontext-*.html`(4个) | `方案/Common Text/` | 🟡 部分 |
 | **Sessions 与列表** | `frontend/app/session-overview/`, `aisessions/` | `_to-keep/combine-dashboard.html`, `sessions-redesign.html`(删) | `方案/Sessions与列表/` | 🟡 部分 |
@@ -60,6 +60,12 @@
 
 - **env-launch-entry**：三处对齐 ✅。原型 README 引镜像源 `widgets.tsx`(New Agent L717 / New Terminal L1162 均验证命中)、`envmodal.tsx`(只读 env 弹窗一致)、方案 `主题/Terminal与Agent运行前自定义环境变量-设计方案.md` 存在且匹配。原型待落地(阶段2/3/4)与代码现状一致（envmodal 无自定义编辑区）。
 - **shell-settings**：P01 已精确定性——`scanshells.go` 是方案 §七**规划中的新文件**（`ScanShells()` 未实现），非迁移非死引用；当前基线 `shellutil.go:88 DetectLocalShellPath()`。待审批更新镜像源。
+
+### 2026-08-04 Agent 状态与识别（深度巡检完成）
+
+- **代码**：功能已完整实现并 UI 落地 —— `agent-status-*.ts` 数据模型（AgentDisplayState/Phase/Source/Confidence）+ `block.tsx` 状态点渲染 + `session-overview` 三层 tab/block/session 汇聚。
+- **方案**：`Agent 状态识别方案.md` ⏳进行中，20-26 号方案记录根因修复。代码与方案目标一致。
+- **原型**：`_to-delete/` 中 4 个旧深色 mockup（agent-status-current / agent-card-responsive / agent-terminal-redesign / terminal-agent-redesign）无同步标记，已被真实实现取代 → 登记 P05 建议清理。
 
 ## 同步状态标记
 
