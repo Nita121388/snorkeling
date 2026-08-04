@@ -23,7 +23,7 @@
 | **Sessions 与列表** | `frontend/app/session-overview/`, `aisessions/` | `_to-keep/combine-dashboard.html`, `sessions-redesign.html`(删) | `方案/Sessions与列表/` | 🟡 部分 |
 | **UI 布局与 Block** | `frontend/app/block/`, `tab/`, `workspace/` | `_to-keep/combine-dashboard.html`, `vcs-block-redesign.html` | `方案/UI布局与Block/` | 🔴 待深度巡检 |
 | **主题 / 设计系统** | `frontend/app/theme.scss`, `app.scss`, `element/` | `_to-keep/design-system.html`, `light-theme-variations.html`, `shell-settings/index.html` | `方案/主题/` | 🟡 部分 |
-| **终端 / 环境启动** | `frontend/app/view/term/`, `waveenv/`, `view/launcher/` | `env-launch-entry/index.html` | `方案/架构与文档/` | 🟡 部分 |
+| **终端 / 环境启动** | `frontend/app/view/term/`, `waveenv/`, `view/launcher/` | `env-launch-entry/index.html`, `shell-settings/index.html` | `方案/架构与文档/` | ✅ 已巡检（2026-08-04，见下） |
 
 ### 🟡 次要模块（基线后按需）
 
@@ -54,7 +54,15 @@
 3. 每轮：教训沉淀（inspection-lessons.md）+ 进化 Log（evolution-log.md）
 ```
 
+## 巡检记录
+
+### 2026-08-04 终端/环境启动（深度巡检完成）
+
+- **env-launch-entry**：三处对齐 ✅。原型 README 引镜像源 `widgets.tsx`(New Agent L717 / New Terminal L1162 均验证命中)、`envmodal.tsx`(只读 env 弹窗一致)、方案 `主题/Terminal与Agent运行前自定义环境变量-设计方案.md` 存在且匹配。原型待落地(阶段2/3/4)与代码现状一致（envmodal 无自定义编辑区）。
+- **shell-settings**：P01 已精确定性——`scanshells.go` 是方案 §七**规划中的新文件**（`ScanShells()` 未实现），非迁移非死引用；当前基线 `shellutil.go:88 DetectLocalShellPath()`。待审批更新镜像源。
+
 ## 同步状态标记
+
 
 | 标记 | 含义 |
 |---|---|
