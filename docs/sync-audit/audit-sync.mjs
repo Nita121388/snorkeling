@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * .mockup/audit-sync.mjs — 原型与真实代码同步对账
+ * docs/sync-audit/audit-sync.mjs — 原型与真实代码同步对账（L1 硬查）
  *
  * 扫描 .mockup 下所有 README.md，解析 PROCESS.md 约定的状态标记：
  *   > 同步状态：▲|●|▼|◐ ...
@@ -9,15 +9,24 @@
  *
  * 校验每个镜像源在仓库里是否仍存在，输出对账报告。
  *
- * 用法：node .mockup/audit-sync.mjs
+ * 用法：node docs/sync-audit/audit-sync.mjs [--mockup-dir .mockup] [--json]
  * 退出码：0 = 无镜像缺失；1 = 有缺失/未标注（CI 可用）
  */
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MOCKUP_DIR = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(MOCKUP_DIR, "..");
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
+
+// 解析参数
+const args = process.argv.slice(2);
+const jsonOut = args.includes("--json");
+const mockArg = args.find((a) => a.startsWith("--mockup-dir="));
+const MOCKUP_DIR = resolve(
+  REPO_ROOT,
+  mockArg ? mockArg.split("=")[1] : ".mockup"
+);
 
 // ---------- 工具 ----------
 const walk = (dir, out = []) => {
@@ -83,12 +92,35 @@ for (const readmePath of walk(MOCKUP_DIR).filter((p) => basename(p) === "README.
     });
 
     if (!status && mirrors.length === 0) unmarked++;
+    const missingMirrors = mirrors.filter((m) => !existsSync(join(REPO_ROOT, m.replace(/^\.\//, ""))));
     rows.push({
         rel,
         status: displayStatus(status),
         synced: synced ? `${synced}${syncedDays != null && syncedDays > 45 ? ` (${syncedDays}d ago)` : ""}` : "—",
         mirrors: mirrorReport.length ? mirrorReport.join("\n            ") : "—（无源码引用）",
+        // 结构化为 JSON 输出用
+        _missing: missingMirrors.map((m) => ({ mirror: m })),
+        _stale: syncedDays != null && syncedDays > 45,
     });
+}
+
+// ---------- JSON 输出（供审批界面/agent）----------
+if (jsonOut) {
+    const issues = rows
+        .filter((r) => r._missing.length > 0 || r._stale)
+        .map((r, i) => ({
+            id: `P${String(i + 1).padStart(2, "0")}`,
+            level: r._missing.length ? "🔴" : "🟡",
+            asset: r.rel,
+            issue: r._missing.length
+                ? `镜像源已不存在: ${r._missing.map((m) => m.mirror).join(", ")}`
+                : `最后同步 ${r.synced} 已超 45 天`,
+            action: "更新镜像源或确认同步",
+            evidence: r._missing[0]?.mirror || `mtime ${r.synced}`,
+            created: new Date().toISOString().slice(0, 10),
+        }));
+    console.log(JSON.stringify({ generated: new Date().toISOString().slice(0, 10), count: rows.length, missing, unmarked, issues }, null, 2));
+    process.exit(issues.length ? 1 : 0);
 }
 
 // ---------- 输出 ----------

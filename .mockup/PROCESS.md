@@ -26,7 +26,7 @@
 ## 集中索引与对账
 
 - `__REVIEW_GUIDE__.md` 是唯一索引总表：**分类 + 每项一句话 + 状态**。新增/移动原型时同步更新。
-- 对账脚本 `node .mockup/audit-sync.mjs`：
+- 对账脚本 `node docs/sync-audit/audit-sync.mjs`（已移入 `docs/sync-audit/`，`--json` 供审批）：
   - 扫描所有 README.md，解析「同步状态 / 镜像源 / 最后同步」三行；
   - 校验每个镜像源在真实代码仓库里是否仍然存在；
   - 输出报告：原型｜状态｜镜像源存在与否｜最后同步距今｜建议动作。
@@ -51,7 +51,7 @@
 - [ ] 只新增「设计新增点」，不虚构整个弹窗
 - [ ] README 顶部三行状态标记齐全
 - [ ] `__REVIEW_GUIDE__.md` 总表已更新
-- [ ] 跑一次 `node .mockup/audit-sync.mjs`，无「镜像缺失」告警
+- [ ] 跑一次 `node docs/sync-audit/audit-sync.mjs`，无「镜像缺失」告警
 
 ## 与 Obsidian 方案笔记的关系
 

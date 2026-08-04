@@ -91,7 +91,7 @@
 ### 原型管理已制度化
 
 - 新增 `PROCESS.md`：统一状态标记（▲设计活跃/●已落地/▼过时/◐部分落地）、镜像源跟踪、生命周期、检查清单。
-- 新增 `audit-sync.mjs`：`node .mockup/audit-sync.mjs` → 校验每个原型 README 的镜像源在仓库是否仍存在。
+- 新增 `audit-sync.mjs`（现于 `docs/sync-audit/`）：`node docs/sync-audit/audit-sync.mjs` → 校验每个原型 README 的镜像源在仓库是否仍存在。
 - 新增原型 `env-launch-entry/`（New Agent/New Terminal 运行前自定义 env，▲ 设计活跃）。
 
 ### 对账发现的历史脱结点（待拍板）
@@ -102,4 +102,4 @@
 | `new-agent-panel/README.md` | 无状态标记、无源码引用（相对已落地内容可为 ●） | 补标记或标注已落地 |
 | `_to-keep` 内 3 个未登记项 | 超出 42 项清单 | 补入目录或拍板去留 |
 
-> 上述逐项不擅自处理；`audit-sync.mjs` 已能自动标出，后续照此跟进。
+> 上述逐项不擅自处理；`audit-sync.mjs`（`docs/sync-audit/audit-sync.mjs`）已能自动标出，后续照此跟进。
