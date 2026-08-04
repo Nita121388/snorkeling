@@ -7,3 +7,4 @@
 | 日期 | 进化内容 | 改动对象 | 触发来源 | 证据/commit |
 |---|---|---|---|---|
 | 2026-08-04 | 首建巡检系统，audit-sync 参数化并支持 --json | audit-sync.mjs / README / TODOS / approval-ui | 系统落地 | 见首次提交 |
+| 2026-08-04 | 范式修正：文件对齐→功能模块三处对齐；新增 modules.md 模块基线；深度+增量巡检 | sync-governance §4 / modules.md / SKILL | 教训 L01（用户指正） | 本 commit |
