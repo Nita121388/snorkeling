@@ -2686,6 +2686,8 @@ declare global {
         category: string;
         claude_config_dir?: string;
         codex_config_dir?: string;
+        opencode_config_dir?: string;
+        pi_config_dir?: string;
     };
 
     // ccswitch.VendorIsolationFileStatus

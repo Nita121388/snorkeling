@@ -115,6 +115,18 @@ func CcSwitchListCodexVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*
 	return resp, err
 }
 
+// command "ccswitchlistopencodevendors", wshserver.CcSwitchListOpenCodeVendorsCommand
+func CcSwitchListOpenCodeVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*ccswitch.VendorList, error) {
+	resp, err := sendRpcRequestCallHelper[*ccswitch.VendorList](w, "ccswitchlistopencodevendors", nil, opts)
+	return resp, err
+}
+
+// command "ccswitchlistpivendors", wshserver.CcSwitchListPiVendorsCommand
+func CcSwitchListPiVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*ccswitch.VendorList, error) {
+	resp, err := sendRpcRequestCallHelper[*ccswitch.VendorList](w, "ccswitchlistpivendors", nil, opts)
+	return resp, err
+}
+
 // command "checkgoversion", wshserver.CheckGoVersionCommand
 func CheckGoVersionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.CommandCheckGoVersionRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandCheckGoVersionRtnData](w, "checkgoversion", nil, opts)

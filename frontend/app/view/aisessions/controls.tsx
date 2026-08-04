@@ -92,6 +92,20 @@ export function OpencodeLogo() {
     );
 }
 
+export function PiLogo() {
+    return (
+        <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+        >
+            <path d="M2 4h20v2.8h-7.2v15.2H9.2V6.8H2z" />
+        </svg>
+    );
+}
+
 export function SortButton({ descending, onToggle }: { descending: boolean; onToggle: () => void }) {
     return (
         <button

@@ -4,7 +4,7 @@
 type TermCommandMeta = Record<string, unknown>;
 
 type AgentSessionIdSource = "agent:sessionid" | "cmd" | "shell:lastcmd" | "none";
-type AgentSessionProvider = "codex" | "claude" | "";
+type AgentSessionProvider = "codex" | "claude" | "opencode" | "pi" | "";
 
 type AgentCommandResolution = {
     sessionId: string;
@@ -336,6 +336,109 @@ function parseClaudeSessionId(tokens: string[]): AgentCommandResolution {
     };
 }
 
+// findResumeTokenIndex scans after the executable index for the literal `resume`
+// subcommand, skipping over unknown leading options (any token starting with `-`).
+// For bare `--flag` tokens (no `=`), the following value token is also skipped.
+// Returns -1 when `resume` is not found.
+function findResumeTokenIndex(tokens: string[], exeIdx: number): number {
+    let idx = exeIdx + 1;
+    while (idx < tokens.length) {
+        if (tokens[idx] === "resume") {
+            return idx;
+        }
+        if (tokens[idx] === "--") {
+            return tokens[idx + 1] === "resume" ? idx + 1 : -1;
+        }
+        if (tokens[idx].startsWith("-")) {
+            if (!tokens[idx].includes("=")) {
+                idx++;
+            }
+            idx++;
+            continue;
+        }
+        return -1;
+    }
+    return -1;
+}
+
+// parseResumeSessionId scans after the `resume` token for the first non-option
+// positional argument and treats it as the session id. Recognized value-flags
+// (any token starting with `-`) are skipped along with their following token when
+// they look like `--flag value`, and consumed inline when `--flag=value`.
+function parseResumeSessionId(tokens: string[], resumeIdx: number): string {
+    let idx = resumeIdx + 1;
+    while (idx < tokens.length) {
+        const token = tokens[idx];
+        if (token === "--") {
+            return cleanSessionId(tokens[idx + 1]);
+        }
+        if (token.startsWith("-")) {
+            const eqIdx = token.indexOf("=");
+            if (eqIdx !== -1) {
+                idx++;
+                continue;
+            }
+            idx += 2;
+            continue;
+        }
+        return cleanSessionId(token);
+    }
+    return "";
+}
+
+// parseResumeCommandSessionId handles the `resume <session-id>` subcommand pattern
+// shared by OpenCode and Pi (and Codex, though codex keeps its own richer
+// option-aware path). `provider` is one of "opencode" / "pi" and is echoed back
+// on the resolution; the match reason is `matched-<provider>-resume`.
+function parseResumeCommandSessionId(
+    tokens: string[],
+    provider: "opencode" | "pi"
+): AgentCommandResolution {
+    const exeIdx = executableTokenIndex(tokens);
+    const executable = commandBaseName(tokens[exeIdx] ?? "");
+    if (executable !== provider) {
+        return emptyCommandResolution("unsupported-executable", {
+            executable,
+            tokenCount: tokens.length,
+            segmentCount: 1,
+        });
+    }
+    const resumeIdx = findResumeTokenIndex(tokens, exeIdx);
+    if (resumeIdx === -1) {
+        return emptyCommandResolution(`missing-${provider}-resume`, {
+            provider,
+            executable,
+            tokenCount: tokens.length,
+            segmentCount: 1,
+        });
+    }
+    const sessionId = parseResumeSessionId(tokens, resumeIdx);
+    if (sessionId === "") {
+        return emptyCommandResolution(`missing-${provider}-session-id`, {
+            provider,
+            executable,
+            tokenCount: tokens.length,
+            segmentCount: 1,
+        });
+    }
+    return {
+        sessionId,
+        provider,
+        executable,
+        reason: `matched-${provider}-resume`,
+        tokenCount: tokens.length,
+        segmentCount: 1,
+    };
+}
+
+function parseOpenCodeSessionId(tokens: string[]): AgentCommandResolution {
+    return parseResumeCommandSessionId(tokens, "opencode");
+}
+
+function parsePiSessionId(tokens: string[]): AgentCommandResolution {
+    return parseResumeCommandSessionId(tokens, "pi");
+}
+
 function resolveAgentSessionIdFromTokens(tokens: string[], segmentCount: number): AgentCommandResolution {
     if (tokens.length === 0) {
         return emptyCommandResolution("empty-command", { segmentCount });
@@ -346,6 +449,12 @@ function resolveAgentSessionIdFromTokens(tokens: string[], segmentCount: number)
     }
     if (executable === "claude") {
         return { ...parseClaudeSessionId(tokens), segmentCount };
+    }
+    if (executable === "opencode") {
+        return { ...parseOpenCodeSessionId(tokens), segmentCount };
+    }
+    if (executable === "pi") {
+        return { ...parsePiSessionId(tokens), segmentCount };
     }
     return emptyCommandResolution("unsupported-executable", {
         executable,
@@ -414,7 +523,10 @@ function resolveAgentCommandFromMeta(meta: TermCommandMeta): AgentCommandResolut
 
 function providerFromMeta(meta: TermCommandMeta): AgentSessionProvider {
     const provider = stringValue(meta["agent:provider"]).toLowerCase();
-    return provider === "codex" || provider === "claude" ? provider : "";
+    if (provider === "codex" || provider === "claude" || provider === "opencode" || provider === "pi") {
+        return provider;
+    }
+    return "";
 }
 
 function isAgentAutoResume(meta: TermCommandMeta): boolean {

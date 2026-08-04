@@ -1,0 +1,61 @@
+---
+sidebar_position: 1.77
+id: "pi-sessions"
+title: "Pi Sessions"
+---
+
+# Pi Sessions
+
+Snorkeling surfaces Pi coding-agent sessions alongside Codex, Claude Code, and OpenCode in the
+workspace `Sessions` sidebar. You can browse Pi conversation history, search and filter it, and resume
+a session without leaving the workspace.
+
+## Local Session Source
+
+Unlike OpenCode, which keeps its history in a single SQLite database, Pi stores each session as a
+JSONL v3 file inside a tree of session directories. Snorkeling walks that tree rather than querying a
+database.
+
+Snorkeling locates the Pi session tree the same way Pi itself does:
+
+- If `PI_CODING_AGENT_SESSION_DIR` is set in the environment, Snorkeling uses that directory.
+- Otherwise Snorkeling reads the platform default at `~/.pi/agent/sessions`.
+
+Snorkeling walks that directory tree and parses the JSONL v3 files in **read-only** fashion. It never
+writes to Pi's session files and never contends on Pi's own locks. Snorkeling's own session index,
+marks, notes, and delete staging live in Snorkeling's data files under `~/.snorkeling/ai-sessions`,
+exactly as for Codex, Claude Code, and OpenCode.
+
+## Resume a Session
+
+From the Sessions detail view you can resume a Pi session:
+
+- Snorkeling creates a new terminal block and runs the Pi `resume` command for that session id.
+- If the session record has a project path, that directory is used as the launch directory.
+- The newly launched agent block carries provider and session id for later identification, mirroring
+  the resume flow used for Codex, Claude, and OpenCode.
+
+## cc-switch Vendor Setup
+
+When [cc-switch](./cc-switch) stores a `pi` provider, Snorkeling materializes a per-vendor
+`PI_CODING_AGENT_SESSION_DIR` directory for that vendor before launch:
+
+- The directory is `<waveDataDir>/pi-vendors/<vendor-id>/`, and a `config.json` file is written inside
+  it holding the vendor's environment variables (API key, base URL, model, and so on).
+- The directory path is exposed on the cc-switch vendor entry as `pi_config_dir`.
+- On resume or launch, Snorkeling points `PI_CODING_AGENT_SESSION_DIR` at that per-vendor directory so
+  the Pi process picks up the vendor's credentials and configuration without touching your global Pi
+  config.
+
+:::note
+
+cc-switch upstream does not yet recognize `pi` as an `app_type`, so the cc-switch Pi vendor picker is
+dormant until upstream support lands. The Pi session viewer itself — browsing Pi's native JSONL v3
+session history — works regardless of cc-switch support.
+
+:::
+
+## Related
+
+- [AI Sessions](./ai-sessions) — shared Sessions UI for all providers.
+- [Agent Workflow](./agent-workflow) — launching and resuming agents.
