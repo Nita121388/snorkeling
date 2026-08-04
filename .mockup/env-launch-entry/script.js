@@ -13,10 +13,10 @@
     });
 
     // ---------- path 选中 ----------
-    document.querySelectorAll(".path-item").forEach((item) => {
+    document.querySelectorAll(".path-row").forEach((item) => {
         item.addEventListener("click", () => {
-            item.parentElement.querySelectorAll(".path-item").forEach((i) => i.classList.remove("selected"));
-            item.classList.add("selected");
+            item.parentElement.querySelectorAll(".path-row").forEach((i) => i.classList.remove("sel"));
+            item.classList.add("sel");
         });
     });
 

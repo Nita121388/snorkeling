@@ -5,11 +5,17 @@
 
 ## 核心交互（收敛后的最终形态）
 
-只在 **New Agent / New Terminal 两个弹窗的 footer** 各放一个小的 `Env` 入口按钮，点击后**复用现有环境变量弹窗**（`frontend/app/view/term/envmodal.tsx`），并将其**升级为可编辑**。
+只在 **New Agent / New Terminal 两个弹窗的 header** 各放一个 env 小图标按钮（New Agent 在 gear 左侧、New Terminal 在 header 右侧，均为最小改动落点），点击后**复用现有环境变量弹窗**（`frontend/app/view/term/envmodal.tsx`），并将其**升级为可编辑**。
 
 - 弹窗上半：现有生效环境变量（只读表格，保留搜索/敏感掩码/Copy All，不变）
 - 弹窗下半（新增）：「本次启动自定义变量」KV 行编辑器（+Add / 每行 KEY+VALUE+删除 / 敏感值掩码）
 - footer：Save / Cancel
+
+### 与真实 UI 同步（重要）
+
+本原型<b>不重新发明弹窗布局</b>——两个弹窗的 DOM 结构、类名、文案、选中态（左侧 accent 竖条）、actionbar（crumb + Current Tab · New · Existing）全部<b>逐字段对齐真实</b> `frontend/app/workspace/widgets.tsx`（New Agent ~L717、New Terminal ~L1162），仅新增 env 入口按钮一处。
+
+用户反馈（2026-08-04）：「原型与当前 UI 布局和交互相差较大」，参考 `.mockup/_to-keep/new-agent-vendor.html` 方案 1（其即忠实复刻真实 New Agent 弹窗）后重做。
 
 ## 怎么打开
 
@@ -33,23 +39,38 @@ file:///E:/code/snorkeling/.mockup/env-launch-entry/index.html
 
 ## 原型里模拟的两种弹窗入口
 
-### New Agent（footer 加 `⛭ Env` 按钮）
+> env 入口放在 header，非 footer；且结构对齐真实（无 App/Vendor/Target 下拉、无 Continue/Cancel footer，用 chips + actionbar）。
+
+### New Agent（header 加 env 按钮，在 gear 左侧）
 
 ```
-┌─ New Agent ────────────────────────────────────┐
-│  App:[Codex v]  Vendor:…  Target:[Current v] × │
-│  …选中 vendor / path 列表…                      │
-│  footer:  [⛭ Env]          [Continue][Cancel]  │
-└────────────────────────────────────────────────┘
+┌─ New Agent ───────────────────────────────────┐
+│ New Agent                    [⠿env][⚙gear] × │
+│ -------------------------------------------- │
+│ Select an agent type                          │
+│  [★Claude Code✓] [Codex] [Gemini] [OpenCode] │
+│ Vendor · from cc-switch            [⟳]        │
+│  [质谱-无限·当前✓] [官方O] [+N▾]              │
+│ Select a path.                                │
+│  [⌂ E:\primary\projects\snorkeling-light] [✓] │
+│  [⌂ ~]                                          │
+│ -------------------------------------------- │
+│ E:\...light-theme  [＋Current Tab]·[→New]·[Existing…]│
+└───────────────────────────────────────────────┘
 ```
 
-### New Terminal（footer 加 `⛭ Env` 按钮）
+### New Terminal（header 右侧加 env 按钮）
 
-```
-┌─ New Terminal ─────────────────────────────────┐
-│  …选中 path 列表…                               │
-│  footer:  [⛭ Env]          [Continue][Cancel]  │
-└────────────────────────────────────────────────┘
+```text
+┌─ New Terminal ────────────────────────────────┐
+│ New Terminal                         [⠿] │
+│ -------------------------------------------- │
+│ Select a path.                                │
+│  [⌂ ~/code/snorkeling]                         │
+│  [⌂ ~/Documents]                    [✓] │
+│ -------------------------------------------- │
+│ ~/Documents  [＋Current Tab]·[New]·[Existing…] │
+└───────────────────────────────────────────────┘
 ```
 
 ## 可编辑 Env 弹窗布局
