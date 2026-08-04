@@ -35,6 +35,7 @@
   .no{background:var(--red);border-color:var(--red);color:#fff}
   .note{background:var(--amber);border-color:var(--amber);color:#fff}
   .later{background:#f3f4f6;border-color:#d1d5db;color:#374151}
+  .edit{background:#6d28d9;border-color:#6d28d9;color:#fff}
   .batchBtn{background:var(--blue);border-color:var(--blue);color:#fff;flex:1;min-width:100%}
   .kbd{font-family:monospace;font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;border-radius:4px;background:#fafbfc}
   .empty{text-align:center;color:var(--muted);padding:60px 20px}
@@ -50,6 +51,7 @@
   .reason-box textarea{width:100%;min-height:100px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px;font-family:inherit;resize:vertical}
   .reason-box .row{display:flex;gap:10px;margin-top:14px}
   .reason-box .row button{flex:1}
+  .fld{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-weight:600}
   .hidden{display:none!important}
   /* 导航条 */
   .nav{display:flex;align-items:center;gap:10px;margin-bottom:14px}
@@ -102,6 +104,23 @@
     <div class="row">
       <button class="ok" id="popOk">确认</button>
       <button class="later" id="popCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="editPopup" class="reason-popup hidden">
+  <div class="reason-box">
+    <h3>✏️ 编辑本条</h3>
+    <label class="fld">问题描述</label>
+    <textarea id="edIssue" placeholder="问题…"></textarea>
+    <label class="fld">建议处理</label>
+    <textarea id="edAction" placeholder="建议…"></textarea>
+    <label class="fld">证据</label>
+    <textarea id="edEvidence" placeholder="证据…"></textarea>
+    <div class="row">
+      <button class="ok" id="edOk">保存</button>
+      <button class="later" id="edCancel">取消</button>
     </div>
   </div>
 </div>
@@ -168,6 +187,7 @@ function render(){
         <button class="ok" data-a="approved">✅ 通过</button>
         <button class="no" data-a="rejected">❌ 拒绝</button>
         <button class="note" data-a="annotated">💬 批注</button>
+        <button class="edit" data-a="edit" title="修改本条问题/建议内容">✏️ 编辑</button>
         <button class="later" data-a="deferred">⏭ 稍后</button>`}
     </div>`;
 
@@ -238,6 +258,7 @@ document.getElementById("queue").addEventListener("click", e=>{
       saveProgress(); render();
       return;
     }
+    if(a==="edit"){ openEdit(items[cursor]); return; }
     currentAction = a;
     handleAction(currentAction, items[cursor]);
     return;
@@ -280,6 +301,45 @@ document.getElementById("batchBtn").addEventListener("click", ()=>{
 document.getElementById("popOk").addEventListener("click",()=>closePrompt(document.getElementById("popText").value));
 document.getElementById("popCancel").addEventListener("click",()=>closePopup(null));
 document.getElementById("popText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) closePopup(e.target.value); });
+
+// 编辑弹窗
+function openEdit(it){
+  document.getElementById("edIssue").value = it.issue||"";
+  document.getElementById("edAction").value = it.action||"";
+  document.getElementById("edEvidence").value =
+    Array.isArray(it.evidence) ? it.evidence.join("\n") : (it.evidence||"");
+  document.getElementById("editPopup").classList.remove("hidden");
+  document.getElementById("edIssue").focus();
+}
+function closeEdit(){
+  document.getElementById("editPopup").classList.add("hidden");
+  // 把「人工修订」记入教训，让下次巡检更准
+  logEvolution("人工修订巡检条目", items[cursor]?items[cursor].id:"");
+}
+document.getElementById("edOk").addEventListener("click", ()=>{
+  const it = items[cursor];
+  if(!it) return;
+  it.issue = document.getElementById("edIssue").value.trim();
+  it.action = document.getElementById("edAction").value.trim();
+  const ev = document.getElementById("edEvidence").value.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  it.evidence = ev.length? ev : "—";
+  logEvolution("人工修订巡检条目", it.id);
+  document.getElementById("editPopup").classList.add("hidden");
+  render();
+});
+document.getElementById("edCancel").addEventListener("click", ()=>document.getElementById("editPopup").classList.add("hidden"));
+
+function logEvolution(content, obj){
+  const el = document.createElement("div");
+  el.style.display = "none";
+  document.body.appendChild(el);
+  try{
+    const log = JSON.parse(localStorage.getItem("snorkeling-evo" ) || "[]");
+    log.push({date:new Date().toISOString().slice(0,10), content, obj});
+    localStorage.setItem("snorkeling-evo", JSON.stringify(log));
+  }catch(e){}
+  el.remove();
+}
 function closePrompt(v){ closePopup(v); }
 
 // 键盘全局
