@@ -16,10 +16,10 @@
 
 | ID | 级别 | 资产 | 问题 | 建议动作 | 证据 | 生成时间 |
 |---|---|---|---|---|---|---|
-| P01 | 🔴 | `.mockup/shell-settings/` | 镜像 `pkg/util/shellutil/scanshells.go` 已不存在，且 `shellutil.go` 中无 `ScanShells` 函数（彻底死引用，非改名） | 更新 README 镜像源为实际实现的 `shellutil.go` / `tokenswap.go` / `wshinstallscript.go`，或评估该原型是否仍需保留 | 全仓 grep `scanshells\|ScanShells` 无结果；`ls pkg/util/shellutil/` 无此文件 | 2026-08-04 |
-| P02 | 🟡 | `.mockup/new-agent-panel/README.md` | 无「同步状态」标记、无「镜像源」、无「最后同步」 | 补三行状态标记，并填写镜像源（若已落地标 ●） | L1 报告未标注 | 2026-08-04 |
-| P03 | 🟡 | `.mockup/_to-keep/` | 实为 9 项，比登记多出 3 项；`new-agent-vendor.html` 等未在 REVIEW_GUIDE 总表登记 | 补入 REVIEW_GUIDE 总表或确认去留 | 首轮对账 | 2026-08-04 |
-| P04 | 🔴 | 未提交工作区 | 9 文件 44+/66- 未提交（connutil.go wsh 上传超时诊断 + connection-timeout 测试），与巡检系统无关 | 归入独立 commit 保存，避免工作区污染（尤其 package-lock.json 混入） | `git status` 9 个 M/?? 文件 | 2026-08-04 |
+| P01 | 🔴 | `.mockup/shell-settings/` | 镜像 `pkg/util/shellutil/scanshells.go` 已不存在，且 `shellutil.go` 中无 `ScanShells` 函数（彻底死引用，非改名） | **推荐：✅ 通过（更新镜像源）**。步骤：① 改 `.mockup/shell-settings/README.md` 的 `> 镜像源：` 行为实际实现文件 `pkg/util/shellutil/shellutil.go, frontend/app/theme.scss, pkg/blockcontroller/blockcontroller.go`（去掉已死的 scanshells.go）；② 重跑 `node docs/sync-audit/audit-sync.mjs` 验证无缺失 | 全仓 grep `scanshells\|ScanShells` 无结果；`ls pkg/util/shellutil/` 无此文件 | 2026-08-04 |
+| P02 | 🟡 | `.mockup/new-agent-panel/README.md` | 无「同步状态」标记、无「镜像源」、无「最后同步」 | **推荐：✅ 通过（补标记）**。步骤：在 README 顶部加三行——`> 同步状态：● 已落地`、`> 镜像源：frontend/app/view/term/envmodal.tsx`（或该原型实际镜像的组件）、`> 最后同步：2026-08-04`；需 agent 先 grep 确认该原型对应的真实组件再填 | L1 报告未标注 | 2026-08-04 |
+| P03 | 🟡 | `.mockup/_to-keep/` | 实为 9 项，比登记多出 3 项；`new-agent-vendor.html` 等未在 REVIEW_GUIDE 总表登记 | **推荐：✅ 通过（补登记）**。步骤：把 `_to-keep/` 下 9 个 html 逐一比对 `__REVIEW_GUIDE__.md` 分类，将缺失的 3 项（`new-agent-vendor.html` 等）按格式补入总表；**保留全部 9 项，不删** | 首轮对账 | 2026-08-04 |
+| P04 | 🔴 | 未提交工作区 | 9 文件 44+/66- 未提交（connutil.go wsh 上传超时诊断 + connection-timeout 测试），与巡检系统无关 | **推荐：✅ 通过（独立 commit 保存）**。步骤：① 确认这批改动是「wsh 上传超时诊断」功能；② 单独 `git add` 这 9 个文件（**不含** package-lock.json）提交，message 如 `feat: wsh 上传超时诊断+测试`；③ package-lock.json 的 70 行无关改动单独审视，不该提交就还原 `git checkout -- package-lock.json` | `git status` 9 个 M/?? 文件 | 2026-08-04 |
 
 > 此处为实时截图示：
 > `node .mockup/audit-sync.mjs` 自动生成新的 🔴/🟡 条目后，agent 把它们追加到这里，

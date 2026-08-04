@@ -24,6 +24,14 @@
   .desc{color:var(--muted);font-size:14px;margin:4px 0 14px;line-height:1.6}
   .sugg{background:#f0f6ff;border:1px solid #d7e4fb;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:14px}
   .sugg b{color:var(--blue)}
+  .rec{display:inline-block;font-weight:700;padding:4px 12px;border-radius:6px;margin-bottom:6px}
+  .rec.v-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+  .rec.v-no{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .rec.v-note{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .rec.v-later{background:#f3f4f6;border:1px solid #d1d5db;color:#374151}
+  .rest{color:var(--muted);font-size:13px;margin:4px 0}
+  .steps{margin:6px 0 0;padding-left:20px;font-size:13.5px;line-height:1.8}
+  .steps li::marker{color:var(--blue);font-weight:700}
   .evidence{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:18px}
   .evidence summary{cursor:pointer;padding:9px 14px;font-size:13px;color:var(--muted);background:#fafbfc;user-select:none}
   .evidence div{padding:12px 14px;font-family:monospace;font-size:12.5px;background:#1e1e1e;color:#d4d4d4;white-space:pre-wrap;margin:0}
@@ -138,8 +146,10 @@ let autoFixes = [];    // 已自动修正（从 TODOS 读入，只读展示）
 // 实际接入时：从解析后的 TODOS.md 的 ⏳待审批 分区读取。这里给内置样例，
 // 并提供一个 "粘 JSON" 入口（7.1 降级模式）。
 const DEMO = [
-  {id:"P01", level:"🔴", asset:".mockup/shell-settings/", issue:"镜像 pkg/util/shellutil/scanshells.go 已不存在", action:"查明新位置（shellutil.go）或移 _to-delete", evidence:"全扫描 0 引用；ScanShells 无结果\n$ grep -rn ScanShells pkg → 无输出", created:"2026-08-04"},
-  {id:"P02", level:"🟡", asset:".mockup/__REVIEW_GUIDE__.md", issue:"_to-keep/ 实为 9 项，多出 3 项未登记；vcs-block-redesign.html 未纳入", action:"补登记或清理", evidence:"首次对账单", created:"2026-08-04"}
+  {id:"P01", level:"🔴", asset:".mockup/shell-settings/", issue:"镜像 pkg/util/shellutil/scanshells.go 已不存在，shellutil.go 无 ScanShells 函数（彻底死引用）", action:"推荐：✅ 通过（更新镜像源）。① 改 README 镜像源为 shellutil.go, theme.scss, blockcontroller.go；② 重跑 audit-sync.mjs 验证", evidence:"grep -rn ScanShells pkg → 无输出\nls pkg/util/shellutil/ → 无 scanshells.go", created:"2026-08-04"},
+  {id:"P02", level:"🟡", asset:".mockup/new-agent-panel/README.md", issue:"无状态标记、无镜像源、无最后同步", action:"推荐：✅ 通过（补标记）。① 加同步状态：● 已落地；② 填镜像源 frontend/xxx.tsx；③ 填最后同步日期", evidence:"L1 报告未标注", created:"2026-08-04"},
+  {id:"P03", level:"🟡", asset:".mockup/_to-keep/", issue:"实为 9 项，比登记多 3 项，new-agent-vendor.html 未登记", action:"推荐：✅ 通过（补登记）。① 比对 __REVIEW_GUIDE__ 分类；② 补 3 项进总表；③ 保留全部 9 项不删", evidence:"首轮对账", created:"2026-08-04"},
+  {id:"P04", level:"🔴", asset:"未提交工作区", issue:"9 文件 44+/66- 未提交（wsh 上传超时诊断），与巡检无关", action:"推荐：✅ 通过（独立 commit）。① 确认是 wsh 超时诊断功能；② 单独 git add 9 文件提交；③ package-lock.json 无关改动单独处理", evidence:"git status → 9 个 M/?? 文件", created:"2026-08-04"}
 ];
 const AUTODEMO = [
   {id:"A01", action:"版本号过期 0.0.32→0.0.68", commit:"633296a5", time:"2026-08-04"}
@@ -175,11 +185,12 @@ function render(){
   card.className = "card";
   const d = decisions[cur.id];
   const verdict = d ? renderVerdict(d) : "";
+  const sugg = renderSugg(cur.action||"");
   card.innerHTML = `
     <span class="badge b-${cur.level==="🔴"?"red":cur.level==="🟡"?"yellow":"green"}">${LEVEL_LABEL[cur.level]}</span>
     <div class="title">${esc(cur.issue)}</div>
     <div class="desc">资产：<code>${esc(cur.asset||"")}</code></div>
-    <div class="sugg"><b>建议处理：</b>${esc(cur.action||"")}</div>
+    ${sugg}
     <details class="evidence"><summary>[证据] 点开查看</summary><div>${esc(cur.evidence||"无")}</div></details>
     ${verdict}
     <div class="actions">
@@ -211,6 +222,25 @@ function render(){
   ab.innerHTML = autoFixes.length? autoFixes.map(a=>
     `<tr><td>${a.id}</td><td>${esc(a.action||"")}</td><td><code>${esc(a.commit||"")}</code></td><td>${a.time||""}</td></tr>`
   ).join("") : `<tr><td colspan="4">（无。自动修正产生的条目执行后追加到此，commit 号可回滚）</td></tr>`;
+}
+
+function renderSugg(action){
+  if(!action) return "";
+  const parts = action.split(/[。\n]+/).map(s=>s.trim()).filter(Boolean);
+  const recIdx = parts.findIndex(p=>p.includes("推荐："));
+  let recHtml = "", stepHtml = "";
+  if(recIdx>=0){
+    const rec = parts[recIdx];
+    const m = rec.match(/推荐：([✅❌💬⏭])[^）]*（?([^）]*)）?/);
+    const cls = m&&m[1]==="✅"?"v-ok":m&&m[1]==="❌"?"v-no":m&&m[1]==="💬"?"v-note":"v-later";
+    recHtml = `<div class="rec ${cls}">${esc(rec)}</div>`;
+    parts.splice(recIdx,1);
+  }
+  const steps = parts.filter(p=>/^\d+\./.test(p));
+  const rest = parts.filter(p=>!/^\d+\./.test(p));
+  if(rest.length) stepHtml += `<div class="rest">${rest.map(esc).join("<br>")}</div>`;
+  if(steps.length) stepHtml += `<ol class="steps">${steps.map(s=>`<li>${esc(s.replace(/^\d+\.\s*/,""))}</li>`).join("")}</ol>`;
+  return `<div class="sugg">${recHtml||"<b>建议处理：</b>"}${stepHtml}</div>`;
 }
 
 function renderVerdict(d){
