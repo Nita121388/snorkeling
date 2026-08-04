@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"text/template"
 	"time"
@@ -117,16 +118,54 @@ const UploadStalledTicks = 3
 // misleadingly low and trigger spurious deadline extensions.
 const UploadProgressWarmup = 2 * time.Second
 
-// UploadTimeoutFor returns the bounded upload timeout to apply for a binary
-// of the given byte size. It returns UploadMinTimeout for any size up to
-// (UploadMinTimeout * UploadBytesPerSecond), grows linearly with size
-// beyond that, and caps at UploadMaxTimeout. The mathematical shape is:
+// computeAdaptiveTimeout returns the duration from now until the
+// upload should time out, based on observed progress. It returns 0
+// when the deadline should not be adjusted (e.g. during warmup or
+// when the upload is stalled). The returned value is always bounded
+// to [UploadMinTimeout, UploadMaxTimeout] relative to startAt.
+//
+// The formula uses total-throughput (bytesSoFar / elapsed) rather
+// than an instantaneous sample, so a single slow tick doesn't
+// overreact. A 1.5x safety factor plus a 10s buffer gives headroom
+// for SFTP protocol overhead. UploadMaxTimeout is an absolute cap.
+func computeAdaptiveTimeout(bytesSoFar int64, totalBytes int64, elapsed time.Duration, now time.Time) time.Duration {
+	if bytesSoFar <= 0 || totalBytes <= 0 || elapsed <= 0 {
+		return 0
+	}
+	rate := bytesSoFar * int64(time.Second) / int64(elapsed)
+	remaining := (totalBytes - bytesSoFar) * int64(time.Second) / rate
+	need := elapsed + time.Duration(remaining*3/2) + 10*time.Second
+
+	// Hard cap: never extend past UploadMaxTimeout from start.
+	startAt := now.Add(-elapsed)
+	capDeadline := startAt.Add(UploadMaxTimeout)
+	if now.Add(need).After(capDeadline) {
+		need = capDeadline.Sub(now)
+	}
+	// Floor: never shorten below UploadMinTimeout.
+	if need < UploadMinTimeout {
+		need = UploadMinTimeout
+	}
+	return need
+}
+
+// UploadTimeoutFor returns a conservative initial upload timeout estimate
+// for a binary of the given byte size, bounded to
+// [UploadMinTimeout, UploadMaxTimeout]. The mathematical shape is:
 //
 //	timeout = clamp(UploadMinTimeout + extraSecondsFor(size), UploadMinTimeout, UploadMaxTimeout)
 //	extraSecondsFor(size) = max(0, (size - UploadMinTimeout*rate) / rate)
 //
 // Callers should always pass the actual local binary size; if size <= 0 the
 // function returns UploadMinTimeout as a safe default.
+//
+// NOTE: this is no longer the *enforced* upload deadline. The SFTP upload
+// path (uploadFileViaSFTP) now runs a real-time throughput watchdog that
+// extends the deadline above UploadTimeoutFor when the observed throughput
+// is slower than UploadBytesPerSecond, and shortens it when faster, still
+// bounded by UploadMaxTimeout. This function is kept for callers/tests
+// that want a static conservative estimate of how long a transfer *should*
+// take at the assumed slow-link rate.
 func UploadTimeoutFor(size int64) time.Duration {
 	if size <= 0 {
 		return UploadMinTimeout
@@ -707,24 +746,111 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 	if err != nil {
 		return fmt.Errorf("failed to create remote SFTP file %s: %w", remotePath, err)
 	}
+
+	// timer owns the deadline; the watchdog goroutine resets it as the
+	// observed throughput changes. The main select reads timer.C only
+	// (never resets the timer itself), so there is no concurrent Reset
+	// race with a goroutine receiving from timer.C.
+	timer := time.NewTimer(UploadMaxTimeout + 60*time.Second)
+	defer timer.Stop()
+
+	pwd := newProgressWriter(remoteFile, inputSize, onProgress)
+
+	stopCh := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		start := time.Now()
+		var lastWritten int64
+		var stallTicks int
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				current := pwd.written.Load()
+				delta := current - lastWritten
+				lastWritten = current
+
+				// Not enough bytes moved in this tick to be meaningful.
+				// Count consecutive ticks below UploadStalledRate; only
+				// after UploadStalledTicks do we declare it stalled and
+				// stop extending the deadline (let the timer fire).
+				if delta < UploadStalledRate {
+					stallTicks++
+					if stallTicks >= UploadStalledTicks {
+						stallTicks = UploadStalledTicks // cap, avoid overflow
+					}
+					continue
+				}
+				stallTicks = 0
+
+				// Skip rate adjustment during the warmup period — SFTP
+				// handshake / TLS setup / remote fs open can make the
+				// first few seconds look artificially slow.
+				elapsed := time.Since(start)
+				if elapsed < UploadProgressWarmup {
+					continue
+				}
+
+				need := computeAdaptiveTimeout(current, inputSize, elapsed, time.Now())
+				if need <= 0 {
+					continue
+				}
+
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(need)
+			}
+		}
+	}()
+	// stopCh is closed in every exit branch below before returning; no
+	// defer close here to avoid a double-close with the success branch.
+
 	copyDone := make(chan sftpCopyResult, 1)
 	go func() {
 		var writer io.Writer = remoteFile
 		if onProgress != nil {
-			writer = newProgressWriter(remoteFile, inputSize, onProgress)
+			writer = pwd
 		}
 		written, copyErr := io.Copy(writer, input)
 		copyDone <- sftpCopyResult{written: written, err: copyErr}
 	}()
 	select {
 	case <-ctx.Done():
+		close(stopCh)
+		wg.Wait()
 		if abortTransport != nil {
 			abortTransport()
 		}
 		_ = remoteFile.Close()
 		<-copyDone
 		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+	case <-timer.C:
+		close(stopCh)
+		wg.Wait()
+		if abortTransport != nil {
+			abortTransport()
+		}
+		_ = remoteFile.Close()
+		<-copyDone
+		return fmt.Errorf("remote wsh upload canceled: %w", context.DeadlineExceeded)
 	case result := <-copyDone:
+		close(stopCh)
+		wg.Wait()
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
 		closeErr := remoteFile.Close()
 		if result.err != nil && result.err != io.EOF {
 			return fmt.Errorf("failed to copy data to remote SFTP file: %w", result.err)
