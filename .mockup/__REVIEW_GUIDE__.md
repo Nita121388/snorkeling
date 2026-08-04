@@ -61,6 +61,10 @@
 - `design-system.html` — 项目唯一权威 visual reference,`docs/design-system.md` 显式引用
 - `light-theme-variations.html` — 150KB 浅色主题候选总集,light 选型母本
 
+> **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
+> - `aisessions-no-tag-filter.html` / `aisessions-path-filter.html` — session 列表筛选方向
+> - `commontext-pinned-detail-insert.html` — pinned 详情插入方向
+
 ## `_review-boundary/` — 3 项
 
 7/6 12:55–13:17 三联式主题方向探索稿。**未被 `design-system.html` 4 套主题(dark/light/monochrome)采纳,无后续引用**。三者同命运,要么一起删、要么一起留。
@@ -77,3 +81,25 @@
 - `_review-boundary/`:3 项 → 拍板后或删或并回保留集
 - `_to-keep/`:6 项 → 留下作为 .mockup 的常驻设计资产
 - 总体从 42 项收敛到 6(+可选 3)项
+
+## 2026-08-04 补充：原型管理与同步状态
+
+### 顶层文件（不在 42 项清单内）
+
+- `vcs-block-redesign.html` — VCS block 重设计（顶层），待登记。
+
+### 原型管理已制度化
+
+- 新增 `PROCESS.md`：统一状态标记（▲设计活跃/●已落地/▼过时/◐部分落地）、镜像源跟踪、生命周期、检查清单。
+- 新增 `audit-sync.mjs`：`node .mockup/audit-sync.mjs` → 校验每个原型 README 的镜像源在仓库是否仍存在。
+- 新增原型 `env-launch-entry/`（New Agent/New Terminal 运行前自定义 env，▲ 设计活跃）。
+
+### 对账发现的历史脱结点（待拍板）
+
+| 原型 | 问题 | 建议 |
+|---|---|---|
+| `shell-settings/README.md` | 镜像 `pkg/util/shellutil/scanshells.go` 已不存在（全仓 0 引用），可能已重构/改名 | 查明新位置或更新镜像源，或一并进 `_to-delete/` |
+| `new-agent-panel/README.md` | 无状态标记、无源码引用（相对已落地内容可为 ●） | 补标记或标注已落地 |
+| `_to-keep` 内 3 个未登记项 | 超出 42 项清单 | 补入目录或拍板去留 |
+
+> 上述逐项不擅自处理；`audit-sync.mjs` 已能自动标出，后续照此跟进。

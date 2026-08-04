@@ -1,6 +1,9 @@
 # Env Launch Entry — New Agent / New Terminal 弹窗内自定义环境变量原型
 
-> 2026-08-04 · 对应方案 `My Projects/Snorkling/方案/主题/Terminal与Agent运行前自定义环境变量-设计方案.md`
+> 同步状态：▲ 设计活跃（未实现）
+> 镜像源：frontend/app/workspace/widgets.tsx, frontend/app/view/term/envmodal.tsx, frontend/app/view/term/envmodal.scss
+> 最后同步：2026-08-04
+> 对应方案：`My Projects/Snorkling/方案/主题/Terminal与Agent运行前自定义环境变量-设计方案.md`
 > 背景：Codex CLI 浅色主题下输入框深色看不清（见 `Codex CLI浅色主题输入框深色看不清-外部Agent已知问题.md`），需在运行 Terminal/Agent 前注入 `COLORTERM/TERM` 等环境变量。
 
 ## 核心交互（收敛后的最终形态）
