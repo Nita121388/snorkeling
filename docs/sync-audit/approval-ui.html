@@ -51,6 +51,22 @@
   .reason-box .row{display:flex;gap:10px;margin-top:14px}
   .reason-box .row button{flex:1}
   .hidden{display:none!important}
+  /* 导航条 */
+  .nav{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .nav button{flex:0 0 auto;min-width:110px;padding:10px 14px}
+  .navinfo{flex:1;text-align:center;color:var(--muted);font-size:13px}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+  /* 已处理徽章 */
+  .verdict{margin:12px 0;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.6}
+  .v-ok{background:#f0fdf4;border:1px solid #bbf7d0}
+  .v-no{background:#fef2f2;border:1px solid #fecaca}
+  .v-note{background:#fffbeb;border:1px solid #fde68a}
+  .v-later{background:#f3f4f6;border:1px solid #d1d5db}
+  .v-reason{margin-top:6px;color:var(--muted);font-size:13px;white-space:pre-wrap}
+  /* 进度小点 */
+  .dots{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+  .dot{width:9px;height:9px;border-radius:50%;background:#e3e6eb}
+  .dot.done{background:#16a34a}.dot.cur{background:#2563eb;outline:2px solid rgba(37,99,235,.25)}
 </style>
 </head>
 <body>
@@ -74,7 +90,7 @@
   </div>
 
   <div class="foot">
-    键盘：<span class="kbd">1</span>通过 · <span class="kbd">2</span>拒绝 · <span class="kbd">3</span>批注 · <span class="kbd">4</span>稍后 · <span class="kbd">g</span>批量绿灯 · <span class="kbd">Esc</span>取消弹窗<br>
+    键盘：<span class="kbd">←</span>/<span class="kbd">→</span> 导航 · <span class="kbd">1</span>通过 · <span class="kbd">2</span>拒绝 · <span class="kbd">3</span>批注 · <span class="kbd">4</span>稍后 · <span class="kbd">g</span>批量绿灯 · <span class="kbd">Esc</span>取消弹窗<br>
     进度存本地，随时可退出续审 · 审批结果导出后写回 <code>TODOS.md</code>
   </div>
 </div>
@@ -117,45 +133,75 @@ function loadProgress(){
 function saveProgress(){ localStorage.setItem(PROGRESS_KEY, JSON.stringify(decisions)); }
 
 // ---------- 渲染 ----------
+let cursor = 0; // 当前浏览位置（可前后移动）
+
 function render(){
-  const pending = items.filter(it=>!decisions[it.id]);
-  const total = items.length, done = total - pending.length;
+  const total = items.length;
+  const done = items.filter(it=>decisions[it.id]).length;
   const pct = total? Math.round(done/total*100) : 0;
   document.getElementById("bar").style.width = pct+"%";
   document.getElementById("meta").textContent =
-    `${done}/${total} 已处理 · 第 ${done+1 || 0}/${total} 条 · 完成 ${pct}%`;
+    `${done}/${total} 已处理 · 浏览 ${cursor+1}/${total} · 完成 ${pct}%`;
   const g = items.filter(it=>it.level==="🟢" && !decisions[it.id]).length;
   document.getElementById("greenCount").textContent = g;
   document.getElementById("toolbar").classList.toggle("hidden", g===0);
 
   const q = document.getElementById("queue");
   q.innerHTML = "";
-  const cur = pending[0];
-  if(!cur){ document.getElementById("empty").classList.remove("hidden"); }
-  else{
-    document.getElementById("empty").classList.add("hidden");
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `
-      <span class="badge b-${cur.level==="🔴"?"red":cur.level==="🟡"?"yellow":"green"}">${LEVEL_LABEL[cur.level]}</span>
-      <div class="title">${esc(cur.issue)}</div>
-      <div class="desc">资产：<code>${esc(cur.asset||"")}</code></div>
-      <div class="sugg"><b>建议处理：</b>${esc(cur.action||"")}</div>
-      <details class="evidence"><summary>[证据] 点开查看</summary><div>${esc(cur.evidence||"无")}</div></details>
-      <div class="actions">
+  const cur = items[cursor];
+  if(!cur){ document.getElementById("empty").classList.remove("hidden"); return; }
+  document.getElementById("empty").classList.add("hidden");
+
+  const card = document.createElement("div");
+  card.className = "card";
+  const d = decisions[cur.id];
+  const verdict = d ? renderVerdict(d) : "";
+  card.innerHTML = `
+    <span class="badge b-${cur.level==="🔴"?"red":cur.level==="🟡"?"yellow":"green"}">${LEVEL_LABEL[cur.level]}</span>
+    <div class="title">${esc(cur.issue)}</div>
+    <div class="desc">资产：<code>${esc(cur.asset||"")}</code></div>
+    <div class="sugg"><b>建议处理：</b>${esc(cur.action||"")}</div>
+    <details class="evidence"><summary>[证据] 点开查看</summary><div>${esc(cur.evidence||"无")}</div></details>
+    ${verdict}
+    <div class="actions">
+      ${d ? `<button class="later" data-a="revoke">↩ 撤销决定</button>` : `
         <button class="ok" data-a="approved">✅ 通过</button>
         <button class="no" data-a="rejected">❌ 拒绝</button>
         <button class="note" data-a="annotated">💬 批注</button>
-        <button class="later" data-a="deferred">⏭ 稍后</button>
-      </div>`;
-    q.appendChild(card);
-  }
+        <button class="later" data-a="deferred">⏭ 稍后</button>`}
+    </div>`;
+
+  // 导航条（上一个/下一个 + 进度点）
+  const nav = document.createElement("div");
+  nav.className = "nav";
+  nav.innerHTML = `
+    <button class="later" data-a="prev" ${cursor===0?"disabled":""}>⬅ 上一个</button>
+    <span class="navinfo">${cursor+1} / ${total}</span>
+    <button class="later" data-a="next" ${cursor>=total-1?"disabled":""}>下一个 ➡</button>`;
+  const dots = document.createElement("div");
+  dots.className = "dots";
+  dots.innerHTML = items.map((it,i)=>`
+    <span class="dot ${decisions[it.id]?"done":""} ${i===cursor?"cur":""}" data-a="goto" data-i="${i}"></span>`).join("");
+  card.appendChild(nav);
+  card.appendChild(dots);
+  q.appendChild(card);
 
   // 已自动修正区
   const ab = document.getElementById("autoBody");
   ab.innerHTML = autoFixes.length? autoFixes.map(a=>
     `<tr><td>${a.id}</td><td>${esc(a.action||"")}</td><td><code>${esc(a.commit||"")}</code></td><td>${a.time||""}</td></tr>`
   ).join("") : `<tr><td colspan="4">（无。自动修正产生的条目执行后追加到此，commit 号可回滚）</td></tr>`;
+}
+
+function renderVerdict(d){
+  const map = {
+    approved:["✅ 已通过","v-ok"],
+    rejected:["❌ 已拒绝","v-no"],
+    annotated:["💬 已批注（待回复）","v-note"],
+    deferred:["⏭ 已稍后（挂起）","v-later"],
+  };
+  const [label,cls] = map[d.action] || ["已处理","v-later"];
+  return `<div class="verdict ${cls}">${label}${d.reason?`<div class="v-reason">${esc(d.reason)}</div>`:""}</div>`;
 }
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
@@ -174,24 +220,50 @@ function askPopup(title, placeholder){
 function closePopup(val){ document.getElementById("popup").classList.add("hidden"); if(popupResolve){popupResolve(val);popupResolve=null;} }
 
 let currentAction = null;
+// 导航 + 决策事件（事件委托到 queue）
+function move(dir){
+  const next = cursor + dir;
+  if(next<0 || next>=items.length) return;
+  cursor = next;
+  render();
+}
 document.getElementById("queue").addEventListener("click", e=>{
   const b = e.target.closest("button[data-a]");
-  if(!b) return;
-  currentAction = b.dataset.a;
-  const cur = items.find(it=>!decisions[it.id]);
-  if(!cur) return;
-  handleAction(currentAction, cur);
+  if(b){
+    const a = b.dataset.a;
+    if(a==="prev"){ move(-1); return; }
+    if(a==="next"){ move(1); return; }
+    if(a==="revoke"){
+      delete decisions[items[cursor].id];
+      saveProgress(); render();
+      return;
+    }
+    currentAction = a;
+    handleAction(currentAction, items[cursor]);
+    return;
+  }
+  // 进度点跳转
+  const dot = e.target.closest(".dot[data-i]");
+  if(dot){ cursor = +dot.dataset.i; render(); }
 });
 
+afterDecision();
+function afterDecision(){
+  // 处理完一条：优先向后找下一条未处理，找不到则向前找
+  for(let i=cursor+1;i<items.length;i++){ if(!decisions[items[i].id]){ cursor=i; render(); return; } }
+  for(let i=cursor-1;i>=0;i--){ if(!decisions[items[i].id]){ cursor=i; render(); return; } }
+  render(); // 全部处理完
+}
+
 async function handleAction(action, cur){
-  if(action==="approved"){ decisions[cur.id]={action:"approved"}; saveProgress(); render(); }
-  else if(action==="deferred"){ decisions[cur.id]={action:"deferred"}; saveProgress(); render(); }
+  if(action==="approved"){ decisions[cur.id]={action:"approved"}; saveProgress(); afterDecision(); }
+  else if(action==="deferred"){ decisions[cur.id]={action:"deferred"}; saveProgress(); afterDecision(); }
   else if(action==="rejected" || action==="annotated"){
     const reason = await askPopup(action==="rejected"?"输入拒绝原因（必填）：":"输入你的批注（原话）：",
       action==="rejected"?"为什么拒绝这个改动？":"你有其他想说/想改的建议…");
     if(reason!==null){
       if(!reason.trim()){ alert("必填内容不能为空"); return; }
-      decisions[cur.id]={action, reason:reason.trim()}; saveProgress(); render();
+      decisions[cur.id]={action, reason:reason.trim()}; saveProgress(); afterDecision();
     }
   }
 }
@@ -211,19 +283,22 @@ document.getElementById("popText").addEventListener("keydown",e=>{ if(e.key==="E
 function closePrompt(v){ closePopup(v); }
 
 // 键盘全局
-document.addEventListener("keydown", e=>{
+function keyHandler(e){
   if(!document.getElementById("popup").classList.contains("hidden")){
     if(e.key==="Escape") closePopup(null);
     return;
   }
-  const cur = items.find(it=>!decisions[it.id]);
+  const cur = items[cursor];
   if(!cur) return;
-  if(e.key==="1") handleAction("approved", cur);
+  if(e.key==="ArrowLeft") move(-1);
+  else if(e.key==="ArrowRight") move(1);
+  else if(e.key==="1") handleAction("approved", cur);
   else if(e.key==="2") handleAction("rejected", cur);
   else if(e.key==="3") handleAction("annotated", cur);
   else if(e.key==="4") handleAction("deferred", cur);
   else if(e.key==="g") document.getElementById("batchBtn").click();
-});
+}
+document.addEventListener("keydown", keyHandler);
 
 // ---------- 导出/导入 ----------
 // 降级模式：导出为可直接粘贴回 TODOS 的 JSON 分段；真实接入由 agent 读 decisions 写回 TODOS.md
