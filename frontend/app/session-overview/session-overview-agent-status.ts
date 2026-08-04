@@ -1,4 +1,4 @@
-const AgentStatusHookProviders = ["codex", "claude"];
+const AgentStatusHookProviders = ["codex", "claude", "opencode", "pi"];
 const AgentStatusHookProviderSet = new Set(AgentStatusHookProviders);
 
 type AgentStatusHookBlock = {

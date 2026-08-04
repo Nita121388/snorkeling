@@ -4,7 +4,7 @@
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { BlockServiceType } from "@/app/store/services";
-import { ClaudeLogo, OpenAILogo } from "@/app/view/aisessions/controls";
+import { ClaudeLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
 import type { CcSwitchAppType, CcSwitchVendor } from "@/app/workspace/ccswitch-vendors";
 import { loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
 import { copyText } from "@/util/clipboard";
@@ -12,7 +12,7 @@ import { offset as offsetMiddleware, useClick, useDismiss, useFloating, useInter
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { agentHookActionLabel, agentHookStatusLabel, vendorIsolationStateLabel } from "./agentsettings-utils";
 
-const AgentHookProviderOrder = ["codex", "claude"];
+const AgentHookProviderOrder = ["codex", "claude", "opencode", "pi"];
 
 function normalizeProvider(provider: string): string {
     return provider.trim().toLowerCase();
@@ -24,6 +24,10 @@ function providerLabel(provider: string): string {
             return "Codex";
         case "claude":
             return "Claude";
+        case "opencode":
+            return "OpenCode";
+        case "pi":
+            return "Pi";
         default:
             return provider;
     }
@@ -39,6 +43,10 @@ function AgentProviderIcon({ provider }: { provider: string }) {
             return <OpenAILogo />;
         case "claude":
             return <ClaudeLogo />;
+        case "opencode":
+            return <OpencodeLogo />;
+        case "pi":
+            return <PiLogo />;
         default:
             return null;
     }
@@ -182,8 +190,8 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
             try {
                 await service.InstallAgentStatusHooks(provider);
                 await refresh();
-                if (provider === "claude" || provider === "codex") {
-                    await loadCcSwitchVendors(provider, true);
+                if (provider === "claude" || provider === "codex" || provider === "opencode" || provider === "pi") {
+                    await loadCcSwitchVendors(provider as CcSwitchAppType, true);
                 }
                 setNotice(`${providerLabel(provider)} hook is current.`);
             } catch (nextError) {
@@ -377,7 +385,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                 <div>
                                     <div className="mb-1 text-xxs font-medium text-muted">App</div>
                                     <div className="flex h-8 rounded border border-border p-0.5">
-                                        {(["claude", "codex"] as const).map((value) => (
+                                        {(["claude", "codex", "opencode", "pi"] as const).map((value) => (
                                             <button
                                                 key={value}
                                                 type="button"

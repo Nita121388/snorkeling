@@ -77,7 +77,8 @@ console.log();
 // installed Task can still run dev (matches use-local-env.ps1's PATH precedence).
 const { env, taskBin } = resolveEnv(repoRoot);
 
-const args = ["electron:dev", ...taskArgs];
+const taskName = process.env.SNORKELING_DEV_TASK || "electron:dev";
+const args = [taskName, ...taskArgs];
 const child = spawn(taskBin, args, { stdio: "inherit", env, shell: false });
 child.on("error", (err) => {
     if (err.code === "ENOENT") {

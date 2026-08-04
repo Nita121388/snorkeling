@@ -23,6 +23,7 @@
         "dev": "node scripts/dev-isolated.mjs",
         "dev:electron": "electron-vite dev",
         "dev:cdp": "node scripts/dev-isolated.mjs --profile cdp --vite-port 51742 --cdp-port 9222",
+        "dev:cdp:win": "node scripts/run-task.mjs electron:cdp:winquick",
         "start": "electron-vite preview",
         "build:dev": "node scripts/build-isolated.mjs --mode development",
         "build:prod": "node scripts/build-isolated.mjs --mode production",

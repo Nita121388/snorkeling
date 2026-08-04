@@ -348,6 +348,17 @@ type AgentTargetFloatingWindowProps = {
     codexSelectedVendorId?: string;
     onCodexSelectVendor?: (id: string | undefined) => void;
     onCodexRefreshVendors?: () => void;
+    // opencode + pi vendor sets — same shape as codex, dispatched by effectiveSelectedProfile.
+    opencodeVendorOptions?: CcSwitchVendor[];
+    opencodeVendorDetected?: boolean;
+    opencodeSelectedVendorId?: string;
+    onOpencodeSelectVendor?: (id: string | undefined) => void;
+    onOpencodeRefreshVendors?: () => void;
+    piVendorOptions?: CcSwitchVendor[];
+    piVendorDetected?: boolean;
+    piSelectedVendorId?: string;
+    onPiSelectVendor?: (id: string | undefined) => void;
+    onPiRefreshVendors?: () => void;
 };
 
 type TerminalTargetFloatingWindowProps = {
@@ -548,6 +559,16 @@ const AgentTargetFloatingWindow = memo(
         codexSelectedVendorId,
         onCodexSelectVendor,
         onCodexRefreshVendors,
+        opencodeVendorOptions,
+        opencodeVendorDetected,
+        opencodeSelectedVendorId,
+        onOpencodeSelectVendor,
+        onOpencodeRefreshVendors,
+        piVendorOptions,
+        piVendorDetected,
+        piSelectedVendorId,
+        onPiSelectVendor,
+        onPiRefreshVendors,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -603,12 +624,50 @@ const AgentTargetFloatingWindow = memo(
         // same `vendorOptions/selectedVendorId` plumbing the rest of this component already uses.
         const isClaudeProfileActive = effectiveSelectedProfile === "claude";
         const isCodexProfileActive = effectiveSelectedProfile === "codex";
-        const effectiveVendorOptions = isCodexProfileActive ? codexVendorOptions : vendorOptions;
-        const effectiveVendorDetected = isCodexProfileActive ? codexVendorDetected : vendorDetected;
-        const effectiveSelectedVendorId = isCodexProfileActive ? codexSelectedVendorId : selectedVendorId;
-        const effectiveOnSelectVendor = isCodexProfileActive ? onCodexSelectVendor : onSelectVendor;
-        const effectiveOnRefreshVendors = isCodexProfileActive ? onCodexRefreshVendors : onRefreshVendors;
-        const effectiveAppType: CcSwitchAppType = isCodexProfileActive ? "codex" : "claude";
+        const isOpencodeProfileActive = effectiveSelectedProfile === "opencode";
+        const isPiProfileActive = effectiveSelectedProfile === "pi";
+        const effectiveAppType: CcSwitchAppType = isCodexProfileActive
+            ? "codex"
+            : isOpencodeProfileActive
+              ? "opencode"
+              : isPiProfileActive
+                ? "pi"
+                : "claude";
+        const effectiveVendorOptions = isCodexProfileActive
+            ? codexVendorOptions
+            : isOpencodeProfileActive
+              ? opencodeVendorOptions
+              : isPiProfileActive
+                ? piVendorOptions
+                : vendorOptions;
+        const effectiveVendorDetected = isCodexProfileActive
+            ? codexVendorDetected
+            : isOpencodeProfileActive
+              ? opencodeVendorDetected
+              : isPiProfileActive
+                ? piVendorDetected
+                : vendorDetected;
+        const effectiveSelectedVendorId = isCodexProfileActive
+            ? codexSelectedVendorId
+            : isOpencodeProfileActive
+              ? opencodeSelectedVendorId
+              : isPiProfileActive
+                ? piSelectedVendorId
+                : selectedVendorId;
+        const effectiveOnSelectVendor = isCodexProfileActive
+            ? onCodexSelectVendor
+            : isOpencodeProfileActive
+              ? onOpencodeSelectVendor
+              : isPiProfileActive
+                ? onPiSelectVendor
+                : onSelectVendor;
+        const effectiveOnRefreshVendors = isCodexProfileActive
+            ? onCodexRefreshVendors
+            : isOpencodeProfileActive
+              ? onOpencodeRefreshVendors
+              : isPiProfileActive
+                ? onPiRefreshVendors
+                : onRefreshVendors;
         const effectiveSelectedVendor = effectiveVendorOptions?.find(
             (vendor) => vendor.id === effectiveSelectedVendorId
         );
@@ -1485,6 +1544,15 @@ const Widgets = memo(() => {
     const [ccCodexVendors, setCcCodexVendors] = useState<CcSwitchVendor[]>([]);
     const [ccCodexDetected, setCcCodexDetected] = useState<boolean>(false);
     const [ccCodexSelectedVendorId, setCcCodexSelectedVendorId] = useState<string | undefined>(undefined);
+    // opencode + pi vendor state — mirrors the claude/codex pattern. Pi is dormant until cc-switch
+    // upstream adds "pi" to VisibleApps (see memory 'opencode-pi-ccswitch-no-pi-gap'), but the state
+    // is wired so a row present in ~/.cc-switch/cc-switch.db renders correctly.
+    const [ccOpencodeVendors, setCcOpencodeVendors] = useState<CcSwitchVendor[]>([]);
+    const [ccOpencodeDetected, setCcOpencodeDetected] = useState<boolean>(false);
+    const [ccOpencodeSelectedVendorId, setCcOpencodeSelectedVendorId] = useState<string | undefined>(undefined);
+    const [ccPiVendors, setCcPiVendors] = useState<CcSwitchVendor[]>([]);
+    const [ccPiDetected, setCcPiDetected] = useState<boolean>(false);
+    const [ccPiSelectedVendorId, setCcPiSelectedVendorId] = useState<string | undefined>(undefined);
 
     const rawAgentProfileOptions = useMemo(
         () => getAgentProfileOptions(settings, agentCommandPaths),
@@ -1552,12 +1620,23 @@ const Widgets = memo(() => {
     const refreshCcSwitchVendors = useCallback((appType: CcSwitchAppType, force: boolean) => {
         fireAndForget(async () => {
             const list = await loadCcSwitchVendors(appType, force);
-            if (appType === "codex") {
-                setCcCodexVendors(list.vendors ?? []);
-                setCcCodexDetected(Boolean(list.detected));
-            } else {
-                setCcSwitchVendors(list.vendors ?? []);
-                setCcSwitchDetected(Boolean(list.detected));
+            switch (appType) {
+                case "codex":
+                    setCcCodexVendors(list.vendors ?? []);
+                    setCcCodexDetected(Boolean(list.detected));
+                    break;
+                case "opencode":
+                    setCcOpencodeVendors(list.vendors ?? []);
+                    setCcOpencodeDetected(Boolean(list.detected));
+                    break;
+                case "pi":
+                    setCcPiVendors(list.vendors ?? []);
+                    setCcPiDetected(Boolean(list.detected));
+                    break;
+                default:
+                    setCcSwitchVendors(list.vendors ?? []);
+                    setCcSwitchDetected(Boolean(list.detected));
+                    break;
             }
         });
     }, []);
@@ -1568,6 +1647,8 @@ const Widgets = memo(() => {
         }
         refreshCcSwitchVendors("claude", false);
         refreshCcSwitchVendors("codex", false);
+        refreshCcSwitchVendors("opencode", false);
+        refreshCcSwitchVendors("pi", false);
     }, [isAgentTargetOpen, refreshCcSwitchVendors]);
 
     const closeAgentTargetSelector = useCallback(() => {
@@ -1579,6 +1660,8 @@ const Widgets = memo(() => {
         // Reset both app_types — neither selection leaks to the next open.
         setCcSwitchSelectedVendorId(undefined);
         setCcCodexSelectedVendorId(undefined);
+        setCcOpencodeSelectedVendorId(undefined);
+        setCcPiSelectedVendorId(undefined);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -2153,6 +2236,16 @@ const Widgets = memo(() => {
                     codexSelectedVendorId={ccCodexSelectedVendorId}
                     onCodexSelectVendor={setCcCodexSelectedVendorId}
                     onCodexRefreshVendors={() => refreshCcSwitchVendors("codex", true)}
+                    opencodeVendorOptions={ccOpencodeVendors}
+                    opencodeVendorDetected={ccOpencodeDetected}
+                    opencodeSelectedVendorId={ccOpencodeSelectedVendorId}
+                    onOpencodeSelectVendor={setCcOpencodeSelectedVendorId}
+                    onOpencodeRefreshVendors={() => refreshCcSwitchVendors("opencode", true)}
+                    piVendorOptions={ccPiVendors}
+                    piVendorDetected={ccPiDetected}
+                    piSelectedVendorId={ccPiSelectedVendorId}
+                    onPiSelectVendor={setCcPiSelectedVendorId}
+                    onPiRefreshVendors={() => refreshCcSwitchVendors("pi", true)}
                 />
             )}
             {terminalReferenceElement != null && (

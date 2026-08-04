@@ -7,7 +7,7 @@ import {
 
 describe("agentStatusHookProvidersForInstall", () => {
     it("checks every supported provider in install order", () => {
-        expect(agentStatusHookProvidersForInstall()).toEqual(["codex", "claude"]);
+        expect(agentStatusHookProvidersForInstall()).toEqual(["codex", "claude", "opencode", "pi"]);
     });
 });
 
@@ -29,6 +29,16 @@ describe("agentStatusHookProvidersForBlocks", () => {
                 { isAgentLike: true, agentProvider: "gemini" },
             ])
         ).toEqual(["codex", "claude"]);
+    });
+
+    it("includes opencode and pi provider blocks", () => {
+        expect(
+            agentStatusHookProvidersForBlocks([
+                { isAgentLike: true, agentProvider: "opencode" },
+                { isAgentLike: true, agentProvider: "pi" },
+                { isAgentLike: true, agentProvider: "claude" },
+            ])
+        ).toEqual(["claude", "opencode", "pi"]);
     });
 });
 
