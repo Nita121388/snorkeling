@@ -690,10 +690,15 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	if err != nil {
 		appendWshUploadDiag("prepare-failed", "error", err.Error())
 		blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-failed error=%v\n", err)
-		return fmt.Errorf("remote wsh prepare failed: %w (stdout: %s; stderr: %s)", err, strings.TrimSpace(prepareStdout), strings.TrimSpace(prepareStderr))
+		remainingMs := int64(-1)
+		if deadline, ok := ctx.Deadline(); ok {
+			remainingMs = time.Until(deadline).Milliseconds()
+		}
+		return fmt.Errorf("remote wsh prepare failed: %w (context remaining: %dms; stdout: %s; stderr: %s)", err, remainingMs, strings.TrimSpace(prepareStdout), strings.TrimSpace(prepareStderr))
 	}
 	appendWshUploadDiag("prepare-complete")
 	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=prepare-complete\n")
+	blocklogger.Infof(ctx, "[conndebug] wsh upload stage=prepare-complete os=windows remote_path=%s\n", remoteTempPath)
 
 	// 3. Upload the binary through the remote SFTP subsystem. SFTP gives the binary
 	// an explicit remote file lifecycle and avoids PowerShell stdin EOF handling.
@@ -722,6 +727,7 @@ func cpWshToWindowsRemote(ctx context.Context, client *ssh.Client, input *os.Fil
 	sftpTempPath := makeWindowsSFTPPath(remoteHomePath, remoteTempPath)
 	appendWshUploadDiag("sftp-client-created", "remote_home", remoteHomePath, "remote_path", sftpTempPath)
 	blocklogger.Debugf(ctx, "[conndebug] wsh upload stage=sftp-client-created remote_home=%s remote_path=%s\n", remoteHomePath, sftpTempPath)
+	blocklogger.Infof(ctx, "[conndebug] wsh upload stage=sftp-upload-start remote_path=%s bytes=%d\n", sftpTempPath, inputSize)
 	uploadErr := uploadFileViaSFTP(ctx, func(path string) (io.WriteCloser, error) {
 		return sftpClient.Create(path)
 	}, func() {
@@ -762,7 +768,11 @@ type sftpCopyResult struct {
 func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteCloser, error), abortTransport func(), remotePath string, input io.Reader, inputSize int64, onProgress func(written, total int64)) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+		remainingMs := int64(-1)
+		if deadline, ok := ctx.Deadline(); ok {
+			remainingMs = time.Until(deadline).Milliseconds()
+		}
+		return fmt.Errorf("remote wsh upload canceled (context deadline exceeded, %dms remaining): %w", remainingMs, ctx.Err())
 	default:
 	}
 	remoteFile, err := openFile(remotePath)
@@ -857,7 +867,7 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 		}
 		_ = remoteFile.Close()
 		<-copyDone
-		return fmt.Errorf("remote wsh upload canceled: %w", ctxErr)
+		return fmt.Errorf("remote wsh upload canceled: %w (transferred %d/%d bytes)", ctxErr, pwd.written.Load(), inputSize)
 	case <-timer.C:
 		appendWshUploadDiag("sftp-upload-timeout", "written", pwd.written.Load(), "context_error", context.DeadlineExceeded.Error())
 		close(stopCh)
@@ -867,7 +877,7 @@ func uploadFileViaSFTP(ctx context.Context, openFile func(string) (io.WriteClose
 		}
 		_ = remoteFile.Close()
 		<-copyDone
-		return fmt.Errorf("remote wsh upload canceled: %w", context.DeadlineExceeded)
+		return fmt.Errorf("remote wsh upload timed out: %w (transferred %d/%d bytes)", context.DeadlineExceeded, pwd.written.Load(), inputSize)
 	case result := <-copyDone:
 		close(stopCh)
 		wg.Wait()
@@ -942,7 +952,7 @@ func runSessionWithContext(ctx context.Context, session *ssh.Session, cmd string
 	select {
 	case <-ctx.Done():
 		session.Close()
-		return ctx.Err()
+		return fmt.Errorf("ssh session canceled (context deadline exceeded while running %q): %w", cmd, ctx.Err())
 	case err := <-errCh:
 		return err
 	}
@@ -1199,7 +1209,11 @@ func CpWshToRemoteWithProgress(ctx context.Context, client *ssh.Client, clientOs
 	case copyErr = <-copyDone:
 	case <-ctx.Done():
 		_ = stdin.Close()
-		return fmt.Errorf("remote wsh upload canceled: %w", ctx.Err())
+		remaining := "unknown"
+		if deadline, ok := ctx.Deadline(); ok {
+			remaining = time.Until(deadline).String()
+		}
+		return fmt.Errorf("remote wsh upload canceled (context deadline exceeded, %s remaining): %w", remaining, ctx.Err())
 	}
 	if procErr != nil {
 		return fmt.Errorf("remote command failed: %w (stderr: %s)", procErr, stderrBuf.String())
