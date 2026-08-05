@@ -58,6 +58,7 @@ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/uti
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { getAgentLogoByProvider } from "./agent-logo";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
@@ -73,17 +74,6 @@ import {
 import { TermWrap, WebGLSupported } from "./termwrap";
 
 const TerminalFontFamilies = ["Hack", "JetBrains Mono", "SF Mono", "Menlo", "Berkeley Mono"];
-
-export function normalizeAgentProvider(provider: unknown): string {
-    return typeof provider === "string" && provider.trim() !== "" ? provider.trim() : "agent";
-}
-
-export function isAgentTerminalMeta(meta: MetaType | null | undefined): boolean {
-    if (meta == null) return false;
-    return resolveAgentSessionId(meta).isAgent;
-}
-
-export { getAgentLogoByProvider };
 
 export class TermViewModel implements ViewModel {
     viewType: string;

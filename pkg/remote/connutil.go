@@ -79,7 +79,7 @@ const UploadMinTimeout = 90 * time.Second
 // surfaces as "Failed" (and triggers the Manual install fallback) in finite
 // time, instead of hanging indefinitely on a multi-GB wsh binary over a
 // saturated link (a real binary is ~10MB; we leave generous headroom).
-const UploadMaxTimeout = 5 * time.Minute
+const UploadMaxTimeout = 15 * time.Minute
 
 // UploadBytesPerSecond is the assumed slow-link throughput used to compute the
 // adaptive upload timeout. 256 KiB/s is conservative — it's roughly a

@@ -7,7 +7,7 @@ import { Tooltip } from "@/app/element/tooltip";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
-import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo } from "@/app/view/aisessions/controls";
+import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -509,6 +509,7 @@ const AgentProfileColors: Record<string, string> = {
     claude: "#cc685c",
     gemini: "#8e7cc3",
     opencode: "#e0b956",
+    pi: "#888888",
 };
 
 const AgentProfileIcons: Record<string, ReactNode> = {
@@ -516,6 +517,7 @@ const AgentProfileIcons: Record<string, ReactNode> = {
     claude: <ClaudeLogo />,
     gemini: <GeminiLogo />,
     opencode: <OpencodeLogo />,
+    pi: <PiLogo />,
 };
 
 function launchTargetSourceLabel(target: AgentLaunchTarget): string {

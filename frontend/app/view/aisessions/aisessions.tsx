@@ -15,7 +15,7 @@ import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ClaudeLogo, IconButton, OpenAILogo, SortButton, SourceButton } from "./controls";
+import { ClaudeLogo, IconButton, OpenAILogo, PiLogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
@@ -1105,6 +1105,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             active={source === "claude"}
                                             busy={filterBusy && source === "claude"}
                                             onClick={() => setSource("claude")}
+                                        />
+                                        <SourceButton
+                                            label="Pi"
+                                            icon={<PiLogo />}
+                                            active={source === "pi"}
+                                            busy={filterBusy && source === "pi"}
+                                            onClick={() => setSource("pi")}
                                         />
                                     </div>
                                     <div className="flex-1" />

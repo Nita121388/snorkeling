@@ -391,6 +391,13 @@ func TestExtractWshVersionLineSkipsPowerShellNoise(t *testing.T) {
 	}
 }
 
+func TestUploadMaxTimeoutCoversMeasuredSlowWindowsSFTP(t *testing.T) {
+	const minimumTimeout = 15 * time.Minute
+	if UploadMaxTimeout < minimumTimeout {
+		t.Fatalf("upload max timeout is %s, want at least %s for slow Windows SFTP", UploadMaxTimeout, minimumTimeout)
+	}
+}
+
 // TestComputeAdaptiveTimeout_FastLink verifies that on a fast link the
 // computed deadline comfortably exceeds the elapsed time (so the watchdog
 // won't trip a healthy upload).

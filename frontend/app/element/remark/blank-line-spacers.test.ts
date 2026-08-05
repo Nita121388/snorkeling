@@ -21,6 +21,15 @@ function spacerLineCounts(tree: Root): number[] {
         .map((c: any) => Number(c.data.hProperties["data-spacer-lines"]));
 }
 
+// Source line range each spacer claims, read from the injected position. The preview's
+// `srcLineAttrs` uses this to emit `data-source-line` / `data-source-line-end`, which lets
+// click-to-edit target the blank line(s) a spacer represents.
+function spacerPositions(tree: Root): Array<[number, number]> {
+    return tree.children
+        .filter((c: any) => c?.type === "paragraph" && c?.data?.hProperties?.["data-spacer-lines"])
+        .map((c: any) => [c.position.start.line, c.position.end.line]);
+}
+
 describe("remarkBlankLineSpacers", () => {
     it("inserts one spacer between paragraphs separated by a single blank line", () => {
         const tree = transform("a\n\nb\n");
@@ -57,6 +66,36 @@ describe("remarkBlankLineSpacers", () => {
         const tree = transform("# h1\n\npara\n");
         const kinds = tree.children.map((c) => c.type);
         expect(kinds).toEqual(["heading", "paragraph", "paragraph"]);
+    });
+
+    it("injects a position on each spacer pointing at the blank source line it replaces", () => {
+        // Source: line1 "a", line2 blank, line3 blank, line4 blank, line5 "b".
+        // gap = 3 → 3 spacers, each claiming exactly one blank line (2,3,4).
+        const tree = transform("a\n\n\n\nb\n");
+        expect(spacerPositions(tree)).toEqual([
+            [2, 2],
+            [3, 3],
+            [4, 4],
+        ]);
+    });
+
+    it("injects contiguous source-line ranges when linesPerSpacer > 1", () => {
+        const processor = unified()
+            .use(remarkParse)
+            .use(remarkBlankLineSpacers, { linesPerSpacer: 2 })
+            .use(remarkStringify);
+        // gap = 3, linesPerSpacer = 2 → 1 spacer covering blank lines [2,3].
+        const tree = processor.runSync(processor.parse("a\n\n\n\nb\n") as Root) as Root;
+        expect(spacerPositions(tree)).toEqual([[2, 3]]);
+    });
+
+    it("spacers for leading blanks start at line 1", () => {
+        // Two leading blanks before the first node on line 3.
+        const tree = transform("\n\npara\n");
+        expect(spacerPositions(tree)).toEqual([
+            [1, 1],
+            [2, 2],
+        ]);
     });
 
     it("omits the spacer plugin when makeRemarkPlugins is called with blankSpacer: null", () => {

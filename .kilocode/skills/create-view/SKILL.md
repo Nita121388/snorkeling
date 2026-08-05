@@ -14,6 +14,8 @@ Wave Terminal uses a **Model-View architecture** where:
 - **ViewModel** - Contains all state, logic, and UI configuration as Jotai atoms
 - **ViewComponent** - Pure React component that renders the UI using the model
 - **BlockFrame** - Wraps views with a header, connection management, and standard controls
+- **BlockRegistry** - A dependency-free registry core that creates view models
+- **BuiltinViews** - The composition root that imports and registers concrete built-in view models
 
 The separation between model and component ensures:
 
@@ -203,20 +205,22 @@ export const MyView: React.FC<ViewComponentProps<MyViewModel>> = ({
 
 ### 3. Register the View
 
-Add your view to the `BlockRegistry` in `frontend/app/block/blockregistry.ts`:
+Add your view to `BuiltinViewModels` in `frontend/app/block/builtinviews.ts`:
 
 ```typescript
 import { MyViewModel } from "@/app/view/myview/myview-model";
 
-const BlockRegistry: Map<string, ViewModelClass> = new Map();
-BlockRegistry.set("term", TermViewModel);
-BlockRegistry.set("preview", PreviewModel);
-BlockRegistry.set("web", WebViewModel);
-// ... existing registrations ...
-BlockRegistry.set("myview", MyViewModel); // Add your view here
+const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
+  ["term", TermViewModel],
+  ["preview", PreviewModel],
+  ["web", WebViewModel],
+  // ... existing registrations ...
+  ["myview", MyViewModel],
+];
 ```
 
 The registry key (e.g., `"myview"`) becomes the view type used in block metadata.
+Keep `blockregistry.ts` free of concrete view imports. Application entry points call `registerBuiltinViews()` so the dependency-heavy view graph is assembled only at the composition root.
 
 ### 4. Create Blocks with Your View
 
@@ -515,6 +519,8 @@ await RpcApi.SetMetaCommand(TabRpcClient, {
 ## Additional Resources
 
 - `frontend/app/block/blockframe-header.tsx` - Block header rendering
+- `frontend/app/block/blockregistry.ts` - Dependency-free view registry core
+- `frontend/app/block/builtinviews.ts` - Built-in view composition root
 - `frontend/app/view/term/term-model.ts` - Complex view example
 - `frontend/app/view/webview/webview.tsx` - Navigation UI example
 - `frontend/types/custom.d.ts` - Type definitions

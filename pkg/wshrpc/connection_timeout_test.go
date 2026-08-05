@@ -6,7 +6,7 @@ package wshrpc
 import "testing"
 
 func TestConnectionOperationTimeoutCoversWshInstall(t *testing.T) {
-	const minimumTimeoutMs int64 = 7 * 60 * 1000
+	const minimumTimeoutMs int64 = 16 * 60 * 1000
 	if ConnectionOperationTimeoutMs < minimumTimeoutMs {
 		t.Fatalf("connection operation timeout is %dms, want at least %dms", ConnectionOperationTimeoutMs, minimumTimeoutMs)
 	}

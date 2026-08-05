@@ -5,7 +5,7 @@
 package wshrpc
 
 const (
-	ConnectionOperationTimeoutMs int64 = 8 * 60 * 1000
+	ConnectionOperationTimeoutMs int64 = 16 * 60 * 1000
 	// MaxFileSize is the maximum file size that can be read
 	MaxFileSize = 50 * 1024 * 1024 // 50M
 	// MaxDirSize is the maximum number of entries that can be read in a directory

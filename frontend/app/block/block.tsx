@@ -13,7 +13,8 @@ import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { getAgentLogoByProvider, isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/term-model";
+import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     agentStatusPresentation,

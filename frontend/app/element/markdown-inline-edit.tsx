@@ -61,7 +61,7 @@ export function inlineEditDebug(msg: string, details: Record<string, unknown> = 
  *   3) optional CSS in markdown.scss keyed on `.inline-edit-overlay[data-block-kind="..."]`
  *      if the textarea should match the rendered block's typography (e.g. `code` → monospace).
  */
-export type InlineEditBlockKind = "p" | "h" | "list" | "table" | "code";
+export type InlineEditBlockKind = "p" | "h" | "list" | "table" | "code" | "blank" | "hr";
 
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;

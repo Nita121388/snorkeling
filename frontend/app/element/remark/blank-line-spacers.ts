@@ -18,14 +18,13 @@ import { DEFAULT_BLANK_SPACER_OPTIONS, SPACER_DATA, type BlankSpacerOptions } fr
  * `minSpacerLines`. Spacers carry `data-spacer-lines` so the renderer (and
  * CSS) can size them faithfully — 1 blank line = 1 line of vertical rhythm.
  *
- * Spacers are emitted as mdast `paragraph` nodes whose `data.hName`/`hProperties`
- * flow through rehype-sanitize untouched (we keep `p` in the schema, and
- * `data-*` attributes survive the defaultSchema as long as they don't carry
- * `:`). If a future caller wants spacers as `<div>` instead, flip SPACER_DATA
- * .hName — the surrounding `markdownComponents.p` will still receive the
- * resulting element because of the hName override.
+ * Spacers carry an injected `position` pointing at the actual blank source
+ * line(s) they represent. The preview's `srcLineAttrs` helper reads that
+ * position to emit `data-source-line` / `data-source-line-end`, so clicking
+ * a spacer in preview inline-edit mode opens an editor scoped to exactly those
+ * blank lines — the same mechanism used for paragraphs, headings, and lists.
  */
-function makeSpacer(spacerLines: number): Paragraph {
+function makeSpacer(spacerLines: number, startLine: number, endLine: number): Paragraph {
     return {
         type: "paragraph",
         children: [{ type: "text", value: "" }],
@@ -33,7 +32,35 @@ function makeSpacer(spacerLines: number): Paragraph {
             hName: SPACER_DATA.hName,
             hProperties: SPACER_DATA.hProperties(spacerLines),
         },
+        // Inject position so react-markdown's hast node carries a valid
+        // position and `srcLineAttrs` emits `data-source-line` / `data-source-line-end`.
+        position: {
+            start: { line: startLine, column: 1, offset: 0 },
+            end: { line: endLine, column: 1, offset: 0 },
+        },
     };
+}
+
+/**
+ * Create a spacer for a contiguous range of blank source lines
+ * [gapStart..gapStart+count*linesPerSpacer-1], one per linesPerSpacer lines.
+ * Each individual spacer's injected position covers exactly the lines it
+ * represents so click-to-edit targets a single spacer (and its blank lines)
+ * rather than the entire gap.
+ */
+function makeSpacers(
+    gap: number,
+    linesPerSpacer: number,
+    gapStartLine: number
+): Paragraph[] {
+    const count = Math.floor(gap / linesPerSpacer);
+    const spacers: Paragraph[] = [];
+    for (let k = 0; k < count; k++) {
+        const startLine = gapStartLine + k * linesPerSpacer;
+        const endLine = gapStartLine + (k + 1) * linesPerSpacer - 1;
+        spacers.push(makeSpacer(gap, startLine, endLine));
+    }
+    return spacers;
 }
 
 const remarkBlankLineSpacers: Plugin<[BlankSpacerOptions?], Root> = function (opts) {
@@ -49,10 +76,7 @@ const remarkBlankLineSpacers: Plugin<[BlankSpacerOptions?], Root> = function (op
         const firstStart = children[0]?.position?.start?.line;
         if (config.renderLeadingBlanks && typeof firstStart === "number" && firstStart > 1) {
             const gap = firstStart - 1;
-            const count = Math.floor(gap / config.linesPerSpacer);
-            for (let i = 0; i < count; i++) {
-                result.push(makeSpacer(gap));
-            }
+            result.push(...makeSpacers(gap, config.linesPerSpacer, 1));
         }
 
         for (let i = 0; i < children.length; i++) {
@@ -67,10 +91,7 @@ const remarkBlankLineSpacers: Plugin<[BlankSpacerOptions?], Root> = function (op
             const gap = nextStart - curEnd - 1;
             if (gap < config.minSpacerLines) continue;
 
-            const count = Math.floor(gap / config.linesPerSpacer);
-            for (let k = 0; k < count; k++) {
-                result.push(makeSpacer(gap));
-            }
+            result.push(...makeSpacers(gap, config.linesPerSpacer, curEnd + 1));
         }
 
         // Trailing blanks: from last node's end to total file lines.
@@ -78,10 +99,7 @@ const remarkBlankLineSpacers: Plugin<[BlankSpacerOptions?], Root> = function (op
             const lastEnd = children[children.length - 1]?.position?.end?.line;
             if (typeof lastEnd === "number" && totalLines > lastEnd) {
                 const gap = totalLines - lastEnd;
-                const count = Math.floor(gap / config.linesPerSpacer);
-                for (let i = 0; i < count; i++) {
-                    result.push(makeSpacer(gap));
-                }
+                result.push(...makeSpacers(gap, config.linesPerSpacer, lastEnd + 1));
             }
         }
 

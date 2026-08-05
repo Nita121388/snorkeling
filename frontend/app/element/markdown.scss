@@ -256,6 +256,17 @@
             padding: 0.143em 0.286em 0.143em 0.429em;
         }
 
+        // reset.scss zeroes margins on every element, so a bare <hr> renders as a 1px line
+        // flush against its neighbors; two consecutive `---` then stack border-on-border and
+        // read as one thick 2px divider. Give the rule breathing room so each divider stays a
+        // distinct thin line with a visible gap.
+        hr {
+            height: 0;
+            margin: 0.714em 0;
+            border: 0;
+            border-top: 1px solid var(--border-color);
+        }
+
         .table-wrapper {
             width: 100%;
             overflow-x: auto;
@@ -459,5 +470,13 @@
 
     &[data-block-kind="table"] .inline-edit-textarea {
         font-variant-numeric: tabular-nums;
+    }
+
+    // Blank (empty-line spacer) and hr (--- divider) blocks are only a few px tall in the
+    // rendered tree, but the user needs a comfortable typeable target. Grow the text box a
+    // bit more for these two so the click-and-type affordance isn't a hairline.
+    &[data-block-kind="blank"] .inline-edit-textarea,
+    &[data-block-kind="hr"] .inline-edit-textarea {
+        min-height: 2.5em;
     }
 }

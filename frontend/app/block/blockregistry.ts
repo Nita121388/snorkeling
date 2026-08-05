@@ -2,51 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
-import { SessionOverviewViewModel } from "@/app/session-overview/session-overview";
 import type { TabModel } from "@/app/store/tab-model";
-import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
-import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
-import { LauncherViewModel } from "@/app/view/launcher/launcher";
-import { PreviewModel } from "@/app/view/preview/preview-model";
-import { ProcessViewerViewModel } from "@/app/view/processviewer/processviewer";
-import { SysinfoViewModel } from "@/app/view/sysinfo/sysinfo";
-import { TsunamiViewModel } from "@/app/view/tsunami/tsunami";
-import { VcsViewModel } from "@/app/view/vcs/vcs";
-import { VcsCommitsViewModel } from "@/app/view/vcscommits/vcscommits";
-import { VcsDiffViewModel } from "@/app/view/vcsdiff/vcsdiff";
-import { VcsHistoryViewModel } from "@/app/view/vcshistory/vcshistory";
-import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WaveEnv } from "@/app/waveenv/waveenv";
-import { HelpViewModel } from "@/view/helpview/helpview";
-import { TermViewModel } from "@/view/term/term-model";
-import { WaveAiModel } from "@/view/waveai/waveai";
-import { WebViewModel } from "@/view/webview/webview";
 import { atom } from "jotai";
-import { QuickTipsViewModel } from "../view/quicktipsview/quicktipsview";
-import { WaveConfigViewModel } from "../view/waveconfig/waveconfig-model";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
 
 const BlockRegistry: Map<string, ViewModelClass> = new Map();
-BlockRegistry.set("term", TermViewModel);
-BlockRegistry.set("preview", PreviewModel);
-BlockRegistry.set("web", WebViewModel);
-BlockRegistry.set("waveai", WaveAiModel);
-BlockRegistry.set("cpuplot", SysinfoViewModel);
-BlockRegistry.set("sysinfo", SysinfoViewModel);
-BlockRegistry.set("vdom", VDomModel);
-BlockRegistry.set("tips", QuickTipsViewModel);
-BlockRegistry.set("help", HelpViewModel);
-BlockRegistry.set("launcher", LauncherViewModel);
-BlockRegistry.set("tsunami", TsunamiViewModel);
-BlockRegistry.set("aifilediff", AiFileDiffViewModel);
-BlockRegistry.set("waveconfig", WaveConfigViewModel);
-BlockRegistry.set("processviewer", ProcessViewerViewModel);
-BlockRegistry.set("aisessions", AiSessionsViewModel);
-BlockRegistry.set("sessionoverview", SessionOverviewViewModel);
-BlockRegistry.set("vcs", VcsViewModel);
-BlockRegistry.set("vcscommits", VcsCommitsViewModel);
-BlockRegistry.set("vcsdiff", VcsDiffViewModel);
-BlockRegistry.set("vcshistory", VcsHistoryViewModel);
+
+function registerViewModel(viewType: string, ctor: ViewModelClass): void {
+    BlockRegistry.set(viewType, ctor);
+}
 
 function makeDefaultViewModel(viewType: string): ViewModel {
     const viewModel: ViewModel = {
@@ -74,4 +39,4 @@ function makeViewModel(
     return makeDefaultViewModel(blockView);
 }
 
-export { makeViewModel };
+export { makeViewModel, registerViewModel };

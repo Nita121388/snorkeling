@@ -944,7 +944,14 @@ const Markdown = ({
             }
             const tag = target.tagName;
             let blockKind: InlineEditBlockKind | null = null;
-            if (tag === "P" || target.classList.contains("paragraph")) {
+            // Spacers render through the same `p` component as paragraphs but carry the
+            // `blank-spacer` class (see remark/blank-line-spacers). A blank line is not prose —
+            // editing it should target the blank source line(s), not open a paragraph textarea.
+            if (target.classList.contains("blank-spacer")) {
+                blockKind = "blank";
+            } else if (tag === "HR") {
+                blockKind = "hr";
+            } else if (tag === "P" || target.classList.contains("paragraph")) {
                 blockKind = "p";
             } else if (
                 tag === "H1" ||
@@ -1577,6 +1584,9 @@ const Markdown = ({
                 collapsed={collapsedHeadings.has(String(props.id))}
                 onToggle={toggleHeadingCollapse}
             />
+        ),
+        hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
+            <hr {...props} {...srcLineAttrs(props)} />
         ),
         table: MarkdownTable,
         ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (

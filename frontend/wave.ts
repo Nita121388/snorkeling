@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
+import { registerBuiltinViews } from "@/app/block/builtinviews";
 import { loadMonaco, setMonacoTheme } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
@@ -37,6 +38,8 @@ import { setKeyUtilPlatform } from "@/util/keyutil";
 import { isMacOS, setMacOSVersion } from "@/util/platformutil";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
+
+registerBuiltinViews();
 
 const platform = getApi().getPlatform();
 document.title = `Wave Terminal`;

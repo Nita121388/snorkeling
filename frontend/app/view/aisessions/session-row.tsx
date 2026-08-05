@@ -32,6 +32,7 @@ function noteHasProse(note: string | null | undefined): boolean {
 function sourceDotClass(source: string): string {
     if (source === "claude") return "bg-source-claude";
     if (source === "codex") return "bg-source-codex";
+    if (source === "pi") return "bg-source-pi";
     return "bg-secondary";
 }
 
