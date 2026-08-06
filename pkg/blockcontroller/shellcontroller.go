@@ -61,8 +61,10 @@ const (
 )
 
 const (
-	AgentProviderCodex  = "codex"
-	AgentProviderClaude = "claude"
+	AgentProviderCodex    = "codex"
+	AgentProviderClaude   = "claude"
+	AgentProviderOpenCode = "opencode"
+	AgentProviderPi       = "pi"
 )
 
 type AgentRunInfo struct {
@@ -952,6 +954,10 @@ func resolveAgentCmdAndArgs(
 			cmdArgs = append([]string{"resume", sessionId}, stripCodexResumeArgs(cmdArgs)...)
 		case AgentProviderClaude:
 			cmdArgs = append([]string{"--resume", sessionId}, stripClaudeSessionArgs(cmdArgs)...)
+		case AgentProviderOpenCode:
+			cmdArgs = append([]string{"--session", sessionId}, cmdArgs...)
+		case AgentProviderPi:
+			cmdArgs = append([]string{"--session-id", sessionId}, cmdArgs...)
 		}
 		return cmdStr, cmdArgs, agentRunInfo, nil
 	}

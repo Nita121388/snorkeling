@@ -63,40 +63,54 @@ func (p *PiProvider) ParseSummary(ctx context.Context, file SessionFile) (Sessio
 	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: file.Path, MTime: mtime, Size: size})
 }
 
+// parseSummaryFile reads the pi JSONL v3 header line. Real pi files carry an
+// ISO-8601 string timestamp (older fixtures guessed numeric epoch), so the line
+// is decoded as a generic map and normalized with parseTimestampToMS, which
+// accepts both shapes.
 func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
-	head, _, err := readHeadTailLines(file.Path, 1, 1)
+	head, tail, err := readHeadTailLines(file.Path, 1, 1)
 	if err != nil {
 		return SessionSummary{}, false
 	}
 	if len(head) == 0 {
 		return SessionSummary{}, false
 	}
-	var header piSessionHeader
+	var header map[string]any
 	if err := json.Unmarshal([]byte(head[0]), &header); err != nil {
 		return SessionSummary{}, false
 	}
-	if header.ID == "" {
+	if strValue(header, "type") != "session" {
 		return SessionSummary{}, false
 	}
+	id := strValue(header, "id")
+	if id == "" {
+		return SessionSummary{}, false
+	}
+	createdAt := parseTimestampToMS(header["timestamp"])
+	updatedAt := createdAt
+	if len(tail) > 0 {
+		var lastLine map[string]any
+		if err := json.Unmarshal([]byte(tail[0]), &lastLine); err == nil {
+			if ts := parseTimestampToMS(lastLine["timestamp"]); ts != 0 {
+				updatedAt = ts
+			}
+		}
+	}
+	if updatedAt == 0 {
+		updatedAt = file.MTime
+	}
 	summary := SessionSummary{
-		ID:          header.ID,
+		ID:          id,
 		Source:      SourcePi,
-		ProjectPath: header.Cwd,
-		CreatedAt:   header.Timestamp,
+		ProjectPath: strValue(header, "cwd"),
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 		FilePath:    file.Path,
 		MTime:       file.MTime,
 		Size:        file.Size,
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary, summary.Validate() == nil
-}
-
-type piSessionHeader struct {
-	Type      string `json:"type"`
-	Version   int    `json:"version"`
-	ID        string `json:"id"`
-	Timestamp int64  `json:"timestamp"`
-	Cwd       string `json:"cwd"`
 }
 
 func (p *PiProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
@@ -115,6 +129,16 @@ type piMessageEntry struct {
 	msg      Message
 	id       string
 	parentID string
+}
+
+// piMsgMap returns the effective message payload for a `type:"message"` line.
+// Real pi v3 files nest role/content under `"message"`; the flat shape (role
+// and content at top level) is kept as a fallback for older fixtures/tools.
+func piMsgMap(value map[string]any) map[string]any {
+	if msgMap, ok := value["message"].(map[string]any); ok {
+		return msgMap
+	}
+	return value
 }
 
 func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
@@ -150,14 +174,27 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 		return nil, err
 	}
 
+	// pi writes a linear conversation chain whose first message's parentId
+	// points at the last non-message node (model_change / thinking_level_change
+	// / compaction). A message is a tree root when its parentId is empty or
+	// names a node that is not itself a message; BFS from those roots restores
+	// the conversation order.
+	ids := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		ids[e.id] = true
+	}
 	childrenByParent := make(map[string][]int)
+	queue := make([]int, 0, 1)
 	for i, e := range entries {
+		if e.parentID == "" || !ids[e.parentID] {
+			queue = append(queue, i)
+			continue
+		}
 		childrenByParent[e.parentID] = append(childrenByParent[e.parentID], i)
 	}
 
-	var messages []Message
-	queue := append([]int(nil), childrenByParent[""]...)
 	visited := make(map[int]bool, len(entries))
+	var messages []Message
 	for len(queue) > 0 {
 		idx := queue[0]
 		queue = queue[1:]
@@ -180,8 +217,9 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 }
 
 func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
-	role := normalizeRole(strValue(value, "role"))
-	content := value["content"]
+	msgMap := piMsgMap(value)
+	role := normalizeRole(strValue(msgMap, "role"))
+	content := msgMap["content"]
 	if content == nil {
 		return piMessageEntry{}, false
 	}
@@ -189,6 +227,10 @@ func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
 	text, toolName, ok := piExtractContent(content, role)
 	if !ok {
 		return piMessageEntry{}, false
+	}
+	// toolResult messages carry their tool name at the message level.
+	if toolName == "" && role == RoleTool {
+		toolName = strValue(msgMap, "toolName")
 	}
 	if toolName != "" && strings.TrimSpace(text) == "" {
 		text = "[Tool: " + toolName + "]"
@@ -200,10 +242,11 @@ func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
 			Role:      role,
 			Text:      text,
 			ToolName:  toolName,
+			Timestamp: parseTimestampToMS(value["timestamp"]),
 			CharCount: runeCount(text),
 		},
-		id:        strValue(value, "id"),
-		parentID:  strValue(value, "parentId"),
+		id:       strValue(value, "id"),
+		parentID: strValue(value, "parentId"),
 	}, true
 }
 
@@ -251,9 +294,9 @@ func piExtractContent(content any, role string) (string, string, bool) {
 }
 
 // piScanAssistantTool scans an assistant content array for the first
-// bashExecution (by kind or type) or toolcall item and returns the
-// tool name and bashOutput (if bashExecution). Returns ("", "") when
-// no tool item is found.
+// bashExecution or toolcall item and returns the tool name and bashOutput (if
+// bashExecution). Returns ("", "") when no tool item is found. Real pi files
+// use the camelCase item type "toolCall"; older fixtures used "toolcall".
 func piScanAssistantTool(arr []any) (toolName, bashOutput string) {
 	for _, item := range arr {
 		itemMap, ok := item.(map[string]any)
@@ -267,7 +310,7 @@ func piScanAssistantTool(arr []any) (toolName, bashOutput string) {
 			bashOutput = strValue(itemMap, "bashOutput")
 			return toolName, bashOutput
 		}
-		if itemType == "toolcall" {
+		if strings.EqualFold(itemType, "toolCall") {
 			toolName = strValue(itemMap, "name")
 			if toolName == "" {
 				toolName = "unknown"
@@ -286,8 +329,9 @@ func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
 	if strValue(value, "type") != "message" {
 		return Message{}, false
 	}
-	role := normalizeRole(strValue(value, "role"))
-	content := value["content"]
+	msgMap := piMsgMap(value)
+	role := normalizeRole(strValue(msgMap, "role"))
+	content := msgMap["content"]
 	if content == nil {
 		return Message{}, false
 	}
@@ -295,6 +339,9 @@ func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
 	text, toolName, ok := piExtractContent(content, role)
 	if !ok {
 		return Message{}, false
+	}
+	if toolName == "" && role == RoleTool {
+		toolName = strValue(msgMap, "toolName")
 	}
 	if toolName != "" && strings.TrimSpace(text) == "" {
 		text = "[Tool: " + toolName + "]"
@@ -305,6 +352,7 @@ func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
 		Role:      role,
 		Text:      text,
 		ToolName:  toolName,
+		Timestamp: parseTimestampToMS(value["timestamp"]),
 		CharCount: runeCount(text),
 	}, true
 }
@@ -322,6 +370,15 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var toolCalls []ToolCall
+	// toolResult messages carry the tool output, but they are written AFTER the
+	// assistant toolCall item that references them, so outputs are collected in
+	// one pass and resolved against pending tool calls after the scan.
+	type piToolCallItem struct {
+		tc     ToolCall
+		callID string
+	}
+	var pending []piToolCallItem
+	outputByCallID := make(map[string]string)
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return toolCalls, ctx.Err()
@@ -337,10 +394,20 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 		if strValue(value, "type") != "message" {
 			continue
 		}
-		if strValue(value, "role") != RoleAssistant {
+		msgMap := piMsgMap(value)
+		role := normalizeRole(strValue(msgMap, "role"))
+		if role == RoleTool {
+			if callID := strValue(msgMap, "toolCallId"); callID != "" {
+				if text := extractText(msgMap["content"]); strings.TrimSpace(text) != "" {
+					outputByCallID[callID] = text
+				}
+			}
 			continue
 		}
-		arr, ok := value["content"].([]any)
+		if role != RoleAssistant {
+			continue
+		}
+		arr, ok := msgMap["content"].([]any)
 		if !ok {
 			continue
 		}
@@ -349,23 +416,36 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 			if !ok {
 				continue
 			}
-			if strValue(itemMap, "type") != "toolcall" {
+			if !strings.EqualFold(strValue(itemMap, "type"), "toolCall") {
 				continue
 			}
 			name := strValue(itemMap, "name")
 			if name == "" {
 				name = "unknown"
 			}
-			toolCalls = append(toolCalls, ToolCall{
-				Seq:     len(toolCalls) + 1,
-				Name:    name,
-				Summary: summarizeToolInput(itemMap["input"]),
-				Output:  strValue(itemMap, "output"),
+			input := itemMap["arguments"]
+			if input == nil {
+				input = itemMap["input"]
+			}
+			pending = append(pending, piToolCallItem{
+				tc: ToolCall{
+					Seq:     len(pending) + 1,
+					Name:    name,
+					Summary: summarizeToolInput(input),
+					Output:  strValue(itemMap, "output"),
+				},
+				callID: strValue(itemMap, "id"),
 			})
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return toolCalls, err
+	}
+	for _, item := range pending {
+		if item.tc.Output == "" {
+			item.tc.Output = outputByCallID[item.callID]
+		}
+		toolCalls = append(toolCalls, item.tc)
 	}
 	return toolCalls, nil
 }

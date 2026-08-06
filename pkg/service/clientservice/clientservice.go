@@ -110,7 +110,7 @@ func findCommandOnShellClient(ctx context.Context, client genconn.ShellClient, c
 	log.Printf("FINDCMD-RESULT stdout=[%q] stderr=[%q] err=[%v]", stdout, stderr, err)
 	pslog.AppendRaw("findcmd-result", fmt.Sprintf("stdout=%q stderr=%q err=%v", stdout, stderr, err))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to find command %q on remote: %w", command, err)
 	}
 	return firstOutputLine(stdout), nil
 }

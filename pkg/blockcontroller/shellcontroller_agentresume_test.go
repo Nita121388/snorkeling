@@ -547,3 +547,62 @@ func TestFindUniqueCodexSessionIdIgnoresOldSessionBeforeStart(t *testing.T) {
 		t.Fatalf("expected new-session with count 1, got session=%q count=%d", sessionId, count)
 	}
 }
+
+func TestResolveAgentCmdAndArgs_OpenCodeResume(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "opencode",
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderOpenCode,
+		MetaKey_AgentSessionId:  "oc-session-456",
+	}
+	cmd, args, runInfo, err := resolveAgentCmdAndArgs("block:test", meta, true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	if cmd != "opencode" {
+		t.Fatalf("unexpected cmd: %s", cmd)
+	}
+	if len(args) != 2 || args[0] != "--session" || args[1] != "oc-session-456" {
+		t.Fatalf("expected --session args, got: %#v", args)
+	}
+	if runInfo == nil || runInfo.Provider != AgentProviderOpenCode || runInfo.SessionId != "oc-session-456" {
+		t.Fatalf("unexpected run info: %#v", runInfo)
+	}
+}
+
+func TestResolveAgentCmdAndArgs_PiResume(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "pi",
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderPi,
+		MetaKey_AgentSessionId:  "pi-session-789",
+	}
+	cmd, args, runInfo, err := resolveAgentCmdAndArgs("block:test", meta, true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	if cmd != "pi" {
+		t.Fatalf("unexpected cmd: %s", cmd)
+	}
+	if len(args) != 2 || args[0] != "--session-id" || args[1] != "pi-session-789" {
+		t.Fatalf("expected --session-id args, got: %#v", args)
+	}
+	if runInfo == nil || runInfo.Provider != AgentProviderPi || runInfo.SessionId != "pi-session-789" {
+		t.Fatalf("unexpected run info: %#v", runInfo)
+	}
+}
+
+func TestGetAgentProviderRecognizesOpenCodeAndPi(t *testing.T) {
+	for _, cmd := range []string{
+		"opencode",
+		"opencode.exe",
+		`C:\Users\chemclin\AppData\Roaming\npm\opencode.cmd`,
+		"pi",
+		"pi.exe",
+	} {
+		got := getAgentProvider(waveobj.MetaMapType{}, cmd)
+		if got != AgentProviderOpenCode && got != AgentProviderPi {
+			t.Fatalf("expected opencode/pi provider for %q, got %q", cmd, got)
+		}
+	}
+}

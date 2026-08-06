@@ -403,6 +403,23 @@ function parseResumeCommandSessionId(
             segmentCount: 1,
         });
     }
+    // Real CLIs resume with value flags (opencode --session <id>, pi
+    // --session-id <id>); prefer that shape over the legacy `resume <id>`
+    // subcommand fallback below.
+    const flagValue = parseFlagValue(
+        tokens.slice(exeIdx + 1),
+        provider === "pi" ? new Set(["--session-id", "--session"]) : new Set(["--session"])
+    );
+    if (flagValue.matched && flagValue.value !== "") {
+        return {
+            sessionId: flagValue.value,
+            provider,
+            executable,
+            reason: `matched-${provider}-session-flag`,
+            tokenCount: tokens.length,
+            segmentCount: 1,
+        };
+    }
     const resumeIdx = findResumeTokenIndex(tokens, exeIdx);
     if (resumeIdx === -1) {
         return emptyCommandResolution(`missing-${provider}-resume`, {

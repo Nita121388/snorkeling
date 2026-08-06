@@ -702,7 +702,7 @@ func normalizeRole(role string) string {
 		return RoleUser
 	case RoleAssistant, "ai":
 		return RoleAssistant
-	case RoleTool:
+	case RoleTool, "toolresult", "tool_result":
 		return RoleTool
 	case RoleSystem:
 		return RoleSystem

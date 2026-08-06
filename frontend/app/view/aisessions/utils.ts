@@ -240,11 +240,20 @@ function quotePowerShellValue(value: string): string {
     return `'${value.replace(/'/g, "''")}'`;
 }
 
+// Agent resume binaries by source. Non-claude sources previously fell through to
+// "codex", which launched the wrong agent when resuming an opencode/pi session.
+const AgentResumeCmdBySource: Record<string, string> = {
+    claude: "claude",
+    codex: "codex",
+    opencode: "opencode",
+    pi: "pi",
+};
+
 export function restoreMetaForSession(context: AISessionsRestoreContextResponse): MetaType & Record<string, unknown> {
     const meta: MetaType & Record<string, unknown> = {
         view: "term",
         controller: "cmd",
-        cmd: context.source === "claude" ? "claude" : "codex",
+        cmd: AgentResumeCmdBySource[context.source] ?? "codex",
         "cmd:shell": false,
         "cmd:runonstart": true,
         "cmd:jwt": true,

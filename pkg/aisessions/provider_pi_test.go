@@ -7,7 +7,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // writePiJSONL writes content to <dir>/<name>.jsonl inside the test temp dir and
@@ -301,5 +303,110 @@ func TestPiProvider_MissingDir(t *testing.T) {
 	}
 	if len(summaries) != 0 {
 		t.Fatalf("expected 0 summaries, got %#v", summaries)
+	}
+}
+
+// --- Real pi v3 format regression tests -------------------------------------
+// Real pi session files (verified against ~/.pi/agent/sessions) differ from the
+// older fixtures above in three ways:
+//   1. header `timestamp` is an ISO-8601 string, not numeric epoch
+//   2. message role/content is nested under a `message` key
+//   3. the first message's parentId points at a non-message node (model_change /
+//      thinking_level_change), so message-tree roots are not parentId=="" lines
+// These tests pin the real shape end to end (summary + messages + tool calls).
+
+const realPiSampleV3 = `{"type":"session","version":3,"id":"real-pi-sess","timestamp":"2026-08-05T05:19:19.857Z","cwd":"E:\\code\\snorkeling"}` + "\n" +
+	`{"type":"model_change","id":"51af115e","parentId":null,"timestamp":"2026-08-05T05:19:20.128Z","provider":"openai","modelId":"deepseek-v4-flash"}` + "\n" +
+	`{"type":"thinking_level_change","id":"6e2dbf7b","parentId":"51af115e","timestamp":"2026-08-05T05:19:20.129Z","thinkingLevel":"off"}` + "\n" +
+	`{"type":"message","id":"m1","parentId":"6e2dbf7b","timestamp":"2026-08-05T05:19:34.807Z","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}` + "\n" +
+	`{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-08-05T05:20:17.024Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"let me think"},{"type":"text","text":"hi"}]}}` + "\n" +
+	`{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-08-05T05:20:18.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"need to run ls"},{"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"ls"}}]}}` + "\n" +
+	`{"type":"message","id":"m4","parentId":"m3","timestamp":"2026-08-05T05:20:19.000Z","message":{"role":"toolResult","toolCallId":"call_1","toolName":"bash","content":[{"type":"text","text":"file1\nfile2"}]}}` + "\n"
+
+func TestPiProvider_RealFormatParseSummary(t *testing.T) {
+	dir := t.TempDir()
+	writePiJSONL(t, dir, realPiSampleV3)
+	p := NewPiProvider(dir)
+	files, err := p.ListFiles(context.Background())
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	summary, ok := p.ParseSummary(context.Background(), files[0])
+	if !ok {
+		t.Fatalf("expected ParseSummary ok for real-format header")
+	}
+	if summary.ID != "real-pi-sess" {
+		t.Fatalf("expected id real-pi-sess, got %q", summary.ID)
+	}
+	if summary.ProjectPath != `E:\code\snorkeling` {
+		t.Fatalf("expected cwd E:\\code\\snorkeling, got %q", summary.ProjectPath)
+	}
+	expCreated, _ := time.Parse(time.RFC3339Nano, "2026-08-05T05:19:19.857Z")
+	if summary.CreatedAt != expCreated.UnixMilli() {
+		t.Fatalf("expected CreatedAt %d, got %d", expCreated.UnixMilli(), summary.CreatedAt)
+	}
+	expUpdated, _ := time.Parse(time.RFC3339Nano, "2026-08-05T05:20:19.000Z")
+	if summary.UpdatedAt != expUpdated.UnixMilli() {
+		t.Fatalf("expected UpdatedAt %d, got %d", expUpdated.UnixMilli(), summary.UpdatedAt)
+	}
+}
+
+func TestPiProvider_RealFormatLoadMessages(t *testing.T) {
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, realPiSampleV3)
+	p := NewPiProvider(dir)
+	messages, err := p.LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d: %#v", len(messages), messages)
+	}
+	// m1: user text (nested message key, root via non-message parentId)
+	if messages[0].Role != RoleUser || messages[0].Text != "hello" {
+		t.Fatalf("expected m1 user 'hello', got %#v", messages[0])
+	}
+	// m2: thinking item skipped, text item kept
+	if messages[1].Role != RoleAssistant || messages[1].Text != "hi" {
+		t.Fatalf("expected m2 assistant 'hi' (thinking skipped), got %#v", messages[1])
+	}
+	// m3: thinking + toolCall → tool marker text
+	if messages[2].Role != RoleAssistant || messages[2].Text != "[Tool: bash]" {
+		t.Fatalf("expected m3 '[Tool: bash]', got %#v", messages[2])
+	}
+	// m4: toolResult → tool role with output text
+	if messages[3].Role != RoleTool || messages[3].Text != "file1\nfile2" || messages[3].ToolName != "bash" {
+		t.Fatalf("expected m4 tool 'file1\nfile2' with toolName bash, got %#v", messages[3])
+	}
+	for i, msg := range messages {
+		if msg.Seq != i+1 {
+			t.Fatalf("expected sequential seq, got %d at index %d", msg.Seq, i)
+		}
+	}
+}
+
+func TestPiProvider_RealFormatLoadToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, realPiSampleV3)
+	p := NewPiProvider(dir)
+	toolCalls, err := p.LoadToolCalls(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadToolCalls: %v", err)
+	}
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d: %#v", len(toolCalls), toolCalls)
+	}
+	if toolCalls[0].Name != "bash" {
+		t.Fatalf("expected tool name bash, got %q", toolCalls[0].Name)
+	}
+	if !strings.Contains(toolCalls[0].Summary, "ls") {
+		t.Fatalf("expected summary to contain 'ls', got %q", toolCalls[0].Summary)
+	}
+	// output is paired back from the toolResult message by toolCallId
+	if toolCalls[0].Output != "file1\nfile2" {
+		t.Fatalf("expected output 'file1\nfile2', got %q", toolCalls[0].Output)
 	}
 }

@@ -1234,7 +1234,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
 
     return (
         <div className="h-full w-full overflow-hidden p-2">
-            <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/20 p-2">
+            <div className="h-full w-full overflow-auto rounded p-2">
                 {loading && <div className="text-sm text-muted">Loading repositories...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && repos.length === 0 && (

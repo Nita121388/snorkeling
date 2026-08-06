@@ -87,6 +87,25 @@ describe("resolveAgentSessionIdFromMeta", () => {
         );
     });
 
+    it("parses opencode and pi session flags matching the real CLIs", () => {
+        // opencode --session <id>, pi --session-id <id> (also --session): the
+        // syntax emitted by restoreCommandForSession and the backend resume path.
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode --session oc-session-456" })).toBe("oc-session-456");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "opencode --session=oc-session-eq" })).toBe("oc-session-eq");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi --session-id pi-session-789" })).toBe("pi-session-789");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi --session-id=pi-session-eq" })).toBe("pi-session-eq");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi --session pi-session-alt" })).toBe("pi-session-alt");
+        expect(resolveAgentSessionIdFromMeta({ cmd: "pi --model gpt-5 --session-id pi-after-option" })).toBe(
+            "pi-after-option"
+        );
+        expect(
+            resolveAgentSessionIdFromMeta({ cmd: "opencode", "cmd:args": ["--session", "oc-args-session"] })
+        ).toBe("oc-args-session");
+        expect(
+            resolveAgentSessionIdFromMeta({ cmd: "pi", "cmd:args": ["--session-id", "pi-args-flag-session"] })
+        ).toBe("pi-args-flag-session");
+    });
+
     it("parses opencode and pi resume commands from Windows shim executables", () => {
         expect(resolveAgentSessionIdFromMeta({ cmd: "opencode.ps1 resume opencode-ps1-session" })).toBe(
             "opencode-ps1-session"

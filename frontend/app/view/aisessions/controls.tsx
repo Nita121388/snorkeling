@@ -92,16 +92,22 @@ export function OpencodeLogo() {
     );
 }
 
+// Official Pi mark from https://pi.dev/logo-auto.svg (P shape + i dot),
+// rendered in currentColor so it adapts to light/dark themes like the source does.
 export function PiLogo() {
     return (
         <svg
             className="h-4 w-4"
-            viewBox="0 0 24 24"
+            viewBox="0 0 800 800"
             fill="currentColor"
             aria-hidden="true"
             xmlns="http://www.w3.org/2000/svg"
         >
-            <path d="M2 4h20v2.8h-7.2v15.2H9.2V6.8H2z" />
+            <path
+                fillRule="evenodd"
+                d="M165.29 165.29 H517.36 V400 H400 V517.36 H282.65 V634.72 H165.29 Z M282.65 282.65 V400 H400 V282.65 Z"
+            />
+            <path d="M517.36 400 H634.72 V634.72 H517.36 Z" />
         </svg>
     );
 }
