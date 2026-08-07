@@ -501,11 +501,34 @@ const MarkdownListItem = ({
     return <li {...props} {...srcLineAttrs(props)} />;
 };
 
-const MarkdownTable = (props: React.HTMLAttributes<HTMLTableElement>) => (
-    <div className="table-wrapper" {...srcLineAttrs(props)}>
-        <table {...props} />
-    </div>
-);
+const CollapsibleTable = ({
+    props,
+    collapsed,
+    onToggle,
+}: {
+    props: React.HTMLAttributes<HTMLTableElement>;
+    collapsed: boolean;
+    onToggle: () => void;
+}) => {
+    return (
+        <div className={clsx("table-wrapper", { collapsed })} {...srcLineAttrs(props)}>
+            <button
+                type="button"
+                className="table-collapse-button"
+                title={collapsed ? "Expand table" : "Collapse table"}
+                aria-label={collapsed ? "Expand table" : "Collapse table"}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggle();
+                }}
+            >
+                <i className={clsx("fa-sharp fa-solid", collapsed ? "fa-chevron-right" : "fa-chevron-down")} />
+            </button>
+            <table {...props} />
+        </div>
+    );
+};
 
 const Mermaid = ({ chart }: { chart: string }) => {
     const ref = useRef<HTMLDivElement>(null);
@@ -771,6 +794,8 @@ type MarkdownProps = {
     onCollapsedHeadingsChange?: (next: Set<string>) => void;
     collapsedOrderedListItems?: Set<string>;
     onCollapsedOrderedListItemsChange?: (next: Set<string>) => void;
+    collapsedTables?: Set<string>;
+    onCollapsedTablesChange?: (next: Set<string>) => void;
     /**
      * Restore a saved viewport scrollTop (px) on mount, after scrollHeight stabilizes. Caller persists
      * live changes via onScrollTopChange so the value survives BlockInner remount on tab switch.
@@ -832,6 +857,8 @@ const Markdown = ({
     onCollapsedHeadingsChange,
     collapsedOrderedListItems: collapsedOrderedListItemsProp,
     onCollapsedOrderedListItemsChange,
+    collapsedTables: collapsedTablesProp,
+    onCollapsedTablesChange,
     savedScrollTop,
     onScrollTopChange,
 }: MarkdownProps) => {
@@ -876,6 +903,9 @@ const Markdown = ({
     );
     const [collapsedOrderedListItems, setCollapsedOrderedListItems] = useState<Set<string>>(
         () => collapsedOrderedListItemsProp ?? new Set()
+    );
+    const [collapsedTables, setCollapsedTables] = useState<Set<string>>(
+        () => collapsedTablesProp ?? new Set()
     );
 
     // Ensure uniqueness of ids between MD preview instances. When the caller supplies a stable
@@ -1191,6 +1221,19 @@ const Markdown = ({
                 next.add(itemId);
             }
             onCollapsedOrderedListItemsChange?.(next);
+            return next;
+        });
+    };
+
+    const toggleTableCollapse = (tableKey: string) => {
+        setCollapsedTables((prev) => {
+            const next = new Set(prev);
+            if (next.has(tableKey)) {
+                next.delete(tableKey);
+            } else {
+                next.add(tableKey);
+            }
+            onCollapsedTablesChange?.(next);
             return next;
         });
     };
@@ -1588,7 +1631,13 @@ const Markdown = ({
         hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
             <hr {...props} {...srcLineAttrs(props)} />
         ),
-        table: MarkdownTable,
+        table: (props: React.HTMLAttributes<HTMLTableElement>) => (
+            <CollapsibleTable
+                props={props}
+                collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+            />
+        ),
         ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
             <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
         ),

@@ -122,6 +122,7 @@ export function clearEditorViewState(blockId: string): void {
 // (caller-supplied idPrefix derived from blockId+path).
 const markdownCollapsedHeadingsCache = new Map<string, Set<string>>();
 const markdownCollapsedOLItemsCache = new Map<string, Set<string>>();
+const markdownCollapsedTablesCache = new Map<string, Set<string>>();
 
 export function getMarkdownCollapsedHeadings(blockId: string): Set<string> | undefined {
     return markdownCollapsedHeadingsCache.get(blockId);
@@ -144,6 +145,18 @@ export function setMarkdownCollapsedOLItems(blockId: string, value: Set<string> 
         markdownCollapsedOLItemsCache.delete(blockId);
     } else {
         markdownCollapsedOLItemsCache.set(blockId, value);
+    }
+}
+
+export function getMarkdownCollapsedTables(blockId: string): Set<string> | undefined {
+    return markdownCollapsedTablesCache.get(blockId);
+}
+
+export function setMarkdownCollapsedTables(blockId: string, value: Set<string> | undefined): void {
+    if (value == null) {
+        markdownCollapsedTablesCache.delete(blockId);
+    } else {
+        markdownCollapsedTablesCache.set(blockId, value);
     }
 }
 

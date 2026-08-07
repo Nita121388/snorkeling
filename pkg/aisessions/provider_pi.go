@@ -63,9 +63,10 @@ func (p *PiProvider) ParseSummary(ctx context.Context, file SessionFile) (Sessio
 	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: file.Path, MTime: mtime, Size: size})
 }
 
-// parseSummaryFile reads the pi JSONL v3 header line. Real pi files carry an
-// ISO-8601 string timestamp (older fixtures guessed numeric epoch), so the line
-// is decoded as a generic map and normalized with parseTimestampToMS, which
+// parseSummaryFile reads the pi JSONL v3 header line, plus the first-window
+// messages to derive a human-readable title. Real pi files carry an ISO-8601
+// string timestamp (older fixtures guessed numeric epoch), so the line is
+// decoded as a generic map and normalized with parseTimestampToMS, which
 // accepts both shapes.
 func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	head, tail, err := readHeadTailLines(file.Path, 1, 1)
@@ -99,9 +100,12 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	if updatedAt == 0 {
 		updatedAt = file.MTime
 	}
+	title, titleSource := p.scanTitle(file.Path)
 	summary := SessionSummary{
 		ID:          id,
 		Source:      SourcePi,
+		Title:       title,
+		TitleSource: titleSource,
 		ProjectPath: strValue(header, "cwd"),
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
@@ -111,6 +115,71 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary, summary.Validate() == nil
+}
+
+// scanTitle derives a display title from the entries of a pi session file.
+// Priority matches pi's own getSessionName() semantics:
+//
+//	1. latest session_info entry's name (explicit /name or --name) -> source_title
+//	2. first effective user message text                          -> first_user_message
+//
+// Returns ("", "") when neither is found, so the caller falls back to the
+// project basename (or session id) via DisplayTitle. The forward pass breaks
+// as soon as both sources are found, so the common case (first user message)
+// reads only the header plus a couple of lines.
+//
+// pony: when a session has neither a name nor an effective first user message,
+// the whole file is scanned; that is rare and still bounded by the 16MB scanner
+// cap. Upgrade path: read only the first tailWindowBytes window like the codex
+// provider does, via a dedicated bytes-scoped line reader.
+func (p *PiProvider) scanTitle(path string) (string, string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", ""
+	}
+	defer file.Close()
+
+	var name string
+	var firstUserMessage string
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var value map[string]any
+		if err := json.Unmarshal([]byte(line), &value); err != nil {
+			continue
+		}
+		switch strValue(value, "type") {
+		case "session_info":
+			// Keep the latest (pi's getSessionName uses the latest entry).
+			if n := strings.TrimSpace(strValue(value, "name")); n != "" {
+				name = n
+			}
+		case "message":
+			msgMap := piMsgMap(value)
+			if normalizeRole(strValue(msgMap, "role")) != RoleUser {
+				continue
+			}
+			text := extractText(msgMap["content"])
+			if effective, ok := effectiveUserText(text); ok && firstUserMessage == "" {
+				firstUserMessage = effective
+			}
+		}
+		if name != "" && firstUserMessage != "" {
+			break
+		}
+	}
+
+	if name != "" {
+		return normalizeTitle(name), "source_title"
+	}
+	if firstUserMessage != "" {
+		return normalizeTitle(firstUserMessage), "first_user_message"
+	}
+	return "", ""
 }
 
 func (p *PiProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {

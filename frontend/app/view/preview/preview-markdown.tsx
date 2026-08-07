@@ -14,10 +14,12 @@ import {
     getLiveScrollSourceStateAtom,
     getMarkdownCollapsedHeadings,
     getMarkdownCollapsedOLItems,
+    getMarkdownCollapsedTables,
     getMarkdownIdPrefix,
     getMarkdownScrollPosition,
     setMarkdownCollapsedHeadings,
     setMarkdownCollapsedOLItems,
+    setMarkdownCollapsedTables,
     setMarkdownScrollPosition,
     type PreviewModel,
 } from "./preview-model";
@@ -61,6 +63,7 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
     ]);
     const collapseSeed = useMemo(() => getMarkdownCollapsedHeadings(model.blockId), [model.blockId]);
     const olCollapseSeed = useMemo(() => getMarkdownCollapsedOLItems(model.blockId), [model.blockId]);
+    const tableCollapseSeed = useMemo(() => getMarkdownCollapsedTables(model.blockId), [model.blockId]);
     // Saved viewport scrollTop from the last time this block was mounted; restores the user's
     // scroll position when they switch back to this inline/top-level tab.
     const savedScrollTop = useMemo(() => getMarkdownScrollPosition(model.blockId), [model.blockId]);
@@ -71,6 +74,9 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
     }, []);
     const onCollapsedOrderedListItemsChange = useCallback((next: Set<string>) => {
         setMarkdownCollapsedOLItems(blockIdRef.current, next);
+    }, []);
+    const onCollapsedTablesChange = useCallback((next: Set<string>) => {
+        setMarkdownCollapsedTables(blockIdRef.current, next);
     }, []);
     const onScrollTopChange = useCallback((scrollTop: number) => {
         setMarkdownScrollPosition(blockIdRef.current, scrollTop);
@@ -120,6 +126,8 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 onCollapsedHeadingsChange={onCollapsedHeadingsChange}
                 collapsedOrderedListItems={olCollapseSeed}
                 onCollapsedOrderedListItemsChange={onCollapsedOrderedListItemsChange}
+                collapsedTables={tableCollapseSeed}
+                onCollapsedTablesChange={onCollapsedTablesChange}
                 savedScrollTop={savedScrollTop}
                 onScrollTopChange={onScrollTopChange}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"

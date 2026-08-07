@@ -10,6 +10,7 @@ import {
 } from "@/app/block/blocktypes";
 import { Tooltip } from "@/app/element/tooltip";
 import { uxCloseBlock } from "@/app/store/keymodel";
+import { buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -121,12 +122,15 @@ function getElementDimensions(element: HTMLElement): Dimensions | undefined {
 type InlineTabLabelProps = {
     nodeId: string;
     blockId: string;
+    allBlockIds: string[];
     layoutData: TabLayoutData;
     isActive: boolean;
     duplicateIndex?: number;
     index: number;
     onActivate: () => void;
     onClose: () => void;
+    onCloseOthers: () => void;
+    onCloseAll: () => void;
     onRename: (title: string) => void;
     onReorder: (dragBlockId: string, hoverIndex: number) => void;
     onDragEnd: () => void;
@@ -137,12 +141,15 @@ const InlineTabLabel = memo(
     ({
         nodeId,
         blockId,
+        allBlockIds,
         layoutData,
         isActive,
         duplicateIndex,
         index,
         onActivate,
         onClose,
+        onCloseOthers,
+        onCloseAll,
         onRename,
         onReorder,
         onDragEnd,
@@ -325,9 +332,27 @@ const InlineTabLabel = memo(
             );
         }
 
+        const handleContextMenu = useCallback(
+            (e: React.MouseEvent<HTMLDivElement>) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const menu = buildInlineTabContextMenu(
+                    blockId,
+                    allBlockIds,
+                    onClose,
+                    onCloseOthers,
+                    onCloseAll,
+                    waveEnv,
+                );
+                waveEnv.showContextMenu(menu, e);
+            },
+            [blockId, allBlockIds, onClose, onCloseOthers, onCloseAll, waveEnv],
+        );
+
         return (
             <div
                 ref={tabRef}
+                onContextMenu={handleContextMenu}
                 className={clsx("inline-tab-block-tab", {
                     active: isActive,
                     dragging: isDragging,
@@ -663,11 +688,14 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                             key={blockId}
                             nodeId={nodeModel.nodeId}
                             blockId={blockId}
+                            allBlockIds={blockIds}
                             layoutData={layoutData}
                             isActive={blockId === activeBlockId}
                             duplicateIndex={duplicateIndexes.get(blockId)}
                             onActivate={() => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
                             onClose={() => uxCloseBlock(blockId)}
+                            onCloseOthers={() => layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId)}
+                            onCloseAll={() => layoutModel?.closeAllInlineTabBlocks(nodeModel.nodeId)}
                             index={index}
                             onReorder={(dragBlockId, hoverIndex) =>
                                 layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)

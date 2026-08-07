@@ -1904,6 +1904,20 @@ export class LayoutModel {
         await this.closeNode(node.id);
     }
 
+    // 复用 closeBlock 的副作用路径(controller/status 清理 + preview confirmClose), 不手动 splice
+    async closeOtherInlineTabBlocks(nodeId: string, keepBlockId: string): Promise<void> {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node) return;
+        const others = getLayoutDataBlockIds(node.data).filter((id) => id !== keepBlockId);
+        for (const id of others) {
+            await this.closeBlock(id);
+        }
+    }
+
+    async closeAllInlineTabBlocks(nodeId: string): Promise<void> {
+        await this.closeNode(nodeId);
+    }
+
     async closeNode(nodeId: string) {
         const nodeToDelete = findNode(this.treeState.rootNode, nodeId);
         if (!nodeToDelete) {

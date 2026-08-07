@@ -410,3 +410,79 @@ func TestPiProvider_RealFormatLoadToolCalls(t *testing.T) {
 		t.Fatalf("expected output 'file1\nfile2', got %q", toolCalls[0].Output)
 	}
 }
+
+// piTitleSummary writes a file and returns the derived title + source.
+func piParseTitle(t *testing.T, content string) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	mtime, size := fileStatFields(path)
+	summary, ok := p.ParseSummary(context.Background(), SessionFile{Source: SourcePi, Path: path, MTime: mtime, Size: size})
+	if !ok {
+		t.Fatalf("expected ParseSummary ok")
+	}
+	return summary.Title, summary.TitleSource
+}
+
+func TestPiProvider_TitleFromFirstUserMessage(t *testing.T) {
+	content := `{"type":"session","version":3,"id":"pi-title-1","timestamp":1700000000,"cwd":"/home/user/proj"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"","timestamp":"2026-08-05T05:19:34.807Z","message":{"role":"user","content":[{"type":"text","text":"Refactor the auth module"}]}}` + "\n"
+	title, source := piParseTitle(t, content)
+	if title != "Refactor the auth module" {
+		t.Fatalf("expected title from first user message, got %q", title)
+	}
+	if source != "first_user_message" {
+		t.Fatalf("expected source first_user_message, got %q", source)
+	}
+}
+
+func TestPiProvider_TitlePrefersSessionInfoName(t *testing.T) {
+	content := `{"type":"session","version":3,"id":"pi-title-2","timestamp":1700000000,"cwd":"/home/user/proj"}` + "\n" +
+		`{"type":"session_info","id":"n1","parentId":null,"timestamp":"2026-08-05T05:20:00.000Z","name":"CI audit"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"n1","timestamp":"2026-08-05T05:20:10.000Z","message":{"role":"user","content":[{"type":"text","text":"check the build"}]}}` + "\n"
+	title, source := piParseTitle(t, content)
+	if title != "CI audit" {
+		t.Fatalf("expected session name to win, got %q", title)
+	}
+	if source != "source_title" {
+		t.Fatalf("expected source source_title, got %q", source)
+	}
+}
+
+func TestPiProvider_TitleSkipsBoilerplateUserMessage(t *testing.T) {
+	// The first user message is AGENTS.md boilerplate injected by the harness;
+	// it must be skipped in favor of the real first user prompt.
+	content := `{"type":"session","version":3,"id":"pi-title-3","timestamp":1700000000,"cwd":"/home/user/proj"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"","timestamp":"2026-08-05T05:19:34.807Z","message":{"role":"user","content":[{"type":"text","text":"Read AGENTS.md if it exists"}]}}` + "\n" +
+		`{"type":"message","id":"u2","parentId":"u1","timestamp":"2026-08-05T05:19:35.000Z","message":{"role":"user","content":[{"type":"text","text":"why is the auth failing"}]}}` + "\n"
+	title, source := piParseTitle(t, content)
+	if title != "why is the auth failing" {
+		t.Fatalf("expected boilerplate user message skipped, got %q", title)
+	}
+	if source != "first_user_message" {
+		t.Fatalf("expected source first_user_message, got %q", source)
+	}
+}
+
+func TestPiProvider_TitleEmptyFallsBackToID(t *testing.T) {
+	// No name and no effective user message -> empty title so DisplayTitle
+	// falls back to the project basename or session id.
+	content := `{"type":"session","version":3,"id":"pi-title-4","timestamp":1700000000,"cwd":"/home/user/proj"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"","timestamp":"2026-08-05T05:19:34.807Z","message":{"role":"user","content":[{"type":"text","text":"Read AGENTS.md if it exists"}]}}` + "\n"
+	title, source := piParseTitle(t, content)
+	if title != "" || source != "" {
+		t.Fatalf("expected empty title/source, got %q / %q", title, source)
+	}
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	mtime, size := fileStatFields(path)
+	summary, ok := p.ParseSummary(context.Background(), SessionFile{Source: SourcePi, Path: path, MTime: mtime, Size: size})
+	if !ok {
+		t.Fatalf("expected ParseSummary ok")
+	}
+	if got := summary.DisplayTitle(); got != "proj" {
+		t.Fatalf("expected DisplayTitle fallback to project basename, got %q", got)
+	}
+}
