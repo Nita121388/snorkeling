@@ -7,7 +7,7 @@
     "productName": "Snorkeling",
     "description": "Open-Source AI-Native Terminal Built for Seamless Workflows",
     "license": "Apache-2.0",
-    "version": "0.14.6-beta.0.snorkeling.0.0.69",
+    "version": "0.14.6-beta.0.snorkeling.0.0.70",
     "homepage": "https://github.com/Nita121388/snorkeling",
     "build": {
         "appId": "io.github.nita121388.snorkeling"
