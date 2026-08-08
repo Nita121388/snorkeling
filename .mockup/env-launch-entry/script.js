@@ -1,136 +1,202 @@
-/* Env Launch Entry 原型交互逻辑 */
+/* Env Launch Entry 原型交互逻辑
+   镜像真实行为：chip 选择/默认勾选、vendor +N▾ 展开、path 选择、
+   env 弹窗（搜索/掩码/reveal/Copy All）+ 新增自定义变量 KV 编辑 */
 (function () {
-    // ---------- tab 切换（New Agent / New Terminal）----------
-    const tabs = document.querySelectorAll(".tab-btn");
-    const panels = document.querySelectorAll(".tab-panel");
-    tabs.forEach((btn) => {
-        btn.addEventListener("click", () => {
-            tabs.forEach((b) => b.classList.remove("active"));
-            panels.forEach((p) => p.classList.remove("active"));
-            btn.classList.add("active");
-            document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+    "use strict";
+
+    // ---------- profile chip：点击选中（单选），DefaultCheckButton 切换默认 ----------
+    document.querySelectorAll(".chip[data-profile]").forEach((chip) => {
+        chip.addEventListener("click", (event) => {
+            const toggle = event.target.closest("[data-default-toggle]");
+            if (toggle) {
+                // 默认勾选切换（单选：同组内互斥）
+                chip.parentElement.querySelectorAll(".chip[data-profile]").forEach((c) => {
+                    c.querySelector(".chk").classList.toggle("on", c === chip && !chip.classList.contains("sel"));
+                    syncChk(c);
+                });
+                return;
+            }
+            // 选中 profile（单选）
+            chip.parentElement.querySelectorAll(".chip[data-profile]").forEach((c) => c.classList.remove("sel"));
+            chip.classList.add("sel");
         });
     });
 
-    // ---------- path 选中 ----------
-    document.querySelectorAll(".path-row").forEach((item) => {
-        item.addEventListener("click", () => {
-            item.parentElement.querySelectorAll(".path-row").forEach((i) => i.classList.remove("sel"));
-            item.classList.add("sel");
+    // ---------- vendor chip：点击选中（单选） ----------
+    document.querySelectorAll(".chip[data-vendor]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+            const row = chip.closest("[data-vendor-row]");
+            row.querySelectorAll(".chip[data-vendor]").forEach((c) => c.classList.remove("sel"));
+            chip.classList.add("sel");
         });
     });
+
+    // ---------- vendor +N▾ 展开/收起 ----------
+    const moreBtn = document.querySelector("[data-vendor-more]");
+    if (moreBtn) {
+        moreBtn.addEventListener("click", () => {
+            const expanded = moreBtn.getAttribute("aria-expanded") === "true";
+            moreBtn.setAttribute("aria-expanded", String(!expanded));
+            moreBtn.querySelector(".more-a").textContent = expanded ? "▾" : "▴";
+            document.querySelectorAll(".chip.rest").forEach((c) => {
+                c.hidden = expanded;
+            });
+        });
+    }
+
+    // ---------- path row：点击选中（单选），默认勾选切换 ----------
+    document.querySelectorAll(".path-row").forEach((row) => {
+        row.addEventListener("click", (event) => {
+            const toggle = event.target.closest("[data-default-toggle]");
+            if (toggle) {
+                row.parentElement.querySelectorAll(".path-row").forEach((r) => {
+                    r.querySelector(".chk").classList.toggle("on", r === row && !row.classList.contains("sel"));
+                    syncChk(r);
+                });
+                return;
+            }
+            row.parentElement.querySelectorAll(".path-row").forEach((r) => r.classList.remove("sel"));
+            row.classList.add("sel");
+        });
+    });
+
+    // chk 内部元素切换：选中 → check 图标；未选中 → 空方块
+    function syncChk(el) {
+        const chk = el.querySelector(".chk");
+        if (!chk) return;
+        const isOn = chk.classList.contains("on");
+        chk.innerHTML = isOn ? '<i class="fa-solid fa-check"></i>' : '<span class="chk-box"></span>';
+    }
 
     // ---------- env 弹窗开合 ----------
-    const envModal = document.getElementById("env-modal");
-    const openEnv = () => {
-        envModal.style.display = "flex";
-    };
-    const closeEnv = () => {
-        envModal.style.display = "none";
-    };
-    document.querySelectorAll(".icon-btn[data-open-env]").forEach((b) => b.addEventListener("click", openEnv));
-    document.getElementById("env-save").addEventListener("click", () => {
-        collectCustom();
-        closeEnv();
+    const overlay = document.getElementById("env-overlay");
+    document.querySelectorAll("[data-open-env]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            overlay.hidden = false;
+            document.getElementById("saved-tip").textContent = "";
+        });
     });
-    document.getElementById("env-cancel").addEventListener("click", closeEnv);
+    document.getElementById("env-cancel").addEventListener("click", () => {
+        overlay.hidden = true;
+    });
+    overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) overlay.hidden = true;
+    });
 
-    // ---------- Custom env KV 编辑器 ----------
+    // ---------- 生效 env：搜索过滤 ----------
+    const searchEl = document.getElementById("env-search");
+    const liveRows = Array.from(document.querySelectorAll("#live-env .env-row:not(.env-row-header)"));
+    searchEl.addEventListener("input", () => {
+        const q = searchEl.value.trim().toUpperCase();
+        liveRows.forEach((row) => {
+            row.hidden = q ? !(row.textContent.toUpperCase().includes(q)) : false;
+        });
+    });
+
+    // ---------- 生效 env：Copy All（模拟） ----------
+    document.getElementById("copy-all").addEventListener("click", () => {
+        const lines = liveRows
+            .filter((r) => !r.hidden)
+            .map((r) => {
+                const k = r.querySelector(".env-key").childNodes[0].textContent.trim();
+                const v = r.querySelector(".env-value-text").textContent;
+                return `${k}=${v}`;
+            })
+            .join("\n");
+        alert("复制（原型模拟，真实走 clipboard）：\n\n" + lines);
+    });
+
+    // ---------- 生效 env：Show All / Hide All（敏感行） ----------
+    function maskRow(row) {
+        const text = row.querySelector(".env-value-text");
+        if (!text.dataset.plain) text.dataset.plain = text.textContent;
+        text.textContent = "••••••••";
+        row.querySelector(".env-reveal").innerHTML = '<i class="fa-sharp fa-solid fa-eye"></i>';
+    }
+    function unmaskRow(row) {
+        const text = row.querySelector(".env-value-text");
+        if (text.dataset.plain) text.textContent = text.dataset.plain;
+        row.querySelector(".env-reveal").innerHTML = '<i class="fa-sharp fa-solid fa-eye-slash"></i>';
+    }
+    liveRows.forEach((row) => {
+        if (row.dataset.sensitive) {
+            row.dataset.plainValue = row.querySelector(".env-value-text").textContent;
+            maskRow(row);
+            row.querySelector(".env-reveal").addEventListener("click", () => {
+                const text = row.querySelector(".env-value-text");
+                if (text.textContent === "••••••••") unmaskRow(row);
+                else maskRow(row);
+            });
+        }
+    });
+    document.getElementById("show-all").addEventListener("click", () => {
+        liveRows.forEach((r) => r.dataset.sensitive && unmaskRow(r));
+    });
+    document.getElementById("hide-all").addEventListener("click", () => {
+        liveRows.forEach((r) => r.dataset.sensitive && maskRow(r));
+    });
+
+    // ---------- 自定义变量 KV 编辑器 ----------
     const customBody = document.getElementById("custom-body");
     const countEl = document.getElementById("custom-count");
 
-    // 敏感 key 子串（镜像真实 envmodal.tsx 的 SENSITIVE_KEY_SUBSTRS）
+    // 敏感 key 子串（镜像真实 envmodal.tsx SENSITIVE_KEY_SUBSTRS）
     const SENSITIVE = ["JWT", "TOKEN", "KEY", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "APIKEY"];
-
     function isSensitive(key) {
         if (!key) return false;
         const u = key.toUpperCase();
         return SENSITIVE.some((s) => u.includes(s));
     }
 
-    function addRow(key = "", value = "", legacySensitive = false) {
+    function addRow(key, value) {
         const row = document.createElement("div");
         row.className = "custom-row";
         row.innerHTML =
-            '<input class="custom-input k-input" placeholder="KEY" value="__KEY__">' +
-            '<input class="custom-input v-input" placeholder="VALUE" value="__VALUE__">' +
-            '<button class="custom-del" title="删除">🗑</button>';
-        row.querySelector(".k-input").value = key;
-        row.querySelector(".v-input").value = value;
-        // 敏感 key 掩码逻辑
+            '<input class="custom-input k-input" placeholder="KEY" spellcheck="false">' +
+            '<input class="custom-input v-input" placeholder="VALUE" spellcheck="false">' +
+            '<button type="button" class="custom-del" title="删除此行">🗑</button>';
+        row.querySelector(".k-input").value = key || "";
+        row.querySelector(".v-input").value = value || "";
         const vInput = row.querySelector(".v-input");
+
         function applyMask() {
             const k = row.querySelector(".k-input").value;
             if (isSensitive(k)) {
-                vInput.setAttribute("type", "password");
-                row.dataset.sensitive = "1";
+                vInput.type = "password";
+                vInput.classList.add("masked");
             } else {
-                vInput.setAttribute("type", "text");
-                delete row.dataset.sensitive;
+                vInput.type = "text";
+                vInput.classList.remove("masked");
             }
         }
         row.querySelector(".k-input").addEventListener("input", applyMask);
-        applyMask();
         row.querySelector(".custom-del").addEventListener("click", () => {
             row.remove();
             updateCount();
         });
         customBody.appendChild(row);
+        applyMask();
         updateCount();
     }
 
     function updateCount() {
-        const rows = customBody.querySelectorAll(".custom-row");
         let n = 0;
-        rows.forEach((r) => {
+        customBody.querySelectorAll(".custom-row").forEach((r) => {
             if (r.querySelector(".k-input").value.trim()) n++;
         });
-        countEl.textContent = n;
+        countEl.textContent = `（${n} 项）`;
     }
 
-    document.querySelectorAll(".custom-row").forEach((r) => r.remove());
-    // 预置示例：两行浅色 Codex 主题预设 + 一行空行
+    // 预置示例：Codex 浅色主题修复的 COLORTERM/TERM + 一行空行
     addRow("COLORTERM", "truecolor");
     addRow("TERM", "xterm-256color");
     addRow("", "");
-
-    document.getElementById("add-custom").addEventListener("click", () => addRow("", ""));
     customBody.addEventListener("input", updateCount);
 
-    // Copy All（模拟只读上半区）
-    document.getElementById("copy-all").addEventListener("click", () => {
-        const rows = Array.from(customBody.querySelectorAll(".custom-row"))
-            .filter((r) => r.querySelector(".k-input").value.trim())
-            .map((r) => `${r.querySelector(".k-input").value}=${r.querySelector(".v-input").value}`)
-            .join("\n");
-        alert("复制（原型模拟）:\n" + rows);
-    });
+    document.getElementById("add-custom").addEventListener("click", () => addRow("", ""));
 
-    // Show All / Hide All（原型仅示意）
-    document.getElementById("reveal-all").addEventListener("click", () => {
-        document.querySelectorAll(".env-row").forEach((r) => {
-            const m = r.querySelector(".mask");
-            if (m) m.textContent = m.dataset.plain || "";
-        });
-    });
-    document.getElementById("hide-all").addEventListener("click", () => {
-        document.querySelectorAll(".env-row .mask").forEach((m) => {
-            m.dataset.plain = m.textContent;
-            m.textContent = "••••••••";
-        });
-        // 记录原文
-        document.querySelectorAll(".env-row").forEach((r) => {
-            const m = r.querySelector(".mask");
-            if (m && !m.dataset.orig) m.dataset.orig = m.textContent;
-        });
-        document.querySelectorAll(".env-row .mask").forEach((m) => {
-            if (!m.dataset.orig) m.dataset.orig = "••••••••";
-        });
-    });
-
-    // 把自定义编辑器收集结果回写到示例行（Save 演示）
-    function collectCustom() {
-        // 真实实现走 RPC 写入 block cmd:env；原型仅弹提示
+    // ---------- Save（模拟；真实走 SaveBlockEnvCommand 写 block cmd:env） ----------
+    document.getElementById("env-save").addEventListener("click", () => {
         const rows = Array.from(customBody.querySelectorAll(".custom-row"))
             .map((r) => {
                 const k = r.querySelector(".k-input").value.trim();
@@ -138,9 +204,10 @@
                 return k ? `${k}=${v}` : null;
             })
             .filter(Boolean);
-        const el = document.getElementById("saved-tip");
-        el.textContent = rows.length
-            ? "已保存本次启动自定义变量: " + rows.join("  ")
-            : "未定义自定义变量";
-    }
+        const tip = document.getElementById("saved-tip");
+        tip.textContent = rows.length
+            ? "✓ 已保存本次启动自定义变量: " + rows.join("  ")
+            : "未定义自定义变量（将只使用默认 env）";
+        setTimeout(() => { overlay.hidden = true; }, 900);
+    });
 })();

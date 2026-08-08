@@ -462,6 +462,12 @@ func GetBuilderStatusCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpt
 	return resp, err
 }
 
+// command "getdefaultenv", wshserver.GetDefaultEnvCommand
+func GetDefaultEnvCommand(w *wshutil.WshRpc, data wshrpc.CommandGetDefaultEnvData, opts *wshrpc.RpcOpts) (*wshrpc.CommandGetBlockEnvRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandGetBlockEnvRtnData](w, "getdefaultenv", data, opts)
+	return resp, err
+}
+
 // command "getfocusedblockdata", wshserver.GetFocusedBlockDataCommand
 func GetFocusedBlockDataCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.FocusedBlockData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.FocusedBlockData](w, "getfocusedblockdata", nil, opts)

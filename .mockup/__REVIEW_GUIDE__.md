@@ -93,6 +93,8 @@
 - 新增 `PROCESS.md`：统一状态标记（▲设计活跃/●已落地/▼过时/◐部分落地）、镜像源跟踪、生命周期、检查清单。
 - 新增 `audit-sync.mjs`（现于 `docs/sync-audit/`）：`node docs/sync-audit/audit-sync.mjs` → 校验每个原型 README 的镜像源在仓库是否仍存在。
 - 新增原型 `env-launch-entry/`（New Agent/New Terminal 运行前自定义 env，▲ 设计活跃）。
+- **2026-08-08**：`env-launch-entry/` 按 PROCESS.md「结构镜像」重做——两 launch 弹窗逐字段对齐真实 `widgets.tsx`（含真实 SVG agent logo、`AgentProfileColors` 7px 圆点回退、2px 选中竖条/分隔点、DefaultCheckButton），Env 入口落 footer 最左（对齐设计方案最终形态），env 弹窗上半镜像 `envmodal.tsx/scss` 下半新增自定义变量编辑区；4 个镜像源对账通过。
+- **2026-08-08（同日）**：阶段 2/3 已进真实代码并实测通过（状态 ▲→◐）——New Agent/New Terminal footer `[Env]` 入口 + envmodal 可编辑（launch 模式回调 / block 模式 merge cmd:env）+ `withLaunchEnv` 合并；后端零改动（复用 SetMetaCommand，未新建 SaveBlockEnvCommand）；`audit-sync.mjs` 无新增缺失。阶段 4（Codex 浅色预设）未做。
 
 ### 对账发现的历史脱结点（待拍板）
 

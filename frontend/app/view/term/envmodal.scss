@@ -1,28 +1,105 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Terminal Environment 弹窗（只读查看 + 本次启动自定义变量编辑）
+// 视觉与项目其余弹窗（agenthooksettingsmodal / modal.scss + Tailwind token）保持一致：
+//   - 输入框：bg-surface-soft + border-border + rounded，focus 描边 accent（对应 h-7 rounded border border-border bg-surface px-2 … focus:border-accent）
+//   - 按钮：30px 高 / radius 6px（wave-button 同款圆角），primary = accent 底 + 黑字（--action-bg-color / --action-text-color），ghost = 透明
+//   - 标题：text-sm font-semibold + border-b border-border；副标题 text-xs secondary
+
 .env-modal-view {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    min-width: 600px;
-    max-width: 800px;
     width: 800px;
+    max-width: calc(100vw - 40px);
     max-height: 70vh;
+    // 滚动收敛到中间内容区（.env-modal-scroll）：header/footer 固定，滚动条不与右上角关闭按钮重叠
+    overflow: hidden;
+    // Modal 外壳本身无 padding（modal-content 仅左右 20px），这里补上下间隙：
+    // 对齐项目标准弹窗（FlexiModal pt-6/pb-4），避免标题/页脚贴边框显得草率
+    padding-top: 16px;
+    padding-bottom: 12px;
+
+    // 中间可滚动内容区（toolbar + 表格 + 自定义区）：仅此区域出现滚动条，不贯穿 header
+    .env-modal-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-right: 4px;
+        margin-right: -4px;
+    }
+
+    // 通用按钮（提升到顶层，toolbar / footer / 自定义区任意位置共用）
+    .env-modal-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 12px;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+        background: var(--form-element-bg-color);
+        color: var(--form-element-text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        transition:
+            background 0.15s,
+            border-color 0.15s,
+            color 0.15s;
+
+        &:hover:not(:disabled) {
+            background: var(--hover-bg-color-strong);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        &.primary {
+            background: var(--action-bg-color);
+            border-color: var(--action-bg-color);
+            color: var(--action-text-color);
+            font-weight: 600;
+
+            &:hover:not(:disabled) {
+                background: var(--action-hover-bg-color);
+                border-color: var(--action-hover-bg-color);
+            }
+        }
+
+        &.ghost {
+            background: transparent;
+
+            &:hover:not(:disabled) {
+                background: var(--hover-bg-color);
+                color: var(--main-text-color);
+            }
+        }
+    }
 
     .env-modal-header {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        padding-bottom: 6px;
+        padding-bottom: 10px;
         border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
 
         .env-modal-title {
-            font-weight: 600;
-            font-size: 16px;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            line-height: 20px;
 
             .env-modal-tag-remote {
                 font-size: 10px;
@@ -43,46 +120,42 @@
         }
     }
 
+    // 现有环境变量（参考）区标签（自定义区在上方，表格移到底部后需要清晰标题）
+    .env-modal-sub-label {
+        flex-shrink: 0;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+    }
+
     .env-modal-toolbar {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-shrink: 0;
 
         .env-modal-search {
             flex: 1 1 auto;
             min-width: 200px;
-            padding: 5px 10px;
-            font-size: 13px;
-            background: var(--form-element-bg-color);
+            height: 30px;
+            padding: 0 10px;
+            font-size: 12px;
+            font-family: var(--font-sans);
+            background: var(--color-surface-soft);
             border: 1px solid var(--border-color);
-            border-radius: 4px;
+            border-radius: 6px;
             color: var(--main-text-color);
             outline: none;
+            transition: border-color 0.15s;
+
+            &::placeholder {
+                color: var(--grey-text-color);
+            }
 
             &:focus {
                 border-color: var(--accent-color);
-            }
-        }
-
-        .env-modal-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 5px 10px;
-            font-size: 12px;
-            background: var(--form-element-bg-color);
-            color: var(--form-element-text-color);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            cursor: pointer;
-
-            &:hover:not(:disabled) {
-                background: var(--hover-bg-color-strong);
-            }
-
-            &:disabled {
-                opacity: 0.5;
-                cursor: default;
             }
         }
     }
@@ -101,11 +174,12 @@
     }
 
     .env-modal-table {
-        flex: 1 1 auto;
+        // 固定高度内部滚动：自定义区在上方时表格不抢占空间，滚动查看全部变量
+        flex-shrink: 0;
+        max-height: 28vh;
         overflow: auto;
         border: 1px solid var(--border-color);
-        border-radius: 4px;
-        min-height: 120px;
+        border-radius: 6px;
 
         .env-modal-row {
             display: grid;
@@ -171,6 +245,242 @@
                         color: var(--accent-color);
                     }
                 }
+            }
+        }
+    }
+
+    // 本次启动自定义变量（新增可编辑区）
+    .env-modal-section-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+        padding-top: 12px;
+        flex-shrink: 0;
+
+        .env-modal-section-count {
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--grey-text-color);
+        }
+    }
+
+        .env-modal-custom {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+
+        .env-modal-custom-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .env-modal-custom-input {
+            flex: 1 1 auto;
+            min-width: 0;
+            height: 30px;
+            padding: 0 10px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            background: var(--color-surface-soft);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--main-text-color);
+            outline: none;
+            transition: border-color 0.15s;
+
+            &::placeholder {
+                color: var(--grey-text-color);
+            }
+
+            &:focus {
+                border-color: var(--accent-color);
+            }
+        }
+
+        .env-modal-custom-key {
+            flex: 1 1 38%;
+        }
+
+        .env-modal-custom-value-wrap {
+            position: relative;
+            flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+
+            .env-modal-custom-value {
+                flex: 1 1 auto;
+                width: 100%;
+                padding-right: 46px; // 给右侧 SENS 标留位
+            }
+
+            .env-modal-custom-sens {
+                position: absolute;
+                right: 8px;
+                pointer-events: none;
+                padding: 1px 5px;
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                background: var(--error-color);
+                color: #fff;
+                border-radius: 3px;
+            }
+        }
+
+        .env-modal-custom-key-wrap {
+            position: relative;
+            flex: 1 1 38%;
+            min-width: 0;
+
+            .env-modal-custom-key {
+                width: 100%;
+            }
+
+            // KEY 输入联想下拉（从参考环境选择现有变量，选中预填现有值）
+            .env-modal-suggest {
+                position: absolute;
+                top: calc(100% + 4px);
+                left: 0;
+                right: 0;
+                z-index: 20;
+                max-height: 180px;
+                overflow-y: auto;
+                padding: 4px;
+                background: var(--modal-bg-color);
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+                .env-modal-suggest-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    width: 100%;
+                    padding: 5px 8px;
+                    border: none;
+                    background: transparent;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    color: var(--main-text-color);
+                    text-align: left;
+
+                    &:hover {
+                        background: var(--hover-bg-color);
+                    }
+
+                    .env-modal-suggest-key {
+                        font-family: var(--font-mono);
+                        font-weight: 500;
+                        flex: 0 0 auto;
+                    }
+
+                    .env-modal-suggest-val {
+                        flex: 1 1 auto;
+                        min-width: 0;
+                        color: var(--secondary-text-color);
+                        font-family: var(--font-mono);
+                        font-size: 11px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+                }
+            }
+        }
+
+        .env-modal-custom-del {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: var(--secondary-text-color);
+            cursor: pointer;
+            transition:
+                color 0.15s,
+                border-color 0.15s,
+                background 0.15s;
+
+            &:hover {
+                color: var(--error-color);
+                border-color: var(--border-color);
+                background: var(--hover-bg-color);
+            }
+        }
+    }
+
+    // 覆盖现有变量提示（KEY 命中参考环境且值不同时）
+    .env-modal-override-hint {
+        font-size: 11px;
+        color: var(--warning-color);
+        line-height: 1.5;
+        padding-left: 2px;
+        flex-shrink: 0;
+
+        code {
+            background: var(--surface-soft);
+            padding: 0 4px;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+        }
+    }
+
+    .env-modal-add {
+        align-self: flex-start;
+        flex-shrink: 0;
+    }
+
+    .env-modal-hint {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        line-height: 1.6;
+        flex-shrink: 0;
+
+        code {
+            background: var(--color-surface-soft);
+            padding: 0 4px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--main-text-color);
+        }
+    }
+
+    .env-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+        flex-shrink: 0;
+        // 固定粘在 scroll 区可视底部：内容超高滚动时 Save/Cancel 始终可见，背景盖住滚动内容
+        position: sticky;
+        bottom: 0;
+        margin-top: 2px;
+        background: var(--modal-bg-color);
+        z-index: 5;
+
+        .env-modal-saved-tip {
+            margin-right: auto;
+            font-size: 12px;
+
+            .env-modal-error-inline {
+                color: var(--error-color);
             }
         }
     }

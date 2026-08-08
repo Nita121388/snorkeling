@@ -19,6 +19,7 @@ import {
     resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
     resolveWorkspaceAgentContextMeta,
+    withLaunchEnv,
 } from "./agent-launch";
 
 function makeBlock(blockId: string, meta?: Record<string, unknown>): Block {
@@ -901,5 +902,34 @@ describe("agent launch context", () => {
         expect(vendorMeta["agent:isolationmode"]).toBe("vendor");
         expect(vendorMeta["agent:requestedmodel"]).toBe("glm-5.2");
         expect(vendorMeta["agent:claudevendorid"]).toBe("vendor-a");
+    });
+});
+
+describe("withLaunchEnv", () => {
+    it("returns the blockDef untouched when launch env is empty (zero-invasive)", () => {
+        const blockDef = { meta: { view: "term", "cmd:env": { KEEP: "me" } } } as BlockDef;
+        expect(withLaunchEnv(blockDef, {})).toBe(blockDef);
+    });
+
+    it("layers launch env on top of the existing cmd:env without touching other meta", () => {
+        const blockDef = {
+            meta: { view: "term", cmd: "claude", "cmd:env": { PROFILE_VAR: "a", SHARED: "profile" } },
+        } as BlockDef;
+        const out = withLaunchEnv(blockDef, { SHARED: "launch", LAUNCH_ONLY: "b" });
+        expect(out).not.toBe(blockDef);
+        expect(out.meta).toEqual({
+            view: "term",
+            cmd: "claude",
+            "cmd:env": { PROFILE_VAR: "a", SHARED: "launch", LAUNCH_ONLY: "b" },
+        });
+    });
+
+    it("creates cmd:env when the block has none (terminal launch path)", () => {
+        const blockDef = { meta: { view: "term", controller: "shell" } } as BlockDef;
+        expect(withLaunchEnv(blockDef, { COLORTERM: "truecolor", TERM: "xterm-256color" }).meta).toEqual({
+            view: "term",
+            controller: "shell",
+            "cmd:env": { COLORTERM: "truecolor", TERM: "xterm-256color" },
+        });
     });
 });

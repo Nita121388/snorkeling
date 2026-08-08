@@ -1149,3 +1149,14 @@ export function createTerminalBlockDefForTarget(target: AgentLaunchTarget, baseB
         baseBlockDef
     );
 }
+
+// 本次启动自定义变量 → 合并进新 block 的 cmd:env。
+// 用户显式设置的 launch env 优先级最高：覆盖 profile/vendor 注入的 env，其余 meta 键不受影响。
+// 空 launchEnv 时原样返回 blockDef（零侵入）。
+export function withLaunchEnv(blockDef: BlockDef, launchEnv: Record<string, string>): BlockDef {
+    if (Object.keys(launchEnv).length === 0) {
+        return blockDef;
+    }
+    const existing = (blockDef.meta?.["cmd:env"] as Record<string, string> | undefined) ?? {};
+    return { ...blockDef, meta: { ...blockDef.meta, "cmd:env": { ...existing, ...launchEnv } } };
+}

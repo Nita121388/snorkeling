@@ -93,6 +93,7 @@ type WshRpcInterface interface {
 	GetAllVarsCommand(ctx context.Context, data CommandVarData) ([]CommandVarResponseData, error)
 	SetVarCommand(ctx context.Context, data CommandVarData) error
 	GetBlockEnvCommand(ctx context.Context, data CommandGetBlockEnvData) (*CommandGetBlockEnvRtnData, error)
+	GetDefaultEnvCommand(ctx context.Context, data CommandGetDefaultEnvData) (*CommandGetBlockEnvRtnData, error)
 	PathCommand(ctx context.Context, data PathCommandData) (string, error)
 	SendTelemetryCommand(ctx context.Context) error
 	FetchSuggestionsCommand(ctx context.Context, data FetchSuggestionsData) (*FetchSuggestionsResponse, error)
@@ -585,6 +586,12 @@ type CommandVarResponseData struct {
 
 type CommandGetBlockEnvData struct {
 	BlockId  string `json:"blockid"`
+	ConnName string `json:"connname,omitempty"`
+}
+
+// 无 block 的默认环境（New Agent / New Terminal 弹窗在目标无既有 block 时参考用）：
+// 本地连接 = OS 基线 + waveshell 默认 + connection cmd:env；远端 = 仅 connection cmd:env delta。
+type CommandGetDefaultEnvData struct {
 	ConnName string `json:"connname,omitempty"`
 }
 

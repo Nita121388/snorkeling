@@ -1562,6 +1562,10 @@ func (ws *WshServer) GetBlockEnvCommand(ctx context.Context, data wshrpc.Command
 	return &wshrpc.CommandGetBlockEnvRtnData{Env: env}, nil
 }
 
+func (ws *WshServer) GetDefaultEnvCommand(ctx context.Context, data wshrpc.CommandGetDefaultEnvData) (*wshrpc.CommandGetBlockEnvRtnData, error) {
+	return &wshrpc.CommandGetBlockEnvRtnData{Env: blockcontroller.ResolveDefaultEnvMap(data.ConnName)}, nil
+}
+
 func (ws *WshServer) PathCommand(ctx context.Context, data wshrpc.PathCommandData) (string, error) {
 	pathType := data.PathType
 	openInternal := data.Open

@@ -1,189 +1,325 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Env Launch Entry — New Agent / New Terminal 自定义环境变量原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="page-title">Env Launch Entry — 运行前自定义环境变量原型</div>
-    <div class="page-sub">
-        结构严格对齐真实 <code>frontend/app/workspace/widgets.tsx</code>（New Agent ~L717 / New Terminal ~L1162）。
-        点击两个 header 的 <b>env 图标按钮</b>打开「升级为可编辑」的环境变量弹窗。
-    </div>
 
-    <!-- Tab 切换：New Agent / New Terminal（真实里的两个独立浮窗，此处并列便于对比入口位置） -->
-    <div class="tabs">
-        <button class="btn tab-btn active" data-tab="agent">New Agent 弹窗</button>
-        <button class="btn tab-btn" data-tab="terminal">New Terminal 弹窗</button>
+    <div class="page-head">
+        <h1>Env Launch Entry · 运行前自定义环境变量</h1>
+        <p>
+            结构逐字段镜像真实 <code>frontend/app/workspace/widgets.tsx</code>
+            （AgentTargetFloatingWindow ~L717 / TerminalTargetFloatingWindow ~L1162）
+            与 <code>frontend/app/view/term/envmodal.tsx</code> + <code>envmodal.scss</code>。
+            新增点仅两处：① 两个 launch 弹窗 footer 左侧的 <b>[⛭ Env]</b> 入口按钮；
+            ② env 弹窗下半新增「本次启动自定义变量」可编辑区 + Save/Cancel。
+        </p>
+        <p class="sub2">
+            agent profile 图标为真实 SVG（claude 彩色 / codex / gemini / opencode / pi），
+            自定义 profile 回退为 <code>w-[7px] h-[7px] rounded-full</code> 彩色圆点
+            （<code>AgentProfileColors</code>：codex <code>#74a7cb</code> · claude <code>#cc685c</code> ·
+            gemini <code>#8e7cc3</code> · opencode <code>#e0b956</code> · pi <code>#888888</code>）；
+            选中竖条 <code>w-[2px] rounded-full</code>、footer 分隔点 <code>w-[2px] h-[2px] rounded-full</code> 均对齐真实。
+        </p>
     </div>
 
     <div class="stage">
-        <!-- ===== New Agent 弹窗（对齐真实 widgets.tsx ~L717）===== -->
-        <div class="floating tab-panel active" id="panel-agent">
-            <!-- header：标题 + gear（Agent hook settings）—— 新增 env 按钮在 gear 左侧 -->
+        <!-- ===== New Agent 弹窗（镜像 widgets.tsx AgentTargetFloatingWindow ~L717） ===== -->
+        <div class="floating" id="agent-window">
+            <!-- header -->
             <div class="hdr">
                 <span>New Agent</span>
-                <div class="hdr-actions">
-                    <button class="icon-btn env-btn" data-open-env title="Set environment variables for launch">
-                        <i class="ic">⠿</i>
-                    </button>
-                    <button class="icon-btn" title="Agent hook settings">
-                        <i class="ic gear">⚙</i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- 区块 1：Select an agent type（profile chips，横向；选中左侧 accent 竖条）-->
-            <div class="section">
-                <div class="sec-title">Select an agent type</div>
-                <div class="chips">
-                    <div class="chip sel">
-                        <span class="tick"></span>
-                        <button class="chip-main"><i class="star">★</i><span class="lab">Claude Code</span></button>
-                        <span class="chk on" title="set default"><i class="fa-solid fa-check">✓</i></span>
-                    </div>
-                    <div class="chip">
-                        <button class="chip-main"><span class="ic-dot" style="background:#38bdf8"></span><span class="lab">Codex</span></button><span class="chk"></span>
-                    </div>
-                    <div class="chip">
-                        <button class="chip-main"><span class="ic-dot" style="background:#a855f7"></span><span class="lab">Gemini</span></button><span class="chk"></span>
-                    </div>
-                    <div class="chip">
-                        <button class="chip-main"><span class="ic-dot" style="background:#22c55e"></span><span class="lab">OpenCode</span></button><span class="chk"></span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 区块 2：Vendor · from cc-switch（claude/codex profile 显示，带 refresh）-->
-            <div class="section">
-                <div class="sec-head">
-                    <span class="sec-title">Vendor · from <b>cc-switch</b></span>
-                    <button class="icon-btn tiny" title="Refresh"><i class="fa fa-rotate-right">⟳</i></button>
-                </div>
-                <div class="chips">
-                    <div class="chip sel">
-                        <span class="chip-main plain"><span class="lab">质谱-无限</span><span class="tag cur">·当前</span></span><span class="chk on">✓</span>
-                    </div>
-                    <div class="chip">
-                        <span class="chip-main plain"><span class="lab"> combizee-官方</span><span class="tag off">官方</span></span><span class="chk"></span>
-                    </div>
-                    <button class="more-chip" title="更多 vendor">+3 ▾</button>
-                </div>
-            </div>
-
-            <!-- 区块 3：Select a path. -->
-            <div class="path-block">
-                <div class="sec-title">Select a path.</div>
-                <div class="path-row sel">
-                    <i class="ic">⌂</i>
-                    <div class="lab">E:\primary\projects\snorkeling-light-theme</div>
-                    <span class="chk on"><i>✓</i></span>
-                </div>
-                <div class="path-row">
-                    <i class="ic">⌂</i>
-                    <div class="lab">~</div>
-                    <span class="chk"></span>
-                </div>
-            </div>
-
-            <!-- actionbar（border-t）：crumb + 启动按钮 -->
-            <div class="actionbar">
-                <span class="crumb">E:\primary\projects\snorkeling-light-theme</span>
-                <button class="act-btn primary"><i>＋</i>Current Tab</button>
-                <span class="dot"></span>
-                <button class="act-btn ghost"><i>→</i>New</button>
-                <span class="dot"></span>
-                <button class="act-btn ghost">Existing…</button>
-            </div>
-        </div>
-
-        <!-- ===== New Terminal 弹窗（对齐真实 widgets.tsx ~L1162）===== -->
-        <div class="floating tab-panel" id="panel-terminal">
-            <!-- header：标题 —— 新增 env 按钮放 header 右侧（原来 New Terminal header 无图标钮，此为最小改动落点）-->
-            <div class="hdr">
-                <span>New Terminal</span>
-                <button class="icon-btn" data-open-env title="Set environment variables" aria-label="Set environment variables">
-                    <span class="ic">⠿</span>
+                <button type="button" class="icon-btn" aria-label="Agent hook settings" title="Agent hook settings">
+                    <i class="fa fa-solid fa-gear"></i>
                 </button>
             </div>
 
-            <!-- path list -->
-            <div class="path-block">
-                <div class="path-row">
-                    <i class="ic">⌂</i>
-                    <div class="lab">~/code/snorkeling</div>
-                    <span class="chk"></span>
-                </div>
-                <div class="path-row sel">
-                    <i class="ic">≋</i>
-                    <div class="lab">~/Documents</div>
-                    <span class="chk on"><i>✓</i></span>
+            <!-- Select an agent type -->
+            <div class="block">
+                <div class="block-title">Select an agent type</div>
+                <div class="chips">
+                    <div class="chip sel" data-profile="claude">
+                        <span class="selbar"></span>
+                        <button type="button" class="chip-main">
+                            <span class="chip-icon">
+                                <svg class="logo" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757" fill-rule="nonzero"></path></svg>
+                            </span>
+                            <span class="chip-label">Claude Code</span>
+                        </button>
+                        <button type="button" class="chk on" aria-label="Set Claude Code as default agent" title="Set default agent" data-default-toggle>
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                    </div>
+
+                    <div class="chip" data-profile="codex">
+                        <button type="button" class="chip-main">
+                            <span class="chip-icon">
+                                <svg class="logo" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729Zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944Zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464ZM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872Zm16.5963 3.8558-5.8333-3.3874L15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667Zm2.0107-3.0231-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66ZM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813Zm1.0976-2.3654 2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+                            </span>
+                            <span class="chip-label">Codex</span>
+                        </button>
+                        <button type="button" class="chk" aria-label="Set Codex as default agent" title="Set default agent" data-default-toggle>
+                            <span class="chk-box"></span>
+                        </button>
+                    </div>
+
+                    <div class="chip" data-profile="gemini">
+                        <button type="button" class="chip-main">
+                            <span class="chip-icon">
+                                <svg class="logo" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81z"/></svg>
+                            </span>
+                            <span class="chip-label">Gemini</span>
+                        </button>
+                        <button type="button" class="chk" aria-label="Set Gemini as default agent" title="Set default agent" data-default-toggle>
+                            <span class="chk-box"></span>
+                        </button>
+                    </div>
+
+                    <div class="chip" data-profile="opencode">
+                        <button type="button" class="chip-main">
+                            <span class="chip-icon">
+                                <svg class="logo" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/></svg>
+                            </span>
+                            <span class="chip-label">OpenCode</span>
+                        </button>
+                        <button type="button" class="chk" aria-label="Set OpenCode as default agent" title="Set default agent" data-default-toggle>
+                            <span class="chk-box"></span>
+                        </button>
+                    </div>
+
+                    <!-- 自定义 profile：真实回退为 7px 彩色圆点（AgentProfileColors 之外 → #888） -->
+                    <div class="chip" data-profile="custom">
+                        <button type="button" class="chip-main">
+                            <span class="chip-icon"><span class="dot-custom" style="background:#888888"></span></span>
+                            <span class="chip-label">My Agent</span>
+                        </button>
+                        <button type="button" class="chk" aria-label="Set My Agent as default agent" title="Set default agent" data-default-toggle>
+                            <span class="chk-box"></span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
+            <!-- Vendor · from cc-switch -->
+            <div class="block">
+                <div class="block-head">
+                    <span class="block-title">Vendor · from <b>cc-switch</b></span>
+                    <button type="button" class="icon-btn tiny" aria-label="Refresh cc-switch vendors" title="Refresh">
+                        <i class="fa-sharp fa-regular fa-rotate-right"></i>
+                    </button>
+                </div>
+                <div class="chips" data-vendor-row>
+                    <div class="chip sel" data-vendor="supxh">
+                        <span class="selbar"></span>
+                        <button type="button" class="chip-main">
+                            <span class="chip-label">质谱-无限</span>
+                            <span class="badge cur">·current</span>
+                        </button>
+                    </div>
+                    <div class="chip" data-vendor="official">
+                        <button type="button" class="chip-main">
+                            <span class="chip-label">Claude Official</span>
+                            <span class="badge official">official</span>
+                        </button>
+                    </div>
+                    <button type="button" class="more-chip" data-vendor-more title="Expand the rest of the vendors" aria-expanded="false">
+                        <span class="more-n">+2</span><span class="more-a">▾</span>
+                    </button>
+                    <!-- rest vendors（点击展开，原地 reflow，同款 chip 样式） -->
+                    <div class="chip rest" data-vendor="zhipu" hidden>
+                        <button type="button" class="chip-main">
+                            <span class="chip-label">智谱-GLM</span>
+                            <span class="badge official">official</span>
+                        </button>
+                    </div>
+                    <div class="chip rest" data-vendor="deepseek" hidden>
+                        <button type="button" class="chip-main">
+                            <span class="chip-label">DeepSeek</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Select a path -->
+            <div class="path-block">
+                <div class="block-title path-title">Select a path.</div>
+                <div class="path-row sel" data-path="snorkeling">
+                    <span class="selbar"></span>
+                    <div class="row-ic"><i class="fa-sharp fa-regular fa-house"></i></div>
+                    <div class="row-main">
+                        <span class="row-label">/Users/nita/Primary/projects/snorkeling</span>
+                    </div>
+                    <button type="button" class="chk on" aria-label="Set default launch target" title="Set default launch target" data-default-toggle>
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+                <div class="path-row" data-path="home">
+                    <div class="row-ic"><i class="fa-sharp fa-regular fa-house"></i></div>
+                    <div class="row-main">
+                        <span class="row-label">~</span>
+                    </div>
+                    <button type="button" class="chk" aria-label="Set default launch target" title="Set default launch target" data-default-toggle>
+                        <span class="chk-box"></span>
+                    </button>
+                </div>
+                <div class="path-row" data-path="remote">
+                    <div class="row-ic"><i class="fa-sharp fa-regular fa-terminal"></i></div>
+                    <div class="row-main">
+                        <span class="row-label">/root/work</span>
+                        <div class="row-sub">ssh://prod-box</div>
+                    </div>
+                    <button type="button" class="chk" aria-label="Set default launch target" title="Set default launch target" data-default-toggle>
+                        <span class="chk-box"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- footer：新增 [Env] 入口在最左，crumb 之后是原样 launch 按钮 -->
             <div class="actionbar">
-                <span class="crumb">~/Documents</span>
-                <button class="act-btn primary"><i>＋</i>Current Tab</button>
+                <button type="button" class="act-btn env-entry" data-open-env title="Set environment variables for this launch">
+                    <i class="fa fa-solid fa-gears"></i>Env
+                </button>
+                <span class="crumb">/Users/nita/Primary/projects/snorkeling</span>
+                <button type="button" class="act-btn primary"><i class="fa-sharp fa-regular fa-plus"></i>Current Tab</button>
                 <span class="dot"></span>
-                <button class="act-btn ghost"><i>→</i>New</button>
+                <button type="button" class="act-btn ghost"><i class="fa-sharp fa-regular fa-arrow-right"></i>New</button>
                 <span class="dot"></span>
-                <button class="act-btn ghost">Existing…</button>
+                <button type="button" class="act-btn ghost">Existing…</button>
             </div>
         </div>
 
-        <!-- ===== 可编辑 Env 弹窗（升级版 EnvModalView，对齐真实 envmodal.tsx / envmodal.scss）===== -->
-        <div class="env-modal" id="env-modal" style="display:none">
+        <!-- ===== New Terminal 弹窗（镜像 widgets.tsx TerminalTargetFloatingWindow ~L1162） ===== -->
+        <div class="floating" id="terminal-window">
+            <!-- header（真实 New Terminal header 无按钮，仅标题） -->
+            <div class="hdr">
+                <span>New Terminal</span>
+            </div>
+
+            <!-- Select a path -->
+            <div class="path-block">
+                <div class="block-title path-title">Select a path.</div>
+                <div class="path-row sel" data-path="documents">
+                    <span class="selbar"></span>
+                    <div class="row-ic"><i class="fa-sharp fa-regular fa-folder"></i></div>
+                    <div class="row-main">
+                        <span class="row-label">~/Documents</span>
+                    </div>
+                    <button type="button" class="chk on" aria-label="Set default launch target" title="Set default launch target" data-default-toggle>
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+                <div class="path-row" data-path="code">
+                    <div class="row-ic"><i class="fa-sharp fa-regular fa-folder"></i></div>
+                    <div class="row-main">
+                        <span class="row-label">~/code</span>
+                    </div>
+                    <button type="button" class="chk" aria-label="Set default launch target" title="Set default launch target" data-default-toggle>
+                        <span class="chk-box"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- footer：同样在左侧加 [Env] 入口 -->
+            <div class="actionbar">
+                <button type="button" class="act-btn env-entry" data-open-env title="Set environment variables for this launch">
+                    <i class="fa fa-solid fa-gears"></i>Env
+                </button>
+                <span class="crumb">~/Documents</span>
+                <button type="button" class="act-btn primary"><i class="fa-sharp fa-regular fa-plus"></i>Current Tab</button>
+                <span class="dot"></span>
+                <button type="button" class="act-btn ghost"><i class="fa-sharp fa-regular fa-arrow-right"></i>New</button>
+                <span class="dot"></span>
+                <button type="button" class="act-btn ghost">Existing…</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 可编辑 Env 弹窗（升级版 EnvModalView：上半只读镜像真实 envmodal.scss，下半新增自定义变量区） ===== -->
+    <div class="env-overlay" id="env-overlay" hidden>
+        <div class="env-modal-view">
             <div class="env-modal-header">
                 <div class="env-modal-title">
                     Terminal Environment
                     <span class="env-modal-tag-remote">remote</span>
                 </div>
                 <div class="env-modal-subtitle">
-                    9 variables · 1 masked · OS baseline not shown（remote）
+                    9 configured vars · OS baseline not shown for remote · 1 masked
                 </div>
             </div>
-            <div class="env-toolbar">
-                <input class="env-search" placeholder="filter keys/values…">
-                <button class="btn" id="copy-all">Copy All</button>
-                <button class="btn" id="reveal-all">Show All</button>
-                <button class="btn" id="hide-all">Hide All</button>
+
+            <div class="env-modal-toolbar">
+                <input class="env-modal-search" type="text" placeholder="filter keys/values…" id="env-search">
+                <button type="button" class="env-modal-btn" id="copy-all">
+                    <i class="fa-sharp fa-solid fa-copy"></i>Copy All
+                </button>
+                <button type="button" class="env-modal-btn" id="show-all">Show All</button>
+                <button type="button" class="env-modal-btn" id="hide-all">Hide All</button>
             </div>
 
-            <!-- 上半：生效环境变量（只读，保留现有能力） -->
-            <div class="env-section-label">生效环境变量（只读）</div>
+            <!-- 上半：生效环境变量（只读，保留现有全部能力：搜索/掩码/reveal/Copy All） -->
             <div class="env-table" id="live-env">
-                <div class="env-row"><span class="k">COLORTERM</span><span class="v">truecolor</span></div>
-                <div class="env-row"><span class="k">TERM</span><span class="v">xterm-256color</span></div>
-                <div class="env-row"><span class="k">OPENAI_API_KEY</span><span class="v"><span class="mask">••••••••</span><span class="tag">SENS</span></span></div>
-                <div class="env-row"><span class="k">PATH</span><span class="v">/opt/homebrew/bin:…</span></div>
-                <div class="env-row"><span class="k">HOME</span><span class="v">/Users/nita</span></div>
+                <div class="env-row env-row-header">
+                    <div class="env-key">Key</div>
+                    <div class="env-value">Value</div>
+                </div>
+                <div class="env-row">
+                    <div class="env-key">COLORTERM</div>
+                    <div class="env-value"><span class="env-value-text">truecolor</span></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-key">TERM</div>
+                    <div class="env-value"><span class="env-value-text">xterm-256color</span></div>
+                </div>
+                <div class="env-row" data-sensitive="1">
+                    <div class="env-key">OPENAI_API_KEY<span class="env-tag">SENS</span></div>
+                    <div class="env-value">
+                        <span class="env-value-text">••••••••</span>
+                        <button type="button" class="env-reveal" title="Show value"><i class="fa-sharp fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <div class="env-row">
+                    <div class="env-key">HOME</div>
+                    <div class="env-value"><span class="env-value-text">/Users/nita</span></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-key">PATH</div>
+                    <div class="env-value"><span class="env-value-text">/opt/homebrew/bin:/usr/local/bin:…</span></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-key">SHELL</div>
+                    <div class="env-value"><span class="env-value-text">/bin/zsh</span></div>
+                </div>
             </div>
 
             <!-- 下半：本次启动自定义变量（新增可编辑区） -->
             <div class="env-section-label">本次启动自定义变量
-                <span class="env-section-count">（<span id="custom-count">2</span> 项）</span>
+                <span class="env-section-count" id="custom-count">（2 项）</span>
             </div>
             <div class="custom-editor" id="custom-body"></div>
-            <button class="btn add-btn" id="add-custom">+ Add Variable</button>
+            <button type="button" class="env-modal-btn add-btn" id="add-custom">
+                <i class="fa-sharp fa-solid fa-plus"></i>Add Variable
+            </button>
             <div class="env-hint">
-                空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；
-                敏感 key（TOKEN/KEY/SECRET/PASSWORD…）自动掩码。
-                <span class="env-preset">浅色主题预设：<code>COLORTERM</code> · <code>TERM</code></span>
+                空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；敏感 key（JWT/TOKEN/KEY/SECRET/PASSWORD…）自动掩码。
             </div>
 
             <div class="env-footer">
-                <div id="saved-tip" class="saved-tip"></div>
-                <button class="btn" id="env-cancel">Cancel</button>
-                <button class="btn primary" id="env-save">Save</button>
+                <div class="saved-tip" id="saved-tip"></div>
+                <button type="button" class="env-modal-btn" id="env-cancel">Cancel</button>
+                <button type="button" class="env-modal-btn primary" id="env-save">Save</button>
             </div>
         </div>
     </div>
 
     <div class="demo-note">
-        💡 <b>入口落点（与真实同步）</b>：New Agent 在 header 的 <code>gear</code> 左侧新增同级 env 按钮；New Terminal 在 header 右侧新增（原来无按钮）。
-        Save 后由后端写入 block <code>cmd:env</code>，Terminal/Agent 启动即生效——用于修复 Codex 浅色主题输入框深色。
+        💡 <b>入口落点（对齐设计文档最终形态）</b>：New Agent / New Terminal 两个 launch 弹窗的
+        <b>footer 最左侧</b>各加一个 <code>[⛭ Env]</code> 小入口按钮（launch 按钮区保持原样）。
+        点击打开可编辑 env 弹窗；Save 后由后端写入 block <code>cmd:env</code>，Terminal/Agent 启动即生效
+        —— 用于修复 Codex 浅色主题输入框深色（注入 <code>COLORTERM=truecolor</code> / <code>TERM=xterm-256color</code>）。
     </div>
 
 <script src="script.js"></script>

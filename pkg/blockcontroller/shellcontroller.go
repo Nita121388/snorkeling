@@ -1695,6 +1695,36 @@ func ResolveBlockEnvMap(blockId string, connName string) (map[string]string, err
 	return rtn, nil
 }
 
+// ResolveDefaultEnvMap returns the environment a NEW terminal/agent block would inherit on a
+// connection without any block-level overrides — used by the launch dialogs as a reference when
+// the selected target has no existing block (e.g. the synthetic home target).
+//
+// For local connections: OS environ baseline + wave-injected local env vars + connection cmd:env.
+// For remote connections: only the connection cmd:env delta (the OS baseline belongs to the local
+// wshserver process, not the remote host).
+func ResolveDefaultEnvMap(connName string) map[string]string {
+	rtn := make(map[string]string)
+	config := wconfig.GetWatcher().GetFullConfig()
+	ckEnv := config.Connections[connName].CmdEnv
+	for k, v := range ckEnv {
+		rtn[k] = resolveEnvReference(v)
+	}
+	if !conncontroller.IsLocalConnName(connName) {
+		return rtn
+	}
+	for _, envStr := range os.Environ() {
+		key, val, ok := strings.Cut(envStr, "=")
+		if !ok || key == "" {
+			continue
+		}
+		rtn[key] = val
+	}
+	for k, v := range shellutil.WaveshellLocalEnvVars(shellutil.DefaultTermType) {
+		rtn[k] = v
+	}
+	return rtn
+}
+
 func getCustomInitScriptKeyCascade(shellType string) []string {
 	if shellType == "bash" {
 		return []string{waveobj.MetaKey_CmdInitScriptBash, waveobj.MetaKey_CmdInitScriptSh, waveobj.MetaKey_CmdInitScript}

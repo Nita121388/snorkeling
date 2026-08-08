@@ -630,6 +630,11 @@ declare global {
         env: {[key: string]: string};
     };
 
+    // wshrpc.CommandGetDefaultEnvData
+    type CommandGetDefaultEnvData = {
+        connname?: string;
+    };
+
     // wshrpc.CommandGetMetaData
     type CommandGetMetaData = {
         oref: ORef;

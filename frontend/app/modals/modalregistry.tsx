@@ -10,6 +10,7 @@ import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
 import { CloseTabModal } from "./closetabmodal";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
+import { EnvModalView } from "@/app/view/term/envmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
@@ -23,6 +24,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [UserInputModal.displayName || "UserInputModal"]: UserInputModal,
     [AboutModal.displayName || "AboutModal"]: AboutModal,
     [AgentHookSettingsModal.displayName || "AgentHookSettingsModal"]: AgentHookSettingsModal,
+    [EnvModalView.displayName || "EnvModalView"]: EnvModalView,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,

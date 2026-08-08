@@ -8,6 +8,7 @@ import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
+import { EnvModalView } from "@/app/view/term/envmodal";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -29,6 +30,7 @@ import {
     moveDefaultTargetFirst,
     resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
+    withLaunchEnv,
     TerminalDefaultLaunchTargetMetaKey,
 } from "@/app/workspace/agent-launch";
 import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
@@ -334,6 +336,9 @@ type AgentTargetFloatingWindowProps = {
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
     onSetDefaultProfile: (profileName: string) => void;
+    // 本次启动自定义变量（会话级保留在 Widgets 父组件：浮窗关闭/重开不丢失）
+    launchEnv: Record<string, string>;
+    onLaunchEnvChange: (env: Record<string, string>) => void;
     // cc-switch vendor list (per-block vendor selection; the row isn't rendered when detected=false).
     // Separate "claude"/"codex" sets because a cc-switch vendor id is scoped per app_type — the two
     // DB queries return disjoint rows, and bindings (vendor id/name meta on the block) must carry the
@@ -375,6 +380,9 @@ type TerminalTargetFloatingWindowProps = {
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
+    // 本次启动自定义变量（会话级保留在 Widgets 父组件：浮窗关闭/重开不丢失）
+    launchEnv: Record<string, string>;
+    onLaunchEnvChange: (env: Record<string, string>) => void;
 };
 
 type CreateToExistingTabRequest = {
@@ -440,6 +448,12 @@ function useOutsideHoverClose(isOpen: boolean, onClose: () => void, delayMs = 10
         clearCloseTimer();
         closeTimerRef.current = window.setTimeout(() => {
             closeTimerRef.current = null;
+            // 模态弹窗（如 Env 编辑弹窗 / Agent hook settings）打开时暂停 hover 关闭：
+            // 否则点开 env 弹窗后鼠标移出浮窗区域（移到弹窗上）会把 launch 浮窗误关，
+            // 用户刚 Save 的本次启动自定义变量也会随浮窗关闭被清空，等于白设置。
+            if (modalsModel.hasOpenModals()) {
+                return;
+            }
             onClose();
         }, delayMs);
     }, [clearCloseTimer, delayMs, onClose]);
@@ -571,6 +585,8 @@ const AgentTargetFloatingWindow = memo(
         piSelectedVendorId,
         onPiSelectVendor,
         onPiRefreshVendors,
+        launchEnv,
+        onLaunchEnvChange,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -597,6 +613,10 @@ const AgentTargetFloatingWindow = memo(
         const [vendorRestExpanded, setVendorRestExpanded] = useState(false);
         const [vendorModelPreferences, setVendorModelPreferences] =
             useState<Record<string, string>>(loadVendorModelPreferences);
+        // 本次启动自定义变量：状态由 Widgets 父组件持有（会话级保留，浮窗关闭/重开不丢失）
+        const launchEnvCount = Object.keys(launchEnv).length;
+        // 点过 [Env] 后本次浮窗打开期间禁用 hover-close：避免用户设置完 env、还没选 Tab 时浮窗被误关
+        const [launchEnvLocked, setLaunchEnvLocked] = useState(false);
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
 
@@ -770,7 +790,7 @@ const AgentTargetFloatingWindow = memo(
                     style={floatingStyles}
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
-                    onPointerLeave={onPointerLeave}
+                    onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
@@ -1048,6 +1068,28 @@ const AgentTargetFloatingWindow = memo(
 
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                title={"Set environment variables for this launch (applies to the new block only)"}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    setLaunchEnvLocked(true);
+                                    modalsModel.pushModal("EnvModalView", {
+                                        blockId: "",
+                                        connection: "",
+                                        initialCustomEnv: launchEnv,
+                                        onSaveCustomEnv: onLaunchEnvChange,
+                                        existingBlockId: selectedTarget.blockId.startsWith("launch-target:")
+                                            ? undefined
+                                            : selectedTarget.blockId,
+                                        existingConnection: selectedTarget.connection ?? "",
+                                    });
+                                }}
+                            >
+                                <i className="fa fa-solid fa-gears text-[10px]" />
+                                {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
+                            </button>
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
                                 {selectedTarget.detail || selectedTarget.label}
                             </span>
@@ -1059,13 +1101,16 @@ const AgentTargetFloatingWindow = memo(
                                         showNoDetectedAgentError();
                                         return;
                                     }
-                                    const blockDef = createAgentBlockDefForTarget(
-                                        settings,
-                                        selectedTarget,
-                                        effectiveSelectedProfile,
-                                        effectiveVendorOptions,
-                                        effectiveSelectedVendorId,
-                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                    const blockDef = withLaunchEnv(
+                                        createAgentBlockDefForTarget(
+                                            settings,
+                                            selectedTarget,
+                                            effectiveSelectedProfile,
+                                            effectiveVendorOptions,
+                                            effectiveSelectedVendorId,
+                                            VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                        ),
+                                        launchEnv
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1090,13 +1135,16 @@ const AgentTargetFloatingWindow = memo(
                                         showNoDetectedAgentError();
                                         return;
                                     }
-                                    const blockDef = createAgentBlockDefForTarget(
-                                        settings,
-                                        selectedTarget,
-                                        effectiveSelectedProfile,
-                                        effectiveVendorOptions,
-                                        effectiveSelectedVendorId,
-                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                    const blockDef = withLaunchEnv(
+                                        createAgentBlockDefForTarget(
+                                            settings,
+                                            selectedTarget,
+                                            effectiveSelectedProfile,
+                                            effectiveVendorOptions,
+                                            effectiveSelectedVendorId,
+                                            VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                        ),
+                                        launchEnv
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1122,13 +1170,16 @@ const AgentTargetFloatingWindow = memo(
                                         showNoDetectedAgentError();
                                         return;
                                     }
-                                    const blockDef = createAgentBlockDefForTarget(
-                                        settings,
-                                        selectedTarget,
-                                        effectiveSelectedProfile,
-                                        effectiveVendorOptions,
-                                        effectiveSelectedVendorId,
-                                        VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                    const blockDef = withLaunchEnv(
+                                        createAgentBlockDefForTarget(
+                                            settings,
+                                            selectedTarget,
+                                            effectiveSelectedProfile,
+                                            effectiveVendorOptions,
+                                            effectiveSelectedVendorId,
+                                            VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                        ),
+                                        launchEnv
                                     );
                                     fireAndForget(async () => {
                                         try {
@@ -1170,6 +1221,8 @@ const TerminalTargetFloatingWindow = memo(
         onCreateToNewTab,
         onCreateToExistingTab,
         onSetDefaultTarget,
+        launchEnv,
+        onLaunchEnvChange,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -1185,6 +1238,10 @@ const TerminalTargetFloatingWindow = memo(
         const { getFloatingProps } = useInteractions([dismiss]);
 
         const [selectedIdx, setSelectedIdx] = useState(0);
+        // 本次启动自定义变量：状态由 Widgets 父组件持有（会话级保留，浮窗关闭/重开不丢失）
+        const launchEnvCount = Object.keys(launchEnv).length;
+        // 点过 [Env] 后本次浮窗打开期间禁用 hover-close：避免用户设置完 env、还没选 Tab 时浮窗被误关
+        const [launchEnvLocked, setLaunchEnvLocked] = useState(false);
 
         const { onPointerEnter, onPointerLeave } = useOutsideHoverClose(isOpen, onClose);
 
@@ -1215,7 +1272,7 @@ const TerminalTargetFloatingWindow = memo(
                     style={floatingStyles}
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
-                    onPointerLeave={onPointerLeave}
+                    onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
                     className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
                 >
                     {/* header */}
@@ -1302,6 +1359,28 @@ const TerminalTargetFloatingWindow = memo(
 
                     {selectedTarget != null ? (
                         <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                title={"Set environment variables for this launch (applies to the new block only)"}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    setLaunchEnvLocked(true);
+                                    modalsModel.pushModal("EnvModalView", {
+                                        blockId: "",
+                                        connection: "",
+                                        initialCustomEnv: launchEnv,
+                                        onSaveCustomEnv: onLaunchEnvChange,
+                                        existingBlockId: selectedTarget.blockId.startsWith("launch-target:")
+                                            ? undefined
+                                            : selectedTarget.blockId,
+                                        existingConnection: selectedTarget.connection ?? "",
+                                    });
+                                }}
+                            >
+                                <i className="fa fa-solid fa-gears text-[10px]" />
+                                {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
+                            </button>
                             <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
                                 {selectedTarget.detail || selectedTarget.label}
                             </span>
@@ -1309,7 +1388,10 @@ const TerminalTargetFloatingWindow = memo(
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
-                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    const blockDef = withLaunchEnv(
+                                        createTerminalBlockDefForTarget(selectedTarget, baseBlockDef),
+                                        launchEnv
+                                    );
                                     fireAndForget(async () => {
                                         try {
                                             await createToCurrentTab(blockDef, Boolean(magnified));
@@ -1328,7 +1410,10 @@ const TerminalTargetFloatingWindow = memo(
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
                                 onClick={() => {
-                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    const blockDef = withLaunchEnv(
+                                        createTerminalBlockDefForTarget(selectedTarget, baseBlockDef),
+                                        launchEnv
+                                    );
                                     fireAndForget(async () => {
                                         try {
                                             await onCreateToNewTab(blockDef, Boolean(magnified));
@@ -1348,7 +1433,10 @@ const TerminalTargetFloatingWindow = memo(
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0"
                                 disabled={!canCreateToExistingTab}
                                 onClick={() => {
-                                    const blockDef = createTerminalBlockDefForTarget(selectedTarget, baseBlockDef);
+                                    const blockDef = withLaunchEnv(
+                                        createTerminalBlockDefForTarget(selectedTarget, baseBlockDef),
+                                        launchEnv
+                                    );
                                     onCreateToExistingTab({
                                         title: "Create Terminal",
                                         subtitle: selectedTarget.detail || selectedTarget.label,
@@ -1507,6 +1595,9 @@ const Widgets = memo(() => {
     );
     const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
     const containerRef = useRef<HTMLDivElement>(null);
+    // 本次启动自定义变量（agent / terminal 各一份，浮窗关闭不清空——避免误关丢失）
+    const [agentLaunchEnv, setAgentLaunchEnv] = useState<Record<string, string>>({});
+    const [terminalLaunchEnv, setTerminalLaunchEnv] = useState<Record<string, string>>({});
     const measurementRef = useRef<HTMLDivElement>(null);
 
     const featureWaveAppBuilder = settings?.["feature:waveappbuilder"] ?? false;
@@ -2228,6 +2319,8 @@ const Widgets = memo(() => {
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultAgentTarget}
                     onSetDefaultProfile={setDefaultAgentProfile}
+                    launchEnv={agentLaunchEnv}
+                    onLaunchEnvChange={setAgentLaunchEnv}
                     vendorOptions={ccSwitchVendors}
                     vendorDetected={ccSwitchDetected}
                     selectedVendorId={ccSwitchSelectedVendorId}
@@ -2265,6 +2358,8 @@ const Widgets = memo(() => {
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultTerminalTarget}
+                    launchEnv={terminalLaunchEnv}
+                    onLaunchEnvChange={setTerminalLaunchEnv}
                 />
             )}
             {createToExistingTabRequest != null ? (

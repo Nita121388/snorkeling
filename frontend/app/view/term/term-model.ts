@@ -28,7 +28,6 @@ import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-b
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
-import { EnvModalView } from "@/app/view/term/envmodal";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import {
@@ -1198,11 +1197,9 @@ export class TermViewModel implements ViewModel {
         const envMenuItem: ContextMenuItem = {
             label: "Show Terminal Environment…",
             click: () => {
-                modalsModel.pushModal("MessageModal", {
-                    children: React.createElement(EnvModalView, {
-                        blockId: this.blockId,
-                        connection: connection,
-                    }),
+                modalsModel.pushModal("EnvModalView", {
+                    blockId: this.blockId,
+                    connection: connection,
                 });
             },
         };

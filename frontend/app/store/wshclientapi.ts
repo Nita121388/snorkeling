@@ -462,6 +462,12 @@ export class RpcApiType {
         return client.wshRpcCall("getbuilderstatus", data, opts);
     }
 
+    // command "getdefaultenv" [call]
+    GetDefaultEnvCommand(client: WshClient, data: CommandGetDefaultEnvData, opts?: RpcOpts): Promise<CommandGetBlockEnvRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "getdefaultenv", data, opts);
+        return client.wshRpcCall("getdefaultenv", data, opts);
+    }
+
     // command "getfocusedblockdata" [call]
     GetFocusedBlockDataCommand(client: WshClient, opts?: RpcOpts): Promise<FocusedBlockData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "getfocusedblockdata", null, opts);
