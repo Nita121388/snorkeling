@@ -339,3 +339,145 @@ func TestBuildCodexConfigWithHooksOnlyTouchesTopLevelFeatures(t *testing.T) {
 		t.Fatalf("top-level features should enable hooks and remove codex_hooks:\n%s", updated)
 	}
 }
+
+func TestInstallOpenCodeHooksWritesPlugin(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgDir := filepath.Join(tmpDir, "opencode")
+	if err := os.MkdirAll(filepath.Join(cfgDir, "plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(openCodeConfigEnvVar, cfgDir)
+
+	result, err := InstallOpenCodeHooks()
+	if err != nil {
+		t.Fatalf("InstallOpenCodeHooks returned error: %v", err)
+	}
+	if result.Provider != HookTargetOpenCode {
+		t.Fatalf("unexpected provider: %+v", result)
+	}
+	if filepath.Base(result.HookPath) != openCodePluginInstallName() {
+		t.Fatalf("unexpected plugin path: %q", result.HookPath)
+	}
+	script, err := os.ReadFile(result.HookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		integrationIdMarker + HookTargetOpenCode,
+		versionMarker,
+		"--provider", "opencode",
+		"agentstatus",
+		"permission.asked",
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("plugin missing %q:\n%s", want, string(script))
+		}
+	}
+	if strings.Contains(string(script), "%!(EXTRA") {
+		t.Fatalf("plugin contains fmt residue:\n%s", string(script))
+	}
+
+	status, err := CheckHooks(HookTargetOpenCode)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(status.Statuses) != 1 || !status.Statuses[0].Current || status.Statuses[0].NeedsInstall {
+		t.Fatalf("expected installed opencode plugin to be current: %+v", status)
+	}
+}
+
+func TestCheckOpenCodeHooksDetectsMissingDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(openCodeConfigEnvVar, filepath.Join(tmpDir, "nope"))
+	statusResult, err := CheckHooks(HookTargetOpenCode)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(statusResult.Statuses) != 1 {
+		t.Fatalf("expected one status: %+v", statusResult)
+	}
+	status := statusResult.Statuses[0]
+	if status.Supported || status.Installed || !status.NeedsInstall {
+		t.Fatalf("expected missing opencode dir to need install: %+v", status)
+	}
+}
+
+func TestInstallPiHooksWritesExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentDir := filepath.Join(tmpDir, "pi-agent")
+	if err := os.MkdirAll(filepath.Join(agentDir, "extensions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(piConfigEnvVar, agentDir)
+
+	result, err := InstallPiHooks()
+	if err != nil {
+		t.Fatalf("InstallPiHooks returned error: %v", err)
+	}
+	if result.Provider != HookTargetPi {
+		t.Fatalf("unexpected provider: %+v", result)
+	}
+	if filepath.Base(result.HookPath) != piExtensionInstallName() {
+		t.Fatalf("unexpected extension path: %q", result.HookPath)
+	}
+	script, err := os.ReadFile(result.HookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		integrationIdMarker + HookTargetPi,
+		versionMarker,
+		"--provider", "pi",
+		"agentstatus",
+		"agent_start",
+		"agent_settled",
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("extension missing %q:\n%s", want, string(script))
+		}
+	}
+	if strings.Contains(string(script), "%!(EXTRA") {
+		t.Fatalf("extension contains fmt residue:\n%s", string(script))
+	}
+
+	status, err := CheckHooks(HookTargetPi)
+	if err != nil {
+		t.Fatalf("CheckHooks returned error: %v", err)
+	}
+	if len(status.Statuses) != 1 || !status.Statuses[0].Current || status.Statuses[0].NeedsInstall {
+		t.Fatalf("expected installed pi extension to be current: %+v", status)
+	}
+}
+
+func TestCheckHooksAllReturnsFourProviders(t *testing.T) {
+	result, err := CheckHooks(HookTargetAll)
+	if err != nil {
+		t.Fatalf("CheckHooks(all) returned error: %v", err)
+	}
+	if len(result.Statuses) != 4 {
+		t.Fatalf("expected 4 provider statuses, got %d: %+v", len(result.Statuses), result)
+	}
+	providers := map[string]bool{}
+	for _, status := range result.Statuses {
+		providers[status.Provider] = true
+	}
+	for _, want := range []string{HookTargetCodex, HookTargetClaude, HookTargetOpenCode, HookTargetPi} {
+		if !providers[want] {
+			t.Fatalf("CheckHooks(all) missing provider %q", want)
+		}
+	}
+}
+
+func TestOpenCodeAndPiProvidersSharePluginName(t *testing.T) {
+	// Both opencode plugins and pi extensions are discovered as *.ts by their
+	// respective runtimes; keep the filenames distinct so installing one provider
+	// cannot clobber the other when BOTH config dirs alias to the same path.
+	oc := openCodePluginInstallName()
+	pi := piExtensionInstallName()
+	if oc != pi {
+		t.Fatalf("expected same install name, got %q vs %q", oc, pi)
+	}
+	if !strings.Contains(oc, hookInstallBaseName) {
+		t.Fatalf("expected install name to include base name: %q", oc)
+	}
+}

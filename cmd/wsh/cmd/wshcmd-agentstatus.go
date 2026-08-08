@@ -26,8 +26,8 @@ var agentStatusCmd = &cobra.Command{
 }
 
 var agentStatusInstallHooksCmd = &cobra.Command{
-	Use:   "install-hooks [codex|claude|all]",
-	Short: "install Codex/Claude hooks that report agent status",
+	Use:   "install-hooks [codex|claude|opencode|pi|all]",
+	Short: "install agent status hooks that report agent status",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  agentStatusInstallHooksRun,
 }

@@ -14,16 +14,20 @@ import (
 )
 
 const (
-	HookTargetAll    = "all"
-	HookTargetCodex  = "codex"
-	HookTargetClaude = "claude"
+	HookTargetAll      = "all"
+	HookTargetCodex    = "codex"
+	HookTargetClaude   = "claude"
+	HookTargetOpenCode = "opencode"
+	HookTargetPi       = "pi"
 
-	hookInstallBaseName = "snorkeling-agent-status"
-	hookInstallVersion  = 18
-	codexHomeEnvVar     = "CODEX_HOME"
-	claudeConfigEnvVar  = "CLAUDE_CONFIG_DIR"
-	integrationIdMarker = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
-	versionMarker       = "SNORKELING_AGENT_STATUS_INTEGRATION_VERSION="
+	hookInstallBaseName  = "snorkeling-agent-status"
+	hookInstallVersion   = 19
+	codexHomeEnvVar      = "CODEX_HOME"
+	claudeConfigEnvVar   = "CLAUDE_CONFIG_DIR"
+	openCodeConfigEnvVar = "OPENCODE_CONFIG_DIR"
+	piConfigEnvVar       = "PI_CODING_AGENT_DIR"
+	integrationIdMarker  = "SNORKELING_AGENT_STATUS_INTEGRATION_ID="
+	versionMarker        = "SNORKELING_AGENT_STATUS_INTEGRATION_VERSION="
 )
 
 type HookInstallResult struct {
@@ -65,7 +69,15 @@ func InstallHooks(target string) ([]HookInstallResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []HookInstallResult{codex, claude}, nil
+		opencode, err := InstallOpenCodeHooks()
+		if err != nil {
+			return nil, err
+		}
+		pi, err := InstallPiHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{codex, claude, opencode, pi}, nil
 	case HookTargetCodex:
 		result, err := InstallCodexHooks()
 		if err != nil {
@@ -78,6 +90,18 @@ func InstallHooks(target string) ([]HookInstallResult, error) {
 			return nil, err
 		}
 		return []HookInstallResult{result}, nil
+	case HookTargetOpenCode:
+		result, err := InstallOpenCodeHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{result}, nil
+	case HookTargetPi:
+		result, err := InstallPiHooks()
+		if err != nil {
+			return nil, err
+		}
+		return []HookInstallResult{result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported agentstatus hook target %q", target)
 	}
@@ -86,11 +110,15 @@ func InstallHooks(target string) ([]HookInstallResult, error) {
 func CheckHooks(target string) (*HookStatusResult, error) {
 	switch strings.TrimSpace(strings.ToLower(target)) {
 	case "", HookTargetAll:
-		return &HookStatusResult{Statuses: []HookStatus{checkCodexHooks(), checkClaudeHooks()}}, nil
+		return &HookStatusResult{Statuses: []HookStatus{checkCodexHooks(), checkClaudeHooks(), checkOpenCodeHooks(), checkPiHooks()}}, nil
 	case HookTargetCodex:
 		return &HookStatusResult{Statuses: []HookStatus{checkCodexHooks()}}, nil
 	case HookTargetClaude:
 		return &HookStatusResult{Statuses: []HookStatus{checkClaudeHooks()}}, nil
+	case HookTargetOpenCode:
+		return &HookStatusResult{Statuses: []HookStatus{checkOpenCodeHooks()}}, nil
+	case HookTargetPi:
+		return &HookStatusResult{Statuses: []HookStatus{checkPiHooks()}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported agentstatus hook target %q", target)
 	}
@@ -292,6 +320,270 @@ func checkClaudeHooks() HookStatus {
 		}
 	}
 	return status
+}
+
+func InstallOpenCodeHooks() (HookInstallResult, error) {
+	dir, err := openCodeConfigDir()
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	if !isDir(dir) {
+		return HookInstallResult{}, fmt.Errorf("opencode config directory not found at %s. install OpenCode first", dir)
+	}
+	pluginDir := filepath.Join(dir, "plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return HookInstallResult{}, err
+	}
+	hookPath := filepath.Join(pluginDir, openCodePluginInstallName())
+	if err := writeHookScriptContent(hookPath, openCodePluginSource()); err != nil {
+		return HookInstallResult{}, err
+	}
+	return HookInstallResult{
+		Provider:  HookTargetOpenCode,
+		HookPath:  hookPath,
+		HooksPath: pluginDir,
+	}, nil
+}
+
+func checkOpenCodeHooks() HookStatus {
+	status := HookStatus{
+		Provider:        HookTargetOpenCode,
+		RequiredVersion: hookInstallVersion,
+	}
+	dir, err := openCodeConfigDir()
+	if err != nil {
+		status.Reason = err.Error()
+		status.NeedsInstall = true
+		return status
+	}
+	status.HookPath = filepath.Join(dir, "plugin", openCodePluginInstallName())
+	if !isDir(dir) {
+		status.Reason = fmt.Sprintf("opencode config directory not found at %s", dir)
+		status.NeedsInstall = true
+		return status
+	}
+	status.Supported = true
+	script, err := os.ReadFile(status.HookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			status.Reason = "plugin not installed"
+		} else {
+			status.Reason = err.Error()
+		}
+		status.NeedsInstall = true
+		return status
+	}
+	status.Installed = true
+	status.InstalledVersion = hookScriptVersion(string(script))
+	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetOpenCode) &&
+		status.InstalledVersion >= hookInstallVersion &&
+		strings.Contains(string(script), "agentstatus")
+	status.Current = hookOk
+	status.NeedsInstall = !status.Current
+	if !status.Current {
+		status.Reason = "opencode plugin is missing or outdated"
+	}
+	return status
+}
+
+func InstallPiHooks() (HookInstallResult, error) {
+	dir, err := piAgentConfigDir()
+	if err != nil {
+		return HookInstallResult{}, err
+	}
+	if !isDir(dir) {
+		return HookInstallResult{}, fmt.Errorf("pi config directory not found at %s. install Pi first", dir)
+	}
+	extDir := filepath.Join(dir, "extensions")
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		return HookInstallResult{}, err
+	}
+	hookPath := filepath.Join(extDir, piExtensionInstallName())
+	if err := writeHookScriptContent(hookPath, piExtensionSource()); err != nil {
+		return HookInstallResult{}, err
+	}
+	return HookInstallResult{
+		Provider:  HookTargetPi,
+		HookPath:  hookPath,
+		HooksPath: extDir,
+	}, nil
+}
+
+func checkPiHooks() HookStatus {
+	status := HookStatus{
+		Provider:        HookTargetPi,
+		RequiredVersion: hookInstallVersion,
+	}
+	dir, err := piAgentConfigDir()
+	if err != nil {
+		status.Reason = err.Error()
+		status.NeedsInstall = true
+		return status
+	}
+	status.HookPath = filepath.Join(dir, "extensions", piExtensionInstallName())
+	if !isDir(dir) {
+		status.Reason = fmt.Sprintf("pi config directory not found at %s", dir)
+		status.NeedsInstall = true
+		return status
+	}
+	status.Supported = true
+	script, err := os.ReadFile(status.HookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			status.Reason = "extension not installed"
+		} else {
+			status.Reason = err.Error()
+		}
+		status.NeedsInstall = true
+		return status
+	}
+	status.Installed = true
+	status.InstalledVersion = hookScriptVersion(string(script))
+	hookOk := strings.Contains(string(script), integrationIdMarker+HookTargetPi) &&
+		status.InstalledVersion >= hookInstallVersion &&
+		strings.Contains(string(script), "agentstatus")
+	status.Current = hookOk
+	status.NeedsInstall = !status.Current
+	if !status.Current {
+		status.Reason = "pi extension is missing or outdated"
+	}
+	return status
+}
+
+func openCodePluginInstallName() string {
+	return hookInstallBaseName + ".ts"
+}
+
+func piExtensionInstallName() string {
+	return hookInstallBaseName + ".ts"
+}
+
+// openCodePluginSource generates an OpenCode plugin (auto-discovered from
+// <config>/plugin/*.ts) that maps OpenCode events to wsh agentstatus reports.
+// The plugin is a plain async event module (no external imports) so OpenCode can
+// load it without npm install; wsh resolution mirrors the shell hook fallback
+// chain (WAVETERM_WSHBINDIR, PATH, then LOCALAPPDATA/USERPROFILE install dirs).
+func openCodePluginSource() string {
+	return fmt.Sprintf(`// installed by Snorkeling
+// managed by Snorkeling; reinstalling the integration overwrites this file.
+// %s%s
+// %s%d
+
+export default async () => ({
+  event: async ({ event }) => {
+    const blockId = process.env.WAVETERM_BLOCKID;
+    const jwt = process.env.WAVETERM_JWT;
+    if (!blockId || !jwt) return;
+    const mapped = mapEvent(event);
+    if (!mapped) return;
+    report(mapped.state, mapped.phase);
+  },
+});
+
+function mapEvent(event) {
+  if (!event) return null;
+  if (event.type === "permission.asked") return { state: "blocked", phase: "approval" };
+  if (event.type === "permission.replied") return { state: "working", phase: "thinking" };
+  if (event.type !== "session.status") return null;
+  const statusType = event?.properties?.status?.type;
+  if (statusType === "busy" || statusType === "retry") return { state: "working", phase: "thinking" };
+  if (statusType === "idle") return { state: "idle", phase: "none" };
+  return null;
+}
+
+function resolveWsh() {
+  const bindir = process.env.WAVETERM_WSHBINDIR;
+  const candidates = [];
+  if (bindir) {
+    candidates.push(bindir + "/wsh", bindir + "/wsh.exe");
+  }
+  if (process.platform === "win32") {
+    candidates.push(
+      (process.env.LOCALAPPDATA || "") + "\\snorkeling\\Data\\bin\\wsh.exe",
+      (process.env.USERPROFILE || "") + "\\.snorkeling\\bin\\wsh.exe"
+    );
+  }
+  candidates.push("wsh", "wsh.exe");
+  return candidates.find((c) => c && exists(c)) || "wsh";
+}
+
+function exists(p) {
+  try {
+    return require("node:fs").existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+function report(state, phase) {
+  const wsh = resolveWsh();
+  const args = [
+    "agentstatus", state,
+    "--provider", "opencode",
+    "--source", "hook",
+    "--phase", phase,
+  ];
+  try {
+    const { spawn } = require("node:child_process");
+    const child = spawn(wsh, args, { stdio: "ignore", detached: true });
+    child.unref();
+  } catch {}
+}
+`, integrationIdMarker, HookTargetOpenCode, versionMarker, hookInstallVersion)
+}
+
+// piExtensionSource generates a Pi extension (auto-discovered from
+// <agent-dir>/extensions/*.ts) that maps Pi lifecycle events to wsh agentstatus
+// reports. It avoids importing the pi package (plain node builtins only) so the
+// file loads without a local node_modules install.
+func piExtensionSource() string {
+	return fmt.Sprintf(`// installed by Snorkeling
+// managed by Snorkeling; reinstalling the integration overwrites this file.
+// %s%s
+// %s%d
+
+export default function (pi) {
+  pi.on("agent_start", () => report("working", "thinking"));
+  pi.on("tool_call", (event) => report("working", "tool", event?.toolName));
+  pi.on("agent_settled", () => report("idle", "none"));
+  pi.on("session_shutdown", () => report("release", "none"));
+}
+
+function resolveWsh() {
+  const bindir = process.env.WAVETERM_WSHBINDIR;
+  const candidates = [];
+  if (bindir) {
+    candidates.push(bindir + "/wsh", bindir + "/wsh.exe");
+  }
+  if (process.platform === "win32") {
+    candidates.push(
+      (process.env.LOCALAPPDATA || "") + "\\snorkeling\\Data\\bin\\wsh.exe",
+      (process.env.USERPROFILE || "") + "\\.snorkeling\\bin\\wsh.exe"
+    );
+  }
+  candidates.push("wsh", "wsh.exe");
+  return candidates.find((c) => c && exists(c)) || "wsh";
+}
+
+function exists(p) {
+  try {
+    return require("node:fs").existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+function report(state, phase, toolName) {
+  const wsh = resolveWsh();
+  const args = ["agentstatus", state, "--provider", "pi", "--source", "hook", "--phase", phase];
+  if (toolName) args.push("--tool", toolName);
+  try {
+    const { spawn } = require("node:child_process");
+    const child = spawn(wsh, args, { stdio: "ignore", detached: true });
+    child.unref();
+  } catch {}
+}
+`, integrationIdMarker, HookTargetPi, versionMarker, hookInstallVersion)
 }
 
 func writeHookScript(path string, provider string) error {
@@ -709,6 +1001,50 @@ func configDirFromEnvOrHome(envName string, homeRelative string) (string, error)
 	return filepath.Join(home, homeRelative), nil
 }
 
+// openCodeConfigDir returns the OpenCode global config directory (where plugins
+// and opencode.json live). OpenCode resolves it as <xdgConfig>/opencode, honoring
+// OPENCODE_CONFIG_DIR overrides. On Windows the default is %APPDATA%\opencode.
+// The plugin subdir is auto-discovered by OpenCode, so no opencode.json edit is
+// needed to enable the integration.
+func openCodeConfigDir() (string, error) {
+	if value := strings.TrimSpace(os.Getenv(openCodeConfigEnvVar)); value != "" {
+		return expandTilde(value)
+	}
+	if runtime.GOOS == "windows" {
+		if appData := strings.TrimSpace(os.Getenv("APPDATA")); appData != "" {
+			return filepath.Join(appData, "opencode"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "AppData", "Roaming", "opencode"), nil
+	}
+	// XDG config home, fall back to ~/.config
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Join(xdg, "opencode"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "opencode"), nil
+}
+
+// piAgentConfigDir returns the Pi agent config directory where global extensions are
+// auto-discovered from <dir>/extensions/*.ts. Pi honors PI_CODING_AGENT_DIR; the
+// default is ~/.pi/agent.
+func piAgentConfigDir() (string, error) {
+	if value := strings.TrimSpace(os.Getenv(piConfigEnvVar)); value != "" {
+		return expandTilde(value)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".pi", "agent"), nil
+}
+
 func expandTilde(path string) (string, error) {
 	if path == "~" {
 		return os.UserHomeDir()
@@ -836,10 +1172,13 @@ func hookEntries(raw any, event string) ([]any, error) {
 
 func hookScriptVersion(script string) int {
 	for _, line := range strings.Split(script, "\n") {
-		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
 		line = strings.TrimSpace(line)
-		line = strings.TrimSpace(strings.TrimPrefix(line, "rem"))
-		line = strings.TrimSpace(line)
+		for _, prefix := range []string{"#", "//", "rem"} {
+			if strings.HasPrefix(line, prefix) {
+				line = strings.TrimSpace(strings.TrimPrefix(line, prefix))
+				break
+			}
+		}
 		if !strings.HasPrefix(line, versionMarker) {
 			continue
 		}
