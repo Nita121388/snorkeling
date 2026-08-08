@@ -264,6 +264,7 @@ declare global {
         source?: string;
         state: string;
         phase?: string;
+        reason?: string;
         message?: string;
         toolName?: string;
         seq?: number;
