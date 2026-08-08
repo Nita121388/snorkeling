@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decideNotifyKind } from "./agent-status-notify";
 import type { AgentStatus, AgentDisplayState } from "./agent-status-types";
 
@@ -98,5 +98,47 @@ describe("decideNotifyKind", () => {
         const next = mkStatus("thinking");
         const prev = mkStatus("working");
         expect(decideNotifyKind(next, prev)).toBeNull();
+    });
+});
+
+// ---- fireAgentOsNotification dispatch ----
+// Regression guard for the OS-notify routing bug: the notify RPC MUST carry
+// route "electron" or the Go router sends it to "wavesrv" (WshServer), which
+// has no NotifyCommand handler → `command not implemented "notify"` → the
+// notification is silently dropped (FE catch only warns).
+const { notifyCommandMock } = vi.hoisted(() => ({ notifyCommandMock: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/app/store/wshclientapi", () => ({
+    RpcApi: { NotifyCommand: (...args: unknown[]) => notifyCommandMock(...args) },
+}));
+vi.mock("@/app/store/wshrpcutil", () => ({
+    TabRpcClient: { routeId: "tab:test" },
+}));
+
+import { fireAgentOsNotification } from "./agent-status-notify";
+
+describe("fireAgentOsNotification dispatch", () => {
+    beforeEach(() => {
+        notifyCommandMock.mockReset();
+    });
+
+    it("dispatches notify with route electron on a 'done' transition", () => {
+        fireAgentOsNotification(mkStatus("idle"), mkStatus("working"));
+        expect(notifyCommandMock).toHaveBeenCalledTimes(1);
+        const [client, opts, rpcOpts] = notifyCommandMock.mock.calls[0];
+        expect(opts).toMatchObject({ agentkind: "done", agentblockid: "blk1" });
+        expect(rpcOpts).toMatchObject({ route: "electron" });
+        expect(client).toBeDefined();
+    });
+
+    it("dispatches notify with route electron on a 'blocked' transition", () => {
+        fireAgentOsNotification(mkStatus("blocked"), mkStatus("working"));
+        const [, opts, rpcOpts] = notifyCommandMock.mock.calls[0];
+        expect(opts).toMatchObject({ agentkind: "blocked" });
+        expect(rpcOpts).toMatchObject({ route: "electron" });
+    });
+
+    it("does not dispatch on a no-fire transition (idle → idle wobble)", () => {
+        fireAgentOsNotification(mkStatus("idle"), mkStatus("idle"));
+        expect(notifyCommandMock).not.toHaveBeenCalled();
     });
 });

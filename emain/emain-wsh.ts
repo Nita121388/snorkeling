@@ -171,11 +171,13 @@ async function handleAgentOsNotification(opts: WaveNotificationOptions): Promise
     // distinct from unset; we treat unset as the default (true) too.
     const settings = (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
     const osNotifySettings: AgentOsNotifySettings = {
-        masterEnabled: boolValue(settings.agentstatusosnotify, true),
-        doneEnabled: boolValue(settings.agentstatusosnotifydone, true),
-        blockedEnabled: boolValue(settings.agentstatusosnotifyblocked, true),
-        notifyWhenFocused: boolValue(settings.agentstatusosnotifywhenfocused, false),
-        blockedMinIntervalMs: intValue(settings.agentstatusosnotifyblockedminms, 0),
+        // SettingsType keys carry the literal config names with colons (e.g.
+        // "agentstatus:osnotify"); dotted access would silently read undefined.
+        masterEnabled: boolValue(settings["agentstatus:osnotify"], true),
+        doneEnabled: boolValue(settings["agentstatus:osnotifydone"], true),
+        blockedEnabled: boolValue(settings["agentstatus:osnotifyblocked"], true),
+        notifyWhenFocused: boolValue(settings["agentstatus:osnotifywhenfocused"], false),
+        blockedMinIntervalMs: intValue(settings["agentstatus:osnotifyblockedminms"], 0),
     };
 
     const ctx = {

@@ -94,7 +94,13 @@ export function fireAgentOsNotification(next: AgentStatus, prev: AgentStatus | n
 
         // Fire-and-forget: if it fails (no client yet at startup, renderer being torn down),
         // we just log. We never throw into the observer path.
-        RpcApi.NotifyCommand(TabRpcClient, opts).catch((err) => {
+        //
+        // Route must be "electron": without it the Go router sends the command to the
+        // "wavesrv" (WshServer) route, which has no NotifyCommand handler, and the RPC
+        // fails with `command not implemented "notify"` — silently, via the catch below.
+        // This is the same routing the `wsh notify` CLI uses (cmd/wsh/cmd/wshcmd-notify.go)
+        // and the FE bell path (termwrap.ts ElectronSystemBellCommand).
+        RpcApi.NotifyCommand(TabRpcClient, opts, { route: "electron" }).catch((err) => {
             console.warn("[agent-status-notify] notify RPC failed", err);
         });
     } catch (err) {

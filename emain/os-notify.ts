@@ -49,9 +49,15 @@ export interface AgentOsNotifyContext {
     focusApp: () => void;
 }
 
+export type SendAgentOsNotifyReason =
+    | "master-disabled"
+    | "kind-disabled"
+    | "window-focused"
+    | "min-interval";
+
 export type SendAgentOsNotificationOutcome =
     | { fired: true }
-    | { fired: false; reason: "master-disabled" | "kind-disabled" | "window-focused" | "min-interval" };
+    | { fired: false; reason: SendAgentOsNotifyReason };
 
 /**
  * Decide whether to fire and, if so, fire. Returns the outcome — the caller records
@@ -84,7 +90,7 @@ export function sendAgentOsNotification(
 export function decideSuppression(
     desc: AgentOsNotificationDescriptor,
     ctx: AgentOsNotifyContext
-): SendAgentOsNotificationOutcome["reason"] | null {
+): SendAgentOsNotifyReason | null {
     if (!ctx.settings.masterEnabled) return "master-disabled";
     if (!isKindEnabled(ctx.settings, desc.kind)) return "kind-disabled";
     if (ctx.isAnyWindowFocused()) return "window-focused";
