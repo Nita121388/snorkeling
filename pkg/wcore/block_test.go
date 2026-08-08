@@ -9,6 +9,33 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 )
 
+func TestRemoveBlockIdFromTabKeepsEmptySlice(t *testing.T) {
+	// Removing the last block must leave an empty (non-nil) BlockIds so JSON
+	// serializes as "blockids": [] — null blockids breaks the frontend empty-tab state.
+	tab := &waveobj.Tab{BlockIds: []string{"block-1"}}
+	removeBlockIdFromTab(tab, "block-1")
+	if tab.BlockIds == nil {
+		t.Fatalf("expected non-nil empty BlockIds after removing last block, got nil")
+	}
+	if len(tab.BlockIds) != 0 {
+		t.Fatalf("expected empty BlockIds, got %v", tab.BlockIds)
+	}
+
+	// Removing a middle element keeps the remaining ones.
+	tab = &waveobj.Tab{BlockIds: []string{"a", "b", "c"}}
+	removeBlockIdFromTab(tab, "b")
+	if len(tab.BlockIds) != 2 || tab.BlockIds[0] != "a" || tab.BlockIds[1] != "c" {
+		t.Fatalf("expected [a c], got %v", tab.BlockIds)
+	}
+
+	// Removing an absent element leaves the slice untouched.
+	tab = &waveobj.Tab{BlockIds: []string{"a"}}
+	removeBlockIdFromTab(tab, "zzz")
+	if len(tab.BlockIds) != 1 || tab.BlockIds[0] != "a" {
+		t.Fatalf("expected [a], got %v", tab.BlockIds)
+	}
+}
+
 func TestCopyBlockMetaForDuplicateClearsTransientMeta(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_View:               "term",

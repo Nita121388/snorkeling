@@ -22,6 +22,17 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
 
+// removeBlockIdFromTab removes blockId from tab.BlockIds. Unlike utilfn.RemoveElemFromSlice,
+// it keeps an empty (non-nil) slice when the last element is removed, so JSON serializes as
+// "blockids": [] instead of "blockids": null. The frontend treats null blockids as a missing
+// value, which breaks the empty-tab UI state (see tabcontent.tsx).
+func removeBlockIdFromTab(tab *waveobj.Tab, blockId string) {
+	tab.BlockIds = utilfn.RemoveElemFromSlice(tab.BlockIds, blockId)
+	if tab.BlockIds == nil {
+		tab.BlockIds = []string{}
+	}
+}
+
 func CreateSubBlock(ctx context.Context, blockId string, blockDef *waveobj.BlockDef) (*waveobj.Block, error) {
 	if blockDef == nil {
 		return nil, fmt.Errorf("blockDef is nil")
@@ -230,7 +241,7 @@ func MoveBlockToTab(ctx context.Context, blockId string, targetTabId string, foc
 			return "", fmt.Errorf("source tab %q does not contain block %q", sourceTabId, blockId)
 		}
 
-		sourceTab.BlockIds = utilfn.RemoveElemFromSlice(sourceTab.BlockIds, blockId)
+		removeBlockIdFromTab(sourceTab, blockId)
 		if utilfn.FindStringInSlice(targetTab.BlockIds, blockId) == -1 {
 			targetTab.BlockIds = append(targetTab.BlockIds, blockId)
 		}
@@ -456,7 +467,7 @@ func deleteBlockObj(ctx context.Context, blockId string) (int, error) {
 			if parentORef.OType == waveobj.OType_Tab {
 				tab, _ := wstore.DBGet[*waveobj.Tab](tx.Context(), parentORef.OID)
 				if tab != nil {
-					tab.BlockIds = utilfn.RemoveElemFromSlice(tab.BlockIds, blockId)
+					removeBlockIdFromTab(tab, blockId)
 					wstore.DBUpdate(tx.Context(), tab)
 					parentBlockCount = len(tab.BlockIds)
 				}
