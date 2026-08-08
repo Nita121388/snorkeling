@@ -21,7 +21,7 @@ const (
 	HookTargetPi       = "pi"
 
 	hookInstallBaseName  = "snorkeling-agent-status"
-	hookInstallVersion   = 20
+	hookInstallVersion   = 21
 	codexHomeEnvVar      = "CODEX_HOME"
 	claudeConfigEnvVar   = "CLAUDE_CONFIG_DIR"
 	openCodeConfigEnvVar = "OPENCODE_CONFIG_DIR"
@@ -554,15 +554,17 @@ func piExtensionSource() string {
 // %s%s
 // %s%d
 
-const TTL_MS = 300000;      // working reports expire after 5min without renewal
+const THINK_TTL_MS = 120000; // thinking reports expire after 2min without renewal (model hang)
+const TOOL_TTL_MS = 300000;  // tool reports expire after 5min without renewal (long tools)
 const ERROR_TTL_MS = 60000; // model-error reports self-clear after 1min
 const RENEW_MIN_MS = 30000; // rate-limit event-driven working renewals
 
+let current = null; // {phase, toolName} of the last working report
 let lastRenewAt = 0;
 
 export default function (pi) {
-  pi.on("agent_start", () => report("working", "thinking", null, { ttlMs: TTL_MS }));
-  pi.on("tool_call", (event) => report("working", "tool", event?.toolName, { ttlMs: TTL_MS }));
+  pi.on("agent_start", () => report("working", "thinking", null, { ttlMs: THINK_TTL_MS }));
+  pi.on("tool_call", (event) => report("working", "tool", event?.toolName, { ttlMs: TOOL_TTL_MS }));
   // Renew on activity: streaming tokens, finished tools, finished turns. A hung
   // provider request fires none of these, so the working TTL runs out and the
   // status decays to stale instead of spinning forever.
@@ -586,11 +588,17 @@ export default function (pi) {
   });
 }
 
+// Renew the working report at its current phase. Renewing mid-tool as
+// "thinking" would wrongly shrink the TTL from 5min to 2min, so preserve the
+// phase from the last working report (tool stays tool until it ends).
 function renewWorking() {
   const now = Date.now();
   if (now - lastRenewAt < RENEW_MIN_MS) return;
   lastRenewAt = now;
-  report("working", "thinking", null, { ttlMs: TTL_MS });
+  const phase = current && current.phase === "tool" ? "tool" : "thinking";
+  report("working", phase, phase === "tool" ? current.toolName : null, {
+    ttlMs: phase === "tool" ? TOOL_TTL_MS : THINK_TTL_MS,
+  });
 }
 
 function resolveWsh() {
@@ -623,6 +631,7 @@ function report(state, phase, toolName, opts) {
   if (toolName) args.push("--tool", toolName);
   if (opts?.ttlMs) args.push("--ttl-ms", String(opts.ttlMs));
   if (opts?.reason) args.push("--reason", opts.reason);
+  if (state === "working") current = { phase, toolName: toolName || null };
   try {
     const { spawn } = require("node:child_process");
     const child = spawn(wsh, args, { stdio: "ignore", detached: true });
@@ -803,7 +812,11 @@ if "%%ACTION%%"=="unknown" set "PHASE=unknown"
 :report
 call :debug_log "report provider=%s action=%%ACTION%% phase=%%PHASE%% block=%%WAVETERM_BLOCKID%% wsh=%%WSH_BIN%%"
 if "%%ACTION%%"=="working" (
-"%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" --ttl-ms 300000 <nul >nul 2>nul
+  if "%%PHASE%%"=="thinking" (
+    "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" --ttl-ms 120000 <nul >nul 2>nul
+  ) else (
+    "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" --ttl-ms 300000 <nul >nul 2>nul
+  )
 ) else (
 "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" <nul >nul 2>nul
 )
@@ -814,7 +827,7 @@ exit /b 0
 :debug_log
 if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider, provider, provider)
 }
 
 func agentStatusPowerShellHookScript(provider string) string {
@@ -875,12 +888,16 @@ if ($Phase -notin $validPhases) {
 }
 
 if ($Action -eq "working") {
-    & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase --ttl-ms 300000 *> $null
+    if ($Phase -eq "thinking") {
+        & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase --ttl-ms 120000 *> $null
+    } else {
+        & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase --ttl-ms 300000 *> $null
+    }
 } else {
     & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase *> $null
 }
 exit $LASTEXITCODE
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {
@@ -1025,8 +1042,9 @@ if tool_name:
 if session_id:
     cmd.extend(["--session-id", session_id])
 if action == "working":
-    # watchdog: a working report that is not renewed within 5min decays to stale
-    cmd.extend(["--ttl-ms", "300000"])
+    # watchdog: thinking 2min (model hang), tool/shell-command 5min (long tools)
+    ttl_ms = "120000" if phase == "thinking" else "300000"
+    cmd.extend(["--ttl-ms", ttl_ms])
 
 try:
     subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
@@ -1043,12 +1061,16 @@ else
   [ "$phase" = "unknown" ] && [ "$action" = "blocked" ] && phase="approval"
   [ "$phase" = "unknown" ] && [ "$action" = "working" ] && phase="thinking"
   if [ "$action" = "working" ]; then
-    "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" --ttl-ms 300000 >/dev/null 2>&1 || true
+    if [ "$phase" = "thinking" ]; then
+      "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" --ttl-ms 120000 >/dev/null 2>&1 || true
+    else
+      "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" --ttl-ms 300000 >/dev/null 2>&1 || true
+    fi
   else
     "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" >/dev/null 2>&1 || true
   fi
 fi
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider)
 }
 
 func configDirFromEnvOrHome(envName string, homeRelative string) (string, error) {

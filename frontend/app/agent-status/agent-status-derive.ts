@@ -12,10 +12,16 @@ import { normalizeTimeMs } from "@/app/agent-status/agent-status-unread";
 
 const DoneSessionActivityMs = 15 * 60_000;
 
-// A working agent that has not renewed its report within this window is
-// considered stuck (watchdog). Mirrors the backend working TTL (5min) so the
-// live view flips to stale at the same time the backend decays the source.
+// Watchdog thresholds: a working agent that has not renewed its report within
+// its phase's window is considered stuck. Mirrors the backend working TTLs so
+// the live view flips to stale at the same time the backend decays the source.
+//
+// thinking = waiting on the model: silence here is almost always a hang, so
+// the window is short (2min). tool / shell-command = a tool is running, which
+// can legitimately take a long time (build, test), so the window stays wide
+// (5min) to avoid false-stale.
 export const AgentStaleThresholdMs = 5 * 60_000;
+export const AgentThinkStaleThresholdMs = 2 * 60_000;
 
 type DeriveAgentStatusInput = {
     blockId: string;
@@ -214,17 +220,18 @@ export function isInferredAgentStatus(status: AgentStatus): boolean {
 }
 
 /**
- * Watchdog presentation: a working status whose last report is older than
- * AgentStaleThresholdMs is presented as "stale" (stuck) instead of spinning
- * forever. Only working decays — blocked is actionable (waiting on the user)
- * and error/rate-limited self-clear via their short TTLs.
+ * Watchdog presentation: a working status whose last report is older than its
+ * phase's staleness threshold is presented as "stale" (stuck) instead of
+ * spinning forever. Only working decays — blocked is actionable (waiting on
+ * the user) and error/rate-limited self-clear via their short TTLs.
  */
 export function applyStaleness(status: AgentStatus, nowMs: number): AgentStatus {
     if (status.state !== "working") {
         return status;
     }
     const updatedAtMs = normalizeTimeMs(status.updatedAt);
-    if (nowMs - updatedAtMs <= AgentStaleThresholdMs) {
+    const threshold = status.phase === "thinking" ? AgentThinkStaleThresholdMs : AgentStaleThresholdMs;
+    if (nowMs - updatedAtMs <= threshold) {
         return status;
     }
     return {

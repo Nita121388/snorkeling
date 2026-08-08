@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
     AgentStaleThresholdMs,
+    AgentThinkStaleThresholdMs,
     aggregateAgentStatuses,
     aggregateStatusLabel,
     agentStatusPresentation,
@@ -262,16 +263,53 @@ describe("applyStaleness", () => {
         expect(presented.state).toBe("working");
     });
 
-    it("decays a working status past the watchdog threshold to stale", () => {
+    it("decays a working thinking status past the think threshold to stale", () => {
         const old: AgentStatus = {
             ...working,
-            updatedAt: now - AgentStaleThresholdMs - 1_000,
-            activeSince: now - AgentStaleThresholdMs - 1_000,
+            updatedAt: now - AgentThinkStaleThresholdMs - 1_000,
+            activeSince: now - AgentThinkStaleThresholdMs - 1_000,
         };
         const presented = applyStaleness(old, now);
         expect(presented.state).toBe("stale");
         expect(presented.phase).toBe("none");
         expect(presented.reason).toBe("explicit-report");
+    });
+
+    it("keeps a working tool status fresh past the think threshold", () => {
+        // A long-running tool (4min, no renewal) must NOT flip to stale just
+        // because the thinking threshold (2min) passed — tools get the wider
+        // 5min window.
+        const tool: AgentStatus = {
+            ...working,
+            phase: "tool",
+            toolName: "bash",
+            updatedAt: now - AgentThinkStaleThresholdMs - 60_000,
+            activeSince: now - AgentThinkStaleThresholdMs - 60_000,
+        };
+        const presented = applyStaleness(tool, now);
+        expect(presented.state).toBe("working");
+        expect(presented.phase).toBe("tool");
+    });
+
+    it("decays a working tool status past the tool threshold to stale", () => {
+        const tool: AgentStatus = {
+            ...working,
+            phase: "tool",
+            updatedAt: now - AgentStaleThresholdMs - 1_000,
+            activeSince: now - AgentStaleThresholdMs - 1_000,
+        };
+        expect(applyStaleness(tool, now).state).toBe("stale");
+    });
+
+    it("uses the wide threshold for non-thinking phases", () => {
+        for (const phase of ["shell-command", "unknown", "none"] as const) {
+            const status: AgentStatus = {
+                ...working,
+                phase,
+                updatedAt: now - AgentThinkStaleThresholdMs - 60_000,
+            };
+            expect(applyStaleness(status, now).state).toBe("working");
+        }
     });
 
     it("does not decay non-working states", () => {
@@ -288,7 +326,7 @@ describe("applyStaleness", () => {
     it("treats seconds-epoch updatedAt as seconds before comparing", () => {
         const secondsOld: AgentStatus = {
             ...working,
-            updatedAt: Math.floor((now - AgentStaleThresholdMs - 1_000) / 1000),
+            updatedAt: Math.floor((now - AgentThinkStaleThresholdMs - 1_000) / 1000),
         };
         expect(applyStaleness(secondsOld, now).state).toBe("stale");
     });
@@ -296,7 +334,7 @@ describe("applyStaleness", () => {
     it("is applied by presentAgentStatus to a canonical working status", () => {
         const old: AgentStatus = {
             ...working,
-            updatedAt: now - AgentStaleThresholdMs - 1_000,
+            updatedAt: now - AgentThinkStaleThresholdMs - 1_000,
         };
         const status = presentAgentStatus({
             blockId: "block-agent",
