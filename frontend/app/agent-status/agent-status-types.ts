@@ -1,11 +1,26 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-export type AgentDisplayState = "blocked" | "working" | "done" | "idle" | "stale" | "unknown";
+export type AgentDisplayState =
+    | "blocked"
+    | "working"
+    | "done"
+    | "idle"
+    | "stale"
+    | "error"
+    | "rate-limited"
+    | "unknown";
 
 export type AgentPhase = "thinking" | "tool" | "shell-command" | "approval" | "none" | "unknown";
 
-export type AgentStatusSource = "hook" | "screen" | "shell-integration" | "controller" | "session" | "manual";
+export type AgentStatusSource =
+    | "hook"
+    | "screen"
+    | "shell-integration"
+    | "controller"
+    | "session"
+    | "manual"
+    | "provider";
 
 export type AgentStatusConfidence = "high" | "medium" | "low";
 

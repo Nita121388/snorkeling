@@ -29,6 +29,8 @@ function normalizedState(state: string | undefined): AgentDisplayState {
         case "blocked":
         case "working":
         case "idle":
+        case "error":
+        case "rate-limited":
         case "unknown":
             return state;
         default:

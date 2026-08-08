@@ -799,6 +799,19 @@
         border-color: rgb(245 158 11 / 0.64);
     }
 
+    &.is-error {
+        // 模型报错: 饱和红, 不闪烁 — 瞬时态 (短 TTL 自愈), 避免报警疲劳.
+        --agent-status-color: var(--error-color, #ef4444);
+        --agent-status-bg: rgb(from var(--error-color, #ef4444) r g b / 0.12);
+        border-color: rgb(from var(--error-color, #ef4444) r g b / 0.64);
+    }
+
+    &.is-rate-limited {
+        --agent-status-color: var(--warning-color, #f59e0b);
+        --agent-status-bg: rgb(245 158 11 / 0.12);
+        border-color: rgb(245 158 11 / 0.64);
+    }
+
     &.is-stale {
         // stale = "不新鲜但没错" — 不用强调饱和值，回退到中性 secondary。
         --agent-status-color: var(--secondary-text-color);

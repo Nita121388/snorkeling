@@ -275,7 +275,7 @@ func TestForceReleaseClearsSequencedSource(t *testing.T) {
 	}
 }
 
-func TestTTLExpiryRemovesCanonicalStatus(t *testing.T) {
+func TestTTLExpiryDecaysWorkingToStale(t *testing.T) {
 	ResetForTesting()
 	setTestNow(1_700_000_000_000)
 
@@ -293,13 +293,189 @@ func TestTTLExpiryRemovesCanonicalStatus(t *testing.T) {
 		t.Fatalf("unexpected TTL status: %+v", status)
 	}
 
+	// Watchdog: an expired working report decays to stale instead of vanishing,
+	// so a re-pull still shows "stuck" until the agent recovers.
 	setTestNow(1_700_000_001_001)
 	status = Get("block-1")
-	if status != nil {
-		t.Fatalf("expected status to expire, got %+v", status)
+	if status == nil || status.State != StateStale {
+		t.Fatalf("expected working TTL expiry to decay to stale, got %+v", status)
+	}
+	if status.Phase != PhaseNone || status.Reason != "ttl-expired" {
+		t.Fatalf("unexpected decayed fields: %+v", status)
+	}
+	if status.ExpiresAt != 1_700_000_001_001+staleTtlMs {
+		t.Fatalf("unexpected stale expiry: %+v", status)
 	}
 	if LastSequenceForTesting("block-1", SourceHook) != 20 {
-		t.Fatalf("expected sequence guard to remain after TTL expiry")
+		t.Fatalf("expected sequence guard to remain after TTL decay")
+	}
+
+	// The stale status itself eventually gets cleaned up.
+	setTestNow(1_700_000_001_001 + staleTtlMs + 1)
+	status = Get("block-1")
+	if status != nil {
+		t.Fatalf("expected decayed stale status to expire, got %+v", status)
+	}
+}
+
+func TestWorkingReportAfterDecayRestoresWorking(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     20,
+		TtlMs:   1000,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report returned error: %v", err)
+	}
+
+	setTestNow(1_700_000_001_001)
+	if status := Get("block-1"); status == nil || status.State != StateStale {
+		t.Fatalf("expected stale before recovery, got %+v", status)
+	}
+
+	// A fresh (higher-seq) working report replaces the decayed stale status.
+	status, changed, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     21,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report after decay returned error: %v", err)
+	}
+	if !changed || status == nil || status.State != StateWorking {
+		t.Fatalf("working report after decay was lost, status=%+v changed=%v", status, changed)
+	}
+}
+
+func TestProviderErrorReportCoexistsWithHookWorking(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report working returned error: %v", err)
+	}
+
+	// Model error lands on its own source with a short TTL; it outranks working
+	// while alive but must not clobber the working report slot.
+	errStatus, changed, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceProvider,
+		State:   StateRateLimited,
+		Reason:  "model-http-429",
+		Seq:     11,
+		TtlMs:   1000,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report error returned error: %v", err)
+	}
+	if !changed || errStatus == nil || errStatus.State != StateRateLimited {
+		t.Fatalf("expected rate-limited canonical, got %+v changed=%v", errStatus, changed)
+	}
+	if errStatus.Reason != "model-http-429" || errStatus.Confidence != "high" {
+		t.Fatalf("unexpected error fields: %+v", errStatus)
+	}
+
+	// Error TTL expires -> working resurfaces from the hook slot.
+	setTestNow(1_700_000_001_001)
+	status := Get("block-1")
+	if status == nil || status.State != StateWorking {
+		t.Fatalf("expected working to resurface after error expiry, got %+v", status)
+	}
+}
+
+func TestProviderSourceReleaseClearsErrorOnly(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	_, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     10,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report working returned error: %v", err)
+	}
+	_, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceProvider,
+		State:   StateError,
+		Seq:     11,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report error returned error: %v", err)
+	}
+
+	// pi clears its model-error report after a successful response; the hook
+	// working status is untouched.
+	released, changed, err := Release("block-1", SourceProvider, 12)
+	if err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+	if !changed || released == nil || released.State != StateWorking {
+		t.Fatalf("expected working after provider release, got %+v changed=%v", released, changed)
+	}
+}
+
+func TestReasonPassthroughAndDefault(t *testing.T) {
+	ResetForTesting()
+	setTestNow(1_700_000_000_000)
+
+	status, _, err := Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateError,
+		Reason:  "model-http-500",
+		Seq:     1,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report returned error: %v", err)
+	}
+	if status == nil || status.State != StateError || status.Reason != "model-http-500" {
+		t.Fatalf("expected reason passthrough, got %+v", status)
+	}
+
+	status, _, err = Report(AgentStatusReport{
+		BlockId: "block-1",
+		Source:  SourceHook,
+		State:   StateWorking,
+		Seq:     2,
+	}, "")
+	if err != nil {
+		t.Fatalf("Report returned error: %v", err)
+	}
+	if status == nil || status.Reason != "explicit-report" {
+		t.Fatalf("expected default reason, got %+v", status)
+	}
+}
+
+func TestNormalizeStateAcceptsErrorStates(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"error", StateError},
+		{"ERROR", StateError},
+		{" rate-limited ", StateRateLimited},
+		{"stale", StateStale},
+		{"nonsense", ""},
+	}
+	for _, tc := range cases {
+		if got := NormalizeState(tc.input); got != tc.want {
+			t.Fatalf("NormalizeState(%q) = %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }
 

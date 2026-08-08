@@ -38,6 +38,7 @@ var (
 	agentStatusSource    string
 	agentStatusPhase     string
 	agentStatusMessage   string
+	agentStatusReason    string
 	agentStatusToolName  string
 	agentStatusSeq       int64
 	agentStatusTtlMs     int64
@@ -66,6 +67,7 @@ func init() {
 	agentStatusCmd.Flags().StringVar(&agentStatusSource, "source", agentstatus.SourceHook, "status source")
 	agentStatusCmd.Flags().StringVar(&agentStatusPhase, "phase", "", "agent phase")
 	agentStatusCmd.Flags().StringVar(&agentStatusMessage, "message", "", "status message")
+	agentStatusCmd.Flags().StringVar(&agentStatusReason, "reason", "", "status reason (classification text, e.g. model-http-429)")
 	agentStatusCmd.Flags().StringVar(&agentStatusToolName, "tool", "", "tool name")
 	agentStatusCmd.Flags().Int64Var(&agentStatusSeq, "seq", 0, "monotonic sequence number")
 	agentStatusCmd.Flags().Int64Var(&agentStatusTtlMs, "ttl-ms", 0, "status time-to-live in milliseconds")
@@ -108,6 +110,7 @@ func agentStatusRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		Source:     agentStatusSource,
 		State:      args[0],
 		Phase:      agentStatusPhase,
+		Reason:     agentStatusReason,
 		Message:    agentStatusMessage,
 		ToolName:   agentStatusToolName,
 		Seq:        agentStatusSeq,

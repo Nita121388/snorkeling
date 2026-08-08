@@ -3,10 +3,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    AgentStaleThresholdMs,
     aggregateAgentStatuses,
     aggregateStatusLabel,
+    agentStatusPresentation,
+    applyStaleness,
     deriveAgentStatus,
     formatAgentProvider,
+    isInferredAgentStatus,
     presentAgentStatus,
 } from "./agent-status-derive";
 import type { AgentStatus } from "./agent-status-types";
@@ -236,5 +240,107 @@ describe("aggregateAgentStatuses", () => {
         expect(formatAgentProvider("opencode")).toBe("Opencode");
         expect(formatAgentProvider("open-code")).toBe("Opencode");
         expect(formatAgentProvider("pi")).toBe("Pi");
+    });
+});
+
+describe("applyStaleness", () => {
+    const working: AgentStatus = {
+        blockId: "block-agent",
+        provider: "pi",
+        state: "working",
+        phase: "thinking",
+        source: "hook",
+        confidence: "high",
+        reason: "explicit-report",
+        updatedAt: now - 1_000,
+        activeSince: now - 1_000,
+    };
+
+    it("keeps a fresh working status unchanged", () => {
+        const presented = applyStaleness(working, now);
+        expect(presented).toBe(working);
+        expect(presented.state).toBe("working");
+    });
+
+    it("decays a working status past the watchdog threshold to stale", () => {
+        const old: AgentStatus = {
+            ...working,
+            updatedAt: now - AgentStaleThresholdMs - 1_000,
+            activeSince: now - AgentStaleThresholdMs - 1_000,
+        };
+        const presented = applyStaleness(old, now);
+        expect(presented.state).toBe("stale");
+        expect(presented.phase).toBe("none");
+        expect(presented.reason).toBe("explicit-report");
+    });
+
+    it("does not decay non-working states", () => {
+        for (const state of ["blocked", "idle", "error", "rate-limited", "done", "unknown"] as const) {
+            const status: AgentStatus = {
+                ...working,
+                state,
+                updatedAt: now - AgentStaleThresholdMs - 60_000,
+            };
+            expect(applyStaleness(status, now).state).toBe(state);
+        }
+    });
+
+    it("treats seconds-epoch updatedAt as seconds before comparing", () => {
+        const secondsOld: AgentStatus = {
+            ...working,
+            updatedAt: Math.floor((now - AgentStaleThresholdMs - 1_000) / 1000),
+        };
+        expect(applyStaleness(secondsOld, now).state).toBe("stale");
+    });
+
+    it("is applied by presentAgentStatus to a canonical working status", () => {
+        const old: AgentStatus = {
+            ...working,
+            updatedAt: now - AgentStaleThresholdMs - 1_000,
+        };
+        const status = presentAgentStatus({
+            blockId: "block-agent",
+            provider: "pi",
+            canonicalStatus: old,
+            controllerStatus: controllerStatus("running"),
+            nowMs: now,
+        });
+        expect(status.state).toBe("stale");
+    });
+});
+
+describe("error state presentation", () => {
+    const base: AgentStatus = {
+        blockId: "block-agent",
+        provider: "pi",
+        state: "error",
+        phase: "unknown",
+        source: "provider",
+        confidence: "high",
+        reason: "model-http-500",
+        updatedAt: now,
+    };
+
+    it("presents error with a red warning icon and the reason in the title", () => {
+        const p = agentStatusPresentation(base);
+        expect(p.label).toBe("Error");
+        expect(p.icon).toBe("triangle-exclamation");
+        expect(p.title).toContain("model-http-500");
+    });
+
+    it("presents rate-limited separately", () => {
+        const p = agentStatusPresentation({ ...base, state: "rate-limited", reason: "model-http-429" });
+        expect(p.label).toBe("Rate limited");
+    });
+
+    it("does not mark provider-source reports as inferred", () => {
+        expect(isInferredAgentStatus(base)).toBe(false);
+    });
+
+    it("aggregates error and rate-limited labels", () => {
+        expect(aggregateStatusLabel(aggregateAgentStatuses([{ ...base, state: "error" }]))).toBe("1 error");
+        expect(
+            aggregateStatusLabel(aggregateAgentStatuses([{ ...base, state: "rate-limited" }]))
+        ).toBe("1 rate limited");
     });
 });

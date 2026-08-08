@@ -21,7 +21,7 @@ const (
 	HookTargetPi       = "pi"
 
 	hookInstallBaseName  = "snorkeling-agent-status"
-	hookInstallVersion   = 19
+	hookInstallVersion   = 20
 	codexHomeEnvVar      = "CODEX_HOME"
 	claudeConfigEnvVar   = "CLAUDE_CONFIG_DIR"
 	openCodeConfigEnvVar = "OPENCODE_CONFIG_DIR"
@@ -523,6 +523,8 @@ function report(state, phase) {
     "--source", "hook",
     "--phase", phase,
   ];
+  // watchdog: a working report not renewed within 5min decays to stale
+  if (state === "working") args.push("--ttl-ms", "300000");
   try {
     const { spawn } = require("node:child_process");
     const child = spawn(wsh, args, { stdio: "ignore", detached: true });
@@ -536,17 +538,59 @@ function report(state, phase) {
 // <agent-dir>/extensions/*.ts) that maps Pi lifecycle events to wsh agentstatus
 // reports. It avoids importing the pi package (plain node builtins only) so the
 // file loads without a local node_modules install.
+//
+// Watchdog design (see 20-AgentStatus错误识别与卡顿可视化方案):
+//   - every working report carries a 5min TTL; renewal is EVENT-driven and
+//     rate-limited (RENEW_MIN_MS), NOT a timer — a timer would keep renewing
+//     while the provider request hangs, hiding the stuck state. A real hang
+//     produces no events, so the TTL expires and the backend decays working to
+//     stale.
+//   - model errors are reported on their own "provider" source with a short
+//     TTL, so they surface immediately (rank above working) without clobbering
+//     the working report slot, and self-clear when the error passes.
 func piExtensionSource() string {
 	return fmt.Sprintf(`// installed by Snorkeling
 // managed by Snorkeling; reinstalling the integration overwrites this file.
 // %s%s
 // %s%d
 
+const TTL_MS = 300000;      // working reports expire after 5min without renewal
+const ERROR_TTL_MS = 60000; // model-error reports self-clear after 1min
+const RENEW_MIN_MS = 30000; // rate-limit event-driven working renewals
+
+let lastRenewAt = 0;
+
 export default function (pi) {
-  pi.on("agent_start", () => report("working", "thinking"));
-  pi.on("tool_call", (event) => report("working", "tool", event?.toolName));
+  pi.on("agent_start", () => report("working", "thinking", null, { ttlMs: TTL_MS }));
+  pi.on("tool_call", (event) => report("working", "tool", event?.toolName, { ttlMs: TTL_MS }));
+  // Renew on activity: streaming tokens, finished tools, finished turns. A hung
+  // provider request fires none of these, so the working TTL runs out and the
+  // status decays to stale instead of spinning forever.
+  pi.on("message_update", () => renewWorking());
+  pi.on("tool_execution_end", () => renewWorking());
+  pi.on("turn_end", () => renewWorking());
   pi.on("agent_settled", () => report("idle", "none"));
   pi.on("session_shutdown", () => report("release", "none"));
+  // after_provider_response only fires when an HTTP response actually arrives
+  // (429/4xx/5xx); network hangs/timeouts never reach it — those are caught by
+  // the watchdog TTL above. Success clears any outstanding model-error report.
+  pi.on("after_provider_response", (event) => {
+    const status = event && typeof event.status === "number" ? event.status : 0;
+    if (status === 429) {
+      report("rate-limited", "none", null, { ttlMs: ERROR_TTL_MS, source: "provider", reason: "model-http-429" });
+    } else if (status >= 400) {
+      report("error", "none", null, { ttlMs: ERROR_TTL_MS, source: "provider", reason: "model-http-" + status });
+    } else if (status >= 200 && status < 400) {
+      report("release", "none", null, { source: "provider" });
+    }
+  });
+}
+
+function renewWorking() {
+  const now = Date.now();
+  if (now - lastRenewAt < RENEW_MIN_MS) return;
+  lastRenewAt = now;
+  report("working", "thinking", null, { ttlMs: TTL_MS });
 }
 
 function resolveWsh() {
@@ -573,10 +617,12 @@ function exists(p) {
   }
 }
 
-function report(state, phase, toolName) {
+function report(state, phase, toolName, opts) {
   const wsh = resolveWsh();
-  const args = ["agentstatus", state, "--provider", "pi", "--source", "hook", "--phase", phase];
+  const args = ["agentstatus", state, "--provider", "pi", "--source", opts?.source || "hook", "--phase", phase];
   if (toolName) args.push("--tool", toolName);
+  if (opts?.ttlMs) args.push("--ttl-ms", String(opts.ttlMs));
+  if (opts?.reason) args.push("--reason", opts.reason);
   try {
     const { spawn } = require("node:child_process");
     const child = spawn(wsh, args, { stdio: "ignore", detached: true });
@@ -756,7 +802,11 @@ if "%%ACTION%%"=="unknown" set "PHASE=unknown"
 
 :report
 call :debug_log "report provider=%s action=%%ACTION%% phase=%%PHASE%% block=%%WAVETERM_BLOCKID%% wsh=%%WSH_BIN%%"
+if "%%ACTION%%"=="working" (
+"%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" --ttl-ms 300000 <nul >nul 2>nul
+) else (
 "%%WSH_BIN%%" agentstatus "%%ACTION%%" --provider "%s" --source hook --phase "%%PHASE%%" <nul >nul 2>nul
+)
 set "WSH_EXIT=%%ERRORLEVEL%%"
 call :debug_log "done exit=%%WSH_EXIT%%"
 exit /b 0
@@ -764,7 +814,7 @@ exit /b 0
 :debug_log
 if not "%%DEBUG_LOG%%"=="" echo [%%DATE%% %%TIME%%] %%~1>>"%%DEBUG_LOG%%" 2>nul
 exit /b 0
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider, provider, provider, provider, provider)
 }
 
 func agentStatusPowerShellHookScript(provider string) string {
@@ -824,9 +874,13 @@ if ($Phase -notin $validPhases) {
     else { $Phase = "unknown" }
 }
 
-& $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase *> $null
+if ($Action -eq "working") {
+    & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase --ttl-ms 300000 *> $null
+} else {
+    & $wshBin agentstatus $Action --provider "%s" --source hook --phase $Phase *> $null
+}
 exit $LASTEXITCODE
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
 }
 
 func agentStatusShellHookScript(provider string) string {
@@ -970,6 +1024,9 @@ if tool_name:
     cmd.extend(["--tool", tool_name])
 if session_id:
     cmd.extend(["--session-id", session_id])
+if action == "working":
+    # watchdog: a working report that is not renewed within 5min decays to stale
+    cmd.extend(["--ttl-ms", "300000"])
 
 try:
     subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
@@ -985,9 +1042,13 @@ else
   [ "$phase" = "unknown" ] && [ "$action" = "release" ] && phase="none"
   [ "$phase" = "unknown" ] && [ "$action" = "blocked" ] && phase="approval"
   [ "$phase" = "unknown" ] && [ "$action" = "working" ] && phase="thinking"
-  "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" >/dev/null 2>&1 || true
+  if [ "$action" = "working" ]; then
+    "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" --ttl-ms 300000 >/dev/null 2>&1 || true
+  else
+    "$wsh_bin" agentstatus "$action" --provider "%s" --source hook --phase "$phase" >/dev/null 2>&1 || true
+  fi
 fi
-`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider)
+`, integrationIdMarker, provider, versionMarker, hookInstallVersion, provider, provider, provider)
 }
 
 func configDirFromEnvOrHome(envName string, homeRelative string) (string, error) {

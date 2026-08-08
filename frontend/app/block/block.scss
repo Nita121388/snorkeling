@@ -194,6 +194,19 @@
                             animation: agent-status-blocked-border 1.6s ease-in-out infinite;
                         }
 
+                        // 模型报错: 饱和红, 不闪烁 — 瞬时态 (短 TTL 自愈), 避免报警疲劳.
+                        &.is-error {
+                            border-color: rgb(from var(--error-color, #ef4444) r g b / 0.64);
+                            color: var(--error-color, #ef4444);
+                            background: rgb(from var(--error-color, #ef4444) r g b / 0.12);
+                        }
+
+                        &.is-rate-limited {
+                            border-color: rgb(from var(--warning-color, #f59e0b) r g b / 0.64);
+                            color: var(--warning-color, #f59e0b);
+                            background: rgb(245 158 11 / 0.12);
+                        }
+
                         &.is-stale {
                             border-color: rgb(168 85 247 / 0.38);
                             color: #a855f7;
@@ -863,6 +876,15 @@
                 &.is-blocked {
                     background: var(--warning-color, #f59e0b);
                     animation: agent-status-blocked-border 1.6s ease-in-out infinite;
+                }
+
+                &.is-error {
+                    background: var(--error-color, #ef4444);
+                    box-shadow: 0 0 6px rgb(from var(--error-color, #ef4444) r g b / 0.7);
+                }
+
+                &.is-rate-limited {
+                    background: var(--warning-color, #f59e0b);
                 }
 
                 &.is-stale {

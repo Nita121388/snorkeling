@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { observeAgentStatusTransition } from "@/app/agent-status/agent-status-done-ack-store";
+import { applyStaleness } from "@/app/agent-status/agent-status-derive";
+import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -9,7 +11,7 @@ import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import * as services from "@/store/services";
 import { makeORef } from "@/store/wos";
-import { PrimitiveAtom, atom, type Getter } from "jotai";
+import { Atom, PrimitiveAtom, atom, type Getter } from "jotai";
 
 /**
  * 全局 blockId-keyed agent status 缓存.
@@ -24,7 +26,8 @@ import { PrimitiveAtom, atom, type Getter } from "jotai";
  * 多消费者只是多一次 globalStore.set; 真正的去重收口由后续 follow-up 统一改读本 store.
  */
 type StatusEntry = {
-    atom: PrimitiveAtom<AgentStatus | null>;
+    rawAtom: PrimitiveAtom<AgentStatus | null>;
+    presentedAtom: Atom<AgentStatus | null>;
     refCount: number;
     unsubscribe: () => void;
     teardownTimer: ReturnType<typeof setTimeout> | null;
@@ -50,13 +53,14 @@ export class AgentStatusStore {
     }
 
     /**
-     * 返回 blockId 对应的状态 atom (复用同一份); 不存在时新建并注册订阅 + 初始 GetAgentStatus.
-     * 内部使用 —— 公开入口是 acquire/release 配对, refCount 由 acquire 维护.
+     * Returns the blockId's raw status atom (creates it on first access and
+     * registers the subscription + initial GetAgentStatus). The presented
+     * (staleness-aware) atom wraps it — see presentedAgentStatusAtom.
      */
-    private getAgentStatusAtom(blockId: string): PrimitiveAtom<AgentStatus | null> {
+    private getAgentStatusAtom(blockId: string): { raw: PrimitiveAtom<AgentStatus | null>; presented: Atom<AgentStatus | null> } {
         const entry = this.entries.get(blockId);
         if (entry != null) {
-            return entry.atom;
+            return { raw: entry.rawAtom, presented: entry.presentedAtom };
         }
         const statusAtom = atom<AgentStatus | null>(null) as PrimitiveAtom<AgentStatus | null>;
         const unsubscribe = waveEventSubscribeSingle({
@@ -120,12 +124,37 @@ export class AgentStatusStore {
             .catch((error) => {
                 console.log("error getting initial agent status (inline-tab store)", blockId, error);
             });
-        this.entries.set(blockId, { atom: statusAtom, refCount: 0, unsubscribe, teardownTimer: null });
-        return statusAtom;
+        const presentedAtom = atom<AgentStatus | null>((get) => {
+            const raw = get(statusAtom);
+            if (raw == null) {
+                return null;
+            }
+            // While the agent is working, subscribe to the minute tick so the
+            // stale flip (watchdog threshold) happens without needing a new
+            // report event — a stuck agent produces none. Conditional get()
+            // only subscribes when needed (same pattern as the tab dots).
+            if (raw.state === "working") {
+                get(nowMinuteTickAtom);
+            }
+            return applyStaleness(raw, Date.now());
+        });
+        this.entries.set(blockId, {
+            rawAtom: statusAtom,
+            presentedAtom,
+            refCount: 0,
+            unsubscribe,
+            teardownTimer: null,
+        });
+        return { raw: statusAtom, presented: presentedAtom };
     }
 
-    acquire(blockId: string): PrimitiveAtom<AgentStatus | null> {
-        const atom = this.getAgentStatusAtom(blockId);
+    /**
+     * Returns the presented (staleness-aware) status atom. Consumers that
+     * render status (term header pill, inline-tab label) read this so a stuck
+     * working agent shows as stale without any new events.
+     */
+    acquire(blockId: string): Atom<AgentStatus | null> {
+        const { presented } = this.getAgentStatusAtom(blockId);
         const entry = this.entries.get(blockId);
         if (entry != null) {
             entry.refCount++;
@@ -134,7 +163,7 @@ export class AgentStatusStore {
                 entry.teardownTimer = null;
             }
         }
-        return atom;
+        return presented;
     }
 
     release(blockId: string): void {
@@ -163,13 +192,14 @@ export class AgentStatusStore {
      * 仅取已缓存的 status atom, 不创建新订阅、不自增 refCount.
      * 适合 C 层 (顶部 app tab) 这种"被动聚合已存在 agent 状态"的消费者: 一个 block 还没人订阅
      * = 它当前没必要在 C 上提示, 直接返回 null. acquire 才是"我要用、订阅"的强信号入口.
+     * 返回 raw atom: 顶部 tab 圆点只关心 D/blocked 判定, 不参与 stale 呈现.
      */
     peekStatusAtom(blockId: string): PrimitiveAtom<AgentStatus | null> | null {
         const entry = this.entries.get(blockId);
         if (entry == null) {
             return null;
         }
-        return entry.atom;
+        return entry.rawAtom;
     }
 
     // [DIAG] D 复活排查: 暴露 entries 与 doneAckedAt 快照, 让 CDP eval
@@ -177,7 +207,7 @@ export class AgentStatusStore {
     diagDump(get: Getter): unknown {
         const out: unknown[] = [];
         for (const [blockId, entry] of this.entries.entries()) {
-            const status = get(entry.atom);
+            const status = get(entry.rawAtom);
             out.push({
                 blockId,
                 refCount: entry.refCount,

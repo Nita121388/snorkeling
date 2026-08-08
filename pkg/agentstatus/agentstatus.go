@@ -13,12 +13,21 @@ import (
 )
 
 const (
-	StateBlocked = "blocked"
-	StateWorking = "working"
-	StateIdle    = "idle"
-	StateUnknown = "unknown"
-	StateRelease = "release"
+	StateBlocked     = "blocked"
+	StateWorking     = "working"
+	StateIdle        = "idle"
+	StateUnknown     = "unknown"
+	StateRelease     = "release"
+	StateError       = "error"
+	StateRateLimited = "rate-limited"
+	StateStale       = "stale"
 )
+
+// staleTtlMs is how long a decayed (stale) status lives before the manager
+// drops it entirely. It must be comfortably longer than the working TTL so a
+// stuck agent stays visible as stale for a while after its working report
+// expires, while still eventually being cleaned up.
+const staleTtlMs = 30 * 60_000
 
 const (
 	PhaseThinking     = "thinking"
@@ -33,6 +42,10 @@ const (
 	SourceHook             = "hook"
 	SourceShellIntegration = "shell-integration"
 	SourceManual           = "manual"
+	// SourceProvider is used by agent extensions (e.g. the pi integration) for
+	// supplemental reports that are real agent observations but must not
+	// clobber the hook working slot (model-error reports with a short TTL).
+	SourceProvider = "provider"
 )
 
 type AgentStatusReport struct {
@@ -42,6 +55,7 @@ type AgentStatusReport struct {
 	Source     string `json:"source,omitempty"`
 	State      string `json:"state"`
 	Phase      string `json:"phase,omitempty"`
+	Reason     string `json:"reason,omitempty"`
 	Message    string `json:"message,omitempty"`
 	ToolName   string `json:"toolName,omitempty"`
 	Seq        int64  `json:"seq,omitempty"`
@@ -104,6 +118,12 @@ func NormalizeState(state string) string {
 		return StateRelease
 	case StateUnknown:
 		return StateUnknown
+	case StateError:
+		return StateError
+	case StateRateLimited:
+		return StateRateLimited
+	case StateStale:
+		return StateStale
 	default:
 		return ""
 	}
@@ -143,7 +163,7 @@ func NormalizeSource(source string) string {
 
 func confidenceForSource(source string) string {
 	switch source {
-	case SourceHook:
+	case SourceHook, SourceProvider:
 		return "high"
 	case SourceShellIntegration, SourceManual:
 		return "medium"
@@ -154,13 +174,13 @@ func confidenceForSource(source string) string {
 
 func stateRank(state string) int {
 	switch state {
-	case StateBlocked:
+	case StateBlocked, StateError, StateRateLimited:
 		return 4
 	case StateWorking:
 		return 3
 	case StateIdle:
 		return 2
-	case StateUnknown:
+	case StateUnknown, StateStale:
 		return 1
 	default:
 		return 0
@@ -169,7 +189,7 @@ func stateRank(state string) int {
 
 func sourceRank(source string) int {
 	switch source {
-	case SourceHook:
+	case SourceHook, SourceProvider:
 		return 3
 	case SourceManual:
 		return 2
@@ -309,6 +329,10 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	if prevSource.State == report.State && prevSource.ActiveSince > 0 {
 		activeSince = prevSource.ActiveSince
 	}
+	reason := strings.TrimSpace(report.Reason)
+	if reason == "" {
+		reason = "explicit-report"
+	}
 	status := AgentStatus{
 		BlockId:     report.BlockId,
 		Provider:    report.Provider,
@@ -317,7 +341,7 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 		Phase:       report.Phase,
 		Source:      report.Source,
 		Confidence:  confidenceForSource(report.Source),
-		Reason:      "explicit-report",
+		Reason:      reason,
 		Message:     report.Message,
 		ToolName:    report.ToolName,
 		UpdatedAt:   report.ReportedAt,
@@ -404,8 +428,25 @@ func (m *statusManager) canonicalLocked(blockId string, nowMs int64) *AgentStatu
 	for source, entry := range bs.sources {
 		status := entry.status
 		if isExpired(status, nowMs) {
-			delete(bs.sources, source)
-			continue
+			if status.State == StateWorking {
+				// Watchdog decay: a working status that outlived its TTL without any
+				// renewal means the agent stopped reporting (hung, model error with
+				// internal retry, or a hard crash). Instead of silently dropping it
+				// (which would make a re-pull show "no data"), decay it to a stale
+				// status with a long TTL so the UI keeps showing "stuck" until the
+				// agent recovers (a fresh report replaces it) or the stale TTL runs
+				// out. idle/unknown/error/rate-limited expire normally.
+				status.State = StateStale
+				status.Phase = PhaseNone
+				status.Reason = "ttl-expired"
+				status.UpdatedAt = nowMs
+				status.ExpiresAt = nowMs + staleTtlMs
+				bs.sources[source] = sourceEntry{status: status}
+				// fall through: the decayed stale status is a candidate for canonical
+			} else {
+				delete(bs.sources, source)
+				continue
+			}
 		}
 		if best == nil || statusScore(status) > statusScore(*best) ||
 			(statusScore(status) == statusScore(*best) && status.UpdatedAt > best.UpdatedAt) {

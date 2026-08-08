@@ -8,8 +8,14 @@ import type {
     AgentStatusAggregate,
     AgentStatusConfidence,
 } from "./agent-status-types";
+import { normalizeTimeMs } from "@/app/agent-status/agent-status-unread";
 
 const DoneSessionActivityMs = 15 * 60_000;
+
+// A working agent that has not renewed its report within this window is
+// considered stuck (watchdog). Mirrors the backend working TTL (5min) so the
+// live view flips to stale at the same time the backend decays the source.
+export const AgentStaleThresholdMs = 5 * 60_000;
 
 type DeriveAgentStatusInput = {
     blockId: string;
@@ -38,6 +44,8 @@ const stateRank: Record<AgentDisplayState, number> = {
     done: 3,
     working: 4,
     blocked: 5,
+    error: 5,
+    "rate-limited": 5,
 };
 
 const workingPhaseRank: Record<AgentPhase, number> = {
@@ -157,11 +165,7 @@ export function presentAgentStatus(input: PresentAgentStatusInput): AgentStatus 
                 activeSince: sessionUpdatedAtMs,
             };
         }
-        return {
-            ...canonicalStatus,
-            provider,
-            sessionId,
-        };
+        return applyStaleness({ ...canonicalStatus, provider, sessionId }, input.nowMs);
     }
     return deriveAgentStatus(input);
 }
@@ -203,7 +207,32 @@ export function aggregateAgentStatuses(statuses: AgentStatus[]): AgentStatusAggr
 }
 
 export function isInferredAgentStatus(status: AgentStatus): boolean {
-    return status.source !== "hook";
+    // "hook"/"provider"/"manual"/"screen" are real agent reports (direct hook
+    // calls, agent-extension reports, user input, terminal sniffing); only the
+    // derived sources are inferences from runtime/session signals.
+    return status.source === "controller" || status.source === "session" || status.source === "shell-integration";
+}
+
+/**
+ * Watchdog presentation: a working status whose last report is older than
+ * AgentStaleThresholdMs is presented as "stale" (stuck) instead of spinning
+ * forever. Only working decays — blocked is actionable (waiting on the user)
+ * and error/rate-limited self-clear via their short TTLs.
+ */
+export function applyStaleness(status: AgentStatus, nowMs: number): AgentStatus {
+    if (status.state !== "working") {
+        return status;
+    }
+    const updatedAtMs = normalizeTimeMs(status.updatedAt);
+    if (nowMs - updatedAtMs <= AgentStaleThresholdMs) {
+        return status;
+    }
+    return {
+        ...status,
+        state: "stale",
+        phase: "none",
+        reason: status.reason ?? "no-update-timeout",
+    };
 }
 
 export function formatAgentProvider(provider: string): string {
@@ -239,6 +268,18 @@ export function agentStatusPresentation(status: AgentStatus): AgentStatusPresent
                 label: "Blocked",
                 title: `Blocked${titleSuffix}`,
                 icon: "circle-exclamation",
+            };
+        case "error":
+            return {
+                label: "Error",
+                title: `Error${titleSuffix}`,
+                icon: "triangle-exclamation",
+            };
+        case "rate-limited":
+            return {
+                label: "Rate limited",
+                title: `Rate limited${titleSuffix}`,
+                icon: "gauge-high",
             };
         case "working": {
             const label =
@@ -289,6 +330,10 @@ export function aggregateStatusLabel(aggregate: AgentStatusAggregate): string {
     switch (aggregate.state) {
         case "blocked":
             return `${aggregate.count} blocked`;
+        case "error":
+            return `${aggregate.count} error`;
+        case "rate-limited":
+            return `${aggregate.count} rate limited`;
         case "working":
             return `${aggregate.count} working`;
         case "done":

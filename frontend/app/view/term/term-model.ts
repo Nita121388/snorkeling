@@ -105,7 +105,7 @@ export class TermViewModel implements ViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
     shellProcStatus: jotai.Atom<string>;
     shellProcStatusUnsubFn: () => void;
-    agentStatusAtom: jotai.PrimitiveAtom<AgentStatus | null>;
+    agentStatusAtom: jotai.Atom<AgentStatus | null>;
     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;
     blockJobStatusVersionTs: number;
     blockJobStatusUnsubFn: () => void;
