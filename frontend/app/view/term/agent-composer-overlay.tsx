@@ -10,7 +10,10 @@
 //  - Enter 发送 `text + "\n"` 到 PTY（termWrap.sendDataHandler）；Shift+Enter 换行；
 //  - Esc/Ctrl+C 等控制键转发到 PTY（agent 需要它们取消/中断，TUI 侧无行编辑）；
 //  - IME：onCompositionStart/End 期间不发字节；
-//  - 防双写：GUI textarea 聚焦时焦点不在 xterm，xterm 不产生 onData；失焦即关闭。
+//  - 防双写：GUI textarea 聚焦时焦点不在 xterm，xterm 不产生 onData。
+//  - 关闭：仅 × 按钮或 hint 消失（agent 退出/非输入态）。**不做 blur 关闭**——
+//    实测 Pi(opencode-go) 的 composer 提示符行（`~`）lastLine 固定不变，blur 关闭后
+//    dismissedLine 绑定 lastLine 永远无法恢复显示；blur 只是失焦，输入框保留可回来。
 //
 // 发送后 agent 重绘 → hint 变化/消失 → 输入框自动收起或继续（codex Working 时
 // composer 仍在底部，可连续输入）。
@@ -105,7 +108,6 @@ export const AgentComposerOverlay = React.memo(function AgentComposerOverlay({ t
                     onKeyDown={handleKeyDown}
                     onCompositionStart={() => setIsComposing(true)}
                     onCompositionEnd={() => setIsComposing(false)}
-                    onBlur={() => setDismissedLine(hint.lastLine)}
                 />
                 <button
                     type="button"

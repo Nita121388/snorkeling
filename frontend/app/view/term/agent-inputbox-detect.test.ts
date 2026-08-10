@@ -67,6 +67,60 @@ describe("detectAgentInputBox — composer 识别", () => {
         }
     });
 
+    it("识别 Claude Code composer（`>` 提示符 + 提示文本）", () => {
+        const hint = detect({
+            bufferType: "alternate",
+            lastLines: ["  analyzing files...", "", "> 用中文解释这个项目"],
+            cursorX: 2,
+            cursorY: 2,
+            lastCommand: "claude",
+        });
+        expect(hint.kind).toBe("composer");
+        if (hint.kind === "composer") {
+            expect(hint.prompt).toBe(">");
+        }
+    });
+
+    it("识别 Pi(opencode-go) composer（单独 `~` 行提示符）", () => {
+        // 实测 pi 0.84.0：composer 提示符为单独 `~` 行（分隔线后、状态行上方），
+        // 输入内容回显在分隔线上方。
+        const hint = detect({
+            bufferType: "normal",
+            lastLines: [
+                "────────────────────────────────────────",
+                "testhello",
+                "────────────────────────────────────────",
+                "~",
+                "0.0%/1.0M (auto)   (opencode-go) deepseek-v4-flash • high",
+            ],
+            cursorX: 9,
+            cursorY: 2,
+            lastCommand: "pi",
+        });
+        expect(hint.kind).toBe("composer");
+        if (hint.kind === "composer") {
+            expect(hint.prompt).toBe("~");
+        }
+    });
+
+    it("抑制选择列表（Claude 信任确认 `❯ 1. ...`，非 composer）", () => {
+        // 实测 Claude Code 启动信任界面：`❯ 1. Yes, I trust this folder`。
+        // `❯` 是光标标记，用户按 Enter/数字键选择，不是自由文本输入。
+        const hint = detect({
+            bufferType: "alternate",
+            lastLines: [
+                " Security guide",
+                " ❯ 1. Yes, I trust this folder",
+                "   2. No, exit",
+                " Enter to confirm · Esc to cancel",
+            ],
+            cursorX: 2,
+            cursorY: 1,
+            lastCommand: "claude",
+        });
+        expect(hint.kind).toBe("none");
+    });
+
     it("非 agent block 一律不判", () => {
         const hint = detect({ isAgentBlock: false });
         expect(hint.kind).toBe("none");

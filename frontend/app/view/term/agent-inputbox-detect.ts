@@ -80,10 +80,22 @@ const ALT_BUFFER_NON_INPUT_CMDS = new Set([
     "lazygit",
 ]);
 
-// Agent composer 提示符特征：**行首** `?`/`❯`/`›`/`>`（实测 codex 0.147.0 为
-// `› 提示文本` 或 `› `，提示符在行首）。`?` 行首被 permission 规则优先拦截。
+// Agent composer 提示符特征：**行首** `?`/`❯`/`›`/`>`/`~`（实测 codex 0.147.0 为
+// `› 提示文本`；Claude Code 为 `❯ ` 或 `❯ 内容`；Pi(opencode-go) 为单独 `~` 行）。
+// `?` 行首被 permission 规则优先拦截。
 // ponytail: 各 agent 提示符随版本漂移；命中即新增，漏判优于误判。
-const COMPOSER_PROMPT_RE = /^\s*([?❯>›])\s/;
+const COMPOSER_PROMPT_RE = /^\s*([?❯>›~])\s/;
+
+// Pi(opencode-go) 输入框：单独一行 `~`（无内容，输入回显在分隔线上方）。
+// 实测 pi 0.84.0 composer 提示符为 `~`（末区域、分隔线后、状态行上方）。
+// shell 提示符不会单独显示 `~`（都是 user@host ~ % 格式，被 SHELL_PROMPT_RE 抑制）。
+const PI_TILDE_RE = /^\s*~\s*$/;
+
+// 选择列表抑制：`❯/›/>` 是**光标标记**而非 composer 提示符。
+// 实测 Claude Code 信任确认界面 `❯ 1. Yes, I trust this folder` 被误判为
+// composer（用户此时应按 Enter/数字键选择，不是自由文本输入）。
+// 特征：提示符 + 空格 + 数字 + 句点（`❯ 1. ...` / `› 2. ...`）。
+const SELECT_LIST_RE = /^\s*[❯>›]\s*\d+\./;
 
 // 权限提问特征：行首 `?` 或含 "allow" / "proceed" / "permission" / "继续" 的提问行。
 const PERMISSION_QUESTION_RE = /^\s*\?\s+/i;
@@ -140,12 +152,31 @@ export function detectAgentInputBox(input: AgentInputBoxDetectionInput): InputBo
         return { kind: "none" };
     }
 
+    // 抑制规则 3：选择列表（`❯ 1. ...` 光标标记 + 选项）。用户按 Enter/数字键选择，
+    // 不是自由文本 composer——不弹大输入框，避免误判打扰。
+    for (let i = input.lastLines.length - 1; i >= 0; i--) {
+        const line = input.lastLines[i] ?? "";
+        if (SELECT_LIST_RE.test(line)) {
+            return { kind: "none" };
+        }
+    }
+
     // composer：从后往前扫描 lastLines 找命中提示符特征的行（行首 `?`/`›`/`❯`/`>`）。
     // 实测 codex 0.147.0 把全屏 TUI 画在 normal buffer（不切 alt-buffer），
     // composer 在 viewport 末区域，所以不依赖 alt-buffer——alt-buffer 仅作加分。
     const inAltBuffer = input.bufferType === "alternate";
     for (let i = input.lastLines.length - 1; i >= 0; i--) {
         const line = input.lastLines[i] ?? "";
+        // Pi(opencode-go)：单独 `~` 行（无内容）即 composer 提示符。
+        if (PI_TILDE_RE.test(line)) {
+            return {
+                kind: "composer",
+                prompt: "~",
+                cursorX: input.cursorX,
+                cursorY: input.cursorY,
+                lastLine: line,
+            };
+        }
         const promptMatch = COMPOSER_PROMPT_RE.exec(line);
         if (promptMatch) {
             return {
