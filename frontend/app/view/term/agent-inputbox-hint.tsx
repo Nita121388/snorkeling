@@ -25,12 +25,17 @@ export const AgentInputBoxHint = React.memo(function AgentInputBoxHint({ termWra
     if (termWrap == null || hint == null || hint.kind === "none") {
         return null;
     }
+    // 阶段 3：composer 态由大输入框（AgentComposerOverlay）接管，提示条只留
+    // permission（权限提问不接管键盘，提示用户直接在终端按 y/n）。
+    if (hint.kind !== "permission") {
+        return null;
+    }
     // 误报时用户可关；lastLine 变化（进入新的输入态）时恢复显示。
     if (dismissedLine != null && dismissedLine === hint.lastLine) {
         return null;
     }
 
-    const label = hint.kind === "composer" ? "✏️ 输入区已识别" : "⚠️ 权限提问";
+    const label = "⚠️ 权限提问";
     const dismiss = (event: React.MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
         setDismissedLine(hint.lastLine);
