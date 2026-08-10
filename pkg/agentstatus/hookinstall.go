@@ -462,7 +462,7 @@ func piExtensionInstallName() string {
 // <config>/plugin/*.ts) that maps OpenCode events to wsh agentstatus reports.
 // The plugin is a plain async event module (no external imports) so OpenCode can
 // load it without npm install; wsh resolution mirrors the shell hook fallback
-// chain (WAVETERM_WSHBINDIR, PATH, then LOCALAPPDATA/USERPROFILE install dirs).
+// chain (WAVETERM_WSHBINDIR, then install dirs, then PATH).
 func openCodePluginSource() string {
 	return fmt.Sprintf(`// installed by Snorkeling
 // managed by Snorkeling; reinstalling the integration overwrites this file.
@@ -502,6 +502,10 @@ function resolveWsh() {
       (process.env.LOCALAPPDATA || "") + "\\snorkeling\\Data\\bin\\wsh.exe",
       (process.env.USERPROFILE || "") + "\\.snorkeling\\bin\\wsh.exe"
     );
+  } else {
+    // Snorkeling installs wsh to ~/.snorkeling/bin even when the launch env
+    // (e.g. a remote agent session) does not put that dir on PATH.
+    candidates.push((process.env.HOME || "") + "/.snorkeling/bin/wsh");
   }
   candidates.push("wsh", "wsh.exe");
   return candidates.find((c) => c && exists(c)) || "wsh";
@@ -528,6 +532,10 @@ function report(state, phase) {
   try {
     const { spawn } = require("node:child_process");
     const child = spawn(wsh, args, { stdio: "ignore", detached: true });
+    // spawn failures (e.g. wsh missing from PATH) surface async via the "error"
+    // event; with no handler they become an uncaughtException that kills the
+    // agent. Status reporting is best-effort — never let it crash the agent.
+    child.on("error", () => {});
     child.unref();
   } catch {}
 }
@@ -612,6 +620,10 @@ function resolveWsh() {
       (process.env.LOCALAPPDATA || "") + "\\snorkeling\\Data\\bin\\wsh.exe",
       (process.env.USERPROFILE || "") + "\\.snorkeling\\bin\\wsh.exe"
     );
+  } else {
+    // Snorkeling installs wsh to ~/.snorkeling/bin even when the launch env
+    // (e.g. a remote agent session) does not put that dir on PATH.
+    candidates.push((process.env.HOME || "") + "/.snorkeling/bin/wsh");
   }
   candidates.push("wsh", "wsh.exe");
   return candidates.find((c) => c && exists(c)) || "wsh";
@@ -635,6 +647,10 @@ function report(state, phase, toolName, opts) {
   try {
     const { spawn } = require("node:child_process");
     const child = spawn(wsh, args, { stdio: "ignore", detached: true });
+    // spawn failures (e.g. wsh missing from PATH) surface async via the "error"
+    // event; with no handler they become an uncaughtException that kills the
+    // agent. Status reporting is best-effort — never let it crash the agent.
+    child.on("error", () => {});
     child.unref();
   } catch {}
 }

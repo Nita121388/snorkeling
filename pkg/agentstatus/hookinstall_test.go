@@ -481,3 +481,23 @@ func TestOpenCodeAndPiProvidersSharePluginName(t *testing.T) {
 		t.Fatalf("expected install name to include base name: %q", oc)
 	}
 }
+
+func TestGeneratedAgentExtensionsTolerateMissingWsh(t *testing.T) {
+	// Regression: when an agent is launched by Snorkeling's remote session the
+	// env may lack WAVETERM_WSHBINDIR and ~/.snorkeling/bin on PATH, so wsh
+	// resolves to nothing. spawn() then fails asynchronously with ENOENT; without
+	// an "error" handler that becomes an uncaughtException that kills the agent
+	// (pi exited with "spawn wsh ENOENT"). The generated extension must (a) not
+	// crash on a missing wsh and (b) still find wsh via ~/.snorkeling/bin.
+	for name, src := range map[string]string{
+		"pi":       piExtensionSource(),
+		"opencode": openCodePluginSource(),
+	} {
+		if !strings.Contains(src, `child.on("error"`) {
+			t.Errorf("%s extension missing spawn error handler (uncaughtException kills agent):\n%s", name, src)
+		}
+		if !strings.Contains(src, `/.snorkeling/bin/wsh`) {
+			t.Errorf("%s extension missing ~/.snorkeling/bin wsh fallback:\n%s", name, src)
+		}
+	}
+}
