@@ -43,6 +43,7 @@ import clsx from "clsx";
 import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
+import { AgentInputBoxHint } from "./agent-inputbox-hint";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import {
     isTermSelectionDrag,
@@ -1615,6 +1616,9 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             <TermResyncHandler blockId={blockId} model={model} />
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
             <TermStickers config={stickerConfig} />
+            <NullErrorBoundary debugName="AgentInputBoxHint">
+                <AgentInputBoxHint termWrap={termWrapInst} />
+            </NullErrorBoundary>
             <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
             <TermSessionTopBar
                 blockId={blockId}

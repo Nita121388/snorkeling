@@ -410,7 +410,7 @@ export class TermWrap {
         const trimTrailingWhitespaceAtom = getSettingsKeyAtom("term:trimtrailingwhitespace");
         this.toDispose.push(this.terminal.onData(this.handleTermData.bind(this)));
         // Agent TUI 输入态识别（阶段 1，仅 agent block；防抖避免高频重绘风暴）。
-        if (this.isAgentBlock) {
+        if (this.isAgentBlock?.()) {
             const runDetect = debounce(150, () => this.runAgentInputBoxDetection());
             this.toDispose.push(this.terminal.onCursorMove(runDetect));
             this.toDispose.push(this.terminal.onWriteParsed(runDetect));
@@ -759,11 +759,17 @@ export class TermWrap {
      * dev 模式下 console.log 供真实验证误判率。
      */
     runAgentInputBoxDetection(): void {
-        if (!this.terminal || !this.isAgentBlock) {
+        // 非 agent block / 无终端时也清理 hint，避免 agent 退出后旧值残留
+        // （实测 codex /exit 后 isAgentBlock() 变 false，若不清 atom，提示条不消失）。
+        // 注意：this.isAgentBlock 是函数，必须调用（this.isAgentBlock()），
+        // 用引用（!this.isAgentBlock）永远 truthy，清理分支从不执行。
+        if (!this.terminal || !this.isAgentBlock?.()) {
+            globalStore.set(this.agentInputBoxHintAtom, null);
             return;
         }
         const buffer = this.terminal.buffer.active;
         if (!buffer || buffer.length === 0) {
+            globalStore.set(this.agentInputBoxHintAtom, null);
             return;
         }
         // 取 buffer 末尾最多 6 个**非空**逻辑行作为输入态判定窗口。
@@ -783,7 +789,8 @@ export class TermWrap {
         }
         const cursor = { x: buffer.cursorX, y: buffer.cursorY };
         const hint = detectAgentInputBox({
-            isAgentBlock: true,
+            // 订阅时已限定 agent block，这里传真实值以便 detect 内部再次校验。
+            isAgentBlock: this.isAgentBlock?.() ?? false,
             bufferType: buffer.type,
             lastLines: nonBlank,
             cursorX: cursor.x,
