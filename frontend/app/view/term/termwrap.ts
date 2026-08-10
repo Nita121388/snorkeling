@@ -766,14 +766,28 @@ export class TermWrap {
         if (!buffer || buffer.length === 0) {
             return;
         }
-        const lastLines = bufferLinesToText(buffer, Math.max(0, buffer.length - 3), buffer.length);
+        // 取 buffer 末尾最多 6 个**非空**逻辑行作为输入态判定窗口。
+        // 注意：不能直接读 `len-3..len`——xterm normal buffer 长度是固定分配的
+        // （实测 codex 0.147.0 内容只到 line 15 但 buf.length=46，尾部是空白占位），
+        // 必须过滤空行，取最后一个非空行作为 composer/提问行。
+        const allLines = bufferLinesToText(buffer, 0, buffer.length);
+        const nonBlank: string[] = [];
+        for (let i = allLines.length - 1; i >= 0 && nonBlank.length < 6; i--) {
+            const line = allLines[i];
+            if (line.trim() !== "") {
+                nonBlank.unshift(line);
+            }
+        }
+        if (nonBlank.length === 0) {
+            return;
+        }
         const cursor = { x: buffer.cursorX, y: buffer.cursorY };
         const hint = detectAgentInputBox({
             isAgentBlock: true,
             bufferType: buffer.type,
-            lastLines,
+            lastLines: nonBlank,
             cursorX: cursor.x,
-            cursorY: Math.min(cursor.y, lastLines.length - 1),
+            cursorY: Math.min(cursor.y, nonBlank.length - 1),
             lastCommand: globalStore.get(this.lastCommandAtom),
         });
         const nonNone = hint.kind === "none" ? null : hint;

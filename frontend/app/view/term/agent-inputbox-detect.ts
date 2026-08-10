@@ -80,9 +80,10 @@ const ALT_BUFFER_NON_INPUT_CMDS = new Set([
     "lazygit",
 ]);
 
-// Agent composer 提示符特征（末行/光标行）。
+// Agent composer 提示符特征：**行首** `?`/`❯`/`›`/`>`（实测 codex 0.147.0 为
+// `› 提示文本` 或 `› `，提示符在行首）。`?` 行首被 permission 规则优先拦截。
 // ponytail: 各 agent 提示符随版本漂移；命中即新增，漏判优于误判。
-const COMPOSER_PROMPT_RE = /(^|\s)([?❯>›])\s*$/;
+const COMPOSER_PROMPT_RE = /^\s*([?❯>›])\s/;
 
 // 权限提问特征：行首 `?` 或含 "allow" / "proceed" / "permission" / "继续" 的提问行。
 const PERMISSION_QUESTION_RE = /^\s*\?\s+/i;
@@ -115,12 +116,18 @@ export function detectAgentInputBox(input: AgentInputBoxDetectionInput): InputBo
     }
 
     const lastLine = input.lastLines[input.lastLines.length - 1] ?? "";
-    const cursorLine = input.lastLines[input.cursorY] ?? input.lastLines[input.lastLines.length - 1] ?? "";
+    // 注意：cursorY 是 xterm 屏幕坐标（相对 viewport 顶），不是 lastLines 数组索引——
+    // 实测 codex 光标可停在状态行/其他区域而 composer 在末行附近。且 codex 布局中
+    // 状态栏（如 `gpt-5.6-sol xhigh`）常在 composer 行之后，所以 **末行不一定是 composer**。
+    // 正确做法：从后往前扫描 lastLines 找第一个命中 composer/permission 的行。
     const lastCmdWord = getLastCommandWord(input.lastCommand);
 
-    // 权限提问：行首 `?`（Claude/Gemini 提问），或含权限关键词的行。
-    if (PERMISSION_QUESTION_RE.test(cursorLine) || PERMISSION_KEYWORD_RE.test(cursorLine)) {
-        return { kind: "permission", prompt: cursorLine.trim(), lastLine };
+    // 权限提问：行首 `?`（Claude/Gemini 提问），或含权限关键词的行。从后往前扫描。
+    for (let i = input.lastLines.length - 1; i >= 0; i--) {
+        const line = input.lastLines[i] ?? "";
+        if (PERMISSION_QUESTION_RE.test(line) || PERMISSION_KEYWORD_RE.test(line)) {
+            return { kind: "permission", prompt: line.trim(), lastLine };
+        }
     }
 
     // 抑制规则 1：已知全屏非输入程序。
@@ -128,28 +135,32 @@ export function detectAgentInputBox(input: AgentInputBoxDetectionInput): InputBo
         return { kind: "none" };
     }
 
-    // 抑制规则 2：普通 shell 提示符（`$`/`#`/`%` 结尾）。
-    if (SHELL_PROMPT_RE.test(cursorLine)) {
+    // 抑制规则 2：普通 shell 提示符（`$`/`#`/`%` 结尾）。看末行。
+    if (SHELL_PROMPT_RE.test(lastLine)) {
         return { kind: "none" };
     }
 
-    // composer：TUI 全屏态（alt-buffer）且末行/光标行命中提示符特征。
-    // 非 alt-buffer 时要求末行是明确的 composer 提示符（如 `? ` 行首提问已在上方拦截）。
+    // composer：从后往前扫描 lastLines 找命中提示符特征的行（行首 `?`/`›`/`❯`/`>`）。
+    // 实测 codex 0.147.0 把全屏 TUI 画在 normal buffer（不切 alt-buffer），
+    // composer 在 viewport 末区域，所以不依赖 alt-buffer——alt-buffer 仅作加分。
     const inAltBuffer = input.bufferType === "alternate";
-    const promptMatch = COMPOSER_PROMPT_RE.exec(cursorLine);
-    if (inAltBuffer && promptMatch) {
-        return {
-            kind: "composer",
-            prompt: promptMatch[2] ?? "",
-            cursorX: input.cursorX,
-            cursorY: input.cursorY,
-            lastLine,
-        };
+    for (let i = input.lastLines.length - 1; i >= 0; i--) {
+        const line = input.lastLines[i] ?? "";
+        const promptMatch = COMPOSER_PROMPT_RE.exec(line);
+        if (promptMatch) {
+            return {
+                kind: "composer",
+                prompt: promptMatch[1] ?? "",
+                cursorX: input.cursorX,
+                cursorY: input.cursorY,
+                lastLine: line,
+            };
+        }
     }
 
-    // 兜底：alt-buffer 且光标在末行、末行非空——大概率是 TUI 输入区（Codex composer 边界）。
+    // 兜底：alt-buffer 且末行非空、倒数第二行空——大概率是 TUI 输入区（Codex composer 边界）。
     // ponytail: 启发式，误判风险存在；层 2 提示条 + 手动关闭兜底。
-    if (inAltBuffer && !isLineBlank(lastLine) && !isLineBlank(cursorLine)) {
+    if (inAltBuffer && !isLineBlank(lastLine)) {
         const blankAbove = input.lastLines.length >= 2 && isLineBlank(input.lastLines[input.lastLines.length - 2]);
         if (blankAbove) {
             return {

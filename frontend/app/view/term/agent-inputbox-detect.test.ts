@@ -43,6 +43,30 @@ describe("detectAgentInputBox — composer 识别", () => {
         expect(hint.kind).toBe("composer");
     });
 
+    it("识别真实 codex 0.147.0 布局（normal buffer + 状态栏在 composer 后）", () => {
+        // 实测：codex 把全屏 TUI 画在 normal buffer，composer 行 `› ...` 在状态栏
+        // （`gpt-5.6-sol xhigh`）之前，末行不是 composer。必须从后往前扫描。
+        const hint = detect({
+            bufferType: "normal",
+            lastLines: [
+                "╰─────────────────────────────────────────────────╯",
+                "  Tip: New Build faster with the Desktop app. Run 'codex",
+                "  app' or visit",
+                "  https://chatgpt.com/codex?app-landing-page=true",
+                "› Implement {feature}",
+                "  gpt-5.6-sol xhigh · ~",
+            ],
+            cursorX: 2,
+            cursorY: 2,
+            lastCommand: "codex",
+        });
+        expect(hint.kind).toBe("composer");
+        if (hint.kind === "composer") {
+            expect(hint.lastLine).toBe("› Implement {feature}");
+            expect(hint.prompt).toBe("›");
+        }
+    });
+
     it("非 agent block 一律不判", () => {
         const hint = detect({ isAgentBlock: false });
         expect(hint.kind).toBe("none");
