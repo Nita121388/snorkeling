@@ -30,6 +30,7 @@ import { Terminal } from "@xterm/xterm";
 import debug from "debug";
 import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
+import { detectAgentInputBox, type InputBoxHint } from "./agent-inputbox-detect";
 import {
     handleOsc16162Command,
     handleOsc52Command,
@@ -86,6 +87,8 @@ type TermWrapOptions = {
     useWebGl?: boolean;
     sendDataHandler?: (data: string) => void;
     nodeModel?: BlockNodeModel;
+    /** 是否为 agent block（用于 agent 输入态识别）。undefined 时不跑识别。 */
+    isAgentBlock?: () => boolean;
 };
 
 export class TermWrap {
@@ -116,6 +119,9 @@ export class TermWrap {
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
     shellIntegrationUpdatedAtAtom: jotai.PrimitiveAtom<number>;
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
+    // Agent TUI 输入态 hint（阶段 1：dev 日志；阶段 2+：供 overlay 读取）。null = 未检测。
+    agentInputBoxHintAtom: jotai.PrimitiveAtom<InputBoxHint | null>;
+    isAgentBlock?: () => boolean;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
@@ -159,6 +165,8 @@ export class TermWrap {
         this.shellIntegrationStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
         this.shellIntegrationUpdatedAtAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
         this.lastCommandAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
+        this.agentInputBoxHintAtom = jotai.atom(null) as jotai.PrimitiveAtom<InputBoxHint | null>;
+        this.isAgentBlock = waveOptions.isAgentBlock;
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
         this.terminal = new Terminal(options);
@@ -401,6 +409,12 @@ export class TermWrap {
         const copyOnSelectAtom = getSettingsKeyAtom("term:copyonselect");
         const trimTrailingWhitespaceAtom = getSettingsKeyAtom("term:trimtrailingwhitespace");
         this.toDispose.push(this.terminal.onData(this.handleTermData.bind(this)));
+        // Agent TUI 输入态识别（阶段 1，仅 agent block；防抖避免高频重绘风暴）。
+        if (this.isAgentBlock) {
+            const runDetect = debounce(150, () => this.runAgentInputBoxDetection());
+            this.toDispose.push(this.terminal.onCursorMove(runDetect));
+            this.toDispose.push(this.terminal.onWriteParsed(runDetect));
+        }
         this.toDispose.push(
             this.terminal.onSelectionChange(
                 debounce(50, () => {
@@ -640,8 +654,7 @@ export class TermWrap {
             didChangeTermSize,
             hasResized: this.hasResized,
             elapsedMs: Math.round((performance.now() - startTs) * 100) / 100,
-            sinceLastResizeMs:
-                prevResizeDebugTs === 0 ? null : Math.round((startTs - prevResizeDebugTs) * 100) / 100,
+            sinceLastResizeMs: prevResizeDebugTs === 0 ? null : Math.round((startTs - prevResizeDebugTs) * 100) / 100,
             isFocused: document.activeElement != null && this.connectElem.contains(document.activeElement),
         });
         if (didChangeTermSize) {
@@ -738,5 +751,52 @@ export class TermWrap {
         const buffer = this.terminal.buffer.active;
         const lines = bufferLinesToText(buffer, 0, buffer.length);
         return lines.join("\n");
+    }
+
+    /**
+     * Agent TUI 输入态识别（阶段 1）。读 active buffer 末 3 行 + 光标位置，调用纯函数
+     * detectAgentInputBox，结果写入 agentInputBoxHintAtom（阶段 2+ 供 overlay 读取）。
+     * dev 模式下 console.log 供真实验证误判率。
+     */
+    runAgentInputBoxDetection(): void {
+        if (!this.terminal || !this.isAgentBlock) {
+            return;
+        }
+        const buffer = this.terminal.buffer.active;
+        if (!buffer || buffer.length === 0) {
+            return;
+        }
+        const lastLines = bufferLinesToText(buffer, Math.max(0, buffer.length - 3), buffer.length);
+        const cursor = { x: buffer.cursorX, y: buffer.cursorY };
+        const hint = detectAgentInputBox({
+            isAgentBlock: true,
+            bufferType: buffer.type,
+            lastLines,
+            cursorX: cursor.x,
+            cursorY: Math.min(cursor.y, lastLines.length - 1),
+            lastCommand: globalStore.get(this.lastCommandAtom),
+        });
+        const nonNone = hint.kind === "none" ? null : hint;
+        globalStore.set(this.agentInputBoxHintAtom, nonNone);
+        if (isDev() && nonNone) {
+            // 阶段 1 验证用 console.log（debug 命名空间默认不启用，console 与
+            // termwrap 现有 [termwrap-lifecycle-debug] 风格一致）。
+            console.log("[agent-inputbox] detect", {
+                blockId: this.blockId,
+                kind: nonNone.kind,
+                prompt: nonNone.prompt,
+                cursorX: cursor.x,
+                cursorY: cursor.y,
+                lastLine: nonNone.lastLine,
+            });
+            agentStatusLog("[agent-inputbox] detect", {
+                blockId: this.blockId,
+                kind: nonNone.kind,
+                prompt: nonNone.prompt,
+                cursorX: cursor.x,
+                cursorY: cursor.y,
+                lastLine: nonNone.lastLine,
+            });
+        }
     }
 }

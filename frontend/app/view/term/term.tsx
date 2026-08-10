@@ -15,12 +15,7 @@ import {
 } from "@/app/element/selection-copy-overlay";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
-import {
-    makeAgentTraceId,
-    makePslogSessionRef,
-    pslogEvent,
-    type PslogEventInput,
-} from "@/app/store/pslog-trace";
+import { makeAgentTraceId, makePslogSessionRef, pslogEvent, type PslogEventInput } from "@/app/store/pslog-trace";
 import { AISessionsServiceType } from "@/app/store/services";
 import { useTabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
@@ -50,17 +45,17 @@ import * as jotai from "jotai";
 import * as React from "react";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import {
+    isTermSelectionDrag,
+    shouldRoutePlainTermGesture,
+    shouldSuppressTermMouseMove,
+} from "./term-selection-gesture";
+import {
     __debugPreviewId,
     clearNoteRenderSnapshot,
     clearOutlineRenderSnapshot,
     setNoteRenderSnapshot,
     setOutlineRenderSnapshot,
 } from "./term-session-render-snapshot";
-import {
-    isTermSelectionDrag,
-    shouldRoutePlainTermGesture,
-    shouldSuppressTermMouseMove,
-} from "./term-selection-gesture";
 import { TermLinkTooltip } from "./term-tooltip";
 import { TermStickers } from "./termsticker";
 import { TermThemeUpdater } from "./termtheme";
@@ -318,7 +313,12 @@ const TermSessionTopBar = React.memo(
         blockData,
         dimmed,
         termWrap,
-    }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+    }: {
+        blockId: string;
+        blockData: Block | null;
+        dimmed: boolean;
+        termWrap: TermWrap | null;
+    }) => {
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         React.useEffect(() => {
             logAgentSessionEvent("agent.top", "render", blockId, sessionId, {
@@ -447,7 +447,12 @@ const TermSessionUserOutlineOverlay = React.memo(
         blockData,
         dimmed,
         termWrap,
-    }: { blockId: string; blockData: Block | null; dimmed: boolean; termWrap: TermWrap | null }) => {
+    }: {
+        blockId: string;
+        blockData: Block | null;
+        dimmed: boolean;
+        termWrap: TermWrap | null;
+    }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const connection = agentSessionConnection(blockData);
@@ -728,11 +733,7 @@ type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const TermSessionNoteAutoSaveDelayMs = 3000;
 
 const TermSessionNoteEditor = React.memo(
-    ({
-        blockId,
-        blockData,
-        termWrap,
-    }: { blockId: string; blockData: Block | null; termWrap: TermWrap | null }) => {
+    ({ blockId, blockData, termWrap }: { blockId: string; blockData: Block | null; termWrap: TermWrap | null }) => {
         const service = React.useMemo(() => new AISessionsServiceType(), []);
         const sessionId = useTerminalAgentSessionId(blockData, termWrap);
         const connection = agentSessionConnection(blockData);
@@ -1100,7 +1101,9 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         };
         logSnapshot();
         const unsub = globalStore.sub(dataAtom, logSnapshot);
-        return () => { unsub(); };
+        return () => {
+            unsub();
+        };
     }, [blockId]);
     const termSettingsAtom = getSettingsPrefixAtom("term");
     const termSettings = jotai.useAtomValue(termSettingsAtom);
@@ -1252,6 +1255,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 useWebGl,
                 sendDataHandler: model.sendDataToController.bind(model),
                 nodeModel: model.nodeModel,
+                isAgentBlock: () => model.isAgentBlock(),
             }
         );
         (window as any).term = termWrap;

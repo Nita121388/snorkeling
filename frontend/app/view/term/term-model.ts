@@ -6,26 +6,25 @@ import {
     formatAgentProvider,
     isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
-import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
-import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
+import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { appHandleKeyDown } from "@/app/store/keymodel";
-import { isLightResolvedTheme } from "@/app/theme-mode";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
-import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
@@ -57,12 +56,17 @@ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/uti
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
-import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { getAgentLogoByProvider } from "./agent-logo";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
-import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
-import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
+import {
+    formatTerminalSessionDebugInfo,
+    runAISessionsRpcProbe,
+    sessionCopyCommandDebug,
+    sessionCopyDebugPreview,
+} from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
+import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 import {
     computeTheme,
     getDefaultTermTheme,
@@ -318,7 +322,10 @@ export class TermViewModel implements ViewModel {
         this.termBPMAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
         this.termThemeNameAtom = useBlockAtom(blockId, "termthemeatom", () => {
             return jotai.atom<string>((get) => {
-                return get(getOverrideConfigAtom(this.blockId, "term:theme")) ?? getDefaultTermTheme(get(atoms.resolvedAppThemeAtom));
+                return (
+                    get(getOverrideConfigAtom(this.blockId, "term:theme")) ??
+                    getDefaultTermTheme(get(atoms.resolvedAppThemeAtom))
+                );
             });
         });
         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {
@@ -539,6 +546,21 @@ export class TermViewModel implements ViewModel {
             };
         }
         return null;
+    }
+
+    // Agent block 判断：meta 识别为 agent 或已有 agent status（复用 header 渲染处的逻辑）。
+    isAgentBlock(): boolean {
+        const blockData = globalStore.get(this.blockAtom);
+        const blockMeta = blockData?.meta ?? null;
+        if (!isAgentTerminalMeta(blockMeta) && globalStore.get(this.agentStatusAtom) == null) {
+            return false;
+        }
+        const explicitProvider =
+            typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";
+        const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
+        const agentStatus = globalStore.get(this.agentStatusAtom);
+        const provider = explicitProvider || commandProvider || agentStatus?.provider || "";
+        return provider !== "";
     }
 
     getAgentStatusHeaderElem(get: jotai.Getter, blockMeta: MetaType | null | undefined): HeaderElem | null {
