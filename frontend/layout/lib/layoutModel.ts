@@ -1905,11 +1905,25 @@ export class LayoutModel {
     }
 
     // 复用 closeBlock 的副作用路径(controller/status 清理 + preview confirmClose), 不手动 splice
-    async closeOtherInlineTabBlocks(nodeId: string, keepBlockId: string): Promise<void> {
+    async closeOtherInlineTabBlocks(nodeId: string, keepBlockId: string, skipBlockIds: Set<string> = new Set()): Promise<void> {
         const node = findNode(this.treeState.rootNode, nodeId);
         if (!node) return;
-        const others = getLayoutDataBlockIds(node.data).filter((id) => id !== keepBlockId);
+        const others = getLayoutDataBlockIds(node.data).filter((id) => id !== keepBlockId && !skipBlockIds.has(id));
         for (const id of others) {
+            await this.closeBlock(id);
+        }
+    }
+
+    // 关闭全部但保留锁定标签: 锁定的逐个跳过, 剩余锁定标签继续留在组内。
+    async closeAllInlineTabBlocksExceptLocked(nodeId: string, lockedBlockIds: Set<string>): Promise<void> {
+        if (lockedBlockIds.size === 0) {
+            await this.closeAllInlineTabBlocks(nodeId);
+            return;
+        }
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node) return;
+        const toClose = getLayoutDataBlockIds(node.data).filter((id) => !lockedBlockIds.has(id));
+        for (const id of toClose) {
             await this.closeBlock(id);
         }
     }

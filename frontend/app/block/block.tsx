@@ -10,7 +10,7 @@ import {
 } from "@/app/block/blocktypes";
 import { Tooltip } from "@/app/element/tooltip";
 import { uxCloseBlock } from "@/app/store/keymodel";
-import { buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
+import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -130,7 +130,10 @@ type InlineTabLabelProps = {
     onActivate: () => void;
     onClose: () => void;
     onCloseOthers: () => void;
+    onCloseOthersExceptLocked: () => void;
     onCloseAll: () => void;
+    onCloseAllExceptLocked: () => void;
+    lockedBlockIds: Set<string>;
     onRename: (title: string) => void;
     onReorder: (dragBlockId: string, hoverIndex: number) => void;
     onDragEnd: () => void;
@@ -149,7 +152,10 @@ const InlineTabLabel = memo(
         onActivate,
         onClose,
         onCloseOthers,
+        onCloseOthersExceptLocked,
         onCloseAll,
+        onCloseAllExceptLocked,
+        lockedBlockIds,
         onRename,
         onReorder,
         onDragEnd,
@@ -166,6 +172,13 @@ const InlineTabLabel = memo(
         const [draftTitle, setDraftTitle] = useState(customTitle ?? "");
         const inputRef = useRef<HTMLInputElement>(null);
         const tabRef = useRef<HTMLDivElement>(null);
+        const isLocked = ((blockData?.meta ?? {}) as Record<string, unknown>)[BlockLockMetaKey] === true;
+        const toggleLock = useCallback(() => {
+            void RpcApi.SetMetaCommand(TabRpcClient, {
+                oref: makeORef("block", blockId),
+                meta: { [BlockLockMetaKey]: isLocked ? null : true } as unknown as MetaType,
+            }).catch((e) => console.warn("failed to toggle block lock", e));
+        }, [blockId, isLocked]);
 
         const defaultTitle = useMemo(() => {
             if (!isBlank(frameTitle)) {
@@ -339,14 +352,29 @@ const InlineTabLabel = memo(
                 const menu = buildInlineTabContextMenu(
                     blockId,
                     allBlockIds,
+                    lockedBlockIds,
                     onClose,
                     onCloseOthers,
+                    onCloseOthersExceptLocked,
                     onCloseAll,
+                    onCloseAllExceptLocked,
+                    toggleLock,
                     waveEnv,
                 );
                 waveEnv.showContextMenu(menu, e);
             },
-            [blockId, allBlockIds, onClose, onCloseOthers, onCloseAll, waveEnv],
+            [
+                blockId,
+                allBlockIds,
+                lockedBlockIds,
+                onClose,
+                onCloseOthers,
+                onCloseOthersExceptLocked,
+                onCloseAll,
+                onCloseAllExceptLocked,
+                toggleLock,
+                waveEnv,
+            ],
         );
 
         return (
@@ -392,6 +420,12 @@ const InlineTabLabel = memo(
                                 <i className={iconClass} />
                             )}
                             <span>{displayTitle}</span>
+                            {isLocked ? (
+                                <i
+                                    className={makeIconClass("lock", true) + " inline-tab-block-tab-lockicon"}
+                                    title="已锁定"
+                                />
+                            ) : null}
                             {statusDot != null ? (
                                 <span
                                     className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
@@ -527,6 +561,7 @@ function getDuplicateIndexes(blockIds: string[], titles: Record<string, string>)
 }
 
 const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { layoutData: TabLayoutData }) => {
+    const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const layoutModel = getLayoutModelForTabById(tabModel.tabId);
     const blockIds = getLayoutDataBlockIds(layoutData);
@@ -551,6 +586,24 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         );
     }, [blockIds, layoutData.blockTabTitles]);
     const duplicateIndexes = useMemo(() => getDuplicateIndexes(blockIds, titleMap), [blockIds, titleMap]);
+    // 组内各 block 的锁定标记集合 (block:lock meta). 锁定不拦截正常关闭,
+    // 仅用于「关闭其他/全部(锁定除外)」时保留对应标签。
+    const lockedBlockIds = useAtomValue(
+        useMemo(
+            () =>
+                atom((get) => {
+                    const locked = new Set<string>();
+                    for (const id of blockIds) {
+                        const data = get(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", id)));
+                        if ((data?.meta as Record<string, unknown> | undefined)?.[BlockLockMetaKey] === true) {
+                            locked.add(id);
+                        }
+                    }
+                    return locked;
+                }),
+            [blockIdsKey, waveEnv]
+        )
+    );
     const isEphemeral = useAtomValue(nodeModel.isEphemeral);
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
@@ -692,10 +745,17 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                             layoutData={layoutData}
                             isActive={blockId === activeBlockId}
                             duplicateIndex={duplicateIndexes.get(blockId)}
+                            lockedBlockIds={lockedBlockIds}
                             onActivate={() => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
                             onClose={() => uxCloseBlock(blockId)}
                             onCloseOthers={() => layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId)}
+                            onCloseOthersExceptLocked={() =>
+                                layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId, lockedBlockIds)
+                            }
                             onCloseAll={() => layoutModel?.closeAllInlineTabBlocks(nodeModel.nodeId)}
+                            onCloseAllExceptLocked={() =>
+                                layoutModel?.closeAllInlineTabBlocksExceptLocked(nodeModel.nodeId, lockedBlockIds)
+                            }
                             index={index}
                             onReorder={(dragBlockId, hoverIndex) =>
                                 layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)

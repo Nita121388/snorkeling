@@ -939,6 +939,12 @@
             }
         }
 
+        // 锁定标记图标: 常驻显示(非 hover), 小尺寸, 不抢标题视觉。
+        .inline-tab-block-tab-lockicon {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
         // close 按钮: 默认折叠不占位 (width:0 + margin:0 + opacity:0), 避免非悬停时也常驻 19px
         // 把 active/normal tab 右侧顶出一片"看似无物的空白". 悬停或 active 时再撑开 16px + 显形,
         // 撑开给文字让位的同时由 100ms 过渡平滑出现, 不突兀. overflow:hidden 确保 0 宽时连图标都不漏.
