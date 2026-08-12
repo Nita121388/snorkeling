@@ -1090,12 +1090,14 @@ const AgentTargetFloatingWindow = memo(
                                 <i className="fa fa-solid fa-gears text-[10px]" />
                                 {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
                             </button>
-                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {selectedTarget.detail || selectedTarget.label}
-                            </span>
+                            <MiddleEllipsis
+                                variant="tail"
+                                text={selectedTarget.detail || selectedTarget.label}
+                                className="text-xxs text-muted mr-auto max-w-[160px]"
+                            />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0 whitespace-nowrap"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -1129,7 +1131,7 @@ const AgentTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0 whitespace-nowrap"
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
                                         showNoDetectedAgentError();
@@ -1163,7 +1165,7 @@ const AgentTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0 whitespace-nowrap"
                                 disabled={!canCreateToExistingTab}
                                 onClick={() => {
                                     if (isBlank(effectiveSelectedProfile)) {
@@ -1381,12 +1383,14 @@ const TerminalTargetFloatingWindow = memo(
                                 <i className="fa fa-solid fa-gears text-[10px]" />
                                 {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
                             </button>
-                            <span className="text-xxs text-muted mr-auto truncate max-w-[160px]">
-                                {selectedTarget.detail || selectedTarget.label}
-                            </span>
+                            <MiddleEllipsis
+                                variant="tail"
+                                text={selectedTarget.detail || selectedTarget.label}
+                                className="text-xxs text-muted mr-auto max-w-[160px]"
+                            />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0 whitespace-nowrap"
                                 onClick={() => {
                                     const blockDef = withLaunchEnv(
                                         createTerminalBlockDefForTarget(selectedTarget, baseBlockDef),
@@ -1408,7 +1412,7 @@ const TerminalTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0 whitespace-nowrap"
                                 onClick={() => {
                                     const blockDef = withLaunchEnv(
                                         createTerminalBlockDefForTarget(selectedTarget, baseBlockDef),
@@ -1430,7 +1434,7 @@ const TerminalTargetFloatingWindow = memo(
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0"
+                                className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:active:scale-100 border-none p-0 whitespace-nowrap"
                                 disabled={!canCreateToExistingTab}
                                 onClick={() => {
                                     const blockDef = withLaunchEnv(

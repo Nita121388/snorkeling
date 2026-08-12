@@ -54,6 +54,16 @@
 
 **实测闭环**：New Terminal → [Env] → 填 `COLORTERM=truecolor` → Save → 浮窗仍在（`floatingStillOpen: 1`）+ [Env] 按钮仍在 → Current Tab 启动 → 新 block 解析 env 含 `COLORTERM=truecolor`（95 vars）→ 完整闭环。workspace 54 测试全过。
 
+### 长路径 crumb 尾部省略（2026-08-12，用户反馈「路径长时弹窗下按钮文字换行」）
+
+**问题**：footer crumb 用 CSS `truncate` 截断——保留无用的**开头**、末尾子目录名被省略号吃掉（如 `/Users/nita/Primary/projects/snorkeling/…`）；且三个 launch 按钮无 `whitespace-nowrap`，路径更长/字体更宽时会被 flex 压到换行。
+
+**修法**：
+- `middle-ellipsis.tsx` 增加 `variant="tail"`：省略开头保留末尾（`…/core/src/features`），按容器实际宽度测量自适应；默认 `middle` 行为不变（path 列表行不受影响）。抽出纯函数 `maxFitLength` + 测试。
+- `widgets.tsx` 两处 footer：crumb 换 `<MiddleEllipsis variant="tail">`；6 个 launch 按钮（Current Tab / New / Existing…）加 `whitespace-nowrap`。
+
+**实测闭环**（CDP）：深路径下 crumb 显示 `…/modules/core/src/features`（宽 141px ≤ 160px 上限）、footer 单行 41px、按钮全部 nowrap 24px 不换行；New Terminal 弹窗同效果。tsc 改动文件 0 错误、vitest middle-ellipsis 3 测试 + agent-launch 112 测试全过。
+
 ## 核心交互（收敛后的最终形态）
 
 只在 **New Agent / New Terminal 两个 launch 弹窗的 footer 最左侧**各加一个 `[⛭ Env]` 小入口按钮，点击后**复用现有环境变量弹窗**（`frontend/app/view/term/envmodal.tsx`），并将其**升级为可编辑**。

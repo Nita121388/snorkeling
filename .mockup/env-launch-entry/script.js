@@ -195,6 +195,32 @@
 
     document.getElementById("add-custom").addEventListener("click", () => addRow("", ""));
 
+    // ---------- crumb 尾部省略（镜像真实 MiddleEllipsis variant="tail"：省略开头保留末尾） ----------
+    document.querySelectorAll(".crumb").forEach((crumb) => {
+        if (crumb.scrollWidth <= crumb.clientWidth) return;
+        const text = crumb.textContent;
+        const ellipsis = "…";
+        const probe = document.createElement("span");
+        probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;font:inherit";
+        crumb.appendChild(probe);
+        probe.textContent = ellipsis;
+        const ellipsisW = probe.getBoundingClientRect().width;
+        const available = crumb.clientWidth;
+        let lo = 0;
+        let hi = text.length - 1;
+        const fits = (n) => {
+            probe.textContent = text.slice(text.length - n);
+            return ellipsisW + probe.getBoundingClientRect().width <= available;
+        };
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi + 1) / 2);
+            if (fits(mid)) lo = mid;
+            else hi = mid - 1;
+        }
+        crumb.removeChild(probe);
+        crumb.textContent = ellipsis + text.slice(text.length - lo);
+    });
+
     // ---------- Save（模拟；真实走 SaveBlockEnvCommand 写 block cmd:env） ----------
     document.getElementById("env-save").addEventListener("click", () => {
         const rows = Array.from(customBody.querySelectorAll(".custom-row"))

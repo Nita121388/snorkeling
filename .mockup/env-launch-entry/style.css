@@ -266,6 +266,8 @@ body { padding: 32px 20px 80px; }
     font-size: 10px; color: var(--grey-text-color);
     margin-right: auto;
     max-width: 160px;
+    /* 尾部省略：JS（abbrevCrumbTail）已先按可用宽度缩写为 "…+末尾"，
+       这里的 ellipsis 只作极端情况兑底；勿改回保留开头的 CSS 截断 */
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dot { width: 2px; height: 2px; border-radius: 9999px; background: var(--border-color); flex-shrink: 0; }
