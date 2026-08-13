@@ -81,6 +81,17 @@ function detectWebGLSupport(): boolean {
 export const WebGLSupported = detectWebGLSupport();
 let loggedWebGL = false;
 
+// Convert #RRGGBB hex to xterm OSC 10/11 response format rgb:rrrr/gggg/bbbb (16-bit per channel).
+// Mirrors xterm.js toRgbString(pad, 16) so TUI clients (Codex, etc.) parse the same as a native terminal.
+export function hexToRgb16(hex: string): string {
+    const m = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(hex.trim());
+    if (!m) {
+        return "rgb:0000/0000/0000";
+    }
+    const to16 = (s: string) => s + s; // 8-bit -> 16-bit (xterm pads by duplicating the byte)
+    return `rgb:${to16(m[1])}/${to16(m[2])}/${to16(m[3])}`;
+}
+
 type TermWrapOptions = {
     keydownHandler?: (e: KeyboardEvent) => boolean;
     useWebGl?: boolean;
@@ -118,6 +129,12 @@ export class TermWrap {
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
     nodeModel: BlockNodeModel; // this can be null
+    // OSC 10/11 颜色查询应答：Codex 等 TUI 启动时用它探测终端背景色来决定自身配色。
+    // Snorkeling 的 xterm 主题背景被 computeTheme 强制为全透明（真实背景由 block CSS 透出），
+    // 内置应答会回透明黑导致 Codex 永远按深色渲染；这里用真实主题色应答并短路内置 handler。
+    // 默认兜底：浅色背景（避免未知状态下应答黑色）。
+    oscReportFgColor: string = "#f0f0f0";
+    oscReportBgColor: string = "#faf7f0";
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
     onSelectionTextChange?: (selectionText: string | null) => void;
@@ -222,6 +239,23 @@ export class TermWrap {
                 console.error("[termwrap] osc 16162 handler error", this.blockId, e);
                 return false;
             }
+        });
+        // OSC 10/11 颜色查询应答覆盖：xterm 内置应答取自 options.theme（背景被 computeTheme 强制透明，
+        // 会回透明黑），这里用真实主题色应答，并返回 true 短路内置 handler，避免 Codex 探测到深色背景。
+        // 仅拦截查询（data 含 ?）；其余（颜色设置 OSC 10/11;<color>）放行给内置 handler 正常处理。
+        this.terminal.parser.registerOscHandler(10, (data: string) => {
+            if (data.includes("?")) {
+                this.sendDataHandler?.(`\x1b]10;${hexToRgb16(this.oscReportFgColor)}\x1b\\`);
+                return true;
+            }
+            return false;
+        });
+        this.terminal.parser.registerOscHandler(11, (data: string) => {
+            if (data.includes("?")) {
+                this.sendDataHandler?.(`\x1b]11;${hexToRgb16(this.oscReportBgColor)}\x1b\\`);
+                return true;
+            }
+            return false;
         });
         this.toDispose.push(
             this.terminal.parser.registerCsiHandler({ final: "J" }, (params) => {
@@ -505,6 +539,13 @@ export class TermWrap {
         this.multiInputCallback?.(data);
     }
 
+    // 供 TermThemeUpdater 在主题变化时同步 OSC 10/11 查询应答色（真实主题色，非透明色）。
+    // Codex 等 TUI 启动时查询终端背景色决定自身配色，必须回真实色才能正确适配浅色主题。
+    setOscReportColors(fg: string | undefined, bg: string | undefined) {
+        if (fg) this.oscReportFgColor = fg;
+        if (bg) this.oscReportBgColor = bg;
+    }
+
     addFocusListener(focusFn: () => void) {
         this.terminal.textarea.addEventListener("focus", focusFn);
     }
@@ -640,8 +681,7 @@ export class TermWrap {
             didChangeTermSize,
             hasResized: this.hasResized,
             elapsedMs: Math.round((performance.now() - startTs) * 100) / 100,
-            sinceLastResizeMs:
-                prevResizeDebugTs === 0 ? null : Math.round((startTs - prevResizeDebugTs) * 100) / 100,
+            sinceLastResizeMs: prevResizeDebugTs === 0 ? null : Math.round((startTs - prevResizeDebugTs) * 100) / 100,
             isFocused: document.activeElement != null && this.connectElem.contains(document.activeElement),
         });
         if (didChangeTermSize) {

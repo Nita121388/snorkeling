@@ -1,14 +1,36 @@
 # Env Launch Entry — New Agent / New Terminal 弹窗内自定义环境变量原型
 
-> 同步状态：◐ 部分落地（阶段 2/3 已进真实代码，阶段 4 未做）
-> 镜像源：frontend/app/workspace/widgets.tsx, frontend/app/view/term/envmodal.tsx, frontend/app/view/term/envmodal.scss, frontend/app/workspace/agent-launch.ts
-> 最后同步：2026-08-08
+> 同步状态：◉ 已落地（阶段 2/3 进真实代码 + 阶段 4 的 OSC 10/11 应答根因修复）
+> 镜像源：frontend/app/workspace/widgets.tsx, frontend/app/view/term/envmodal.tsx, frontend/app/view/term/envmodal.scss, frontend/app/view/term/termwrap.ts, frontend/app/view/term/termtheme.ts, frontend/app/workspace/agent-launch.ts
+> 最后同步：2026-08-13
 > 对应方案：`My Projects/Snorkling/方案/主题/Terminal与Agent运行前自定义环境变量-设计方案.md`
-> 背景：Codex CLI 浅色主题下输入框深色看不清（见 `Codex CLI浅色主题输入框深色看不清-外部Agent已知问题.md`），需在运行 Terminal/Agent 前注入 `COLORTERM/TERM` 等环境变量。
+> 背景：Codex CLI 浅色主题下输入框深色看不清（见 `Codex CLI浅色主题输入框深色看不清-外部Agent已知问题.md`），需在运行 Terminal/Agent 前注入 `COLORTERM/TERM` 等环境变量，并让 xterm 对 OSC 10/11 颜色查询应答真实主题色。
 
-## 落地状态（2026-08-08 已进代码）
+> ✅ **2026-08-13 更新：阶段 4 仅保留 OSC 应答根因修复（Fix A），一键预设按钮（Fix B）已移除**——真实 Codex block 验证通过后确认治本方案（OSC 应答真实主题色）已覆盖全部场景（本地/SSH 应答路径均经前端 xterm），无需 COLORTERM 偏方开关；需要时仍可用 Env 弹窗手动注入。
 
-阶段 2/3 已实现并实测通过（真实应用 CDP 验证）；阶段 4（Codex 浅色主题预设）未做。
+## 落地状态（2026-08-13：阶段 2/3 + 阶段 4 根因修复完成）
+
+阶段 2/3 已实现；阶段 4 仅含 OSC 应答根因修复（一键预设按钮已按验证结果移除）。
+
+### 阶段 4 根因（比设计文档记录更深的根因）
+
+真根因不在「OSC 探测失败」，而在 **Snorkeling 有 OSC 应答但应答的是透明黑**：
+
+1. `computeTheme`（termutil.ts）故意把 xterm 的 `options.theme.background` 设为全透明 `#00000000`（真实背景由 block 的 CSS `blockBg` 透出，实现半透明效果）。
+2. xterm.js 内置的 OSC 11 查询应答取自 `options.theme.background` → 永远回 `rgb:0000/0000/0000`（黑）。
+3. Codex 启动时 OSC 11 查到透明黑 → 判定深色终端 → composer 黑底黑字。**与深浅主题无关**。
+
+### 阶段 4 修复（根因修复 + 验证）
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| A 根因 | `frontend/app/view/term/termwrap.ts` | TermWrap 加 `oscReportFgColor`/`oscReportBgColor` + `setOscReportColors()`；注册自定义 OSC 10/11 handler——查询（data 含 `?`）时用真实主题色应答并返回 `true` 短路内置 handler；导出纯函数 `hexToRgb16`（#RRGGBB → `rgb:rrrr/gggg/bbbb`，镜像 xterm toRgbString） |
+| A 根因 | `frontend/app/view/term/termtheme.ts` | `TermThemeUpdater` 主题变化时同步 `setOscReportColors(theme.foreground, bgcolor)`（bgcolor 为 computeTheme 剥离透明度前的真实背景色） |
+| 测试 | `frontend/app/view/term/termwrap-osc-report.test.ts` | 4 用例：hexToRgb16 浅色/深色/补零/非法回退 |
+
+> ~~B 兜底（widgets.tsx「浅色修复」一键预设按钮）~~：真实 Codex block 验证通过后移除——OSC 应答修复已覆盖本地/SSH 全场景，无需 COLORTERM 偏方；Env 弹窗仍可手动注入。
+
+关键实现细节：xterm.js 的 OSC handler 按注册**逆序**执行，后注册的自定义 handler 返回 `true` 会**短路**内置应答——所以只需拦截 `?` 查询、放行颜色设置即可。
 
 ### 与设计文档的三处偏差（ponytail：复用已有能力，零后端改动）
 
@@ -186,8 +208,8 @@ file:///Users/nita/Primary/projects/snorkeling/.mockup/env-launch-entry/index.ht
 
 - 阶段 1（原型）：入口按钮 + 可编辑 env 弹窗交互验证。✅
 - 阶段 2（后端）：~~SaveBlockEnvCommand~~ → 复用已有 SetMetaCommand，后端零改动。✅
-- 阶段 3（UI 接入）：envmodal.tsx 升级可编辑 + widgets.tsx 两弹窗加入口 + withLaunchEnv 合并。✅ 已实测
-- 阶段 4：Codex 选中时预设 COLORTERM/TERM，验证浅色主题输入框恢复。⏳ 未做
+- 阶段 3（UI 接入）：envmodal.tsx 升级可编辑 + widgets.tsx 两弹窗加入口 + withLaunchEnv 合并。✅
+- 阶段 4：✅（2026-08-13）OSC 10/11 应答根因修复（termwrap.ts/termtheme.ts）——真实 Codex block 验证通过；一键预设按钮曾实现后被移除（无需 COLORTERM 偏方）。
 
 ## 代码落地参考点（已实现，供回溯）
 

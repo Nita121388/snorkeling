@@ -8,7 +8,6 @@ import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
-import { EnvModalView } from "@/app/view/term/envmodal";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -30,8 +29,8 @@ import {
     moveDefaultTargetFirst,
     resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
-    withLaunchEnv,
     TerminalDefaultLaunchTargetMetaKey,
+    withLaunchEnv,
 } from "@/app/workspace/agent-launch";
 import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
@@ -1088,7 +1087,11 @@ const AgentTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa fa-solid fa-gears text-[10px]" />
-                                {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
+                                {launchEnvCount > 0 ? (
+                                    <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">
+                                        {launchEnvCount}
+                                    </span>
+                                ) : null}
                             </button>
                             <MiddleEllipsis
                                 variant="tail"
@@ -1381,7 +1384,11 @@ const TerminalTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa fa-solid fa-gears text-[10px]" />
-                                {launchEnvCount > 0 ? <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">{launchEnvCount}</span> : null}
+                                {launchEnvCount > 0 ? (
+                                    <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent/15 px-1 text-[9px] font-semibold leading-none text-accent">
+                                        {launchEnvCount}
+                                    </span>
+                                ) : null}
                             </button>
                             <MiddleEllipsis
                                 variant="tail"
