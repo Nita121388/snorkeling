@@ -760,12 +760,14 @@ export function SessionDetailPane({
                                 </div>
                                 <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
                                     <div className="flex shrink-0 items-center gap-2">
-                                        <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
-                                        <CopyIconButton
+                                        <CopyTextButton
                                             text={summary.id}
                                             label="Copy session ID"
-                                            size="xs"
-                                            className="!border-transparent"
+                                            displayText={`ID: ${shortSessionId(summary.id)}`}
+                                            tooltipText={summary.id}
+                                            wrapperClassName="min-w-0"
+                                            className="justify-start"
+                                            textClassName="truncate"
                                         />
                                     </div>
                                     <div className="flex w-full min-w-0 items-center justify-end gap-2">
