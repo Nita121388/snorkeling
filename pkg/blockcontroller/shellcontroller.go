@@ -948,6 +948,20 @@ func resolveAgentCmdAndArgs(
 		}
 		cmdArgs = ensureClaudeSessionIdArg(cmdArgs, sessionId)
 	}
+	// pi mirrors claude: mint a backend-owned session id on first run so the block
+	// meta (agent:sessionid) is set before the process starts. Without this, the
+	// TermSessionTopBar (Note + Session outline) can never resolve a session id for
+	// a fresh pi block. pi's own JSONL is only created after the first assistant
+	// reply, so disk-scanning (codex's approach) is not viable for pi.
+	if provider == AgentProviderPi && sessionId == "" {
+		sessionId = uuid.NewString()
+		agentRunInfo.SessionId = sessionId
+		if err := persistAgentSessionId(blockId, sessionId); err != nil {
+			log.Printf("error persisting pi agent session id (block=%s): %v", blockId, err)
+			go capturePiSessionIdForBlock(blockId, sessionId)
+		}
+		cmdArgs = ensurePiSessionIdArg(cmdArgs, sessionId)
+	}
 	if hadSessionId {
 		switch provider {
 		case AgentProviderCodex:
@@ -998,6 +1012,26 @@ func ensureClaudeSessionIdArg(args []string, sessionId string) []string {
 			return args
 		}
 		if strings.HasPrefix(arg, "--session-id=") || strings.HasPrefix(arg, "--resume=") {
+			return args
+		}
+	}
+	return append(args, "--session-id", sessionId)
+}
+
+// ensurePiSessionIdArg appends `--session-id <sessionId>` to a fresh pi launch
+// unless the args already pin a session target (--session-id / --session /
+// --resume / --fork). Mirrors ensureClaudeSessionIdArg: an explicit session
+// target from profile args wins over the backend-minted id.
+func ensurePiSessionIdArg(args []string, sessionId string) []string {
+	if sessionId == "" {
+		return args
+	}
+	for _, arg := range args {
+		switch arg {
+		case "--session-id", "--session", "--resume", "-r", "--fork":
+			return args
+		}
+		if strings.HasPrefix(arg, "--session-id=") || strings.HasPrefix(arg, "--session=") || strings.HasPrefix(arg, "--fork=") {
 			return args
 		}
 	}
@@ -1212,6 +1246,14 @@ func captureClaudeSessionIdForBlock(blockId string, sessionId string) {
 	}
 	log.Printf("claude agent session id retry gave up (block=%s, attempts=%d, trace=%s)", blockId, claudeSessionCaptureMaxAttempts, tid)
 	pslog.AppendEvent(pslog.Event{Name: "agent.session", Stage: "capture-result", TraceId: tid, BlockId: blockId, SessionRef: sessionRef, Outcome: "error", Reason: "retry-exhausted"})
+}
+
+// capturePiSessionIdForBlock is the pi twin of captureClaudeSessionIdForBlock.
+// The claude capture loop is provider-agnostic (DBGet + first-writer-wins
+// persist of the SAME sessionId), so pi reuses it directly instead of
+// duplicating the retry loop.
+func capturePiSessionIdForBlock(blockId string, sessionId string) {
+	captureClaudeSessionIdForBlock(blockId, sessionId)
 }
 
 func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {
@@ -1579,6 +1621,46 @@ func CaptureManualClaudeSessionIdForBlock(blockId string, startedAt time.Time) {
 		}
 		if err := persistAgentSessionId(blockId, uuid.NewString()); err == nil {
 			log.Printf("manual claude agent session id persisted (block=%s, attempt=%d)", blockId, i+1)
+			return
+		}
+	}
+}
+
+// CaptureManualPiSessionIdForBlock is the SetMetaCommand rider entry for pi.
+// Mirrors CaptureManualClaudeSessionIdForBlock: when a SetMeta patch lands on a
+// stale pi block (no sessionid, agent:autoresume=true, provider=pi), mint a
+// fresh session id and persist it so the next spawn runs `pi --session-id <id>`.
+// pi has no CLI-written id to recover from disk (its JSONL file is only created
+// after the first assistant reply), so minting is the only reliable path.
+func CaptureManualPiSessionIdForBlock(blockId string, startedAt time.Time) {
+	_ = startedAt // kept for symmetry with codex signature; pi doesn't need it
+	if blockId == "" {
+		return
+	}
+	// Reuses the claude manual rider timing constants; the loop body is
+	// provider-agnostic except for the provider check.
+	for i := 0; i < claudeManualCaptureMaxAttempts; i++ {
+		if i > 0 {
+			time.Sleep(claudeManualCapturePollInterval)
+		}
+		ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+		cancelFn()
+		if err != nil || block == nil {
+			return // block gone
+		}
+		blockMeta := block.Meta
+		if blockMeta.GetString(MetaKey_AgentSessionId, "") != "" {
+			return // already persisted by main path or manual patch
+		}
+		if getAgentProvider(blockMeta, blockMeta.GetString(waveobj.MetaKey_Cmd, "")) != AgentProviderPi {
+			return
+		}
+		if !blockMeta.GetBool(MetaKey_AgentAutoResume, false) {
+			return
+		}
+		if err := persistAgentSessionId(blockId, uuid.NewString()); err == nil {
+			log.Printf("manual pi agent session id persisted (block=%s, attempt=%d)", blockId, i+1)
 			return
 		}
 	}

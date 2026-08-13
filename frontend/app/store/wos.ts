@@ -202,6 +202,15 @@ function createWaveValueObject<T extends WaveObj>(oref: string, shouldFetch: boo
             }
         }
         wov.pendingPromise = null;
+        const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+        // WPS 事件流可能已经把 atom 推进到比 HTTP 响应更新的版本(见
+        // updateWaveObject 的 version guard)。迟到的 HTTP 响应(例如 block 创建
+        // 瞬间、persist 前的旧快照)不得把 atom 回退到旧版本——否则新建 agent
+        // block 的 agent:sessionid 会被旧快照覆盖,TermSessionTopBar 永不出现。
+        if (val != null && curData.value != null && curData.value.version >= val.version) {
+            globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+            return;
+        }
         globalStore.set(wov.dataAtom, { value: val, loading: false });
         console.log("WaveObj resolved", oref, Date.now() - startTs + "ms");
     });
@@ -342,11 +351,6 @@ function updateWaveObject(update: WaveObjUpdate) {
             (window as any).__psRecvBuf = (window as any)["ps-recv-buf"];
         }
         if (curValue.value != null && curValue.value.version >= update.obj.version) {
-            console.log("[agent-sessionid-debug] wos.ts:272 SKIP", {
-                oref,
-                curVer: curValue.value.version,
-                newVer: update.obj.version,
-            });
             return;
         }
         console.log("WaveObj updated", oref);

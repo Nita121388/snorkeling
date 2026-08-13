@@ -271,6 +271,7 @@ func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetM
 	wcore.SendWaveObjUpdate(oref)
 	maybeCaptureManualCodexSessionId(oref, data.Meta)
 	maybeCaptureManualClaudeSessionId(oref, data.Meta)
+	maybeCaptureManualPiSessionId(oref, data.Meta)
 	return nil
 }
 
@@ -315,6 +316,29 @@ func maybeCaptureManualClaudeSessionId(oref waveobj.ORef, meta waveobj.MetaMapTy
 		return
 	}
 	go blockcontroller.CaptureManualClaudeSessionIdForBlock(oref.OID, time.Now())
+}
+
+// maybeCaptureManualPiSessionId is the SetMetaCommand rider for pi blocks.
+// Mirrors the claude rider above. Fires when a SetMeta patch lands on a
+// pi+autoresume block whose sessionid is still empty (the stale-block-restart
+// case where the original resolveAgentCmdAndArgs persist gave up). pi has no
+// CLI-written id to recover — CaptureManualPiSessionIdForBlock mints a fresh
+// UUID so the next spawn will use `pi --session-id <newUuid>`.
+func maybeCaptureManualPiSessionId(oref waveobj.ORef, meta waveobj.MetaMapType) {
+	if oref.OType != waveobj.OType_Block {
+		return
+	}
+	provider := strings.TrimSpace(strings.ToLower(meta.GetString(blockcontroller.MetaKey_AgentProvider, "")))
+	if provider != blockcontroller.AgentProviderPi {
+		return
+	}
+	if !meta.GetBool(blockcontroller.MetaKey_AgentAutoResume, false) {
+		return
+	}
+	if strings.TrimSpace(meta.GetString(blockcontroller.MetaKey_AgentSessionId, "")) != "" {
+		return
+	}
+	go blockcontroller.CaptureManualPiSessionIdForBlock(oref.OID, time.Now())
 }
 
 func (ws *WshServer) GetRTInfoCommand(ctx context.Context, data wshrpc.CommandGetRTInfoData) (*waveobj.ObjRTInfo, error) {

@@ -570,6 +570,54 @@ func TestResolveAgentCmdAndArgs_OpenCodeResume(t *testing.T) {
 	}
 }
 
+func TestResolveAgentCmdAndArgs_PiFirstRunMintsSessionId(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "pi",
+		waveobj.MetaKey_CmdArgs: []string{"--model", "gemini-2.5-pro"},
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderPi,
+	}
+	cmd, args, runInfo, err := resolveAgentCmdAndArgs("", meta, true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	if cmd != "pi" {
+		t.Fatalf("unexpected cmd: %s", cmd)
+	}
+	if len(args) < 2 {
+		t.Fatalf("expected at least 2 args, got: %#v", args)
+	}
+	if args[len(args)-2] != "--session-id" || args[len(args)-1] == "" {
+		t.Fatalf("expected appended --session-id, got: %#v", args)
+	}
+	if runInfo == nil || runInfo.Provider != AgentProviderPi || runInfo.SessionId == "" {
+		t.Fatalf("unexpected run info: %#v", runInfo)
+	}
+	if runInfo.SessionId != args[len(args)-1] {
+		t.Fatalf("runInfo.SessionId %q does not match arg %q", runInfo.SessionId, args[len(args)-1])
+	}
+}
+
+func TestResolveAgentCmdAndArgs_PiFirstRunRespectsExplicitSessionFlag(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_Cmd:     "pi",
+		waveobj.MetaKey_CmdArgs: []string{"--session", "abc"},
+		MetaKey_AgentAutoResume: true,
+		MetaKey_AgentProvider:   AgentProviderPi,
+	}
+	cmd, args, _, err := resolveAgentCmdAndArgs("", meta, true, "/Users/tester")
+	if err != nil {
+		t.Fatalf("resolveAgentCmdAndArgs returned error: %v", err)
+	}
+	if cmd != "pi" {
+		t.Fatalf("unexpected cmd: %s", cmd)
+	}
+	// An explicit session target in profile args wins over the minted id.
+	if len(args) != 2 || args[0] != "--session" || args[1] != "abc" {
+		t.Fatalf("expected explicit --session preserved, got: %#v", args)
+	}
+}
+
 func TestResolveAgentCmdAndArgs_PiResume(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_Cmd:     "pi",

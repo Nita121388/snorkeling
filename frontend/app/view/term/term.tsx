@@ -441,6 +441,12 @@ const TermSessionTopBar = React.memo(
 
 TermSessionTopBar.displayName = "TermSessionTopBar";
 
+// claude/pi 等 agent 的 session 文件在第一条消息/回复落盘后才创建,而 block meta
+// 的 agent:sessionid 在启动时就有(mint 的 id)。Note/大纲首次按 id 查询必然查不到文件,
+// 所以加载失败后延迟重试,直到 agent 真正产出会话数据(或达到次数上限)。
+const TermSessionLoadRetryDelayMs = 3000;
+const TermSessionLoadMaxRetries = 10;
+
 const TermSessionUserOutlineOverlay = React.memo(
     ({
         blockId,
@@ -457,13 +463,31 @@ const TermSessionUserOutlineOverlay = React.memo(
         const [error, setError] = React.useState("");
         const [activeSeq, setActiveSeq] = React.useState<number | null>(null);
         const requestSeqRef = React.useRef(0);
+        const [loadAttempts, setLoadAttempts] = React.useState(0);
+        const retryTimerRef = React.useRef<number | null>(null);
+        // 重试计数走 ref(而非 state):loadOutline 是 useCallback,其闭包捕获的
+        // loadAttempts 不随 state 变化更新,若在 catch 里直接读 state 会无限重试。
+        const retryCountRef = React.useRef(0);
+        const prevSessionIdRef = React.useRef(sessionId);
 
         React.useEffect(() => {
             return () => {
+                if (retryTimerRef.current != null) {
+                    window.clearTimeout(retryTimerRef.current);
+                    retryTimerRef.current = null;
+                }
                 requestSeqRef.current++;
                 clearOutlineRenderSnapshot(blockId);
             };
         }, [blockId]);
+
+        // sessionId 变化时重置重试计数。
+        React.useEffect(() => {
+            if (prevSessionIdRef.current !== sessionId) {
+                prevSessionIdRef.current = sessionId;
+                retryCountRef.current = 0;
+            }
+        }, [sessionId]);
 
         const loadOutline = React.useCallback(
             (refresh = false, showLoading = true) => {
@@ -519,6 +543,15 @@ const TermSessionUserOutlineOverlay = React.memo(
                         });
                         console.debug("[term-session-outline] failed to load user outline", { sessionId, error: e });
                         setError(e instanceof Error ? e.message : String(e));
+                        // 会话文件可能尚未创建(agent 首轮对话未落盘):延迟重试,
+                        // 直到成功或达到次数上限。重试期间不闪 loading。
+                        if (retryTimerRef.current == null && retryCountRef.current < TermSessionLoadMaxRetries) {
+                            retryCountRef.current++;
+                            retryTimerRef.current = window.setTimeout(() => {
+                                retryTimerRef.current = null;
+                                setLoadAttempts((n) => n + 1);
+                            }, TermSessionLoadRetryDelayMs);
+                        }
                     })
                     .finally(() => {
                         if (requestSeq !== requestSeqRef.current) {
@@ -540,12 +573,13 @@ const TermSessionUserOutlineOverlay = React.memo(
             if (sessionId === "") {
                 return;
             }
-            const loadTimer = window.setTimeout(() => loadOutline(false, true), 300);
+            // 重试触发时(loadAttempts > 0)不闪 loading,静默重查。
+            const loadTimer = window.setTimeout(() => loadOutline(false, loadAttempts === 0), 300);
             return () => {
                 window.clearTimeout(loadTimer);
                 requestSeqRef.current++;
             };
-        }, [loadOutline, sessionId]);
+        }, [loadOutline, sessionId, loadAttempts]);
 
         React.useEffect(() => {
             if (!isOpen) {
@@ -745,6 +779,11 @@ const TermSessionNoteEditor = React.memo(
         const saveSeqRef = React.useRef(0);
         const saveTimerRef = React.useRef<number | null>(null);
         const latestDraftRef = React.useRef("");
+        const [loadAttempts, setLoadAttempts] = React.useState(0);
+        const retryTimerRef = React.useRef<number | null>(null);
+        // 重试计数走 ref:加载 effect 的闭包捕获的 loadAttempts 不随 state 更新,
+        // 若在 catch 里直接读 state 会无限重试。
+        const retryCountRef = React.useRef(0);
 
         React.useEffect(() => {
             if (sessionId === "") {
@@ -803,11 +842,20 @@ const TermSessionNoteEditor = React.memo(
                     console.debug("[term-session-note] failed to load session note", { sessionId, error: e });
                     setSummary(null);
                     setError(e instanceof Error ? e.message : String(e));
+                    // 会话文件可能尚未创建(agent 首轮对话未落盘):延迟重试,
+                    // 直到成功或达到次数上限。
+                    if (retryTimerRef.current == null && retryCountRef.current < TermSessionLoadMaxRetries) {
+                        retryCountRef.current++;
+                        retryTimerRef.current = window.setTimeout(() => {
+                            retryTimerRef.current = null;
+                            setLoadAttempts((n) => n + 1);
+                        }, TermSessionLoadRetryDelayMs);
+                    }
                 });
             return () => {
                 cancelled = true;
             };
-        }, [blockId, connection, service, sessionId]);
+        }, [blockId, connection, service, sessionId, loadAttempts]);
 
         React.useEffect(() => {
             latestDraftRef.current = noteDraft;
@@ -925,10 +973,24 @@ const TermSessionNoteEditor = React.memo(
                     window.clearTimeout(saveTimerRef.current);
                     saveTimerRef.current = null;
                 }
+                if (retryTimerRef.current != null) {
+                    window.clearTimeout(retryTimerRef.current);
+                    retryTimerRef.current = null;
+                }
                 saveSeqRef.current++;
                 clearNoteRenderSnapshot(blockId);
             };
         }, []);
+
+        // sessionId 变化时重置重试计数并清掉挂起的重试定时器。
+        React.useEffect(() => {
+            setLoadAttempts(0);
+            retryCountRef.current = 0;
+            if (retryTimerRef.current != null) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
+        }, [sessionId]);
 
         React.useEffect(() => {
             const branch = sessionId === "" ? "session-empty" : summary == null ? "no-summary" : "visible";
@@ -1073,35 +1135,6 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     } | null>(null);
     const routedTermMouseEventsRef = React.useRef(new WeakSet<MouseEvent>());
     const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
-    // [agent-sessionid-debug] temporary TerminalView render trace + current atom value
-    React.useEffect(() => {
-        console.log("[agent-sessionid-debug] TerminalView mounted", { blockId });
-        return () => console.log("[agent-sessionid-debug] TerminalView unmounted", { blockId });
-    }, [blockId]);
-    console.log("[agent-sessionid-debug] TerminalView render", {
-        blockId,
-        blockVer: blockData?.version ?? null,
-        hasSid: (blockData?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
-        sid: (blockData?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
-    });
-    // [agent-sessionid-debug] subscribe to the raw dataAtom derived atom to bypass React memo gating
-    React.useEffect(() => {
-        if (blockId == null) return;
-        const oref = WOS.makeORef("block", blockId);
-        const dataAtom = WOS.getWaveObjectAtom<Block>(oref);
-        const logSnapshot = () => {
-            const val = globalStore.get(dataAtom);
-            console.log("[agent-sessionid-debug] TerminalView dataAtom notify", {
-                blockId,
-                blockVer: val?.version ?? null,
-                hasSid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"] != null,
-                sid: (val?.meta as Record<string, unknown> | undefined)?.["agent:sessionid"],
-            });
-        };
-        logSnapshot();
-        const unsub = globalStore.sub(dataAtom, logSnapshot);
-        return () => { unsub(); };
-    }, [blockId]);
     const termSettingsAtom = getSettingsPrefixAtom("term");
     const termSettings = jotai.useAtomValue(termSettingsAtom);
     let termMode = blockData?.meta?.["term:mode"] ?? "term";

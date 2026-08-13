@@ -47,6 +47,22 @@ func TestCaptureManualClaudeSessionIdForBlock_AbortsWhenDBUnavailable(t *testing
 	CaptureManualClaudeSessionIdForBlock("block-no-db", time.Now())
 }
 
+func TestCapturePiSessionIdForBlock_EmptyArgs(t *testing.T) {
+	// pi twin reuses the generic claude retry loop; empty args must be no-ops
+	// without touching DB and without panicking.
+	capturePiSessionIdForBlock("", "session-abc")
+	capturePiSessionIdForBlock("block-1", "")
+	capturePiSessionIdForBlock("", "")
+}
+
+func TestCaptureManualPiSessionIdForBlock_EmptyBlockId(t *testing.T) {
+	CaptureManualPiSessionIdForBlock("", time.Now())
+}
+
+func TestCaptureManualPiSessionIdForBlock_AbortsWhenDBUnavailable(t *testing.T) {
+	CaptureManualPiSessionIdForBlock("block-no-db", time.Now())
+}
+
 // --- maybeCaptureManualClaudeSessionId early-out table (wshserver package owns
 // the rider, but the guard logic is mirrored here for documentation; the real
 // rider is tested via wshserver tests). We test the *equivalent* guard chain
