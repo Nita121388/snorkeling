@@ -382,7 +382,48 @@ func createPublicKeyCallback(connCtx context.Context, sshKeywords *wconfig.ConnK
 	}
 }
 
-func createPasswordCallbackPrompt(connCtx context.Context, remoteDisplayName string, password *string, debugInfo *ConnectionDebugInfo) func() (secret string, err error) {
+// authPasswordReuse 在单次连接尝试内复用用户已经输入的密码。
+// 部分服务器(常见于 PAM 配置)会先发起 keyboard-interactive 挑战,失败后再请求
+// password 认证,两者要求的是同一个密码。如果不复用,用户会在一次连接中被连续
+// 询问两次密码(第二次常在用户刚填完、切换 Tab 后弹出,容易被误认为切 Tab 导致)。
+// 密码仅保存在内存中,且只在本次连接尝试期间有效(createClientConfig 作用域),不落盘、不跨连接复用。
+type authPasswordReuse struct {
+	lock     sync.Mutex
+	password string
+	has      bool
+	at       time.Time
+}
+
+func (r *authPasswordReuse) set(password string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.password = password
+	r.has = true
+	r.at = time.Now()
+}
+
+// get 返回最近 reuseWindow 内记录的密码。窗口外视为已过期,返回 false。
+func (r *authPasswordReuse) get(reuseWindow time.Duration) (string, bool) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if !r.has {
+		return "", false
+	}
+	if time.Since(r.at) > reuseWindow {
+		return "", false
+	}
+	return r.password, true
+}
+
+// isPasswordQuestion 判断 keyboard-interactive 的问题是否就是"输入密码"。
+// OpenSSH 服务器的问题通常是 "Password: "。只有密码类问题才值得复用到 password
+// 认证;验证码/OTP 等其他问题不记录,避免在 2FA 场景下误用。
+func isPasswordQuestion(question string) bool {
+	lower := strings.ToLower(strings.TrimSpace(question))
+	return strings.Contains(lower, "password") || strings.Contains(lower, "口令") || strings.Contains(lower, "密码")
+}
+
+func createPasswordCallbackPrompt(connCtx context.Context, remoteDisplayName string, password *string, debugInfo *ConnectionDebugInfo, passwordReuse *authPasswordReuse) func() (secret string, err error) {
 	return func() (secret string, outErr error) {
 		defer func() {
 			panicErr := panichandler.PanicHandler("sshclient:password-callback", recover())
@@ -395,6 +436,13 @@ func createPasswordCallbackPrompt(connCtx context.Context, remoteDisplayName str
 		if password != nil {
 			blocklogger.Infof(connCtx, "[conndebug] using password from secret store, sending to ssh\n")
 			return *password, nil
+		}
+
+		// 用户刚在本连接内通过 keyboard-interactive 输入过密码时直接复用,不再弹窗,
+		// 避免"一次连接连续弹两次密码框"(第二次常被误认为切 Tab 导致)。
+		if reusePassword, ok := passwordReuse.get(60 * time.Second); ok {
+			blocklogger.Infof(connCtx, "[conndebug] reusing password entered via keyboard-interactive, sending to ssh\n")
+			return reusePassword, nil
 		}
 
 		ctx, cancelFn := context.WithTimeout(connCtx, 60*time.Second)
@@ -419,7 +467,7 @@ func createPasswordCallbackPrompt(connCtx context.Context, remoteDisplayName str
 	}
 }
 
-func createInteractiveKbdInteractiveChallenge(connCtx context.Context, remoteName string, debugInfo *ConnectionDebugInfo) func(name, instruction string, questions []string, echos []bool) (answers []string, err error) {
+func createInteractiveKbdInteractiveChallenge(connCtx context.Context, remoteName string, debugInfo *ConnectionDebugInfo, passwordReuse *authPasswordReuse) func(name, instruction string, questions []string, echos []bool) (answers []string, err error) {
 	return func(name, instruction string, questions []string, echos []bool) (answers []string, outErr error) {
 		defer func() {
 			panicErr := panichandler.PanicHandler("sshclient:kbdinteractive-callback", recover())
@@ -437,6 +485,10 @@ func createInteractiveKbdInteractiveChallenge(connCtx context.Context, remoteNam
 				return nil, ConnectionError{ConnectionDebugInfo: debugInfo, Err: utilds.MakeCodedError(ConnErrCode_UserCancelled, err)}
 			}
 			answers = append(answers, answer)
+			// 记录密码类问题的答案,供随后可能的 password 认证复用,避免重复弹窗
+			if !echo && isPasswordQuestion(question) {
+				passwordReuse.set(answer)
+			}
 		}
 		return answers, nil
 	}
@@ -793,9 +845,12 @@ func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywor
 		sshPassword = &password
 	}
 
+	// 单次连接尝试内共享的密码复用状态:某些服务器先请求 keyboard-interactive,
+	// 失败后再请求 password,两者要求的是同一个密码。
+	passwordReuse := &authPasswordReuse{}
 	publicKeyCallback := ssh.PublicKeysCallback(createPublicKeyCallback(connCtx, sshKeywords, authSockSigners, agentClient, debugInfo))
-	keyboardInteractive := ssh.KeyboardInteractive(createInteractiveKbdInteractiveChallenge(connCtx, remoteName, debugInfo))
-	passwordCallback := ssh.PasswordCallback(createPasswordCallbackPrompt(connCtx, remoteName, sshPassword, debugInfo))
+	keyboardInteractive := ssh.KeyboardInteractive(createInteractiveKbdInteractiveChallenge(connCtx, remoteName, debugInfo, passwordReuse))
+	passwordCallback := ssh.PasswordCallback(createPasswordCallbackPrompt(connCtx, remoteName, sshPassword, debugInfo, passwordReuse))
 
 	// exclude gssapi-with-mic and hostbased until implemented
 	authMethodMap := map[string]ssh.AuthMethod{
