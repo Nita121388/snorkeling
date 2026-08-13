@@ -235,6 +235,27 @@ func TestOpenCodeProvider_ParseSummaryV2(t *testing.T) {
 	if summary.Key == "" {
 		t.Fatalf("expected non-empty Key")
 	}
+	// session-1's last message is the assistant reply "_OK" (the toolcall item
+	// carries no readable text), so it must surface as the snippet.
+	if summary.Snippet != "_OK" {
+		t.Fatalf("expected snippet %q, got %q", "_OK", summary.Snippet)
+	}
+}
+
+func TestOpenCodeProvider_ParseSummarySnippetV1(t *testing.T) {
+	db := createTestOpenCodeDBV1(t)
+	defer db.Close()
+	path := persistDBToTempFile(t, db)
+
+	p := NewOpenCodeProvider(path)
+	summary, ok := p.ParseSummary(context.Background(), SessionFile{Source: SourceOpenCode, Path: p.sessionFilePath("session-1")})
+	if !ok {
+		t.Fatalf("expected ParseSummary to return ok for session-1")
+	}
+	// V1 fallback: last message in the `message` table is "planner response".
+	if summary.Snippet != "planner response" {
+		t.Fatalf("expected snippet %q, got %q", "planner response", summary.Snippet)
+	}
 }
 
 func TestOpenCodeProvider_ParseSummaryRoundTripsList(t *testing.T) {

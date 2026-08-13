@@ -101,6 +101,40 @@ func TestPiProvider_ParseSummary(t *testing.T) {
 	}
 }
 
+// piSampleToolTail ends with a tool-call-only assistant message, so the snippet
+// must skip the "[Tool: ...]" placeholder and fall back to the user message.
+const piSampleToolTail = `{"type":"session","version":3,"id":"pi-sess-2","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+	`{"type":"message","id":"msg-1","parentId":"","role":"user","content":"hello"}` + "\n" +
+	`{"type":"message","id":"msg-2","parentId":"msg-1","role":"assistant","content":[{"type":"toolCall","name":"bash","arguments":{"cmd":"ls"}}]}` + "\n"
+
+func TestPiProvider_ParseSummarySnippet(t *testing.T) {
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, piSampleV3)
+	p := NewPiProvider(dir)
+	mtime, size := fileStatFields(path)
+	summary, ok := p.ParseSummary(context.Background(), SessionFile{Source: SourcePi, Path: path, MTime: mtime, Size: size})
+	if !ok {
+		t.Fatalf("expected ParseSummary ok")
+	}
+	if summary.Snippet != "hi" {
+		t.Fatalf("expected snippet %q, got %q", "hi", summary.Snippet)
+	}
+}
+
+func TestPiProvider_ParseSummarySnippetSkipsToolTail(t *testing.T) {
+	dir := t.TempDir()
+	path := writePiJSONL(t, dir, piSampleToolTail)
+	p := NewPiProvider(dir)
+	mtime, size := fileStatFields(path)
+	summary, ok := p.ParseSummary(context.Background(), SessionFile{Source: SourcePi, Path: path, MTime: mtime, Size: size})
+	if !ok {
+		t.Fatalf("expected ParseSummary ok")
+	}
+	if summary.Snippet != "hello" {
+		t.Fatalf("expected snippet %q, got %q", "hello", summary.Snippet)
+	}
+}
+
 func TestPiProvider_ParseSummaryRoundTripsList(t *testing.T) {
 	dir := t.TempDir()
 	writePiJSONL(t, dir, piSampleV3)

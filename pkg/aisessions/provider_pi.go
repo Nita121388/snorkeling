@@ -69,7 +69,7 @@ func (p *PiProvider) ParseSummary(ctx context.Context, file SessionFile) (Sessio
 // decoded as a generic map and normalized with parseTimestampToMS, which
 // accepts both shapes.
 func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
-	head, tail, err := readHeadTailLines(file.Path, 1, 1)
+	head, tail, err := readHeadTailLines(file.Path, 1, 30)
 	if err != nil {
 		return SessionSummary{}, false
 	}
@@ -91,7 +91,7 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	updatedAt := createdAt
 	if len(tail) > 0 {
 		var lastLine map[string]any
-		if err := json.Unmarshal([]byte(tail[0]), &lastLine); err == nil {
+		if err := json.Unmarshal([]byte(tail[len(tail)-1]), &lastLine); err == nil {
 			if ts := parseTimestampToMS(lastLine["timestamp"]); ts != 0 {
 				updatedAt = ts
 			}
@@ -107,6 +107,7 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 		Title:       title,
 		TitleSource: titleSource,
 		ProjectPath: strValue(header, "cwd"),
+		Snippet:     p.scanSnippet(tail),
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
 		FilePath:    file.Path,
@@ -115,6 +116,42 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary, summary.Validate() == nil
+}
+
+// scanSnippet derives a short content preview from the tail of a pi session
+// file, mirroring the codex/claude providers: scan backwards and take the first
+// message with readable text (skipping empty and tool-call-only entries),
+// truncated to snippetMaxChars. A real session usually ends with the assistant's
+// final answer, so the last non-empty text is a good preview.
+func (p *PiProvider) scanSnippet(tail []string) string {
+	for i := len(tail) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(tail[i])
+		if line == "" {
+			continue
+		}
+		var value map[string]any
+		if err := json.Unmarshal([]byte(line), &value); err != nil {
+			continue
+		}
+		if strValue(value, "type") != "message" {
+			continue
+		}
+		entry, ok := piEntryFromLine(value, 0)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(entry.msg.Text)
+		if text == "" {
+			continue
+		}
+		// A tool-call-only message renders as "[Tool: bash]"; skip it and keep
+		// scanning for the last message that carries real content.
+		if entry.msg.ToolName != "" && strings.HasPrefix(text, "[Tool: ") {
+			continue
+		}
+		return truncateSummary(text, snippetMaxChars)
+	}
+	return ""
 }
 
 // scanTitle derives a display title from the entries of a pi session file.

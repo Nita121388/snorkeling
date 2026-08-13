@@ -188,7 +188,70 @@ WHERE id = ?
 	if err := row.Scan(&id, &title, &directory, &timeCreated, &timeUpdated, &modelProvider, &modelID); err != nil {
 		return SessionSummary{}, err
 	}
-	return p.rowToSummary(id, title, directory, timeCreated, timeUpdated, modelProvider, modelID), nil
+	summary := p.rowToSummary(id, title, directory, timeCreated, timeUpdated, modelProvider, modelID)
+	summary.Snippet = p.loadSnippet(ctx, db, sessionID)
+	return summary, nil
+}
+
+// loadSnippet returns a short content preview for a session, mirroring the
+// codex/claude providers: the last message with readable text, truncated to
+// snippetMaxChars. Uses the V2 session_message table, falling back to the V1
+// message table when the V2 table is absent (same chain as LoadMessages).
+func (p *OpenCodeProvider) loadSnippet(ctx context.Context, db *sql.DB, sessionID string) string {
+	snippet, ok := p.loadSnippetFromTable(ctx, db, "session_message", sessionID)
+	if ok && snippet != "" {
+		return snippet
+	}
+	snippet, ok = p.loadSnippetFromTable(ctx, db, "message", sessionID)
+	if ok {
+		return snippet
+	}
+	return ""
+}
+
+func (p *OpenCodeProvider) loadSnippetFromTable(ctx context.Context, db *sql.DB, table, sessionID string) (string, bool) {
+	rows, err := db.QueryContext(ctx, `
+SELECT role, content, time_created
+FROM `+table+`
+WHERE session_id = ?
+ORDER BY time_created DESC, id DESC
+LIMIT 30`, sessionID)
+	if err != nil {
+		// V1-only DBs have no session_message table; let the caller fall back.
+		if table == "session_message" && isOpenCodeNoSuchTableError(err) {
+			return "", false
+		}
+		return "", false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if ctx.Err() != nil {
+			return "", false
+		}
+		var role, content string
+		var timestamp int64
+		if err := rows.Scan(&role, &content, &timestamp); err != nil {
+			return "", false
+		}
+		msg, ok := parseOpenCodeMessageRow(0, role, content, timestamp)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(msg.Text)
+		if text == "" {
+			continue
+		}
+		// A tool-call-only message renders as "[Tool: shell]"; skip it and keep
+		// scanning for the last message that carries real content.
+		if strings.HasPrefix(text, "[Tool: ") {
+			continue
+		}
+		return truncateSummary(text, snippetMaxChars), true
+	}
+	if err := rows.Err(); err != nil {
+		return "", false
+	}
+	return "", true
 }
 
 func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated, timeUpdated int64, modelProvider, modelID string) SessionSummary {
