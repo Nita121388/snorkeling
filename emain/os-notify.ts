@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BrowserWindow, Notification } from "electron";
-import { getAllWaveWindows } from "./emain-window";
+import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 
 // Encapsulates the OS-level notification pipeline for agent-status state transitions.
 //
@@ -49,15 +49,9 @@ export interface AgentOsNotifyContext {
     focusApp: () => void;
 }
 
-export type SendAgentOsNotifyReason =
-    | "master-disabled"
-    | "kind-disabled"
-    | "window-focused"
-    | "min-interval";
+export type SendAgentOsNotifyReason = "master-disabled" | "kind-disabled" | "window-focused" | "min-interval";
 
-export type SendAgentOsNotificationOutcome =
-    | { fired: true }
-    | { fired: false; reason: SendAgentOsNotifyReason };
+export type SendAgentOsNotificationOutcome = { fired: true } | { fired: false; reason: SendAgentOsNotifyReason };
 
 /**
  * Decide whether to fire and, if so, fire. Returns the outcome — the caller records
@@ -148,12 +142,26 @@ export function defaultIsAnyWindowFocused(): boolean {
     return false;
 }
 
-export function makeDefaultFocusApp(): () => void {
-    // POC: pull any wave window to the foreground on click. Per-block navigation is a
-    // follow-up once the main process has a blockId→(windowId,tabId) index.
+export function makeDefaultFocusApp(platform: NodeJS.Platform = process.platform): () => void {
+    // POC: pull the last-focused wave window to the foreground on click. Per-block
+    // navigation is a follow-up once the main process has a blockId→(windowId,tabId) index.
     return () => {
-        const anyWin = getAllWaveWindows()[0] as unknown as BrowserWindow | undefined;
-        anyWin?.focus?.();
+        const win = focusedWaveWindow ?? getAllWaveWindows()[0];
+        if (!win || win.isDestroyed()) return;
+
+        // Windows holds a foreground lock — a background process's plain focus() is usually
+        // ignored when a toast is clicked, and focus() is a no-op on a minimized window.
+        // restore + show + moveTop + an always-on-top flip force the window above the lock;
+        // keep the flip win32-only to avoid z-order churn on mac/linux.
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.moveTop();
+        if (platform === "win32") {
+            win.setAlwaysOnTop(true);
+            win.setAlwaysOnTop(false);
+        }
+        win.focus();
+        win.activeTabView?.webContents?.focus();
     };
 }
 
