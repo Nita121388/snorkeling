@@ -1362,7 +1362,14 @@ const Markdown = ({
             return;
         }
         const rect = el.getBoundingClientRect();
-        setInsertPos({ top: rect.top + rect.height / 2, left: rect.left });
+        // Grip sits at the block's left edge (mostly in the gutter, ~4px overlap) like
+        // Notion's block handle. It must NOT sit deep in the gutter: moving the pointer from
+        // the block text toward the grip would then cross the block's left boundary first,
+        // firing handleRootMouseOver with a non-block target which clears the anchor
+        // synchronously (insertAnchor=null) — the grip would unmount before the pointer
+        // reaches it. Overlapping the block edge keeps the proven hover path: block → grip
+        // (mouseleave schedules the 400ms hide grace; grip mouseenter cancels it).
+        setInsertPos({ top: rect.top + rect.height / 2, left: Math.max(rect.left - 4, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
     insertAnchorRef.current = insertAnchor;
@@ -2159,25 +2166,37 @@ const Markdown = ({
                     {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <div
-                                className="markdown-insert-buttons"
+                                className="markdown-block-grip"
                                 style={{ top: insertPos.top, left: insertPos.left }}
                                 onMouseEnter={cancelHideInsert}
                                 onMouseLeave={scheduleHideInsert}
                             >
-                                <button
-                                    className="markdown-insert-btn"
-                                    title="Insert block above"
-                                    onClick={() => handleInsertClick("before")}
-                                >
-                                    <i className="fa-sharp fa-solid fa-arrow-up" />
-                                </button>
-                                <button
-                                    className="markdown-insert-btn"
-                                    title="Insert block below"
-                                    onClick={() => handleInsertClick("after")}
-                                >
-                                    <i className="fa-sharp fa-solid fa-arrow-down" />
-                                </button>
+                                {/* 2×2 dot matrix — the grip itself, styled after code-editor row drag handles. */}
+                                <span className="markdown-block-grip-dots" aria-hidden="true">
+                                    <i className="markdown-block-grip-dot" />
+                                    <i className="markdown-block-grip-dot" />
+                                    <i className="markdown-block-grip-dot" />
+                                    <i className="markdown-block-grip-dot" />
+                                </span>
+                                {/* Hovering the grip reveals the two insert actions (above / below). */}
+                                <div className="markdown-block-grip-actions">
+                                    <button
+                                        className="markdown-block-grip-action"
+                                        title="Insert block above"
+                                        aria-label="Insert block above"
+                                        onClick={() => handleInsertClick("before")}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-arrow-up-from-line" />
+                                    </button>
+                                    <button
+                                        className="markdown-block-grip-action"
+                                        title="Insert block below"
+                                        aria-label="Insert block below"
+                                        onClick={() => handleInsertClick("after")}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-arrow-down-to-line" />
+                                    </button>
+                                </div>
                             </div>,
                             document.body
                         )}

@@ -574,41 +574,98 @@
     }
 }
 
-// Block-edge insert buttons (hover a block → ↑/↓ at its left edge, in editable preview).
-// Positioned at the block's left edge, overlapping the first characters; translucent so it
-// doesn't hide much content. Portal'd to body, so it needs the 400ms hide grace handled in
-// markdown.tsx (scheduleHideInsert/cancelHideInsert) or the button would vanish the moment
-// the pointer leaves the block's DOM onto it.
-.markdown-insert-buttons {
+// Block-edge grip + insert actions. Hovering an editable block reveals a 4-dot grip at its
+// left edge (style mirrors code-editor row drag handles — a compact 2×2 dot matrix; the
+// future home of drag-to-reorder). Hovering the grip expands two actions: insert a new block
+// above / below (arrow-up-from-line / arrow-down-to-line). Portal'd to body, so the 400ms
+// hide grace in markdown.tsx (scheduleHideInsert/cancelHideInsert) keeps the grip alive while
+// the pointer travels from the block onto the portal.
+.markdown-block-grip {
     position: fixed;
     z-index: var(--zindex-modal-wrapper);
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 3px 2px;
-    border-radius: 5px;
-    background: rgba(30, 30, 30, 0.85);
-    border: 1px solid var(--modal-border-color, #333);
-    // top is the anchor block's vertical middle: shift up half the column height to center.
+    align-items: center;
+    padding: 5px 4px;
+    border-radius: 6px;
+    // Vertical middle of the anchor block (same anchor as the old insert buttons).
+    // cursor stays default until drag-to-reorder is wired: a grab cursor would imply the
+    // grip is draggable today, and it is not (yet).
     transform: translateY(-50%);
+    cursor: default;
 
-    .markdown-insert-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 22px;
-        height: 16px;
-        border: 1px solid var(--modal-border-color, #333);
-        border-radius: 4px;
-        background: var(--modal-bg-color, #1e1e1e);
-        color: var(--secondary-text-color, #aaa);
-        cursor: pointer;
-        font-size: 10px;
-        padding: 0;
+    // Subtle chip behind the dots while the pointer is over the grip, so the expandable
+    // affordance reads as interactive before the actions show.
+    &:hover {
+        background: rgba(128, 128, 128, 0.15);
+    }
 
-        &:hover {
-            color: var(--accent-color, #32afff);
-            border-color: var(--accent-color, #32afff);
+    // 2×2 dot matrix — the grip itself.
+    .markdown-block-grip-dots {
+        display: grid;
+        grid-template-columns: repeat(2, 3px);
+        gap: 2px;
+        padding: 2px;
+
+        .markdown-block-grip-dot {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: var(--secondary-text-color, #888);
         }
+    }
+
+    &:hover .markdown-block-grip-dots {
+        opacity: 0.5;
+    }
+
+    // Insert actions are hidden until the grip is hovered (or keyboard-focused).
+    .markdown-block-grip-actions {
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 4px;
+        padding: 3px;
+        border: 1px solid var(--modal-border-color, #333);
+        border-radius: 6px;
+        background: var(--modal-bg-color, #1e1e1e);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        animation: markdown-grip-actions-in 120ms ease;
+
+        .markdown-block-grip-action {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 18px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--secondary-text-color, #aaa);
+            font-size: 11px;
+            cursor: pointer;
+            padding: 0;
+
+            &:hover {
+                color: var(--accent-color, #32afff);
+                background: rgba(128, 128, 128, 0.18);
+            }
+        }
+    }
+
+    &:hover .markdown-block-grip-actions,
+    &:focus-within .markdown-block-grip-actions {
+        display: flex;
+    }
+}
+
+@keyframes markdown-grip-actions-in {
+    from {
+        opacity: 0;
+        transform: translateY(-2px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
     }
 }
