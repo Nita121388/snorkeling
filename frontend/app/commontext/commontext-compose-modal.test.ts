@@ -21,10 +21,19 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain('"Copied (no target)"');
     });
 
-    it("offers a tag-row action to dismiss editor-based filtering", () => {
+    it("offers an action-row button to dismiss editor-based filtering", () => {
         expect(source).toContain("editorFilterDismissed");
-        expect(source).toContain("fa fa-solid fa-filter-circle-xmark");
-        expect(source).toContain('aria-label="Show all common text"');
-        expect(source).toContain("Cancel editor-based filtering");
+        expect(source).toContain("fa fa-solid fa-filter");
+        expect(source).toContain("Stop filtering by editor content");
+        expect(source).toContain("editorFilterDismissed: !state.editorFilterDismissed");
+    });
+
+    it("offers an untagged-only filter chip in the tag row", () => {
+        expect(source).toContain("toggleUntagged");
+        expect(source).toContain("untaggedOnly");
+        expect(source).toContain(">untagged</span>");
+        expect(source).toContain('title="Show items with no tags"');
+        // 与具体 tag 选择互斥：选 tag 时退出无标签筛选
+        expect(source).toContain("untaggedOnly: false, selectedIndex: 0");
     });
 });

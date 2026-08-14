@@ -166,7 +166,17 @@ export function getCommonTextTagSummaries(items: CommonTextItem[]): CommonTextTa
     });
 }
 
-export function filterCommonTextItemsByTags(items: CommonTextItem[], selectedTags: string[]): CommonTextItem[] {
+export function filterCommonTextItemsByTags(
+    items: CommonTextItem[],
+    selectedTags: string[],
+    opts?: { untagged?: boolean }
+): CommonTextItem[] {
+    // "untagged" 筛选与具体 tag 选择互斥：只看没有标签的条目，selectedTags 被忽略（
+    // 否则"有 X 标签 AND 无标签"恒为空集）。空 tags 以 normalizeCommonTextTags 归一化
+    // 后的长度为准，避免脏数据（如全空白字符串组成的 tags）误判为已打标签。
+    if (opts?.untagged) {
+        return items.filter((item) => normalizeCommonTextTags(item.tags).length === 0);
+    }
     const normalizedSelectedTags = normalizeCommonTextTags(selectedTags).map((tag) => tag.toLowerCase());
     if (normalizedSelectedTags.length === 0) {
         return items;
@@ -186,10 +196,11 @@ export function searchCommonTextItems(
     items: CommonTextItem[],
     query: string,
     limit = 40,
-    selectedTags: string[] = []
+    selectedTags: string[] = [],
+    untagged = false
 ): CommonTextItem[] {
     const tokens = query.trim().split(/\s+/).filter(Boolean);
-    const tagFilteredItems = filterCommonTextItemsByTags(items, selectedTags);
+    const tagFilteredItems = filterCommonTextItemsByTags(items, selectedTags, { untagged });
     const filtered =
         tokens.length === 0
             ? tagFilteredItems
@@ -232,6 +243,7 @@ export function tokenizeCommonTextQuery(
 export type CommonTextComposeSearchOptions = {
     limit?: number;
     selectedTags?: string[];
+    untagged?: boolean;
     caret?: number;
     insertedIds?: string[];
 };
@@ -316,7 +328,7 @@ export function searchCommonTextComposeItems(
     manualQuery: string,
     options: CommonTextComposeSearchOptions = {}
 ): CommonTextItem[] {
-    const { limit = 40, selectedTags = [], caret = editor.length, insertedIds = [] } = options;
+    const { limit = 40, selectedTags = [], untagged = false, caret = editor.length, insertedIds = [] } = options;
     const isManualSearch = manualQuery.trim() !== "";
     const tokenWeights = new Map<string, number>();
     if (isManualSearch) {
@@ -326,7 +338,7 @@ export function searchCommonTextComposeItems(
             tokenWeights.set(token, weight);
         }
     }
-    const baseItems = sortCommonTextItems(filterCommonTextItemsByTags(items, selectedTags));
+    const baseItems = sortCommonTextItems(filterCommonTextItemsByTags(items, selectedTags, { untagged }));
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }

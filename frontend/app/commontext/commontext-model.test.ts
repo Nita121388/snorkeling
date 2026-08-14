@@ -95,6 +95,28 @@ describe("commontext-model", () => {
         expect(searchCommonTextItems(items, "email", 40, ["ops"]).map((item) => item.title)).toEqual(["Email ops"]);
     });
 
+    it("filters to untagged items only, ignoring selected tags", () => {
+        const items = [
+            makeItem({ title: "Email support", tags: ["email", "support"] }),
+            makeItem({ title: "Email ops", tags: ["email", "ops"] }),
+            makeItem({ title: "No tags", tags: [] }),
+            makeItem({ title: "No tags 2" }),
+        ];
+        expect(filterCommonTextItemsByTags(items, [], { untagged: true }).map((item) => item.title)).toEqual([
+            "No tags",
+            "No tags 2",
+        ]);
+        // untagged 与具体 tag 选择互斥：选中 tags 存在时仍只看无标签条目（避免空集）。
+        expect(filterCommonTextItemsByTags(items, ["email"], { untagged: true }).map((item) => item.title)).toEqual([
+            "No tags",
+            "No tags 2",
+        ]);
+        expect(searchCommonTextItems(items, "", 40, [], true).map((item) => item.title)).toEqual([
+            "No tags",
+            "No tags 2",
+        ]);
+    });
+
     it("finds duplicate text while allowing current item", () => {
         const items = [makeItem({ id: "a", text: "same" }), makeItem({ id: "b", text: "other" })];
         expect(findDuplicateCommonText(items, " same ")?.id).toBe("a");
@@ -131,6 +153,24 @@ describe("commontext-model", () => {
             makeItem({ id: "refund", title: "Refund reply", text: "refund processed" }),
             makeItem({ id: "other", title: "Standup", text: "daily team sync" }),
         ];
+
+        it("supports untagged-only filtering and keeps it exclusive from tag selection", () => {
+            const taggedItems = [
+                makeItem({ id: "deploy", title: "Deploy server", text: "kubectl apply production", tags: ["ops"] }),
+                makeItem({ id: "refund", title: "Refund reply", text: "refund processed", tags: ["ops"] }),
+                makeItem({ id: "plain", title: "Standup", text: "daily team sync" }),
+            ];
+            expect(
+                searchCommonTextComposeItems(taggedItems, "", "", { untagged: true }).map((item) => item.id)
+            ).toEqual(["plain"]);
+            // untagged 置 true 时忽略 selectedTags
+            expect(
+                searchCommonTextComposeItems(taggedItems, "", "", {
+                    untagged: true,
+                    selectedTags: ["deploy"],
+                }).map((item) => item.id)
+            ).toEqual(["plain"]);
+        });
 
         it("lets a non-empty manual query fully override editor suggestions", () => {
             expect(searchCommonTextComposeItems(items, "deploy", "refund").map((item) => item.id)).toEqual(["refund"]);

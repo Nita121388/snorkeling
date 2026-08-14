@@ -18,6 +18,8 @@ import { MarkdownLivePreview, MarkdownPreview } from "./preview-markdown";
 import type { PreviewModel } from "./preview-model";
 import { PreviewPathIsDirMetaKey } from "./preview-navigation";
 import { StreamingPreview } from "./preview-streaming";
+import { getPreviewPluginById } from "./preview-plugin-registry";
+import { registerBaseViewPlugin } from "./plugins/base-view/base-view-plugin";
 import type { PreviewEnv } from "./previewenv";
 
 export type SpecializedViewProps = {
@@ -33,6 +35,24 @@ const SpecializedViewMap: { [view: string]: ({ model }: SpecializedViewProps) =>
     csv: CSVViewPreview,
     directory: DirectoryPreview,
 };
+
+// 注册内置 .base 查看器插件（HMR 去重由注册表保证，重复加载安全）。
+registerBaseViewPlugin();
+
+// 内部插件渲染：注册表插件 ID → 组件。接口形状与 SpecializedViewProps 兼容（model+parentRef）。
+function resolveSpecializedViewComponent(
+    specializedView: string
+): (({ model }: SpecializedViewProps) => React.JSX.Element) | undefined {
+    const mapEntry = SpecializedViewMap[specializedView];
+    if (mapEntry != null) {
+        return mapEntry;
+    }
+    const plugin = getPreviewPluginById(specializedView);
+    if (plugin == null) {
+        return undefined;
+    }
+    return plugin.render as ({ model }: SpecializedViewProps) => React.JSX.Element;
+}
 
 function canPreview(mimeType: string): boolean {
     if (mimeType == null) {
@@ -60,7 +80,7 @@ const SpecializedView = memo(({ parentRef, model }: SpecializedViewProps) => {
     if (specializedView.errorStr != null) {
         return <CenteredDiv>{specializedView.errorStr}</CenteredDiv>;
     }
-    const SpecializedViewComponent = SpecializedViewMap[specializedView.specializedView];
+    const SpecializedViewComponent = resolveSpecializedViewComponent(specializedView.specializedView);
     if (!SpecializedViewComponent) {
         return <CenteredDiv>Invalid Specialized View Component ({specializedView.specializedView})</CenteredDiv>;
     }

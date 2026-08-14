@@ -1570,7 +1570,7 @@ const SettingsFloatingWindow = memo(
                     {menuItems.map((item, idx) => (
                         <div
                             key={idx}
-                            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-hoverbg cursor-pointer transition-colors text-secondary hover:text-white"
+                            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-hoverbg cursor-pointer transition-colors text-secondary"
                             onClick={item.onClick}
                         >
                             <div className="text-lg w-5 flex justify-center">

@@ -74,6 +74,7 @@ import {
     summarizePreviewSharedDraftRecord,
 } from "./preview-shared-draft";
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
+import { resolvePreviewPlugin } from "./preview-plugin-registry";
 import type { PreviewEnv } from "./previewenv";
 
 // TODO drive this using config
@@ -1241,6 +1242,17 @@ export class PreviewModel implements ViewModel {
         }
         if (fileInfo?.notfound) {
             return { specializedView: "codeedit" };
+        }
+        // 内部插件接管：命中插件（如 .base 查看器）则返回插件 ID，否则回落既有分发逻辑。
+        const plugin = resolvePreviewPlugin({
+            fileInfo,
+            mimeType: mimeType ?? "",
+            fileName: fileName ?? "",
+            filePath: fileInfo.path,
+            editMode,
+        });
+        if (plugin != null) {
+            return { specializedView: plugin.id };
         }
         if (mimeType == null) {
             return { errorStr: `Unable to determine mimetype for: ${fileInfo.path}` };

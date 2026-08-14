@@ -616,20 +616,22 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const handleMouseUp = (_event: MouseEvent) => {
         const { tabIndex, dragged } = draggingTabDataRef.current;
 
-        // Update the final position of the dragged tab
-        const draggingTab = tabIds[tabIndex];
-        const tabWidth = tabWidthRef.current;
-        const visibleTabIndex = visibleTabIds.indexOf(draggingTab);
-        const finalLeftPosition = (visibleTabIndex === -1 ? tabIndex : visibleTabIndex) * tabWidth;
-        const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === draggingTab);
-        if (ref?.current) {
-            ref.current.classList.add("animate");
-            ref.current.style.transform = `translate3d(${finalLeftPosition}px,0,0)`;
-        }
-
         if (dragged) {
+            // 真实拖拽结束: 拖拽期间布局顺序 == visibleTabIds, 用其计算落点 (原有逻辑不变)
+            const draggingTab = tabIds[tabIndex];
+            const tabWidth = tabWidthRef.current;
+            const visibleTabIndex = visibleTabIds.indexOf(draggingTab);
+            const finalLeftPosition = (visibleTabIndex === -1 ? tabIndex : visibleTabIndex) * tabWidth;
+            const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === draggingTab);
+            if (ref?.current) {
+                ref.current.classList.add("animate");
+                ref.current.style.transform = `translate3d(${finalLeftPosition}px,0,0)`;
+            }
             setUpdatedTabsDebounced(tabIds);
         } else {
+            // 纯点击: 不改写 transform —— 位置由 setSizeAndPosition 维护.
+            // 之前用物理顺序 (visibleTabIds) 计算落点, 与 pinned 优先布局顺序不一致,
+            // 会把被点 tab 移走, 导致 click 落空 + tab 卡在错误位置.
             // Reset styles
             tabRefs.current.forEach((ref) => {
                 ref.current.style.zIndex = "0";

@@ -15,6 +15,7 @@ import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./common
 import { copyCommonText, insertOrCopyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import {
     deleteCommonTextItem,
+    filterCommonTextItemsByTags,
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     openCommonTextManager,
@@ -36,6 +37,8 @@ type ComposeState = {
     editorFilterDismissed: boolean;
     manualQuery: string;
     selectedTags: string[];
+    // 无标签筛选：与 selectedTags 互斥（开启时清空 tag 选择）。
+    untaggedOnly: boolean;
     selectedIndex: number;
     // 详情区当前展示的 item id —— hover/键盘 ↑↓/单击 同步它，但不触发插入。
     // 与 selectedIndex 解耦：selectedIndex 仍服务于列表行高亮与键盘导航边界，
@@ -93,6 +96,7 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     editorFilterDismissed: false,
     manualQuery,
     selectedTags: [],
+    untaggedOnly: false,
     selectedIndex: 0,
     detailId: null,
     detailTitle: "",
@@ -197,6 +201,11 @@ const CommonTextComposeModal = memo(() => {
 
     const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
+    // 无标签条目数：驱动 untagged chip 的计数展示，与筛选走同一 normalize 口径。
+    const untaggedCount = useMemo(
+        () => filterCommonTextItemsByTags(allItems, [], { untagged: true }).length,
+        [allItems]
+    );
     // editor 当前正文里嵌入的 #tag：在 Send 右侧渲染成可删 chip，点 × 把字面从 editor 抹掉，
     // 这样剩余正文 send/copy 出去时不带走 #tag。
     const editorTags = useMemo(() => extractSessionTagsFromNote(state.editor).tags, [state.editor]);
@@ -210,6 +219,7 @@ const CommonTextComposeModal = memo(() => {
         return searchCommonTextComposeItems(allItems, state.editorFilterDismissed ? "" : state.editor, state.manualQuery, {
             limit: LIST_LIMIT,
             selectedTags: state.selectedTags,
+            untagged: state.untaggedOnly,
             caret: state.editorCaret,
             insertedIds: state.insertedIds,
         });
@@ -222,6 +232,7 @@ const CommonTextComposeModal = memo(() => {
         state.manualQuery,
         state.open,
         state.selectedTags,
+        state.untaggedOnly,
     ]);
     const editorFilterActive =
         !state.editorFilterDismissed && state.manualQuery.trim() === "" && state.editor.trim() !== "";
@@ -335,7 +346,7 @@ const CommonTextComposeModal = memo(() => {
     useEffect(() => {
         if (!state.open) return;
         listScrollRef.current?.scrollTo({ top: 0 });
-    }, [state.editor, state.editorCaret, state.insertedIds, state.manualQuery, state.open, state.selectedTags]);
+    }, [state.editor, state.editorCaret, state.insertedIds, state.manualQuery, state.open, state.selectedTags, state.untaggedOnly]);
 
     useEffect(() => {
         if (!state.open) return;
@@ -419,8 +430,20 @@ const CommonTextComposeModal = memo(() => {
             const selectedTags = present
                 ? cur.selectedTags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
                 : [...cur.selectedTags, tag];
-            return { ...cur, selectedTags, selectedIndex: 0 };
+            // 选了具体 tag 就退出"无标签"筛选（互斥）。
+            return { ...cur, selectedTags, untaggedOnly: false, selectedIndex: 0 };
         });
+    };
+
+    // 无标签筛选开关：开启时清空已选 tag（互斥，避免"有 X 标签 AND 无标签"空集）；
+    // 关闭时保留现有 tag 选择不变。
+    const toggleUntagged = () => {
+        setState((cur) => ({
+            ...cur,
+            untaggedOnly: !cur.untaggedOnly,
+            selectedTags: cur.untaggedOnly ? cur.selectedTags : [],
+            selectedIndex: 0,
+        }));
     };
 
     const setStatus = (status: string, statusKind: "info" | "ok" | "err" = "info") => update({ status, statusKind });
@@ -1022,19 +1045,35 @@ const CommonTextComposeModal = memo(() => {
                                     <i className="fa-regular fa-magnifying-glass" />
                                 </InputRightElement>
                             </InputGroup>
-                            {tagSummaries.length > 0 && (
+                            {allItems.length > 0 && (
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5">
-                                    <SessionTagChips
-                                        tags={tagSummaries.map((s) => s.tag)}
-                                        selectedTags={state.selectedTags}
-                                        countMap={(() => {
-                                            const m = new Map<string, number>();
-                                            for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
-                                            return m;
-                                        })()}
-                                        onClick={toggleTag}
-                                        className="min-w-0"
-                                    />
+                                    <button
+                                        type="button"
+                                        onClick={toggleUntagged}
+                                        title="Show items with no tags"
+                                        className={
+                                            "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
+                                            (state.untaggedOnly
+                                                ? "border-transparent bg-accent/10 text-accent"
+                                                : "border-border bg-surface-soft text-secondary hover:bg-hover hover:text-primary")
+                                        }
+                                    >
+                                        <span className="truncate">untagged</span>
+                                        <span className="text-[10px] opacity-70">{untaggedCount}</span>
+                                    </button>
+                                    {tagSummaries.length > 0 && (
+                                        <SessionTagChips
+                                            tags={tagSummaries.map((s) => s.tag)}
+                                            selectedTags={state.selectedTags}
+                                            countMap={(() => {
+                                                const m = new Map<string, number>();
+                                                for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
+                                                return m;
+                                            })()}
+                                            onClick={toggleTag}
+                                            className="min-w-0"
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
