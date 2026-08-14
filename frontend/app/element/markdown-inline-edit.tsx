@@ -80,6 +80,18 @@ export type InlineEditSession = {
     initialContent: string;
     /** DOM element we anchored on; kept hidden (visibility:hidden) while textarea is mounted. */
     targetEl: HTMLElement;
+    /**
+     * Optional caret position (0-based char offset into the draft text). When present the
+     * textarea caret lands here instead of select-all — the single-click-to-edit path maps
+     * the click's clientX/Y to a draft offset so the cursor goes where the user clicked.
+     */
+    caretOffset?: number;
+    /**
+     * Insert mode: instead of replacing [startLine..endLine] on commit, insert the draft
+     * as a NEW block just before ("before") or after ("after") the anchor line, separated
+     * by a blank line so it renders as its own block. Used by the block-edge insert buttons.
+     */
+    insertMode?: "before" | "after";
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -339,7 +351,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // absolutely over the block the user double-clicked; the scroll position the user picked
         // when dblclicking is the one we want to keep.
         ta.focus({ preventScroll: true });
-        ta.setSelectionRange(0, ta.value.length);
+        if (editSession.caretOffset != null) {
+            const clamped = Math.max(0, Math.min(editSession.caretOffset, ta.value.length));
+            ta.setSelectionRange(clamped, clamped);
+        } else {
+            // Dblclick (and any path that didn't provide a caret) keeps the select-all
+            // behavior: it's the "edit this whole block" gesture.
+            ta.setSelectionRange(0, ta.value.length);
+        }
     }, [editSession, overlayRect]);
 
     // Auto-grow textarea height to fit content.
@@ -363,7 +382,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, [draftText, editSession, overlayRect?.width]);
 
     const beginEdit = useCallback(
-        (blockKind: InlineEditBlockKind, line: number, targetEl: HTMLElement) => {
+        (blockKind: InlineEditBlockKind, line: number, targetEl: HTMLElement, caretOffset?: number) => {
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullText.split(/\r\n|\n/);
             if (safeLine > lines.length) {
@@ -386,11 +405,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 endLine,
                 initialContent,
                 targetEl,
+                caretOffset,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
                 startLine: safeLine,
                 endLine,
+                caretOffset,
                 initialLen: initialContent.length,
                 targetTag: targetEl.tagName,
                 targetConnected: targetEl.isConnected,
@@ -400,6 +421,33 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             setDraftText(initialContent);
         },
         [fullText]
+    );
+
+    // Opens a blank editor that inserts a NEW block before/after the anchor line on commit.
+    // The overlay anchors to the given element (the block whose edge the user hovered); the
+    // draft starts empty and its committed text is spliced in as a fresh block with a blank
+    // line separator (see commit's insertMode branch).
+    const beginInsertEdit = useCallback(
+        (line: number, targetEl: HTMLElement, mode: "before" | "after") => {
+            const safeLine = Math.max(1, Math.trunc(line));
+            const session: InlineEditSession = {
+                blockKind: "p",
+                startLine: safeLine,
+                endLine: safeLine,
+                initialContent: "",
+                targetEl,
+                insertMode: mode,
+            };
+            inlineEditDebug("beginInsertEdit", {
+                line: safeLine,
+                mode,
+                targetTag: targetEl.tagName,
+                targetConnected: targetEl.isConnected,
+            });
+            setEditSession(session);
+            setDraftText("");
+        },
+        []
     );
 
     const commit = useCallback(() => {
@@ -418,18 +466,34 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         inlineEditDebug("commit", {
             kind: current.blockKind,
             startLine: current.startLine,
+            insertMode: current.insertMode,
             draftLen: draftText.length,
             initialLen: current.initialContent.length,
             changed: draftText !== current.initialContent,
         });
         setEditSession(null);
         setDraftText("");
-        if (draftText === current.initialContent) {
+        if (draftText === current.initialContent && current.insertMode == null) {
             // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
-            // flag honest.
+            // flag honest. (Insert sessions always write: their initialContent is empty and a
+            // non-empty draft is the whole point, an empty draft is skipped below.)
             return;
         }
-        const newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
+        if (draftText.trim().length === 0 && current.insertMode != null) {
+            // Inserted a blank line then committed nothing: drop the empty draft, no-op.
+            return;
+        }
+        let newFull: string;
+        if (current.insertMode != null) {
+            // Insert the draft as a new block before/after the anchor line. Draft lines are
+            // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
+            // with a blank line so it renders as its own paragraph.
+            const lines = fullText.split(/\r\n|\n/);
+            const draftLines = draftText.split(/\r\n|\n/);
+            newFull = spliceInsertBlock(lines, current.startLine, current.insertMode, draftLines).join("\n");
+        } else {
+            newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
+        }
         onCommit(newFull);
     }, [editSession, draftText, fullText, onCommit]);
 
@@ -444,6 +508,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         draftText,
         setDraftText,
         beginEdit,
+        beginInsertEdit,
         commit,
         cancel,
         textareaRef,
@@ -556,4 +621,22 @@ export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => 
 /** Convenience for tests or external integrations. */
 export function isInlineEditingActive(): boolean {
     return globalStore.get(inlineEditingActiveAtom);
+}
+
+/**
+ * Pure insert helper used by the insert-mode commit: splice `draftLines` into `lines` as a
+ * new block before/after the anchor line (1-based), bracketed by a blank line so it renders
+ * as its own block. Exported for tests.
+ */
+export function spliceInsertBlock(
+    lines: string[],
+    anchorLine: number,
+    mode: "before" | "after",
+    draftLines: string[]
+): string[] {
+    const idx = Math.max(0, Math.min(anchorLine - 1, lines.length));
+    const block = mode === "before" ? [...draftLines, ""] : ["", ...draftLines];
+    const next = lines.slice();
+    next.splice(mode === "before" ? idx : idx + 1, 0, ...block);
+    return next;
 }

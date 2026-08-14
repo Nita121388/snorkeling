@@ -154,22 +154,51 @@ export function transformBlocks(content: string): { content: string; blocks: Map
     };
 }
 
+// Resolved image URL cache. The URL for a given (conn, baseDir, filepath) is deterministic
+// (/wave/stream-file?path=... always serves the file's current content), so a memoized promise
+// is safe and kills the flicker that came from re-resolving on every Markdown remount (inline
+// edit commit, LivePreview buffer switch): the resolving frame that rendered `null` (image
+// unmounts) is gone once the key is warm.
+// ponytail: cache lives for the lifetime of the module. The stream-file endpoint streams fresh
+// content per request, so staleness is never an issue. Failed resolves are NOT cached — a
+// transient error would otherwise poison the key forever. If we ever need eviction (huge dirs),
+// upgrade to a bounded LRU keyed the same way.
+const remoteFileResolveCache = new Map<string, Promise<string | null>>();
+
 export const resolveRemoteFile = async (filepath: string, resolveOpts: MarkdownResolveOpts): Promise<string | null> => {
     if (!filepath || filepath.startsWith("http://") || filepath.startsWith("https://")) {
         return filepath;
     }
-    try {
-        const baseDirUri = formatRemoteUri(resolveOpts.baseDir, resolveOpts.connName);
-        const fileInfo = await RpcApi.FileJoinCommand(TabRpcClient, [baseDirUri, filepath]);
-        const remoteUri = formatRemoteUri(fileInfo.path, resolveOpts.connName);
-        // console.log("markdown resolve", resolveOpts, filepath, "=>", baseDirUri, remoteUri);
-        const usp = new URLSearchParams();
-        usp.set("path", remoteUri);
-        return getWebServerEndpoint() + "/wave/stream-file?" + usp.toString();
-    } catch (err) {
-        console.warn("Failed to resolve remote file:", filepath, err);
-        return null;
+    const cacheKey = `${resolveOpts.connName ?? ""}|${resolveOpts.baseDir ?? ""}|${filepath}`;
+    const cached = remoteFileResolveCache.get(cacheKey);
+    if (cached != null) {
+        return cached;
     }
+    const promise = (async (): Promise<string | null> => {
+        try {
+            const baseDirUri = formatRemoteUri(resolveOpts.baseDir, resolveOpts.connName);
+            const fileInfo = await RpcApi.FileJoinCommand(TabRpcClient, [baseDirUri, filepath]);
+            const remoteUri = formatRemoteUri(fileInfo.path, resolveOpts.connName);
+            const usp = new URLSearchParams();
+            usp.set("path", remoteUri);
+            return getWebServerEndpoint() + "/wave/stream-file?" + usp.toString();
+        } catch (err) {
+            console.warn("Failed to resolve remote file:", filepath, err);
+            return null;
+        }
+    })();
+    remoteFileResolveCache.set(cacheKey, promise);
+    promise.then(
+        (url) => {
+            if (url == null) {
+                remoteFileResolveCache.delete(cacheKey);
+            }
+        },
+        () => {
+            remoteFileResolveCache.delete(cacheKey);
+        }
+    );
+    return promise;
 };
 
 export const resolveSrcSet = async (srcSet: string, resolveOpts: MarkdownResolveOpts): Promise<string> => {
@@ -200,3 +229,98 @@ export const resolveSrcSet = async (srcSet: string, resolveOpts: MarkdownResolve
         })
         .join(", ");
 };
+
+// ---------------------------------------------------------------------------
+// Image syntax editing helpers (used by the markdown preview image context menu
+// for "edit path" / "delete image"). They operate on one source line at a time:
+// locate the `![alt](src "title")` fragment whose src matches, then rewrite or
+// remove just that fragment.
+//
+// The rendering pipeline (rehype) gives each <img> a node.position with
+// start.line + start.column (1-based) pointing at the start of the image syntax.
+// We trust the src match over the exact column (a line can hold several images,
+// and column is unreliable across soft-wrapped paragraphs), so these helpers scan
+// the line for a fragment whose src equals the one the user clicked.
+// ponytail: handles `![alt](src)` and `![alt](src "title")`; does NOT handle
+// escaped brackets inside alt or src, HTML `<img src=...>` tags, or srcset. For
+// those the menu falls back to whole-line editing (beginEdit) rather than a
+// targeted rewrite. Upgrade path: a real markdown parser on the source line.
+// ---------------------------------------------------------------------------
+
+// Splits the inside of `(...)` into (src, title|null). `src "title"` / `src 'title'`
+// are the two common shapes; anything else is treated as pure src.
+function splitImageSrcAndTitle(inner: string): { src: string; title: string | null } {
+    // [\s\S] replaces the `s` flag (dotAll) which needs target es2018+; a source line
+    // never contains a newline anyway.
+    const m = inner.match(/^(.*?)\s+["']([\s\S]*)["']$/);
+    if (m != null) {
+        return { src: m[1], title: m[2] };
+    }
+    return { src: inner, title: null };
+}
+
+// Returns the range of the first image fragment in `lineText` whose src equals `src`,
+// or null. Range is [start, end) as char offsets within the line, covering the whole
+// `![alt](src "title")` fragment.
+function locateImageSyntaxInLine(lineText: string, src: string): { start: number; end: number } | null {
+    const re = /!\[[^\]]*\]\(([^)]*)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lineText)) != null) {
+        const { src: curSrc } = splitImageSrcAndTitle(m[1]);
+        if (curSrc === src) {
+            return { start: m.index, end: m.index + m[0].length };
+        }
+    }
+    return null;
+}
+
+// Replace the src of the matched image fragment in `lineText`, preserving alt + title.
+// Returns null when the fragment isn't found.
+export function replaceImageSrcInLine(lineText: string, src: string, newSrc: string): string | null {
+    const loc = locateImageSyntaxInLine(lineText, src);
+    if (loc == null) {
+        return null;
+    }
+    const frag = lineText.slice(loc.start, loc.end);
+    const parenStart = frag.indexOf("(");
+    const { src: curSrc } = splitImageSrcAndTitle(frag.slice(parenStart + 1, -1));
+    if (curSrc !== src) {
+        return null;
+    }
+    const srcStart = loc.start + parenStart + 1;
+    const srcEnd = srcStart + curSrc.length;
+    return lineText.slice(0, srcStart) + newSrc + lineText.slice(srcEnd);
+}
+
+// Remove the matched image fragment from `lineText`. Returns { text, isEmpty } where
+// isEmpty is true when the line has nothing left but whitespace (caller may then drop
+// the whole line).
+export function removeImageSyntaxInLine(lineText: string, src: string): { text: string; isEmpty: boolean } | null {
+    const loc = locateImageSyntaxInLine(lineText, src);
+    if (loc == null) {
+        return null;
+    }
+    const removed = lineText.slice(0, loc.start) + lineText.slice(loc.end);
+    return { text: removed, isEmpty: removed.trim().length === 0 };
+}
+
+// Apply a per-line edit to `fullText` at the given 1-based line number, then join back
+// with "\n". Returns the new full text, or null when the line is out of range or the
+// edit callback bailed (fragment not found).
+export function editImageSyntaxInFullText(
+    fullText: string,
+    line: number,
+    edit: (lineText: string) => string | null
+): string | null {
+    const lines = fullText.split("\n");
+    const idx = Math.trunc(line) - 1;
+    if (idx < 0 || idx >= lines.length) {
+        return null;
+    }
+    const result = edit(lines[idx]);
+    if (result == null) {
+        return null;
+    }
+    lines[idx] = result;
+    return lines.join("\n");
+}

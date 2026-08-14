@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from "vitest";
-import { resolveInlineEditTarget, type InlineEditSession } from "./markdown-inline-edit";
+import {
+    resolveInlineEditTarget,
+    spliceInsertBlock,
+    type InlineEditSession,
+} from "./markdown-inline-edit";
 
 describe("markdown inline edit target", () => {
     it("resolves the current block after React replaces the clicked element, kind-agnostic", () => {
@@ -55,5 +59,36 @@ describe("markdown inline edit target", () => {
 
         expect(resolveInlineEditTarget(viewport, session)).toBe(target);
         expect(querySelector).not.toHaveBeenCalled();
+    });
+});
+
+describe("spliceInsertBlock (block-edge insert buttons)", () => {
+    const lines = ["# title", "", "hello", "", "tail"];
+
+    it("inserts below the anchor line, bracketed by a blank line", () => {
+        const next = spliceInsertBlock(lines, 3, "after", ["new"]);
+        expect(next).toEqual(["# title", "", "hello", "", "new", "", "tail"]);
+    });
+
+    it("inserts above the anchor line, bracketed by a blank line", () => {
+        const next = spliceInsertBlock(lines, 3, "before", ["new"]);
+        expect(next).toEqual(["# title", "", "new", "", "hello", "", "tail"]);
+    });
+
+    it("keeps multi-line drafts verbatim (blank lines inside the draft stay)", () => {
+        const next = spliceInsertBlock(lines, 3, "after", ["a", "", "b"]);
+        expect(next).toEqual(["# title", "", "hello", "", "a", "", "b", "", "tail"]);
+    });
+
+    it("clamps out-of-range anchor lines", () => {
+        expect(spliceInsertBlock(lines, 99, "after", ["x"])).toEqual([
+            "# title",
+            "",
+            "hello",
+            "",
+            "tail",
+            "",
+            "x",
+        ]);
     });
 });

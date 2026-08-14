@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CopyButton } from "@/app/element/copybutton";
+import { ImageLightbox } from "@/app/element/image-lightbox";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
@@ -12,6 +13,9 @@ import {
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import {
     MarkdownContentBlockType,
+    editImageSyntaxInFullText,
+    removeImageSyntaxInLine,
+    replaceImageSrcInLine,
     resolveRemoteFile,
     resolveSrcSet,
     transformBlocks,
@@ -23,6 +27,7 @@ import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { atom, Atom, useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
+import ReactDOM from "react-dom";
 
 // Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
 // call unconditional so the Rules of Hooks remain satisfied below.
@@ -47,6 +52,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { openLink } from "../store/global";
+import { ContextMenuModel } from "../store/contextmenu";
 import {
     makeMarkdownWikiLinkHref,
     normalizeLinkedFilePath,
@@ -706,14 +712,27 @@ function WaveBlock(props: WaveBlockProps) {
 const MarkdownImg = ({
     props,
     resolveOpts,
+    fullText,
+    onInlineEditCommit,
 }: {
     props: React.ImgHTMLAttributes<HTMLImageElement>;
     resolveOpts: MarkdownResolveOpts;
+    // Source text + commit channel for edit operations ("edit path" / "delete image").
+    // LivePreview omits onInlineEditCommit, so its images are view/copy only.
+    fullText?: string;
+    onInlineEditCommit?: (newFullText: string) => void;
 }) => {
     const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);
     const [resolving, setResolving] = useState<boolean>(true);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [pathInputOpen, setPathInputOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [inputPos, setInputPos] = useState<{ top: number; left: number } | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const imgRef = useRef<HTMLImageElement | null>(null);
+    const [newPath, setNewPath] = useState("");
 
     useEffect(() => {
         if (props.src.startsWith("data:image/")) {
@@ -743,6 +762,102 @@ const MarkdownImg = ({
         resolveFn();
     }, [props.src, props.srcSet]);
 
+    // Only real, loadable images participate in the lightbox / context menu. Placeholder
+    // ([img:...]) and data-URI images are excluded from edit ops but data: URIs still zoom.
+    const imageUsable = resolvedStr == null && resolvedSrc != null;
+    // Edit ops need the source line (from the rehype node position) plus the commit channel.
+    // rehype attaches the source position to the hast node; ImgHTMLAttributes doesn't
+    // type it, so reach through a cast (mirrors getSourceLine's `props: any`).
+    const nodePos = (props as any)?.node?.position;
+    const sourceLine = nodePos?.start?.line;
+    const sourceSrc = props.src;
+
+    // Edit ops need the source line (from the rehype node position) plus the commit channel.
+    // (data: URI images have no source line and are excluded from edit ops.)
+    const canEdit = fullText != null && onInlineEditCommit != null && sourceLine != null;
+
+    const openPathInput = () => {
+        const rect = imgRef.current?.getBoundingClientRect();
+        if (rect == null) {
+            return;
+        }
+        setInputPos({ top: rect.bottom + 4, left: rect.left });
+        setNewPath(sourceSrc);
+        setPathInputOpen(true);
+    };
+
+    const commitPathEdit = () => {
+        if (!canEdit || sourceLine == null) {
+            return;
+        }
+        const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
+            replaceImageSrcInLine(lineText, sourceSrc, newPath.trim())
+        );
+        if (newText != null) {
+            onInlineEditCommit(newText);
+        }
+        setPathInputOpen(false);
+    };
+
+    const deleteImage = () => {
+        if (!canEdit || sourceLine == null) {
+            return;
+        }
+        const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) => {
+            const removed = removeImageSyntaxInLine(lineText, sourceSrc);
+            if (removed == null) {
+                return null;
+            }
+            // The image syntax was the only content on its line: drop the whole line so
+            // the surrounding text closes up. Otherwise keep the line minus the fragment.
+            return removed.isEmpty ? "" : removed.text;
+        });
+        if (newText != null) {
+            // No confirmation dialog: the edit lands in the shared draft (newFileContent)
+            // and is Revert-able until Save, same safety net as paragraph inline editing.
+            onInlineEditCommit(newText);
+        }
+        setPathInputOpen(false);
+    };
+
+    const copyImagePath = async () => {
+        await navigator.clipboard.writeText(sourceSrc ?? "");
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+    };
+
+    const handleImgClick = (e: React.MouseEvent) => {
+        if (!imageUsable) {
+            return;
+        }
+        // An image wrapped in a link ([![alt](img)](url)) keeps the link's navigation;
+        // the lightbox is reachable via the context menu in that case.
+        if ((e.target as HTMLElement).closest("a") != null) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        setLightboxOpen(true);
+    };
+
+    const handleImgContextMenu = (e: React.MouseEvent) => {
+        if (!imageUsable) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const menu: ContextMenuItem[] = [
+            { label: "放大查看", click: () => setLightboxOpen(true) },
+            { label: "复制图片路径", click: () => void copyImagePath() },
+        ];
+        if (canEdit) {
+            menu.push({ type: "separator" });
+            menu.push({ label: "修改路径", click: openPathInput });
+            menu.push({ label: "删除图片", click: deleteImage });
+        }
+        ContextMenuModel.getInstance().showContextMenu(menu, e);
+    };
+
     if (resolving) {
         return null;
     }
@@ -750,7 +865,43 @@ const MarkdownImg = ({
         return <span>{resolvedStr}</span>;
     }
     if (resolvedSrc != null) {
-        return <img {...props} src={resolvedSrc} srcSet={resolvedSrcSet} />;
+        return (
+            <>
+                <img
+                    ref={imgRef}
+                    {...props}
+                    src={resolvedSrc}
+                    srcSet={resolvedSrcSet}
+                    className={cn(props.className, "markdown-img-clickable")}
+                    onClick={handleImgClick}
+                    onContextMenu={handleImgContextMenu}
+                />
+                {copied && <span className="markdown-img-copied">已复制路径</span>}
+                {lightboxOpen && <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />}
+                {pathInputOpen && inputPos != null &&
+                    ReactDOM.createPortal(
+                        <div className="markdown-img-path-input" style={{ top: inputPos.top, left: inputPos.left }}>
+                            <input
+                                ref={inputRef}
+                                autoFocus
+                                value={newPath}
+                                spellCheck={false}
+                                placeholder="图片路径"
+                                onChange={(e) => setNewPath(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        commitPathEdit();
+                                    } else if (e.key === "Escape") {
+                                        setPathInputOpen(false);
+                                    }
+                                }}
+                                onBlur={() => setPathInputOpen(false)}
+                            />
+                        </div>,
+                        document.body
+                    )}
+            </>
+        );
     }
     return <span>[img]</span>;
 };
@@ -954,6 +1105,12 @@ const Markdown = ({
     // rather than open the editor, mirroring the dblclick path's long-standing guard.
     const resolveEditTargetFromEvent = useCallback(
         (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
+            // Images are read-only in the preview: clicking zooms, right-click opens the
+            // image menu. Never let a click/dblclick on an <img> fall through to paragraph
+            // inline editing — that used to pop the editor over the whole paragraph.
+            if ((e.target as HTMLElement | null)?.closest("img") != null) {
+                return null;
+            }
             let target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
             if (target == null) {
                 return null;
@@ -1047,6 +1204,43 @@ const Markdown = ({
     // changes the global selection.
     const mousedownSelectionRef = useRef<string>("");
 
+    // Maps the click's clientX/Y to a character offset within the clicked block's rendered
+    // text. Uses Chromium's caretRangeFromPoint (the renderer is Electron), then walks the
+    // block's text nodes to turn the per-text-node offset into a block-absolute offset.
+    // Returns null when the hit is outside the block's text (blank edge, no caret API) —
+    // callers then fall back to select-all / line-start.
+    const computeRenderedOffset = (clientX: number, clientY: number, block: HTMLElement): number | null => {
+        if (typeof document.caretRangeFromPoint !== "function") {
+            return null;
+        }
+        const range = document.caretRangeFromPoint(clientX, clientY);
+        if (range == null) {
+            return null;
+        }
+        const container = range.startContainer;
+        if (container == null || !block.contains(container as Node)) {
+            return null;
+        }
+        let offset = range.startOffset;
+        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node != null && node !== container) {
+            offset += (node as Text).data.length;
+            node = walker.nextNode();
+        }
+        return node != null ? offset : null;
+    };
+
+    // ponytail: the rendered offset is used directly as a draft (source) offset. It is exact
+    // for plain text and soft-wrapped lines (\n renders 1:1 as a space), and off by the length
+    // of inline markdown markers (**bold**, [link](...), `code`) on styled lines — the caret
+    // lands nearby and the user nudges it. Upgrade path: map through the markdown AST so
+    // rendered offset → source offset is exact.
+    const beginEditAtPoint = (e: React.MouseEvent, resolved: { target: HTMLElement; line: number; blockKind: InlineEditBlockKind }) => {
+        const caret = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
+        inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target, caret ?? undefined);
+    };
+
     // Single-click entry path. Differs from dblclick in two ways:
     //   1. Bound on bubble phase (onClick, not onClickCapture) so <Link>'s onClick and the
     //      CollapsibleHeading chevron button's onClick (which calls stopPropagation) get first
@@ -1096,9 +1290,12 @@ const Markdown = ({
             }
             e.preventDefault();
             e.stopPropagation();
-            inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
+            // Single click = edit at the clicked position (caret lands where the user
+            // clicked). Dblclick still select-alls via beginEdit without a caret — the two
+            // gestures complement each other.
+            beginEditAtPoint(e, resolved);
         },
-        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent]
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint]
     );
 
     const handleInlineEditMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -1107,6 +1304,148 @@ const Markdown = ({
         }
         mousedownSelectionRef.current = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
     }, []);
+
+    // ---- Block-edge insert buttons --------------------------------------------------
+    // Hovering an editable block shows a small ↑/↓ pair at its left edge; clicking one
+    // opens a blank inline editor that inserts a new block before/after (see
+    // useInlineEdit.beginInsertEdit). Tracked here because the buttons must follow the
+    // block as the user scrolls.
+    //
+    // We store ONLY the source line, not the element: any re-render of the Markdown subtree
+    // (hover state, ReactMarkdown plugin identity churn) replaces the block's DOM node, so a
+    // cached element goes stale and its isConnected flips false. Re-resolve the element from
+    // [data-source-line] at measure/click time (same fallback pattern as inline editing).
+    const [insertAnchor, setInsertAnchor] = useState<{ line: number } | null>(null);
+    const [insertPos, setInsertPos] = useState<{ top: number; left: number } | null>(null);
+
+    // Buttons are portal'd to body (outside the block DOM), so moving the pointer from the
+    // block onto a button fires the block's mouseout. Keep the buttons alive for a short
+    // grace window after the pointer leaves, and cancel it while the pointer is over them —
+    // same pattern as FlyoutMenu's hover close.
+    const hideInsertTimerRef = useRef<number | null>(null);
+    const scheduleHideInsert = useCallback(() => {
+        if (hideInsertTimerRef.current != null) {
+            window.clearTimeout(hideInsertTimerRef.current);
+        }
+        hideInsertTimerRef.current = window.setTimeout(() => {
+            setInsertAnchor(null);
+            setInsertPos(null);
+        }, 400);
+    }, []);
+    const cancelHideInsert = useCallback(() => {
+        if (hideInsertTimerRef.current != null) {
+            window.clearTimeout(hideInsertTimerRef.current);
+            hideInsertTimerRef.current = null;
+        }
+    }, []);
+
+    const resolveInsertAnchorEl = useCallback(
+        (line: number): HTMLElement | null => {
+            const viewport = getViewportEl();
+            if (viewport == null) {
+                return null;
+            }
+            return viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        },
+        [getViewportEl]
+    );
+
+    const measureInsertAnchor = useCallback(() => {
+        const anchor = insertAnchorRef.current;
+        if (anchor == null) {
+            setInsertPos(null);
+            return;
+        }
+        const el = resolveInsertAnchorEl(anchor.line);
+        if (el == null) {
+            setInsertPos(null);
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        setInsertPos({ top: rect.top + rect.height / 2, left: rect.left });
+    }, [resolveInsertAnchorEl]);
+    const insertAnchorRef = useRef<{ line: number } | null>(null);
+    insertAnchorRef.current = insertAnchor;
+
+    // Hover tracking on the render root: resolve the nearest [data-source-line] block,
+    // skipping images (they own their click/right-click) and blocks we can't edit.
+    const handleRootMouseOver = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!onInlineEditCommit) {
+                return;
+            }
+            // Don't fight the inline-edit overlay itself (portal is on body, but the
+            // mouseover can still bubble from the textarea's DOM if it renders inside root).
+            if (inlineEdit.editSession != null) {
+                setInsertAnchor(null);
+                return;
+            }
+            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+                "[data-source-line]:not(img)"
+            );
+            if (target == null || target.closest("img") != null) {
+                setInsertAnchor(null);
+                return;
+            }
+            const lineAttr = target.dataset.sourceLine;
+            if (lineAttr == null) {
+                setInsertAnchor(null);
+                return;
+            }
+            cancelHideInsert();
+            setInsertAnchor({ line: Number(lineAttr) });
+        },
+        [cancelHideInsert, inlineEdit.editSession, onInlineEditCommit]
+    );
+
+    // Measure AFTER the anchor state has been committed to a render (so insertAnchorRef is
+    // current) — measuring inside the mouseover handler races the render and reads a stale
+    // ref, which left the buttons hidden forever. Synchronous call (no rAF): the effect runs
+    // post-commit, DOM is up to date, and getBoundingClientRect forces the layout we need;
+    // rAF would additionally stall in a background/occluded window where rAF is paused.
+    useEffect(() => {
+        if (insertAnchor == null) {
+            setInsertPos(null);
+            return;
+        }
+        measureInsertAnchor();
+    }, [insertAnchor, measureInsertAnchor]);
+
+    const handleRootMouseLeave = useCallback(() => {
+        scheduleHideInsert();
+    }, [scheduleHideInsert]);
+
+    // Re-position the insert buttons while scrolling / resizing so they track the block.
+    useEffect(() => {
+        if (insertAnchor == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        const onScrollOrResize = () => requestAnimationFrame(measureInsertAnchor);
+        viewport?.addEventListener("scroll", onScrollOrResize, { passive: true });
+        window.addEventListener("resize", onScrollOrResize);
+        return () => {
+            viewport?.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+        };
+    }, [getViewportEl, insertAnchor, measureInsertAnchor]);
+
+    const handleInsertClick = useCallback(
+        (mode: "before" | "after") => {
+            const anchor = insertAnchorRef.current;
+            if (anchor == null) {
+                return;
+            }
+            const el = resolveInsertAnchorEl(anchor.line);
+            if (el == null) {
+                return;
+            }
+            inlineEdit.beginInsertEdit(anchor.line, el, mode);
+            setInsertAnchor(null);
+            setInsertPos(null);
+        },
+        [inlineEdit, resolveInsertAnchorEl]
+    );
 
     const inlineEditKeyDown = useMemo(
         () =>
@@ -1649,7 +1988,14 @@ const Markdown = ({
                 onToggle={toggleOrderedListItemCollapse}
             />
         ),
-        img: (props: React.HTMLAttributes<HTMLImageElement>) => <MarkdownImg props={props} resolveOpts={resolveOpts} />,
+        img: (props: React.HTMLAttributes<HTMLImageElement>) => (
+            <MarkdownImg
+                props={props}
+                resolveOpts={resolveOpts}
+                fullText={text}
+                onInlineEditCommit={handleInlineEditCommit}
+            />
+        ),
         source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
             <MarkdownSource props={props} resolveOpts={resolveOpts} />
         ),
@@ -1787,6 +2133,8 @@ const Markdown = ({
                     // button onClick, so e.defaultPrevented / e.target.closest(...) guard
                     // interactive children, and a grown live selection guards drag-select.
                     onClick={handleInlineEditClick}
+                    onMouseOver={handleRootMouseOver}
+                    onMouseLeave={handleRootMouseLeave}
                 >
                     <ReactMarkdown
                         remarkPlugins={remarkPlugins}
@@ -1808,6 +2156,31 @@ const Markdown = ({
                             onBlur={inlineEdit.commit}
                         />
                     )}
+                    {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <div
+                                className="markdown-insert-buttons"
+                                style={{ top: insertPos.top, left: insertPos.left }}
+                                onMouseEnter={cancelHideInsert}
+                                onMouseLeave={scheduleHideInsert}
+                            >
+                                <button
+                                    className="markdown-insert-btn"
+                                    title="Insert block above"
+                                    onClick={() => handleInsertClick("before")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-up" />
+                                </button>
+                                <button
+                                    className="markdown-insert-btn"
+                                    title="Insert block below"
+                                    onClick={() => handleInsertClick("after")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-down" />
+                                </button>
+                            </div>,
+                            document.body
+                        )}
                 </OverlayScrollbarsComponent>
             ) : (
                 <div className={cn("content non-scrollable", contentClassName)}>

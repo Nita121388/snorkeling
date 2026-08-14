@@ -529,3 +529,86 @@
         min-height: 2.5em;
     }
 }
+
+// Images in rendered markdown are click-to-zoom / right-click-to-act on (see MarkdownImg).
+.markdown-img-clickable {
+    cursor: zoom-in;
+}
+
+.markdown-img-copied {
+    position: absolute;
+    margin-left: 6px;
+    font-size: 12px;
+    color: var(--accent-color, #32afff);
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 4px;
+    padding: 2px 6px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+// Inline "edit path" popover, positioned just below the image.
+.markdown-img-path-input {
+    position: fixed;
+    z-index: var(--zindex-modal-wrapper);
+    padding: 6px;
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    input {
+        width: 320px;
+        padding: 4px 8px;
+        font-size: 13px;
+        color: var(--main-text-color);
+        background: var(--input-bg-color, #2a2a2a);
+        border: 1px solid var(--input-border-color, #444);
+        border-radius: 4px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color, #32afff);
+        }
+    }
+}
+
+// Block-edge insert buttons (hover a block → ↑/↓ at its left edge, in editable preview).
+// Positioned at the block's left edge, overlapping the first characters; translucent so it
+// doesn't hide much content. Portal'd to body, so it needs the 400ms hide grace handled in
+// markdown.tsx (scheduleHideInsert/cancelHideInsert) or the button would vanish the moment
+// the pointer leaves the block's DOM onto it.
+.markdown-insert-buttons {
+    position: fixed;
+    z-index: var(--zindex-modal-wrapper);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 3px 2px;
+    border-radius: 5px;
+    background: rgba(30, 30, 30, 0.85);
+    border: 1px solid var(--modal-border-color, #333);
+    // top is the anchor block's vertical middle: shift up half the column height to center.
+    transform: translateY(-50%);
+
+    .markdown-insert-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 16px;
+        border: 1px solid var(--modal-border-color, #333);
+        border-radius: 4px;
+        background: var(--modal-bg-color, #1e1e1e);
+        color: var(--secondary-text-color, #aaa);
+        cursor: pointer;
+        font-size: 10px;
+        padding: 0;
+
+        &:hover {
+            color: var(--accent-color, #32afff);
+            border-color: var(--accent-color, #32afff);
+        }
+    }
+}

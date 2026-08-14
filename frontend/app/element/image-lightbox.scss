@@ -1,0 +1,67 @@
+// Copyright 2025, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+.image-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: var(--zindex-modal-wrapper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: default;
+    user-select: none;
+
+    .image-lightbox-backdrop {
+        position: absolute;
+        inset: 0;
+        background-color: rgba(0, 0, 0, 0.75);
+    }
+
+    .image-lightbox-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        cursor: pointer;
+        font-size: 16px;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.22);
+        }
+    }
+
+    .image-lightbox-stage {
+        position: relative;
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    .image-lightbox-img {
+        max-width: none;
+        max-height: none;
+        // transform-origin center: the stage is a flexbox center, so scale/translate around
+        // the image's own center keeps the zoom roughly where the user is looking. Pan
+        // (translate) then moves it around freely.
+        transform-origin: center center;
+        cursor: grab;
+        will-change: transform;
+
+        &.dragging {
+            cursor: grabbing;
+        }
+    }
+}
