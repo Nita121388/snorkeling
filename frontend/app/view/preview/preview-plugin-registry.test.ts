@@ -8,6 +8,7 @@ import {
     PreviewPlugin,
     registerPreviewPlugin,
     resolvePreviewPlugin,
+    shouldPreviewPluginTakeOver,
     unregisterPreviewPlugin,
 } from "@/app/view/preview/preview-plugin-registry";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -88,5 +89,21 @@ describe("preview plugin registry", () => {
     it("unrelated files fall back to null (no plugin takeover)", () => {
         registerPreviewPlugin(makePlugin("p-base", (ctx) => ctx.fileName.endsWith(".base")));
         expect(resolvePreviewPlugin(baseCtx())).toBeNull();
+    });
+
+    it("shouldPreviewPluginTakeOver returns true for editable-capable or no cap", () => {
+        const noCap = makePlugin("no-cap", () => true);
+        const editable = { ...makePlugin("editable", () => true), canEdit: () => true };
+        const ctx = baseCtx({ editMode: true });
+        expect(shouldPreviewPluginTakeOver(noCap, ctx)).toBe(true); // 无 canEdit → 允许接管
+        expect(shouldPreviewPluginTakeOver(editable, ctx)).toBe(true); // canEdit true → 允许
+    });
+
+    it("shouldPreviewPluginTakeOver returns false for readonly plugins in editMode", () => {
+        const readonly = { ...makePlugin("readonly", () => true), canEdit: () => false };
+        // 编辑态 + 只读 → 不接管
+        expect(shouldPreviewPluginTakeOver(readonly, baseCtx({ editMode: true }))).toBe(false);
+        // 只读态阅读 → 接管
+        expect(shouldPreviewPluginTakeOver(readonly, baseCtx({ editMode: false }))).toBe(true);
     });
 });

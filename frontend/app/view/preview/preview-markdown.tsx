@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Markdown } from "@/element/markdown";
+import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import { getBlockComponentModel, getOverrideConfigAtom } from "@/store/global";
 import { fireAndForget } from "@/util/util";
 import { globalStore } from "@/store/jotaiStore";
@@ -45,7 +46,23 @@ function liveScrollDebug(message: string, details: Record<string, unknown> = {})
     console.info("[live-scroll]", message, details);
 }
 
-function MarkdownPreview({ model }: SpecializedViewProps) {
+// md-properties 插件透传能力：frontmatterBlock（mdast 层整区替换）+ waveBlockRenderers（按 type 委托）。
+// 两者都来自 Markdown 组件的通用 props；这里只透传，不引入业务逻辑。
+type MarkdownPreviewOptions = {
+    frontmatterBlock?: {
+        startLine: number;
+        endLine: number;
+        yamlText: string;
+        blockKey: string;
+    } | null;
+    waveBlockRenderers?: Record<string, (block: MarkdownContentBlockType) => React.ReactNode>;
+};
+
+function MarkdownPreview({
+    model,
+    frontmatterBlock,
+    waveBlockRenderers,
+}: SpecializedViewProps & MarkdownPreviewOptions) {
     const connName = useAtomValue(model.connection);
     const fileInfo = useAtomValue(model.statFile);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
@@ -130,6 +147,8 @@ function MarkdownPreview({ model }: SpecializedViewProps) {
                 onCollapsedTablesChange={onCollapsedTablesChange}
                 savedScrollTop={savedScrollTop}
                 onScrollTopChange={onScrollTopChange}
+                frontmatterBlock={frontmatterBlock}
+                waveBlockRenderers={waveBlockRenderers}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>

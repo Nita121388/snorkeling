@@ -17,6 +17,7 @@ import {
     transformBlocks,
 } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
+import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
 export { linkifyMarkdownFileReferences } from "@/app/element/remark";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
@@ -678,13 +679,19 @@ const MarkdownSource = ({
 interface WaveBlockProps {
     blockkey: string;
     blockmap: Map<string, MarkdownContentBlockType>;
+    /** Optional: delegate rendering by block type (e.g. Obsidian properties card). */
+    renderers?: Record<string, (block: MarkdownContentBlockType) => React.ReactNode>;
 }
 
 function WaveBlock(props: WaveBlockProps) {
-    const { blockkey, blockmap } = props;
+    const { blockkey, blockmap, renderers } = props;
     const block = blockmap.get(blockkey);
     if (block == null) {
         return null;
+    }
+    const renderer = renderers?.[block.type];
+    if (renderer) {
+        return <>{renderer(block)}</>;
     }
     const sizeInKB = Math.round((block.content.length / 1024) * 10) / 10;
     const displayName = block.id.replace(/^"|"$/g, "");
@@ -817,6 +824,24 @@ type MarkdownProps = {
      * global ⌘S listener runs in that view, so bubbling the keystroke would otherwise save nothing.
      */
     onInlineEditSave?: () => void;
+    /**
+     * Optional: replace the frontmatter region [startLine..endLine] (1-based, inclusive) at the
+     * mdast level with a waveblock node keyed by `blockKey`, and register that key in the content
+     * block map with the given YAML text. The raw text and its line numbers are untouched, so
+     * inline-edit coordinates stay valid and a commit never loses the frontmatter. Pair with
+     * `waveBlockRenderers` to render the region as a custom component (e.g. Obsidian properties).
+     */
+    frontmatterBlock?: {
+        startLine: number;
+        endLine: number;
+        yamlText: string;
+        blockKey: string;
+    } | null;
+    /**
+     * Optional: delegate content-block (waveblock) rendering by block.type. When a block matches,
+     * the custom component renders instead of the default file-card.
+     */
+    waveBlockRenderers?: Record<string, (block: MarkdownContentBlockType) => React.ReactNode>;
 };
 
 type MarkdownScrollSourceState = {
@@ -861,6 +886,8 @@ const Markdown = ({
     onCollapsedTablesChange,
     savedScrollTop,
     onScrollTopChange,
+    frontmatterBlock,
+    waveBlockRenderers,
 }: MarkdownProps) => {
     // `fileContentAtom` is an async atom (Atom<Promise<string>>). On invalidation `useAtomValue`
     // throws the pending Promise → without a Suspense boundary above, ReactMarkdown's subtree
@@ -917,6 +944,15 @@ const Markdown = ({
     const transformedOutput = transformBlocks(text);
     const transformedText = transformedOutput.content;
     const contentBlocksMap = transformedOutput.blocks;
+    if (frontmatterBlock) {
+        // 注册 frontmatter 内容块：后续 remark 插件把 mdast 层 frontmatter 节点替换成 waveblock
+        // 占位（blockkey 指向该条目）。type 固定 "obsidian-props"（waveBlockRenderers 字典键）。
+        contentBlocksMap.set(frontmatterBlock.blockKey, {
+            type: "obsidian-props",
+            id: frontmatterBlock.blockKey,
+            content: frontmatterBlock.yamlText,
+        });
+    }
 
     const getViewportEl = useCallback((): HTMLElement | null => {
         const inst = contentsOsRef.current?.osInstance();
@@ -1663,7 +1699,9 @@ const Markdown = ({
             />
         ),
     };
-    markdownComponents["waveblock"] = (props: any) => <WaveBlock {...props} blockmap={contentBlocksMap} />;
+    markdownComponents["waveblock"] = (props: any) => (
+        <WaveBlock {...props} blockmap={contentBlocksMap} renderers={waveBlockRenderers} />
+    );
     markdownComponents["mermaidblock"] = (props: any) => {
         const getTextContent = (children: any): string => {
             if (typeof children === "string") {
@@ -1753,6 +1791,15 @@ const Markdown = ({
     const remarkPlugins: any = makeRemarkPlugins({
         contentBlocksMap,
     });
+    if (frontmatterBlock) {
+        remarkPlugins.push(
+            remarkFrontmatterToWaveBlock({
+                startLine: frontmatterBlock.startLine,
+                endLine: frontmatterBlock.endLine,
+                blockKey: frontmatterBlock.blockKey,
+            })
+        );
+    }
 
     const mergedStyle = { ...style };
     if (fontSizeOverride != null) {

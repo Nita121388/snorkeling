@@ -1,0 +1,110 @@
+// Obsidian 风格属性卡片（md-properties 插件，Phase 1 只读）。
+// 颜色全部走主题 CSS 变量（深色/浅色主题自动适配）。
+
+.obsidian-props-card {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 14px 0;
+    padding: 8px 12px 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--panel-bg-color);
+    font-size: var(--markdown-font-size, 14px);
+
+    .obsidian-props-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--secondary-text-color);
+
+        i {
+            font-size: 0.8em;
+            opacity: 0.8;
+        }
+
+        .obsidian-props-title {
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .obsidian-props-count {
+            margin-left: auto;
+            font-size: 0.85em;
+            opacity: 0.7;
+            user-select: none;
+        }
+    }
+
+    .obsidian-props-row {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 3px 0;
+        min-height: 26px;
+
+        .obsidian-props-icon {
+            flex: 0 0 auto;
+            width: 16px;
+            text-align: center;
+            font-size: 0.8em;
+            color: var(--secondary-text-color);
+            transform: translateY(0.2em);
+        }
+
+        .obsidian-props-key {
+            flex: 0 1 35%;
+            min-width: 90px;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--secondary-text-color);
+            font-size: 0.92em;
+        }
+
+        .obsidian-props-value {
+            flex: 1 1 auto;
+            min-width: 0;
+            color: var(--main-text-color);
+        }
+    }
+}
+
+.obsidian-props-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.obsidian-props-chip {
+    display: inline-block;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: var(--highlight-bg-color);
+    color: var(--main-text-color);
+    font-size: 0.88em;
+    line-height: 1.45;
+    white-space: nowrap;
+
+    &.is-tag {
+        color: var(--accent-color);
+        background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    }
+}
+
+.obsidian-props-boolean {
+    font-weight: 600;
+
+    &.is-true {
+        color: var(--accent-color);
+    }
+}
+
+.obsidian-props-json {
+    font-family: var(--fixed-font);
+    font-size: 0.9em;
+    opacity: 0.9;
+}

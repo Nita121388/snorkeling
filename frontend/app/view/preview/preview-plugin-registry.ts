@@ -64,6 +64,18 @@ export function resolvePreviewPlugin(context: PreviewMatchContext): PreviewPlugi
     return previewPlugins.find((plugin) => plugin.match(context)) ?? null;
 }
 
+/**
+ * 插件接管判定：编辑态（editMode）下声明了只读（canEdit === false）的插件不接管文件，
+ * 由宿主回落既有分发（如 codeedit 正常编辑）。只读插件在 match 之外显式声明 canEdit，
+ * 否则默认允许接管。
+ */
+export function shouldPreviewPluginTakeOver(plugin: PreviewPlugin, context: PreviewMatchContext): boolean {
+    if (context.editMode && plugin.canEdit?.(context) === false) {
+        return false;
+    }
+    return true;
+}
+
 export function getPreviewPluginById(id: string): PreviewPlugin | null {
     return previewPlugins.find((plugin) => plugin.id === id) ?? null;
 }

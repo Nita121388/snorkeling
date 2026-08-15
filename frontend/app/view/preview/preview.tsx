@@ -20,6 +20,7 @@ import { PreviewPathIsDirMetaKey } from "./preview-navigation";
 import { StreamingPreview } from "./preview-streaming";
 import { getPreviewPluginById } from "./preview-plugin-registry";
 import { registerBaseViewPlugin } from "./plugins/base-view/base-view-plugin";
+import { registerMdPropertiesPlugin } from "./plugins/md-properties/md-properties-plugin";
 import type { PreviewEnv } from "./previewenv";
 
 export type SpecializedViewProps = {
@@ -38,6 +39,8 @@ const SpecializedViewMap: { [view: string]: ({ model }: SpecializedViewProps) =>
 
 // 注册内置 .base 查看器插件（HMR 去重由注册表保证，重复加载安全）。
 registerBaseViewPlugin();
+// 注册 Obsidian 属性卡片插件（.md 只读预览，frontmatter → 属性面板样式）。
+registerMdPropertiesPlugin();
 
 // 内部插件渲染：注册表插件 ID → 组件。接口形状与 SpecializedViewProps 兼容（model+parentRef）。
 function resolveSpecializedViewComponent(
