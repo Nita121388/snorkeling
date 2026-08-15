@@ -55,7 +55,12 @@ export function parsePropertyEditString(entry: PropertyEntry, raw: string): unkn
     switch (entry.type) {
         case "tags":
         case "list":
-            return trimmed === "" ? [] : trimmed.split(",").map((s) => s.trim()).filter((s) => s !== "");
+            return trimmed === ""
+                ? []
+                : trimmed
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter((s) => s !== "");
         case "number": {
             const n = Number(trimmed);
             return trimmed !== "" && Number.isFinite(n) ? n : trimmed;
@@ -120,10 +125,17 @@ type ObsidianPropertiesCardProps = {
 export function ObsidianPropertiesCard({ block, onDataChange }: ObsidianPropertiesCardProps) {
     const data = useMemo(() => parseFrontmatterYamlText(block.content), [block.content]);
     const entries = useMemo(() => buildPropertyEntries(data), [data]);
+    const [collapsed, setCollapsed] = useState(false);
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
     const editable = onDataChange != null;
+
+    const toggleCollapsed = () => {
+        // 折叠时若有编辑进行中，直接放弃编辑态（行不可见后输入框无意义）
+        setEditingKey(null);
+        setCollapsed((c) => !c);
+    };
 
     const startEdit = (entry: PropertyEntry) => {
         if (!editable) return;
@@ -153,53 +165,64 @@ export function ObsidianPropertiesCard({ block, onDataChange }: ObsidianProperti
 
     return (
         <div className="obsidian-props-card" data-obsidian-props-card="true">
-            <div className="obsidian-props-header">
-                <i className="fa-solid fa-asterisk" aria-hidden="true" />
+            <div
+                className={clsx("obsidian-props-header", collapsed && "is-collapsed")}
+                onClick={toggleCollapsed}
+                title={collapsed ? "展开属性" : "折叠属性"}
+            >
+                <i
+                    className={clsx("fa-solid", collapsed ? "fa-chevron-right" : "fa-chevron-down")}
+                    aria-hidden="true"
+                />
                 <span className="obsidian-props-title">属性</span>
                 <span className="obsidian-props-count">{entries.length}</span>
             </div>
-            {entries.map((entry) => {
-                const isEditing = editingKey === entry.key;
-                return (
-                    <div
-                        className={clsx("obsidian-props-row", editable && "is-editable", isEditing && "is-editing")}
-                        key={entry.key}
-                        onClick={() => startEdit(entry)}
-                        title={editable ? "点击编辑" : undefined}
-                    >
-                        <i className={clsx("obsidian-props-icon", typeIcons[entry.type])} aria-hidden="true" />
-                        <span className="obsidian-props-key" title={entry.key}>
-                            {entry.key}
-                        </span>
-                        <span className="obsidian-props-value">
-                            {isEditing ? (
-                                <input
-                                    ref={inputRef}
-                                    className="obsidian-props-input"
-                                    value={editDraft}
-                                    onChange={(e) => setEditDraft(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            e.stopPropagation();
-                                            commitEdit();
-                                        } else if (e.key === "Escape") {
-                                            e.stopPropagation();
-                                            cancelEdit();
-                                        }
-                                    }}
-                                    onBlur={() => setEditingKey(null)}
-                                    onClick={(e) => e.stopPropagation()}
+            {!collapsed &&
+                entries.map((entry) => {
+                    const isEditing = editingKey === entry.key;
+                    return (
+                        <div
+                            className={clsx("obsidian-props-row", editable && "is-editable", isEditing && "is-editing")}
+                            key={entry.key}
+                            onClick={() => startEdit(entry)}
+                            title={editable ? "点击编辑" : undefined}
+                        >
+                            <i className={clsx("obsidian-props-icon", typeIcons[entry.type])} aria-hidden="true" />
+                            <span className="obsidian-props-key" title={entry.key}>
+                                {entry.key}
+                            </span>
+                            <span className="obsidian-props-value">
+                                {isEditing ? (
+                                    <input
+                                        ref={inputRef}
+                                        className="obsidian-props-input"
+                                        value={editDraft}
+                                        onChange={(e) => setEditDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.stopPropagation();
+                                                commitEdit();
+                                            } else if (e.key === "Escape") {
+                                                e.stopPropagation();
+                                                cancelEdit();
+                                            }
+                                        }}
+                                        onBlur={() => setEditingKey(null)}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    renderValue(entry)
+                                )}
+                            </span>
+                            {editable && !isEditing && (
+                                <i
+                                    className="fa-regular fa-pen-to-square obsidian-props-edit-icon"
+                                    aria-hidden="true"
                                 />
-                            ) : (
-                                renderValue(entry)
                             )}
-                        </span>
-                        {editable && !isEditing && (
-                            <i className="fa-regular fa-pen-to-square obsidian-props-edit-icon" aria-hidden="true" />
-                        )}
-                    </div>
-                );
-            })}
+                        </div>
+                    );
+                })}
         </div>
     );
 }

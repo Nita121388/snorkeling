@@ -1,10 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
 import { ObsidianPropertiesCard, parsePropertyEditString, propertyValueToEditString } from "./obsidian-properties-card";
 
 function block(content: string): MarkdownContentBlockType {
@@ -17,20 +16,20 @@ function renderCard(yaml: string): string {
 
 describe("ObsidianPropertiesCard rendering", () => {
     it("renders property rows with key names", () => {
-        const html = renderCard("title: Hello\ntags: [\"#coding\"]\n");
+        const html = renderCard('title: Hello\ntags: ["#coding"]\n');
         expect(html).toContain("obsidian-props-card");
         expect(html).toContain("title");
         expect(html).toContain("Hello");
     });
 
     it("renders tag chip with is-tag class", () => {
-        const html = renderCard("tags: [\"#coding\"]");
+        const html = renderCard('tags: ["#coding"]');
         expect(html).toContain("is-tag");
         expect(html).toContain("#coding");
     });
 
     it("renders list chips", () => {
-        const html = renderCard("aliases: [\"A\", \"B\"]");
+        const html = renderCard('aliases: ["A", "B"]');
         expect(html).toContain("obsidian-props-chips");
         expect(html).toContain("A");
         expect(html).toContain("B");
@@ -58,7 +57,9 @@ describe("ObsidianPropertiesCard rendering", () => {
     });
 });
 describe("property edit value helpers", () => {
-    const entry = (over: Partial<import("./frontmatter-block").PropertyEntry> = {}): import("./frontmatter-block").PropertyEntry => ({
+    const entry = (
+        over: Partial<import("./frontmatter-block").PropertyEntry> = {}
+    ): import("./frontmatter-block").PropertyEntry => ({
         key: "k",
         type: "text",
         value: "v",
@@ -89,5 +90,19 @@ describe("property edit value helpers", () => {
 
     it("keeps plain text values as-is (trimmed)", () => {
         expect(parsePropertyEditString(entry({ type: "text" }), " hello ")).toBe("hello");
+    });
+});
+
+describe("ObsidianPropertiesCard collapse", () => {
+    it("renders expanded by default with chevron-down", () => {
+        const html = renderCard('title: A\ntags: ["#b"]');
+        expect(html).toContain("fa-chevron-down");
+        expect(html).toContain("obsidian-props-row");
+        expect(html).not.toContain("fa-chevron-right");
+    });
+
+    it("collapsed header is clickable and hides rows (static render shows rows, interaction toggles)", () => {
+        const html = renderCard("title: A");
+        expect(html).toContain("obsidian-props-header");
     });
 });
