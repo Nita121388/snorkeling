@@ -66,22 +66,35 @@ describe("spliceInsertBlock (block-edge insert buttons)", () => {
     const lines = ["# title", "", "hello", "", "tail"];
 
     it("inserts below the anchor line, bracketed by a blank line", () => {
-        const next = spliceInsertBlock(lines, 3, "after", ["new"]);
+        const next = spliceInsertBlock(lines, 3, 3, "after", ["new"]);
         expect(next).toEqual(["# title", "", "hello", "", "new", "", "tail"]);
     });
 
     it("inserts above the anchor line, bracketed by a blank line", () => {
-        const next = spliceInsertBlock(lines, 3, "before", ["new"]);
+        const next = spliceInsertBlock(lines, 3, 3, "before", ["new"]);
         expect(next).toEqual(["# title", "", "new", "", "hello", "", "tail"]);
     });
 
     it("keeps multi-line drafts verbatim (blank lines inside the draft stay)", () => {
-        const next = spliceInsertBlock(lines, 3, "after", ["a", "", "b"]);
+        const next = spliceInsertBlock(lines, 3, 3, "after", ["a", "", "b"]);
         expect(next).toEqual(["# title", "", "hello", "", "a", "", "b", "", "tail"]);
     });
 
+    it("inserts below the END line for multi-line blocks (list stays closed)", () => {
+        // block spans lines 3..4 (e.g. a 2-item list); "after" must splice below line 4
+        const list = ["# title", "", "- one", "- two", "", "tail"];
+        const next = spliceInsertBlock(list, 3, 4, "after", ["new"]);
+        expect(next).toEqual(["# title", "", "- one", "- two", "", "new", "", "tail"]);
+    });
+
+    it("inserts above the START line for multi-line blocks", () => {
+        const list = ["# title", "", "- one", "- two", "", "tail"];
+        const next = spliceInsertBlock(list, 3, 4, "before", ["new"]);
+        expect(next).toEqual(["# title", "", "new", "", "- one", "- two", "", "tail"]);
+    });
+
     it("clamps out-of-range anchor lines", () => {
-        expect(spliceInsertBlock(lines, 99, "after", ["x"])).toEqual([
+        expect(spliceInsertBlock(lines, 99, 99, "after", ["x"])).toEqual([
             "# title",
             "",
             "hello",

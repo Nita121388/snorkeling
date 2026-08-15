@@ -423,23 +423,28 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         [fullText]
     );
 
-    // Opens a blank editor that inserts a NEW block before/after the anchor line on commit.
+    // Opens a blank editor that inserts a NEW block before/after the anchor block on commit.
     // The overlay anchors to the given element (the block whose edge the user hovered); the
     // draft starts empty and its committed text is spliced in as a fresh block with a blank
-    // line separator (see commit's insertMode branch).
+    // line separator (see commit's insertMode branch). startLine/endLine bracket the WHOLE
+    // block (list/table/code/multi-line paragraph carry data-source-line-end): "before"
+    // splices above startLine, "after" splices below endLine — otherwise inserting after a
+    // list would tear it open mid-list.
     const beginInsertEdit = useCallback(
-        (line: number, targetEl: HTMLElement, mode: "before" | "after") => {
-            const safeLine = Math.max(1, Math.trunc(line));
+        (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => {
+            const safeStart = Math.max(1, Math.trunc(startLine));
+            const safeEnd = Math.max(safeStart, Math.trunc(endLine));
             const session: InlineEditSession = {
                 blockKind: "p",
-                startLine: safeLine,
-                endLine: safeLine,
+                startLine: safeStart,
+                endLine: safeEnd,
                 initialContent: "",
                 targetEl,
                 insertMode: mode,
             };
             inlineEditDebug("beginInsertEdit", {
-                line: safeLine,
+                startLine: safeStart,
+                endLine: safeEnd,
                 mode,
                 targetTag: targetEl.tagName,
                 targetConnected: targetEl.isConnected,
@@ -490,7 +495,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // with a blank line so it renders as its own paragraph.
             const lines = fullText.split(/\r\n|\n/);
             const draftLines = draftText.split(/\r\n|\n/);
-            newFull = spliceInsertBlock(lines, current.startLine, current.insertMode, draftLines).join("\n");
+            newFull = spliceInsertBlock(
+                lines,
+                current.startLine,
+                current.endLine,
+                current.insertMode,
+                draftLines
+            ).join("\n");
         } else {
             newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
         }
@@ -630,13 +641,19 @@ export function isInlineEditingActive(): boolean {
  */
 export function spliceInsertBlock(
     lines: string[],
-    anchorLine: number,
+    startLine: number,
+    endLine: number,
     mode: "before" | "after",
     draftLines: string[]
 ): string[] {
-    const idx = Math.max(0, Math.min(anchorLine - 1, lines.length));
+    // Bracket the WHOLE anchor block, not just its first line: lists / tables / code blocks /
+    // multi-line paragraphs span [startLine..endLine] (data-source-line-end), and "after" must
+    // splice below endLine or the new block lands mid-block (e.g. tearing a list open between
+    // its items). before → above startLine, after → below endLine.
+    const startIdx = Math.max(0, Math.min(startLine - 1, lines.length));
+    const endIdx = Math.max(0, Math.min(endLine - 1, lines.length));
     const block = mode === "before" ? [...draftLines, ""] : ["", ...draftLines];
     const next = lines.slice();
-    next.splice(mode === "before" ? idx : idx + 1, 0, ...block);
+    next.splice(mode === "before" ? startIdx : endIdx + 1, 0, ...block);
     return next;
 }

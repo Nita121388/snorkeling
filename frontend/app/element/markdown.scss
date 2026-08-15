@@ -643,7 +643,11 @@
 
     &.markdown-block-grip-action-hidden {
         opacity: 0;
-        pointer-events: none;
+        // Deliberately NO pointer-events: none — the buttons stay hit-testable while invisible
+        // so moving the pointer from the block straight toward B (without landing on C first)
+        // still fires its mouseenter → cancelHideGrip → gripOpen stays true → B fades in and
+        // becomes clickable. Disabling hit-testing there made those clicks land on the gutter
+        // background ("clicking up/down does nothing").
     }
 
     &:hover {

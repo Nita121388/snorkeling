@@ -1394,15 +1394,16 @@ const Markdown = ({
             return;
         }
         const rect = el.getBoundingClientRect();
-        // Grip sits in the gutter left of the block (like a code-editor row handle) so it
-        // never overlaps the text. The block anchor point is the block's vertical middle;
-        // the grip centers on it via translate(-50%, -50%), and the insert actions (A/B)
-        // are placed relative to the same anchor in the JSX (above/below the grip, same
-        // column). Clamp to viewport for far-left blocks (content has ~15px padding).
-        // ponytail: blocks near the top/bottom of the document can push A/B past the
-        // viewport edge (first block's A, last block's B) — accepted for now; upgrade path
-        // is flipping the stack direction when the anchor is near a viewport edge.
-        setInsertPos({ top: rect.top + rect.height / 2, left: Math.max(rect.left - 26, 8) });
+        // Grip sits in the gutter left of the block, anchored to the block's TOP-LEFT (like
+        // Notion's handle): insertPos.top is the anchor center for translate(-50%, -50%), so
+        // rect.top + 8 centers the 16px grip on the block's top edge (half above, half beside
+        // the first line). NOT the vertical middle — centering on tall blocks (lists, code,
+        // multi-line paragraphs) floated the grip mid-block, looking detached from the hovered
+        // row. The insert actions (A/B) are placed relative to the same anchor in the JSX.
+        // Clamp to viewport for far-left blocks (content has ~15px padding).
+        // ponytail: the block's hovered row can be deep in a list (LI) while data-source-line
+        // resolves to the UL — the grip then anchors to the list's top-left, acceptable.
+        setInsertPos({ top: rect.top + 8, left: Math.max(rect.left - 26, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
     insertAnchorRef.current = insertAnchor;
@@ -1497,9 +1498,17 @@ const Markdown = ({
             if (el == null) {
                 return;
             }
-            inlineEdit.beginInsertEdit(anchor.line, el, mode);
+            // Bracket the WHOLE block: multi-line blocks (lists, tables, code, soft-broken
+            // paragraphs) carry data-source-line-end; “after” must splice below endLine or it
+            // tears the block open (new row lands mid-list). Falls back to the start line for
+            // legacy renders without the end attribute.
+            const startLine = Number(el.dataset.sourceLine);
+            const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLine;
+            const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
+            inlineEdit.beginInsertEdit(startLine, endLine, el, mode);
             setInsertAnchor(null);
             setInsertPos(null);
+            setGripOpen(false);
         },
         [inlineEdit, resolveInsertAnchorEl]
     );
