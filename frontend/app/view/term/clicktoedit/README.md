@@ -14,6 +14,12 @@
 2. 目标行/列 vs agent 光标当前位置 → 合成 `Home + Right×N`（或 Up/Down）
 3. 注入 PTY → agent 光标移动 → 直接键入即在该处编辑
 
+## 交互（对齐原生 TUI 鼠标直觉）
+- **直接单击** agent 输入框/消息区任意位置 = 定位光标到该 cell（无需修饰键）
+- **按住拖动** = 保持默认文本选择/复制（松开时有位移则视为拖选，不定位）
+- **Cmd/Ctrl+点击** = 同上（保留兼容）
+- 仅对 agent 会话生效（claude/anthropic 除外，其 fullscreen 原生支持；非 agent 块不介入）
+
 ## 精度预期（待实验量化）
 - 单行纯 ASCII：~95%；含宽字符（中/emoji）：~80-85%；多行/vi 模式：~60-75%
 - 实验见 `clicktoedit/exp/`（pty + SGR + 光标位置读回）
