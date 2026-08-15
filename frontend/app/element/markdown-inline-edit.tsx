@@ -552,6 +552,7 @@ type InlineEditOverlayProps = {
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onTextChange: (v: string) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+    onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
     onBlur: () => void;
 };
 
@@ -562,6 +563,7 @@ export function InlineEditOverlay({
     textareaRef,
     onTextChange,
     onKeyDown,
+    onPaste,
     onBlur,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
@@ -599,6 +601,7 @@ export function InlineEditOverlay({
                 rows={1}
                 onChange={(e) => onTextChange(e.target.value)}
                 onKeyDown={onKeyDown}
+                onPaste={onPaste}
                 onBlur={onBlur}
                 spellCheck={false}
                 autoCapitalize="off"

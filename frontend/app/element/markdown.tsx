@@ -57,6 +57,10 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { openLink } from "../store/global";
 import { ContextMenuModel } from "../store/contextmenu";
+import { RpcApi } from "../store/wshclientapi";
+import { TabRpcClient } from "../store/wshrpcutil";
+import { formatRemoteUri } from "@/util/waveutil";
+import { arrayToBase64, stringToBase64 } from "@/util/util";
 import {
     makeMarkdownWikiLinkHref,
     normalizeLinkedFilePath,
@@ -1520,6 +1524,72 @@ const Markdown = ({
         focusEditedLine(newLine, revert);
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
+    // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
+    // Mirrors Obsidian: pasting an image while editing a block saves it to a sibling `assets`
+    // directory (created on demand) and inserts a markdown image reference at the caret. The
+    // image FILE is written to disk immediately (independent of the md save flow); only the
+    // markdown line goes through the shared draft (so Save/Revert still apply to the text).
+    // Pure-text pastes are untouched (handler returns undefined → native paste proceeds).
+    const handleEditorPaste = useCallback(
+        async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+            const session = inlineEdit.editSession;
+            const ta = inlineEdit.textareaRef.current;
+            const baseDir = resolveOpts?.baseDir;
+            if (session == null || ta == null || baseDir == null) {
+                return; // not editing / no file dir to write into → native paste
+            }
+            // Find an image item in the clipboard (png/jpg/gif/webp). If none, fall through.
+            const items = Array.from(e.clipboardData?.items ?? []);
+            const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+            if (imageItem == null || e.clipboardData.files == null || e.clipboardData.files.length === 0) {
+                return;
+            }
+            const blob = e.clipboardData.files[0];
+            if (!blob.type.startsWith("image/")) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            const ext = blob.type === "image/jpeg" ? "jpg" : blob.type.replace("image/", "").split("+")[0] || "png";
+            const date = new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            const stamp =
+                `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+                `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+            const rand = Math.floor(Math.random() * 900 + 100);
+            const fileName = `image-${stamp}-${rand}.${ext}`;
+            const relPath = `assets/${fileName}`;
+
+            try {
+                // 1) ensure the sibling assets/ directory exists
+                const baseUri = formatRemoteUri(baseDir, resolveOpts?.connName ?? "local");
+                await RpcApi.FileMkdirCommand(TabRpcClient, {
+                    info: { path: `${baseUri}/assets`, mimetype: "directory" },
+                });
+                // 2) write the image bytes
+                const buf = await blob.arrayBuffer();
+                const data64 = arrayToBase64(new Uint8Array(buf));
+                await RpcApi.FileWriteCommand(TabRpcClient, {
+                    info: { path: `${baseUri}/${relPath}`, mimetype: blob.type },
+                    data64,
+                });
+            } catch (err) {
+                console.error("[markdown] paste-image write failed", err);
+                return;
+            }
+
+            // 3) insert `![图片](assets/xxx.png)` at the caret and commit
+            const caretPos = ta.selectionStart;
+            const draft = inlineEdit.draftText;
+            const imgMarkdown = `![图片](${relPath})`;
+            const newDraft = draft.slice(0, caretPos) + imgMarkdown + draft.slice(caretPos);
+            const newFull = replaceSourceRange(text, session.startLine, session.endLine, newDraft);
+            handleInlineEditCommit(newFull);
+        },
+        [inlineEdit, resolveOpts, text, handleInlineEditCommit]
+    );
+
     const resolveInsertAnchorEl = useCallback(
         (line: number): HTMLElement | null => {
             const viewport = getViewportEl();
@@ -2439,6 +2509,7 @@ const Markdown = ({
                             textareaRef={inlineEdit.textareaRef}
                             onTextChange={inlineEdit.setDraftText}
                             onKeyDown={inlineEditKeyDown}
+                            onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
                         />
                     )}
