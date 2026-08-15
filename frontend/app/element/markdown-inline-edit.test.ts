@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+    deleteBlockRange,
     resolveInlineEditTarget,
     spliceInsertBlock,
     splitBlockAtCaretText,
@@ -141,5 +142,33 @@ describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
         );
         expect(text).toBe("# title\n\nline A\n\n\nline B\n\nend");
         expect(newLine).toBe(5);
+    });
+});
+
+describe("deleteBlockRange (block menu delete)", () => {
+    it("deletes a single-line block and one separator blank (keeps one blank between blocks)", () => {
+        const text = "# title\n\nhello world\n\nend";
+        // block has a separator blank before AND after → drop one, keep one
+        expect(deleteBlockRange(text, 3, 3)).toBe("# title\n\nend");
+    });
+
+    it("deletes a multi-line block (span 3..4) cleanly", () => {
+        const text = "# title\n\nline A\nline B\n\nend";
+        expect(deleteBlockRange(text, 3, 4)).toBe("# title\n\nend");
+    });
+
+    it("deletes the first block (no leading blank to remove)", () => {
+        const text = "# title\n\nbody";
+        expect(deleteBlockRange(text, 1, 1)).toBe("body");
+    });
+
+    it("deletes the last block (no trailing blank to remove)", () => {
+        const text = "a\n\nb";
+        expect(deleteBlockRange(text, 3, 3)).toBe("a");
+    });
+
+    it("clamps end beyond the text length", () => {
+        const text = "a\n\nb";
+        expect(deleteBlockRange(text, 1, 99)).toBe(""); // deletes every remaining line
     });
 });

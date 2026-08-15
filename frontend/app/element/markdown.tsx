@@ -7,6 +7,7 @@ import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/mar
 import {
     InlineEditOverlay,
     makeInlineEditKeydown,
+    deleteBlockRange,
     replaceSourceRange,
     spliceInsertBlock,
     splitBlockAtCaretText,
@@ -1374,6 +1375,74 @@ const Markdown = ({
         scheduleHideGrip();
     }, [scheduleHideGrip]);
 
+    // --- Block selection (click the four-dot grip) --------------------------------
+    // Clicking the grip C marks its block as selected (a highlight overlay + right-click
+    // menu with Copy / Duplicate / Delete. Block-scoped, driven by start/end line of the
+    // hovered block, and resolved live so it follows re-renders.
+    const [selectedBlock, setSelectedBlock] = useState<{ line: number; rect: { top: number; left: number; width: number; height: number } } | null>(null);
+    // live DOM ref for the selected block element, re-resolved from [data-source-line] so the
+    // highlight overlay tracks re-renders / line edits.
+    const selectedLineRef = useRef<number | null>(null);
+    selectedLineRef.current = selectedBlock?.line ?? null;
+
+    // Measure the currently selected block element (re-resolving from its line) so the
+    // highlight overlay follows re-renders and scrolls. Kept in step with insertAnchor's own
+    // scroll/resize watcher below.
+    const measureSelectedBlock = useCallback(() => {
+        const line = selectedLineRef.current;
+        if (line == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        const el = viewport && viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        if (el == null) {
+            setSelectedBlock(null); // block no longer exists (deleted / file changed)
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        setSelectedBlock((prev) => {
+            if (
+                prev != null &&
+                prev.line === line &&
+                prev.rect.top === rect.top &&
+                prev.rect.left === rect.left &&
+                prev.rect.width === rect.width &&
+                prev.rect.height === rect.height
+            ) {
+                return prev; // unchanged — avoid re-render churn
+            }
+            return { line, rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } };
+        });
+    }, [getViewportEl]);
+
+    // Re-measure the selection on scroll/resize/after-commit so the overlay hugs the block.
+    useEffect(() => {
+        if (selectedBlock == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        measureSelectedBlock();
+        const onScrollOrResize = () => requestAnimationFrame(measureSelectedBlock);
+        viewport?.addEventListener("scroll", onScrollOrResize, { passive: true });
+        window.addEventListener("resize", onScrollOrResize);
+        return () => {
+            viewport?.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+        };
+    }, [selectedBlock, getViewportEl, measureSelectedBlock]);
+
+    // Escape clears any block selection (unless the inline editor is open — it owns Escape).
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && selectedLineRef.current != null && inlineEdit.editSession == null) {
+                setSelectedBlock(null);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inlineEdit.editSession]);
+
     // Helper: wait for the markdown preview to re-render after a commit, then open a blank
     // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
     // is forwarded so Esc can undo the whole insert.
@@ -1462,6 +1531,65 @@ const Markdown = ({
         [getViewportEl]
     );
 
+    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / duplicate / delete)
+    // Resolves the current anchor block's [start..end] source range, shows a selection
+    // highlight overlay over it, and opens a native context menu. Block-scoped operations are
+    // applied to the markdown source via the same range helpers the editor uses.
+    const handleGripMenuClick = useCallback(
+        (e: React.MouseEvent) => {
+            const anchor = insertAnchorRef.current;
+            if (anchor == null) {
+                return;
+            }
+            const el = resolveInsertAnchorEl(anchor.line);
+            if (el == null) {
+                return;
+            }
+            const startLineRaw = Number(el.dataset.sourceLine);
+            if (!Number.isFinite(startLineRaw) || startLineRaw < 1) {
+                return;
+            }
+            const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLineRaw;
+            const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLineRaw ? endLineRaw : startLineRaw;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const lines = text.split(/\r\n|\n/);
+            const blockSource = lines.slice(startLineRaw - 1, endLine).join("\n");
+
+            // Live-highlight: set the overlay now; measureSelectedBlock re-anchors after render if needed.
+            const rect = el.getBoundingClientRect();
+            setSelectedBlock({
+                line: startLineRaw,
+                rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+            });
+
+            const copyBlock = async () => {
+                await navigator.clipboard.writeText(blockSource);
+            };
+            const duplicateBlock = () => {
+                const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
+                handleInlineEditCommit(newFull);
+            };
+            const deleteBlock = () => {
+                const newFull = deleteBlockRange(text, startLineRaw, endLine);
+                handleInlineEditCommit(newFull);
+                setSelectedBlock(null);
+            };
+
+            const menu: ContextMenuItem[] = [
+                { label: "复制", click: () => void copyBlock() },
+                { label: "复制为副本", click: duplicateBlock },
+                { type: "separator" },
+                { label: "删除", click: deleteBlock },
+            ];
+            ContextMenuModel.getInstance().showContextMenu(menu, e, {
+                onClose: () => setSelectedBlock(null),
+            });
+        },
+        [resolveInsertAnchorEl, text, handleInlineEditCommit]
+    );
+
     const measureInsertAnchor = useCallback(() => {
         const anchor = insertAnchorRef.current;
         if (anchor == null) {
@@ -1532,6 +1660,8 @@ const Markdown = ({
             }
             cancelHideInsert();
             setInsertAnchor({ line: Number(lineAttr) });
+            // Clear any active block selection when hovering a new block.
+            setSelectedBlock(null);
         },
         [cancelHideInsert, inlineEdit.editSession, onInlineEditCommit]
     );
@@ -2312,15 +2442,32 @@ const Markdown = ({
                             onBlur={inlineEdit.commit}
                         />
                     )}
+                    {onInlineEditCommit && selectedBlock != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <div
+                                className="markdown-block-selected"
+                                style={{
+                                    top: selectedBlock.rect.top,
+                                    left: selectedBlock.rect.left,
+                                    width: selectedBlock.rect.width,
+                                    height: selectedBlock.rect.height,
+                                }}
+                            />,
+                            document.body
+                        )}
                     {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <>
-                                {/* C: 4-dot grip — gutter left of the block, vertically centered. */}
+                                {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu. */}
                                 <div
                                     className="markdown-block-grip-dots"
                                     style={{ top: insertPos.top, left: insertPos.left }}
                                     onMouseEnter={handleGripEnter}
                                     onMouseLeave={handleGripLeave}
+                                    onClick={handleGripMenuClick}
+                                    role="button"
+                                    aria-label="Block actions"
+                                    title="Block actions"
                                 >
                                     <i className="markdown-block-grip-dot" aria-hidden="true" />
                                     <i className="markdown-block-grip-dot" aria-hidden="true" />

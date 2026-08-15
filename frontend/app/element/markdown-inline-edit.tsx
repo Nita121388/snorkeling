@@ -729,3 +729,32 @@ export function splitBlockAtCaretText(
     const newFull = spliceInsertBlock(midLines, startLine, beforeEnd, "after", after.split(/\r\n|\n/)).join("\n");
     return { text: newFull, newLine: beforeEnd + 2 };
 }
+
+/**
+ * Pure helper for deleting a whole block [startLine..endLine] from the source text. Keeps the
+ * document tidy: also removes one leading/trailing blank line around the block (the separator
+ * lines) and collapses any accidental blank run at the junction to a single blank, so deleting
+ * a paragraph doesn't leave three consecutive blank lines. Returns the new full text.
+ */
+export function deleteBlockRange(fullText: string, startLine: number, endLine: number): string {
+    const lines = fullText.split(/\r\n|\n/);
+    const safeStart = Math.max(1, Math.min(Math.trunc(startLine), lines.length));
+    const safeEnd = Math.max(safeStart, Math.min(Math.trunc(endLine), lines.length));
+    const before = lines.slice(0, safeStart - 1);
+    const after = lines.slice(safeEnd);
+    // The block is normally wrapped in blank separator lines: drop ONE of the two (keep the
+    // other) so the surrounding blocks still have a single blank between them. If only one
+    // side has a blank, keep it (it's the paragraph separator).
+    if (before.length > 0 && before[before.length - 1] === "" && after.length > 0 && after[0] === "") {
+        before.pop();
+    }
+    const merged = before.concat(after);
+    // never leave a leading/trailing blank (e.g. deleting the very first block)
+    while (merged.length > 0 && merged[0] === "") {
+        merged.shift();
+    }
+    while (merged.length > 0 && merged[merged.length - 1] === "") {
+        merged.pop();
+    }
+    return merged.join("\n");
+}
