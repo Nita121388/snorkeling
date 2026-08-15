@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     resolveInlineEditTarget,
     spliceInsertBlock,
+    splitBlockAtCaretText,
     type InlineEditSession,
 } from "./markdown-inline-edit";
 
@@ -103,5 +104,42 @@ describe("spliceInsertBlock (block-edge insert buttons)", () => {
             "",
             "x",
         ]);
+    });
+});
+
+describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
+    const fullText = "# title\n\nhello world\n\nend";
+    const startLine = 3; // "hello world"
+    const endLine = 3;
+    const draft = "hello world";
+
+    it("splits at caret in the middle → before stays, after becomes a new block below", () => {
+        const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, 5);
+        // before="hello" after=" world"
+        expect(text).toBe("# title\n\nhello\n\n world\n\nend");
+        expect(newLine).toBe(5);
+    });
+
+    it("caret at the end → blank line inserted below", () => {
+        const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, draft.length);
+        // after mode adds a separator blank + the content blank = 2 new blanks → 3 between blocks
+        expect(text).toBe("# title\n\nhello world\n\n\n\nend");
+        expect(newLine).toBe(5);
+    });
+
+    it("caret at the start → blank line inserted above, original text becomes the after block", () => {
+        const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, 0);
+        // before mode adds separator blank + content blank = 2 new blanks on top
+        expect(text).toBe("# title\n\n\n\nhello world\n\nend");
+        expect(newLine).toBe(3);
+    });
+
+    it("splits multi-line block (span 3..4) at end of first line → rest stays as text below", () => {
+        const { text, newLine } = splitBlockAtCaretText(
+            "# title\n\nline A\nline B\n\nend",
+            3, 4, "line A\nline B", 6
+        );
+        expect(text).toBe("# title\n\nline A\n\n\nline B\n\nend");
+        expect(newLine).toBe(5);
     });
 });

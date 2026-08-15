@@ -7,6 +7,9 @@ import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/mar
 import {
     InlineEditOverlay,
     makeInlineEditKeydown,
+    replaceSourceRange,
+    spliceInsertBlock,
+    splitBlockAtCaretText,
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
@@ -1371,6 +1374,83 @@ const Markdown = ({
         scheduleHideGrip();
     }, [scheduleHideGrip]);
 
+    // Helper: wait for the markdown preview to re-render after a commit, then open a blank
+    // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
+    // is forwarded so Esc can undo the whole insert.
+    const focusEditedLine = useCallback(
+        (newLine: number, revert?: () => void) => {
+            // Give ReactMarkdown time to commit the new text to the DOM (one frame is usually
+            // sufficient; a second rAF guards against double-batched concurrent renders).
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const viewport = getViewportEl();
+                    const el =
+                        viewport &&
+                        viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${newLine}"]`);
+                    if (el != null) {
+                        inlineEdit.beginEdit("p", newLine, el, 0, revert);
+                    }
+                });
+            });
+        },
+        [getViewportEl, inlineEdit]
+    );
+
+    // --- Enter / split-at-caret ---------------------------------------------------
+    // Handles the user pressing bare Enter while editing a block (paragraph, blank row,
+    // or list). Paragraphs split into two blocks (front stays, back becomes a new block
+    // with its own editor); lists add a new list item without closing the editor.
+    // - Shift+Enter stays the native soft line break (no split).
+    // - Code / table / heading blocks fall through to the default behavior (line break).
+    const handleEnterSplit = useCallback(() => {
+        const session = inlineEdit.editSession;
+        const ta = inlineEdit.textareaRef.current;
+        if (session == null || ta == null) {
+            return;
+        }
+        const pos = ta.selectionStart;
+        const draft = inlineEdit.draftText;
+
+        // --- List: add a new item within the same list (same editor stays open) -----------
+        if (session.blockKind === "list") {
+            const lineEnd = draft.indexOf("\n", pos);
+            const lineStart = draft.lastIndexOf("\n", pos) + 1;
+            const line = draft.slice(lineStart, lineEnd === -1 ? draft.length : lineEnd);
+            const prefix = (line.match(/^(\s*[-+*]\s|\s*\d+\.\s)/) || [""])[0];
+            const before = draft.slice(0, pos);
+            const after = draft.slice(pos);
+            const newDraft = before + "\n" + prefix + after;
+            inlineEdit.setDraftText(newDraft);
+            const newPos = pos + 1 + prefix.length; // after the newline + prefix
+            // schedule after the render so setSelectionRange sticks
+            requestAnimationFrame(() => {
+                ta.selectionStart = newPos;
+                ta.selectionEnd = newPos;
+            });
+            return;
+        }
+
+        // --- Paragraph / blank row: split into two blocks ---------------------------------
+        // Only split for the block kinds the user actually presses Enter in; headings,
+        // code, and tables fall through (browser's native line-break is fine).
+        if (session.blockKind !== "p" && session.blockKind !== "blank") {
+            return; // let the textarea do its native newline
+        }
+
+        const { text: newFull, newLine } = splitBlockAtCaretText(
+            text,
+            session.startLine,
+            session.endLine,
+            draft,
+            pos
+        );
+        const revert = () => {
+            handleInlineEditCommit(text); // restore the document to what it was before the split
+        };
+        handleInlineEditCommit(newFull);
+        focusEditedLine(newLine, revert);
+    }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
+
     const resolveInsertAnchorEl = useCallback(
         (line: number): HTMLElement | null => {
             const viewport = getViewportEl();
@@ -1499,18 +1579,27 @@ const Markdown = ({
                 return;
             }
             // Bracket the WHOLE block: multi-line blocks (lists, tables, code, soft-broken
-            // paragraphs) carry data-source-line-end; “after” must splice below endLine or it
+            // paragraphs) carry data-source-line-end; "after" must splice below endLine or it
             // tears the block open (new row lands mid-list). Falls back to the start line for
             // legacy renders without the end attribute.
             const startLine = Number(el.dataset.sourceLine);
             const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLine;
             const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
-            inlineEdit.beginInsertEdit(startLine, endLine, el, mode);
+
+            // Insert the blank row into the document IMMEDIATELY (so the preview visibly gains
+            // a line the moment the user clicks), remember the pre-edit text for Esc-revert,
+            // and open a blank editor on top of the new row so typing lands in it directly.
+            const originalText = text;
+            const newFull = spliceInsertBlock(text.split(/\r\n|\n/), startLine, endLine, mode, [""]).join("\n");
+            handleInlineEditCommit(newFull);
+            const newLine = mode === "before" ? startLine : endLine + 1;
+            focusEditedLine(newLine, () => handleInlineEditCommit(originalText));
+
             setInsertAnchor(null);
             setInsertPos(null);
             setGripOpen(false);
         },
-        [inlineEdit, resolveInsertAnchorEl]
+        [handleInlineEditCommit, resolveInsertAnchorEl, text, focusEditedLine]
     );
 
     const inlineEditKeyDown = useMemo(
@@ -1519,8 +1608,9 @@ const Markdown = ({
                 commit: inlineEdit.commit,
                 cancel: inlineEdit.cancel,
                 save: onInlineEditSave,
+                onSplitCaret: handleEnterSplit,
             }),
-        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave]
+        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit]
     );
 
     const normalizedScrollTargetText = useMemo(

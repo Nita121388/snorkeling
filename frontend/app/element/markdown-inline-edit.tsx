@@ -92,6 +92,13 @@ export type InlineEditSession = {
      * by a blank line so it renders as its own block. Used by the block-edge insert buttons.
      */
     insertMode?: "before" | "after";
+    /**
+     * Optional: called on Esc/cancel to REVERT the document to its pre-edit state. Used by
+     * the "click insert / Enter split" flows, which COMMIT the new row immediately (so the
+     * user sees it appear) and only keep an editor on top for typing — Esc discards the
+     * whole insert instead of just closing the editor.
+     */
+    insertRevert?: () => void;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -382,7 +389,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, [draftText, editSession, overlayRect?.width]);
 
     const beginEdit = useCallback(
-        (blockKind: InlineEditBlockKind, line: number, targetEl: HTMLElement, caretOffset?: number) => {
+        (
+            blockKind: InlineEditBlockKind,
+            line: number,
+            targetEl: HTMLElement,
+            caretOffset?: number,
+            insertRevert?: () => void
+        ) => {
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullText.split(/\r\n|\n/);
             if (safeLine > lines.length) {
@@ -406,6 +419,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 initialContent,
                 targetEl,
                 caretOffset,
+                insertRevert,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -509,6 +523,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, [editSession, draftText, fullText, onCommit]);
 
     const cancel = useCallback(() => {
+        // If this editor was opened by an immediate-insert flow (click A/B or Enter split),
+        // the document already changed — Esc must revert the whole insert, not just close the
+        // editor. Otherwise a plain cancel leaves the document untouched.
+        editSession?.insertRevert?.();
         inlineEditDebug("cancel", { kind: editSession?.blockKind, startLine: editSession?.startLine });
         setEditSession(null);
         setDraftText("");
@@ -604,7 +622,13 @@ export function InlineEditOverlay({
  * - Cmd/Ctrl+Enter → commit
  * - plain blur (handled in onBlur, not here)
  */
-export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => void; save?: () => void }) {
+export function makeInlineEditKeydown(opts: {
+    commit: () => void;
+    cancel: () => void;
+    save?: () => void;
+    /** Called on a bare Enter (no Shift/Cmd/Ctrl, not IME-composing) so the caller can split the block at the caret. */
+    onSplitCaret?: () => void;
+}) {
     return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Escape") {
             e.preventDefault();
@@ -612,6 +636,17 @@ export function makeInlineEditKeydown(opts: { commit: () => void; cancel: () => 
             return;
         }
         const isCmd = e.metaKey || e.ctrlKey;
+        // Split-on-Enter (note-app behavior): bare Enter ends the block, Shift+Enter keeps the
+        // soft line break. Skip while IME is composing (Chinese/Japanese candidates send
+        // Enter to pick a word) and when the caller didn't wire a split handler.
+        if (e.key === "Enter" && !isCmd && !e.shiftKey && opts.onSplitCaret != null) {
+            const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+            if (!native.isComposing) {
+                e.preventDefault();
+                opts.onSplitCaret();
+                return;
+            }
+        }
         if (isCmd && (e.key === "s" || e.key === "S")) {
             // Commit synchronously so the draft atom carries the just-typed text before save runs.
             // If the parent wired `save`, flush it directly — preview-mode has no global ⌘S
@@ -656,4 +691,41 @@ export function spliceInsertBlock(
     const next = lines.slice();
     next.splice(mode === "before" ? startIdx : endIdx + 1, 0, ...block);
     return next;
+}
+
+/**
+ * Pure helper for "Enter at caret splits the block": keeps the BEFORE part in the anchor
+ * block's source range and inserts the AFTER part as a new block right below it. Returns the
+ * new full text plus the 1-based source line of the new block's CONTENT row (the second of
+ * the two inserted lines — spliceInsertBlock brackets with a separator blank first) so the
+ * follow-up editor focuses the row the user actually types into.
+ *
+ * Edge cases match the buttons:
+ *  - caret at very end (after === "") → insert a blank row BELOW (cursor row = endLine + 2)
+ *  - caret at very start (before === "") → insert a blank row ABOVE (cursor row = startLine)
+ */
+export function splitBlockAtCaretText(
+    fullText: string,
+    startLine: number,
+    endLine: number,
+    draftText: string,
+    caretPos: number
+): { text: string; newLine: number } {
+    const before = draftText.slice(0, caretPos);
+    const after = draftText.slice(caretPos);
+    const lines = fullText.split(/\r\n|\n/);
+
+    if (before === "") {
+        const newFull = spliceInsertBlock(lines, startLine, endLine, "before", [""]).join("\n");
+        return { text: newFull, newLine: startLine };
+    }
+    if (after === "") {
+        const newFull = spliceInsertBlock(lines, startLine, endLine, "after", [""]).join("\n");
+        return { text: newFull, newLine: endLine + 2 };
+    }
+    const afterBeforeCommit = replaceSourceRange(fullText, startLine, endLine, before);
+    const midLines = afterBeforeCommit.split(/\r\n|\n/);
+    const beforeEnd = startLine + before.split(/\r\n|\n/).length - 1;
+    const newFull = spliceInsertBlock(midLines, startLine, beforeEnd, "after", after.split(/\r\n|\n/)).join("\n");
+    return { text: newFull, newLine: beforeEnd + 2 };
 }
