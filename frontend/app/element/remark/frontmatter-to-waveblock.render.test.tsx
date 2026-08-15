@@ -14,6 +14,26 @@ import remarkFrontmatterToWaveBlock from "./frontmatter-to-waveblock";
 
 type RenderOpts = { startLine: number; endLine: number; blockKey: string };
 
+/**
+ * 模拟 markdown.tsx 的实际用法：remarkPlugins 数组用 PluggableList 的[插件, 参数]元组形式，
+ * 由 ReactMarkdown 原样传给 unified（而非手动调用 transformer）。回归：曾 push 调用结果导致
+ * unified 把 transformer 当插件无参调用 → tree undefined → reading 'children' 崩溃。
+ */
+function renderLikeApp(md: string, opts: RenderOpts, contentOverride?: string): string {
+    const components = {
+        waveblock: (props: any) => (
+            <div className="waveblock-rendered" data-blockkey={props.blockkey}>
+                [props:{props.blockkey}]
+            </div>
+        ),
+    };
+    return renderToStaticMarkup(
+        <ReactMarkdown remarkPlugins={[remarkGfm, [remarkFrontmatterToWaveBlock, opts]]} components={components}>
+            {md}
+        </ReactMarkdown>
+    );
+}
+
 function render(md: string, opts: RenderOpts): string {
     const plugin = () => (tree: any) => {
         remarkFrontmatterToWaveBlock(opts)(tree);
@@ -33,6 +53,18 @@ function render(md: string, opts: RenderOpts): string {
 }
 
 describe("frontmatter-to-waveblock render pipeline", () => {
+    it("REGRESSION: PluggableList tuple form (as used by markdown.tsx) does not crash", () => {
+        // 与 markdown.tsx 实际用法一致：push [插件, 参数] 元组。
+        // 曾 push 调用结果 → unified 把 transformer 当插件无参调用 → tree undefined 崩溃。
+        const md = ["---", "title: Hello", "tags: [a, b]", "---", "", "Body text here."].join("\n");
+        let out: string | null = null;
+        expect(() => {
+            out = renderLikeApp(md, { startLine: 1, endLine: 4, blockKey: "obsidian-props[fm]" });
+        }).not.toThrow();
+        expect(out).toContain('data-blockkey="obsidian-props[fm]"');
+        expect(out).not.toContain("title: Hello");
+    });
+
     it("replaces the frontmatter with the delegated component and keeps the body", () => {
         const md = ["---", "title: Hello", "tags: [a, b]", "---", "", "Body text here."].join("\n");
         const html = render(md, { startLine: 1, endLine: 4, blockKey: "obsidian-props[fm]" });

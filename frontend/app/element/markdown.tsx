@@ -1792,13 +1792,17 @@ const Markdown = ({
         contentBlocksMap,
     });
     if (frontmatterBlock) {
-        remarkPlugins.push(
-            remarkFrontmatterToWaveBlock({
+        // 必须 push 插件+参数元组（ReactMarkdown 的 PluggableList 约定），
+        // 不能 push 调用结果：unified 会把函数当插件以无参调用，transformer 的
+        // tree 参数会变成 undefined → 运行时崩溃。
+        remarkPlugins.push([
+            remarkFrontmatterToWaveBlock,
+            {
                 startLine: frontmatterBlock.startLine,
                 endLine: frontmatterBlock.endLine,
                 blockKey: frontmatterBlock.blockKey,
-            })
-        );
+            },
+        ]);
     }
 
     const mergedStyle = { ...style };
