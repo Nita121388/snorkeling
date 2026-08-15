@@ -1119,6 +1119,53 @@ const TermSessionNoteEditor = React.memo(
 
 TermSessionNoteEditor.displayName = "TermSessionNoteEditor";
 
+// Lightweight one-shot hint: Claude Code classic (modal) renderer has no mouse
+// support in its prompt input; fullscreen renderer adds click-to-position the
+// cursor (+ select-to-copy). Surf a dismissible pill until the user either
+// dismisses it or Claude enables mouse reporting (fullscreen) itself.
+const TermClaudeFullscreenHint = React.memo(
+    ({ model, termWrap }: { model: TermViewModel; termWrap: TermWrap | null }) => {
+        const claudeActive = useAtomValueSafe<boolean>(termWrap?.claudeCodeActiveAtom);
+        const [dismissed, setDismissed] = React.useState(false);
+        const [mouseEnabled, setMouseEnabled] = React.useState(false);
+
+        // Poll xterm's mouse tracking mode: Claude enables it when the fullscreen
+        // renderer kicks in, which auto-hides the hint even without dismissal.
+        React.useEffect(() => {
+            if (!claudeActive) {
+                return;
+            }
+            const iv = window.setInterval(() => {
+                const m = model.termRef.current?.terminal.modes.mouseTrackingMode;
+                setMouseEnabled(m != null && m !== "none");
+            }, 1500);
+            return () => window.clearInterval(iv);
+        }, [model, claudeActive]);
+
+        if (!claudeActive || dismissed || mouseEnabled) {
+            return null;
+        }
+        return (
+            <div className="absolute top-1.5 right-1.5 z-30 flex items-center gap-2 max-w-[70%] px-2.5 py-1 rounded-md bg-surface-strong border border-border text-[11px] leading-tight text-primary shadow-sm">
+                <span className="truncate">
+                    Claude Code fullscreen adds mouse editing (click anywhere in the prompt to move
+                    the cursor): type{" "}
+                    <span className="font-mono text-accent">/tui fullscreen</span>
+                </span>
+                <button
+                    onClick={() => setDismissed(true)}
+                    aria-label="Dismiss"
+                    className="text-secondary hover:text-primary cursor-pointer shrink-0"
+                >
+                    <i className="fa fa-xmark" />
+                </button>
+            </div>
+        );
+    }
+);
+
+TermClaudeFullscreenHint.displayName = "TermClaudeFullscreenHint";
+
 const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => {
     const viewRef = React.useRef<HTMLDivElement>(null);
     const connectElemRef = React.useRef<HTMLDivElement>(null);
@@ -1652,6 +1699,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 termWrap={termWrapInst}
             />
             <TermVDomNode key="vdom" blockId={blockId} model={model} />
+            <TermClaudeFullscreenHint model={model} termWrap={termWrapInst} />
             <div
                 key="connect-elem"
                 className="term-connectelem"
