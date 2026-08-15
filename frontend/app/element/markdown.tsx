@@ -1330,6 +1330,7 @@ const Markdown = ({
         hideInsertTimerRef.current = window.setTimeout(() => {
             setInsertAnchor(null);
             setInsertPos(null);
+            setGripOpen(false);
         }, 400);
     }, []);
     const cancelHideInsert = useCallback(() => {
@@ -1338,6 +1339,37 @@ const Markdown = ({
             hideInsertTimerRef.current = null;
         }
     }, []);
+
+    // A/B insert actions visibility. They are independent portal'd buttons mounted whenever
+    // the block grip is (insertPos != null) but visually hidden until the pointer is over the
+    // grip C or the actions themselves. Same 400ms grace pattern, on a separate timer so that
+    // moving C → A/B (through the gap between them) keeps them alive.
+    const [gripOpen, setGripOpen] = useState(false);
+    const hideGripTimerRef = useRef<number | null>(null);
+    const scheduleHideGrip = useCallback(() => {
+        if (hideGripTimerRef.current != null) {
+            window.clearTimeout(hideGripTimerRef.current);
+        }
+        hideGripTimerRef.current = window.setTimeout(() => {
+            setGripOpen(false);
+        }, 400);
+    }, []);
+    const cancelHideGrip = useCallback(() => {
+        if (hideGripTimerRef.current != null) {
+            window.clearTimeout(hideGripTimerRef.current);
+            hideGripTimerRef.current = null;
+        }
+    }, []);
+    // Shared enter/leave handlers for C, A and B: hovering any of them keeps the block anchor
+    // alive (cancelHideInsert, in case the pointer is crossing from the block) and reveals A/B.
+    const handleGripEnter = useCallback(() => {
+        cancelHideInsert();
+        cancelHideGrip();
+        setGripOpen(true);
+    }, [cancelHideInsert, cancelHideGrip]);
+    const handleGripLeave = useCallback(() => {
+        scheduleHideGrip();
+    }, [scheduleHideGrip]);
 
     const resolveInsertAnchorEl = useCallback(
         (line: number): HTMLElement | null => {
@@ -1362,14 +1394,15 @@ const Markdown = ({
             return;
         }
         const rect = el.getBoundingClientRect();
-        // Grip sits at the block's left edge (mostly in the gutter, ~4px overlap) like
-        // Notion's block handle. It must NOT sit deep in the gutter: moving the pointer from
-        // the block text toward the grip would then cross the block's left boundary first,
-        // firing handleRootMouseOver with a non-block target which clears the anchor
-        // synchronously (insertAnchor=null) — the grip would unmount before the pointer
-        // reaches it. Overlapping the block edge keeps the proven hover path: block → grip
-        // (mouseleave schedules the 400ms hide grace; grip mouseenter cancels it).
-        setInsertPos({ top: rect.top + rect.height / 2, left: Math.max(rect.left - 4, 8) });
+        // Grip sits in the gutter left of the block (like a code-editor row handle) so it
+        // never overlaps the text. The block anchor point is the block's vertical middle;
+        // the grip centers on it via translate(-50%, -50%), and the insert actions (A/B)
+        // are placed relative to the same anchor in the JSX (above/below the grip, same
+        // column). Clamp to viewport for far-left blocks (content has ~15px padding).
+        // ponytail: blocks near the top/bottom of the document can push A/B past the
+        // viewport edge (first block's A, last block's B) — accepted for now; upgrade path
+        // is flipping the stack direction when the anchor is near a viewport edge.
+        setInsertPos({ top: rect.top + rect.height / 2, left: Math.max(rect.left - 26, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
     insertAnchorRef.current = insertAnchor;
@@ -1379,6 +1412,19 @@ const Markdown = ({
     const handleRootMouseOver = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
             if (!onInlineEditCommit) {
+                return;
+            }
+            // Our own grip portal elements live on body: when React mounts/re-mounts them
+            // under a stationary pointer, the browser fires a synthetic mouseover on them
+            // (topmost element changed) whose target is not inside a [data-source-line] block.
+            // Clearing the anchor there would unmount the grip → pointer over the block again
+            // → re-mount → synthetic mouseover → … an every-frame flicker loop (the grip
+            // visually jumps). Hovering C/A/B is a continuation of the same hover intent —
+            // ignore and keep the anchor.
+            if (
+                e.target instanceof HTMLElement &&
+                e.target.closest(".markdown-block-grip-dots, .markdown-block-grip-action") != null
+            ) {
                 return;
             }
             // Don't fight the inline-edit overlay itself (portal is on body, but the
@@ -1391,7 +1437,11 @@ const Markdown = ({
                 "[data-source-line]:not(img)"
             );
             if (target == null || target.closest("img") != null) {
-                setInsertAnchor(null);
+                // Non-block target (padding, gutter, spacers). Deliberately do NOT clear the
+                // anchor here: the pointer moving from the block text toward the gutter grip
+                // crosses the block's left boundary first, and a synchronous clear would
+                // unmount the grip before the pointer reaches it. Leaving the block entirely
+                // is handled by the OSB mouseleave → scheduleHideInsert's 400ms grace.
                 return;
             }
             const lineAttr = target.dataset.sourceLine;
@@ -2165,39 +2215,50 @@ const Markdown = ({
                     )}
                     {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
-                            <div
-                                className="markdown-block-grip"
-                                style={{ top: insertPos.top, left: insertPos.left }}
-                                onMouseEnter={cancelHideInsert}
-                                onMouseLeave={scheduleHideInsert}
-                            >
-                                {/* 2×2 dot matrix — the grip itself, styled after code-editor row drag handles. */}
-                                <span className="markdown-block-grip-dots" aria-hidden="true">
-                                    <i className="markdown-block-grip-dot" />
-                                    <i className="markdown-block-grip-dot" />
-                                    <i className="markdown-block-grip-dot" />
-                                    <i className="markdown-block-grip-dot" />
-                                </span>
-                                {/* Hovering the grip reveals the two insert actions (above / below). */}
-                                <div className="markdown-block-grip-actions">
-                                    <button
-                                        className="markdown-block-grip-action"
-                                        title="Insert block above"
-                                        aria-label="Insert block above"
-                                        onClick={() => handleInsertClick("before")}
-                                    >
-                                        <i className="fa-sharp fa-solid fa-arrow-up-from-line" />
-                                    </button>
-                                    <button
-                                        className="markdown-block-grip-action"
-                                        title="Insert block below"
-                                        aria-label="Insert block below"
-                                        onClick={() => handleInsertClick("after")}
-                                    >
-                                        <i className="fa-sharp fa-solid fa-arrow-down-to-line" />
-                                    </button>
+                            <>
+                                {/* C: 4-dot grip — gutter left of the block, vertically centered. */}
+                                <div
+                                    className="markdown-block-grip-dots"
+                                    style={{ top: insertPos.top, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                >
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
                                 </div>
-                            </div>,
+                                {/* A: insert above — same column, just above the grip. */}
+                                <button
+                                    className={
+                                        "markdown-block-grip-action" +
+                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                    }
+                                    title="Insert block above"
+                                    aria-label="Insert block above"
+                                    style={{ top: insertPos.top - 33, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                    onClick={() => handleInsertClick("before")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-up-from-line" />
+                                </button>
+                                {/* B: insert below — same column, just below the grip. */}
+                                <button
+                                    className={
+                                        "markdown-block-grip-action" +
+                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                    }
+                                    title="Insert block below"
+                                    aria-label="Insert block below"
+                                    style={{ top: insertPos.top + 15, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                    onClick={() => handleInsertClick("after")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-down-to-line" />
+                                </button>
+                            </>,
                             document.body
                         )}
                 </OverlayScrollbarsComponent>
