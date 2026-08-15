@@ -346,10 +346,11 @@ MarkdownPreview 新增可选 props（frontmatterBlock / waveBlockRenderers），
 
 ## 7. 后续迭代（Phase 2+）
 
-- 属性编辑：双击属性卡片 → 行内编辑 value → 写回 YAML
+- ✅ 属性编辑（2026-08-15 完成）：点击属性行进入编辑（text/number/date/json 输入框、boolean 点击切换、tag/list 逗号分隔），Enter 保存 / Esc 取消；保存走草稿语义（newFileContent → Save/Cmd+S 落盘，与正文 inline-edit 一致）。编辑实现：卡片 onDataChange → 新对象 YAML.stringify → replaceFrontmatter 整块替换 frontmatter 行区域。
 - 折叠/展开属性面板
 - 排序拖拽
 - 类型手动覆盖（配置对话框）
+- 增加/删除属性键（当前仅改值）
 - 支持 YAML 的其他方言（如 TOML frontmatter：`+++` 起始）
 
 ---

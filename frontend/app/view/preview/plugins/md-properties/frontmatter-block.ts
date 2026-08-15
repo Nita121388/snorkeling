@@ -229,3 +229,38 @@ export function buildPropertyEntries(data: Record<string, unknown>): PropertyEnt
     }
     return entries;
 }
+// ---------- 属性编辑写回（Phase 2） ----------
+
+/**
+ * 把属性对象序列化为 YAML 文本（frontmatter 去分隔符内容）。
+ * 键顺序保持对象插入序（YAML.parse 结果与原文键顺序一致）。
+ */
+export function stringifyFrontmatterData(data: Record<string, unknown>): string {
+    try {
+        return YAML.stringify(data, { indent: 2, lineWidth: 0 }).trimEnd();
+    } catch {
+        // 极端值（循环引用等）兜底：逐键字符串化
+        return Object.entries(data)
+            .map(([k, v]) => `${k}: ${String(v)}`)
+            .join("\n");
+    }
+}
+
+/**
+ * 用新 YAML 文本替换原文中的 frontmatter 区域 [startLine..endLine]（1-based, inclusive）。
+ * 保留原 EOL 风格（CRLF/LF）；行号越界返回原文不变。
+ */
+export function replaceFrontmatter(text: string, fb: FrontmatterBlock, newYaml: string): string {
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = text.split(/\r?\n/);
+    const startIdx = fb.startLine - 1;
+    const endIdx = fb.endLine - 1;
+    if (startIdx < 0 || endIdx >= lines.length || startIdx > endIdx) {
+        return text;
+    }
+    const head = lines.slice(0, startIdx);
+    const tail = lines.slice(endIdx + 1);
+    const yamlLines = newYaml.split(/\r?\n/).filter((l, i, a) => !(i === a.length - 1 && l === ""));
+    const block = ["---", ...yamlLines, "---"];
+    return [...head, ...block, ...tail].join(eol);
+}

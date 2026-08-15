@@ -6,6 +6,8 @@ import {
     parseFrontmatterBlock,
     inferPropertyType,
     buildPropertyEntries,
+    replaceFrontmatter,
+    stringifyFrontmatterData,
 } from "./frontmatter-block";
 
 describe("parseFrontmatterBlock", () => {
@@ -147,5 +149,47 @@ describe("buildPropertyEntries", () => {
     it("wraps non-array list values", () => {
         const entries = buildPropertyEntries({ single: ["only-one"] });
         expect(entries[0].value).toEqual(["only-one"]);
+    });
+});
+describe("replaceFrontmatter", () => {
+    const fb = (content: string) => parseFrontmatterBlock(content)!;
+
+    it("replaces the frontmatter block with new yaml", () => {
+        const md = ["---", "title: A", "tags: [x]", "---", "", "Body."].join("\n");
+        const block = fb(md);
+        const out = replaceFrontmatter(md, block, "title: B\ntags:\n  - y");
+        expect(out).toBe(["---", "title: B", "tags:", "  - y", "---", "", "Body."].join("\n"));
+        // 正文不受影响
+        expect(out).toContain("Body.");
+    });
+
+    it("preserves CRLF line endings", () => {
+        const md = "---\r\ntitle: A\r\n---\r\n\r\nBody.";
+        const block = fb(md);
+        const out = replaceFrontmatter(md, block, "title: B");
+        expect(out.startsWith("---\r\n")).toBe(true);
+        expect(out).toBe("---\r\ntitle: B\r\n---\r\n\r\nBody.");
+    });
+
+    it("supports empty yaml (drops to ---\\n---)", () => {
+        const md = "---\ntitle: A\n---\n\nBody.";
+        const block = fb(md);
+        expect(replaceFrontmatter(md, block, "")).toBe("---\n---\n\nBody.");
+    });
+
+    it("returns the original text when line range is out of bounds", () => {
+        const md = "---\ntitle: A\n---\n\nBody.";
+        const out = replaceFrontmatter(md, { startLine: 99, endLine: 100, yamlText: "", data: {} }, "title: B");
+        expect(out).toBe(md);
+    });
+
+    it("round-trips through stringifyFrontmatterData", () => {
+        const md = ["---", "title: Hello", "tags: [a, b]", "得分: 5", "---", "Body."].join("\n");
+        const block = fb(md);
+        const newData = { ...block.data, 得分: 9 };
+        const newYaml = stringifyFrontmatterData(newData);
+        const out = replaceFrontmatter(md, block, newYaml);
+        const reparsed = parseFrontmatterBlock(out)!;
+        expect(reparsed.data).toEqual({ title: "Hello", tags: ["a", "b"], 得分: 9 });
     });
 });
