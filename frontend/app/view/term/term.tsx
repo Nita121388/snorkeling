@@ -1123,6 +1123,14 @@ TermSessionNoteEditor.displayName = "TermSessionNoteEditor";
 // support in its prompt input; fullscreen renderer adds click-to-position the
 // cursor (+ select-to-copy). Surf a dismissible pill until the user either
 // dismisses it or Claude enables mouse reporting (fullscreen) itself.
+export function shouldShowClaudeFullscreenHint(
+    claudeActive: boolean,
+    dismissed: boolean,
+    mouseEnabled: boolean
+): boolean {
+    return claudeActive && !dismissed && !mouseEnabled;
+}
+
 const TermClaudeFullscreenHint = React.memo(
     ({ model, termWrap }: { model: TermViewModel; termWrap: TermWrap | null }) => {
         const claudeActive = useAtomValueSafe<boolean>(termWrap?.claudeCodeActiveAtom);
@@ -1142,7 +1150,7 @@ const TermClaudeFullscreenHint = React.memo(
             return () => window.clearInterval(iv);
         }, [model, claudeActive]);
 
-        if (!claudeActive || dismissed || mouseEnabled) {
+        if (!shouldShowClaudeFullscreenHint(claudeActive, dismissed, mouseEnabled)) {
             return null;
         }
         return (
