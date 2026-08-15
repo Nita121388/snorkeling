@@ -161,3 +161,21 @@
         border-color: var(--accent-color);
     }
 }
+
+// ---------- Phase 2.5：折叠/展开 ----------
+
+.obsidian-props-header {
+    cursor: pointer;
+    user-select: none;
+    border-radius: 6px;
+    padding: 3px 4px;
+    margin: -3px -4px 4px -4px;
+
+    &:hover {
+        background: var(--highlight-bg-color);
+    }
+
+    &.is-collapsed {
+        margin-bottom: 0;
+    }
+}
