@@ -837,7 +837,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                     }
                                     onNodeClick?.(event, row.id, row.node);
                                     commitSelection(row.id);
-                                    if (expandDirectoriesOnSingleClick && row.isDirectory) {
+                                    // ctrl/cmd 按住时为多选操作,不展开文件夹,避免多选多个目录把树撑长
+                                    if (expandDirectoriesOnSingleClick && row.isDirectory && !(event.ctrlKey || event.metaKey)) {
                                         toggleExpand(row.id);
                                     }
                                 }}
