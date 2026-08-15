@@ -13,6 +13,7 @@ import { RpcApi } from "../frontend/app/store/wshclientapi";
 import { getWebServerEndpoint } from "../frontend/util/endpoints";
 import * as keyutil from "../frontend/util/keyutil";
 import { fireAndForget, parseDataUrl } from "../frontend/util/util";
+import { resolveGitBranch } from "./dev-git";
 import {
     incrementTermCommandsDurable,
     incrementTermCommandsRemote,
@@ -235,13 +236,27 @@ function makeDevRuntimeInfo(): DevRuntimeInfo | null {
         parseDevPort(process.env.SNORKELING_VITE_PORT) ?? parseRendererPort(process.env.ELECTRON_RENDERER_URL);
     const cdpPort = parseDevPort(process.env.SNORKELING_CDP_PORT);
     const cdp = makeDevEndpoint(cdpPort, parseDevPort(process.env.SNORKELING_CDP_REQUESTED_PORT));
+    const gitBranch = resolveGitBranch(process.cwd()) ?? resolveGitBranch(electronApp.getAppPath());
+    const cdpJsonUrl = cdp == null ? null : `${cdp.url}/json/version`;
+    const version = getWaveVersion();
+    const dataDir = getWaveDataDir();
+    const configDir = getWaveConfigDir();
     return {
         profile: process.env.SNORKELING_DEV_PROFILE || "default",
+        gitBranch,
         portMode: process.env.SNORKELING_PORT_MODE === "strict" ? "strict" : "auto",
         vite: makeDevEndpoint(vitePort, parseDevPort(process.env.SNORKELING_VITE_REQUESTED_PORT)),
         cdp,
-        cdpJsonUrl: cdp == null ? null : `${cdp.url}/json/version`,
+        cdpJsonUrl,
         inspectCommand: cdp == null ? null : `node scripts/inspect-electron-ui.mjs --endpoint ${cdp.url} state`,
+        appVersion: version?.version ?? null,
+        electronVersion: process.versions?.electron ?? null,
+        nodeVersion: process.versions?.node ?? null,
+        dirs: {
+            data: dataDir,
+            config: configDir,
+            logFile: path.join(dataDir, "waveapp.log"),
+        },
     };
 }
 

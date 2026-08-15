@@ -446,11 +446,16 @@ declare global {
 
     interface DevRuntimeInfo {
         profile: string;
+        gitBranch: string | null;
         portMode: "auto" | "strict";
         vite: DevRuntimeEndpoint | null;
         cdp: DevRuntimeEndpoint | null;
         cdpJsonUrl: string | null;
         inspectCommand: string | null;
+        appVersion: string | null;
+        electronVersion: string | null;
+        nodeVersion: string | null;
+        dirs: { data: string; config: string; logFile: string } | null;
     }
 
     interface AppDebugInfo {
