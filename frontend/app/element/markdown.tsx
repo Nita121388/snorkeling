@@ -2,16 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CopyButton } from "@/app/element/copybutton";
+import { ImageLightbox } from "@/app/element/image-lightbox";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
     makeInlineEditKeydown,
+    deleteBlockRange,
+    replaceSourceRange,
+    spliceInsertBlock,
+    splitBlockAtCaretText,
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import {
     MarkdownContentBlockType,
+    editImageSyntaxInFullText,
+    removeImageSyntaxInLine,
+    replaceImageSrcInLine,
     resolveRemoteFile,
     resolveSrcSet,
     transformBlocks,
@@ -24,6 +32,7 @@ import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import { atom, Atom, useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
+import ReactDOM from "react-dom";
 
 // Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
 // call unconditional so the Rules of Hooks remain satisfied below.
@@ -48,6 +57,11 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { openLink } from "../store/global";
+import { ContextMenuModel } from "../store/contextmenu";
+import { RpcApi } from "../store/wshclientapi";
+import { TabRpcClient } from "../store/wshrpcutil";
+import { formatRemoteUri } from "@/util/waveutil";
+import { arrayToBase64, stringToBase64 } from "@/util/util";
 import {
     makeMarkdownWikiLinkHref,
     normalizeLinkedFilePath,
@@ -713,14 +727,27 @@ function WaveBlock(props: WaveBlockProps) {
 const MarkdownImg = ({
     props,
     resolveOpts,
+    fullText,
+    onInlineEditCommit,
 }: {
     props: React.ImgHTMLAttributes<HTMLImageElement>;
     resolveOpts: MarkdownResolveOpts;
+    // Source text + commit channel for edit operations ("edit path" / "delete image").
+    // LivePreview omits onInlineEditCommit, so its images are view/copy only.
+    fullText?: string;
+    onInlineEditCommit?: (newFullText: string) => void;
 }) => {
     const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);
     const [resolving, setResolving] = useState<boolean>(true);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [pathInputOpen, setPathInputOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [inputPos, setInputPos] = useState<{ top: number; left: number } | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const imgRef = useRef<HTMLImageElement | null>(null);
+    const [newPath, setNewPath] = useState("");
 
     useEffect(() => {
         if (props.src.startsWith("data:image/")) {
@@ -750,6 +777,102 @@ const MarkdownImg = ({
         resolveFn();
     }, [props.src, props.srcSet]);
 
+    // Only real, loadable images participate in the lightbox / context menu. Placeholder
+    // ([img:...]) and data-URI images are excluded from edit ops but data: URIs still zoom.
+    const imageUsable = resolvedStr == null && resolvedSrc != null;
+    // Edit ops need the source line (from the rehype node position) plus the commit channel.
+    // rehype attaches the source position to the hast node; ImgHTMLAttributes doesn't
+    // type it, so reach through a cast (mirrors getSourceLine's `props: any`).
+    const nodePos = (props as any)?.node?.position;
+    const sourceLine = nodePos?.start?.line;
+    const sourceSrc = props.src;
+
+    // Edit ops need the source line (from the rehype node position) plus the commit channel.
+    // (data: URI images have no source line and are excluded from edit ops.)
+    const canEdit = fullText != null && onInlineEditCommit != null && sourceLine != null;
+
+    const openPathInput = () => {
+        const rect = imgRef.current?.getBoundingClientRect();
+        if (rect == null) {
+            return;
+        }
+        setInputPos({ top: rect.bottom + 4, left: rect.left });
+        setNewPath(sourceSrc);
+        setPathInputOpen(true);
+    };
+
+    const commitPathEdit = () => {
+        if (!canEdit || sourceLine == null) {
+            return;
+        }
+        const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
+            replaceImageSrcInLine(lineText, sourceSrc, newPath.trim())
+        );
+        if (newText != null) {
+            onInlineEditCommit(newText);
+        }
+        setPathInputOpen(false);
+    };
+
+    const deleteImage = () => {
+        if (!canEdit || sourceLine == null) {
+            return;
+        }
+        const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) => {
+            const removed = removeImageSyntaxInLine(lineText, sourceSrc);
+            if (removed == null) {
+                return null;
+            }
+            // The image syntax was the only content on its line: drop the whole line so
+            // the surrounding text closes up. Otherwise keep the line minus the fragment.
+            return removed.isEmpty ? "" : removed.text;
+        });
+        if (newText != null) {
+            // No confirmation dialog: the edit lands in the shared draft (newFileContent)
+            // and is Revert-able until Save, same safety net as paragraph inline editing.
+            onInlineEditCommit(newText);
+        }
+        setPathInputOpen(false);
+    };
+
+    const copyImagePath = async () => {
+        await navigator.clipboard.writeText(sourceSrc ?? "");
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+    };
+
+    const handleImgClick = (e: React.MouseEvent) => {
+        if (!imageUsable) {
+            return;
+        }
+        // An image wrapped in a link ([![alt](img)](url)) keeps the link's navigation;
+        // the lightbox is reachable via the context menu in that case.
+        if ((e.target as HTMLElement).closest("a") != null) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        setLightboxOpen(true);
+    };
+
+    const handleImgContextMenu = (e: React.MouseEvent) => {
+        if (!imageUsable) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const menu: ContextMenuItem[] = [
+            { label: "放大查看", click: () => setLightboxOpen(true) },
+            { label: "复制图片路径", click: () => void copyImagePath() },
+        ];
+        if (canEdit) {
+            menu.push({ type: "separator" });
+            menu.push({ label: "修改路径", click: openPathInput });
+            menu.push({ label: "删除图片", click: deleteImage });
+        }
+        ContextMenuModel.getInstance().showContextMenu(menu, e);
+    };
+
     if (resolving) {
         return null;
     }
@@ -757,7 +880,43 @@ const MarkdownImg = ({
         return <span>{resolvedStr}</span>;
     }
     if (resolvedSrc != null) {
-        return <img {...props} src={resolvedSrc} srcSet={resolvedSrcSet} />;
+        return (
+            <>
+                <img
+                    ref={imgRef}
+                    {...props}
+                    src={resolvedSrc}
+                    srcSet={resolvedSrcSet}
+                    className={cn(props.className, "markdown-img-clickable")}
+                    onClick={handleImgClick}
+                    onContextMenu={handleImgContextMenu}
+                />
+                {copied && <span className="markdown-img-copied">已复制路径</span>}
+                {lightboxOpen && <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />}
+                {pathInputOpen && inputPos != null &&
+                    ReactDOM.createPortal(
+                        <div className="markdown-img-path-input" style={{ top: inputPos.top, left: inputPos.left }}>
+                            <input
+                                ref={inputRef}
+                                autoFocus
+                                value={newPath}
+                                spellCheck={false}
+                                placeholder="图片路径"
+                                onChange={(e) => setNewPath(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        commitPathEdit();
+                                    } else if (e.key === "Escape") {
+                                        setPathInputOpen(false);
+                                    }
+                                }}
+                                onBlur={() => setPathInputOpen(false)}
+                            />
+                        </div>,
+                        document.body
+                    )}
+            </>
+        );
     }
     return <span>[img]</span>;
 };
@@ -990,6 +1149,12 @@ const Markdown = ({
     // rather than open the editor, mirroring the dblclick path's long-standing guard.
     const resolveEditTargetFromEvent = useCallback(
         (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
+            // Images are read-only in the preview: clicking zooms, right-click opens the
+            // image menu. Never let a click/dblclick on an <img> fall through to paragraph
+            // inline editing — that used to pop the editor over the whole paragraph.
+            if ((e.target as HTMLElement | null)?.closest("img") != null) {
+                return null;
+            }
             let target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
             if (target == null) {
                 return null;
@@ -1083,6 +1248,43 @@ const Markdown = ({
     // changes the global selection.
     const mousedownSelectionRef = useRef<string>("");
 
+    // Maps the click's clientX/Y to a character offset within the clicked block's rendered
+    // text. Uses Chromium's caretRangeFromPoint (the renderer is Electron), then walks the
+    // block's text nodes to turn the per-text-node offset into a block-absolute offset.
+    // Returns null when the hit is outside the block's text (blank edge, no caret API) —
+    // callers then fall back to select-all / line-start.
+    const computeRenderedOffset = (clientX: number, clientY: number, block: HTMLElement): number | null => {
+        if (typeof document.caretRangeFromPoint !== "function") {
+            return null;
+        }
+        const range = document.caretRangeFromPoint(clientX, clientY);
+        if (range == null) {
+            return null;
+        }
+        const container = range.startContainer;
+        if (container == null || !block.contains(container as Node)) {
+            return null;
+        }
+        let offset = range.startOffset;
+        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node != null && node !== container) {
+            offset += (node as Text).data.length;
+            node = walker.nextNode();
+        }
+        return node != null ? offset : null;
+    };
+
+    // ponytail: the rendered offset is used directly as a draft (source) offset. It is exact
+    // for plain text and soft-wrapped lines (\n renders 1:1 as a space), and off by the length
+    // of inline markdown markers (**bold**, [link](...), `code`) on styled lines — the caret
+    // lands nearby and the user nudges it. Upgrade path: map through the markdown AST so
+    // rendered offset → source offset is exact.
+    const beginEditAtPoint = (e: React.MouseEvent, resolved: { target: HTMLElement; line: number; blockKind: InlineEditBlockKind }) => {
+        const caret = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
+        inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target, caret ?? undefined);
+    };
+
     // Single-click entry path. Differs from dblclick in two ways:
     //   1. Bound on bubble phase (onClick, not onClickCapture) so <Link>'s onClick and the
     //      CollapsibleHeading chevron button's onClick (which calls stopPropagation) get first
@@ -1132,9 +1334,12 @@ const Markdown = ({
             }
             e.preventDefault();
             e.stopPropagation();
-            inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
+            // Single click = edit at the clicked position (caret lands where the user
+            // clicked). Dblclick still select-alls via beginEdit without a caret — the two
+            // gestures complement each other.
+            beginEditAtPoint(e, resolved);
         },
-        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent]
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint]
     );
 
     const handleInlineEditMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -1144,14 +1349,504 @@ const Markdown = ({
         mousedownSelectionRef.current = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
     }, []);
 
+    // ---- Block-edge insert buttons --------------------------------------------------
+    // Hovering an editable block shows a small ↑/↓ pair at its left edge; clicking one
+    // opens a blank inline editor that inserts a new block before/after (see
+    // useInlineEdit.beginInsertEdit). Tracked here because the buttons must follow the
+    // block as the user scrolls.
+    //
+    // We store ONLY the source line, not the element: any re-render of the Markdown subtree
+    // (hover state, ReactMarkdown plugin identity churn) replaces the block's DOM node, so a
+    // cached element goes stale and its isConnected flips false. Re-resolve the element from
+    // [data-source-line] at measure/click time (same fallback pattern as inline editing).
+    const [insertAnchor, setInsertAnchor] = useState<{ line: number } | null>(null);
+    const [insertPos, setInsertPos] = useState<{ top: number; left: number } | null>(null);
+
+    // Buttons are portal'd to body (outside the block DOM), so moving the pointer from the
+    // block onto a button fires the block's mouseout. Keep the buttons alive for a short
+    // grace window after the pointer leaves, and cancel it while the pointer is over them —
+    // same pattern as FlyoutMenu's hover close.
+    const hideInsertTimerRef = useRef<number | null>(null);
+    const scheduleHideInsert = useCallback(() => {
+        if (hideInsertTimerRef.current != null) {
+            window.clearTimeout(hideInsertTimerRef.current);
+        }
+        hideInsertTimerRef.current = window.setTimeout(() => {
+            setInsertAnchor(null);
+            setInsertPos(null);
+            setGripOpen(false);
+        }, 400);
+    }, []);
+    const cancelHideInsert = useCallback(() => {
+        if (hideInsertTimerRef.current != null) {
+            window.clearTimeout(hideInsertTimerRef.current);
+            hideInsertTimerRef.current = null;
+        }
+    }, []);
+
+    // A/B insert actions visibility. They are independent portal'd buttons mounted whenever
+    // the block grip is (insertPos != null) but visually hidden until the pointer is over the
+    // grip C or the actions themselves. Same 400ms grace pattern, on a separate timer so that
+    // moving C → A/B (through the gap between them) keeps them alive.
+    const [gripOpen, setGripOpen] = useState(false);
+    const hideGripTimerRef = useRef<number | null>(null);
+    const scheduleHideGrip = useCallback(() => {
+        if (hideGripTimerRef.current != null) {
+            window.clearTimeout(hideGripTimerRef.current);
+        }
+        hideGripTimerRef.current = window.setTimeout(() => {
+            setGripOpen(false);
+        }, 400);
+    }, []);
+    const cancelHideGrip = useCallback(() => {
+        if (hideGripTimerRef.current != null) {
+            window.clearTimeout(hideGripTimerRef.current);
+            hideGripTimerRef.current = null;
+        }
+    }, []);
+    // Shared enter/leave handlers for C, A and B: hovering any of them keeps the block anchor
+    // alive (cancelHideInsert, in case the pointer is crossing from the block) and reveals A/B.
+    const handleGripEnter = useCallback(() => {
+        cancelHideInsert();
+        cancelHideGrip();
+        setGripOpen(true);
+    }, [cancelHideInsert, cancelHideGrip]);
+    const handleGripLeave = useCallback(() => {
+        scheduleHideGrip();
+    }, [scheduleHideGrip]);
+
+    // --- Block selection (click the four-dot grip) --------------------------------
+    // Clicking the grip C marks its block as selected (a highlight overlay + right-click
+    // menu with Copy / Duplicate / Delete. Block-scoped, driven by start/end line of the
+    // hovered block, and resolved live so it follows re-renders.
+    const [selectedBlock, setSelectedBlock] = useState<{ line: number; rect: { top: number; left: number; width: number; height: number } } | null>(null);
+    // live DOM ref for the selected block element, re-resolved from [data-source-line] so the
+    // highlight overlay tracks re-renders / line edits.
+    const selectedLineRef = useRef<number | null>(null);
+    selectedLineRef.current = selectedBlock?.line ?? null;
+
+    // Measure the currently selected block element (re-resolving from its line) so the
+    // highlight overlay follows re-renders and scrolls. Kept in step with insertAnchor's own
+    // scroll/resize watcher below.
+    const measureSelectedBlock = useCallback(() => {
+        const line = selectedLineRef.current;
+        if (line == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        const el = viewport && viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        if (el == null) {
+            setSelectedBlock(null); // block no longer exists (deleted / file changed)
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        setSelectedBlock((prev) => {
+            if (
+                prev != null &&
+                prev.line === line &&
+                prev.rect.top === rect.top &&
+                prev.rect.left === rect.left &&
+                prev.rect.width === rect.width &&
+                prev.rect.height === rect.height
+            ) {
+                return prev; // unchanged — avoid re-render churn
+            }
+            return { line, rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height } };
+        });
+    }, [getViewportEl]);
+
+    // Re-measure the selection on scroll/resize/after-commit so the overlay hugs the block.
+    useEffect(() => {
+        if (selectedBlock == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        measureSelectedBlock();
+        const onScrollOrResize = () => requestAnimationFrame(measureSelectedBlock);
+        viewport?.addEventListener("scroll", onScrollOrResize, { passive: true });
+        window.addEventListener("resize", onScrollOrResize);
+        return () => {
+            viewport?.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+        };
+    }, [selectedBlock, getViewportEl, measureSelectedBlock]);
+
+    // Escape clears any block selection (unless the inline editor is open — it owns Escape).
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && selectedLineRef.current != null && inlineEdit.editSession == null) {
+                setSelectedBlock(null);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inlineEdit.editSession]);
+
+    // Helper: wait for the markdown preview to re-render after a commit, then open a blank
+    // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
+    // is forwarded so Esc can undo the whole insert.
+    const focusEditedLine = useCallback(
+        (newLine: number, revert?: () => void) => {
+            // Give ReactMarkdown time to commit the new text to the DOM (one frame is usually
+            // sufficient; a second rAF guards against double-batched concurrent renders).
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const viewport = getViewportEl();
+                    const el =
+                        viewport &&
+                        viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${newLine}"]`);
+                    if (el != null) {
+                        inlineEdit.beginEdit("p", newLine, el, 0, revert);
+                    }
+                });
+            });
+        },
+        [getViewportEl, inlineEdit]
+    );
+
+    // --- Enter / split-at-caret ---------------------------------------------------
+    // Handles the user pressing bare Enter while editing a block (paragraph, blank row,
+    // or list). Paragraphs split into two blocks (front stays, back becomes a new block
+    // with its own editor); lists add a new list item without closing the editor.
+    // - Shift+Enter stays the native soft line break (no split).
+    // - Code / table / heading blocks fall through to the default behavior (line break).
+    const handleEnterSplit = useCallback(() => {
+        const session = inlineEdit.editSession;
+        const ta = inlineEdit.textareaRef.current;
+        if (session == null || ta == null) {
+            return;
+        }
+        const pos = ta.selectionStart;
+        const draft = inlineEdit.draftText;
+
+        // --- List: add a new item within the same list (same editor stays open) -----------
+        if (session.blockKind === "list") {
+            const lineEnd = draft.indexOf("\n", pos);
+            const lineStart = draft.lastIndexOf("\n", pos) + 1;
+            const line = draft.slice(lineStart, lineEnd === -1 ? draft.length : lineEnd);
+            const prefix = (line.match(/^(\s*[-+*]\s|\s*\d+\.\s)/) || [""])[0];
+            const before = draft.slice(0, pos);
+            const after = draft.slice(pos);
+            const newDraft = before + "\n" + prefix + after;
+            inlineEdit.setDraftText(newDraft);
+            const newPos = pos + 1 + prefix.length; // after the newline + prefix
+            // schedule after the render so setSelectionRange sticks
+            requestAnimationFrame(() => {
+                ta.selectionStart = newPos;
+                ta.selectionEnd = newPos;
+            });
+            return;
+        }
+
+        // --- Paragraph / blank row: split into two blocks ---------------------------------
+        // Only split for the block kinds the user actually presses Enter in; headings,
+        // code, and tables fall through (browser's native line-break is fine).
+        if (session.blockKind !== "p" && session.blockKind !== "blank") {
+            return; // let the textarea do its native newline
+        }
+
+        const { text: newFull, newLine } = splitBlockAtCaretText(
+            text,
+            session.startLine,
+            session.endLine,
+            draft,
+            pos
+        );
+        const revert = () => {
+            handleInlineEditCommit(text); // restore the document to what it was before the split
+        };
+        handleInlineEditCommit(newFull);
+        focusEditedLine(newLine, revert);
+    }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
+
+    // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
+    // Mirrors Obsidian: pasting an image while editing a block saves it to a sibling `assets`
+    // directory (created on demand) and inserts a markdown image reference at the caret. The
+    // image FILE is written to disk immediately (independent of the md save flow); only the
+    // markdown line goes through the shared draft (so Save/Revert still apply to the text).
+    // Pure-text pastes are untouched (handler returns undefined → native paste proceeds).
+    const handleEditorPaste = useCallback(
+        async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+            const session = inlineEdit.editSession;
+            const ta = inlineEdit.textareaRef.current;
+            const baseDir = resolveOpts?.baseDir;
+            if (session == null || ta == null || baseDir == null) {
+                return; // not editing / no file dir to write into → native paste
+            }
+            // Find an image item in the clipboard (png/jpg/gif/webp). If none, fall through.
+            const items = Array.from(e.clipboardData?.items ?? []);
+            const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+            if (imageItem == null || e.clipboardData.files == null || e.clipboardData.files.length === 0) {
+                return;
+            }
+            const blob = e.clipboardData.files[0];
+            if (!blob.type.startsWith("image/")) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            const ext = blob.type === "image/jpeg" ? "jpg" : blob.type.replace("image/", "").split("+")[0] || "png";
+            const date = new Date();
+            const pad = (n: number) => String(n).padStart(2, "0");
+            const stamp =
+                `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+                `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+            const rand = Math.floor(Math.random() * 900 + 100);
+            const fileName = `image-${stamp}-${rand}.${ext}`;
+            const relPath = `assets/${fileName}`;
+
+            try {
+                // 1) ensure the sibling assets/ directory exists
+                const baseUri = formatRemoteUri(baseDir, resolveOpts?.connName ?? "local");
+                await RpcApi.FileMkdirCommand(TabRpcClient, {
+                    info: { path: `${baseUri}/assets`, mimetype: "directory" },
+                });
+                // 2) write the image bytes
+                const buf = await blob.arrayBuffer();
+                const data64 = arrayToBase64(new Uint8Array(buf));
+                await RpcApi.FileWriteCommand(TabRpcClient, {
+                    info: { path: `${baseUri}/${relPath}`, mimetype: blob.type },
+                    data64,
+                });
+            } catch (err) {
+                console.error("[markdown] paste-image write failed", err);
+                return;
+            }
+
+            // 3) insert `![图片](assets/xxx.png)` at the caret and commit
+            const caretPos = ta.selectionStart;
+            const draft = inlineEdit.draftText;
+            const imgMarkdown = `![图片](${relPath})`;
+            const newDraft = draft.slice(0, caretPos) + imgMarkdown + draft.slice(caretPos);
+            const newFull = replaceSourceRange(text, session.startLine, session.endLine, newDraft);
+            handleInlineEditCommit(newFull);
+        },
+        [inlineEdit, resolveOpts, text, handleInlineEditCommit]
+    );
+
+    const resolveInsertAnchorEl = useCallback(
+        (line: number): HTMLElement | null => {
+            const viewport = getViewportEl();
+            if (viewport == null) {
+                return null;
+            }
+            return viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        },
+        [getViewportEl]
+    );
+
+    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / duplicate / delete)
+    // Resolves the current anchor block's [start..end] source range, shows a selection
+    // highlight overlay over it, and opens a native context menu. Block-scoped operations are
+    // applied to the markdown source via the same range helpers the editor uses.
+    const handleGripMenuClick = useCallback(
+        (e: React.MouseEvent) => {
+            const anchor = insertAnchorRef.current;
+            if (anchor == null) {
+                return;
+            }
+            const el = resolveInsertAnchorEl(anchor.line);
+            if (el == null) {
+                return;
+            }
+            const startLineRaw = Number(el.dataset.sourceLine);
+            if (!Number.isFinite(startLineRaw) || startLineRaw < 1) {
+                return;
+            }
+            const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLineRaw;
+            const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLineRaw ? endLineRaw : startLineRaw;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const lines = text.split(/\r\n|\n/);
+            const blockSource = lines.slice(startLineRaw - 1, endLine).join("\n");
+
+            // Live-highlight: set the overlay now; measureSelectedBlock re-anchors after render if needed.
+            const rect = el.getBoundingClientRect();
+            setSelectedBlock({
+                line: startLineRaw,
+                rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+            });
+
+            const copyBlock = async () => {
+                await navigator.clipboard.writeText(blockSource);
+            };
+            const duplicateBlock = () => {
+                const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
+                handleInlineEditCommit(newFull);
+            };
+            const deleteBlock = () => {
+                const newFull = deleteBlockRange(text, startLineRaw, endLine);
+                handleInlineEditCommit(newFull);
+                setSelectedBlock(null);
+            };
+
+            const menu: ContextMenuItem[] = [
+                { label: "复制", click: () => void copyBlock() },
+                { label: "复制为副本", click: duplicateBlock },
+                { type: "separator" },
+                { label: "删除", click: deleteBlock },
+            ];
+            ContextMenuModel.getInstance().showContextMenu(menu, e, {
+                onClose: () => setSelectedBlock(null),
+            });
+        },
+        [resolveInsertAnchorEl, text, handleInlineEditCommit]
+    );
+
+    const measureInsertAnchor = useCallback(() => {
+        const anchor = insertAnchorRef.current;
+        if (anchor == null) {
+            setInsertPos(null);
+            return;
+        }
+        const el = resolveInsertAnchorEl(anchor.line);
+        if (el == null) {
+            setInsertPos(null);
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        // Grip sits in the gutter left of the block, anchored to the block's TOP-LEFT (like
+        // Notion's handle): insertPos.top is the anchor center for translate(-50%, -50%), so
+        // rect.top + 8 centers the 16px grip on the block's top edge (half above, half beside
+        // the first line). NOT the vertical middle — centering on tall blocks (lists, code,
+        // multi-line paragraphs) floated the grip mid-block, looking detached from the hovered
+        // row. The insert actions (A/B) are placed relative to the same anchor in the JSX.
+        // Clamp to viewport for far-left blocks (content has ~15px padding).
+        // ponytail: the block's hovered row can be deep in a list (LI) while data-source-line
+        // resolves to the UL — the grip then anchors to the list's top-left, acceptable.
+        setInsertPos({ top: rect.top + 8, left: Math.max(rect.left - 26, 8) });
+    }, [resolveInsertAnchorEl]);
+    const insertAnchorRef = useRef<{ line: number } | null>(null);
+    insertAnchorRef.current = insertAnchor;
+
+    // Hover tracking on the render root: resolve the nearest [data-source-line] block,
+    // skipping images (they own their click/right-click) and blocks we can't edit.
+    const handleRootMouseOver = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!onInlineEditCommit) {
+                return;
+            }
+            // Our own grip portal elements live on body: when React mounts/re-mounts them
+            // under a stationary pointer, the browser fires a synthetic mouseover on them
+            // (topmost element changed) whose target is not inside a [data-source-line] block.
+            // Clearing the anchor there would unmount the grip → pointer over the block again
+            // → re-mount → synthetic mouseover → … an every-frame flicker loop (the grip
+            // visually jumps). Hovering C/A/B is a continuation of the same hover intent —
+            // ignore and keep the anchor.
+            if (
+                e.target instanceof HTMLElement &&
+                e.target.closest(".markdown-block-grip-dots, .markdown-block-grip-action") != null
+            ) {
+                return;
+            }
+            // Don't fight the inline-edit overlay itself (portal is on body, but the
+            // mouseover can still bubble from the textarea's DOM if it renders inside root).
+            if (inlineEdit.editSession != null) {
+                setInsertAnchor(null);
+                return;
+            }
+            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+                "[data-source-line]:not(img)"
+            );
+            if (target == null || target.closest("img") != null) {
+                // Non-block target (padding, gutter, spacers). Deliberately do NOT clear the
+                // anchor here: the pointer moving from the block text toward the gutter grip
+                // crosses the block's left boundary first, and a synchronous clear would
+                // unmount the grip before the pointer reaches it. Leaving the block entirely
+                // is handled by the OSB mouseleave → scheduleHideInsert's 400ms grace.
+                return;
+            }
+            const lineAttr = target.dataset.sourceLine;
+            if (lineAttr == null) {
+                setInsertAnchor(null);
+                return;
+            }
+            cancelHideInsert();
+            setInsertAnchor({ line: Number(lineAttr) });
+            // Clear any active block selection when hovering a new block.
+            setSelectedBlock(null);
+        },
+        [cancelHideInsert, inlineEdit.editSession, onInlineEditCommit]
+    );
+
+    // Measure AFTER the anchor state has been committed to a render (so insertAnchorRef is
+    // current) — measuring inside the mouseover handler races the render and reads a stale
+    // ref, which left the buttons hidden forever. Synchronous call (no rAF): the effect runs
+    // post-commit, DOM is up to date, and getBoundingClientRect forces the layout we need;
+    // rAF would additionally stall in a background/occluded window where rAF is paused.
+    useEffect(() => {
+        if (insertAnchor == null) {
+            setInsertPos(null);
+            return;
+        }
+        measureInsertAnchor();
+    }, [insertAnchor, measureInsertAnchor]);
+
+    const handleRootMouseLeave = useCallback(() => {
+        scheduleHideInsert();
+    }, [scheduleHideInsert]);
+
+    // Re-position the insert buttons while scrolling / resizing so they track the block.
+    useEffect(() => {
+        if (insertAnchor == null) {
+            return;
+        }
+        const viewport = getViewportEl();
+        const onScrollOrResize = () => requestAnimationFrame(measureInsertAnchor);
+        viewport?.addEventListener("scroll", onScrollOrResize, { passive: true });
+        window.addEventListener("resize", onScrollOrResize);
+        return () => {
+            viewport?.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+        };
+    }, [getViewportEl, insertAnchor, measureInsertAnchor]);
+
+    const handleInsertClick = useCallback(
+        (mode: "before" | "after") => {
+            const anchor = insertAnchorRef.current;
+            if (anchor == null) {
+                return;
+            }
+            const el = resolveInsertAnchorEl(anchor.line);
+            if (el == null) {
+                return;
+            }
+            // Bracket the WHOLE block: multi-line blocks (lists, tables, code, soft-broken
+            // paragraphs) carry data-source-line-end; "after" must splice below endLine or it
+            // tears the block open (new row lands mid-list). Falls back to the start line for
+            // legacy renders without the end attribute.
+            const startLine = Number(el.dataset.sourceLine);
+            const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLine;
+            const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
+
+            // Insert the blank row into the document IMMEDIATELY (so the preview visibly gains
+            // a line the moment the user clicks), remember the pre-edit text for Esc-revert,
+            // and open a blank editor on top of the new row so typing lands in it directly.
+            const originalText = text;
+            const newFull = spliceInsertBlock(text.split(/\r\n|\n/), startLine, endLine, mode, [""]).join("\n");
+            handleInlineEditCommit(newFull);
+            const newLine = mode === "before" ? startLine : endLine + 1;
+            focusEditedLine(newLine, () => handleInlineEditCommit(originalText));
+
+            setInsertAnchor(null);
+            setInsertPos(null);
+            setGripOpen(false);
+        },
+        [handleInlineEditCommit, resolveInsertAnchorEl, text, focusEditedLine]
+    );
+
     const inlineEditKeyDown = useMemo(
         () =>
             makeInlineEditKeydown({
                 commit: inlineEdit.commit,
                 cancel: inlineEdit.cancel,
                 save: onInlineEditSave,
+                onSplitCaret: handleEnterSplit,
             }),
-        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave]
+        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit]
     );
 
     const normalizedScrollTargetText = useMemo(
@@ -1685,7 +2380,14 @@ const Markdown = ({
                 onToggle={toggleOrderedListItemCollapse}
             />
         ),
-        img: (props: React.HTMLAttributes<HTMLImageElement>) => <MarkdownImg props={props} resolveOpts={resolveOpts} />,
+        img: (props: React.HTMLAttributes<HTMLImageElement>) => (
+            <MarkdownImg
+                props={props}
+                resolveOpts={resolveOpts}
+                fullText={text}
+                onInlineEditCommit={handleInlineEditCommit}
+            />
+        ),
         source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
             <MarkdownSource props={props} resolveOpts={resolveOpts} />
         ),
@@ -1838,6 +2540,8 @@ const Markdown = ({
                     // button onClick, so e.defaultPrevented / e.target.closest(...) guard
                     // interactive children, and a grown live selection guards drag-select.
                     onClick={handleInlineEditClick}
+                    onMouseOver={handleRootMouseOver}
+                    onMouseLeave={handleRootMouseLeave}
                 >
                     <ReactMarkdown
                         remarkPlugins={remarkPlugins}
@@ -1856,9 +2560,75 @@ const Markdown = ({
                             textareaRef={inlineEdit.textareaRef}
                             onTextChange={inlineEdit.setDraftText}
                             onKeyDown={inlineEditKeyDown}
+                            onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
                         />
                     )}
+                    {onInlineEditCommit && selectedBlock != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <div
+                                className="markdown-block-selected"
+                                style={{
+                                    top: selectedBlock.rect.top,
+                                    left: selectedBlock.rect.left,
+                                    width: selectedBlock.rect.width,
+                                    height: selectedBlock.rect.height,
+                                }}
+                            />,
+                            document.body
+                        )}
+                    {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <>
+                                {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu. */}
+                                <div
+                                    className="markdown-block-grip-dots"
+                                    style={{ top: insertPos.top, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                    onClick={handleGripMenuClick}
+                                    role="button"
+                                    aria-label="Block actions"
+                                    title="Block actions"
+                                >
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                </div>
+                                {/* A: insert above — same column, just above the grip. */}
+                                <button
+                                    className={
+                                        "markdown-block-grip-action" +
+                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                    }
+                                    title="Insert block above"
+                                    aria-label="Insert block above"
+                                    style={{ top: insertPos.top - 33, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                    onClick={() => handleInsertClick("before")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-up-from-line" />
+                                </button>
+                                {/* B: insert below — same column, just below the grip. */}
+                                <button
+                                    className={
+                                        "markdown-block-grip-action" +
+                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                    }
+                                    title="Insert block below"
+                                    aria-label="Insert block below"
+                                    style={{ top: insertPos.top + 15, left: insertPos.left }}
+                                    onMouseEnter={handleGripEnter}
+                                    onMouseLeave={handleGripLeave}
+                                    onClick={() => handleInsertClick("after")}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-down-to-line" />
+                                </button>
+                            </>,
+                            document.body
+                        )}
                 </OverlayScrollbarsComponent>
             ) : (
                 <div className={cn("content non-scrollable", contentClassName)}>

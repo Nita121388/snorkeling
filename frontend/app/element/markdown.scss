@@ -529,3 +529,143 @@
         min-height: 2.5em;
     }
 }
+
+// Images in rendered markdown are click-to-zoom / right-click-to-act on (see MarkdownImg).
+.markdown-img-clickable {
+    cursor: zoom-in;
+}
+
+.markdown-img-copied {
+    position: absolute;
+    margin-left: 6px;
+    font-size: 12px;
+    color: var(--accent-color, #32afff);
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 4px;
+    padding: 2px 6px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+// Inline "edit path" popover, positioned just below the image.
+.markdown-img-path-input {
+    position: fixed;
+    z-index: var(--zindex-modal-wrapper);
+    padding: 6px;
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    input {
+        width: 320px;
+        padding: 4px 8px;
+        font-size: 13px;
+        color: var(--main-text-color);
+        background: var(--input-bg-color, #2a2a2a);
+        border: 1px solid var(--input-border-color, #444);
+        border-radius: 4px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color, #32afff);
+        }
+    }
+}
+
+// Block-edge grip + insert actions — THREE independent portal'd elements, no shared container:
+//   C  .markdown-block-grip-dots    4-dot grip (2×2 matrix, code-editor drag-handle style),
+//                                    at the block's left edge gutter, vertically centered.
+//                                    Hovering a block shows C; hovering C reveals A + B.
+//   A/B .markdown-block-grip-action  "insert above / insert below" buttons, same column as C,
+//                                    stacked just above / below C; independently mounted and
+//                                    faded in/out (opacity + pointer-events, 120ms).
+// All three live at the block's left gutter so they never overlap the text. Portal'd to body;
+// the 400ms hide grace in markdown.tsx (scheduleHideInsert/cancelHideInsert for the block
+// anchor, scheduleHideGrip/cancelHideGrip for A+B) keeps them alive while the pointer travels
+// between the block, C, A and B.
+
+// C — the 4-dot grip. Centered on the anchor point with translate(-50%, -50%), so the
+// anchor (block vertical middle) is the exact center and A/B can be placed relative to it.
+// cursor stays default until drag-to-reorder is wired: a grab cursor would imply the grip is
+// draggable today, and it is not (yet).
+.markdown-block-grip-dots {
+    position: fixed;
+    z-index: var(--zindex-modal-wrapper);
+    display: grid;
+    grid-template-columns: repeat(2, 3px);
+    gap: 2px;
+    padding: 4px;
+    border-radius: 6px;
+    transform: translate(-50%, -50%);
+    cursor: default;
+
+    .markdown-block-grip-dot {
+        width: 3px;
+        height: 3px;
+        border-radius: 50%;
+        background: var(--secondary-text-color, #888);
+    }
+
+    // Subtle chip while the pointer is over the grip so the revealable actions read as
+    // interactive; dim the dots to push attention to A/B.
+    &:hover {
+        background: rgba(128, 128, 128, 0.15);
+
+        .markdown-block-grip-dot {
+            opacity: 0.5;
+        }
+    }
+}
+
+// A/B — the two insert actions, one above and one below the grip, same column.
+// Independently mounted; .hidden keeps them invisible AND click-through so they never
+// block the block's own hover/clicks while idle.
+.markdown-block-grip-action {
+    position: fixed;
+    z-index: var(--zindex-modal-wrapper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 18px;
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 4px;
+    background: var(--modal-bg-color, #1e1e1e);
+    color: var(--secondary-text-color, #aaa);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    transform: translateX(-50%);
+    transition: opacity 120ms ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    &.markdown-block-grip-action-hidden {
+        opacity: 0;
+        // Deliberately NO pointer-events: none — the buttons stay hit-testable while invisible
+        // so moving the pointer from the block straight toward B (without landing on C first)
+        // still fires its mouseenter → cancelHideGrip → gripOpen stays true → B fades in and
+        // becomes clickable. Disabling hit-testing there made those clicks land on the gutter
+        // background ("clicking up/down does nothing").
+    }
+
+    &:hover {
+        color: var(--accent-color, #32afff);
+        border-color: var(--accent-color, #32afff);
+        background: var(--modal-bg-color, #1e1e1e);
+    }
+}
+
+// Selected-block highlight: a fixed overlay that hugs the chosen block's exact rect, showing
+// a translucent accent background and an accent left border (Notion-style). pointer-events
+// none so the user can still interact with the grip/menu/inline edit underneath.
+.markdown-block-selected {
+    position: fixed;
+    z-index: 200; // above normal content, below the grip (modal-wrapper = 500)
+    pointer-events: none;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent-color, #32afff) 8%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #32afff) 15%, transparent);
+    transition: top 80ms ease, left 80ms ease, width 80ms ease, height 80ms ease;
+}
