@@ -38,6 +38,8 @@ import {
     sessionTagsLabel,
 } from "@/app/view/aisessions/session-tags";
 import type { TermViewModel } from "@/app/view/term/term-model";
+import { normalizeAgentProvider } from "./agent-meta";
+import { synthesizeClickKeys } from "./clicktoedit/click-synthesize";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { copyText } from "@/util/clipboard";
 import { PLATFORM } from "@/util/platformutil";
@@ -1504,6 +1506,44 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         });
     }, [model]);
 
+    // Host-side click-to-edit for agents without mouse support (codex / pi /
+    // opencode). Activation: modifier held (Cmd/Ctrl) + click on an agent block
+    // while the app has no mouse reporting. Synthesis is approximate; see
+    // clicktoedit/README.md for limits (vim mode, wide chars, multiline).
+    const handleSynthesizeClickCapture = React.useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!(e.metaKey || e.ctrlKey)) {
+                return;
+            }
+            const terminal = model.termRef.current?.terminal;
+            if (terminal == null || terminal.modes.mouseTrackingMode !== "none") {
+                return;
+            }
+            const provider = normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
+            if (provider == null || provider === "agent" || provider === "claude" || provider === "anthropic") {
+                return;
+            }
+            const rect = e.currentTarget.getBoundingClientRect();
+            const keys = synthesizeClickKeys({
+                terminal,
+                containerRect: rect,
+                clientX: e.clientX,
+                clientY: e.clientY,
+                cursorRow: terminal.buffer.active.cursorY,
+                cursorCol: terminal.buffer.active.cursorX,
+            });
+            if (keys == null || keys === "") {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+            model.sendDataToController(keys);
+        },
+        [model, blockData]
+    );
+
+
     // ponytail: xterm has no mouse-routing hook; plain TUI drag yields to selection. Patch xterm if both need separate gestures.
     const handleTermMouseDownCapture = React.useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1694,7 +1734,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     }, []);
 
     return (
-        <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
+        <div
+            className={clsx("view-term", "term-mode-" + termMode)}
+            ref={viewRef}
+            onContextMenu={handleContextMenu}
+            onMouseDownCapture={handleSynthesizeClickCapture}
+        >
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
