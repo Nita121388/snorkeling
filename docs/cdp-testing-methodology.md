@@ -125,3 +125,14 @@ document.querySelector(".term-session-outline")?.textContent
 - 因此后端 mint 的 `agent:sessionid` 在启动即有，但 Note/Outline 按 id 查文件会失败 → 前端必须**加载失败自动重试**
 - `--session-id` 注入是后端 mint 方案的承重梁：pi 的 `--session-id <id>` 语义为 "creating it if missing"（与 claude 一致）
 - 磁盘扫描（codex 式）对 pi 不可行：pi 文件延迟创建，扫描时序无法保证
+
+## 7. Markdown 预览 UI 交互测试要点（2026-08-14 沉淀）
+
+| 坑 | 说明 |
+| --- | --- |
+| `Input.dispatchMouseEvent` 不带 `clickCount` | 合成 mousePressed/mouseReleased 后**不会生成 click 事件**（React onClick 不触发）→ 必须显式 `clickCount: 1` |
+| 大步长瞬移鼠标 | 一次 `mouseMoved` 跨越几十 px 会吞掉 hover 链：目标元素 `:hover` 生效但 mouseover/mouseenter 不派发 → 模拟真实鼠标用 5-6px 步进 + 20-30ms 间隔 |
+| DOM 插入静止指针下 | 无论挂载/重挂载都不触发 mouseenter（只有合成 mouseover + `:hover`），React onMouseEnter 收不到 → 覆盖层交互必须靠真实移动进入 |
+| 合成 mouseover 反馈环 | portal 覆盖层在静止指针下被挂载 → 浏览器派发合成 mouseover（topmost 变化）→ 若 handler 据此清状态 → 卸载 → 指针落回内容 → 重挂载 → 每帧循环。诊断：MutationObserver 记 add/remove；修法见 markdown.tsx handleRootMouseOver 注释 |
+| 双实例选择器歧义 | 真 app 预览 + 测试注入的 host 渲染**同一组件**（同类名/同 z-index/可能同坐标）→ 选择器取 DOM 顺序最后一个（后 append 的是自己的），或先 `remove()` 掉对方 stale 元素 |
+| `.markdown-block-grip` 已改名 | 2026-08-14 起块悬浮层是三个独立元素：`.markdown-block-grip-dots`（C 四个点）+ `.markdown-block-grip-action`（A/B 插入按钮，hidden 态 `pointer-events:none`），没有容器类了 |
