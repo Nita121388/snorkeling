@@ -4,14 +4,20 @@
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ObsidianPropertiesCard, parsePropertyEditString, propertyValueToEditString } from "./obsidian-properties-card";
+import {
+    ObsidianPropertiesCard,
+    getObsidianPropsCollapsed,
+    parsePropertyEditString,
+    propertyValueToEditString,
+    setObsidianPropsCollapsed,
+} from "./obsidian-properties-card";
 
 function block(content: string): MarkdownContentBlockType {
     return { type: "obsidian-props", id: "obsidian-props[fm]", content };
 }
 
-function renderCard(yaml: string): string {
-    return renderToStaticMarkup(<ObsidianPropertiesCard block={block(yaml)} />);
+function renderCard(yaml: string, props?: { collapsedSeed?: boolean }): string {
+    return renderToStaticMarkup(<ObsidianPropertiesCard block={block(yaml)} {...props} />);
 }
 
 describe("ObsidianPropertiesCard rendering", () => {
@@ -104,5 +110,38 @@ describe("ObsidianPropertiesCard collapse", () => {
     it("collapsed header is clickable and hides rows (static render shows rows, interaction toggles)", () => {
         const html = renderCard("title: A");
         expect(html).toContain("obsidian-props-header");
+    });
+
+    it("collapsedSeed=true renders collapsed (no rows, chevron-right)", () => {
+        const html = renderCard('title: A\ntags: ["#b"]', { collapsedSeed: true });
+        expect(html).toContain("fa-chevron-right");
+        expect(html).not.toContain("fa-chevron-down");
+        expect(html).not.toContain("obsidian-props-row");
+        expect(html).toContain("is-collapsed");
+    });
+
+    it("collapsedSeed=false still renders expanded", () => {
+        const html = renderCard("title: A", { collapsedSeed: false });
+        expect(html).toContain("fa-chevron-down");
+        expect(html).toContain("obsidian-props-row");
+    });
+});
+
+describe("obsidian-props collapsed persistence cache", () => {
+    it("returns false for unknown keys", () => {
+        expect(getObsidianPropsCollapsed("ghost-block")).toBe(false);
+    });
+
+    it("round-trips set/get per key independently", () => {
+        setObsidianPropsCollapsed("block-a", true);
+        setObsidianPropsCollapsed("block-b", false);
+        expect(getObsidianPropsCollapsed("block-a")).toBe(true);
+        expect(getObsidianPropsCollapsed("block-b")).toBe(false);
+    });
+
+    it("overwrites previous value", () => {
+        setObsidianPropsCollapsed("block-c", true);
+        setObsidianPropsCollapsed("block-c", false);
+        expect(getObsidianPropsCollapsed("block-c")).toBe(false);
     });
 });

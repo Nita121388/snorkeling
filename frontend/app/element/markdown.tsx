@@ -1100,18 +1100,27 @@ const Markdown = ({
     const [idPrefix] = useState<string>(() => idPrefixProp ?? crypto.randomUUID());
 
     text = textAtomValue ?? text ?? "";
-    const transformedOutput = transformBlocks(text);
+    // useMemo 稳定 transformedOutput/contentBlocksMap 引用：鼠标移动（handleRootMouseOver →
+    // setInsertAnchor）、滚动（measureInsertAnchor → setInsertPos）等无关重渲染不改变 text，
+    // memo 命中后下游 waveblock 委托引用稳定，React 保留波块子树实例，块内组件 state
+    // （ObsidianPropertiesCard 折叠/编辑）不随重渲染丢失。frontmatter 注册随 transform 一起
+    // memo：blockKey ↔ yamlText 幂等，内容不变时引用不变。
+    const transformedOutput = useMemo(() => {
+        const output = transformBlocks(text);
+        if (frontmatterBlock) {
+            // 注册 frontmatter 内容块：后续 remark 插件把 mdast 层 frontmatter 节点替换成
+            // waveblock 占位（blockkey 指向该条目）。type 固定 "obsidian-props"
+            // （waveBlockRenderers 字典键）。
+            output.blocks.set(frontmatterBlock.blockKey, {
+                type: "obsidian-props",
+                id: frontmatterBlock.blockKey,
+                content: frontmatterBlock.yamlText,
+            });
+        }
+        return output;
+    }, [text, frontmatterBlock]);
     const transformedText = transformedOutput.content;
     const contentBlocksMap = transformedOutput.blocks;
-    if (frontmatterBlock) {
-        // 注册 frontmatter 内容块：后续 remark 插件把 mdast 层 frontmatter 节点替换成 waveblock
-        // 占位（blockkey 指向该条目）。type 固定 "obsidian-props"（waveBlockRenderers 字典键）。
-        contentBlocksMap.set(frontmatterBlock.blockKey, {
-            type: "obsidian-props",
-            id: frontmatterBlock.blockKey,
-            content: frontmatterBlock.yamlText,
-        });
-    }
 
     const getViewportEl = useCallback((): HTMLElement | null => {
         const inst = contentsOsRef.current?.osInstance();
@@ -2401,9 +2410,17 @@ const Markdown = ({
             />
         ),
     };
-    markdownComponents["waveblock"] = (props: any) => (
-        <WaveBlock {...props} blockmap={contentBlocksMap} renderers={waveBlockRenderers} />
+    // useCallback 稳定 waveblock 委托的组件引用（根治 remount 丢 state）：内联箭头函数每次
+    // 渲染都是新引用，React 把 waveblock 子树判定为「新组件类型」→ 卸载重挂 → 块内组件
+    // state（ObsidianPropertiesCard 的折叠/编辑）全部归零——鼠标移动（hover anchor）、
+    // 滚动（insertPos）都会触发 Markdown 重渲染，折叠态因此一碰就丢（见 1359 行注释：
+    // hover 重渲染会替换块的 DOM 节点）。依赖 contentBlocksMap/waveBlockRenderers 均已
+    // useMemo/useCallback 稳定，此回调在 text 不变时引用不变。
+    const waveBlockComponent = useCallback(
+        (props: any) => <WaveBlock {...props} blockmap={contentBlocksMap} renderers={waveBlockRenderers} />,
+        [contentBlocksMap, waveBlockRenderers]
     );
+    markdownComponents["waveblock"] = waveBlockComponent;
     markdownComponents["mermaidblock"] = (props: any) => {
         const getTextContent = (children: any): string => {
             if (typeof children === "string") {

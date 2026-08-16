@@ -26,7 +26,7 @@ import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData } from "./frontmatter-block";
 import { isMdPropertiesMatch } from "./md-properties-match";
-import { ObsidianPropertiesCard } from "./obsidian-properties-card";
+import { ObsidianPropertiesCard, getObsidianPropsCollapsed, setObsidianPropsCollapsed } from "./obsidian-properties-card";
 
 const pluginId = "md-properties";
 
@@ -47,6 +47,9 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
     const textLoadable = useAtomValue(loadable(model.fileContent));
     const text = textLoadable.state === "hasData" ? textLoadable.data : undefined;
     const frontmatterBlock = useMemo(() => (text ? parseFrontmatterBlock(text) : null), [text]);
+    // 折叠状态持久化 key：同一预览块（同一文件）重挂后恢复折叠/展开，与标题折叠的
+    // markdownCollapsedHeadings 同模式（key = blockId）。
+    const collapseKey = model.blockId;
 
     // 属性变更：新对象 → YAML 序列化 → 整块替换 frontmatter 区域 → 写草稿（Save/Cmd+S 落盘）。
     const handleDataChange = useCallback(
@@ -64,10 +67,15 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
     const waveBlockRenderers = useMemo(
         () => ({
             "obsidian-props": (block: MarkdownContentBlockType) => (
-                <ObsidianPropertiesCard block={block} onDataChange={handleDataChange} />
+                <ObsidianPropertiesCard
+                    block={block}
+                    onDataChange={handleDataChange}
+                    collapsedSeed={getObsidianPropsCollapsed(collapseKey)}
+                    onCollapsedChange={(next) => setObsidianPropsCollapsed(collapseKey, next)}
+                />
             ),
         }),
-        [handleDataChange]
+        [handleDataChange, collapseKey]
     );
 
     if (frontmatterBlock == null) {

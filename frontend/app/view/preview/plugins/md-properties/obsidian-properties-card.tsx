@@ -120,12 +120,30 @@ type ObsidianPropertiesCardProps = {
     block: MarkdownContentBlockType;
     /** 属性变更回调（上层负责写回草稿/保存）。缺省 = 只读模式。 */
     onDataChange?: (newData: Record<string, unknown>) => void;
+    /** 折叠状态持久化（可选）：重挂后恢复的种子值（true=收起）。与标题折叠同模式。 */
+    collapsedSeed?: boolean;
+    /** 折叠变更回写（可选）：折叠/展开时回调，上层持久化，供下次重挂恢复。 */
+    onCollapsedChange?: (next: boolean) => void;
 };
 
-export function ObsidianPropertiesCard({ block, onDataChange }: ObsidianPropertiesCardProps) {
+// 折叠状态跨 remount 持久化缓存（key = blockId）。
+// 波块子树可能因父层重挂而丢失内部 state（方案 B 已根治同一次重挂内的丢失；跨块重开/
+// tab 切换仍会卸载整个预览），与 preview-model 的 collapsedHeadings 缓存同一职责。
+// ponytail: 缓存只增不减，无清理路径；条目数 ≈ 预览过的文件数，可接受（同 collapsedHeadings）。
+const obsidianPropsCollapsedCache = new Map<string, boolean>();
+
+export function getObsidianPropsCollapsed(key: string): boolean {
+    return obsidianPropsCollapsedCache.get(key) ?? false;
+}
+
+export function setObsidianPropsCollapsed(key: string, next: boolean): void {
+    obsidianPropsCollapsedCache.set(key, next);
+}
+
+export function ObsidianPropertiesCard({ block, onDataChange, collapsedSeed, onCollapsedChange }: ObsidianPropertiesCardProps) {
     const data = useMemo(() => parseFrontmatterYamlText(block.content), [block.content]);
     const entries = useMemo(() => buildPropertyEntries(data), [data]);
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState<boolean>(() => collapsedSeed ?? false);
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
@@ -134,7 +152,11 @@ export function ObsidianPropertiesCard({ block, onDataChange }: ObsidianProperti
     const toggleCollapsed = () => {
         // 折叠时若有编辑进行中，直接放弃编辑态（行不可见后输入框无意义）
         setEditingKey(null);
-        setCollapsed((c) => !c);
+        setCollapsed((c) => {
+            const next = !c;
+            onCollapsedChange?.(next);
+            return next;
+        });
     };
 
     const startEdit = (entry: PropertyEntry) => {
