@@ -9,6 +9,7 @@ import { CopyIconButton, CopyTextButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
 import { SessionTagChips } from "./session-tag-chips";
+import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import {
     extractSessionTagsFromNote,
     mergeSessionTags,
@@ -250,6 +251,7 @@ export function SessionDetailPane({
     const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
     const noteUnchanged = parsedNoteDraft.note === (summary?.note ?? "") && sessionTagsEqual(nextTags, summary?.tags);
     const noteSaving = noteSaveStatus === "saving";
+    const trimmedNoteDraft = noteDraft.trim();
     const refreshing = loading || deltaLoading || toolCallsLoading;
 
     currentSummaryRef.current = summary;
@@ -465,14 +467,11 @@ export function SessionDetailPane({
         });
     }, [model, toolsLoaded]);
 
-    // 切换 Header 折叠/展开。展开→折叠前若有未决操作（删除确认条/Note 未保存）则阻止。
+    // 切换 Header 折叠/展开。Note 未保存改动由失焦/防抖自动保存兜底（点击折叠按钮会使 textarea
+    // 失焦并触发 onBlur 保存），不再阻止折叠；删除确认条打开时仍阻止折叠。
     const toggleHeader = useCallback(() => {
         setHeaderCollapsed((current) => {
-            if (!current) {
-                // 准备折叠：检查未决操作
-                if (deleteConfirmOpen) return current;
-                if (!noteCollapsed && !noteUnchanged) return current;
-            }
+            if (!current && deleteConfirmOpen) return current;
             userTouchedHeaderRef.current = true;
             const next = !current;
             try {
@@ -483,7 +482,7 @@ export function SessionDetailPane({
             }
             return next;
         });
-    }, [deleteConfirmOpen, noteCollapsed, noteUnchanged]);
+    }, [deleteConfirmOpen]);
 
     const jumpToMessage = useCallback(
         (seq: number) => {
@@ -650,6 +649,22 @@ export function SessionDetailPane({
         },
         [model, noteSaveStatus, summary]
     );
+
+    // 防抖自动保存：停止输入 NoteAutoSaveDelayMs 后落盘，与列表行/Note 弹窗行为一致。
+    useEffect(() => {
+        if (
+            !shouldAutoSaveNote({
+                loaded: summary != null,
+                visible: !noteCollapsed,
+                unchanged: noteUnchanged,
+                saving: noteSaving,
+            })
+        ) {
+            return;
+        }
+        const handle = window.setTimeout(() => void saveNote(trimmedNoteDraft), NoteAutoSaveDelayMs);
+        return () => window.clearTimeout(handle);
+    }, [noteCollapsed, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
 
     if (loading && detail == null) {
         return <EmptyState text="Loading detail..." />;
@@ -917,33 +932,13 @@ export function SessionDetailPane({
                                                 setNoteSaveStatus("idle");
                                             }
                                         }}
+                                        onBlur={() => {
+                                            if (!noteUnchanged && !noteSaving) {
+                                                void saveNote(trimmedNoteDraft);
+                                            }
+                                        }}
                                     />
                                     <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            title={noteStatusText || "Save note"}
-                                            disabled={noteSaving || noteUnchanged}
-                                            className={cn(
-                                                "flex h-7 shrink-0 items-center gap-2 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
-                                                noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
-                                                noteSaveStatus === "error" && "border-error bg-error/10 text-error"
-                                            )}
-                                            onClick={() => void saveNote(noteDraft)}
-                                        >
-                                            <i
-                                                className={cn(
-                                                    "fa-sharp fa-solid",
-                                                    noteSaveStatus === "saving"
-                                                        ? "fa-spinner animate-spin"
-                                                        : noteSaveStatus === "saved"
-                                                          ? "fa-check"
-                                                          : noteSaveStatus === "error"
-                                                            ? "fa-triangle-exclamation"
-                                                            : "fa-floppy-disk"
-                                                )}
-                                            />
-                                            <span>Save</span>
-                                        </button>
                                         <IconButton
                                             icon="fa-eraser"
                                             label="Clear note"

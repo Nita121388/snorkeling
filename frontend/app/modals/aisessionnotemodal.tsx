@@ -5,6 +5,7 @@ import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
+import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "@/app/view/aisessions/session-note-autosave";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { shortSessionId } from "@/app/view/aisessions/utils";
@@ -12,7 +13,6 @@ import { cn } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
-const NoteAutoSaveDelayMs = 3000;
 
 type AISessionNoteModalProps = {
     sessionId: string;
@@ -111,7 +111,16 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
     }, [noteUnchanged, saveNote, saving, summary, trimmedNoteDraft]);
 
     useEffect(() => {
-        if (summary == null || noteUnchanged || saving) return;
+        if (
+            !shouldAutoSaveNote({
+                loaded: summary != null,
+                visible: true,
+                unchanged: noteUnchanged,
+                saving,
+            })
+        ) {
+            return;
+        }
         const handle = window.setTimeout(() => void saveNote(trimmedNoteDraft), NoteAutoSaveDelayMs);
         return () => window.clearTimeout(handle);
     }, [noteUnchanged, saveNote, saving, summary, trimmedNoteDraft]);

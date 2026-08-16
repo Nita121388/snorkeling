@@ -6,6 +6,7 @@ import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
+import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
 import {
     extractSessionTagsFromNote,
@@ -175,6 +176,15 @@ export function SessionRow({
         return saved && currentDraftSaved;
     }, [noteDraft, noteSaveStatus, onNoteSave, session.note, session.tags, tagDraft]);
 
+    // 防抖自动保存：停止输入 NoteAutoSaveDelayMs 后落盘，与详情面板/Note 弹窗行为一致。
+    useEffect(() => {
+        if (!shouldAutoSaveNote({ loaded: true, visible: noteEditing, unchanged: noteUnchanged, saving: noteSaving })) {
+            return;
+        }
+        const handle = window.setTimeout(() => void saveNote(), NoteAutoSaveDelayMs);
+        return () => window.clearTimeout(handle);
+    }, [noteEditing, noteSaving, noteUnchanged, saveNote]);
+
     const toggleNoteEditor = useCallback(async () => {
         if (!noteEditing) {
             setNoteEditing(true);
@@ -341,41 +351,13 @@ export function SessionRow({
                                         setNoteSaveStatus("idle");
                                     }
                                 }}
+                                onBlur={() => {
+                                    if (!noteUnchanged && !noteSaving) {
+                                        void saveNote();
+                                    }
+                                }}
                             />
                             <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    title={
-                                        noteSaveStatus === "saving"
-                                            ? "Saving..."
-                                            : noteSaveStatus === "saved"
-                                              ? "Saved"
-                                              : noteSaveStatus === "error"
-                                                ? "Save failed"
-                                                : "Save note"
-                                    }
-                                    className={cn(
-                                        "flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary",
-                                        noteSaveStatus === "saved" && "border-accent bg-accent/10 text-accent",
-                                        noteSaveStatus === "error" && "border-error bg-error/10 text-error"
-                                    )}
-                                    disabled={noteSaving || noteUnchanged}
-                                    onClick={() => void saveNote()}
-                                >
-                                    <i
-                                        className={cn(
-                                            "fa-sharp fa-solid",
-                                            noteSaveStatus === "saving"
-                                                ? "fa-spinner animate-spin"
-                                                : noteSaveStatus === "saved"
-                                                  ? "fa-check"
-                                                  : noteSaveStatus === "error"
-                                                    ? "fa-triangle-exclamation"
-                                                    : "fa-floppy-disk"
-                                        )}
-                                    />
-                                    <span>Save</span>
-                                </button>
                                 <IconButton
                                     icon="fa-eraser"
                                     label="Clear note"
