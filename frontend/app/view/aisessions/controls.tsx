@@ -28,8 +28,8 @@ export function SourceButton({
                 "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-transparent text-xs transition-colors",
                 iconOnly ? "w-8 px-1" : "px-2.5",
                 active
-                    ? "border-border/70 bg-background text-primary shadow-sm"
-                    : "text-secondary hover:bg-hover hover:text-primary"
+                    ? "bg-accent/10 text-primary"
+                    : "text-secondary hover:bg-hoverbg hover:text-primary"
             )}
             onClick={onClick}
             title={label}
@@ -115,22 +115,23 @@ export function PiLogo() {
 export function SortButton({ descending, onToggle }: { descending: boolean; onToggle: () => void }) {
     return (
         <button
+            type="button"
             className={cn(
-                "flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
+                "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
                 descending
                     ? "bg-background text-primary shadow-sm"
                     : "bg-surface text-secondary hover:bg-hover hover:text-primary"
             )}
             onClick={onToggle}
             title={descending ? "Newest first" : "Oldest first"}
+            aria-label={descending ? "Newest first" : "Oldest first"}
         >
             <i
                 className={cn(
-                    "fa-sharp fa-solid mr-1",
+                    "fa-sharp fa-solid text-[11px]",
                     descending ? "fa-arrow-down-wide-short" : "fa-arrow-up-short-wide"
                 )}
             />
-            {descending ? "Newest" : "Oldest"}
         </button>
     );
 }

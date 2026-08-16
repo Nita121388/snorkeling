@@ -2295,7 +2295,7 @@ const Widgets = memo(() => {
                         </div>
                     </>
                 )}
-                {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} /> : null}
+                {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} mode={mode} /> : null}
             </div>
             {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
                 <AppsFloatingWindow
