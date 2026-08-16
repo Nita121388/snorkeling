@@ -46,7 +46,10 @@ function makeSpacer(spacerLines: number, startLine: number, endLine: number): Pa
  * [gapStart..gapStart+count*linesPerSpacer-1], one per linesPerSpacer lines.
  * Each individual spacer's injected position covers exactly the lines it
  * represents so click-to-edit targets a single spacer (and its blank lines)
- * rather than the entire gap.
+ * rather than the entire gap. `data-spacer-lines` carries the number of
+ * source blanks THIS spacer covers (not the whole gap), so the CSS sizes
+ * each spacer at exactly its own share of the gap — n blank lines render n
+ * line-heights total, not n².
  */
 function makeSpacers(
     gap: number,
@@ -58,7 +61,7 @@ function makeSpacers(
     for (let k = 0; k < count; k++) {
         const startLine = gapStartLine + k * linesPerSpacer;
         const endLine = gapStartLine + (k + 1) * linesPerSpacer - 1;
-        spacers.push(makeSpacer(gap, startLine, endLine));
+        spacers.push(makeSpacer(endLine - startLine + 1, startLine, endLine));
     }
     return spacers;
 }

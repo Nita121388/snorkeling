@@ -40,7 +40,15 @@ describe("remarkBlankLineSpacers", () => {
     it("inserts one spacer per blank line when the author leaves several", () => {
         const tree = transform("a\n\n\n\nb\n");
         // Source layout: line 1 "a", lines 2/3/4 blank, line 5 "b" → gap = 3.
-        expect(spacerLineCounts(tree)).toEqual([3, 3, 3]);
+        // Three spacers, each tagged with the 1 blank line it represents, so
+        // the total renders exactly 3 line-heights (not 3 spacers × gap).
+        expect(spacerLineCounts(tree)).toEqual([1, 1, 1]);
+    });
+
+    it("tags each spacer with its own blank-line share (gap = 2)", () => {
+        const tree = transform("a\n\n\nb\n");
+        // Source layout: line 1 "a", lines 2/3 blank, line 4 "b" → gap = 2.
+        expect(spacerLineCounts(tree)).toEqual([1, 1]);
     });
 
     it("respects minSpacerLines by suppressing sub-threshold gaps", () => {
@@ -57,9 +65,10 @@ describe("remarkBlankLineSpacers", () => {
             .use(remarkParse)
             .use(remarkBlankLineSpacers, { linesPerSpacer: 2 })
             .use(remarkStringify);
-        // gap = 3, linesPerSpacer = 2 => floor(3/2) = 1 spacer, tagged with the gap (3).
+        // gap = 3, linesPerSpacer = 2 => floor(3/2) = 1 spacer covering 2 blank
+        // lines, tagged with the 2 lines it represents (not the whole gap).
         const tree = processor.runSync(processor.parse("a\n\n\n\nb\n") as Root) as Root;
-        expect(spacerLineCounts(tree)).toEqual([3]);
+        expect(spacerLineCounts(tree)).toEqual([2]);
     });
 
     it("preserves non-spacer children at their original positions", () => {
