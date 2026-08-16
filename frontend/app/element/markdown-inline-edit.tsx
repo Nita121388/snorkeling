@@ -99,6 +99,14 @@ export type InlineEditSession = {
      * whole insert instead of just closing the editor.
      */
     insertRevert?: () => void;
+    /**
+     * Placeholder-row session: the editor sits on a single blank row that was already
+     * pre-inserted into the document (the immediate "click insert / Enter split" feedback
+     * row). On commit the draft REPLACES that row and separator blanks are added/deduped
+     * so the result is exactly one new block; on an empty commit (blur without typing) the
+     * whole pre-insert is reverted via insertRevert so nothing is left behind.
+     */
+    placeholder?: boolean;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -394,7 +402,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             line: number,
             targetEl: HTMLElement,
             caretOffset?: number,
-            insertRevert?: () => void
+            insertRevert?: () => void,
+            placeholder?: boolean
         ) => {
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullText.split(/\r\n|\n/);
@@ -420,6 +429,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 targetEl,
                 caretOffset,
                 insertRevert,
+                placeholder: placeholder || undefined,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -492,6 +502,21 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         });
         setEditSession(null);
         setDraftText("");
+        if (current.placeholder) {
+            // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
+            // blank row for us to type into). Typed something → replace the row and re-add
+            // separator blanks as needed (commitPlaceholderBlock), netting exactly one new
+            // block. Nothing typed → the pre-insert must not survive: revert the document
+            // to its pre-insert state so the click leaves zero trace.
+            if (draftText.trim().length === 0) {
+                current.insertRevert?.();
+                return;
+            }
+            onCommit(
+                commitPlaceholderBlock(fullText, current.startLine, current.endLine, draftText)
+            );
+            return;
+        }
         if (draftText === current.initialContent && current.insertMode == null) {
             // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
             // flag honest. (Insert sessions always write: their initialContent is empty and a
@@ -697,6 +722,61 @@ export function spliceInsertBlock(
 }
 
 /**
+ * Insert EXACTLY ONE blank row before/after the anchor block range, without any bracket
+ * blank. Used by the block-edge insert buttons / Enter split to give the user an immediate
+ * single-row editing target ("click → preview gains one line"). The eventual commit replaces
+ * this row with the user's draft via commitPlaceholderBlock, which re-adds separator blanks
+ * only as needed — so a single click nets exactly one new block, never stray blank rows.
+ */
+export function spliceBlankRow(
+    lines: string[],
+    startLine: number,
+    endLine: number,
+    mode: "before" | "after"
+): string[] {
+    const startIdx = Math.max(0, Math.min(startLine - 1, lines.length));
+    const endIdx = Math.max(0, Math.min(endLine - 1, lines.length));
+    const next = lines.slice();
+    next.splice(mode === "before" ? startIdx : endIdx + 1, 0, "");
+    return next;
+}
+
+/**
+ * Finalize a placeholder-row edit: replace the pre-inserted blank row ([startLine..endLine])
+ * with the user's draft, then guarantee the new block is separated from whatever surrounds it
+ * by single blank lines — adding a blank on a side that lost its separator (the pre-insert
+ * consumed it) and never duplicating one that still exists. Repeated inserts therefore
+ * accumulate exactly one block each, with no stray blank runs.
+ */
+export function commitPlaceholderBlock(
+    fullText: string,
+    startLine: number,
+    endLine: number,
+    draftText: string
+): string {
+    const lines = fullText.split(/\r\n|\n/);
+    const safeStart = Math.max(1, Math.min(Math.trunc(startLine), lines.length || 1));
+    const safeEnd = Math.max(safeStart, Math.min(Math.trunc(endLine), lines.length));
+    const draftLines = draftText.split(/\r\n|\n/);
+    const out = [...lines.slice(0, safeStart - 1), ...draftLines, ...lines.slice(safeEnd)];
+    let firstIdx = safeStart - 1; // first draft row's index in `out`
+    let lastIdx = firstIdx + draftLines.length - 1; // …and its LAST row (multi-line drafts)
+    // Front separator: draft starts with content directly under content → the blank that used
+    // to separate them was consumed by the pre-insert, put one back.
+    if (draftLines.length > 0 && out[firstIdx] !== "" && firstIdx > 0 && out[firstIdx - 1] !== "") {
+        out.splice(firstIdx, 0, "");
+        firstIdx++;
+        lastIdx++;
+    }
+    // Rear separator: the draft's last row is content directly above content → add a blank.
+    // Checked on the LAST draft row so multi-line drafts separate correctly past their body.
+    if (draftLines.length > 0 && out[lastIdx] !== "" && lastIdx + 1 < out.length && out[lastIdx + 1] !== "") {
+        out.splice(lastIdx + 1, 0, "");
+    }
+    return out.join("\n");
+}
+
+/**
  * Pure helper for "Enter at caret splits the block": keeps the BEFORE part in the anchor
  * block's source range and inserts the AFTER part as a new block right below it. Returns the
  * new full text plus the 1-based source line of the new block's CONTENT row (the second of
@@ -719,12 +799,16 @@ export function splitBlockAtCaretText(
     const lines = fullText.split(/\r\n|\n/);
 
     if (before === "") {
-        const newFull = spliceInsertBlock(lines, startLine, endLine, "before", [""]).join("\n");
+        // Caret at line start: the split row goes ABOVE, the current row keeps all its
+        // content. Pre-insert exactly one blank row (not two) — the follow-up editor treats
+        // it as a placeholder row, see commitPlaceholderBlock.
+        const newFull = spliceBlankRow(lines, startLine, endLine, "before").join("\n");
         return { text: newFull, newLine: startLine };
     }
     if (after === "") {
-        const newFull = spliceInsertBlock(lines, startLine, endLine, "after", [""]).join("\n");
-        return { text: newFull, newLine: endLine + 2 };
+        // Caret at line end: the split row goes BELOW. One blank row, same placeholder math.
+        const newFull = spliceBlankRow(lines, startLine, endLine, "after").join("\n");
+        return { text: newFull, newLine: endLine + 1 };
     }
     const afterBeforeCommit = replaceSourceRange(fullText, startLine, endLine, before);
     const midLines = afterBeforeCommit.split(/\r\n|\n/);

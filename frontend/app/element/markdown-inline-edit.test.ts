@@ -3,8 +3,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+    commitPlaceholderBlock,
     deleteBlockRange,
     resolveInlineEditTarget,
+    spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
     type InlineEditSession,
@@ -108,6 +110,84 @@ describe("spliceInsertBlock (block-edge insert buttons)", () => {
     });
 });
 
+describe("spliceBlankRow (placeholder-row pre-insert)", () => {
+    const lines = ["# title", "", "hello", "", "tail"];
+
+    it("inserts EXACTLY ONE blank row below the anchor line", () => {
+        const next = spliceBlankRow(lines, 3, 3, "after");
+        expect(next).toEqual(["# title", "", "hello", "", "", "tail"]);
+    });
+
+    it("inserts EXACTLY ONE blank row above the anchor line", () => {
+        const next = spliceBlankRow(lines, 3, 3, "before");
+        expect(next).toEqual(["# title", "", "", "hello", "", "tail"]);
+    });
+
+    it("splices below the END line for multi-line blocks (list stays closed)", () => {
+        const list = ["# title", "", "- one", "- two", "", "tail"];
+        const next = spliceBlankRow(list, 3, 4, "after");
+        expect(next).toEqual(["# title", "", "- one", "- two", "", "", "tail"]);
+    });
+
+    it("splices above the START line for multi-line blocks", () => {
+        const list = ["# title", "", "- one", "- two", "", "tail"];
+        const next = spliceBlankRow(list, 3, 4, "before");
+        expect(next).toEqual(["# title", "", "", "- one", "- two", "", "tail"]);
+    });
+});
+
+describe("commitPlaceholderBlock (placeholder row → real block)", () => {
+    // Original doc "# title / blank / hello / blank / tail"; after clicking "insert below"
+    // on hello (line 3) a single blank row was spliced in at line 4, so the editor sits on
+    // line 4 and the doc is hello / [line4 blank] / blank / tail.
+    const afterInsert = "# title\n\nhello\n\n\ntail";
+
+    it("replaces the placeholder row with content and restores the front separator", () => {
+        // hello | [edited row] | blank | tail → hello/blank/edited/blank/tail
+        expect(commitPlaceholderBlock(afterInsert, 4, 4, "edited")).toBe(
+            "# title\n\nhello\n\nedited\n\ntail"
+        );
+    });
+
+    it("keeps an existing front separator (no duplicate blank pushed in front)", () => {
+        // hello already has a blank above the placeholder line → front blank NOT duplicated
+        const doc = "# title\n\nhello\n\n\n\ntail"; // placeholder row = line 5
+        expect(commitPlaceholderBlock(doc, 5, 5, "edited")).toBe(
+            "# title\n\nhello\n\nedited\n\ntail"
+        );
+    });
+
+    it("adds a rear separator when the row below is content", () => {
+        // hello | blank | [edited row] | tail → replaced row sits directly above content
+        expect(commitPlaceholderBlock("hello\n\n\ntail", 3, 3, "edited")).toBe(
+            "hello\n\nedited\n\ntail"
+        );
+    });
+
+    it("nets exactly one block under repeated inserts (no blank accumulation)", () => {
+        const afterOnce = commitPlaceholderBlock(afterInsert, 4, 4, "one");
+        expect(afterOnce).toBe("# title\n\nhello\n\none\n\ntail");
+        // Insert again below "one" (line 5): splice 1 blank at line 6, commit "two" there.
+        const preInsertTwo = spliceBlankRow(afterOnce.split(/\r\n|\n/), 5, 5, "after").join("\n");
+        const afterTwice = commitPlaceholderBlock(preInsertTwo, 6, 6, "two");
+        expect(afterTwice).toBe("# title\n\nhello\n\none\n\ntwo\n\ntail");
+    });
+
+    it("supports multi-line drafts (blank lines inside the draft survive)", () => {
+        // Rear separator is added past the draft's LAST row, not its first.
+        expect(commitPlaceholderBlock("hello\n\n\ntail", 3, 3, "a\n\nb")).toBe(
+            "hello\n\na\n\nb\n\ntail"
+        );
+    });
+
+    it("does not pad a placeholder row at the document head", () => {
+        // title | blank | [placeholder line 3] | body — no content above to separate from
+        expect(commitPlaceholderBlock("title\n\n\nbody", 3, 3, "new")).toBe(
+            "title\n\nnew\n\nbody"
+        );
+    });
+});
+
 describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
     const fullText = "# title\n\nhello world\n\nend";
     const startLine = 3; // "hello world"
@@ -123,15 +203,15 @@ describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
 
     it("caret at the end → blank line inserted below", () => {
         const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, draft.length);
-        // after mode adds a separator blank + the content blank = 2 new blanks → 3 between blocks
-        expect(text).toBe("# title\n\nhello world\n\n\n\nend");
-        expect(newLine).toBe(5);
+        // placeholder path: exactly ONE blank row is pre-inserted (not two), newLine points at it
+        expect(text).toBe("# title\n\nhello world\n\n\nend");
+        expect(newLine).toBe(4);
     });
 
     it("caret at the start → blank line inserted above, original text becomes the after block", () => {
         const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, 0);
-        // before mode adds separator blank + content blank = 2 new blanks on top
-        expect(text).toBe("# title\n\n\n\nhello world\n\nend");
+        // placeholder path: exactly ONE blank row above
+        expect(text).toBe("# title\n\n\nhello world\n\nend");
         expect(newLine).toBe(3);
     });
 

@@ -9,6 +9,7 @@ import {
     makeInlineEditKeydown,
     deleteBlockRange,
     replaceSourceRange,
+    spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
     useInlineEdit,
@@ -1496,7 +1497,7 @@ const Markdown = ({
     // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
     // is forwarded so Esc can undo the whole insert.
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void) => {
+        (newLine: number, revert?: () => void, placeholder?: boolean) => {
             // Give ReactMarkdown time to commit the new text to the DOM (one frame is usually
             // sufficient; a second rAF guards against double-batched concurrent renders).
             requestAnimationFrame(() => {
@@ -1506,7 +1507,7 @@ const Markdown = ({
                         viewport &&
                         viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${newLine}"]`);
                     if (el != null) {
-                        inlineEdit.beginEdit("p", newLine, el, 0, revert);
+                        inlineEdit.beginEdit("p", newLine, el, 0, revert, placeholder);
                     }
                 });
             });
@@ -1566,7 +1567,10 @@ const Markdown = ({
             handleInlineEditCommit(text); // restore the document to what it was before the split
         };
         handleInlineEditCommit(newFull);
-        focusEditedLine(newLine, revert);
+        // The split pre-inserted a single placeholder row — same commit/revert semantics as
+        // the block-edge insert buttons (see commitPlaceholderBlock), so Enter nets exactly
+        // one new block and an empty commit leaves nothing behind.
+        focusEditedLine(newLine, revert, true);
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
     // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
@@ -1646,6 +1650,24 @@ const Markdown = ({
         [getViewportEl]
     );
 
+    // Resolve the BLOCK-level anchor for an insert/menu action: same lookup as
+    // resolveInsertAnchorEl, but a hovered <LI> is promoted to its parent <OL>/<UL> so
+    // insert-above/below (and the copy/duplicate/delete menu) act on the WHOLE list, never
+    // tearing a (possibly nested) list open mid-level. Mirrors resolveEditTargetFromEvent's
+    // LI→list promotion; keeping it here means the insert path and the menu path share the
+    // same block-granularity understanding of "the hovered block".
+    const resolveBlockAnchorEl = useCallback(
+        (line: number): HTMLElement | null => {
+            const el = resolveInsertAnchorEl(line);
+            if (el == null || el.tagName !== "LI") {
+                return el;
+            }
+            const parentList = el.parentElement?.closest<HTMLElement>("ol, ul");
+            return parentList != null && parentList.dataset.sourceLine != null ? parentList : el;
+        },
+        [resolveInsertAnchorEl]
+    );
+
     // --- Grip menu: click the 4-dot grip → select the block + popup (copy / duplicate / delete)
     // Resolves the current anchor block's [start..end] source range, shows a selection
     // highlight overlay over it, and opens a native context menu. Block-scoped operations are
@@ -1656,7 +1678,9 @@ const Markdown = ({
             if (anchor == null) {
                 return;
             }
-            const el = resolveInsertAnchorEl(anchor.line);
+            // Whole-block granularity: an LI hover resolves to its parent list (same promotion
+            // as the insert path), so copy/duplicate/delete never split a nested list open.
+            const el = resolveBlockAnchorEl(anchor.line);
             if (el == null) {
                 return;
             }
@@ -1702,7 +1726,7 @@ const Markdown = ({
                 onClose: () => setSelectedBlock(null),
             });
         },
-        [resolveInsertAnchorEl, text, handleInlineEditCommit]
+        [resolveBlockAnchorEl, text, handleInlineEditCommit]
     );
 
     const measureInsertAnchor = useCallback(() => {
@@ -1819,7 +1843,9 @@ const Markdown = ({
             if (anchor == null) {
                 return;
             }
-            const el = resolveInsertAnchorEl(anchor.line);
+            // Whole-block granularity: an LI hover resolves to its parent list so inserting
+            // below a nested item lands after the WHOLE list, never mid-level.
+            const el = resolveBlockAnchorEl(anchor.line);
             if (el == null) {
                 return;
             }
@@ -1831,20 +1857,23 @@ const Markdown = ({
             const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLine;
             const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
 
-            // Insert the blank row into the document IMMEDIATELY (so the preview visibly gains
-            // a line the moment the user clicks), remember the pre-edit text for Esc-revert,
-            // and open a blank editor on top of the new row so typing lands in it directly.
+            // Insert a SINGLE blank row into the document immediately (so the preview visibly
+            // gains one line the moment the user clicks), remember the pre-edit text for
+            // Esc/empty-commit revert, and open a blank editor on that row. The final commit
+            // replaces the row with the draft via commitPlaceholderBlock (which re-adds
+            // separator blanks only as needed) — one click nets exactly one new block, with
+            // no stray blank rows left behind.
             const originalText = text;
-            const newFull = spliceInsertBlock(text.split(/\r\n|\n/), startLine, endLine, mode, [""]).join("\n");
+            const newFull = spliceBlankRow(text.split(/\r\n|\n/), startLine, endLine, mode).join("\n");
             handleInlineEditCommit(newFull);
             const newLine = mode === "before" ? startLine : endLine + 1;
-            focusEditedLine(newLine, () => handleInlineEditCommit(originalText));
+            focusEditedLine(newLine, () => handleInlineEditCommit(originalText), true);
 
             setInsertAnchor(null);
             setInsertPos(null);
             setGripOpen(false);
         },
-        [handleInlineEditCommit, resolveInsertAnchorEl, text, focusEditedLine]
+        [handleInlineEditCommit, resolveBlockAnchorEl, text, focusEditedLine]
     );
 
     const inlineEditKeyDown = useMemo(
