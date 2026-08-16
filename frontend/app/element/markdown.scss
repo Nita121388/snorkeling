@@ -36,7 +36,7 @@
             color: var(--main-text-color);
             margin-top: 1.143em;
             margin-bottom: 0.571em;
-            font-weight: semibold;
+            font-weight: 600;
             padding-top: 0.429em;
             display: flex;
             align-items: center;
@@ -80,23 +80,25 @@
                 border-bottom: 1px solid var(--border-color);
                 padding-bottom: 0.429em;
                 font-size: 2em;
+                font-weight: 700;
             }
             &.is-2 {
                 border-bottom: 1px solid var(--border-color);
                 padding-bottom: 0.429em;
                 font-size: 1.5em;
+                font-weight: 700;
             }
             &.is-3 {
                 font-size: 1.25em;
             }
             &.is-4 {
-                font-size: 1em;
+                font-size: 1.125em;
             }
             &.is-5 {
-                font-size: 0.875em;
+                font-size: 1em;
             }
             &.is-6 {
-                font-size: 0.85em;
+                font-size: 0.9em;
             }
         }
 
