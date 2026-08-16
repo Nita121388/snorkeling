@@ -225,11 +225,17 @@ export function SelectionCopyOverlay({
     extraMenuItems,
 }: SelectionCopyOverlayProps) {
     const [copied, setCopied] = useState(false);
-    const [commonTextFeedback, setCommonTextFeedback] = useState<{ msg: string; kind: string } | null>(null);
+    const [commonTextFeedback, setCommonTextFeedback] = useState<{
+        msg: string;
+        kind: string;
+        showTag?: boolean;
+        savedItemId?: string;
+    } | null>(null);
     const copiedTimerRef = useRef<number | null>(null);
     const commonTextTimerRef = useRef<number | null>(null);
     const quickActionsHoverTimerRef = useRef<number | null>(null);
     const quickActionsMenuOpenRef = useRef(false);
+    const bubbleRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setCopied(false);
@@ -251,6 +257,24 @@ export function SelectionCopyOverlay({
         };
     }, [overlay?.x, overlay?.y, overlay?.text]);
 
+    // 标签气泡可交互期间，点气泡外任意处视为取消标签动作并收起（保存的内容不丢）。
+    useEffect(() => {
+        if (!commonTextFeedback?.showTag) {
+            return;
+        }
+        const handleOutsideMousedown = (e: MouseEvent) => {
+            if (bubbleRef.current?.contains(e.target as Node)) {
+                return;
+            }
+            window.clearTimeout(commonTextTimerRef.current);
+            commonTextTimerRef.current = null;
+            setCommonTextFeedback(null);
+            onHide?.();
+        };
+        window.addEventListener("mousedown", handleOutsideMousedown, true);
+        return () => window.removeEventListener("mousedown", handleOutsideMousedown, true);
+    }, [commonTextFeedback?.showTag]);
+
     if (overlay == null || overlay.text.length === 0) {
         return null;
     }
@@ -268,15 +292,20 @@ export function SelectionCopyOverlay({
         }, SelectionCopyFeedbackMs);
     };
 
-    const handleCommonTextFeedback = (msg: string, kind: string) => {
-        setCommonTextFeedback({ msg, kind });
+    const handleCommonTextFeedback = (msg: string, kind: string, showTag = false, savedItemId?: string) => {
+        setCommonTextFeedback({ msg, kind, showTag, savedItemId });
         if (commonTextTimerRef.current != null) {
             window.clearTimeout(commonTextTimerRef.current);
         }
+        // showTag 气泡是"保存后可继续打标签"的交互入口，停留更久；纯提示气泡沿用短时自动淡出。
+        const timeout = showTag ? CommonTextTagFeedbackMs : CommonTextFeedbackMs;
         commonTextTimerRef.current = window.setTimeout(() => {
             setCommonTextFeedback(null);
             commonTextTimerRef.current = null;
-        }, CommonTextFeedbackMs);
+            if (showTag) {
+                onHide?.();
+            }
+        }, timeout);
     };
 
     const showQuickActionsMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
@@ -344,7 +373,8 @@ export function SelectionCopyOverlay({
                   position,
                   "z-[1501]",
                   "whitespace-nowrap rounded-md px-3 py-1 text-xs leading-none shadow-md",
-                  "pointer-events-none select-none",
+                  // showTag 气泡可点击（含 Tag 按钮）；纯提示气泡保持穿透。
+                  commonTextFeedback.showTag ? "pointer-events-auto" : "pointer-events-none select-none",
                   commonTextFeedback.kind === "success"
                       ? "bg-accent/15 text-accent border border-accent/30"
                       : commonTextFeedback.kind === "warn"
@@ -371,6 +401,7 @@ export function SelectionCopyOverlay({
             </button>
             {commonTextFeedback != null && (
                 <div
+                    ref={bubbleRef}
                     className={feedbackBubbleClassName}
                     style={{
                         left: `${overlay.x}px`,
@@ -381,6 +412,26 @@ export function SelectionCopyOverlay({
                     {commonTextFeedback.kind === "warn" && <i className="fa-solid fa-rotate mr-1" />}
                     {commonTextFeedback.kind === "error" && <i className="fa-solid fa-xmark mr-1" />}
                     {commonTextFeedback.msg}
+                    {commonTextFeedback.showTag && commonTextFeedback.savedItemId != null && (
+                        <button
+                            type="button"
+                            className="ml-2 rounded border border-current/30 bg-current/10 px-1.5 py-0.5 text-[11px] font-semibold transition-colors hover:brightness-110"
+                            // mousedown preventDefault 保住文档选区，避免选区塌陷触发 selectionchange 把 overlay 拆掉。
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                                const itemId = commonTextFeedback.savedItemId;
+                                window.clearTimeout(commonTextTimerRef.current);
+                                commonTextTimerRef.current = null;
+                                setCommonTextFeedback(null);
+                                if (itemId != null) {
+                                    openCommonTextSearch({ editItemId: itemId });
+                                }
+                                onHide?.();
+                            }}
+                        >
+                            Tag
+                        </button>
+                    )}
                 </div>
             )}
         </>

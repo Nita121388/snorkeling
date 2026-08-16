@@ -17,6 +17,7 @@ import { computeEditorMaxHeight } from "./commontext-editor-size";
 import {
     deleteCommonTextItem,
     filterCommonTextItemsByTags,
+    getCommonTextItems,
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     recordCommonTextUse,
@@ -275,6 +276,17 @@ const CommonTextComposeModal = memo(() => {
             isComposingRef.current = false;
             // 外部带入 query（选区 overlay 找条目）走全新状态；纯打开尝试还原上次草稿。
             const next = hasExternalQuery ? initialOpenState(manualQuery) : restoreOpenState();
+            // 当传入 editItemId 时（灯泡保存后的 Tag 入口）：定位到该条目并打开详情面板，
+            // 用户可直接在详情区（含 All tags 面板）补标签；清空 query 保证条目在列表可见。
+            if (detail.editItemId != null && detail.editItemId !== "") {
+                const targetItem = getCommonTextItems().find((i) => i.id === detail.editItemId);
+                if (targetItem) {
+                    next.detailId = targetItem.id;
+                    next.detailTitle = targetItem.title;
+                    next.detailText = targetItem.text;
+                    next.manualQuery = "";
+                }
+            }
             setState(next);
             // 不主动聚焦 editor：避免一打开就把弹窗撑成编辑多行态。多行草稿按文本本身初始展开，
             // 让用户视觉上立刻知道草稿还在；单行草稿保持紧凑单行高，等用户点进去再撑开。

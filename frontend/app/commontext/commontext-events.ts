@@ -9,6 +9,7 @@ export type CommonTextSearchDetail = {
     query?: string;
     mode?: "insert-or-copy" | "copy";
     onSelect?: (item: CommonTextItem) => void;
+    editItemId?: string;
 };
 
 export function openCommonTextSearch(detail: CommonTextSearchDetail = {}): void {
