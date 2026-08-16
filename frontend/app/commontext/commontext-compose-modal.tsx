@@ -13,12 +13,12 @@ import { atom, useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
 import { copyCommonText, insertOrCopyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
+import { computeEditorMaxHeight } from "./commontext-editor-size";
 import {
     deleteCommonTextItem,
     filterCommonTextItemsByTags,
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
-    openCommonTextManager,
     recordCommonTextUse,
     searchCommonTextComposeItems,
     upsertCommonTextItem,
@@ -181,6 +181,14 @@ const CommonTextComposeModal = memo(() => {
     // 当前生效的尺寸样式；打开弹窗时由 loadComposeModalSize() 初始化，resize 时实时更新。
     // useState 而非纯 ref：尺寸变化要触发 modal 节点 style 重渲染，光改 ref 不够。
     const [modalSize, setModalSize] = useState<ComposeModalSize>(() => loadComposeModalSize() ?? { w: ComposeModalDefaultW, h: ComposeModalDefaultH });
+    // 展开态 Editor 上限随弹窗高度缩放：modalSize.h 在用户拖拽时被 ResizeObserver 写成真实 px；
+    // 首次打开存的可能是 "min(78vh, 620px)" 兜底字符串，parseFloat 拿不到就回退 modalRef 实测高度。
+    // ponytail: 回退常量 620 只在首帧生效，RO 首 tick 后 modalSize.h 即变真实像素，无需额外监听。
+    const editorMaxHeight = useMemo(() => {
+        const parsed = parseFloat(modalSize.h);
+        const modalH = Number.isFinite(parsed) && parsed > 0 ? parsed : (modalRef.current?.offsetHeight ?? 620);
+        return computeEditorMaxHeight(modalH, window.innerHeight);
+    }, [modalSize.h]);
     const isComposingRef = useRef(false);
     const compositionEndTimerRef = useRef<number>(null);
     // editor blur 后延时折叠的 timer：onFocus 时取消，给用户从 editor 移动到
@@ -755,11 +763,6 @@ const CommonTextComposeModal = memo(() => {
         });
     };
 
-    const openManager = () => {
-        close();
-        fireAndForget(openCommonTextManager);
-    };
-
     const handleListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (event.key === "ArrowDown") {
             event.preventDefault();
@@ -876,29 +879,23 @@ const CommonTextComposeModal = memo(() => {
         >
             <div className="flex flex-col gap-2 flex-1 min-h-0" style={{ overflow: "hidden" }}>
                 {/* Header */}
-                <div className="shrink-0 flex items-start justify-between gap-3 pr-8">
+                <div className="shrink-0">
                     <div>
                         <div className="text-base font-semibold">Common Text</div>
                         <div className="text-[11px] text-muted">
                             Compose text. Click + to add a new item to the top, then edit it on the right; click a row (or press Enter) to edit it; Insert drops it into the editor.
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        className="w-8 h-8 flex items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-primary transition-colors cursor-pointer"
-                        onClick={openManager}
-                        title="Manage common text"
-                    >
-                        <i className="fa fa-solid fa-gear" />
-                    </button>
                 </div>
 
                 <textarea
                     ref={editorRef}
+                    // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]。
+                    style={editorExpanded ? { maxHeight: editorMaxHeight } : undefined}
                     className={
                         "shrink-0 resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
                         (editorExpanded
-                            ? "min-h-[120px] max-h-[280px]"
+                            ? "min-h-[120px]"
                             : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
                     }
                     rows={editorExpanded ? undefined : 1}
@@ -1092,9 +1089,6 @@ const CommonTextComposeModal = memo(() => {
                                 <div className="flex flex-1 min-h-[80px] items-center justify-center gap-2 text-secondary text-sm">
                                     <i className="fa fa-regular fa-quote-left text-xl opacity-60" />
                                     <div>{allItems.length === 0 ? "No common text yet" : "No matching text"}</div>
-                                    <button type="button" className="text-accent hover:underline" onClick={openManager}>
-                                        Manage
-                                    </button>
                                 </div>
                             ) : (
                                 filteredItems.map((item, index) => (

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { openCommonTextSearch } from "@/app/commontext/commontext-events";
-import { addSelectionToCommonText, getCommonTextItems, openCommonTextManager } from "@/app/commontext/commontext-model";
+import { addSelectionToCommonText, findDuplicateCommonText, getCommonTextItems } from "@/app/commontext/commontext-model";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { fireAndForget } from "@/util/util";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +13,7 @@ const SelectionCopyButtonSize = 24;
 const SelectionCopyButtonMargin = 8;
 const SelectionCopyFeedbackMs = 900;
 const CommonTextFeedbackMs = 1600;
+const CommonTextTagFeedbackMs = 12000;
 const QuickActionsHoverDelayMs = 120;
 
 export type SelectionCopyOverlayState = {
@@ -122,7 +123,7 @@ export function makeSelectionQuickActionMenu(
         onHide?: () => void;
         copyMenuItems?: SelectionQuickActionItem[];
         extraMenuItems?: SelectionQuickActionItem[];
-        onCommonTextFeedback?: (msg: string, kind: string) => void;
+        onCommonTextFeedback?: (msg: string, kind: string, showTag?: boolean, savedItemId?: string) => void;
     }
 ): ContextMenuItem[] {
     const handleCopyClick = async (): Promise<void> => {
@@ -136,19 +137,22 @@ export function makeSelectionQuickActionMenu(
         options?.onHide?.();
     };
 
-    const handleAddCommonText = (onCommonTextFeedback: (msg: string, kind: string) => void): void => {
+    const handleAddCommonText = (
+        onCommonTextFeedback: (msg: string, kind: string, showTag?: boolean, savedItemId?: string) => void
+    ): void => {
         fireAndForget(async () => {
-            try {
-                await addSelectionToCommonText(text);
-                onCommonTextFeedback("Saved", "success");
-            } catch (e) {
-                const message = e instanceof Error ? e.message : String(e);
-                onCommonTextFeedback(
-                    message.startsWith("Common text already exists") ? "Already exists" : "Failed to save",
-                    "error"
-                );
+            // 先查重复：命中时不再新增，直接把已存在条目的 id 透传给气泡，供用户补标签（合并到已有条目）。
+            const duplicate = findDuplicateCommonText(getCommonTextItems(), text);
+            if (duplicate != null) {
+                onCommonTextFeedback("Already exists", "warn", true, duplicate.id);
+                return;
             }
-            options?.onHide?.();
+            try {
+                const item = await addSelectionToCommonText(text);
+                onCommonTextFeedback("Saved", "success", true, item.id);
+            } catch (e) {
+                onCommonTextFeedback("Failed to save", "error", false, undefined);
+            }
         });
     };
 
@@ -177,20 +181,15 @@ export function makeSelectionQuickActionMenu(
         {
             label: "Add Selection to Common Text",
             click: () => {
-                handleAddCommonText((msg, kind) => options?.onCommonTextFeedback?.(msg, kind));
+                handleAddCommonText((msg, kind, showTag, savedItemId) =>
+                    options?.onCommonTextFeedback?.(msg, kind, showTag, savedItemId)
+                );
             },
         },
         {
             label: "Find Related Common Text",
             enabled: commonTextItems.length > 0,
             click: handleFindCommonText,
-        },
-        {
-            label: "Manage Common Text",
-            click: () => {
-                fireAndForget(openCommonTextManager);
-                options?.onHide?.();
-            },
         },
     ];
     if (options?.extraMenuItems != null && options.extraMenuItems.length > 0) {

@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Common Text Quick-Tag — Interactive Prototype</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #151b23;
+    --surface-soft: #1b2230;
+    --hover: #20293a;
+    --border: #2b3240;
+    --border-soft: #232a36;
+    --text: #e4e7ec;
+    --text-secondary: #9aa4b2;
+    --text-dim: #66707e;
+    --accent: #ffb73d;
+    --accent-dim: rgba(255, 170, 45, 0.16);
+    --accent-border: rgba(255, 170, 45, 0.55);
+    --ok: #4ade80;
+    --ok-dim: rgba(74, 222, 128, 0.12);
+    --ok-border: rgba(74, 222, 128, 0.35);
+    --warn: #fbbf24;
+    --warn-dim: rgba(251, 191, 36, 0.12);
+    --warn-border: rgba(251, 191, 36, 0.35);
+    --err: #f87171;
+    --err-dim: rgba(248, 113, 113, 0.12);
+    --err-border: rgba(248, 113, 113, 0.35);
+    --shadow: 0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  ::selection { background: rgba(255, 170, 45, 0.28); }
+
+  /* ---------- layout ---------- */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 14px; border-bottom: 1px solid var(--border-soft);
+    background: var(--surface);
+  }
+  header .title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  header .title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  header .hint { font-size: 11px; color: var(--text-dim); }
+  #main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+
+  /* ---------- document ---------- */
+  #doc {
+    position: relative; padding: 22px 26px; overflow: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+    line-height: 1.75;
+  }
+  #doc .card {
+    background: var(--surface); border: 1px solid var(--border-soft); border-radius: 10px;
+    padding: 16px 18px; max-width: 720px; margin-bottom: 16px;
+  }
+  #doc .card h3 { font-family: -apple-system, "PingFang SC", sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); display:flex; align-items:center; gap:8px;}
+  #doc .card h3 .tag-new { font-size: 10px; color: var(--accent); border: 1px solid var(--accent-border); background: var(--accent-dim); border-radius: 4px; padding: 1px 6px; font-weight: 500;}
+  #doc .card p { color: var(--text-secondary); margin-bottom: 6px; }
+  #doc .card p:last-child { margin-bottom: 0; }
+  #doc .card .sent { color: var(--text); background: rgba(255,255,255,0.03); border-radius: 4px; padding: 1px 4px; cursor: text; }
+  #doc .card .sent:hover { background: rgba(255,255,255,0.06); }
+  #docs-hint { color: var(--text-dim); font-size: 12px; font-family: -apple-system, "PingFang SC", sans-serif; }
+  #docs-hint kbd { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+
+  /* ---------- sidebar ---------- */
+  #side { border-left: 1px solid var(--border-soft); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+  #side .side-head { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; }
+  #side .side-head b { font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary); }
+  #side .side-head span.cnt { font-size: 11px; color: var(--text-dim); }
+  #items { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .item {
+    background: var(--surface-soft); border: 1px solid var(--border-soft); border-radius: 8px;
+    padding: 9px 11px; transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  .item.flash { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border), 0 0 14px rgba(255,170,45,.18); background: #1f2534; }
+  .item .ititle { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 3px; display:flex; align-items:center; gap:6px;}
+  .item .ititle .badge { font-size: 10px; padding: 0 5px; border-radius: 4px; font-weight: 500; }
+  .item .ititle .badge.new { color: var(--accent); background: var(--accent-dim); border: 1px solid var(--accent-border); }
+  .item .ititle .badge.tagged { color: var(--ok); background: var(--ok-dim); border: 1px solid var(--ok-border); }
+  .item .itext { font-size: 11.5px; color: var(--text-secondary); font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .itags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .item .itags .empty { font-size: 11px; color: var(--text-dim); }
+  .chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 5px; padding: 1px 7px 2px; font-size: 11px; }
+  .chip .hash { opacity: 0.5; }
+  .chip.clickable { cursor: pointer; }
+  .chip.clickable:hover { background: var(--hover); color: var(--text); border-color: var(--accent-border); }
+  .chip.active { border-color: transparent; background: var(--accent-dim); color: var(--accent); }
+  .chip .x { cursor: pointer; color: var(--text-dim); font-size: 10px; }
+  .chip .x:hover { color: var(--err); }
+
+  .side-foot { padding: 8px 14px; border-top: 1px solid var(--border-soft); font-size: 11px; color: var(--text-dim); }
+  #log { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px; }
+
+  /* ---------- floating: bulb / bubble / tag editor / menu ---------- */
+  #float-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1000; }
+  #float-layer > * { pointer-events: auto; }
+
+  #bulb {
+    position: fixed; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--accent-border); background: var(--accent-dim); color: var(--accent);
+    border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: var(--shadow); z-index: 1001;
+    font-family: -apple-system, "PingFang SC", sans-serif;
+  }
+  #bulb:hover { border-color: rgba(255,197,92,0.95); background: rgba(255,170,45,0.26); color: #ffd574; }
+  #bulb svg { width: 14px; height: 14px; }
+
+  /* feedback bubble */
+  #bubble {
+    position: fixed; display: flex; align-items: center; gap: 10px;
+    border-radius: 6px; padding: 5px 8px 5px 11px; font-size: 12px; white-space: nowrap;
+    box-shadow: var(--shadow); z-index: 1002; animation: pop-in .14s ease-out;
+  }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  #bubble .msg { display: flex; align-items: center; gap: 6px; }
+  #bubble .msg i { font-style: normal; font-weight: 600; }
+  #bubble button.tag-btn {
+    border: 1px solid; border-radius: 5px; padding: 1px 8px; font-size: 11px; font-weight: 600;
+    transition: filter .12s;
+  }
+  #bubble button.tag-btn:hover { filter: brightness(1.15); }
+  #bubble.kind-success { background: var(--surface); border: 1px solid var(--ok-border); color: var(--ok); }
+  #bubble.kind-success .tag-btn { border-color: var(--ok-border); color: var(--ok); background: var(--ok-dim); }
+  #bubble.kind-warn { background: var(--surface); border: 1px solid var(--warn-border); color: var(--warn); }
+  #bubble.kind-warn .tag-btn { border-color: var(--warn-border); color: var(--warn); background: var(--warn-dim); }
+  #bubble.kind-error { background: var(--surface); border: 1px solid var(--err-border); color: var(--err); }
+  #bubble.kind-error .tag-btn { border-color: var(--err-border); color: var(--err); background: var(--err-dim); }
+  #bubble.fading { transition: opacity .5s; opacity: 0; }
+
+  /* context menu */
+  #menu {
+    position: fixed; min-width: 210px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: var(--shadow); padding: 4px; z-index: 1003; animation: pop-in .1s ease-out;
+  }
+  #menu .mi { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; font-size: 12.5px; cursor: pointer; color: var(--text); }
+  #menu .mi:hover { background: var(--hover); }
+  #menu .mi.disabled { color: var(--text-dim); cursor: default; }
+  #menu .mi.disabled:hover { background: none; }
+  #menu .sep { height: 1px; background: var(--border-soft); margin: 4px 6px; }
+  #menu .mi .ic { width: 14px; text-align: center; font-size: 11px; color: var(--text-dim); }
+
+  /* tag editor */
+  #tag-editor {
+    position: fixed; width: 330px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow); z-index: 1004; animation: pop-in .14s ease-out;
+    font-family: -apple-system, "PingFang SC", sans-serif;
+  }
+  #tag-editor .te-head { padding: 10px 12px 8px; font-size: 12px; font-weight: 600; color: var(--text); display:flex; align-items:center; justify-content:space-between;}
+  #tag-editor .te-head .te-sub { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
+  #te-input-wrap {
+    margin: 0 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--bg); display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  }
+  #te-input-wrap:focus-within { border-color: var(--accent-border); }
+  #te-input-wrap input {
+    flex: 1; min-width: 90px; background: none; border: none; outline: none; color: var(--text);
+    font-size: 12px; padding: 2px 0;
+  }
+  #te-input-wrap input::placeholder { color: var(--text-dim); }
+  #te-suggest { padding: 9px 12px 2px; }
+  #te-suggest .lbl { font-size: 10.5px; color: var(--text-dim); margin-bottom: 5px; }
+  #te-suggest .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  #te-suggest .chips:empty::after { content: "暂无标签，直接输入创建一个"; font-size: 11px; color: var(--text-dim); }
+  #te-spacer { height: 10px; }
+  #te-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 12px 12px; }
+  .btn {
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; font-size: 12px;
+    color: var(--text-secondary); background: var(--surface-soft);
+  }
+  .btn:hover { color: var(--text); border-color: var(--accent-border); }
+  .btn.primary { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.15); color: #ffd574; }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn:disabled:hover { color: var(--text-secondary); border-color: var(--border); }
+
+  /* generic floating dim layer for modal feel (behind editor, above doc) */
+  #dim { position: fixed; inset: 0; background: rgba(0,0,0,0.32); z-index: 1003; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">
+      <span class="dot"></span>
+      Common Text Quick-Tag Prototype
+      <span class="hint">灯泡保存 → 再打标签 · 交互原型 v1</span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" id="btn-reset">↺ Reset</button>
+    </div>
+  </header>
+
+  <div id="main">
+    <div id="doc">
+      <div class="card">
+        <h3>① 试试：选中下面任何一句文字<span class="tag-new">NEW</span></h3>
+        <p>
+          选中文字后，右侧会出现 <span class="sent">💡</span> 灯泡按钮。点灯泡 → 点
+          <b>“Add Selection to Common Text”</b>，文字即被保存，且气泡不再一闪而过，
+          而是变成带 <b>(Tag)</b> 按钮的交互气泡。
+        </p>
+      </div>
+      <div class="card">
+        <h3>② 试试：给刚保存的文字打标签</h3>
+        <p>
+          点气泡上的 <b>(Tag)</b> → 弹出标签编辑器。输入标签用 <kbd>Enter</kbd> 或逗号分隔；
+          点下方“常用标签”可直接添加；<kbd>Esc</kbd> 取消，点 <b>Save Tags</b> 保存。
+        </p>
+      </div>
+      <div class="card">
+        <h3>③ 试试重复保存（合并标签）</h3>
+        <p>
+          下面这句在右侧列表里已存在带标签的版本：<br />
+          <span class="sent">Use npm run setup to install the toolchain</span><br />
+          再选中它保存一次，会提示 <b>Already exists</b>，但同样可以点 <b>(Tag)</b>
+          给<b>已有条目</b>补标签（标签会合并，不会新增重复条目）。
+        </p>
+      </div>
+      <div id="docs-hint">
+        保存后气泡停留 12 秒或直到你点别处/打标签完成；点文档空白处会收起气泡（已保存内容不丢失）。
+        右侧面板可核对每个条目的标签是否落盘。
+      </div>
+    </div>
+
+    <div id="side">
+      <div class="side-head">
+        <b>Common Text</b>
+        <span class="cnt" id="cnt"></span>
+      </div>
+      <div id="items"></div>
+      <div class="side-foot"><div id="log"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- floating layer -->
+<div id="float-layer">
+  <button id="bulb" class="hidden" title="Quick actions">💡</button>
+  <div id="bubble" class="hidden"></div>
+  <div id="menu" class="hidden"></div>
+  <div id="dim" class="hidden"></div>
+  <div id="tag-editor" class="hidden"></div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+ * 原型状态
+ * items 结构与真实模型 CommonTextItem 对齐：{ id, title, text, tags, createdat, updatedat }
+ * overlay 模拟 "Add Selection to Common Text" 之后的可交互反馈
+ * ============================================================ */
+const $ = (id) => document.getElementById(id);
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+let items = [
+  {
+    id: uid(), title: "npm toolchain setup", text: "Use npm run setup to install the toolchain",
+    tags: ["setup", "toolchain"],
+  },
+  {
+    id: uid(),
+    title: "reply for common issue",
+    text: "This is expected behavior — see the docs under docs/.",
+    tags: ["reply", "docs"],
+  },
+  {
+    id: uid(), title: "重启会话指令", text: "重启一下会话，保留上下文",
+    tags: ["ops"],
+  },
+];
+let updatedatSeq = 0;
+
+/* overlay: { kind:'saved'|'exists'|'tagged', x, y, itemId, bubbleMsg, tagBtnText, tags, createdAt } */
+let overlay = null;
+/* tag editor: { x, y, itemId, tags: string[] } */
+let tagEditor = null;
+let menu = null;
+let overlayTimer = null;
+let flashTimer = null;
+
+const FEEDBACK_LIVE_MS = 12000; // 保存后交互气泡停留时长
+
+function log(msg) { $("log").textContent = `› ${msg}`; }
+
+/* ---------- selection → bulb ---------- */
+$("doc").addEventListener("mouseup", (e) => {
+  // 点文档内非交互区：收起气泡/弹层（不丢已保存内容）
+  if (e.target.closest("#bulb,#bubble,#menu,#tag-editor")) return;
+  dismissAll();
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) { hideBulb(); return; }
+  const text = sel.toString();
+  if (!text.trim()) { hideBulb(); return; }
+  const range = sel.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) { hideBulb(); return; }
+  showBulb(rect.right + 6, Math.min(rect.bottom, rect.top) + rect.height / 2 - 12, text);
+});
+$("doc").addEventListener("mousedown", (e) => {
+  if (e.target.closest("#bulb,#bubble,#menu,#tag-editor")) return;
+  // 在文档上按下时收起交互气泡（内容已保存，无损失）
+  dismissAll();
+});
+
+function hideBulb() { $("bulb").classList.add("hidden"); window.__bulbText = null; }
+function showBulb(x, y, text) {
+  $("bulb").style.left = x + "px";
+  $("bulb").style.top = y + "px";
+  $("bulb").classList.remove("hidden");
+  window.__bulbText = text;
+}
+
+/* ---------- bulb click → context menu ---------- */
+$("bulb").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const text = window.__bulbText || "";
+  const rect = $("bulb").getBoundingClientRect();
+  closeMenu();
+  buildMenu(rect.left, rect.bottom + 6, text);
+});
+
+function buildMenu(x, y, text) {
+  const menuEl = $("menu");
+  menuEl.innerHTML = "";
+  const entries = [
+    { label: "Copy", icon: "📋", click: () => { copyText(text); log(`Copied ${text.length} chars`); dismissOverlayAndMenu(); } },
+    { label: "Search In Files", icon: "🔍", click: () => { log("prototype: Search In Files 未实现（真实应用会搜索）"); closeMenu(); } },
+    { type: "sep" },
+    { type: "action", label: "Add Selection to Common Text", icon: "💾", click: () => addSelection(text) },
+    {
+      type: "action", label: "Find Related Common Text", icon: "🔎",
+      disabled: items.length === 0,
+      click: () => { log(`prototype: Find Related → 打开搜索弹窗 query=“${text.slice(0, 40)}”`); closeMenu(); },
+    },
+  ];
+  for (const en of entries) {
+    if (en.type === "sep") { const s = document.createElement("div"); s.className = "sep"; menuEl.appendChild(s); continue; }
+    const mi = document.createElement("button");
+    mi.className = "mi" + (en.disabled ? " disabled" : "");
+    mi.innerHTML = `<span class="ic">${en.icon || ""}</span><span>${en.label}</span>`;
+    if (en.disabled) { mi.disabled = true; } else { mi.onclick = en.click; }
+    menuEl.appendChild(mi);
+  }
+  menuEl.style.left = Math.min(x, window.innerWidth - 230) + "px";
+  menuEl.style.top = Math.min(y, window.innerHeight - menuEl.offsetHeight - 40) + "px";
+  menuEl.classList.remove("hidden");
+  menu = { x, y };
+}
+
+function closeMenu() { $("menu").classList.add("hidden"); menu = null; }
+function dismissOverlayAndMenu() { closeMenu(); dismissAll(); }
+
+/* ---------- ADD SELECTION TO COMMON TEXT ---------- */
+function addSelection(text) {
+  const clean = text.trim();
+  if (!clean) return;
+  closeMenu();
+  // 查重复：与真实 findDuplicateCommonText 一致 —— 忽略 id，按 text.trim() 全等比对
+  const dup = items.find((it) => it.text.trim() === clean) || null;
+  const bulbRect = $("bulb").getBoundingClientRect();
+  const x = bulbRect.left, y = bulbRect.bottom + 8;
+
+  if (dup) {
+    overlay = { kind: "exists", x, y, itemId: dup.id, tags: [...dup.tags] };
+    showBubble("⚠", "Already exists", "Tag", "warn");
+    log(`已存在 → 未新增；可给“${dup.title}”补标签`);
+    highlightItem(dup.id);
+  } else {
+    const item = {
+      id: uid(), title: titleFromText(clean), text: clean, tags: [],
+      createdat: Date.now(), updatedat: Date.now(),
+    };
+    items.unshift(item);
+    overlay = { kind: "saved", x, y, itemId: item.id, tags: [] };
+    showBubble("✓", "Saved", "Tag", "success");
+    log(`已保存 → 可继续打标签 (#${item.title})`);
+    highlightItem(item.id);
+  }
+  renderList();
+  scheduleOverlayTimeout();
+  hideBulb();
+}
+
+function titleFromText(text) {
+  const firstLine = text.split(/\r?\n/).map((s) => s.trim()).find((s) => s !== "");
+  const fallback = firstLine || "Untitled text";
+  return fallback.length > 30 ? fallback.slice(0, 27) + "..." : fallback;
+}
+
+function showBubble(icon, msg, tagLabel, kind) {
+  const b = $("bubble");
+  b.className = "kind-" + kind;
+  b.innerHTML = "";
+  const m = document.createElement("div");
+  m.className = "msg";
+  m.innerHTML = `<i>${icon}</i><span>${msg}</span>`;
+  const btn = document.createElement("button");
+  btn.className = "tag-btn";
+  btn.textContent = tagLabel;
+  btn.onclick = (e) => { e.stopPropagation(); openTagEditor(); };
+  b.appendChild(m);
+  b.appendChild(btn);
+  b.style.left = overlay.x + "px";
+  b.style.top = overlay.y + "px";
+  b.classList.remove("hidden", "fading");
+}
+
+function scheduleOverlayTimeout() {
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(() => { fadeOverlay(); }, FEEDBACK_LIVE_MS);
+}
+
+function fadeOverlay() {
+  const b = $("bubble");
+  b.classList.add("fading");
+  setTimeout(() => { if (overlay && !tagEditor && b.classList.contains("fading")) dismissOverlay(); }, 500);
+}
+
+function dismissOverlay() {
+  overlay = null;
+  $("bubble").classList.add("hidden");
+  clearTimeout(overlayTimer);
+  closeTagEditor({ saved: false });
+}
+
+function dismissAll() {
+  if (tagEditor) return; // 编辑器打开时，点外部由编辑器自己的逻辑处理
+  closeMenu();
+  clearTimeout(overlayTimer);
+  overlay = null;
+  $("bubble").classList.add("hidden");
+}
+
+/* ---------- TAG EDITOR ---------- */
+function openTagEditor() {
+  if (!overlay) return;
+  const item = items.find((it) => it.id === overlay.itemId);
+  if (!item) return;
+  clearTimeout(overlayTimer);
+  tagEditor = { x: overlay.x, y: overlay.y, itemId: item.id, tags: [...item.tags] };
+  $("dim").classList.remove("hidden");
+  const te = $("tag-editor");
+  te.style.left = Math.min(tagEditor.x, window.innerWidth - 350) + "px";
+  te.style.top = Math.min(tagEditor.y, window.innerHeight - 250) + "px";
+  te.classList.remove("hidden");
+  renderTagEditor();
+  $("te-input").focus();
+}
+
+function renderTagEditor() {
+  const te = $("tag-editor");
+  const item = items.find((it) => it.id === tagEditor.itemId);
+  const inputWrap = $("te-input-wrap");
+
+  // 顶部
+  te.querySelector(".te-sub").textContent = item ? item.title : "";
+
+  // 输入区 chips + input
+  inputWrap.innerHTML = "";
+  for (const t of tagEditor.tags) {
+    inputWrap.appendChild(chipEl(t, { removable: true, onRemove: () => removeTag(t) }));
+  }
+  const input = document.createElement("input");
+  input.id = "te-input";
+  input.placeholder = tagEditor.tags.length ? "" : "输入标签，回车添加…";
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const v = input.value.trim();
+      if (v) { addTag(v); renderTagEditor(); input.focus(); }
+    } else if (e.key === "Backspace" && !input.value && tagEditor.tags.length) {
+      e.preventDefault();
+      removeTag(tagEditor.tags[tagEditor.tags.length - 1]);
+      renderTagEditor(); input.focus();
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      closeTagEditor({ saved: false });
+    }
+  });
+  inputWrap.appendChild(input);
+
+  // 建议标签（全局统计 top N，点击添加）
+  const suggestWrap = te.querySelector("#te-suggest .chips");
+  suggestWrap.innerHTML = "";
+  const summaries = tagSummaries();
+  for (const { tag } of summaries.slice(0, 12)) {
+    if (tagEditor.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) continue;
+    suggestWrap.appendChild(chipEl(tag, { clickable: true, onClick: () => { addTag(tag); renderTagEditor(); $("te-input").focus(); } }));
+  }
+
+  // Save 按钮可用态
+  const btn = te.querySelector("#te-save");
+  btn.disabled = tagEditor.tags.length === 0 || sameTags(tagEditor.tags, item?.tags);
+}
+
+function chipEl(text, opts = {}) {
+  const c = document.createElement("span");
+  c.className = "chip" + (opts.clickable ? " clickable" : "") + (opts.active ? " active" : "");
+  const hash = document.createElement("span");
+  hash.className = "hash";
+  hash.textContent = "#";
+  c.appendChild(hash);
+  c.appendChild(document.createTextNode(text));
+  if (opts.removable) {
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "×";
+    x.onclick = (e) => { e.stopPropagation(); opts.onRemove(); };
+    c.appendChild(x);
+  } else {
+    c.onclick = () => opts.onClick && opts.onClick();
+  }
+  return c;
+}
+
+function addTag(tag) {
+  const norm = normalizeTag(tag);
+  if (!norm) return;
+  if (tagEditor.tags.some((t) => t.toLowerCase() === norm.toLowerCase())) return;
+  tagEditor.tags.push(norm);
+  renderTagEditor();
+}
+function removeTag(tag) {
+  tagEditor.tags = tagEditor.tags.filter((t) => t !== tag);
+  renderTagEditor();
+}
+
+function normalizeTag(tag) {
+  return tag.trim(); // 简单原型：与 normalizeCommonTextTags 同步为 trim；去重靠 add/remove 逻辑
+}
+
+function sameTags(a, b) {
+  const norm = (arr) => [...new Set((arr || []).map((t) => t.trim().toLowerCase()))].sort().join("\u0000");
+  return norm(a) === norm(b);
+}
+
+function tagSummaries() {
+  const map = new Map();
+  for (const it of items) {
+    for (const t of it.tags || []) {
+      const key = t.toLowerCase();
+      const cur = map.get(key);
+      if (cur) cur.count++; else map.set(key, { tag: t, count: 1 });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => (b.count - a.count) || a.tag.localeCompare(b.tag));
+}
+
+/* ---------- SAVE TAGS ---------- */
+function saveTags() {
+  if (!tagEditor) return;
+  const item = items.find((it) => it.id === tagEditor.itemId);
+  if (!item) { closeTagEditor({ saved: false }); return; }
+  item.tags = dedupeTags([...(item.tags || []), ...tagEditor.tags]);
+  item.updatedat = Date.now();
+  const tagCount = item.tags.length;
+  const wasExists = overlay && overlay.kind === "exists";
+  overlay = { kind: "tagged", x: overlay.x, y: overlay.y, itemId: item.id, tags: item.tags };
+  closeTagEditor({ saved: true, keepBubble: true });
+  renderList();
+  highlightItem(item.id, "tagged");
+  // 气泡变 “✓ Tagged (n)”，短暂停留后淡出
+  $("bubble").className = "kind-success";
+  const m = $("bubble").querySelector(".msg");
+  m.innerHTML = `<i>✓</i><span>Tagged (${tagCount})${wasExists ? " · merged into existing" : ""}</span>`;
+  const btn = $("bubble").querySelector(".tag-btn");
+  if (btn) btn.remove();
+  scheduleFadeOut();
+  log(`已打标签: ${item.tags.map((t) => "#" + t).join(" ")} (${wasExists ? "合并到已有条目" : "新条目"})`);
+}
+
+function dedupeTags(tags) {
+  const seen = new Set();
+  const out = [];
+  for (const t of tags) {
+    const k = t.trim();
+    if (!k || seen.has(k.toLowerCase())) continue;
+    seen.add(k.toLowerCase());
+    out.push(k);
+  }
+  return out;
+}
+
+function scheduleFadeOut() {
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(() => fadeOverlay(), 2600);
+}
+
+function closeTagEditor({ saved, keepBubble } = {}) {
+  if (!tagEditor) return;
+  tagEditor = null;
+  $("tag-editor").classList.add("hidden");
+  $("dim").classList.add("hidden");
+  if (!keepBubble && !saved) {
+    // 取消：气泡回到 Saved / Already exists 状态继续停留
+    if (overlay) {
+      if (overlay.kind === "exists") showBubble("⚠", "Already exists", "Tag", "warn");
+      else showBubble("✓", "Saved", "Tag", "success");
+      scheduleOverlayTimeout();
+    }
+  }
+  renderList();
+}
+
+/* ---------- list rendering ---------- */
+function renderList() {
+  const cont = $("items");
+  cont.innerHTML = "";
+  for (const it of items) {
+    const el = document.createElement("div");
+    el.className = "item";
+    el.dataset.id = it.id;
+    el.innerHTML = `
+      <div class="ititle"><span>${escapeHtml(it.title)}</span></div>
+      <div class="itext">${escapeHtml(it.text)}</div>
+      <div class="itags"></div>`;
+    const tagsEl = el.querySelector(".itags");
+    if ((it.tags || []).length === 0) {
+      tagsEl.innerHTML = '<span class="empty">no tags</span>';
+    } else {
+      for (const t of it.tags) tagsEl.appendChild(chipEl(t));
+    }
+    cont.appendChild(el);
+  }
+  $("cnt").textContent = `${items.length} items`;
+}
+
+function highlightItem(id, kind = "new") {
+  clearTimeout(flashTimer);
+  const el = document.querySelector(`.item[data-id="${id}"]`);
+  if (!el) return;
+  el.classList.add("flash");
+  const badge = document.createElement("span");
+  badge.className = "badge " + (kind === "tagged" ? "tagged" : "new");
+  badge.textContent = kind === "tagged" ? "tagged" : "new";
+  el.querySelector(".ititle").appendChild(badge);
+  el.scrollIntoView({ block: "nearest" });
+  flashTimer = setTimeout(() => {
+    el.classList.remove("flash");
+    const b = el.querySelector(".badge");
+    if (b) b.remove();
+  }, 4000);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function copyText(text) {
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+}
+
+/* ---------- reset ---------- */
+$("btn-reset").addEventListener("click", () => {
+  items = [
+    { id: uid(), title: "npm toolchain setup", text: "Use npm run setup to install the toolchain", tags: ["setup", "toolchain"] },
+    { id: uid(), title: "reply for common issue", text: "This is expected behavior — see the docs under docs/.", tags: ["reply", "docs"] },
+    { id: uid(), title: "重启会话指令", text: "重启一下会话，保留上下文", tags: ["ops"] },
+  ];
+  dismissAll(); closeTagEditor({ saved: false }); closeMenu();
+  hideBulb();
+  renderList();
+  log("重置到初始状态");
+});
+
+/* ---------- global dismiss ---------- */
+document.addEventListener("mousedown", (e) => {
+  if (tagEditor && !e.target.closest("#tag-editor,#dim,#bubble")) {
+    closeTagEditor({ saved: false });
+  }
+  if (!tagEditor && overlay && !e.target.closest("#bubble,#menu,#bulb")) {
+    clearTimeout(overlayTimer);
+    overlay = null;
+    $("bubble").classList.add("hidden");
+  }
+  if (menu && !e.target.closest("#menu,#bulb")) closeMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (tagEditor) { e.preventDefault(); closeTagEditor({ saved: false }); }
+    else if (menu) closeMenu();
+  }
+});
+
+renderList();
+log("原型就绪 — 在左侧文档区选中文字开始试验");
+</script>
+</body>
+</html>

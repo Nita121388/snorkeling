@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
-import { CommonTextManagerContent } from "@/app/commontext/commontext-manager";
 import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
@@ -66,13 +65,6 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             language: "json",
             docsUrl: "https://docs.waveterm.dev/config",
             hasJsonView: true,
-        },
-        {
-            name: "Common Text",
-            path: "commontext",
-            description: "Reusable snippets",
-            hasJsonView: false,
-            visualComponent: CommonTextManagerContent,
         },
         {
             name: "App Theme",

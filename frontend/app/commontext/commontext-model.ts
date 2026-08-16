@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { atoms, createBlock, globalStore } from "@/app/store/global";
+import { atoms, globalStore } from "@/app/store/global";
 import { CommonTextService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -473,19 +473,6 @@ export async function recordCommonTextUse(id: string): Promise<void> {
             : item
     );
     await saveCommonTextItems(nextItems);
-}
-
-export async function openCommonTextManager(): Promise<void> {
-    await createBlock(
-        {
-            meta: {
-                view: "waveconfig",
-                file: "commontext",
-            },
-        },
-        false,
-        true
-    );
 }
 
 /**

@@ -1,7 +1,6 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { openCommonTextSearch } from "@/app/commontext/commontext-events";
 import { MiddleEllipsis } from "@/app/element/middle-ellipsis";
 import { Tooltip } from "@/app/element/tooltip";
 import * as WOS from "@/app/store/wos";
@@ -1525,14 +1524,6 @@ const SettingsFloatingWindow = memo(
                         },
                     };
                     env.createBlock(blockDef, false, true);
-                    onClose();
-                },
-            },
-            {
-                icon: "quote-left",
-                label: "Common Text",
-                onClick: () => {
-                    openCommonTextSearch();
                     onClose();
                 },
             },
