@@ -29,21 +29,23 @@ const VendorConfigurationUnavailableError = "Vendor configuration is no longer a
 type AISessionsService struct{}
 
 type AISessionsListRequest struct {
-	Source     string   `json:"source,omitempty"`
-	Project    string   `json:"project,omitempty"`
-	Query      string   `json:"query,omitempty"`
-	Connection string   `json:"connection,omitempty"`
-	Limit      int      `json:"limit,omitempty"`
-	Refresh    bool     `json:"refresh,omitempty"`
-	Marked     string   `json:"marked,omitempty"`
-	Since      int64    `json:"since,omitempty"`
-	Before     int64    `json:"before,omitempty"`
-	TagFilters  []string `json:"tagFilters,omitempty"`
-	TagPresence  string   `json:"tagPresence,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	Project            string   `json:"project,omitempty"`
+	Query              string   `json:"query,omitempty"`
+	Connection         string   `json:"connection,omitempty"`
+	Limit              int      `json:"limit,omitempty"`
+	Refresh            bool     `json:"refresh,omitempty"`
+	Marked             string   `json:"marked,omitempty"`
+	Since              int64    `json:"since,omitempty"`
+	Before              int64    `json:"before,omitempty"`
+	TagFilters          []string `json:"tagFilters,omitempty"`
+	TagPresence         string   `json:"tagPresence,omitempty"`
+	IncludeProjectPaths bool     `json:"includeProjectPaths,omitempty"`
 }
 
 type AISessionsListResponse struct {
-	Sessions []aisessions.SessionSummary `json:"sessions"`
+	Sessions     []aisessions.SessionSummary     `json:"sessions"`
+	ProjectPaths []aisessions.ProjectPathSummary `json:"projectPaths,omitempty"`
 }
 
 type AISessionsTagsRequest struct {
@@ -275,7 +277,7 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if err != nil {
 		return nil, err
 	}
-	sessions, err := manager.ScanList(ctx, aisessions.ListOptions{
+	sessions, projectPaths, err := manager.ScanListWithDistribution(ctx, aisessions.ListOptions{
 		Source:      request.Source,
 		Project:     request.Project,
 		Limit:       limit,
@@ -289,7 +291,11 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if err != nil {
 		return nil, err
 	}
-	return &AISessionsListResponse{Sessions: sessions}, nil
+	response := &AISessionsListResponse{Sessions: sessions}
+	if request.IncludeProjectPaths {
+		response.ProjectPaths = projectPaths
+	}
+	return response, nil
 }
 
 func (svc *AISessionsService) BackupStats_Meta() tsgenmeta.MethodMeta {
