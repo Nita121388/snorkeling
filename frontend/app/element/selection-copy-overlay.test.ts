@@ -11,7 +11,6 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/app/commontext/commontext-model", () => ({
     addSelectionToCommonText: vi.fn(),
     getCommonTextItems: () => [],
-    openCommonTextManager: vi.fn(),
 }));
 
 describe("selection copy overlay helpers", () => {
