@@ -2626,7 +2626,7 @@ const Markdown = ({
                                     onMouseLeave={handleGripLeave}
                                     onClick={() => handleInsertClick("before")}
                                 >
-                                    <i className="fa-sharp fa-solid fa-arrow-up-from-line" />
+                                    <i className="fa-sharp fa-solid fa-plus" />
                                 </button>
                                 {/* B: insert below — same column, just below the grip. */}
                                 <button
@@ -2641,7 +2641,7 @@ const Markdown = ({
                                     onMouseLeave={handleGripLeave}
                                     onClick={() => handleInsertClick("after")}
                                 >
-                                    <i className="fa-sharp fa-solid fa-arrow-down-to-line" />
+                                    <i className="fa-sharp fa-solid fa-plus" />
                                 </button>
                             </>,
                             document.body

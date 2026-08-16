@@ -630,9 +630,11 @@
     justify-content: center;
     width: 24px;
     height: 18px;
-    /* 纯图标风格：无背景/边框/阴影，对齐 4 点 grip 的轻量感，hover 只变色。 */
+    /* 纯图标风格：无背景/边框/阴影，对齐 4 点 grip 的轻量感，hover 只变色。
+    + 图标比箭头偏细，加粗并略放大保证清晰。 */
     color: var(--secondary-text-color, #aaa);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
     padding: 0;
     transform: translateX(-50%);
