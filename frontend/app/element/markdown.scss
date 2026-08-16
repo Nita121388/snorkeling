@@ -630,16 +630,13 @@
     justify-content: center;
     width: 24px;
     height: 18px;
-    border: 1px solid var(--modal-border-color, #333);
-    border-radius: 4px;
-    background: var(--modal-bg-color, #1e1e1e);
+    /* 纯图标风格：无背景/边框/阴影，对齐 4 点 grip 的轻量感，hover 只变色。 */
     color: var(--secondary-text-color, #aaa);
     font-size: 11px;
     cursor: pointer;
     padding: 0;
     transform: translateX(-50%);
     transition: opacity 120ms ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 
     &.markdown-block-grip-action-hidden {
         opacity: 0;
@@ -652,8 +649,6 @@
 
     &:hover {
         color: var(--accent-color, #32afff);
-        border-color: var(--accent-color, #32afff);
-        background: var(--modal-bg-color, #1e1e1e);
     }
 }
 
