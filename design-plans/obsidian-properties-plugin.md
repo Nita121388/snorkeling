@@ -341,13 +341,14 @@ MarkdownPreview 新增可选 props（frontmatterBlock / waveBlockRenderers），
 | 大 frontmatter（>100 行） | 渲染性能 | YAML.parse 足够快；Phase 1 无虚拟化，100 行仍可接受 |
 | frontmatter 为空对象 `{}` | 卡片标题显示"0 个属性" | 显示"无属性"，或不渲染卡片（视 Obsidian 行为：空属性面板仍显示标题） |
 | 重复 `---`（非 frontmatter） | 误识别 | 要求第一行必须是 `---`（与 Obsidian 一致） |
+| Markdown 子树重渲染导致 waveblock 卸载重挂 | 折叠/编辑 state 归零 | **已修复**：transformedOutput 用 useMemo + waveblock 委托用 useCallback 稳定组件引用；折叠状态同时走外部缓存跨 remount 恢复（见 Phase 2.5） |
 
 ---
 
 ## 7. 后续迭代（Phase 2+）
 
 - ✅ 属性编辑（2026-08-15 完成）：点击属性行进入编辑（text/number/date/json 输入框、boolean 点击切换、tag/list 逗号分隔），Enter 保存 / Esc 取消；保存走草稿语义（newFileContent → Save/Cmd+S 落盘，与正文 inline-edit 一致）。编辑实现：卡片 onDataChange → 新对象 YAML.stringify → replaceFrontmatter 整块替换 frontmatter 行区域。
-- 折叠/展开属性面板
+- ✅ 折叠/展开属性面板（2026-08-16 修复）：标题行 chevron 切换，默认展开，折叠时隐藏属性行并丢弃编辑态。根因修复（Phase 2.5）：mouseOver/滚动触发 Markdown 重渲染 → waveblock 内联组件引用不稳定 → 卸载重挂 → 折叠 state 归零。修复：transformedOutput useMemo + waveblock useCallback 稳定引用（根治），折叠状态 module Map 缓存播种/回写（跨块重开持久化）。
 - 排序拖拽
 - 类型手动覆盖（配置对话框）
 - 增加/删除属性键（当前仅改值）
