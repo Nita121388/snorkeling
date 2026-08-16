@@ -4,47 +4,63 @@
 import { describe, expect, it } from "vitest";
 import { DefaultPathFilter, PathFilterOtherRoot } from "./types";
 import {
-    computeBreadcrumb,
+    extractPathChildren,
     extractPathRoots,
     otherRootMatcher,
+    pathAncestorSegments,
     pathFilterEqual,
     pathFilterToPrefix,
+    shortenPathForChip,
 } from "./utils";
 
-type S = { projectPath?: string };
+// Distribution helper: convert {path,count}[] — same shape as the backend
+// ProjectPathSummary.
+function distOf(entries: [string, number][]): ProjectPathSummary[] {
+    return entries.map(([path, count]) => ({ path, count }));
+}
 
-describe("path-filter utils", () => {
+describe("path-filter utils (v2 — distribution-driven navigation)", () => {
     it("extractPathRoots clusters by windows drive, ~ and /, with Other tail", () => {
-        const sessions: S[] = [
-            { projectPath: "E:\\code\\snorkeling" },
-            { projectPath: "E:\\code\\other" },
-            { projectPath: "D:\\work" },
-            { projectPath: "~/proj" },
-            { projectPath: "" },
-            { projectPath: "relative/no-root" },
-        ];
-        const roots = extractPathRoots(sessions);
+        const dist = distOf([
+            ["E:\\code\\snorkeling", 2],
+            ["E:\\code\\other", 1],
+            ["D:\\work", 1],
+            ["~/proj", 1],
+            ["", 2],
+        ]);
+        const roots = extractPathRoots(dist);
         const byRoot = new Map(roots.map((r) => [r.root, r]));
-        expect(byRoot.get("E:\\")?.count).toBe(2);
+        expect(byRoot.get("E:\\")?.count).toBe(3);
         expect(byRoot.get("D:\\")?.count).toBe(1);
         expect(byRoot.get("~/")?.count).toBe(1);
         const other = byRoot.get(PathFilterOtherRoot);
         expect(other?.count).toBe(2);
         expect(other?.isOther).toBe(true);
-        // First root should be the most frequent: E:\
-        expect(roots[0].root).toContain("E:");
+        // highest-count root first
+        expect(roots[0].root).toBe("E:\\");
+    });
+
+    it("extractPathRoots aggregates counts when multiple sessions share a path", () => {
+        const roots = extractPathRoots(
+            distOf([
+                ["/a/x", 10],
+                ["/b/y", 4],
+                ["/a/z", 7],
+            ])
+        );
+        const byRoot = new Map(roots.map((r) => [r.root, r]));
+        expect(byRoot.get("/")?.count).toBe(21);
     });
 
     it("extractPathRoots collapses overflow roots into Other + adds … button", () => {
-        const sessions: S[] = [];
+        const entries: [string, number][] = [];
         const drives = ["A", "B", "C", "D", "E", "F", "G", "H"];
-        drives.forEach((d) => sessions.push({ projectPath: `${d}:\\proj` }));
-        const roots = extractPathRoots(sessions);
+        drives.forEach((d) => entries.push([`${d}:\\proj`, 1]));
+        const roots = extractPathRoots(distOf(entries));
         // 6 real roots + Other (the 2 overflowed drives) + … button
         expect(roots.filter((r) => r.isMore).length).toBe(1);
         expect(roots.filter((r) => r.isOther).length).toBe(1);
         expect(roots.filter((r) => !r.isOther && !r.isMore).length).toBe(6);
-        // Other bucket swallowed the 2 overflowed drives
         const other = roots.find((r) => r.isOther);
         expect(other?.count).toBe(2);
     });
@@ -64,51 +80,109 @@ describe("path-filter utils", () => {
         expect(pathFilterEqual({ root: "E:\\", subPath: "code" }, { root: "E:\\", subPath: "" })).toBe(false);
     });
 
-    it("computeBreadcrumb computes longest common prefix under a windows root", () => {
-        const sessions: S[] = [
-            { projectPath: "E:\\code\\snorkeling\\frontend" },
-            { projectPath: "E:\\code\\snorkeling\\backend" },
-            { projectPath: "E:\\code\\snorkeling\\docs" },
-            { projectPath: "D:\\unrelated" },
-        ];
-        const segs = computeBreadcrumb({ root: "E:\\", subPath: "" }, sessions);
-        expect(segs.map((s) => s.label)).toEqual(["code", "snorkeling"]);
-        expect(segs.map((s) => s.fullPrefix)).toEqual(["E:\\code", "E:\\code\\snorkeling"]);
-        // All 3 E:\ sessions are under E:\code and E:\code\snorkeling
-        expect(segs[0].count).toBe(3);
-        expect(segs[1].count).toBe(3);
-        expect(segs[segs.length - 1].isLeaf).toBe(true);
+    it("extractPathChildren lists direct children with aggregated counts", () => {
+        const dist = distOf([
+            ["/Users/nita/Primary/projects/snorkeling", 300],
+            ["/Users/nita/Primary/projects/snorkeling/frontend", 200],
+            ["/Users/nita/Primary/projects/snorkeling/backend", 100],
+            ["/Users/nita/Primary/projects/FileDock", 280],
+            ["/Users/nita/Primary/obsidians/Obsidian", 72],
+            ["/tmp/project", 22],
+        ]);
+        const roots = extractPathChildren({ root: "/", subPath: "" }, dist);
+        expect(roots).toEqual([
+            { name: "Users", count: 952 },
+            { name: "tmp", count: 22 },
+        ]);
+        const projects = extractPathChildren({ root: "/", subPath: "Users/nita/Primary/projects" }, dist);
+        expect(projects).toEqual([
+            { name: "snorkeling", count: 600 },
+            { name: "FileDock", count: 280 },
+        ]);
+        const snorkeling = extractPathChildren({ root: "/", subPath: "Users/nita/Primary/projects/snorkeling" }, dist);
+        // sorted by count desc
+        expect(snorkeling).toEqual([
+            { name: "frontend", count: 200 },
+            { name: "backend", count: 100 },
+        ]);
     });
 
-    it("computeBreadcrumb shrinks when a sibling diverges earlier", () => {
-        const sessions: S[] = [
-            { projectPath: "E:\\code\\snorkeling\\frontend" },
-            { projectPath: "E:\\code\\snorkeling\\backend" },
-            { projectPath: "E:\\code\\other" },
-        ];
-        const segs = computeBreadcrumb({ root: "E:\\", subPath: "" }, sessions);
-        expect(segs.map((s) => s.label)).toEqual(["code"]);
-        expect(segs[0].count).toBe(3);
-        expect(segs[0].isLeaf).toBe(true);
+    it("extractPathChildren never surfaces same-name-prefix siblings (boundary match)", () => {
+        const dist = distOf([
+            ["/Users/nita/Primary/projects/snorkeling", 300],
+            ["/Users/nita/Primary/projects/snorkeling-light-theme", 13],
+            ["/Users/nita/Primary/projects/snorkeling-imgzoom", 2],
+        ]);
+        const children = extractPathChildren({ root: "/", subPath: "Users/nita/Primary/projects" }, dist);
+        // light-theme / imgzoom are DIRECT children of projects — they belong on
+        // this level as their own chips; but once snorkeling is selected they
+        // must NOT appear as children of snorkeling.
+        expect(children.map((c) => c.name).sort()).toEqual(
+            ["snorkeling", "snorkeling-imgzoom", "snorkeling-light-theme"].sort()
+        );
+        const underSnorkeling = extractPathChildren(
+            { root: "/", subPath: "Users/nita/Primary/projects/snorkeling" },
+            dist
+        );
+        expect(underSnorkeling).toEqual([]);
     });
 
-    it("computeBreadcrumb returns empty for All and Other", () => {
-        expect(computeBreadcrumb(DefaultPathFilter, [{ projectPath: "E:\\x" }])).toEqual([]);
-        expect(computeBreadcrumb({ root: PathFilterOtherRoot, subPath: "" }, [{ projectPath: "" }])).toEqual([]);
+    it("extractPathChildren handles Windows drive roots and mixed separators", () => {
+        const dist = distOf([
+            ["E:\\code\\snorkeling\\frontend", 5],
+            ["E:\\code\\snorkeling\\backend", 4],
+            ["E:\\code\\other", 3],
+            ["e:/data/x", 2],
+        ]);
+        const roots = extractPathChildren({ root: "E:\\", subPath: "" }, dist);
+        expect(roots).toEqual([
+            { name: "code", count: 12 },
+            { name: "data", count: 2 },
+        ]);
+        const codeKids = extractPathChildren({ root: "E:\\", subPath: "code" }, dist);
+        expect(codeKids).toEqual([
+            { name: "snorkeling", count: 9 },
+            { name: "other", count: 3 },
+        ]);
+        // subPath uses native separator "\\"; sorted count desc
+        const snorkKids = extractPathChildren({ root: "E:\\", subPath: "code\\snorkeling" }, dist);
+        expect(snorkKids).toEqual([
+            { name: "frontend", count: 5 },
+            { name: "backend", count: 4 },
+        ]);
     });
 
-    it("computeBreadcrumb for *nix root produces /home-style prefixes", () => {
-        const sessions: S[] = [
-            { projectPath: "/home/me/proj/a" },
-            { projectPath: "/home/me/proj/b" },
-        ];
-        const segs = computeBreadcrumb({ root: "/", subPath: "" }, sessions);
-        expect(segs.map((s) => s.fullPrefix)).toEqual(["/home", "/home/me", "/home/me/proj"]);
-        expect(segs[segs.length - 1].isLeaf).toBe(true);
+    it("pathAncestorSegments returns clickable ancestors with native-separator subPaths", () => {
+        expect(pathAncestorSegments({ root: "/", subPath: "Users/nita/Primary" })).toEqual([
+            { name: "Users", fullSubPath: "Users" },
+            { name: "nita", fullSubPath: "Users/nita" },
+            { name: "Primary", fullSubPath: "Users/nita/Primary" },
+        ]);
+        expect(pathAncestorSegments({ root: "E:\\", subPath: "code\\snorkeling" })).toEqual([
+            { name: "code", fullSubPath: "code" },
+            { name: "snorkeling", fullSubPath: "code\\snorkeling" },
+        ]);
+        expect(pathAncestorSegments({ root: "/", subPath: "" })).toEqual([]);
+        expect(pathAncestorSegments(DefaultPathFilter)).toEqual([]);
+    });
+
+    it("shortenPathForChip keeps short paths whole, tails + … for long ones", () => {
+        expect(shortenPathForChip("")).toBe("");
+        expect(shortenPathForChip("/Users/nita/Primary/projects/snorkeling")).toBe(
+            "/Users/nita/Primary/projects/snorkeling"
+        );
+        const long =
+            "/Users/nita/Primary/projects/snorkeling/.runcfg/cdp/home/dev/projects/very-long-project-name/modules/core/src/features";
+        expect(shortenPathForChip(long)).toBe("…/src/features");
+        const mid = "/Users/nita/Primary/projects/a-really-really-long-project-name-that-pushes-over-the-limit";
+        expect(shortenPathForChip(mid)).toMatch(/^…\/[^/]+$/);
+        // single huge segment degrades to just that segment
+        const single = "x".repeat(200);
+        expect(shortenPathForChip(`/${single}`)).toBe("…/" + single);
     });
 
     it("otherRootMatcher keeps only empty / unrecognized projectPath", () => {
-        const sessions: S[] = [
+        const sessions = [
             { projectPath: "E:\\code" },
             { projectPath: "" },
             { projectPath: "relative/no-root" },

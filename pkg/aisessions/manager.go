@@ -152,14 +152,22 @@ func (m *Manager) SearchCached(ctx context.Context, opts SearchOptions) ([]Sessi
 }
 
 func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, error) {
+	sessions, _, err := m.ScanListWithDistribution(ctx, opts, query)
+	return sessions, err
+}
+
+// ScanListWithDistribution is ScanList plus the full projectPath distribution
+// (distinct projectPath counts over sessions passing the non-project filters),
+// which the path-filter UI uses to navigate the directory tree with true counts.
+func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, error) {
 	if !opts.Refresh {
-		if summaries, ok, err := m.cachedScanList(ctx, opts, query); ok || err != nil {
-			return summaries, err
+		if summaries, dist, ok, err := m.cachedScanListWithDistribution(ctx, opts, query); ok || err != nil {
+			return summaries, dist, err
 		}
 	}
 	summaries, errs := ScanSummaries(ctx, m.Providers)
 	if len(errs) > 0 && len(summaries) == 0 {
-		return nil, errs[0]
+		return nil, nil, errs[0]
 	}
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr != nil {
@@ -176,10 +184,13 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 		defer meta.Close()
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
+	baseOpts := opts
+	baseOpts.Project = ""
 	var filtered []SessionSummary
+	dist := make(map[string]int, 16)
 	for _, summary := range summaries {
 		if ctx.Err() != nil {
-			return filtered, ctx.Err()
+			return filtered, summarizeProjectPathsFromMap(dist), ctx.Err()
 		}
 		if sqliteIdx != nil {
 			if err := sqliteIdx.ApplyMeta(ctx, &summary); err != nil {
@@ -188,7 +199,14 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 		} else if meta != nil {
 			meta.Apply(&summary)
 		}
-		if !summaryMatchesList(summary, opts) {
+		// non-project filters decide the distribution (path selection must not
+		// narrow the tree the UI can navigate to), then the project filter and
+		// query narrow the session list itself.
+		if !summaryMatchesList(summary, baseOpts) {
+			continue
+		}
+		dist[summary.ProjectPath]++
+		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
 			continue
 		}
 		if query != "" && !summaryMatchesQuery(summary, query) {
@@ -199,27 +217,32 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 	sortSummaries(filtered)
 	limited := limitSummaries(filtered, opts.Limit)
 	m.populateMessageCounts(ctx, limited, opts.Refresh)
-	return limited, nil
+	return limited, summarizeProjectPathsFromMap(dist), nil
 }
 
 func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, bool, error) {
+	summaries, _, ok, err := m.cachedScanListWithDistribution(ctx, opts, query)
+	return summaries, ok, err
+}
+
+func (m *Manager) cachedScanListWithDistribution(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, error) {
 	if !m.summaryFileRefreshSupported() {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr != nil {
 		debugf("Manager.cachedScanList sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	defer sqliteIdx.Close()
 	hasScan, scanErr := sqliteIdx.HasSummaryScan(ctx)
 	if scanErr != nil {
 		debugf("Manager.cachedScanList sqlite scan marker error path=%q err=%v", m.SQLitePath, scanErr)
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	if !hasScan {
 		debugf("Manager.cachedScanList sqlite has no complete summary scan path=%q", m.SQLitePath)
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	if errs := m.refreshChangedSummaries(ctx, sqliteIdx); len(errs) > 0 {
 		debugf("Manager.cachedScanList changed summary refresh errors=%d firstErr=%v", len(errs), errs[0])
@@ -228,17 +251,17 @@ func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query st
 	if strings.TrimSpace(query) != "" {
 		listOpts.Limit = 0
 	}
-	summaries, err := sqliteIdx.List(ctx, listOpts)
+	summaries, dist, err := sqliteIdx.ListWithDistribution(ctx, listOpts)
 	if err != nil {
 		debugf("Manager.cachedScanList sqlite list error path=%q err=%v", m.SQLitePath, err)
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query != "" {
 		filtered := summaries[:0]
 		for _, summary := range summaries {
 			if ctx.Err() != nil {
-				return nil, true, ctx.Err()
+				return nil, dist, true, ctx.Err()
 			}
 			if summaryMatchesQuery(summary, query) {
 				filtered = append(filtered, summary)
@@ -247,7 +270,7 @@ func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query st
 		summaries = limitSummaries(filtered, opts.Limit)
 	}
 	m.populateMessageCounts(ctx, summaries, false)
-	return summaries, true, nil
+	return summaries, dist, true, nil
 }
 
 func (m *Manager) summaryFileRefreshSupported() bool {

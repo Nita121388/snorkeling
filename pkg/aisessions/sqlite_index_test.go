@@ -897,3 +897,65 @@ func TestCleanupBackupsOnlyDeletesOldKnownMigrationBackups(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLiteListBoundaryProjectFilterAndDistribution(t *testing.T) {
+	dir := t.TempDir()
+	metaPath := filepath.Join(dir, "meta.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	summaries := []SessionSummary{
+		{Key: "k1", ID: "s1", Source: SourceCodex, ProjectPath: "/Users/nita/Primary/projects/snorkeling", FilePath: filepath.Join(dir, "s1.jsonl")},
+		{Key: "k2", ID: "s2", Source: SourceCodex, ProjectPath: "/Users/nita/Primary/projects/snorkeling/frontend", FilePath: filepath.Join(dir, "s2.jsonl")},
+		{Key: "k3", ID: "s3", Source: SourceCodex, ProjectPath: "/Users/nita/Primary/projects/snorkeling-light-theme", FilePath: filepath.Join(dir, "s3.jsonl")},
+		{Key: "k4", ID: "s4", Source: SourceCodex, ProjectPath: "/Users/nita/Primary/projects/snorkeling-imgzoom", FilePath: filepath.Join(dir, "s4.jsonl")},
+		{Key: "k5", ID: "s5", Source: SourceCodex, ProjectPath: "/Users/nita/Primary/projects/FileDock", FilePath: filepath.Join(dir, "s5.jsonl")},
+		{Key: "k6", ID: "s6", Source: SourceCodex, ProjectPath: "/tmp/project", FilePath: filepath.Join(dir, "s6.jsonl")},
+		{Key: "k7", ID: "s7", Source: SourceCodex, ProjectPath: "", FilePath: filepath.Join(dir, "s7.jsonl")},
+	}
+	idx, err := OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), summaries, true); len(errs) != 0 {
+		t.Fatalf("unexpected save errors: %v", errs)
+	}
+	defer idx.Close()
+
+	// Boundary prefix matching: selecting ".../projects/snorkeling" must keep the
+	// dir + its children, and EXCLUDE same-name-prefix siblings.
+	list, dist, err := idx.ListWithDistribution(context.Background(), ListOptions{Project: "/Users/nita/Primary/projects/snorkeling", Limit: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, s := range list {
+		got[s.Key] = true
+	}
+	if len(got) != 2 || !got["k1"] || !got["k2"] {
+		t.Fatalf("boundary filter kept %v, want k1+k2 only", got)
+	}
+
+	// Distribution must be computed BEFORE the project filter so the UI can
+	// navigate to siblings: all 6 real projectPaths (incl. empty), regardless of
+	// the current project filter.
+	distByPath := map[string]int{}
+	for _, d := range dist {
+		distByPath[d.Path] = d.Count
+	}
+	expected := map[string]int{
+		"/Users/nita/Primary/projects/snorkeling":             1,
+		"/Users/nita/Primary/projects/snorkeling/frontend":    1,
+		"/Users/nita/Primary/projects/snorkeling-light-theme": 1,
+		"/Users/nita/Primary/projects/snorkeling-imgzoom":     1,
+		"/Users/nita/Primary/projects/FileDock":               1,
+		"/tmp/project":                                        1,
+		"":                                                    1,
+	}
+	if len(distByPath) != len(expected) {
+		t.Fatalf("distribution count %d, want %d: %#v", len(distByPath), len(expected), distByPath)
+	}
+	for p, c := range expected {
+		if distByPath[p] != c {
+			t.Errorf("distribution[%q] = %d, want %d", p, distByPath[p], c)
+		}
+	}
+}

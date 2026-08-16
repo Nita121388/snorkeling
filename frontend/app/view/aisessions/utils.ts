@@ -385,11 +385,14 @@ export type PathRootOption = {
     isMore?: boolean;
 };
 
-export type BreadcrumbSegment = {
-    label: string;
-    fullPrefix: string;
+export type PathCountGroup = {
+    name: string;
     count: number;
-    isLeaf: boolean;
+};
+
+export type PathAncestorSegment = {
+    name: string;
+    fullSubPath: string;
 };
 
 function hashStringToIndex(s: string, mod: number): number {
@@ -422,10 +425,6 @@ function extractRootOfPath(projectPath: string): string {
     return "";
 }
 
-export function normalizePathForMatch(p: string): string {
-    return (p ?? "").replace(/[\\/]+$/g, "").toLowerCase();
-}
-
 export function pathFilterToPrefix(filter: PathFilter): string {
     if (!filter) return "";
     if (filter.root === "" || filter.root === PathFilterOtherRoot) return "";
@@ -438,15 +437,64 @@ export function pathFilterEqual(a: PathFilter, b: PathFilter): boolean {
     return a.root === b.root && a.subPath === b.subPath;
 }
 
-export function extractPathRoots(sessions: { projectPath?: string }[]): PathRootOption[] {
+// Split on either separator, drop empty segments (handles trailing slash and
+// double separators). Keeps interior segments intact.
+function splitPathSegments(path: string): string[] {
+    return (path ?? "").split(/[\\/]/).filter((seg) => seg.length > 0);
+}
+
+// Whether projectPath is rooted at the given root string. Handles case-insensitive
+// drive letters (E:\ vs e:/), *nix "/" absolute and "~/" home prefixes.
+function rootBelongs(projectPath: string, root: string): boolean {
+    if (root === "" || root === PathFilterOtherRoot) return false;
+    const p = projectPath ?? "";
+    if (root === "/") return p.startsWith("/");
+    if (root === "~/") {
+        const pl = p.toLowerCase();
+        return pl === "~" || pl.startsWith("~/") || pl.startsWith("~\\");
+    }
+    if (root.length === 3 && /^[a-zA-Z]:[\\/]$/.test(root)) {
+        const m = /^([a-z]):[\\/]/.exec(p.toLowerCase());
+        return m != null && m[1] === root[0].toLowerCase();
+    }
+    return false;
+}
+
+// Separator native to the root: Windows "\\", *nix "/".
+function rootNativeSep(root: string): string {
+    return root.endsWith("\\") ? "\\" : "/";
+}
+
+// Case-insensitive array prefix equality.
+function arrayPrefixEq(a: string[], b: string[], n: number): boolean {
+    for (let i = 0; i < n; i++) {
+        if ((a[i] ?? "").toLowerCase() !== b[i].toLowerCase()) return false;
+    }
+    return true;
+}
+
+// How many leading components the root itself occupies in splitPathSegments.
+// "/Users" splits to ["Users"] (root "/" is not a component); "E:\code" splits
+// to ["E:", "code"] (root "E:\" occupies one component); "~/proj" splits to
+// ["~", "proj"] (root "~/" occupies one component).
+function rootStripCount(root: string): number {
+    return root === "/" ? 0 : 1;
+}
+
+/**
+ * extractPathRoots aggregates distinct root options from a full projectPath
+ * distribution (NOT from the truncated sessions list, which is limited to 200
+ * and would under-count old projects / the Other bucket).
+ */
+export function extractPathRoots(dist: ProjectPathSummary[]): PathRootOption[] {
     const counts = new Map<string, number>();
     let otherCount = 0;
-    for (const session of sessions) {
-        const root = extractRootOfPath(session.projectPath ?? "");
+    for (const d of dist) {
+        const root = extractRootOfPath(d.path);
         if (root === "") {
-            otherCount++;
+            otherCount += d.count;
         } else {
-            counts.set(root, (counts.get(root) ?? 0) + 1);
+            counts.set(root, (counts.get(root) ?? 0) + d.count);
         }
     }
     const realRoots = Array.from(counts.entries())
@@ -490,69 +538,62 @@ export function extractPathRoots(sessions: { projectPath?: string }[]): PathRoot
     return result;
 }
 
-// Split on either separator, drop empty leading/trailing segments (handles
-// trailing slash and double separators). Keeps interior segments intact.
-function splitPathSegments(path: string): string[] {
-    return (path ?? "")
-        .split(/[\\/]/)
-        .map((seg) => seg)
-        .filter((seg) => seg.length > 0);
-}
-
-// Lowercased full string for prefix comparison — keeps the trailing separator
-// (e.g. "E:\", "/", "~/") so it prefixes correctly instead of matching all.
-function toMatchLower(p: string): string {
-    return (p ?? "").toLowerCase();
-}
-
-// Compute breadcrumb segments under a selected root by finding the longest
-// common path-prefix of every session whose projectPath starts with root.
-// Each returned segment is one ancestor level below root, with count = number
-// of sessions whose normalized projectPath starts with that prefix.
-export function computeBreadcrumb(filter: PathFilter, sessions: { projectPath?: string }[]): BreadcrumbSegment[] {
+/**
+ * extractPathChildren returns the direct children of the currently selected
+ * path (filter) from the full distribution, each with aggregated session counts.
+ * Children are extracted by finding the next component after the current path
+ * length in paths that share the same prefix. Uses path-component boundary
+ * matching (not a plain string prefix), so selecting ".../snorkeling" will never
+ * surface sibling ".../snorkeling-light-theme" as a child.
+ */
+export function extractPathChildren(filter: PathFilter, dist: ProjectPathSummary[]): PathCountGroup[] {
     if (!filter || filter.root === "" || filter.root === PathFilterOtherRoot) return [];
-    const rootMatch = toMatchLower(filter.root);
-    if (rootMatch === "") return [];
-    const underRoot = sessions.filter((s) => toMatchLower(s.projectPath ?? "").startsWith(rootMatch));
-    if (underRoot.length === 0) return [];
-    // segment tails (the part of projectPath after the root), split into segments
-    const tailSegmentsList = underRoot.map((s) => {
-        const p = s.projectPath ?? "";
-        const tail = p.slice(filter.root.length);
-        return splitPathSegments(tail);
-    });
-    // longest common prefix of segment arrays
-    let commonLen = tailSegmentsList[0].length;
-    for (let i = 1; i < tailSegmentsList.length; i++) {
-        commonLen = Math.min(commonLen, tailSegmentsList[i].length);
-        let j = 0;
-        for (; j < commonLen; j++) {
-            if (tailSegmentsList[i][j].toLowerCase() !== tailSegmentsList[0][j].toLowerCase()) {
-                commonLen = j;
-                break;
-            }
-        }
-        if (commonLen === 0) break;
+    const cur = splitPathSegments(filter.subPath ?? "");
+    const strip = rootStripCount(filter.root);
+    const counts = new Map<string, number>();
+    for (const d of dist) {
+        if (!rootBelongs(d.path, filter.root)) continue;
+        const segs = splitPathSegments(d.path).slice(strip);
+        if (segs.length <= cur.length) continue;
+        if (!arrayPrefixEq(segs, cur, cur.length)) continue;
+        const child = segs[cur.length];
+        counts.set(child, (counts.get(child) ?? 0) + d.count);
     }
-    // Build prefixes by appending segments to the root string directly so the
-    // root's trailing separator (E:\ / ~/ / /) is preserved verbatim.
-    const sep = filter.root.endsWith("\\") ? "\\" : "/";
-    const segments: BreadcrumbSegment[] = [];
-    let acc = filter.root;
-    for (let level = 0; level < commonLen; level++) {
-        acc = acc + (acc.endsWith(sep) || acc === "" ? "" : sep) + tailSegmentsList[0][level];
-        const prefixLower = normalizePathForMatch(acc);
-        const count = underRoot.filter((s) =>
-            normalizePathForMatch(s.projectPath ?? "").startsWith(prefixLower)
-        ).length;
-        segments.push({
-            label: tailSegmentsList[0][level],
-            fullPrefix: acc,
-            count,
-            isLeaf: level === commonLen - 1,
-        });
+    return Array.from(counts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/**
+ * pathAncestorSegments returns each ancestor of the currently selected subPath
+ * (including the current level itself) as clickable crumbs with their relative
+ * subPath. Clicking one pops the navigation to that level.
+ */
+export function pathAncestorSegments(filter: PathFilter): PathAncestorSegment[] {
+    const cur = splitPathSegments(filter.subPath ?? "");
+    const sep = rootNativeSep(filter.root);
+    return cur.map((name, i) => ({
+        name,
+        fullSubPath: cur.slice(0, i + 1).join(sep),
+    }));
+}
+
+/**
+ * shortenPathForChip truncates a full path for the ActiveChip display: ≤44
+ * chars shows as-is; longer paths show "…/lastTwoSegments", with CSS
+ * text-overflow:ellipsis as a width guard for extremely long individual segment
+ * names. Hover title shows the full path.
+ */
+export function shortenPathForChip(path: string, maxLen = 44): string {
+    const p = path?.trim() ?? "";
+    if (!p || p.length <= maxLen) return p;
+    const segs = splitPathSegments(p);
+    if (segs.length === 0) return "…";
+    if (segs.length >= 2) {
+        const tail = `${segs[segs.length - 2]}/${segs[segs.length - 1]}`;
+        if (tail.length + 1 <= maxLen) return `…/${tail}`;
     }
-    return segments;
+    return `…/${segs[segs.length - 1]}`;
 }
 
 // Local filter for the "Other" root: keep sessions whose projectPath is empty or

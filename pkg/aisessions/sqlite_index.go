@@ -1050,21 +1050,39 @@ func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]Sessi
 }
 
 func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSummary, error) {
+	summaries, _, err := idx.ListWithDistribution(ctx, opts)
+	return summaries, err
+}
+
+// ListWithDistribution is List plus the full projectPath distribution
+// (distinct projectPath counts over sessions passing the non-project filters),
+// which the path-filter UI uses to navigate the directory tree with true counts.
+func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptions) ([]SessionSummary, []ProjectPathSummary, error) {
 	var rows []sqliteSessionRow
 	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions`)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	baseOpts := opts
+	baseOpts.Project = ""
 	var summaries []SessionSummary
+	dist := make(map[string]int, 16)
 	for _, row := range rows {
 		if ctx.Err() != nil {
-			return summaries, ctx.Err()
+			return summaries, summarizeProjectPathsFromMap(dist), ctx.Err()
 		}
 		summary := row.summary()
 		if err := idx.ApplyMeta(ctx, &summary); err != nil {
-			return summaries, err
+			return summaries, summarizeProjectPathsFromMap(dist), err
 		}
-		if !summaryMatchesList(summary, opts) {
+		// non-project filters decide the distribution (path selection must not
+		// narrow the tree the UI can navigate to), then the project filter
+		// narrows the returned session list.
+		if !summaryMatchesList(summary, baseOpts) {
+			continue
+		}
+		dist[summary.ProjectPath]++
+		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
 			continue
 		}
 		// Defensive double-check: summaryMatchesList already covers both
@@ -1080,7 +1098,7 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 		summaries = append(summaries, summary)
 	}
 	sortSummaries(summaries)
-	return limitSummaries(summaries, opts.Limit), nil
+	return limitSummaries(summaries, opts.Limit), summarizeProjectPathsFromMap(dist), nil
 }
 
 func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {

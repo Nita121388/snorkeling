@@ -1,45 +1,54 @@
 <!doctype html>
 <!--
-  Prototype: AI Sessions — Path filter (按路径筛选)
+  Prototype: AI Sessions — Path filter v2 (按路径筛选 · 目录导航)
 
-  User request: "aisession优化：增加根据路径筛选，先设计原型html到.mockup，我确定后继续"
+  v2 重做原因（2026-08-16, 用户反馈 "无法完整选择想要的具体的路径"）:
+    v1 实装后暴露两个根因 ——
+    [根因A] v1 交互(公共前缀面包屑)只能显示"所有 session 的最长公共前缀";
+            数据在多目录分叉时(如 ~/Primary/projects/ vs ~/Primary/obsidians/ vs ~/.openclaw/)
+            公共前缀提前截断, 面包屑为空或停在 Primary, 用户永远选不到具体子目录.
+    [根因B] 匹配语义用"子串/无边界前缀"(后端 strings.Contains + 前端 startsWith):
+            选中 /.../snorkeling 时, 平级兄弟目录 snorkeling-light-theme / snorkeling-imgzoom
+            (均以 "snorkeling" 为名前缀) 被混进结果, 无法隔离精确目录;
+            计数同样把兄弟目录算进去, 数字虚高.
+    另: 根选项/面包屑/计数基于 limit:200 截断列表, 较老项目在导航器里缺失, 计数失真.
 
-  Context (verify-existing-impl-before-redesign 检查过现状):
-    - frontend/app/view/aisessions/filter-panel.tsx 现有的 FilterPanel 已有四行:
-      Marked / Date(+Custom) / Tags, 走 SegTrack + 行图标 + 底部 ActiveChip 模式.
-    - 数据源 session.projectPath 是真实字段 (aisessions.tsx 里 resume 命令、
-      session-row tooltip 都用到), 但当前**没有独立的路径筛选**;
-      路径只被 query 文本搜索覆盖 (placeholder "Search title, note, path, tag").
-    - 用户希望路径能像 source/marked/date 一样作为一阶筛选项.
+  Decisions (v2, 用户已确认方向 a — 见 ask: 子目录 chips vs 下拉树 vs 输入框):
+    [1] 交互形态: 目录导航行 = 父级面包屑(逐级可点击回退) + 当前目录的【直接子目录 chips】.
+        点击子目录 chip 下钻一级; 每级只列出 DIRECT 子目录, 不再是"公共前缀"链.
+        — 任何有 session 的目录都能逐级选到, 不再有公共前缀天花板.
+    [2] 匹配语义: 组件边界前缀匹配. 路径 == 前缀, 或路径以 "前缀 + 分隔符(/或\)" 开头.
+        /.../snorkeling 只命中该目录及其子目录; 兄弟目录 snorkeling-light-theme 不算.
+        — v1 的 Contains/无边界 startsWith 两处都要改成边界判断.
+    [3] 计数来源: 根选项/子目录/面包屑计数来自后端「全量 projectPath 分布」
+        (按 source/日期/tags 过滤后、project 过滤前聚合: [{path, count}]),
+        不再基于 limit:200 会话列表截断值.
+    [4] ActiveChip: 当前选中完整路径写成 chip, 一键清空回 All(沿用 v1).
+    [5] 与 query/marked/date/tag 的关系: AND 复合, 不变.
+    [6] Other 根: 空 / 无识别根 projectPath 兜底桶, 语义不变(计数也来自分布, 本地过滤).
 
-  Decisions (当场确定 — 见 ask-position-before-placing-ui / decisions-go-into-file-comments):
-    [1] 交互形态: 沿用 FilterPanel 的 SegTrack 行模式, 新增一行 "Path",
-        顶层 SegTrack 切换 path root (All / 各根目录短名 / Other),
-        下面追加一行 breadcrumb 折叠/展开按钮序列 (E:\code ▸ snorkeling ▸ ...)
-        逐级缩小命中范围, 而不是把整条路径硬塞进 SegButton.
-        — 与现有四行视觉语义一致, 比"路径树"省垂直空间, 比"自由输入框"更可发现.
-    [2] 匹配语义: 前缀包含 — 选 E:\code 时, projectPath 以 E:\code 开头的所有
-        session (含子目录 E:\code\snorkeling\...) 都命中.
-        — 对"按项目根目录归类"场景最自然, 避免"在子目录开 session 被漏"的精确匹配陷阱.
-    [3] 路径根 root 分组: 取所有 sessions 的 projectPath, 按盘符/家目录前缀聚类
-        (Windows: E:\ D:\ ~\; *nix: / / ~/). "Other" 兜底空 projectPath.
-        — 根目录太多会让 SegTrack 溢出, 实装时 cap 到前 N 个并折叠其余.
-    [4] ActiveChip: breadcrumb 当前最深一级写成 chip (e.g. [E:\code ×]),
-        与现有 marked/date/tag ActiveChip 同款, 一键清空回 All.
-    [5] Breadcrumb 行只在选了 Menurack 上某根目录之后才显示, All 时不显示;
-        分隔符用 ▸, 末尾当前选中级另起 chip; 前几级可点击回退 (静态原型不绑事件).
-    [6] 与 query 文本搜索的关系: Path 选定后 query 仍生效 (AND 复合),
-        path 不替代 query 的模糊检索能力, 是更结构化的"按项目归类"入口.
+  Decisions (v2.1 补充 — 2026-08-16, 用户反馈: 列表多时需可滚动避免 Filter 过高; 选定长路径需省略):
+    [7] 子目录 chips 区限高滚动: .dir-children max-height≈132px(约4行) + overflow-y auto + 细滚动条.
+        固定行(Marked/Date/根选择)不滚, 只有可变区(子目录 chips / tag chips)滚动, 避免 Filter 整体过高.
+        真实案例: projects 下有 26 个直接子目录(Variant C), 限高后滚动查看.
+    [8] 长路径省略规则(ActiveChip, 面包屑 CSS 兜底): 完整路径 ≤44 字符直接显示;
+        超过则前缀 "…" + 保留路径末尾两个组件 (如 "…/src/features"), hover title 显示完整路径;
+        若末尾两段仍 >44 字符, 再退化为仅末尾一段. CSS 层 min-width:0 + text-overflow ellipsis 兜底
+        (面板窄时也省略). 理由: 路径开头(根)与末尾(具体目录)意义最大, 中间最可省, 末尾是"选到了哪".
+
+  Mirror (镜像源): frontend/app/view/aisessions/filter-panel.tsx, utils.ts, aisessions.tsx,
+                   frontend/app/store/services.ts, pkg/aisessions/{index,manager}.go
 
   Scope (prototype-html-static-not-interactive):
-    只画样式 + 占位状态视觉. 无 JS 行为, 数据写死.
-    用户体验焦点: SegTrack 行 + breadcrumb 行 + ActiveChip 三处视觉关系.
+    只画样式 + 占位状态视觉. 无 JS 行为, 数据来自用户真实库 (~/.snorkeling/ai-sessions, 3241 条).
+    用户体验焦点: 面包屑回退 + 子目录 chips 下钻 + 兄弟目录隔离 + ActiveChip 四处的视觉关系.
 -->
 <html lang="en" data-theme="dark">
     <head>
         <meta charset="UTF-8" />
+
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>AI Sessions — Path Filter (Prototype)</title>
+        <title>AI Sessions — Path Filter v2 (Prototype)</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
         <style>
             /* ── Design tokens (copied from .mockup/_to-keep/design-system.html) ── */
@@ -119,7 +128,7 @@
             /* ── Layout shell ── */
             .app-shell {
                 display: grid;
-                grid-template-columns: 380px minmax(0, 1fr);
+                grid-template-columns: 420px minmax(0, 1fr);
                 gap: 0;
                 min-height: 100vh;
             }
@@ -136,7 +145,7 @@
                 color: var(--text-secondary);
                 font-size: 12px;
                 line-height: 1.6;
-                max-width: 560px;
+                max-width: 620px;
             }
             .meta code {
                 background: var(--surface);
@@ -158,9 +167,9 @@
                 font-size: 11px;
             }
             .theme-row button.active {
-                background: var(--action-soft);
-                color: var(--action-soft-text);
-                border-color: var(--action-soft-border);
+                background: var(--surface);
+                color: var(--text);
+                border-color: var(--border);
             }
 
             /* ── Filter panel (mirrors filter-panel.tsx classes) ── */
@@ -232,6 +241,7 @@
             }
             .seg-track.grow {
                 flex: 1;
+                min-width: 0;
             }
             .seg-btn {
                 display: inline-flex;
@@ -268,20 +278,92 @@
                 border-radius: 50%;
                 background: var(--text-muted);
             }
+            .seg-count {
+                font-size: 10px;
+                color: var(--text-muted);
+                background: var(--surface-strong);
+                padding: 1px 6px;
+                border-radius: 999px;
+                margin-left: 2px;
+            }
 
-            /* ── NEW: Path breadcrumb row ── */
-            .breadcrumb-row {
+            /* ── NEW(v2): directory navigation row ──
+               父级面包屑(可回退) + 当前目录的直接子目录 chips(点击下钻).
+               替代 v1 的公共前缀 breadcrumb. */
+            .dir-nav {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                padding: 6px 0 8px 24px; /* indent past row icon */
+                border-top: 1px solid var(--border-soft);
+            }
+            .dir-parents {
                 display: flex;
                 align-items: center;
-                gap: 6px;
-                padding: 5px 0 6px 24px; /* indent past icon for visual hierarchy */
                 flex-wrap: wrap;
+                gap: 2px;
             }
-            .breadcrumb-row .crumb {
+            .dir-parents .crumb {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
+                gap: 5px;
+                height: 20px;
+                padding: 0 7px;
+                border-radius: 5px;
+                font-size: 11px;
+                color: var(--text-secondary);
+                white-space: nowrap;
+                /* v2.1: 超长组件名兜底省略(如 MLP_Research_Rawdata_20260313) */
+                max-width: 150px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .dir-parents .crumb:hover {
+                background: var(--hover);
+                color: var(--text);
+            }
+            .dir-parents .crumb.current {
+                background: var(--action-soft);
+                color: var(--action-soft-text);
+                border: 1px solid var(--action-soft-border);
+                font-weight: 600;
+            }
+            .dir-parents .sep {
+                color: var(--text-muted);
+                font-size: 9px;
+            }
+            /* v2.1: 子目录 chips 区限高滚动 — 可变区滚动, 固定行不滚, 避免 Filter 过高 */
+            .dir-children {
+                display: flex;
+                align-items: flex-start;
+                flex-wrap: wrap;
+                gap: 4px;
+                padding-top: 2px;
+                padding-right: 4px;
+                max-height: 132px; /* 约 4 行 chips, 超出滚动 */
+                overflow-y: auto;
+            }
+            .dir-children::-webkit-scrollbar {
+                width: 6px;
+            }
+            .dir-children::-webkit-scrollbar-thumb {
+                background: var(--border);
+                border-radius: 3px;
+            }
+            .dir-children::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .scroll-hint {
+                font-size: 10px;
+                color: var(--text-muted);
+                padding: 2px 0 0 2px;
+            }
+            .dir-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
                 height: 22px;
+                max-width: 220px;
                 padding: 0 8px;
                 border-radius: 6px;
                 font-size: 11px;
@@ -289,28 +371,53 @@
                 background: var(--surface);
                 border: 1px solid transparent;
             }
-            .breadcrumb-row .crumb.clickable:hover {
-                color: var(--text);
+            .dir-chip:hover {
                 background: var(--hover);
+                color: var(--text);
+                border-color: var(--border-soft);
             }
-            .breadcrumb-row .crumb.leaf {
-                background: var(--action-soft);
-                color: var(--action-soft-text);
-                border-color: var(--action-soft-border);
-                font-weight: 600;
+            .dir-chip .name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
-            .breadcrumb-row .sep {
-                color: var(--text-muted);
-                font-size: 10px;
-                margin: 0 -3px;
-            }
-            .breadcrumb-row .count {
+            .dir-chip .count {
+                flex: 0 0 auto;
                 font-size: 10px;
                 color: var(--text-muted);
                 background: var(--surface-strong);
                 padding: 0 5px;
                 border-radius: 999px;
-                margin-left: 4px;
+            }
+            .dir-chip.more {
+                background: transparent;
+                color: var(--text-muted);
+                border: 1px dashed var(--border-soft);
+            }
+            .dir-leaf-hint {
+                font-size: 10px;
+                color: var(--text-muted);
+                padding-left: 2px;
+            }
+            .dir-callout {
+                margin-top: 2px;
+                border-left: 2px solid var(--error);
+                background: var(--error-soft);
+                border-radius: 0 6px 6px 0;
+                padding: 5px 8px;
+                font-size: 10.5px;
+                line-height: 1.5;
+                color: var(--text-secondary);
+            }
+            .dir-callout.ok {
+                border-left-color: var(--action);
+                background: var(--action-soft);
+            }
+            .dir-callout code {
+                background: var(--surface);
+                padding: 0 4px;
+                border-radius: 3px;
+                font-size: 10px;
             }
 
             /* ActiveChip (mirrors ActiveChip in filter-panel.tsx) */
@@ -326,15 +433,25 @@
                 align-items: center;
                 gap: 6px;
                 height: 24px;
+                max-width: 100%;
                 padding: 0 6px 0 10px;
                 border-radius: 999px;
                 background: var(--action-soft);
                 color: var(--action-soft-text);
                 font-size: 11px;
             }
+            .active-chip .chip-text {
+                /* v2.1: 长路径省略 — 先由 JS 规则省为 "…/尾两段", CSS 再兜底面板窄时省略 */
+                min-width: 0;
+                max-width: 280px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
             .active-chip .x {
                 width: 16px;
                 height: 16px;
+                flex: 0 0 auto;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -349,7 +466,7 @@
 
             /* variant label header above each instance */
             .variant-title {
-                padding: 14px 14px 6px;
+                padding: 14px 14px 4px;
                 font-size: 12px;
                 font-weight: 700;
                 color: var(--text-secondary);
@@ -369,9 +486,8 @@
             <div>
                 <!-- ============ Variant A: All (default, nothing selected) ============ -->
                 <div class="variant-title">A · Path filter idle (All)</div>
-                <div class="variant-hint">Path root = All, breadcrumb 不渲染。</div>
+                <div class="variant-hint">root = All, 目录导航行不渲染。计数来自后端全量分布(3241 条), 非 limit 200 截断值。</div>
                 <div class="filter-panel">
-                    <!-- existing rows condensed here to show context -->
                     <div class="filter-top">
                         <button class="clear-all" title="Clear all filters" aria-label="Clear all filters">
                             <i class="fa-solid fa-broom"></i>
@@ -398,89 +514,214 @@
                                 <button class="seg-btn">Custom</button>
                             </div>
                         </div>
-                        <!-- NEW: Path row (idle) -->
+                        <!-- NEW: Path row (idle) — counts from full distribution -->
                         <div class="filter-row">
                             <i class="fa-solid fa-folder-tree row-icon"></i>
                             <div class="seg-track grow">
                                 <button class="seg-btn slim active">All</button>
-                                <button class="seg-btn slim" title="E:\code (24)">
+                                <button class="seg-btn slim" title="/ (3215)">
                                     <span class="dot" style="background: #74a7cb"></span>
-                                    E:\
+                                    /
+                                    <span class="seg-count">3215</span>
                                 </button>
-                                <button class="seg-btn slim" title="D:\Workspaces (8)">
-                                    <span class="dot" style="background: #cc685c"></span>
-                                    D:\
-                                </button>
-                                <button class="seg-btn slim" title="~\home (5)">
+                                <button class="seg-btn slim" title="~/ (~0 — 库中无 ~ 前缀路径)">
                                     <span class="dot" style="background: #e0b956"></span>
-                                    ~\
+                                    ~/
+                                    <span class="seg-count">0</span>
                                 </button>
-                                <button class="seg-btn slim" title="Other (3 — empty projectPath)">…</button>
+                                <button class="seg-btn slim" title="Other (1 — 空 projectPath)">…</button>
                             </div>
                         </div>
                         <!-- Tags (collapsed hint) -->
                         <div class="filter-row start">
                             <i class="fa-solid fa-tag row-icon"></i>
                             <div style="display: flex; gap: 4px; flex-wrap: wrap; padding-top: 2px">
-                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#fix <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">3</span></span>
-                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#snork <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">5</span></span>
-                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding: 0 8px">#release <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">2</span></span>
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding-left: 8px">#fix <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">3</span></span>
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding-left: 8px">#snork <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">5</span></span>
+                                <span class="active-chip" style="background: var(--surface); color: var(--text-secondary); padding-left: 8px">#release <span class="count" style="background: var(--surface-strong); padding: 0 5px; border-radius: 999px">2</span></span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ============ Variant B: Path root selected (E:\), breadcrumb reveals ============ -->
-                <div class="variant-title">B · 选择 E:\ 后 breadcrumb 展开</div>
-                <div class="variant-hint">root=E:\ 点亮, breadcrumb 行出现显示子级和文件数; 子目录可点击进一步收窄; 叶子级高亮成 action 色。</div>
+                <!-- ============ Variant B: root "/" selected, one level of children ============ -->
+                <div class="variant-title">B · 选中根 / — 直接子目录 chips 展开</div>
+                <div class="variant-hint">v1 这里只显示"公共前缀"面包屑(多分叉时常为空); v2 改为列出 <strong>直接子目录</strong> + 真实计数, 点 chip 下钻。</div>
                 <div class="filter-panel">
                     <div class="filter-top">
                         <button class="clear-all" title="Clear all filters"><i class="fa-solid fa-broom"></i></button>
                     </div>
                     <div class="filter-rows">
-                        <!-- Path row with E:\ active -->
+                        <!-- Path row with / active -->
                         <div class="filter-row">
                             <i class="fa-solid fa-folder-tree row-icon"></i>
                             <div class="seg-track grow">
                                 <button class="seg-btn slim">All</button>
-                                <button class="seg-btn slim active" title="E:\code (24)">
+                                <button class="seg-btn slim active" title="/ (3215)">
                                     <span class="dot" style="background: #74a7cb"></span>
-                                    E:\
+                                    /
+                                    <span class="seg-count">3215</span>
                                 </button>
-                                <button class="seg-btn slim" title="D:\Workspaces (8)"><span class="dot" style="background: #cc685c"></span>D:\</button>
-                                <button class="seg-btn slim" title="~\home (5)"><span class="dot" style="background: #e0b956"></span>~\</button>
+                                <button class="seg-btn slim"><span class="dot" style="background: #e0b956"></span>~/</button>
+                                <button class="seg-btn slim" title="Other (1)">…</button>
+                            </div>
+                        </div>
+                        <!-- NEW(v2): dir navigation row — parent crumb(/), children chips -->
+                        <div class="dir-nav">
+                            <div class="dir-parents">
+                                <button class="crumb current" title="Currently filtering /">/</button>
+                            </div>
+                            <div class="dir-children">
+                                <button class="dir-chip" title="Drill into /Users"><span class="name">Users</span><span class="count">3215</span></button>
+                                <button class="dir-chip" title="Drill into /tmp"><span class="name">tmp</span><span class="count">22</span></button>
+                                <button class="dir-chip" title="Drill into /private"><span class="name">private</span><span class="count">4</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Variant C: drilled /Users/nita/Primary/projects — siblings in one list ============ -->
+                <div class="variant-title">C · 下钻到 projects — 26 个子目录, 限高滚动</div>
+                <div class="variant-hint">
+                    父级面包屑逐级可点击回退; 子目录 chips 只列 <strong>projects 的直接子目录</strong>(真实 26 个)。
+                    列表超出约 4 行时该区滚动(见右侧滚动条), Filter 整体不高。(v1 在子目录多/分叉时面包屑为空, 且计数失真)
+                </div>
+                <div class="filter-panel">
+                    <div class="filter-top">
+                        <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <div class="filter-row">
+                            <i class="fa-solid fa-folder-tree row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn slim">All</button>
+                                <button class="seg-btn slim active" title="/ (3215)">
+                                    <span class="dot" style="background: #74a7cb"></span>
+                                    /
+                                    <span class="seg-count">3215</span>
+                                </button>
+                                <button class="seg-btn slim"><span class="dot" style="background: #e0b956"></span>~/</button>
                                 <button class="seg-btn slim">…</button>
                             </div>
                         </div>
-                        <!-- NEW: breadcrumb row, only rendered after root selected -->
-                        <div class="breadcrumb-row">
-                            <button class="crumb clickable" title="Back to E:\code">code</button>
-                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
-                            <button class="crumb clickable" title="Back to E:\code\snorkeling">snorkeling</button>
-                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
-                            <button class="crumb leaf" title="Currently filtering E:\code\snorkeling">
-                                backend
-                                <span class="count">9</span>
-                            </button>
+                        <div class="dir-nav">
+                            <div class="dir-parents">
+                                <button class="crumb" title="Back to /">/</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users">Users</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users/nita">nita</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users/nita/Primary">Primary</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb current" title="Currently filtering /Users/nita/Primary/projects">projects</button>
+                            </div>
+                            <div class="dir-children">
+                                <button class="dir-chip" title="Drill into projects/MLP_Research_Incremental_20260313"><span class="name">MLP_Research_Incremental_20260313</span><span class="count">854</span></button>
+                                <button class="dir-chip" title="Drill into projects/MLP_Research_Rawdata_20260313"><span class="name">MLP_Research_Rawdata_20260313</span><span class="count">483</span></button>
+                                <button class="dir-chip" title="Drill into projects/snorkeling"><span class="name">snorkeling</span><span class="count">302</span></button>
+                                <button class="dir-chip" title="Drill into projects/FileDock"><span class="name">FileDock</span><span class="count">280</span></button>
+                                <button class="dir-chip" title="Drill into projects/Twitter_Scout_20260314"><span class="name">Twitter_Scout_20260314</span><span class="count">189</span></button>
+                                <button class="dir-chip" title="Drill into projects/ad-model-training-archive"><span class="name">ad-model-training-archive</span><span class="count">81</span></button>
+                                <button class="dir-chip" title="Drill into projects/OpenSource_Content_Lab_20260313"><span class="name">OpenSource_Content_Lab_20260313</span><span class="count">66</span></button>
+                                <button class="dir-chip" title="Drill into projects/OpenClaw_Chat_20260319"><span class="name">OpenClaw_Chat_20260319</span><span class="count">35</span></button>
+                                <button class="dir-chip" title="Drill into projects/ClawPanel_Research_20260313"><span class="name">ClawPanel_Research_20260313</span><span class="count">22</span></button>
+                                <button class="dir-chip" title="Drill into projects/Full64_20runs_Manager_20260313"><span class="name">Full64_20runs_Manager_20260313</span><span class="count">15</span></button>
+                                <button class="dir-chip" title="Drill into projects/snorkeling-light-theme"><span class="name">snorkeling-light-theme</span><span class="count">13</span></button>
+                                <button class="dir-chip" title="Drill into projects/i-am-cooking"><span class="name">i-am-cooking</span><span class="count">6</span></button>
+                                <button class="dir-chip" title="Drill into projects/ADdiagnosticsSystem_V1.1.0"><span class="name">ADdiagnosticsSystem_V1.1.0</span><span class="count">5</span></button>
+                                <button class="dir-chip" title="Drill into projects/sub2api"><span class="name">sub2api</span><span class="count">4</span></button>
+                                <button class="dir-chip" title="Drill into projects/tpot"><span class="name">tpot</span><span class="count">2</span></button>
+                                <button class="dir-chip" title="Drill into projects/snorkeling-imgzoom"><span class="name">snorkeling-imgzoom</span><span class="count">2</span></button>
+                                <button class="dir-chip" title="Drill into projects/Weekly_Review_20260313"><span class="name">Weekly_Review_20260313</span><span class="count">2</span></button>
+                                <button class="dir-chip" title="Drill into projects/word-learning-cli"><span class="name">word-learning-cli</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/snorkeling-inline-tabs"><span class="name">snorkeling-inline-tabs</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/ponytail"><span class="name">ponytail</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/herdr"><span class="name">herdr</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/codex-register"><span class="name">codex-register</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/cc-switch"><span class="name">cc-switch</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/ai-progress-board"><span class="name">ai-progress-board</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/TPOT_V2"><span class="name">TPOT_V2</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into projects/ClawPanel_Web_Runtime_20260313"><span class="name">ClawPanel_Web_Runtime_20260313</span><span class="count">1</span></button>
+                            </div>
+                            <div class="scroll-hint">26 个直接子目录 · 超出 4 行滚动查看(滚动条在右)</div>
+                            <div class="dir-callout">
+                                <strong>边界示例</strong>: <code>snorkeling</code>(302) 与 <code>snorkeling-light-theme</code>(13) 是 projects 下两个
+                                <strong>不同子目录</strong>。选中前者时, 后者的 session 不进入结果(v1 子串匹配会混入)。
+                            </div>
                         </div>
-                        <!-- Active strip showing all stacked filters -->
-                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                    </div>
+                </div>
+
+                <!-- ============ Variant D: selected exact dir snorkeling ============ -->
+                <div class="variant-title">D · 选定 /Users/nita/Primary/projects/snorkeling</div>
+                <div class="variant-hint">精确选中该目录: 结果 = 目录内 300 条 + 其子目录(.runcfg/.claude) 2 条, 不含任何同名前缀兄弟; ActiveChip 一键清空。</div>
+                <div class="filter-panel">
+                    <div class="filter-top">
+                        <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
+                    </div>
+                    <div class="filter-rows">
+                        <div class="filter-row">
+                            <i class="fa-solid fa-folder-tree row-icon"></i>
+                            <div class="seg-track grow">
+                                <button class="seg-btn slim">All</button>
+                                <button class="seg-btn slim active" title="/ (3215)">
+                                    <span class="dot" style="background: #74a7cb"></span>
+                                    /
+                                    <span class="seg-count">3215</span>
+                                </button>
+                                <button class="seg-btn slim"><span class="dot" style="background: #e0b956"></span>~/</button>
+                                <button class="seg-btn slim">…</button>
+                            </div>
+                        </div>
+                        <div class="dir-nav">
+                            <div class="dir-parents">
+                                <button class="crumb" title="Back to /">/</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users">Users</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users/nita">nita</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users/nita/Primary">Primary</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to /Users/nita/Primary/projects">projects</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb current" title="Currently filtering /Users/nita/Primary/projects/snorkeling">snorkeling</button>
+                            </div>
+                            <div class="dir-children">
+                                <button class="dir-chip" title="Drill into snorkeling/.runcfg"><span class="name">.runcfg</span><span class="count">1</span></button>
+                                <button class="dir-chip" title="Drill into snorkeling/.claude"><span class="name">.claude</span><span class="count">1</span></button>
+                            </div>
+                            <div class="dir-callout ok">
+                                <strong>结果已隔离</strong>: 选中 <code>snorkeling</code> 只含该目录及子目录(302 条)。
+                                平级兄弟 <code>snorkeling-light-theme</code>(13)、<code>snorkeling-imgzoom</code>(2)、<code>snorkeling-inline-tabs</code>(1)
+                                均<strong>不</strong>在结果中 —— v1 会全部混入, 共 318 条无法精确区分。
+                            </div>
+                        </div>
+                        <!-- Active strip: 短路径完整 + 超长路径省略对比, 与 date 复合 -->
+                        <div class="active-strip">
                             <span class="active-chip">
                                 <i class="fa-solid fa-folder-tree" style="font-size: 10px"></i>
-                                E:\code\snorkeling\backend
+                                <span class="chip-text" title="/Users/nita/Primary/projects/snorkeling">/Users/nita/Primary/projects/snorkeling</span>
+                                <button class="x" aria-label="Remove path filter"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                            <span class="active-chip">
+                                <i class="fa-solid fa-folder-tree" style="font-size: 10px"></i>
+                                <span class="chip-text" title="/Users/nita/Primary/projects/snorkeling/.runcfg/cdp/home/dev/projects/very-long-project-name/modules/core/src/features">…/src/features</span>
                                 <button class="x" aria-label="Remove path filter"><i class="fa-solid fa-xmark"></i></button>
                             </span>
                             <span class="active-chip">
                                 7d
                                 <button class="x" aria-label="Remove date filter"><i class="fa-solid fa-xmark"></i></button>
                             </span>
+                            <span class="scroll-hint" style="padding-left: 2px">hover chip 看完整路径</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- ============ Variant C: deeper path + multi-filter compound ============ -->
-                <div class="variant-title">C · 深路径 + 多筛选复合</div>
-                <div class="variant-hint">root=~/, breadcrumb 到第三级; 路径 + marked(starred) + tag 同时生效 (AND); active strip 平铺所有可一键清。</div>
+                <!-- ============ Variant E: Windows 复合（盘符根 + 多筛选 AND） ============ -->
+                <div class="variant-title">E · Windows 复合 — 盘符根 + 深钻 + starred + tag</div>
+                <div class="variant-hint">盘符根(E:\ / D:\) 同 v1 SegTrack; 目录导航逻辑不变; 路径与 starred/tag 为 AND 复合。</div>
                 <div class="filter-panel">
                     <div class="filter-top">
                         <button class="clear-all"><i class="fa-solid fa-broom"></i></button>
@@ -499,26 +740,32 @@
                             <i class="fa-solid fa-folder-tree row-icon"></i>
                             <div class="seg-track grow">
                                 <button class="seg-btn slim">All</button>
-                                <button class="seg-btn slim" title="E:\code (24)"><span class="dot" style="background: #74a7cb"></span>E:\</button>
-                                <button class="seg-btn slim"><span class="dot" style="background: #cc685c"></span>D:\</button>
-                                <button class="seg-btn slim active" title="~\home (5)"><span class="dot" style="background: #e0b956"></span>~\</button>
-                                <button class="seg-btn slim">…</button>
+                                <button class="seg-btn slim active" title="E:\ (24)">
+                                    <span class="dot" style="background: #74a7cb"></span>
+                                    E:\
+                                    <span class="seg-count">24</span>
+                                </button>
+                                <button class="seg-btn slim" title="D:\ (8)"><span class="dot" style="background: #cc685c"></span>D:\<span class="seg-count">8</span></button>
+                                <button class="seg-btn slim" title="Other (3 — 空 projectPath)">…</button>
                             </div>
                         </div>
-                        <div class="breadcrumb-row">
-                            <button class="crumb clickable">home</button>
-                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
-                            <button class="crumb clickable">docs</button>
-                            <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
-                            <button class="crumb leaf">
-                                ai-notes
-                                <span class="count">3</span>
-                            </button>
+                        <div class="dir-nav">
+                            <div class="dir-parents">
+                                <button class="crumb" title="Back to E:\">E:\</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb" title="Back to E:\code">code</button>
+                                <span class="sep"><i class="fa-solid fa-angle-right"></i></span>
+                                <button class="crumb current" title="Currently filtering E:\code\snorkeling">snorkeling</button>
+                            </div>
+                            <div class="dir-children">
+                                <button class="dir-chip" title="Drill into E:\code\snorkeling\backend"><span class="name">backend</span><span class="count">9</span></button>
+                                <button class="dir-chip" title="Drill into E:\code\snorkeling\frontend"><span class="name">frontend</span><span class="count">12</span></button>
+                            </div>
                         </div>
-                        <div class="active-strip" style="border-top: 1px solid var(--border-soft); padding-top: 8px">
+                        <div class="active-strip">
                             <span class="active-chip">
                                 <i class="fa-solid fa-folder-tree" style="font-size: 10px"></i>
-                                ~/home/docs/ai-notes
+                                <span class="chip-text">E:\code\snorkeling</span>
                                 <button class="x"><i class="fa-solid fa-xmark"></i></button>
                             </span>
                             <span class="active-chip">
@@ -542,30 +789,39 @@
                     <button data-theme="light">light</button>
                 </div>
                 <div class="meta">
-                    <strong>原型: AI Sessions — Path Filter</strong><br />
-                    在 FilterPanel 加一行 <code>Path</code> 作为新的路径筛选维度.<br /><br />
+                    <strong>原型: AI Sessions — Path filter v2 (重做)</strong><br />
+                    FilterPanel <code>Path</code> 行改为「父级面包屑 + 直接子目录 chips」目录导航, 数据用真实库(3241 条)。<br /><br />
 
-                    <strong>形态</strong>: 沿用 SegTrack 行模式, root 切换盘符/家目录前缀;
-                    选定 root 后 breadcrumb 行展开, 逐级点击收窄到子目录.<br />
-                    <strong>匹配语义</strong>: 前缀包含 — 选 <code>E:\code</code> 时, 所有
-                    <code>E:\code\*</code> 下的 session 都命中(含子目录).<br />
-                    <strong>关系</strong>: Path 与 query/marked/date/tag 是 AND 复合;
-                    ActiveChip 一键清空回 All.<br /><br />
+                    <strong>为什么重做</strong> (v1 两处根因):<br />
+                    1. v1 面包屑=所有 session 公共前缀 → 多目录分叉时为空/截断(<code>/tmp</code> vs <code>/Users</code> 分叉),
+                       选不到具体子目录;<br />
+                    2. v1 匹配=子串/无边界前缀 → <code>snorkeling</code> 混入 <code>snorkeling-light-theme</code> 等平级兄弟。<br /><br />
 
-                    <strong>三个变体</strong>:<br />
-                    A · idle (All) — Path root=All, breadcrumb 不渲染<br />
-                    B · E:\ + 3 级 breadcrumb — 叶子 <code>backend</code> 高亮<br />
-                    C · ~\ + 3 级 + starred + tag 复合 — active strip 平铺<br /><br />
+                    <strong>v2 形态</strong>: 根选项行(计数来自全量分布) → 选中后渲染目录导航行:
+                    父级面包屑逐级可回退, 当前级高亮; 下面一排直接子目录 chips(名称+真实计数), 点击下钻一级.<br />
+                    <strong>v2.1</strong>: 子目录 chips 区限高(约 4 行)滚动, 固定行不滚, Filter 整体不过高;
+                    长路径省略 — ≤44 字符完整显示, 超过省为 <code>…/末尾两段</code>, hover 看完整.<br />
+                    <strong>v2 匹配语义</strong>: 组件边界前缀匹配 — 只命中目录本身及其子目录, 兄弟不泄漏.<br />
+                    <strong>计数来源</strong>: 后端全量 projectPath 分布(过滤后聚合), 不受 limit 200 截断影响.<br />
+                    <strong>关系</strong>: Path 与 query/marked/date/tag 是 AND 复合;<br />
+                    <strong>清空</strong>: ActiveChip 一键清回 All.<br /><br />
 
-                    <strong>Static only</strong> (无 JS 行为).<br />
-                    决策全部写入文件头 HTML 注释, 实装时改 FilterPanel + ViewModel 即可.
+                    <strong>五个变体</strong>:<br />
+                    A · idle (All) — 根行 + 真实计数, 无导航行<br />
+                    B · 根 / — 一级子目录 chips (Users 3215 · tmp 22 · private 4)<br />
+                    C · projects 级 — 26 个真实子目录限高滚动; 兄弟目录并列(snorkeling 302 / snorkeling-light-theme 13), 边界示例 callout<br />
+                    D · 精确选定 snorkeling — 结果隔离 + 子目录 chips + ActiveChip(短长路径省略对比)<br />
+                    E · Windows 复合 — E:\ 根深钻 + starred + tag AND<br /><br />
+
+                    <strong>Static only</strong> (无 JS 行为). 决策写入文件头注释, 实装时改
+                    <code>filter-panel.tsx</code> / <code>utils.ts</code> / <code>aisessions.tsx</code> + 后端 <code>pkg/aisessions</code>.
                 </div>
             </div>
         </div>
 
         <script>
             // theme switch only (prototype-html-static-not-interactive)
-            document.querySelectorAll("[data-theme] button[data-theme], .theme-row button").forEach((btn) => {
+            document.querySelectorAll(".theme-row button").forEach((btn) => {
                 btn.addEventListener("click", () => {
                     const theme = btn.getAttribute("data-theme") || btn.textContent;
                     document.documentElement.setAttribute("data-theme", theme);

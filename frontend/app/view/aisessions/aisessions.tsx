@@ -1,20 +1,21 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
+import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
-import { getLayoutModelForTabById } from "@/layout/index";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../../session-overview/session-overview.scss";
 import { ClaudeLogo, IconButton, OpenAILogo, PiLogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
@@ -26,6 +27,7 @@ import {
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
 import { normalizeSessionTags } from "./session-tags";
+import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import {
     DefaultDateRange,
     DefaultPathFilter,
@@ -34,20 +36,17 @@ import {
     dateRangeToSinceBefore,
 } from "./types";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
-import type { SourceFilter, MarkedFilter, DateRangeFilter, PathFilter, TagPresenceFilter } from "./types";
-import {
-    computeBreadcrumb,
-    extractPathRoots,
-    otherRootMatcher,
-    pathFilterEqual,
-    pathFilterToPrefix,
-} from "./utils";
-import "../../session-overview/session-overview.scss";
 import {
     emptySessionsText,
+    extractPathChildren,
+    extractPathRoots,
     formatDateTimeToSecond,
     formatRelativeRefreshTime,
     getErrorMessage,
+    otherRootMatcher,
+    pathAncestorSegments,
+    pathFilterEqual,
+    pathFilterToPrefix,
     readSortPreference,
     restoreMetaForSession,
     sortSessionsByTime,
@@ -99,6 +98,7 @@ export class AiSessionsViewModel implements ViewModel {
     pathFilterAtom = jotai.atom<PathFilter>(DefaultPathFilter) as jotai.PrimitiveAtom<PathFilter>;
     filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
+    projectPathsAtom = jotai.atom<ProjectPathSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
     detailLoadingAtom = jotai.atom<boolean>(false);
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
@@ -201,11 +201,24 @@ export class AiSessionsViewModel implements ViewModel {
                 tagFilters,
                 tagPresence,
                 project: projectPrefix,
+                includeProjectPaths: true,
             });
-            if (!this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
+            if (
+                !this.isCurrentSessionsLoad(
+                    loadSeq,
+                    source,
+                    query,
+                    tagFilters,
+                    tagPresence,
+                    marked,
+                    dateRange,
+                    pathFilter
+                )
+            ) {
                 return;
             }
             let sessions = response?.sessions ?? [];
+            globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
             // Other bucket can't be expressed server-side (project="" matches all),
             // so filter locally after the response arrives.
             if (pathFilter.root === PathFilterOtherRoot) {
@@ -235,11 +248,33 @@ export class AiSessionsViewModel implements ViewModel {
                 }
             }
         } catch (e) {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
+            if (
+                this.isCurrentSessionsLoad(
+                    loadSeq,
+                    source,
+                    query,
+                    tagFilters,
+                    tagPresence,
+                    marked,
+                    dateRange,
+                    pathFilter
+                )
+            ) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
             }
         } finally {
-            if (this.isCurrentSessionsLoad(loadSeq, source, query, tagFilters, tagPresence, marked, dateRange, pathFilter)) {
+            if (
+                this.isCurrentSessionsLoad(
+                    loadSeq,
+                    source,
+                    query,
+                    tagFilters,
+                    tagPresence,
+                    marked,
+                    dateRange,
+                    pathFilter
+                )
+            ) {
                 globalStore.set(this.loadingAtom, false);
             }
         }
@@ -706,7 +741,8 @@ function clampSessionListWidth(width: number): number {
 }
 
 function normalizeAutoRefreshIntervalMs(value: unknown): number {
-    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : DefaultAutoRefreshIntervalMs;
+    const parsed =
+        typeof value === "number" ? value : typeof value === "string" ? Number(value) : DefaultAutoRefreshIntervalMs;
     if (!Number.isFinite(parsed)) return DefaultAutoRefreshIntervalMs;
     if (parsed <= 0) return 0;
     return Math.max(MinAutoRefreshIntervalMs, Math.min(MaxAutoRefreshIntervalMs, Math.round(parsed)));
@@ -777,6 +813,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const blockData = jotai.useAtomValue(model.blockAtom);
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
+    const projectPaths = jotai.useAtomValue(model.projectPathsAtom);
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
     const source = jotai.useAtomValue(model.sourceAtom);
     const query = jotai.useAtomValue(model.queryAtom);
@@ -814,7 +851,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
     const pathActive = pathFilter.root !== "";
-    const remoteFilterActive = queryActive || source !== "" || tagFilterActive || markedActive || dateActive || pathActive;
+    const remoteFilterActive =
+        queryActive || source !== "" || tagFilterActive || markedActive || dateActive || pathActive;
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
@@ -823,11 +861,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         normalizedTagFilters.length +
         (pathActive ? 1 : 0) +
         (tagPresenceActive ? 1 : 0);
-    const availablePathRoots = useMemo(() => extractPathRoots(sessions), [sessions]);
-    const breadcrumbSegments = useMemo(
-        () => computeBreadcrumb(pathFilter, sessions),
-        [pathFilter, sessions]
-    );
+    const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
+    const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
+    const pathAncestors = useMemo(() => pathAncestorSegments(pathFilter), [pathFilter]);
     const autoRefreshIntervalMs = normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
     const autoRefreshEnabled = model.getConnection() === "";
 
@@ -1020,9 +1056,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         [sessionListWidth]
     );
 
-    const gridTemplateColumns = sessionListCollapsed
-        ? "minmax(0,1fr)"
-        : `${sessionListWidth}px minmax(0,1fr)`;
+    const gridTemplateColumns = sessionListCollapsed ? "minmax(0,1fr)" : `${sessionListWidth}px minmax(0,1fr)`;
     const lastRefreshLabel = lastSessionsRefreshAt
         ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
         : "";
@@ -1049,7 +1083,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         <i className="fa-sharp fa-solid fa-chevron-right" />
                     </button>
                 ) : null}
-                <div className={cn("relative flex min-h-0 flex-col border-r border-border", sessionListCollapsed && "contents")}>
+                <div
+                    className={cn(
+                        "relative flex min-h-0 flex-col border-r border-border",
+                        sessionListCollapsed && "contents"
+                    )}
+                >
                     {sessionListCollapsed ? null : (
                         <>
                             <div className="space-y-2 border-b border-border p-3">
@@ -1178,7 +1217,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     pathFilter={pathFilter}
                                     setPathFilter={setPathFilter}
                                     availablePathRoots={availablePathRoots}
-                                    breadcrumbSegments={breadcrumbSegments}
+                                    pathChildren={pathChildren}
+                                    pathAncestors={pathAncestors}
                                 />
                             ) : null}
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
@@ -1216,7 +1256,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 void model.restoreSession(session);
                                             }}
                                             resumeDisabled={restoring}
-                                            runningState={sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null}
+                                            runningState={
+                                                sessionsRunning.get(session.key) ??
+                                                sessionsRunning.get(session.id) ??
+                                                null
+                                            }
                                             onJumpToBlock={jumpToRunningSessionBlock}
                                         />
                                     ))

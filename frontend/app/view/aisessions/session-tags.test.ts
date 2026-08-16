@@ -18,6 +18,11 @@ describe("session-tags", () => {
         });
     });
 
+    it("treats tags case-insensitively: normalizes to lowercase and de-dupes", () => {
+        expect(normalizeSessionTags(["#Bug", "bug", "#BUG"])).toEqual(["bug"]);
+        expect(extractSessionTagsFromNote("#Mix #MIX mix").tags).toEqual(["mix"]);
+    });
+
     it("does not treat legacy plus syntax or URL fragments as tags", () => {
         expect(extractSessionTagsFromNote("Keep #+todo and https://example.test/a#section")).toEqual({
             note: "Keep #+todo and https://example.test/a#section",

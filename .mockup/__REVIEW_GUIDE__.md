@@ -66,8 +66,9 @@
 - `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。
 
 > **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
-> - `aisessions-no-tag-filter.html` / `aisessions-path-filter.html` — session 列表筛选方向
+> - `aisessions-no-tag-filter.html` / `aisessions-path-filter/` — session 列表筛选方向
 > - `commontext-pinned-detail-insert.html` — pinned 详情插入方向
+> - **2026-08-16**：`aisessions-path-filter/` 已按 PROCESS 目录化（v1 裸 html → `index.html` + `README.md`，位于 `_to-keep/aisessions-path-filter/`），并重做为 **v2 目录导航设计**（▲ 设计活跃）：父级面包屑回退 + 直接子目录 chips 下钻，匹配语义改为组件边界前缀，计数改用后端全量 projectPath 分布。v1 两处根因（公共前缀面包屑天花板、子串/无边界前缀泄漏兄弟目录）与落地计划见其 README。
 
 ## `_review-boundary/` — 3 项
 

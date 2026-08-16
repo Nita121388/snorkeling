@@ -3,9 +3,10 @@
 
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
-import type { BreadcrumbSegment, PathRootOption } from "./utils";
 import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, TagPresenceFilter } from "./types";
 import { DefaultPathFilter, DefaultTagPresence, PathFilterOtherRoot } from "./types";
+import type { PathAncestorSegment, PathCountGroup, PathRootOption } from "./utils";
+import { pathFilterToPrefix, shortenPathForChip } from "./utils";
 
 function msToDateInput(ms: number | undefined): string {
     if (!ms) return "";
@@ -99,21 +100,26 @@ function SegButton({
 function ActiveChip({
     icon,
     label,
+    title,
     onRemove,
 }: {
     icon?: string;
     label: string;
+    title?: string;
     onRemove: () => void;
 }) {
     return (
-        <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-accent/10 px-1.5 pl-2.5 text-[11px] text-accent">
+        <span
+            title={title}
+            className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-full bg-accent/10 px-1.5 pl-2.5 text-[11px] text-accent"
+        >
             {icon ? <i className={cn("fa-sharp", icon)} /> : null}
-            <span className="truncate">{label}</span>
+            <span className="min-w-0 truncate">{label}</span>
             <button
                 type="button"
                 aria-label={`Remove ${label}`}
                 onClick={onRemove}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] opacity-65 hover:opacity-100 hover:bg-surface-strong cursor-pointer"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] opacity-65 hover:opacity-100 hover:bg-surface-strong cursor-pointer"
             >
                 <i className="fa-sharp fa-solid fa-xmark" />
             </button>
@@ -135,7 +141,8 @@ export function FilterPanel({
     pathFilter,
     setPathFilter,
     availablePathRoots,
-    breadcrumbSegments,
+    pathChildren,
+    pathAncestors,
 }: {
     markedFilter: MarkedFilter;
     setMarkedFilter: (value: MarkedFilter) => void;
@@ -150,12 +157,14 @@ export function FilterPanel({
     pathFilter: PathFilter;
     setPathFilter: (value: PathFilter) => void;
     availablePathRoots: PathRootOption[];
-    breadcrumbSegments: BreadcrumbSegment[];
+    pathChildren: PathCountGroup[];
+    pathAncestors: PathAncestorSegment[];
 }) {
     const selectedTags = new Set(tagFilters);
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
     const pathActive = pathFilter.root !== "";
+    const pathChipFull = pathFilterToPrefix(pathFilter);
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
     // Untagged is mutually exclusive with tag-include at the ViewModel layer
     // (setTagPresence / setTagFilters enforce the reset on the other side).
@@ -276,36 +285,74 @@ export function FilterPanel({
                         </SegTrack>
                     </div>
                 ) : null}
-                {pathFilter.root !== "" && pathFilter.root !== PathFilterOtherRoot && breadcrumbSegments.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1 border-t border-border/40 py-1.5 pl-[24px]">
-                        {breadcrumbSegments.map((seg, index) => (
-                            <span key={seg.fullPrefix} className="inline-flex items-center gap-1">
-                                {index > 0 ? (
-                                    <i className="fa-sharp fa-solid fa-angle-right text-[9px] text-secondary/60" />
-                                ) : null}
-                                <button
-                                    type="button"
-                                    title={seg.fullPrefix}
-                                    onClick={() =>
-                                        setPathFilter({
-                                            root: pathFilter.root,
-                                            subPath: seg.fullPrefix.slice(pathFilter.root.length),
-                                        })
-                                    }
-                                    className={cn(
-                                        "inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] cursor-pointer",
-                                        seg.isLeaf
-                                            ? "bg-accent/10 text-accent"
-                                            : "text-secondary hover:bg-hover hover:text-primary"
-                                    )}
-                                >
-                                    <span className="truncate">{seg.label}</span>
-                                    <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
-                                        {seg.count}
+                {pathFilter.root !== "" && pathFilter.root !== PathFilterOtherRoot ? (
+                    <div className="flex flex-col gap-1.5 border-t border-border/40 py-1.5 pl-[24px]">
+                        {/* Parents chain: root + ancestors, current level highlighted.
+                            Click any crumb to pop navigation back to that level. */}
+                        <div className="flex min-w-0 flex-wrap items-center gap-1">
+                            {[{ name: pathFilter.root, fullSubPath: "" }, ...pathAncestors].map((crumb, index) => {
+                                const isCurrent = index === pathAncestors.length;
+                                return (
+                                    <span key={crumb.fullSubPath + index} className="inline-flex items-center gap-1">
+                                        {index > 0 ? (
+                                            <i className="fa-sharp fa-solid fa-angle-right text-[9px] text-secondary/60" />
+                                        ) : null}
+                                        <button
+                                            type="button"
+                                            title={
+                                                crumb.fullSubPath === ""
+                                                    ? pathFilter.root
+                                                    : pathFilterToPrefix({
+                                                          root: pathFilter.root,
+                                                          subPath: crumb.fullSubPath,
+                                                      })
+                                            }
+                                            onClick={() =>
+                                                setPathFilter({ root: pathFilter.root, subPath: crumb.fullSubPath })
+                                            }
+                                            className={cn(
+                                                "inline-flex h-6 min-w-0 max-w-[160px] items-center gap-1 rounded-md px-1.5 text-[11px] cursor-pointer",
+                                                isCurrent
+                                                    ? "bg-accent/10 text-accent"
+                                                    : "text-secondary hover:bg-hover hover:text-primary"
+                                            )}
+                                        >
+                                            <span className="truncate">{crumb.name}</span>
+                                        </button>
                                     </span>
-                                </button>
-                            </span>
-                        ))}
+                                );
+                            })}
+                        </div>
+                        {/* Direct children of the selected path: one chip per child dir,
+                            with real counts from the full distribution. Scrollable when long. */}
+                        {pathChildren.length > 0 ? (
+                            <div className="flex max-h-[132px] min-w-0 flex-wrap items-start gap-1 overflow-y-auto pr-1">
+                                {pathChildren.map((child) => {
+                                    const sep = pathFilter.root.endsWith("\\") ? "\\" : "/";
+                                    const childSubPath = pathFilter.subPath
+                                        ? `${pathFilter.subPath}${sep}${child.name}`
+                                        : child.name;
+                                    return (
+                                        <button
+                                            key={child.name}
+                                            type="button"
+                                            title={`Select ${pathFilterToPrefix({ root: pathFilter.root, subPath: childSubPath })}`}
+                                            onClick={() =>
+                                                setPathFilter({ root: pathFilter.root, subPath: childSubPath })
+                                            }
+                                            className="inline-flex h-6 max-w-full items-center gap-1 rounded-md px-1.5 text-[11px] bg-surface-soft text-secondary hover:bg-hover hover:text-primary cursor-pointer"
+                                        >
+                                            <span className="truncate">{child.name}</span>
+                                            <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
+                                                {child.count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ) : pathChildren.length === 0 && pathAncestors.length > 0 ? (
+                            <span className="text-[10px] text-secondary/70">No deeper subdirectories</span>
+                        ) : null}
                     </div>
                 ) : null}
                 <div className="flex flex-col gap-1.5 border-t border-border/40 py-1.5">
@@ -390,17 +437,14 @@ export function FilterPanel({
                             label={
                                 pathFilter.root === PathFilterOtherRoot
                                     ? "Other"
-                                    : pathFilter.subPath || pathFilter.root
+                                    : shortenPathForChip(pathChipFull || pathFilter.root)
                             }
+                            title={pathChipFull || undefined}
                             onRemove={() => setPathFilter(DefaultPathFilter)}
                         />
                     ) : null}
                     {tagFilters.map((tag) => (
-                        <ActiveChip
-                            key={tag}
-                            label={`#${tag}`}
-                            onRemove={() => toggleTagFilter(tag)}
-                        />
+                        <ActiveChip key={tag} label={`#${tag}`} onRemove={() => toggleTagFilter(tag)} />
                     ))}
                 </div>
             ) : null}

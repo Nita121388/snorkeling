@@ -82,11 +82,13 @@ declare global {
         before?: number;
         tagFilters?: string[];
         tagPresence?: string;
+        includeProjectPaths?: boolean;
     };
 
     // aisessionsservice.AISessionsListResponse
     type AISessionsListResponse = {
         sessions: SessionSummary[];
+        projectPaths?: ProjectPathSummary[];
     };
 
     // aisessionsservice.AISessionsNoteAndTagsRequest
@@ -1795,6 +1797,12 @@ declare global {
         memfree?: number;
         numcpu?: number;
         cpusum?: number;
+    };
+
+    // aisessions.ProjectPathSummary
+    type ProjectPathSummary = {
+        path: string;
+        count: number;
     };
 
     // uctypes.RateLimitInfo

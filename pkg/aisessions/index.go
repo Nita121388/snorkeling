@@ -203,7 +203,7 @@ func (idx *Index) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		if opts.Source != "" && summary.Source != opts.Source {
 			continue
 		}
-		if opts.Project != "" && !strings.Contains(strings.ToLower(summary.ProjectPath), strings.ToLower(opts.Project)) {
+		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
 			continue
 		}
 		if idx.summaryMatchesSearch(summary, query) {
@@ -393,6 +393,62 @@ func (idx *Index) summaryMatchesSearch(summary SessionSummary, query string) boo
 	return false
 }
 
+// projectPathMatches reports whether projectPath is inside the project filter
+// prefix with path-component boundaries: equal, or the path starts with the
+// prefix followed by a separator. Selecting ".../snorkeling" therefore matches
+// ".../snorkeling" and its children but NOT sibling ".../snorkeling-light-theme"
+// or ".../snorkeling-imgzoom" (v1 used a bare substring Contains that leaked
+// same-name-prefix siblings into the result). Case-insensitive, like v1.
+func projectPathMatches(projectPath, project string) bool {
+	if project == "" {
+		return true
+	}
+	p := strings.ToLower(projectPath)
+	q := strings.ToLower(project)
+	if !strings.HasPrefix(p, q) {
+		return false
+	}
+	rest := p[len(q):]
+	if rest == "" {
+		return true
+	}
+	// A project prefix that itself ends with a separator (root like "/", "E:\\",
+	// "~/") already sits on a component boundary, so any longer path under it is
+	// a descendant. Otherwise the next char must be a separator, which keeps
+	// ".../snorkeling" from matching sibling ".../snorkeling-light-theme".
+	last := q[len(q)-1]
+	if last == '/' || last == '\\' {
+		return true
+	}
+	return rest[0] == '/' || rest[0] == '\\'
+}
+
+// ProjectPathSummary is one bucket of the full projectPath distribution used by
+// the path filter UI: distinct projectPath plus session count. The distribution
+// is computed over all sessions passing the non-project filters (source / date /
+// marked / tags), so the UI can navigate the whole directory tree and show true
+// counts regardless of the current project filter or the List limit.
+type ProjectPathSummary struct {
+	Path  string `json:"path"`
+	Count int    `json:"count"`
+}
+
+// summarizeProjectPathsFromMap sorts a raw path->count map into a stable
+// ProjectPathSummary slice (count desc, then path asc).
+func summarizeProjectPathsFromMap(dist map[string]int) []ProjectPathSummary {
+	out := make([]ProjectPathSummary, 0, len(dist))
+	for path, count := range dist {
+		out = append(out, ProjectPathSummary{Path: path, Count: count})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out
+}
+
 func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if summary.Missing {
 		return false
@@ -400,7 +456,7 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if opts.Source != "" && summary.Source != opts.Source {
 		return false
 	}
-	if opts.Project != "" && !strings.Contains(strings.ToLower(summary.ProjectPath), strings.ToLower(opts.Project)) {
+	if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
 		return false
 	}
 	if opts.Since != 0 && summarySortTime(summary) < opts.Since {
