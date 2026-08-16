@@ -61,6 +61,10 @@
 - `design-system.html` — 项目唯一权威 visual reference,`docs/design-system.md` 显式引用
 - `light-theme-variations.html` — 150KB 浅色主题候选总集,light 选型母本
 
+## `ssh-config-edit/` — 1 项（自建目录）
+
+- `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。
+
 > **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
 > - `aisessions-no-tag-filter.html` / `aisessions-path-filter.html` — session 列表筛选方向
 > - `commontext-pinned-detail-insert.html` — pinned 详情插入方向

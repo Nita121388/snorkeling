@@ -1,0 +1,355 @@
+/* ============================================================
+   SSH Config 快速编辑入口 — 原型样式
+   镜像真实：frontend/app/modals/typeaheadmodal.scss + typeaheadmodal.tsx
+            frontend/app/block/connectionbutton.tsx
+            frontend/app/view/preview/preview.tsx / preview-edit.tsx / preview-edit.scss
+   token 取自 frontend/app/theme.scss `:root`（dark 默认主题）
+   ============================================================ */
+
+/* ---- 真实主题 token（theme.scss :root / dark） ---- */
+:root {
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --accent-bg-color: rgba(88, 193, 66, 0.5);
+    --modal-bg-color: #232323;
+    --modal-border-color: rgba(255, 255, 255, 0.16);
+    --highlight-bg-color: rgba(255, 255, 255, 0.1);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --surface: rgba(255, 255, 255, 0.06);
+    --color-secondary: var(--secondary-text-color);
+    --font-mono: "Hack", "SF Mono", Menlo, Consolas, monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+    --zindex-typeahead-modal: 1000;
+    /* conn-icon-color-N —— connectionbutton.tsx computeConnColorNum 调色板 */
+    --conn-icon-color-1: rgb(88, 193, 66);
+    --conn-icon-color-2: #58c1ff;
+    --conn-icon-color-3: #e0b956;
+    --conn-icon-color-4: #cc685c;
+    /* preview editor tokens */
+    --editor-bg: rgb(30, 30, 30);
+    --editor-border: var(--border-color);
+    --editor-text: #d4d4d4;
+    --editor-kw: #569cd6;
+    --editor-val: #ce9178;
+    --editor-gutter: rgb(50, 50, 50);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    font-family: var(--font-sans);
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+body { padding: 32px 20px 80px; }
+
+/* ---- 页头 ---- */
+.page-head { max-width: 1080px; margin: 0 auto 24px; }
+.page-head h1 { font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+.page-head p { color: var(--grey-text-color); font-size: 12.5px; line-height: 1.7; max-width: 900px; }
+.page-head p.sub2 { margin-top: 6px; }
+.page-head code {
+    background: var(--surface-soft); color: var(--secondary-text-color);
+    padding: 1px 6px; border-radius: 5px; font-size: 11px; font-family: var(--font-mono);
+}
+.page-head b { color: var(--secondary-text-color); font-weight: 600; }
+
+/* ---- 场景切换器 ---- */
+.scene-switcher {
+    max-width: 1080px; margin: 0 auto 20px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.switch-label { font-size: 12px; color: var(--grey-text-color); }
+.switch-btn {
+    border: 1px solid var(--border-color); background: var(--surface-soft);
+    color: var(--secondary-text-color); border-radius: 6px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s ease;
+}
+.switch-btn:hover { background: var(--highlight-bg-color); color: var(--main-text-color); }
+.switch-btn.active {
+    border-color: var(--accent-color); background: rgba(88,193,66,0.12);
+    color: var(--accent-color);
+}
+.switch-hint { font-size: 11px; color: var(--grey-text-color); margin-left: 4px; }
+
+/* ---- 双栏布局 ---- */
+.demo-area {
+    max-width: 1080px; margin: 0 auto 32px;
+    display: flex; gap: 20px; align-items: flex-start;
+}
+.panel { flex: 1; min-width: 0; }
+.panel-title {
+    font-size: 11px; font-weight: 500; color: var(--grey-text-color);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 8px; padding-left: 2px;
+}
+.panel-title code { background: var(--surface-soft); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
+
+/* ---- 终端 block（镜像 blockframe-default-header） ---- */
+.term-block { position: relative; }
+.block-frame-default-header {
+    display: flex; align-items: center;
+    height: 28px; padding: 0 8px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 12px;
+}
+.header-left {
+    display: flex; align-items: center; gap: 5px;
+    color: var(--grey-text-color);
+}
+.view-icon { font-size: 11px; opacity: 0.7; }
+.view-type { font-size: 11px; opacity: 0.6; }
+.header-center { flex: 1; display: flex; justify-content: center; }
+.header-right { min-width: 40px; }
+
+/* ---- ConnectionButton（镜像 connectionbutton.tsx DOM） ---- */
+.conn-button {
+    display: flex; align-items: center; gap: 0;
+    padding: 1px 6px; border-radius: 4px;
+    cursor: pointer; overflow: hidden;
+    color: var(--main-text-color);
+}
+.conn-button:hover { background: var(--highlight-bg-color); }
+.conn-icon-stack { font-size: 11px; margin-right: 2px; }
+.conn-icon-stack i { color: var(--color-secondary); }
+.conn-name {
+    font-size: 12px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    color: var(--color-secondary);
+}
+.conn-name.remote { color: var(--main-text-color); }
+
+/* ---- TypeAheadModal（精确镜像 typeaheadmodal.scss） ---- */
+.type-ahead-modal {
+    position: relative; /* 非 absolute，固定展示用 */
+    display: flex; flex-direction: column; align-items: flex-start;
+    border-radius: 0 0 6px 6px;
+    border: 1px solid var(--modal-border-color);
+    border-top: none;
+    background: var(--modal-bg-color);
+    box-shadow: 0px 13px 16px 0px rgba(0, 0, 0, 0.4);
+    padding: 6px;
+    width: 100%;
+}
+.type-ahead-modal .input-group {
+    display: flex; align-items: center;
+    width: 100%; position: relative;
+}
+.type-ahead-modal .input {
+    border: none; border-bottom: 1px solid rgba(255,255,255,0.08);
+    height: 24px; border-radius: 0;
+    background: transparent; color: var(--main-text-color);
+    font-size: 12px; padding: 4px 28px 4px 6px;
+    width: 100%; outline: none;
+    font-family: var(--font-sans);
+}
+.type-ahead-modal .input::placeholder { color: var(--grey-text-color); opacity: 0.8; }
+.type-ahead-modal .input-decor.end-position {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    opacity: 0.3; font-size: 11px; pointer-events: none;
+}
+.type-ahead-modal .suggestions-wrapper {
+    width: 100%; margin-top: 8px;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 0;
+    max-height: 340px;
+}
+.type-ahead-modal .suggestions { width: 100%; }
+.type-ahead-modal .suggestion-header {
+    font-size: 11px; font-weight: 500; line-height: 12px;
+    opacity: 0.7; letter-spacing: 0.11px;
+    padding: 6px 0 2px 4px;
+}
+.type-ahead-modal .suggestion-item {
+    width: 100%; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 4px;
+    transition: background-color 0.1s ease;
+}
+.type-ahead-modal .suggestion-item:hover { background-color: var(--highlight-bg-color); }
+.type-ahead-modal .suggestion-item.highlighted {
+    background-color: rgba(88,193,66,0.22); color: var(--main-text-color);
+}
+.type-ahead-modal .suggestion-item.highlighted .typeahead-item-name i { color: var(--main-text-color) !important; }
+.type-ahead-modal .typeahead-item-name {
+    display: flex; gap: 8px; font-size: 11px; font-weight: 400; line-height: 14px;
+    overflow: hidden; flex: 1;
+}
+.type-ahead-modal .typeahead-item-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.type-ahead-modal .typeahead-item-name i { display: inline-block; position: relative; top: 2px; flex-shrink: 0; }
+.type-ahead-modal .typeahead-current-checkbox { margin-left: auto; color: var(--accent-color); font-size: 10px; }
+/* 新增条目 hover 高亮提示（非真实，仅原型） */
+.type-ahead-modal .suggestion-item.action-item.action-new {
+    border-left: 2px solid var(--accent-color);
+    padding-left: 6px;
+}
+.type-ahead-modal .suggestion-item.action-item.action-new:hover {
+    background-color: rgba(88,193,66,0.12);
+}
+.type-ahead-modal .suggestion-item.action-item.action-new:hover .typeahead-item-name i { color: var(--accent-color) !important; }
+
+/* ---- preview 编辑器（镜像 preview.tsx + preview-edit.scss） ---- */
+.preview-editor {
+    border: 1px solid var(--editor-border);
+    border-radius: 6px; overflow: hidden;
+    display: flex; flex-direction: column;
+    height: 320px;
+}
+.preview-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 32px; padding: 0 10px;
+    background: var(--surface-soft);
+    border-bottom: 1px solid var(--editor-border);
+    flex-shrink: 0;
+}
+.preview-breadcrumb {
+    display: flex; align-items: center; gap: 0;
+    font-family: var(--font-mono); font-size: 12px;
+    overflow: hidden; white-space: nowrap;
+}
+.bc-seg { color: var(--secondary-text-color); }
+.bc-sep { color: var(--grey-text-color); margin: 0 1px; }
+.bc-file { color: var(--main-text-color); font-weight: 600; }
+.preview-toolbar-right { display: flex; align-items: center; gap: 10px; }
+.preview-badge {
+    font-size: 10px; padding: 1px 7px; border-radius: 4px;
+    font-weight: 500; white-space: nowrap;
+}
+.preview-badge.badge-local { background: rgba(88,193,66,0.15); color: var(--accent-color); }
+.preview-badge.badge-remote { background: rgba(88,197,255,0.15); color: #58c1ff; }
+.preview-save-hint { font-size: 10px; color: var(--grey-text-color); }
+
+.preview-code {
+    flex: 1; overflow: auto; background: var(--editor-bg);
+    padding: 12px 0;
+    counter-reset: line;
+}
+.preview-code pre {
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    color: var(--editor-text); margin: 0;
+    white-space: pre;
+}
+.preview-code .line {
+    display: block; padding: 0 16px 0 48px;
+    position: relative;
+}
+.preview-code .line::before {
+    content: counter(line);
+    counter-increment: line;
+    position: absolute; left: 0; width: 40px; text-align: right;
+    color: var(--grey-text-color); opacity: 0.5;
+    font-size: 11px; padding-right: 10px;
+}
+.preview-code .kw { color: var(--editor-kw); }
+.preview-code .val { color: var(--editor-val); }
+.preview-code .comment { color: #6a9955; }
+
+.preview-statusbar {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 22px; padding: 0 10px;
+    background: var(--surface-soft);
+    border-top: 1px solid var(--editor-border);
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--grey-text-color); flex-shrink: 0;
+}
+.status-file { opacity: 0.8; }
+
+/* ---- 右栏：blocks 堆叠（新增 block 落地处） ---- */
+.blocks-stack {
+    display: flex; flex-direction: column; gap: 14px;
+    max-height: 720px; overflow-y: auto;
+    padding-right: 4px;
+}
+.empty-hint {
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--grey-text-color);
+    font-size: 12px;
+}
+
+/* ---- 新增 block（header + preview 编辑器） ---- */
+.ssh-config-block {
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface-soft);
+    border: 1px solid var(--border-color);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.ssh-config-block.block-enter-done {
+    opacity: 1;
+    transform: none;
+}
+.ssh-config-block:hover {
+    border-color: var(--accent-color);
+}
+.ssh-config-block .block-frame-default-header {
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+}
+.ssh-config-block .block-conn {
+    cursor: default;
+}
+.ssh-config-block .preview-editor {
+    border: none;
+    border-radius: 0;
+    height: 300px;
+}
+.block-close {
+    background: transparent;
+    border: none;
+    color: var(--grey-text-color);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    line-height: 1;
+}
+.block-close:hover {
+    background: var(--highlight-bg-color);
+    color: var(--main-text-color);
+}
+
+/* preview 打开动画（原型高亮提示） */
+.panel-right.preview-active .preview-editor {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px rgba(88,193,66,0.25);
+}
+
+/* ---- 底部说明 ---- */
+.notes {
+    max-width: 1080px; margin: 0 auto;
+    border-top: 1px solid var(--border-color);
+    padding-top: 20px;
+}
+.notes h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--secondary-text-color); }
+.notes ul { padding-left: 20px; }
+.notes li { font-size: 12px; color: var(--grey-text-color); line-height: 1.7; margin-bottom: 4px; }
+.notes li b { color: var(--secondary-text-color); font-weight: 600; }
+.notes li code {
+    background: var(--surface-soft); padding: 1px 5px; border-radius: 4px;
+    font-size: 11px; font-family: var(--font-mono); color: var(--secondary-text-color);
+}
+.badge-local { background: rgba(88,193,66,0.15); color: var(--accent-color); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+.badge-remote { background: rgba(88,197,255,0.15); color: #58c1ff; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 720px) {
+    .demo-area { flex-direction: column; }
+    .type-ahead-modal { position: static; }
+}

@@ -1,0 +1,160 @@
+<!-- ============================================================
+   SSH Config 快速编辑入口 — 连接下拉框新条目原型
+   镜像真实：frontend/app/modals/conntypeahead.tsx + typeaheadmodal.tsx
+            frontend/app/block/connectionbutton.tsx
+            frontend/app/view/preview/preview.tsx / preview-edit.tsx
+   token 取自 frontend/app/theme.scss `:root`（dark 默认主题）
+   ============================================================ -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSH Config 快速编辑入口 — 连接下拉框新条目</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="page-head">
+        <h1>SSH Config 快速编辑入口 — 连接下拉框新条目</h1>
+        <p>
+            在终端 block 连接下拉框(<code>ChangeConnectionBlockModal</code>)底部新增
+            <b>Edit SSH Config</b> 条目，点击后打开 <code>~/.ssh/config</code> 进行编辑。
+            远程连接块打开的是远端文件（复用 preview 视图 + 后端 <code>ExpandHomeDirSafe</code>）。
+        </p>
+        <p class="sub2">
+            镜像源：<code>frontend/app/modals/conntypeahead.tsx</code>,
+            <code>frontend/app/modals/typeaheadmodal.tsx</code>,
+            <code>frontend/app/view/preview/preview.tsx</code>
+        </p>
+    </div>
+
+    <div class="scene-switcher">
+        <span class="switch-label">当前块连接：</span>
+        <button class="switch-btn active" data-scene="local">
+            <i class="fa-solid fa-laptop"></i> 本地 (nita-MacBook)
+        </button>
+        <button class="switch-btn" data-scene="remote">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i> ssh myhost
+        </button>
+        <span class="switch-hint">切换查看打开的文件差异</span>
+    </div>
+
+    <div class="demo-area">
+        <!-- ======== 左栏：终端 block header + 下拉框 ======== -->
+        <div class="panel panel-left">
+            <div class="panel-title">连接下拉框 (TypeAheadModal)</div>
+
+            <div class="term-block">
+                <!-- block frame header（镜像 blockframe-header.tsx） -->
+                <div class="block-frame-default-header">
+                    <div class="header-left">
+                        <span class="view-icon"><i class="fa-solid fa-terminal"></i></span>
+                        <span class="view-type">bash</span>
+                    </div>
+                    <div class="header-center">
+                        <!-- ConnectionButton（镜像 connectionbutton.tsx） -->
+                        <div class="conn-button" id="connButton" title="Connected to Local Machine">
+                            <span class="fa-stack conn-icon-stack">
+                                <i class="fa-solid fa-laptop fa-stack-1x" id="connIcon"></i>
+                            </span>
+                            <span class="conn-name" id="connName">nita-MacBook</span>
+                        </div>
+                    </div>
+                    <div class="header-right"></div>
+                </div>
+
+                <!-- TypeAheadModal（精确镜像 typeaheadmodal.tsx DOM） -->
+                <div class="type-ahead-modal has-suggestions" id="typeaheadModal">
+                    <div class="input-group">
+                        <input
+                            type="text"
+                            class="input"
+                            placeholder="Connect to (username@host)..."
+                            readOnly
+                        />
+                        <div class="input-decor end-position">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </div>
+                    </div>
+                    <div class="suggestions-wrapper">
+                        <div class="suggestions" id="suggestions">
+                            <!-- 本地组 -->
+                            <div>
+                                <div class="suggestion-header">Local</div>
+                                <div class="suggestion-item">
+                                    <div class="typeahead-item-name ellipsis">
+                                        <i class="fa-solid fa-laptop" style="color: var(--color-secondary)"></i>
+                                        <span>nita-MacBook</span>
+                                    </div>
+                                    <i class="fa-solid fa-check typeahead-current-checkbox"></i>
+                                </div>
+                            </div>
+
+                            <!-- 远程组 -->
+                            <div>
+                                <div class="suggestion-header">Remote</div>
+                                <div class="suggestion-item" data-conn="myhost">
+                                    <div class="typeahead-item-name ellipsis">
+                                        <i class="fa-solid fa-arrow-right-arrow-left" style="color: var(--conn-icon-color-2)"></i>
+                                        <span>myhost</span>
+                                    </div>
+                                </div>
+                                <div class="suggestion-item" data-conn="dev-server">
+                                    <div class="typeahead-item-name ellipsis">
+                                        <i class="fa-solid fa-arrow-right-arrow-left" style="color: var(--grey-text-color)"></i>
+                                        <span>dev-server</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 管理操作（新增 Edit SSH Config 条目） -->
+                            <div>
+                                <div class="suggestion-item action-item action-new" data-action="edit-ssh" id="editSshItem">
+                                    <div class="typeahead-item-name ellipsis">
+                                        <i class="fa-solid fa-gear" style="color: var(--grey-text-color)"></i>
+                                        <span>Edit SSH Config</span>
+                                    </div>
+                                </div>
+                                <div class="suggestion-item action-item" data-action="edit-connections">
+                                    <div class="typeahead-item-name ellipsis">
+                                        <i class="fa-solid fa-gear" style="color: var(--grey-text-color)"></i>
+                                        <span>Edit Connections</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======== 右栏：模拟 Tab，新增 block 落在这里 ======== -->
+        <div class="panel panel-right" id="blocksPanel">
+            <div class="panel-title">Tab (新增 block 打开文件)</div>
+            <div class="blocks-stack" id="blocksStack">
+                <div class="empty-hint" id="emptyHint">点击左侧 Edit SSH Config → 新增一个 block 打开文件</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notes">
+        <h3>交互说明</h3>
+        <ul>
+            <li>点击下拉框中的 <b>Edit SSH Config</b>：右侧 Tab <b>新增一个 block</b>（preview 视图 + <code>edit: true</code>）打开 <code>~/.ssh/config</code>，可连续点击新增多个；</li>
+            <li>切换「本地 / ssh myhost」后再次点击：新增 block 的 header 连接图标 / breadcrumb 区分文件来源；</li>
+            <li>远程时后端按连接解析 <code>~</code>（<code>wavebase.ExpandHomeDirSafe</code>），编辑的是远端文件；</li>
+            <li>文件不存在时沿用 preview 的 <i>File Read Failed</i> 错误展示；</li>
+            <li>下拉框无输入时才显示管理条目（与 Edit Connections 同条件）。</li>
+        </ul>
+        <h3>落地路线（只改一个文件）</h3>
+        <ul>
+            <li><code>frontend/app/modals/conntypeahead.tsx</code>：新增 <code>getSshConfigEditItem()</code>，onSelect 时 <code>createBlock({ view: "preview", file: "~/.ssh/config", edit: true, connection: … })</code> —— 与 <code>Edit Connections</code> 条目同模式（新增 block）；</li>
+            <li>无需后端改动（FileRead/FileWrite 已支持 <code>~</code> 展开 + 远端透传）；</li>
+            <li>完成后更新 <code>docs/docs/connections.mdx</code> 补充入口说明。</li>
+        </ul>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
