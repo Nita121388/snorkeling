@@ -107,6 +107,14 @@ export type InlineEditSession = {
      * whole pre-insert is reverted via insertRevert so nothing is left behind.
      */
     placeholder?: boolean;
+    /**
+     * Inline-placeholder variant for plain <p> anchors: the pre-inserted row sits INSIDE
+     * the paragraph (directly above/below its content), and on commit the draft replaces it
+     * with NO separator blanks — the paragraph's original separator blanks still bracket
+     * the whole paragraph, so the result is a soft-broken new line flush with the paragraph
+     * (zero stray blank rows, unlike block-level inserts).
+     */
+    placeholderInline?: boolean;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -403,7 +411,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             targetEl: HTMLElement,
             caretOffset?: number,
             insertRevert?: () => void,
-            placeholder?: boolean
+            placeholder?: boolean | "inline"
         ) => {
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullText.split(/\r\n|\n/);
@@ -429,7 +437,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 targetEl,
                 caretOffset,
                 insertRevert,
-                placeholder: placeholder || undefined,
+                placeholder: placeholder === "inline" ? true : placeholder || undefined,
+                placeholderInline: placeholder === "inline",
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -504,16 +513,20 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         setDraftText("");
         if (current.placeholder) {
             // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
-            // blank row for us to type into). Typed something → replace the row and re-add
-            // separator blanks as needed (commitPlaceholderBlock), netting exactly one new
-            // block. Nothing typed → the pre-insert must not survive: revert the document
-            // to its pre-insert state so the click leaves zero trace.
+            // blank row for us to type into). Typed something → replace the row; block-level
+            // inserts re-add separator blanks as needed (commitPlaceholderBlock, netting one
+            // new block), inline <p> inserts just replace with NO blank (the paragraph's own
+            // separator blanks still bracket it → a flush soft-broken new line). Nothing
+            // typed → the pre-insert must not survive: revert the document to its pre-insert
+            // state so the click leaves zero trace.
             if (draftText.trim().length === 0) {
                 current.insertRevert?.();
                 return;
             }
             onCommit(
-                commitPlaceholderBlock(fullText, current.startLine, current.endLine, draftText)
+                current.placeholderInline
+                    ? replaceSourceRange(fullText, current.startLine, current.endLine, draftText)
+                    : commitPlaceholderBlock(fullText, current.startLine, current.endLine, draftText)
             );
             return;
         }

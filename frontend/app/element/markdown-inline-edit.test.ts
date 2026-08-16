@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     commitPlaceholderBlock,
     deleteBlockRange,
+    replaceSourceRange,
     resolveInlineEditTarget,
     spliceBlankRow,
     spliceInsertBlock,
@@ -133,6 +134,49 @@ describe("spliceBlankRow (placeholder-row pre-insert)", () => {
         const list = ["# title", "", "- one", "- two", "", "tail"];
         const next = spliceBlankRow(list, 3, 4, "before");
         expect(next).toEqual(["# title", "", "", "- one", "- two", "", "tail"]);
+    });
+});
+
+describe("paragraph inline placeholder (click insert on a <p> → flush soft-broken line)", () => {
+    // The paragraph-insert path: spliceBlankRow pre-inserts ONE blank row directly above /
+    // below the paragraph's content, then the commit replaces that row with the draft using
+    // replaceSourceRange (NO separator re-padding) — the paragraph's own surrounding blanks
+    // already bracket it, so the new text reads as a soft-broken line flush with the
+    // paragraph. These tests model the full click → type → commit chain on plain text.
+    it("insert-below: new line sits flush under the paragraph, paragraph separator kept", () => {
+        const doc = "line A\n\nline B";
+        const afterClick = spliceBlankRow(doc.split(/\r\n|\n/), 1, 1, "after").join("\n");
+        const committed = replaceSourceRange(afterClick, 2, 2, "new line");
+        expect(committed).toBe("line A\nnew line\n\nline B"); // no blank between A and new line
+    });
+
+    it("insert-above: new line sits flush above the paragraph", () => {
+        const doc = "line A\n\nline B";
+        const afterClick = spliceBlankRow(doc.split(/\r\n|\n/), 1, 1, "before").join("\n");
+        const committed = replaceSourceRange(afterClick, 1, 1, "new line");
+        expect(committed).toBe("new line\nline A\n\nline B");
+    });
+
+    it("multi-line paragraph (soft-broken a/b): insert-below lands after b, flush", () => {
+        const doc = "a\nb\n\nc"; // paragraph spans lines 1-2
+        const afterClick = spliceBlankRow(doc.split(/\r\n|\n/), 1, 2, "after").join("\n");
+        const committed = replaceSourceRange(afterClick, 3, 3, "X");
+        expect(committed).toBe("a\nb\nX\n\nc"); // X flush under b, single blank before c
+    });
+
+    it("multi-line draft flushes too (no separator injected mid-draft)", () => {
+        const doc = "line A\n\nline B";
+        const afterClick = spliceBlankRow(doc.split(/\r\n|\n/), 1, 1, "after").join("\n");
+        const committed = replaceSourceRange(afterClick, 2, 2, "one\ntwo");
+        expect(committed).toBe("line A\none\ntwo\n\nline B");
+    });
+
+    it("empty draft on a paragraph insert reverts the pre-inserted row (zero trace)", () => {
+        const doc = "line A\n\nline B";
+        const afterClick = spliceBlankRow(doc.split(/\r\n|\n/), 1, 1, "after").join("\n");
+        // The hook's empty-commit path calls insertRevert() → restores the pre-click text.
+        expect(afterClick).toBe("line A\n\n\nline B"); // pre-insert visible (one extra blank)
+        expect(doc).toBe("line A\n\nline B"); // revert lands back here
     });
 });
 

@@ -1497,7 +1497,7 @@ const Markdown = ({
     // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
     // is forwarded so Esc can undo the whole insert.
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean) => {
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline") => {
             // Give ReactMarkdown time to commit the new text to the DOM (one frame is usually
             // sufficient; a second rAF guards against double-batched concurrent renders).
             requestAnimationFrame(() => {
@@ -1857,17 +1857,26 @@ const Markdown = ({
             const endLineRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : startLine;
             const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
 
+            // Inline-mode anchor: a plain paragraph (NOT a blank spacer) gets a soft-broken new
+            // line flush inside the paragraph (no stray separator blank — the paragraph's own
+            // surrounding blanks already bracket it). Every other block keeps the block-level
+            // insert (a separated independent block), because pushing a new row inside a
+            // heading / list / table / code / quote / hr would tear its structure.
+            const isParagraph = el.tagName === "P" || el.classList.contains("paragraph");
+            const isBlankSpacer = el.classList.contains("blank-spacer");
+            const inlineMode = isParagraph && !isBlankSpacer;
+
             // Insert a SINGLE blank row into the document immediately (so the preview visibly
             // gains one line the moment the user clicks), remember the pre-edit text for
             // Esc/empty-commit revert, and open a blank editor on that row. The final commit
-            // replaces the row with the draft via commitPlaceholderBlock (which re-adds
-            // separator blanks only as needed) — one click nets exactly one new block, with
-            // no stray blank rows left behind.
+            // replaces the row with the draft — inline paragraphs replace with no separator
+            // blanks (flush new line), block-level anchors re-add separators as needed — so
+            // one click nets exactly one new row/block, with no stray blanks left behind.
             const originalText = text;
             const newFull = spliceBlankRow(text.split(/\r\n|\n/), startLine, endLine, mode).join("\n");
             handleInlineEditCommit(newFull);
             const newLine = mode === "before" ? startLine : endLine + 1;
-            focusEditedLine(newLine, () => handleInlineEditCommit(originalText), true);
+            focusEditedLine(newLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true);
 
             setInsertAnchor(null);
             setInsertPos(null);
