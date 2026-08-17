@@ -32,6 +32,7 @@ import {
     shortSessionId,
     trimMessageText,
 } from "./utils";
+import { ChatComposer } from "./chat-composer";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const OutlineTooltipPreviewLength = 1800;
@@ -411,6 +412,15 @@ export function SessionDetailPane({
             return Promise.resolve(false);
         },
         [model, showToolCalls, summary]
+    );
+
+    const handleChatEvent = useCallback(
+        (evt: { type: string }) => {
+            if (evt.type === "turn_end" || evt.type === "turn_failed") {
+                void requestDetailDelta("bottom");
+            }
+        },
+        [requestDetailDelta]
     );
 
     const handleDetailScroll = useCallback(() => {
@@ -1141,6 +1151,14 @@ export function SessionDetailPane({
                             ) : null}
                         </div>
                     </div>
+                    {summary?.source === "pi" && summary?.id ? (
+                        <ChatComposer
+                            source={summary.source}
+                            sessionId={summary.id}
+                            projectPath={summary.projectPath}
+                            onEvent={handleChatEvent}
+                        />
+                    ) : null}
                     {outlineOpen ? (
                         <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
                             <div className="flex h-10 items-center justify-between gap-2 border-b border-border px-3">
