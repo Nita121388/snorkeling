@@ -38,8 +38,6 @@ import {
     sessionTagsLabel,
 } from "@/app/view/aisessions/session-tags";
 import type { TermViewModel } from "@/app/view/term/term-model";
-import { normalizeAgentProvider } from "./agent-meta";
-import { cellFromClientXY, planCursorMoveKeys } from "./clicktoedit/click-synthesize";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { copyText } from "@/util/clipboard";
 import { PLATFORM } from "@/util/platformutil";
@@ -1506,85 +1504,6 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         });
     }, [model]);
 
-    // Host-side click-to-edit for agents without mouse support (codex / pi /
-    // opencode). Acts like native TUI mouse: a plain left-click (no drag) moves
-    // the agent's input cursor to the clicked cell; dragging keeps the default
-    // browser text selection. Clicks are synthesized only for agent blocks, when
-    // the app has no mouse reporting, and (without a modifier) only in the
-    // bottom rows where agent prompt boxes live. Approximate by design; see
-    // clicktoedit/README.md for limits (vim mode, wide chars, multiline).
-    const pendingSynthesizeRef = React.useRef<{
-        targetRow: number;
-        targetCol: number;
-        moved: boolean;
-        sx: number;
-        sy: number;
-    } | null>(null);
-
-    const handleSynthesizeClickCapture = React.useCallback(
-        (e: React.MouseEvent<HTMLDivElement>) => {
-            const terminal = model.termRef.current?.terminal;
-            if (terminal == null || terminal.modes.mouseTrackingMode !== "none") {
-                return;
-            }
-            const provider = normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
-            if (provider == null || provider === "agent" || provider === "claude" || provider === "anthropic") {
-                return;
-            }
-            if (e.button !== 0) {
-                return;
-            }
-            const cell = cellFromClientXY(terminal, e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY);
-            if (cell == null) {
-                return;
-            }
-            // 释放时若无拖动则注入定位（等效原生 TUI 点击）
-            pendingSynthesizeRef.current = {
-                targetRow: cell.row,
-                targetCol: cell.col,
-                moved: false,
-                sx: e.clientX,
-                sy: e.clientY,
-            };
-            const cleanup = () => {
-                pendingSynthesizeRef.current = null;
-                document.removeEventListener("mousemove", onMove, true);
-                document.removeEventListener("mouseup", onUp, true);
-            };
-            const onMove = (ev: MouseEvent) => {
-                const p = pendingSynthesizeRef.current;
-                if (p == null) {
-                    return;
-                }
-                const dist = Math.abs(ev.clientX - p.sx) + Math.abs(ev.clientY - p.sy);
-                if (dist > 5) {
-                    p.moved = true;
-                    cleanup();
-                }
-            };
-            const onUp = () => {
-                const p = pendingSynthesizeRef.current;
-                cleanup();
-                const t = model.termRef.current?.terminal;
-                if (p == null || p.moved || t == null || t.modes.mouseTrackingMode !== "none") {
-                    return;
-                }
-                // 单击：据此合成按键序列注入 PTY
-                const keys = planCursorMoveKeys(t.buffer.active.cursorY, t.buffer.active.cursorX, {
-                    row: p.targetRow,
-                    col: p.targetCol,
-                });
-                if (keys !== "") {
-                    model.sendDataToController(keys);
-                }
-            };
-            document.addEventListener("mousemove", onMove, true);
-            document.addEventListener("mouseup", onUp, true);
-        },
-        [model, blockData]
-    );
-
-
     // ponytail: xterm has no mouse-routing hook; plain TUI drag yields to selection. Patch xterm if both need separate gestures.
     const handleTermMouseDownCapture = React.useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1775,12 +1694,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     }, []);
 
     return (
-        <div
-            className={clsx("view-term", "term-mode-" + termMode)}
-            ref={viewRef}
-            onContextMenu={handleContextMenu}
-            onMouseDownCapture={handleSynthesizeClickCapture}
-        >
+        <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
             {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
             <TermResyncHandler blockId={blockId} model={model} />
             <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
