@@ -155,6 +155,7 @@ export class TermWrap {
     lastMode2026ResetTs: number = 0;
     inSyncTransaction: boolean = false;
     inRepaintTransaction: boolean = false;
+    repaintScrollTimer: NodeJS.Timeout | null = null;
 
     constructor(
         tabId: string,
@@ -295,7 +296,17 @@ export class TermWrap {
                     const wasRepaint = this.inRepaintTransaction;
                     this.inRepaintTransaction = false;
                     if (wasRepaint && Date.now() - this.lastClearScrollbackTs <= MaxRepaintTransactionMs) {
-                        setTimeout(() => {
+                        // 切 tab/关 block 时 terminal 可能在 20ms 定时器触发前被 dispose；
+                        // 对已销毁的 terminal 调 scrollToBottom 会在 xterm 内部抛未捕获异常，
+                        // 破坏渲染器状态导致 TUI 内容错乱。定时器随 dispose 一并取消，并加 isDisposed 兜底。
+                        if (this.repaintScrollTimer != null) {
+                            clearTimeout(this.repaintScrollTimer);
+                        }
+                        this.repaintScrollTimer = setTimeout(() => {
+                            this.repaintScrollTimer = null;
+                            if (this.terminal.isDisposed) {
+                                return;
+                            }
                             console.log("[termwrap] repaint transaction complete, scrolling to bottom");
                             this.terminal.scrollToBottom();
                         }, 20);
@@ -509,6 +520,10 @@ export class TermWrap {
     }
 
     dispose() {
+        if (this.repaintScrollTimer != null) {
+            clearTimeout(this.repaintScrollTimer);
+            this.repaintScrollTimer = null;
+        }
         this.promptMarkers.forEach((marker) => {
             try {
                 marker.dispose();
