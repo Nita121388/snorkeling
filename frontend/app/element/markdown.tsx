@@ -6,6 +6,7 @@ import { ImageLightbox } from "@/app/element/image-lightbox";
 import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
+    isSelectingRange,
     makeInlineEditKeydown,
     deleteBlockRange,
     replaceSourceRange,
@@ -1338,6 +1339,14 @@ const Markdown = ({
             if (curSel.length > mousedownSelectionRef.current.length) {
                 return;
             }
+            // Belt-and-braces on top of the length heuristic: an active Range selection means
+            // a real selection gesture is (or just was) in progress — even one whose text is
+            // empty (collapsed-node selects, drag still settling). Click-to-edit must never
+            // hijack it, or a "select a phrase" gesture pops the editor instead.
+            const liveSel = typeof window !== "undefined" ? window.getSelection() : null;
+            if (isSelectingRange(liveSel)) {
+                return;
+            }
             const resolved = resolveEditTargetFromEvent(e);
             if (resolved == null) {
                 return;
@@ -1798,7 +1807,13 @@ const Markdown = ({
                 return;
             }
             cancelHideInsert();
-            setInsertAnchor({ line: Number(lineAttr) });
+            // Dedupe by line: crossing <strong>/<em>/<code> boundaries inside ONE block fires
+            // mouseover repeatedly with the same [data-source-line] — a fresh {line} object
+            // every time would force a Markdown re-render mid-drag-select. React bails out
+            // when the state value is identical (same object reference), so an unchanged line
+            // must return `prev` instead of allocating a new object.
+            const hoverLine = Number(lineAttr);
+            setInsertAnchor((prev) => (prev != null && prev.line === hoverLine ? prev : { line: hoverLine }));
             // Clear any active block selection when hovering a new block.
             setSelectedBlock(null);
         },
@@ -1977,57 +1992,75 @@ const Markdown = ({
 
     const shouldHideForInitialScroll = hideUntilInitialScroll && initialScrollReadyKey !== transformedText;
 
-    const toggleHeadingCollapse = (headingId: string) => {
-        setCollapsedHeadings((prev) => {
-            const next = new Set(prev);
-            if (next.has(headingId)) {
+    // useCallback 稳定 toggle 函数：它们被 markdownComponents 的 h1-h6/li/table 组件捕获，
+    // 若每次渲染都是新引用，components useMemo 每次失效 → 整树 remount → 拖选中的选中态
+    // 被销毁。依赖仅是可选 onChange 回调（preview 侧已 useCallback 稳定）。
+    const toggleHeadingCollapse = useCallback(
+        (headingId: string) => {
+            setCollapsedHeadings((prev) => {
+                const next = new Set(prev);
+                if (next.has(headingId)) {
+                    next.delete(headingId);
+                } else {
+                    next.add(headingId);
+                }
+                onCollapsedHeadingsChange?.(next);
+                return next;
+            });
+        },
+        [onCollapsedHeadingsChange]
+    );
+
+    const toggleOrderedListItemCollapse = useCallback(
+        (itemId: string) => {
+            setCollapsedOrderedListItems((prev) => {
+                const next = new Set(prev);
+                if (next.has(itemId)) {
+                    next.delete(itemId);
+                } else {
+                    next.add(itemId);
+                }
+                onCollapsedOrderedListItemsChange?.(next);
+                return next;
+            });
+        },
+        [onCollapsedOrderedListItemsChange]
+    );
+
+    const toggleTableCollapse = useCallback(
+        (tableKey: string) => {
+            setCollapsedTables((prev) => {
+                const next = new Set(prev);
+                if (next.has(tableKey)) {
+                    next.delete(tableKey);
+                } else {
+                    next.add(tableKey);
+                }
+                onCollapsedTablesChange?.(next);
+                return next;
+            });
+        },
+        [onCollapsedTablesChange]
+    );
+
+    const focusHeading = useCallback(
+        (href: string) => {
+            const headingId = getHeadingIdFromHref(idPrefix, href);
+            setCollapsedHeadings((prev) => {
+                if (!prev.has(headingId)) {
+                    return prev;
+                }
+                const next = new Set(prev);
                 next.delete(headingId);
-            } else {
-                next.add(headingId);
-            }
-            onCollapsedHeadingsChange?.(next);
-            return next;
-        });
-    };
-
-    const toggleOrderedListItemCollapse = (itemId: string) => {
-        setCollapsedOrderedListItems((prev) => {
-            const next = new Set(prev);
-            if (next.has(itemId)) {
-                next.delete(itemId);
-            } else {
-                next.add(itemId);
-            }
-            onCollapsedOrderedListItemsChange?.(next);
-            return next;
-        });
-    };
-
-    const toggleTableCollapse = (tableKey: string) => {
-        setCollapsedTables((prev) => {
-            const next = new Set(prev);
-            if (next.has(tableKey)) {
-                next.delete(tableKey);
-            } else {
-                next.add(tableKey);
-            }
-            onCollapsedTablesChange?.(next);
-            return next;
-        });
-    };
-
-    const focusHeading = (href: string) => {
-        const headingId = getHeadingIdFromHref(idPrefix, href);
-        setCollapsedHeadings((prev) => {
-            if (!prev.has(headingId)) {
-                return prev;
-            }
-            const next = new Set(prev);
-            next.delete(headingId);
-            return next;
-        });
-        setFocusedHeadingId(headingId);
-    };
+                return next;
+            });
+            setFocusedHeadingId(headingId);
+        },
+        // 稳定引用：被 markdownComponents 的 a 组件捕获，若每次渲染都是新函数，components
+        // useMemo 每次失效 → 整树 remount → 拖选中的选中态被销毁。idPrefix 稳定（useState
+        // 初始值），此回调在渲染间引用不变。
+        [idPrefix]
+    );
 
     const focusHeadingLine = (lineNumber: number) => {
         const instance = contentsOsRef.current?.osInstance();
@@ -2351,115 +2384,15 @@ const Markdown = ({
         }
     };
 
-    const markdownComponents: Partial<Components> = {
-        a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
-            <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
-        ),
-        p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-            <div className="paragraph" {...props} {...srcLineAttrs(props)} />
-        ),
-        h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={1}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={2}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={3}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={4}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={5}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-            <CollapsibleHeading
-                props={props}
-                hnum={6}
-                collapsed={collapsedHeadings.has(String(props.id))}
-                onToggle={toggleHeadingCollapse}
-            />
-        ),
-        hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
-            <hr {...props} {...srcLineAttrs(props)} />
-        ),
-        table: (props: React.HTMLAttributes<HTMLTableElement>) => (
-            <CollapsibleTable
-                props={props}
-                collapsed={collapsedTables.has(String(getSourceLine(props)))}
-                onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
-            />
-        ),
-        ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
-            <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
-        ),
-        ul: MarkdownUnorderedList,
-        li: (props: React.HTMLAttributes<HTMLLIElement>) => (
-            <MarkdownListItem
-                props={props}
-                collapsed={collapsedOrderedListItems.has(getOrderedListItemId(props))}
-                onToggle={toggleOrderedListItemCollapse}
-            />
-        ),
-        img: (props: React.HTMLAttributes<HTMLImageElement>) => (
-            <MarkdownImg
-                props={props}
-                resolveOpts={resolveOpts}
-                fullText={text}
-                onInlineEditCommit={handleInlineEditCommit}
-            />
-        ),
-        source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
-            <MarkdownSource props={props} resolveOpts={resolveOpts} />
-        ),
-        code: Code,
-        pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-            <CodeBlock
-                children={props.children}
-                onClickExecute={onClickExecute}
-                sourceLine={getSourceLine(props)}
-                sourceLineEnd={getSourceLineEnd(props)}
-            />
-        ),
-    };
-    // useCallback 稳定 waveblock 委托的组件引用（根治 remount 丢 state）：内联箭头函数每次
-    // 渲染都是新引用，React 把 waveblock 子树判定为「新组件类型」→ 卸载重挂 → 块内组件
-    // state（ObsidianPropertiesCard 的折叠/编辑）全部归零——鼠标移动（hover anchor）、
-    // 滚动（insertPos）都会触发 Markdown 重渲染，折叠态因此一碰就丢（见 1359 行注释：
-    // hover 重渲染会替换块的 DOM 节点）。依赖 contentBlocksMap/waveBlockRenderers 均已
-    // useMemo/useCallback 稳定，此回调在 text 不变时引用不变。
-    const waveBlockComponent = useCallback(
-        (props: any) => <WaveBlock {...props} blockmap={contentBlocksMap} renderers={waveBlockRenderers} />,
-        [contentBlocksMap, waveBlockRenderers]
-    );
-    markdownComponents["waveblock"] = waveBlockComponent;
-    markdownComponents["mermaidblock"] = (props: any) => {
+    // useMemo 稳定整张 components 映射（根治「拖选文本时选中态被销毁」）：
+    // 若 a/p/h1-h6/…/pre/mermaidblock 每次渲染都重建（内联箭头函数），元素 type 引用每次
+    // 不同 → React 判定组件类型变化 → 卸载重挂整个 block 子树 → 浏览器销毁挂在其上的
+    // SelectionRange → 鼠标拖选「一选中就取消」；2aafe0d2 修过的 waveblock remount 丢
+    // state 也会复发（见 1359 行注释「hover 重渲染会替换块的 DOM 节点」）。memo 命中条件：
+    // 依赖除 collapsed 集合（变化时本来就要重渲染）外均为 useCallback/useMemo 稳定引用，
+    // 鼠标移动（insertAnchor）/滚动（insertPos）等无关重渲染不再重建组件 → DOM 保留 →
+    // 选中态与折叠态一并保住。
+    const markdownComponents = useMemo<Partial<Components>>(() => {
         const getTextContent = (children: any): string => {
             if (typeof children === "string") {
                 return children;
@@ -2470,10 +2403,130 @@ const Markdown = ({
             }
             return String(children || "");
         };
-
-        const chartText = getTextContent(props.children);
-        return <Mermaid chart={chartText} />;
-    };
+        const components: Partial<Components> = {
+            a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
+                <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
+            ),
+            p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
+                <div className="paragraph" {...props} {...srcLineAttrs(props)} />
+            ),
+            h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={1}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={2}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={3}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={4}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={5}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+                <CollapsibleHeading
+                    props={props}
+                    hnum={6}
+                    collapsed={collapsedHeadings.has(String(props.id))}
+                    onToggle={toggleHeadingCollapse}
+                />
+            ),
+            hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
+                <hr {...props} {...srcLineAttrs(props)} />
+            ),
+            table: (props: React.HTMLAttributes<HTMLTableElement>) => (
+                <CollapsibleTable
+                    props={props}
+                    collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                    onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+                />
+            ),
+            ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
+                <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
+            ),
+            ul: MarkdownUnorderedList,
+            li: (props: React.HTMLAttributes<HTMLLIElement>) => (
+                <MarkdownListItem
+                    props={props}
+                    collapsed={collapsedOrderedListItems.has(getOrderedListItemId(props))}
+                    onToggle={toggleOrderedListItemCollapse}
+                />
+            ),
+            img: (props: React.HTMLAttributes<HTMLImageElement>) => (
+                <MarkdownImg
+                    props={props}
+                    resolveOpts={resolveOpts}
+                    fullText={text}
+                    onInlineEditCommit={handleInlineEditCommit}
+                />
+            ),
+            source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
+                <MarkdownSource props={props} resolveOpts={resolveOpts} />
+            ),
+            code: Code,
+            pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
+                <CodeBlock
+                    children={props.children}
+                    onClickExecute={onClickExecute}
+                    sourceLine={getSourceLine(props)}
+                    sourceLineEnd={getSourceLineEnd(props)}
+                />
+            ),
+        };
+        // Non-standard tags (waveblock, mermaidblock) are bracket-assigned to avoid TS
+        // excess-property checks on the literal — the original code used this exact pattern
+        // before the useMemo refactor.
+        components["waveblock"] = (props: any) => (
+            <WaveBlock {...props} blockmap={contentBlocksMap} renderers={waveBlockRenderers} />
+        );
+        components["mermaidblock"] = (props: any) => {
+            const chartText = getTextContent(props.children);
+            return <Mermaid chart={chartText} />;
+        };
+        return components;
+    }, [
+        focusHeading,
+        resolveOpts,
+        collapsedHeadings,
+        toggleHeadingCollapse,
+        collapsedTables,
+        toggleTableCollapse,
+        collapsibleOrderedLists,
+        collapsedOrderedListItems,
+        toggleOrderedListItemCollapse,
+        onClickExecute,
+        text,
+        handleInlineEditCommit,
+        contentBlocksMap,
+        waveBlockRenderers,
+    ]);
 
     const tocItems = useMemo<MarkdownOutlineItem[]>(
         () =>

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     commitPlaceholderBlock,
     deleteBlockRange,
+    isSelectingRange,
     replaceSourceRange,
     resolveInlineEditTarget,
     spliceBlankRow,
@@ -12,6 +13,18 @@ import {
     splitBlockAtCaretText,
     type InlineEditSession,
 } from "./markdown-inline-edit";
+
+describe("isSelectingRange (click-to-edit drag suppression)", () => {
+    it("only treats an active non-collapsed Range selection as an in-progress select gesture", () => {
+        expect(isSelectingRange({ type: "Range", rangeCount: 1 })).toBe(true);
+        expect(isSelectingRange(null)).toBe(false);
+        expect(isSelectingRange({ type: "None", rangeCount: 0 })).toBe(false);
+        expect(isSelectingRange({ type: "Caret", rangeCount: 1 })).toBe(false);
+        expect(isSelectingRange({ type: "Range", rangeCount: 0 })).toBe(false);
+        // missing Selection API (prerender / jsdom without Selection support)
+        expect(isSelectingRange({ type: undefined, rangeCount: 0 })).toBe(false);
+    });
+});
 
 describe("markdown inline edit target", () => {
     it("resolves the current block after React replaces the clicked element, kind-agnostic", () => {

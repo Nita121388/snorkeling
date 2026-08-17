@@ -136,6 +136,20 @@ export function resolveInlineEditTarget(
 }
 
 /**
+ * Pure intent detector for the preview click-to-edit gesture: is there an ACTIVE selection
+ * right now? A `Range`-type selection means the user is selecting text (drag-select in flight
+ * or just completed) and the click handler must NOT hijack it by opening the editor. The
+ * selection-length heuristic in markdown.tsx catches selections that already grew; this
+ * catches the residual cases (empty-text selects, drag still settling). Exported so the
+ * drag-select suppression has a runnable contract in tests; `sel` is a minimal Selection-like
+ * shape so jsdom/node tests can pass plain objects and `window.getSelection()` results both
+ * fit.
+ */
+export function isSelectingRange(sel: { type?: string; rangeCount: number } | null): boolean {
+    return sel != null && sel.rangeCount > 0 && sel.type === "Range";
+}
+
+/**
  * Replace an inclusive [startLine..endLine] range (1-based, original-coordinate) inside `text`
  * with `newSegment`. Lines outside the range are preserved verbatim, including EOL style:
  * we split on /\r\n|\n/ but always join with "\n". CRLF inputs will lose CR.
