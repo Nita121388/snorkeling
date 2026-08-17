@@ -24,6 +24,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat"
 	"github.com/wavetermdev/waveterm/pkg/authkey"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
+	"github.com/wavetermdev/waveterm/pkg/service/aisessionsservice"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
@@ -501,6 +502,7 @@ func RunWebServer(listener net.Listener) {
 	gr.HandleFunc("/wave/stream-file", WebFnWrap(WebFnOpts{AllowCaching: true}, handleStreamFile))
 	gr.PathPrefix("/wave/stream-file/").HandlerFunc(WebFnWrap(WebFnOpts{AllowCaching: true}, handleStreamFile))
 	gr.HandleFunc("/api/post-chat-message", WebFnWrap(WebFnOpts{AllowCaching: false}, aiusechat.WaveAIPostMessageHandler))
+	gr.HandleFunc("/api/aisessions-chat", WebFnWrap(WebFnOpts{AllowCaching: false}, aisessionsservice.AISessionsChatStreamHandler))
 
 	// Non-streaming /wave/ routes get timeout protection
 	waveRouter := mux.NewRouter()
