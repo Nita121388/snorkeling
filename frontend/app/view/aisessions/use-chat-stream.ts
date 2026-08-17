@@ -1,17 +1,15 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// useChatStream manages one POST/SSE turn to /api/aisessions-chat. The returned
-// turnId/eventChannel are stable for the duration of one turn; the caller can
-// mount a streaming bubble that re-renders as deltas arrive.
+// Chat streaming client for /api/aisessions-chat (SSE, one POST per turn).
 //
-// Design mirrors WaveAI's PostMessageHandler + AI SDK's useChat transport: one
-// POST per turn, the response is an SSE stream; AbortController cancellation
-// stops both the fetch and the running turn on the server.
+// runChatStream is a pure async function (no React) so the SSE parsing logic
+// is unit-testable; useChatStream is a thin React wrapper that maps events to
+// state and exposes abort().
 
 import { useCallback, useRef, useState } from "react";
 
-/** A single line the backend emits as an SSE data frame. */
+/** A single SSE data frame the backend emits. */
 export type ChatEvent = {
     type: string;
     text?: string;
@@ -23,109 +21,148 @@ export type ChatEvent = {
     notice?: string;
     usage?: { it?: number; ot?: number; cost?: number };
     turnId?: string;
-    state?: any; // session_state shape (ignored by renderer, consumed by header)
+    state?: any; // session_state shape
 };
 
 export type ChatStreamStatus = "idle" | "sending" | "streaming" | "error";
 
-type UseChatStreamOptions = {
-    /** Absolute or relative URL of the streaming endpoint. */
-    endpoint: string;
-    /** Called for every event in the turn. */
+type ChatStreamCallbacks = {
     onEvent?: (evt: ChatEvent) => void;
-    /** Called once when a turn ends (TurnEnd or TurnFailed). */
+    onDone?: () => void;
+};
+
+/**
+ * POST one chat turn and parse the SSE response stream, invoking onEvent for
+ * every data frame. Resolves when the stream ends; rejects on abort or fetch
+ * errors (AbortError is surfaced for the caller's abort handling).
+ */
+export async function runChatStream(
+    endpoint: string,
+    body: { source: string; sessionId?: string; projectPath?: string; provider?: string; model?: string; sessionDir?: string; message: string },
+    callbacks: ChatStreamCallbacks,
+    signal: AbortSignal
+): Promise<void> {
+    const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+    });
+    if (!resp.ok) {
+        throw new Error(`chat stream ${resp.status}: ${resp.statusText}`);
+    }
+    if (!resp.body) {
+        throw new Error("chat stream: empty response body");
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let lineBuf = "";
+
+    const handleFrame = (evt: ChatEvent) => callbacks.onEvent?.(evt);
+
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        lineBuf += decoder.decode(value, { stream: true });
+
+        // Split on LF only (pi RPC spec: U+2028/2029 are valid inside JSON strings).
+        const parts = lineBuf.split("\n");
+        lineBuf = parts.pop() ?? "";
+
+        for (const rawLine of parts) {
+            const evt = parseSseDataLine(rawLine);
+            if (evt) handleFrame(evt);
+        }
+    }
+    // Flush any trailing line without a final newline.
+    const last = parseSseDataLine(lineBuf);
+    if (last) handleFrame(last);
+
+    callbacks.onDone?.();
+}
+
+/**
+ * Parse a single SSE line into a ChatEvent, or null if it is not a data frame
+ * (blank, comment, non-data). Malformed JSON frames are tolerated (null).
+ */
+export function parseSseDataLine(rawLine: string): ChatEvent | null {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith(":")) return null;
+    if (!line.startsWith("data: ")) return null;
+    try {
+        return JSON.parse(line.slice(6)) as ChatEvent;
+    } catch {
+        return null;
+    }
+}
+
+type UseChatStreamOptions = {
+    endpoint: string;
+    onEvent?: (evt: ChatEvent) => void;
     onTurnEnd?: (evt: ChatEvent) => void;
+};
+
+type ChatSendBody = {
+    source: string;
+    sessionId?: string;
+    projectPath?: string;
+    provider?: string;
+    model?: string;
+    sessionDir?: string;
+    message: string;
 };
 
 export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOptions) {
     const [status, setStatus] = useState<ChatStreamStatus>("idle");
+    const [events, setEvents] = useState<ChatEvent[]>([]);
     const abortRef = useRef<AbortController | null>(null);
 
     const abort = useCallback(() => {
         abortRef.current?.abort();
         abortRef.current = null;
         setStatus("idle");
+        setEvents([]);
     }, []);
 
     const send = useCallback(
-        (body: { source: string; sessionId?: string; projectPath?: string; provider?: string; model?: string; sessionDir?: string; message: string }) => {
+        (body: ChatSendBody) => {
             abort(); // kill any in-flight turn
             const ac = new AbortController();
             abortRef.current = ac;
             setStatus("sending");
+            setEvents([]);
 
-            (async () => {
-                try {
-                    const resp = await fetch(endpoint, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body),
-                        signal: ac.signal,
-                    });
-                    if (!resp.ok) {
-                        throw new Error(`chat stream ${resp.status}: ${resp.statusText}`);
-                    }
-                    setStatus("streaming");
-
-                    // Parse SSE data lines.
-                    const reader = resp.body!.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = "";
-                    let lineBuf = "";
-
-                    for (;;) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        lineBuf += decoder.decode(value, { stream: true });
-
-                        // Split on LF only (pi RPC spec: U+2028/2029 are valid in JSON strings).
-                        const parts = lineBuf.split("\n");
-                        lineBuf = parts.pop() ?? "";
-
-                        for (const rawLine of parts) {
-                            const line = rawLine.trim();
-                            if (line === "" || line.startsWith(":")) continue; // blank or comment
-                            if (!line.startsWith("data: ")) continue;
-                            const jsonStr = line.slice(6);
-                            try {
-                                const evt: ChatEvent = JSON.parse(jsonStr);
-                                onEvent?.(evt);
-                                if (evt.type === "turn_end" || evt.type === "turn_failed") {
-                                    onTurnEnd?.(evt);
-                                }
-                            } catch {
-                                // tolerate malformed frames
-                            }
+            runChatStream(
+                endpoint,
+                body,
+                {
+                    onEvent: (evt) => {
+                        setEvents((prev) => [...prev, evt]);
+                        onEvent?.(evt);
+                        if (evt.type === "turn_end" || evt.type === "turn_failed") {
+                            onTurnEnd?.(evt);
                         }
-                    }
-
-                    // Flush remaining buffer
-                    if (lineBuf.trim()) {
-                        const remaining = lineBuf.trim();
-                        if (remaining.startsWith("data: ")) {
-                            try {
-                                const evt: ChatEvent = JSON.parse(remaining.slice(6));
-                                onEvent?.(evt);
-                                onTurnEnd?.(evt);
-                            } catch { /* ignore */ }
-                        }
-                    }
-
-                    setStatus("idle");
-                } catch (err: any) {
+                    },
+                    onDone: () => setStatus("idle"),
+                },
+                ac.signal
+            )
+                .catch((err: Error) => {
                     if (err.name === "AbortError") {
                         setStatus("idle");
+                        setEvents([]);
                     } else {
                         setStatus("error");
+                        setEvents([]);
                         console.error("chat stream error", err);
                     }
-                } finally {
+                })
+                .finally(() => {
                     abortRef.current = null;
-                }
-            })();
+                });
         },
         [endpoint, onEvent, onTurnEnd, abort]
     );
 
-    return { status, send, abort } as const;
+    return { status, events, send, abort } as const;
 }
