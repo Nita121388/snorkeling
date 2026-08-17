@@ -3,7 +3,7 @@
 
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
-import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
+import { computeCollapsedHiddenFlags } from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
     isSelectingRange,
@@ -1916,6 +1916,12 @@ const Markdown = ({
         [scrollTargetText]
     );
 
+    // 折叠标题的「内容隐藏」走命令式 `.collapsed-hidden`：标题自己的 chevron/collapsed class
+    // 是声明式（React 渲染派生），而正文的隐藏是渲染后补在 DOM 上的。若 ReactMarkdown 子树
+    // 发生 remount（DOM 重建）而 collapsedHeadings/transformedText 都没变，旧 effect 就不会
+    // 重跑 → 新 DOM 上 `.collapsed-hidden` 丢失 → 标题显示「已折叠（chevron→Expand）」但内容
+    // 仍展开 → 折叠与展开样式不匹配。因此这里必须「每次提交后都同步」（useLayoutEffect 无
+    // deps）：无论 remount 还是状态变化，render 提交后立即重算，且发生在 paint 前（无闪跳）。
     const updateCollapsedHeadingVisibility = () => {
         if (!contentsOsRef.current?.osInstance()) {
             return;
@@ -1925,24 +1931,27 @@ const Markdown = ({
         if (root == null) {
             return;
         }
-        const elements = Array.from(root.children) as HTMLElement[];
-        const collapsedHeadingStack: number[] = [];
-        for (const elem of elements) {
-            const headingLevelValue = Number(elem.dataset.headingLevel);
-            const headingLevel = Number.isFinite(headingLevelValue) && headingLevelValue > 0 ? headingLevelValue : null;
-            const hidden = shouldHideMarkdownElementForCollapsedHeadings(
-                headingLevel,
-                elem.dataset.headingId ?? null,
-                collapsedHeadings,
-                collapsedHeadingStack
-            );
-            elem.classList.toggle("collapsed-hidden", hidden);
-        }
+        const flags = computeCollapsedHiddenFlags(
+            Array.from(root.children, (elem) => {
+                const elemEl = elem as HTMLElement;
+                const headingLevelValue = Number(elemEl.dataset.headingLevel);
+                return {
+                    level: Number.isFinite(headingLevelValue) && headingLevelValue > 0 ? headingLevelValue : null,
+                    id: elemEl.dataset.headingId ?? null,
+                };
+            }),
+            collapsedHeadings
+        );
+        Array.from(root.children).forEach((elem, i) => {
+            (elem as HTMLElement).classList.toggle("collapsed-hidden", flags[i]);
+        });
     };
 
-    useEffect(() => {
+    // 每次提交后同步（无 deps 数组）：见 updateCollapsedHeadingVisibility 注释——折叠可见性
+    // 不能只在 collapsedHeadings/transformedText 变化时修补，remount 后必须无条件重算。
+    useLayoutEffect(() => {
         updateCollapsedHeadingVisibility();
-    }, [collapsedHeadings, transformedText]);
+    });
 
     useLayoutEffect(() => {
         const instance = contentsOsRef.current?.osInstance();
@@ -2634,7 +2643,13 @@ const Markdown = ({
                     className={cn("content", contentClassName, shouldHideForInitialScroll && "invisible")}
                     options={{ scrollbars: { autoHide: "leave" } }}
                     events={{
-                        initialized: () => requestAnimationFrame(() => applyScrollTarget("initialized")),
+                        initialized: () =>
+                            requestAnimationFrame(() => {
+                                applyScrollTarget("initialized");
+                                // OSB 挂载前（osInstance 未 ready）的渲染里折叠可见性无从落脚，
+                                // 这里补一次强制同步，堵住「首次打开折叠内容不隐藏」的边界。
+                                updateCollapsedHeadingVisibility();
+                            }),
                         scroll: handleMarkdownScroll,
                     }}
                     // Capture-phase dblclick so we beat CollapsibleHeading's own dblclick toggle

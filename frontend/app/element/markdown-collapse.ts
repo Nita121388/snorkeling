@@ -23,3 +23,19 @@ export function shouldHideMarkdownElementForCollapsedHeadings(
 
     return hidden;
 }
+
+/**
+ * Batch form of the collapsed-heading walk over an ordered list of top-level markdown blocks:
+ * returns one `hidden` flag per element (true = lives inside a collapsed section). Extracted so
+ * the preview can drive `.collapsed-hidden` from a single pass and the algorithm is testable in
+ * isolation (no DOM). `elements` may be derived from DOM children or from rendered block data.
+ */
+export function computeCollapsedHiddenFlags(
+    elements: ReadonlyArray<{ level: number | null; id: string | null }>,
+    collapsedHeadingIds: Set<string>
+): boolean[] {
+    const collapsedHeadingStack: number[] = [];
+    return elements.map((elem) =>
+        shouldHideMarkdownElementForCollapsedHeadings(elem.level, elem.id, collapsedHeadingIds, collapsedHeadingStack)
+    );
+}

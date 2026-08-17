@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import { computeCollapsedHiddenFlags } from "./markdown-collapse";
 import { captureMarkdownFoldSnapshot, resolveMarkdownFoldLines } from "./markdown-fold-state";
 import { moveMarkdownHeadingSection } from "./markdown-heading-section";
 
@@ -55,5 +56,46 @@ describe("markdown fold state helpers", () => {
         ]);
 
         expect(resolveMarkdownFoldLines(text, snapshot)).toEqual([6]);
+    });
+});
+
+
+describe("computeCollapsedHiddenFlags (heading collapse visibility)", () => {
+    // Mirrors the preview's top-level block walk: each element is { level, id }.
+    // Blocks under a collapsed heading must be hidden until a heading of <= level re-opens.
+    it("hides body blocks under a collapsed heading, reveals below a sibling/parent", () => {
+        const blocks = [
+            { level: 2, id: "a" }, // collapsed
+            { level: null, id: null }, // a's body → hide
+            { level: null, id: null }, // a's body → hide
+            { level: 2, id: "b" }, // sibling → re-open
+            { level: null, id: null },
+            { level: 3, id: "c" }, // nested child of b, NOT collapsed
+            { level: null, id: null }, // c's body → visible
+        ];
+        const flags = computeCollapsedHiddenFlags(blocks, new Set(["a"]));
+        expect(flags).toEqual([false, true, true, false, false, false, false]);
+    });
+
+    it("reveals children of a heading collapsed at a higher level only up to the next <= heading", () => {
+        const blocks = [
+            { level: 1, id: "h1" }, // collapsed
+            { level: 1, id: "h2" }, // sibling, closes h1's section
+            { level: null, id: null }, // h2's body, visible
+        ];
+        const flags = computeCollapsedHiddenFlags(blocks, new Set(["h1"]));
+        expect(flags).toEqual([false, false, false]);
+    });
+
+    it("hides everything under a collapsed h1 until an uncollapsed sibling", () => {
+        const blocks = [
+            { level: 1, id: "h1" },
+            { level: 2, id: "h2" }, // child → hide
+            { level: 3, id: "h3" }, // grandchild → hide
+            { level: 1, id: "h4" }, // opens a new top-level section
+            { level: null, id: null },
+        ];
+        const flags = computeCollapsedHiddenFlags(blocks, new Set(["h1"]));
+        expect(flags).toEqual([false, true, true, false, false]);
     });
 });
