@@ -114,7 +114,9 @@ func (m *piMapper) mapEvent(evt RpcEvent) *ChatEvent {
 		return &ChatEvent{Type: SystemNotice, TurnID: m.turnID, Notice: "context compaction"}
 	case "agent_end":
 		m.consumeFinalMessages(evt.Raw["messages"])
-		m.session.turnFinished()
+		if m.session != nil {
+			m.session.turnFinished()
+		}
 		return &ChatEvent{Type: TurnEnd, TurnID: m.turnID, Usage: m.usage}
 	case "extension_ui_request":
 		// Extension UI (i-am-cooking setStatus/setWidget, ask_user confirmations…)
