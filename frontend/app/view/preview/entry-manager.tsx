@@ -9,12 +9,14 @@ export enum EntryManagerType {
     NewFile = "New File",
     NewDirectory = "New Folder",
     EditName = "Rename",
+    MoveTo = "Move to...",
 }
 
 export type EntryManagerOverlayProps = {
     forwardRef?: React.Ref<HTMLDivElement>;
     entryManagerType: EntryManagerType;
     startingValue?: string;
+    hint?: string;
     onSave: (newValue: string) => void;
     onCancel?: () => void;
     style?: React.CSSProperties;
@@ -25,6 +27,7 @@ export const EntryManagerOverlay = memo(
     ({
         entryManagerType,
         startingValue,
+        hint,
         onSave,
         onCancel,
         forwardRef,
@@ -35,6 +38,7 @@ export const EntryManagerOverlay = memo(
         return (
             <div className="entry-manager-overlay" ref={forwardRef} style={style} {...(getReferenceProps?.() ?? {})}>
                 <div className="entry-manager-type">{entryManagerType}</div>
+                {hint != null && hint !== "" && <div className="mb-1 text-[11px] leading-4 text-muted">{hint}</div>}
                 <div className="entry-manager-input">
                     <Input
                         value={value}

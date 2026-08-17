@@ -35,6 +35,7 @@ import {
     getBestUnit,
     getLastModifiedTime,
     getSortIcon,
+    handleMoveTo,
     handleRename,
     isIconValid,
     makeDirectoryBackgroundMenuItems,
@@ -83,6 +84,7 @@ declare module "@tanstack/react-table" {
         updateName: (path: string, isDir: boolean) => void;
         newFile: () => void;
         newDirectory: () => void;
+        moveToOpen: (fileInfos: FileInfo[]) => void;
     }
 }
 
@@ -215,6 +217,29 @@ function DirectoryTable({
         [model, setErrorMsg]
     );
 
+    const openMoveTo = useCallback(
+        (fileInfos: FileInfo[]) => {
+            const target = fileInfos[0];
+            if (target == null) {
+                return;
+            }
+            const startingDir = target.dir ?? (target.path.split("/").slice(0, -1).join("/") || target.path);
+            setEntryManagerProps({
+                entryManagerType: EntryManagerType.MoveTo,
+                startingValue: startingDir,
+                hint: "Destination folder — the file name is kept.",
+                onSave: (destDirInput: string) => {
+                    const destDir = destDirInput.trim();
+                    if (destDir !== "") {
+                        handleMoveTo(model, fileInfos, destDir, setErrorMsg);
+                    }
+                    setEntryManagerProps(undefined);
+                },
+            });
+        },
+        [model, setErrorMsg]
+    );
+
     const initialSorting = defaultSort === "modtime" ? [{ id: "modtime", desc: true }] : [{ id: "name", desc: false }];
 
     const table = useReactTable({
@@ -236,6 +261,7 @@ function DirectoryTable({
             updateName,
             newFile,
             newDirectory,
+            moveToOpen: openMoveTo,
         },
     });
     const sortingState = table.getState().sorting;
@@ -439,6 +465,7 @@ function TableBody({
                     newFile: table.options.meta.newFile,
                     newDirectory: table.options.meta.newDirectory,
                     rename: () => table.options.meta.updateName(finfo.path, finfo.isdir),
+                    moveTo: () => table.options.meta.moveToOpen(contextSelectedFileInfos),
                 },
                 {
                     openInCurrentBlock: () =>
@@ -789,7 +816,17 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
         return () => {
             model.directoryKeyDownHandler = null;
         };
-    }, [conn, dirPath, filteredData, model, selectedPath, selectedPaths, setErrorMsg, searchText, supportsFileCreation]);
+    }, [
+        conn,
+        dirPath,
+        filteredData,
+        model,
+        selectedPath,
+        selectedPaths,
+        setErrorMsg,
+        searchText,
+        supportsFileCreation,
+    ]);
 
     useEffect(() => {
         if (filteredData.length != 0 && focusIndex > filteredData.length - 1) {

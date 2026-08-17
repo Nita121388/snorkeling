@@ -18,8 +18,10 @@ export type PreviewFileClipboardItem = {
     conn: string;
 };
 
+export type PreviewFileClipboardMode = "copy" | "move";
+
 export type PreviewFileClipboard = {
-    mode: "copy";
+    mode: PreviewFileClipboardMode;
     items: PreviewFileClipboardItem[];
     createdAt: number;
 };
@@ -80,19 +82,28 @@ async function writePreviewFileItemsToSystemClipboard(items: PreviewFileClipboar
     }
 }
 
-export function copyPreviewFileItems(fileInfos: FileInfo[], conn: string): PreviewFileClipboard | null {
+export function copyPreviewFileItems(
+    fileInfos: FileInfo[],
+    conn: string,
+    mode: PreviewFileClipboardMode = "copy"
+): PreviewFileClipboard | null {
     const items = makePreviewFileClipboardItems(fileInfos, conn);
     if (items.length === 0) {
         return null;
     }
     const clipboard: PreviewFileClipboard = {
-        mode: "copy",
+        mode,
         items,
         createdAt: Date.now(),
     };
     globalStore.set(previewFileClipboardAtom, clipboard);
     void writePreviewFileItemsToSystemClipboard(items);
     return clipboard;
+}
+
+// Move (cut) stages the same clipboard in "move" mode so Paste moves instead of copies.
+export function cutPreviewFileItems(fileInfos: FileInfo[], conn: string): PreviewFileClipboard | null {
+    return copyPreviewFileItems(fileInfos, conn, "move");
 }
 
 export function getUnsupportedPasteItems(clipboard: PreviewFileClipboard | null): PreviewFileClipboardItem[] {
@@ -105,10 +116,11 @@ export function getPasteableItems(clipboard: PreviewFileClipboard | null): Previ
 
 export function makePasteLabel(clipboard: PreviewFileClipboard | null): string {
     const itemCount = getPasteableItems(clipboard).length;
+    const action = clipboard?.mode === "move" ? "Move" : "Paste";
     if (itemCount <= 1) {
-        return "Paste";
+        return action;
     }
-    return `Paste ${itemCount} Items`;
+    return `${action} ${itemCount} Items`;
 }
 
 export function makeCopyLabel(fileInfos: FileInfo[]): string {
@@ -116,6 +128,13 @@ export function makeCopyLabel(fileInfos: FileInfo[]): string {
         return "Copy";
     }
     return `Copy ${fileInfos.length} Items`;
+}
+
+export function makeCutLabel(fileInfos: FileInfo[]): string {
+    if (fileInfos.length <= 1) {
+        return "Cut";
+    }
+    return `Cut ${fileInfos.length} Items`;
 }
 
 function makeCopyOptions(overrides?: Partial<FileCopyOpts>): FileCopyOpts {
@@ -126,7 +145,8 @@ function makeCopyOptions(overrides?: Partial<FileCopyOpts>): FileCopyOpts {
     };
 }
 
-export async function pastePreviewFileItems(
+async function runPastePreviewFileItems(
+    mode: PreviewFileClipboardMode,
     model: PreviewModel,
     clipboard: PreviewFileClipboard | null,
     destDirPath: string,
@@ -139,13 +159,15 @@ export async function pastePreviewFileItems(
         const unsupportedItems = getUnsupportedPasteItems(clipboard);
         if (unsupportedItems.length > 0) {
             setErrorMsg({
-                status: "Paste Failed",
+                status: mode === "move" ? "Move Failed" : "Paste Failed",
                 text: "Folder paste is not supported yet.",
                 level: "error",
             });
         }
         return;
     }
+    // ponytail: director move-paste stays file-only like copy-paste. Upgrade path: allow
+    // directory moves by setting opts.recursive for cross-host moves (see wshfs.Move).
     const desturi = formatRemoteUri(destDirPath, destConn);
     try {
         for (const item of pasteableItems) {
@@ -154,11 +176,25 @@ export async function pastePreviewFileItems(
                 desturi,
                 opts: makeCopyOptions(opts),
             };
-            await model.env.rpc.FileCopyCommand(TabRpcClient, data, { timeout: data.opts.timeout });
+            if (mode === "move") {
+                await model.env.rpc.FileMoveCommand(TabRpcClient, data, { timeout: data.opts.timeout });
+            } else {
+                await model.env.rpc.FileCopyCommand(TabRpcClient, data, { timeout: data.opts.timeout });
+            }
         }
     } catch (e) {
-        const copyError = `${e}`;
-        const allowRetry = copyError.includes(overwriteError) || copyError.includes(mergeError);
+        const pasteError = `${e}`;
+        if (mode === "move") {
+            // Backend move rejects an existing destination outright (no overwrite/merge path),
+            // so unlike copy there is no retry dialog to offer here.
+            setErrorMsg({
+                status: "Move Failed",
+                text: pasteError,
+                level: "error",
+            });
+            return;
+        }
+        const allowRetry = pasteError.includes(overwriteError) || pasteError.includes(mergeError);
         if (allowRetry) {
             setErrorMsg({
                 status: "Confirm Overwrite File(s)",
@@ -186,7 +222,7 @@ export async function pastePreviewFileItems(
         } else {
             setErrorMsg({
                 status: "Copy Failed",
-                text: copyError,
+                text: pasteError,
                 level: "error",
             });
         }
@@ -194,4 +230,31 @@ export async function pastePreviewFileItems(
     } finally {
         model.refresh();
     }
+    // Cut is one-shot: clear the staged clipboard after a successful move so a stale
+    // "Move Here" cannot try to re-move already-moved files.
+    if (mode === "move") {
+        globalStore.set(previewFileClipboardAtom, null);
+    }
+}
+
+export async function pastePreviewFileItems(
+    model: PreviewModel,
+    clipboard: PreviewFileClipboard | null,
+    destDirPath: string,
+    destConn: string,
+    setErrorMsg: (msg: ErrorMsg) => void,
+    opts?: Partial<FileCopyOpts>
+): Promise<void> {
+    return runPastePreviewFileItems("copy", model, clipboard, destDirPath, destConn, setErrorMsg, opts);
+}
+
+export async function movePreviewFileItems(
+    model: PreviewModel,
+    clipboard: PreviewFileClipboard | null,
+    destDirPath: string,
+    destConn: string,
+    setErrorMsg: (msg: ErrorMsg) => void,
+    opts?: Partial<FileCopyOpts>
+): Promise<void> {
+    return runPastePreviewFileItems("move", model, clipboard, destDirPath, destConn, setErrorMsg, opts);
 }

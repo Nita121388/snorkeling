@@ -13,7 +13,11 @@ function makeRepo(repotype: string): VcsRepositoryInfo {
     };
 }
 
-async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], repositoryError?: Error) {
+async function loadDirectoryMenuUtils(
+    repositories: VcsRepositoryInfo[],
+    repositoryError?: Error,
+    fileMoveError?: Error
+) {
     vi.resetModules();
     const createBlock = vi.fn(async () => "block-id");
     const addOpenMenuItems = vi.fn((menu: ContextMenuItem[], _conn: string, _finfo: FileInfo) => {
@@ -29,6 +33,11 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
     });
     const remoteVcsSync = vi.fn(async () => ({ success: true }));
     const fileCopy = vi.fn(async () => undefined);
+    const fileMove = vi.fn(async () => {
+        if (fileMoveError != null) {
+            throw fileMoveError;
+        }
+    });
 
     vi.doMock("@/app/store/global", () => ({
         createBlock,
@@ -47,6 +56,7 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
                 RemoteVcsRepositoriesCommand: remoteVcsRepositories,
                 RemoteVcsSyncCommand: remoteVcsSync,
                 FileCopyCommand: fileCopy,
+                FileMoveCommand: fileMove,
             },
             getSettingsKeyAtom: () => atom("name"),
         },
@@ -63,6 +73,7 @@ async function loadDirectoryMenuUtils(repositories: VcsRepositoryInfo[], reposit
         remoteVcsRepositories,
         remoteVcsSync,
         fileCopy,
+        fileMove,
     };
 }
 
@@ -702,5 +713,321 @@ describe("directory VCS context menus", () => {
 
         expect(labels(menu)).toEqual([]);
         expect(addOpenMenuItems).not.toHaveBeenCalled();
+    });
+});
+
+describe("directory move operations", () => {
+    function fileInfo(path: string, name: string, isdir: boolean, dir?: string): FileInfo {
+        return {
+            path,
+            dir: dir ?? path.substring(0, path.lastIndexOf("/")),
+            name,
+            isdir,
+        } as FileInfo;
+    }
+
+    function makeMoveClipboard(paths: string[]): any {
+        return {
+            mode: "move",
+            createdAt: 1,
+            items: paths.map((path) => ({
+                path,
+                name: path.split("/").pop() ?? path,
+                isdir: false,
+                conn: "local",
+            })),
+        };
+    }
+
+    const baseActions = {
+        newFile: vi.fn(),
+        newDirectory: vi.fn(),
+        rename: vi.fn(),
+    };
+
+    it("stages the Files clipboard in move mode when Cut is selected and shows a hint", async () => {
+        const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils([]);
+        vi.stubGlobal("window", {
+            api: {
+                writeClipboardText: vi.fn(async () => true),
+                writeClipboardFiles: vi.fn(async () => false),
+            },
+        });
+        const setErrorMsg = vi.fn();
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/README.md", "README.md", false),
+            "local",
+            setErrorMsg,
+            baseActions
+        );
+
+        getMenuItem(menu, "Cut").click?.();
+
+        const { globalStore } = await import("@/app/store/jotaiStore");
+        const utils = await import("./preview-file-clipboard");
+        const clipboard = globalStore.get(utils.previewFileClipboardAtom);
+        expect(clipboard?.mode).toBe("move");
+        expect(clipboard?.items.map((item) => item.path)).toEqual(["/repo/README.md"]);
+        expect(setErrorMsg).toHaveBeenCalledWith(
+            expect.objectContaining({ status: "Staged for Move", showDismiss: true })
+        );
+    });
+
+    it("labels the paste target by the clipboard move mode", async () => {
+        const { makeDirectoryEntryMenuItems, makeDirectoryBackgroundMenuItems, model } = await loadDirectoryMenuUtils(
+            []
+        );
+        const clipboard = makeMoveClipboard(["/repo/README.md"]);
+        const multiClipboard = makeMoveClipboard(["/repo/README.md", "/repo/package.json"]);
+
+        const folderMenu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src", "src", true),
+            "local",
+            vi.fn(),
+            baseActions,
+            { clipboard }
+        );
+        expect(getMenuItem(folderMenu, "Move Into Folder").enabled).toBe(true);
+
+        const fileMenu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src/index.ts", "index.ts", false),
+            "local",
+            vi.fn(),
+            baseActions,
+            { clipboard }
+        );
+        expect(getMenuItem(fileMenu, "Move Here").enabled).toBe(true);
+
+        const multiFolderMenu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src", "src", true),
+            "local",
+            vi.fn(),
+            baseActions,
+            { clipboard: multiClipboard }
+        );
+        expect(getMenuItem(multiFolderMenu, "Move 2 Items Into Folder").enabled).toBe(true);
+
+        const bgMenu = await makeDirectoryBackgroundMenuItems(
+            model as any,
+            "local",
+            fileInfo("/repo/src", "src", true),
+            vi.fn(),
+            { newFile: vi.fn(), newDirectory: vi.fn() },
+            { clipboard }
+        );
+        expect(getMenuItem(bgMenu, "Move").enabled).toBe(true);
+    });
+
+    it("moves clipboard files to the destination via FileMoveCommand and clears the staged move", async () => {
+        const { makeDirectoryBackgroundMenuItems, model, fileCopy, fileMove } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryBackgroundMenuItems(
+            model as any,
+            "local",
+            fileInfo("/repo/src", "src", true),
+            vi.fn(),
+            { newFile: vi.fn(), newDirectory: vi.fn() },
+            { clipboard: makeMoveClipboard(["/repo/README.md"]) }
+        );
+
+        getMenuItem(menu, "Move").click?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "wsh://local//repo/README.md",
+                desturi: "wsh://local//repo/src",
+            }),
+            expect.objectContaining({ timeout: 31536000000 })
+        );
+        expect(fileCopy).not.toHaveBeenCalled();
+        expect(model.refresh).toHaveBeenCalled();
+        const { globalStore } = await import("@/app/store/jotaiStore");
+        const utils = await import("./preview-file-clipboard");
+        expect(globalStore.get(utils.previewFileClipboardAtom)).toBeNull();
+    });
+
+    it("moves into a folder from the folder entry context menu", async () => {
+        const { makeDirectoryEntryMenuItems, model, fileMove } = await loadDirectoryMenuUtils([]);
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src", "src", true),
+            "local",
+            vi.fn(),
+            baseActions,
+            { clipboard: makeMoveClipboard(["/repo/README.md"]) }
+        );
+
+        getMenuItem(menu, "Move Into Folder").click?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "wsh://local//repo/README.md",
+                desturi: "wsh://local//repo/src",
+            }),
+            expect.objectContaining({ timeout: 31536000000 })
+        );
+    });
+
+    it("reports Move Failed without an overwrite retry when the destination exists", async () => {
+        const { makeDirectoryBackgroundMenuItems, model } = await loadDirectoryMenuUtils(
+            [],
+            undefined,
+            new Error('destination "/repo/src" already exists')
+        );
+        const setErrorMsg = vi.fn();
+        const menu = await makeDirectoryBackgroundMenuItems(
+            model as any,
+            "local",
+            fileInfo("/repo/src", "src", true),
+            setErrorMsg,
+            { newFile: vi.fn(), newDirectory: vi.fn() },
+            { clipboard: makeMoveClipboard(["/repo/README.md"]) }
+        );
+
+        getMenuItem(menu, "Move").click?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(setErrorMsg).toHaveBeenCalledWith(
+            expect.objectContaining({ status: "Move Failed", text: expect.stringContaining("already exists") })
+        );
+        expect(setErrorMsg.mock.calls[0]?.[0]?.buttons).toBeUndefined();
+        expect(model.refresh).toHaveBeenCalled();
+    });
+
+    it("shows Move to... for a single file and defers to the moveTo action", async () => {
+        const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const moveTo = vi.fn();
+        const menu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src/index.ts", "index.ts", false),
+            "local",
+            vi.fn(),
+            { ...baseActions, moveTo }
+        );
+
+        expect(labels(menu)).toContain("Move to...");
+        getMenuItem(menu, "Move to...").click?.();
+        expect(moveTo).toHaveBeenCalled();
+    });
+
+    it("hides Move to... for Windows drive entries and shows it for multi-selections", async () => {
+        const { makeDirectoryEntryMenuItems, model } = await loadDirectoryMenuUtils([]);
+        const driveMenu = await makeDirectoryEntryMenuItems(
+            model as any,
+            {
+                path: "D:/",
+                dir: "/__wave_windows_drives__",
+                name: "D:",
+                isdir: true,
+                mimetype: "directory",
+            } as FileInfo,
+            "local",
+            vi.fn(),
+            { ...baseActions, moveTo: vi.fn() }
+        );
+        expect(labels(driveMenu)).not.toContain("Move to...");
+
+        const multiMenu = await makeDirectoryEntryMenuItems(
+            model as any,
+            fileInfo("/repo/src/index.ts", "index.ts", false),
+            "local",
+            vi.fn(),
+            { ...baseActions, moveTo: vi.fn() },
+            {
+                selectedFileInfos: [
+                    fileInfo("/repo/src/index.ts", "index.ts", false),
+                    fileInfo("/repo/README.md", "README.md", false),
+                    fileInfo("/repo/package.json", "package.json", false),
+                ],
+            }
+        );
+        expect(labels(multiMenu)).toContain("Move to...");
+        expect(labels(multiMenu)).toContain("Cut 3 Items");
+        expect(labels(multiMenu)).not.toContain("Move 3 Items");
+    });
+
+    it("moves a single entry into a destination folder keeping its name via handleMoveTo", async () => {
+        const { handleMoveTo, model, fileMove } = await loadDirectoryMenuUtils([]);
+        const setErrorMsg = vi.fn();
+
+        handleMoveTo(model as any, [fileInfo("/repo/src/index.ts", "index.ts", false)], "/repo/lib", setErrorMsg);
+        await vi.waitFor(() => expect(fileMove).toHaveBeenCalled());
+
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "local:/repo/src/index.ts",
+                desturi: "local:/repo/lib/index.ts",
+            })
+        );
+        expect(model.refresh).toHaveBeenCalled();
+        expect(setErrorMsg).not.toHaveBeenCalled();
+    });
+
+    it("moves multiple entries keeping names and trailing-slash dirs on success", async () => {
+        const { handleMoveTo, model, fileMove } = await loadDirectoryMenuUtils([]);
+        const setErrorMsg = vi.fn();
+
+        handleMoveTo(
+            model as any,
+            [fileInfo("/repo/src", "src", true), fileInfo("/repo/a.md", "a.md", false)],
+            "/repo/dst/",
+            setErrorMsg
+        );
+        await vi.waitFor(() => expect(fileMove).toHaveBeenCalledTimes(2));
+
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "local:/repo/src/",
+                desturi: "local:/repo/dst/src",
+            })
+        );
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "local:/repo/a.md",
+                desturi: "local:/repo/dst/a.md",
+            })
+        );
+        expect(setErrorMsg).not.toHaveBeenCalled();
+        expect(model.refresh).toHaveBeenCalled();
+    });
+
+    it("aborts the move on the first failing entry and reports Move Failed", async () => {
+        const { handleMoveTo, model, fileMove } = await loadDirectoryMenuUtils([], undefined, new Error("move failed"));
+        const setErrorMsg = vi.fn();
+
+        handleMoveTo(
+            model as any,
+            [fileInfo("/repo/src", "src", true), fileInfo("/repo/a.md", "a.md", false)],
+            "/repo/dst/",
+            setErrorMsg
+        );
+        await vi.waitFor(() => expect(setErrorMsg).toHaveBeenCalled());
+
+        expect(fileMove).toHaveBeenCalledTimes(1);
+        expect(fileMove).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                srcuri: "local:/repo/src/",
+                desturi: "local:/repo/dst/src",
+            })
+        );
+        expect(setErrorMsg).toHaveBeenCalledWith(expect.objectContaining({ status: "Move Failed" }));
+        expect(model.refresh).toHaveBeenCalled();
     });
 });

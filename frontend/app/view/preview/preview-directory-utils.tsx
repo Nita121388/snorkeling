@@ -11,11 +11,14 @@ import React from "react";
 import { quote as shellQuote } from "shell-quote";
 import {
     copyPreviewFileItems,
+    cutPreviewFileItems,
     getPasteableItems,
     getPreviewFileClipboard,
     getUnsupportedPasteItems,
     makeCopyLabel,
+    makeCutLabel,
     makePasteLabel,
+    movePreviewFileItems,
     pastePreviewFileItems,
     type PreviewFileClipboard,
 } from "./preview-file-clipboard";
@@ -126,6 +129,45 @@ export function handleRename(
     });
 }
 
+// ponytail: handleMoveTo moves each entry into destDir keeping its file name ("move to
+// folder" semantics). Unlike rename it takes full FileInfo list so the menu can move a
+// multi-selection in one dialog; same-host moves use os.Rename so no recursive flag needed.
+export function handleMoveTo(
+    model: PreviewModel,
+    fileInfos: FileInfo[],
+    destDir: string,
+    setErrorMsg: (msg: ErrorMsg) => void
+) {
+    fireAndForget(async () => {
+        const normalizedDestDir = destDir.trim().replace(/\/+$/, "");
+        try {
+            for (const fileInfo of fileInfos) {
+                if (fileInfo == null || isBlank(fileInfo.path)) {
+                    continue;
+                }
+                const fileName = fileInfo.name || fileInfo.path.split(/[\\/]/).pop() || fileInfo.path;
+                const destPath = `${normalizedDestDir}/${fileName}`;
+                let srcuri = await model.formatRemoteUri(fileInfo.path, globalStore.get);
+                if (fileInfo.isdir) {
+                    srcuri += "/";
+                }
+                await model.env.rpc.FileMoveCommand(TabRpcClient, {
+                    srcuri,
+                    desturi: await model.formatRemoteUri(destPath, globalStore.get),
+                });
+            }
+        } catch (e) {
+            const errorText = `${e}`;
+            console.warn(`Move failed: ${errorText}`);
+            setErrorMsg({
+                status: "Move Failed",
+                text: errorText,
+            });
+        }
+        model.refresh();
+    });
+}
+
 export function handleFileDelete(
     model: PreviewModel,
     path: string,
@@ -228,6 +270,7 @@ type DirectoryEntryMenuActions = {
     newFile: () => void;
     newDirectory: () => void;
     rename: () => void;
+    moveTo?: () => void;
 };
 
 type DirectoryEntryMenuOptions = {
@@ -614,6 +657,14 @@ export async function makeDirectoryEntryMenuItems(
             label: "Rename",
             click: actions.rename,
         });
+        // Single-step "move to folder" dialog; supports multi-selection (the caller decides
+        // which FileInfos the moveTo action applies to).
+        if (actions.moveTo != null) {
+            menu.push({
+                label: "Move to...",
+                click: actions.moveTo,
+            });
+        }
     }
     menu.push(
         {
@@ -626,9 +677,26 @@ export async function makeDirectoryEntryMenuItems(
             },
         },
         {
+            label: makeCutLabel(copyFileInfos),
+            click: () => {
+                cutPreviewFileItems(copyFileInfos, conn);
+                setErrorMsg({
+                    status: isMultiCopy ? `Staged ${copyFileInfos.length} Items for Move` : "Staged for Move",
+                    text: "Right-click the destination folder and choose Move Here to finish the move.",
+                    showDismiss: true,
+                });
+            },
+        },
+        {
             label: makeDirectoryEntryPasteLabel(clipboard, finfo),
             enabled: !isBlank(pasteDestPath) && (pasteableItems.length > 0 || unsupportedPasteItems.length > 0),
-            click: () => fireAndForget(() => pastePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg)),
+            click: () =>
+                fireAndForget(() => {
+                    if (clipboard?.mode === "move") {
+                        return movePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg);
+                    }
+                    return pastePreviewFileItems(model, clipboard, pasteDestPath, conn, setErrorMsg);
+                }),
         }
     );
     const vcsMenuItems = makeDirectoryVcsMenuItems(
@@ -721,7 +789,12 @@ export async function makeDirectoryBackgroundMenuItems(
                 label: makePasteLabel(clipboard),
                 enabled: pasteableItems.length > 0 || unsupportedPasteItems.length > 0,
                 click: () =>
-                    fireAndForget(() => pastePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg)),
+                    fireAndForget(() => {
+                        if (clipboard?.mode === "move") {
+                            return movePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg);
+                        }
+                        return pastePreviewFileItems(model, clipboard, finfo.path, conn, setErrorMsg);
+                    }),
             }
         );
     }

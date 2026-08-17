@@ -15,7 +15,12 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import { openPathInPreview } from "./file-link-navigation";
-import { handleRename, makeDirectoryBackgroundMenuItems, makeDirectoryEntryMenuItems } from "./preview-directory-utils";
+import {
+    handleMoveTo,
+    handleRename,
+    makeDirectoryBackgroundMenuItems,
+    makeDirectoryEntryMenuItems,
+} from "./preview-directory-utils";
 import type { PreviewModel } from "./preview-model";
 import {
     PreviewRevealPathMetaKey,
@@ -129,7 +134,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [treeExpandingAll, setTreeExpandingAll] = useState(false);
     const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
     const [selectedTreeNodes, setSelectedTreeNodes] = useState<TreeNodeData[]>([]);
-    const selectedTreeNodePaths = useMemo(() => new Set(selectedTreeNodes.map((n) => n.path ?? n.id)), [selectedTreeNodes]);
+    const selectedTreeNodePaths = useMemo(
+        () => new Set(selectedTreeNodes.map((n) => n.path ?? n.id)),
+        [selectedTreeNodes]
+    );
     const treeRef = useRef<TreeViewRef>(null);
     const lastRevealSeqRef = useRef<number | null>(null);
     const searchClickTimerRef = useRef<number | null>(null);
@@ -412,6 +420,29 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [model, setErrorMsg]
     );
 
+    const openMoveTo = useCallback(
+        (fileInfos: FileInfo[]) => {
+            const target = fileInfos[0];
+            if (target == null) {
+                return;
+            }
+            const startingDir = target.dir ?? (target.path.split("/").slice(0, -1).join("/") || target.path);
+            setEntryManagerProps({
+                entryManagerType: EntryManagerType.MoveTo,
+                startingValue: startingDir,
+                hint: "Destination folder — the file name is kept.",
+                onSave: (destDirInput: string) => {
+                    const destDir = destDirInput.trim();
+                    if (destDir !== "") {
+                        handleMoveTo(model, fileInfos, destDir, setErrorMsg);
+                    }
+                    setEntryManagerProps(null);
+                },
+            });
+        },
+        [model, setErrorMsg]
+    );
+
     const getCreateTargetDirectory = useCallback(() => {
         if (selectedTreeNode == null) {
             return rootPath;
@@ -442,25 +473,22 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [openRename]
     );
 
-    const handleTreeNodeClick = useCallback(
-        (event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
-            // ctrl/cmd 切换多选; 裸点击回到单选 (TreeView 内部仍会 commitSelection 设单选焦点)
-            if (event.ctrlKey || event.metaKey) {
-                event.stopPropagation();
-                const nodePath = node.path ?? node.id;
-                setSelectedTreeNodes((prev) => {
-                    const existing = prev.find((n) => (n.path ?? n.id) === nodePath);
-                    if (existing != null) {
-                        return prev.filter((n) => (n.path ?? n.id) !== nodePath);
-                    }
-                    return [...prev, node];
-                });
-                return;
-            }
-            setSelectedTreeNodes([node]);
-        },
-        []
-    );
+    const handleTreeNodeClick = useCallback((event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
+        // ctrl/cmd 切换多选; 裸点击回到单选 (TreeView 内部仍会 commitSelection 设单选焦点)
+        if (event.ctrlKey || event.metaKey) {
+            event.stopPropagation();
+            const nodePath = node.path ?? node.id;
+            setSelectedTreeNodes((prev) => {
+                const existing = prev.find((n) => (n.path ?? n.id) === nodePath);
+                if (existing != null) {
+                    return prev.filter((n) => (n.path ?? n.id) !== nodePath);
+                }
+                return [...prev, node];
+            });
+            return;
+        }
+        setSelectedTreeNodes([node]);
+    }, []);
 
     const handleTreeNodeContextMenu = useCallback(
         async (event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
@@ -484,6 +512,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     newFile: () => openCreateFile(targetDir),
                     newDirectory: () => openCreateDirectory(targetDir),
                     rename: () => openRename(finfo.path, finfo.isdir),
+                    moveTo: () => openMoveTo(effectiveSelectedFileInfos),
                 },
                 {
                     relativePathRoot: rootPath,
@@ -494,7 +523,19 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             );
             ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
         },
-        [blockMoveMenuItems, connection, model, openCreateDirectory, openCreateFile, openRename, rootPath, selectedTreeNodes, selectedTreeNodePaths, setErrorMsg]
+        [
+            blockMoveMenuItems,
+            connection,
+            model,
+            openCreateDirectory,
+            openCreateFile,
+            openMoveTo,
+            openRename,
+            rootPath,
+            selectedTreeNodes,
+            selectedTreeNodePaths,
+            setErrorMsg,
+        ]
     );
 
     const handleTreeBackgroundContextMenu = useCallback(
@@ -812,7 +853,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
 
     const openSearchPath = useCallback(
         async (path: string, lineNumber?: number, openOptions?: { revealInTree?: boolean }) => {
-            await openPathInPreview(path, { connection, lineNumber, ...openOptions, revealInTreeBlockId: blockData?.id ?? null });
+            await openPathInPreview(path, {
+                connection,
+                lineNumber,
+                ...openOptions,
+                revealInTreeBlockId: blockData?.id ?? null,
+            });
         },
         [connection, blockData?.id]
     );
