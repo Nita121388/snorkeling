@@ -704,9 +704,12 @@ export function makeInlineEditKeydown(opts: {
         }
         if (isCmd && (e.key === "s" || e.key === "S")) {
             // Commit synchronously so the draft atom carries the just-typed text before save runs.
-            // If the parent wired `save`, flush it directly — preview-mode has no global ⌘S
-            // listener, so bubbling would do nothing and the draft would sit unsaved.
+            // Then flush it directly via the wired `save` callback. stopPropagation prevents the
+            // event from reaching the global Cmd/Ctrl+S handler (keymodel saveFocusedPreviewDraft),
+            // which would otherwise double-fire handleFileSave (harmless — it no-ops when the
+            // draft is already cleared — but avoid the redundant write).
             e.preventDefault();
+            e.stopPropagation();
             opts.commit();
             opts.save?.();
             return;
