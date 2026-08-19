@@ -1825,7 +1825,11 @@ export class LayoutModel {
             return false;
         }
         removeBlockIdFromInlineTabNode(node, blockId);
-        const newNode = newLayoutNode(undefined, undefined, undefined, { blockId });
+        // 拆出的块继承原组节点一半尺寸：DefaultNodeSize=10 会把新块挤成一条缝，
+        // 无法点击/聚焦（焦点落到同组其他块）。对半分配是 tiling 布局的标准拆分语义。
+        const splitSize = Math.max(1, Math.floor(node.size / 2));
+        node.size = splitSize;
+        const newNode = newLayoutNode(undefined, splitSize, undefined, { blockId });
         this.treeReducer(
             {
                 type: LayoutTreeActionType.SplitHorizontal,
