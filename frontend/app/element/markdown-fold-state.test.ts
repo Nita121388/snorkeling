@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { computeCollapsedHiddenFlags } from "./markdown-collapse";
+import { computeCollapsedHiddenFlags, findCollapsedScrollPinIndex } from "./markdown-collapse";
 import { captureMarkdownFoldSnapshot, resolveMarkdownFoldLines } from "./markdown-fold-state";
 import { moveMarkdownHeadingSection } from "./markdown-heading-section";
 
@@ -97,5 +97,39 @@ describe("computeCollapsedHiddenFlags (heading collapse visibility)", () => {
         ];
         const flags = computeCollapsedHiddenFlags(blocks, new Set(["h1"]));
         expect(flags).toEqual([false, true, true, false, false]);
+    });
+});
+
+describe("findCollapsedScrollPinIndex", () => {
+    const BOTTOMS_FULL_DOC = [40, 400, 800, 1400, 2000]; // blocks [heading, body, body, body, body]
+
+    it("pins the first surviving block whose bottom is at or below the viewport top", () => {
+        // blocks 1-2 inside a collapsed section (flags[1,2]=true); block 3 survives and is below viewportTop=100
+        const flags = [false, true, true, false, false];
+        const bottoms = [40, 400, 800, 1400, 2000];
+        // block 0 survives but its bottom(40) <= viewportTop(100) → skipped
+        // block 3 survives AND bottom(1400) > 100 → pin = 3
+        expect(findCollapsedScrollPinIndex(flags, bottoms, 100)).toBe(3);
+    });
+
+    it("falls back to the first survivor when the viewport is entirely inside the collapsed region", () => {
+        // Only block 0 (heading, bottom 40) survives; viewport top=150 is below it → no survivor
+        // at or below the viewport top → fallback pins to first survivor (block 0)
+        const flags = [false, true, true, true, true];
+        const bottoms = [40, 400, 800, 1400, 2000];
+        expect(findCollapsedScrollPinIndex(flags, bottoms, 150)).toBe(0);
+    });
+
+    it("returns null when every block is hidden", () => {
+        const flags = [true, true, true];
+        const bottoms = [100, 200, 300];
+        expect(findCollapsedScrollPinIndex(flags, bottoms, 0)).toBeNull();
+    });
+
+    it("returns the first block when nothing is collapsed (no-op toggle)", () => {
+        const flags = [false, false, false, false];
+        const bottoms = [40, 400, 800, 1200];
+        // viewportTop=500: block 0 bottom 40 <= 500 → skipped; block 1 bottom 400 <=500 → skipped; block 2 bottom 800 >500 → pin=2
+        expect(findCollapsedScrollPinIndex(flags, bottoms, 500)).toBe(2);
     });
 });

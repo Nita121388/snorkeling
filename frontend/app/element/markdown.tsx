@@ -3,7 +3,10 @@
 
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
-import { computeCollapsedHiddenFlags } from "@/app/element/markdown-collapse";
+import {
+    computeCollapsedHiddenFlags,
+    findCollapsedScrollPinIndex,
+} from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
     isSelectingRange,
@@ -72,6 +75,7 @@ import {
     parseMarkdownWikiLink,
 } from "../view/preview/file-link-navigation";
 import { IconButton } from "./iconbutton";
+import { buildCopyContextText } from "./selection-copy-overlay";
 import "./markdown.scss";
 
 function isLiveScrollDebugEnabled(): boolean {
@@ -1082,6 +1086,10 @@ const Markdown = ({
     const previousTransformedTextRef = useRef<string | null>(null);
     const savedScrollTopAppliedRef = useRef(false);
     const scrollTopWriteRafRef = useRef<number | null>(null);
+    // 上次应用到 DOM 的 collapsedHeadings 引用：用户 toggle 时 Set 引用变化，据此区分
+    // 「真正的折叠/展开切换」（需要钉住阅读位置）与「remount/文本变化后的重新同步」
+    // （只重新应用 class，不动滚动位置——后者由 transformedText 恢复逻辑负责）。
+    const collapsedHeadingsPrevRef = useRef<Set<string> | null>(null);
     const [initialScrollReadyKey, setInitialScrollReadyKey] = useState<string | null>(null);
     const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
     // Controlled seeding: when a caller persists collapse across remounts it passes a snapshot
@@ -1677,7 +1685,7 @@ const Markdown = ({
         [resolveInsertAnchorEl]
     );
 
-    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / duplicate / delete)
+    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / copy context / duplicate / delete)
     // Resolves the current anchor block's [start..end] source range, shows a selection
     // highlight overlay over it, and opens a native context menu. Block-scoped operations are
     // applied to the markdown source via the same range helpers the editor uses.
@@ -1715,6 +1723,14 @@ const Markdown = ({
             const copyBlock = async () => {
                 await navigator.clipboard.writeText(blockSource);
             };
+            // Copy Context reuses the app-wide convention (path:line + markdown-fenced block
+            // source) so the block can be pasted into an AI prompt with its location. Falls
+            // back to "(unknown-path)" when the preview has no file path (e.g. unsaved buffer).
+            const copyContext = async () => {
+                await navigator.clipboard.writeText(
+                    buildCopyContextText(copyContextPath || "(unknown-path)", startLineRaw, blockSource)
+                );
+            };
             const duplicateBlock = () => {
                 const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
                 handleInlineEditCommit(newFull);
@@ -1727,6 +1743,7 @@ const Markdown = ({
 
             const menu: ContextMenuItem[] = [
                 { label: "复制", click: () => void copyBlock() },
+                { label: "Copy Context", click: () => void copyContext() },
                 { label: "复制为副本", click: duplicateBlock },
                 { type: "separator" },
                 { label: "删除", click: deleteBlock },
@@ -1735,7 +1752,7 @@ const Markdown = ({
                 onClose: () => setSelectedBlock(null),
             });
         },
-        [resolveBlockAnchorEl, text, handleInlineEditCommit]
+        [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath]
     );
 
     const measureInsertAnchor = useCallback(() => {
@@ -1942,9 +1959,33 @@ const Markdown = ({
             }),
             collapsedHeadings
         );
+        // 用户实际 toggle 折叠/展开时（collapsedHeadings 引用变化）钉住阅读位置：折叠用
+        // display:none 移除章节高度，Chromium 的滚动锚定算法会挑错锚点（跳到文档顶/底）
+        // 或在锚点被隐藏后强制钳制。这里选一个「折叠后仍可见、且位于视口顶部附近」的块，
+        // 应用 class 前后测量其顶部位移，反向补偿 scrollTop，让阅读内容原地不动。
+        const isUserToggle =
+            collapsedHeadingsPrevRef.current != null && collapsedHeadingsPrevRef.current !== collapsedHeadings;
+        const viewportTop = viewport.getBoundingClientRect().top;
+        let pinIndex: number | null = null;
+        let pinOldTop = 0;
+        if (isUserToggle) {
+            const preToggleBottoms = Array.from(root.children, (elem) =>
+                (elem as HTMLElement).getBoundingClientRect().bottom
+            );
+            pinIndex = findCollapsedScrollPinIndex(flags, preToggleBottoms, viewportTop);
+            if (pinIndex != null) {
+                pinOldTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
+            }
+        }
         Array.from(root.children).forEach((elem, i) => {
             (elem as HTMLElement).classList.toggle("collapsed-hidden", flags[i]);
         });
+        if (isUserToggle && pinIndex != null) {
+            const pinNewTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
+            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+            viewport.scrollTop = Math.max(0, Math.min(viewport.scrollTop + (pinNewTop - pinOldTop), maxScrollTop));
+        }
+        collapsedHeadingsPrevRef.current = collapsedHeadings;
     };
 
     // 每次提交后同步（无 deps 数组）：见 updateCollapsedHeadingVisibility 注释——折叠可见性
