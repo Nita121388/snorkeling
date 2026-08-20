@@ -38,20 +38,20 @@ export function buildConflictCopyText(
         patchOpts
     );
     return [
-        `文件冲突: ${filePath}`,
-        "该文件在你编辑期间被外部修改（可能是 AI Agent），你的未保存修改与磁盘当前内容冲突。",
+        `File conflict: ${filePath}`,
+        "This file was modified externally while you were editing it (possibly by an AI Agent). Your unsaved changes conflict with the current disk content.",
         "",
         "---",
         "",
-        "== 你的未保存修改 (base → 你的草稿) ==",
+        "== Your unsaved changes (base → your draft) ==",
         "",
         minePatch,
         "",
-        "== 外部修改 (base → 磁盘当前) ==",
+        "== External changes (base → current disk) ==",
         "",
         theirsPatch,
         "---",
         "",
-        "请分析两处修改，输出合并后的完整文件内容。",
+        "Please analyze both changes and output the merged, complete file content.",
     ].join("\n");
 }

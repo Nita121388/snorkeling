@@ -10,11 +10,11 @@ describe("buildConflictCopyText", () => {
         const mine = "# Hello\n- first\n- second\n- third";
         const theirs = "# Hello\n- first\n- agent second";
         const text = buildConflictCopyText("test.md", base, mine, theirs);
-        expect(text).toContain("文件冲突: test.md");
-        expect(text).toContain("== 你的未保存修改 (base → 你的草稿) ==");
-        expect(text).toContain("== 外部修改 (base → 磁盘当前) ==");
+        expect(text).toContain("File conflict: test.md");
+        expect(text).toContain("== Your unsaved changes (base → your draft) ==");
+        expect(text).toContain("== External changes (base → current disk) ==");
         expect(text).toContain("+- third");
         expect(text).toContain("+- agent second");
-        expect(text).toContain("请分析两处修改，输出合并后的完整文件内容。");
+        expect(text).toContain("Please analyze both changes and output the merged, complete file content.");
     });
 });
