@@ -939,6 +939,18 @@
             }
         }
 
+        // 未保存修改指示点: 常驻显示(非 hover), 绿色圆点提示该 tab 有未落盘的草稿。
+        // 与 agent statusdot 并存: dirty 点表示文件待保存, statusdot 表示 agent 运行状态。
+        .inline-tab-block-tab-dirty-dot {
+            flex: 0 0 auto;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            margin-left: 2px;
+            opacity: 0.9;
+        }
+
         // 锁定标记图标: 常驻显示(非 hover), 小尺寸, 不抢标题视觉。
         .inline-tab-block-tab-lockicon {
             font-size: 10px;
