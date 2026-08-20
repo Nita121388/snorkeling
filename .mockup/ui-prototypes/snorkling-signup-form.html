@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkling 群组创建表单 - Mockup Prototype</title>
+  <style>
+    /* 基于 beui.dev 组件风格的自定义样式 */
+    :root {
+      --primary: #3b82f6;
+      --primary-hover: #2563e6;
+      --background: #f8fafc;
+      --card: #ffffff;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --error: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      margin-top: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--text-primary);
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .input::placeholder {
+      color: #94a3b8;
+    }
+
+    .button {
+      width: 100%;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+      background: var(--primary);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: background 0.2s;
+    }
+
+    .button:hover {
+      background: var(--primary-hover);
+    }
+
+    .button:focus-visible {
+      outline: 2px solid #ffffff;
+      outline-offset: 2px;
+    }
+
+    .divider {
+      text-align: center;
+      margin: 20px 0;
+      color: var(--text-secondary);
+    }
+
+    .divider span {
+      display: inline-block;
+      background: var(--border);
+      padding: 0 8px;
+    }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="header">
+      <div class="title">创建群组</div>
+      <div class="subtitle">与 AI 代理一起协作</div>
+    </div>
+
+    <form>
+      <div class="form-group">
+        <label class="label" for="group-name">群组名称</label>
+        <input 
+          type="text" 
+          id="group-name" 
+          class="input" 
+          placeholder="输入群组名称"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label class="label" for="members">添加成员 (可选)</label>
+        <input 
+          type="text" 
+          id="members" 
+          class="input" 
+          placeholder="输入成员昵称，多个请用逗号分隔"
+          placeholder="例如: Claude, Codex, GPT-4"
+        >
+      </div>
+
+      <button type="submit" class="button">创建群组</button>
+    </form>
+
+    <div class="hint">
+      群组创建后，你可以邀请更多成员，设置主持模式，并开始协作对话
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

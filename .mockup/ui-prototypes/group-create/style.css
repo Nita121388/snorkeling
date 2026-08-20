@@ -1,0 +1,25 @@
+/* ============================================================
+   Snorkling 创建群组 — 特有样式（公共 token 见 ../_shared.css）
+   ============================================================ */
+
+/* 卡片内布局约束 */
+.group-create-card { max-width: 640px; }
+
+/* 表单提交区 */
+.form-actions {
+    display: flex; justify-content: flex-end; gap: 10px;
+    margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);
+}
+.form-actions .wave-button { padding: 8px 18px; font-size: 13px; }
+
+/* 创建成功反馈（由 script 注入） */
+.create-result {
+    margin-top: 14px; padding: 10px 14px; border-radius: 7px;
+    background: rgba(88, 193, 66, 0.12); border: 1px solid rgba(88, 193, 66, 0.35);
+    font-size: 12.5px; color: var(--accent-color);
+    display: flex; align-items: center; gap: 8px;
+}
+.create-result.is-error {
+    background: rgba(231, 76, 60, 0.12); border-color: rgba(231, 76, 60, 0.35);
+    color: var(--danger-color);
+}

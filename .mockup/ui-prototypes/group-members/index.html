@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkling - 群组成员管理</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../_shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-head">
+  <h1>群组成员管理 — 产品讨论组</h1>
+  <p>管理群组中的 AI 会话成员：设定角色、查看状态、添加或移除成员。主持模式由「协调员」角色驱动。</p>
+  <p class="sub2">镜像源：<code>frontend/app/view/aisessions/</code>, <code>frontend/app/store/services.ts</code></p>
+</div>
+
+<div class="demo-section">
+  <div class="section-title">
+    成员列表
+    <span class="section-hint"><span class="status-dot online" style="display:inline-block;vertical-align:middle"></span> 2 在线 · 1 离线</span>
+  </div>
+
+  <div class="member-panel" id="memberPanel">
+    <!-- 成员 1: Claude (创建者/协调员) -->
+    <div class="member-item" data-name="Claude">
+      <div class="member-avatar">C</div>
+      <div class="member-main">
+        <div class="member-topline">
+          <span class="member-name">Claude</span>
+          <span class="status-dot online"></span>
+          <span class="badge badge-moderator">协调员</span>
+        </div>
+        <div class="member-meta">
+          <span class="member-model">claude-opus-4-7</span>
+          <span class="member-mem">记忆 23 条</span>
+        </div>
+      </div>
+      <div class="member-actions">
+        <select class="field-select member-role-select" data-session="s-1">
+          <option value="owner">所有者</option>
+          <option value="moderator" selected>协调员</option>
+          <option value="assistant">助手</option>
+          <option value="observer">观察者</option>
+        </select>
+        <button class="wave-button ghost grey btn-remove" title="移除成员">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- 成员 2: Codex -->
+    <div class="member-item" data-name="Codex">
+      <div class="member-avatar avatar-codex">X</div>
+      <div class="member-main">
+        <div class="member-topline">
+          <span class="member-name">Codex</span>
+          <span class="status-dot online"></span>
+          <span class="badge badge-assistant">助手</span>
+        </div>
+        <div class="member-meta">
+          <span class="member-model">codex-cli</span>
+          <span class="member-mem">记忆 15 条</span>
+        </div>
+      </div>
+      <div class="member-actions">
+        <select class="field-select member-role-select" data-session="s-2">
+          <option value="owner">所有者</option>
+          <option value="moderator">协调员</option>
+          <option value="assistant" selected>助手</option>
+          <option value="observer">观察者</option>
+        </select>
+        <button class="wave-button ghost grey btn-remove" title="移除成员">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- 成员 3: GPT-4 (离线) -->
+    <div class="member-item" data-name="GPT-4">
+      <div class="member-avatar avatar-gpt">G</div>
+      <div class="member-main">
+        <div class="member-topline">
+          <span class="member-name">GPT-4</span>
+          <span class="status-dot offline"></span>
+          <span class="badge badge-observer">观察者</span>
+        </div>
+        <div class="member-meta">
+          <span class="member-model">gpt-4-turbo</span>
+          <span class="member-mem">记忆 0 条</span>
+        </div>
+      </div>
+      <div class="member-actions">
+        <select class="field-select member-role-select" data-session="s-3">
+          <option value="owner">所有者</option>
+          <option value="moderator">协调员</option>
+          <option value="assistant">助手</option>
+          <option value="observer" selected>观察者</option>
+        </select>
+        <button class="wave-button ghost grey btn-remove" title="移除成员">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="member-actions-bar">
+    <button class="wave-button outlined green" id="btnAddMember">
+      <i class="fa-solid fa-user-plus"></i> 添加成员
+    </button>
+    <button class="wave-button solid green" id="btnSaveSettings">
+      <i class="fa-solid fa-floppy-disk"></i> 保存设置
+    </button>
+  </div>
+</div>
+
+<!-- 添加成员弹窗（镜像 FlexiModal 结构） -->
+<div class="modal-wrapper" id="addMemberModal" hidden>
+  <div class="modal-backdrop" data-close-modal></div>
+  <div class="modal add-member-modal">
+    <div class="modal-content">
+      <div class="section-title" style="margin-bottom:8px;">添加成员</div>
+      <p style="font-size:12.5px;color:var(--secondary-text-color);margin-bottom:14px;">
+        从现有 AI 会话中选择加入群组，或输入 Session ID。
+      </p>
+      <div class="field">
+        <input type="text" id="newMemberInput" class="field-input" placeholder="Session ID 或会话名称，多个用逗号分隔">
+      </div>
+      <div class="available-sessions" id="availableSessions">
+        <div class="session-option" data-sid="s-4">
+          <span class="member-avatar avatar-s">S</span>
+          <span>Sonnet</span>
+          <span class="status-dot online"></span>
+        </div>
+        <div class="session-option" data-sid="s-5">
+          <span class="member-avatar avatar-g">G</span>
+          <span>Gemini</span>
+          <span class="status-dot offline"></span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="wave-button ghost grey" data-close-modal>取消</button>
+      <button class="wave-button solid green" id="btnConfirmAdd">
+        <i class="fa-solid fa-check"></i> 添加
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkling - 创建群组</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../_shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-head">
+  <h1>创建新群组</h1>
+  <p>新建一个群聊，把 AI 会话作为成员加入，开始多 Agent 协作对话。</p>
+  <p class="sub2">镜像源：<code>frontend/app/modals/aisessiondetailmodal.tsx</code>, <code>server/src/index.ts</code> (groupchat 路由)</p>
+</div>
+
+<div class="demo-section group-create-card">
+  <div class="section-title">
+    群组信息
+    <span class="section-hint">创建后可在「成员管理」中添加更多 Agent 会话</span>
+  </div>
+
+  <form id="groupCreateForm">
+    <div class="field">
+      <label class="field-label" for="groupName"><i class="fa-solid fa-tag" style="margin-right:4px;color:var(--accent-color)"></i>群组名称</label>
+      <input type="text" id="groupName" class="field-input" placeholder="例如：产品讨论组 / 代码审查组" required>
+      <span class="field-hint">必填，2-32 个字符，将显示在侧边栏群组列表中</span>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="groupMembers"><i class="fa-solid fa-user-plus" style="margin-right:4px;color:var(--accent-color)"></i>添加成员（可选）</label>
+      <input type="text" id="groupMembers" class="field-input" placeholder="输入 Agent 名称，多个用逗号分隔">
+      <span class="field-hint">从现有会话中选择，例如：Claude, Codex；留空则稍后在成员管理中再添加</span>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="groupDesc"><i class="fa-solid fa-align-left" style="margin-right:4px;color:var(--accent-color)"></i>群组描述（可选）</label>
+      <input type="text" id="groupDesc" class="field-input" placeholder="这个群组用来做什么？">
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="wave-button solid green">
+        <i class="fa-solid fa-check"></i> 创建群组
+      </button>
+      <button type="button" class="wave-button outlined grey" id="btnCancel">
+        取消
+      </button>
+    </div>
+  </form>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

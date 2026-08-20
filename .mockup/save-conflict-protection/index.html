@@ -1,0 +1,261 @@
+<!-- ============================================================
+   Snorkeling 保存状态优化 — 原型
+   镜像真实：frontend/app/block/block.tsx (InlineTabLabel/InlineTabBlock)
+            frontend/app/block/block.scss (.inline-tab-block-tab-*)
+            frontend/app/modals/unsavedfilemodal.tsx + modal.tsx (FlexiModal)
+            frontend/app/modals/modal.scss + element/button.scss
+   token 取自 frontend/app/theme.scss `:root`（dark 默认主题）
+   方案笔记：Primary Mission/60-项目/Snorkeling/Snorkeling-打开md预览与保存状态优化方案.md
+   ============================================================ -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snorkeling 保存状态优化 — Tab 脏点 + 冲突弹窗原型</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="page-head">
+        <h1>Snorkeling 保存状态优化 — Tab 脏点 + 冲突弹窗</h1>
+        <p>
+            两个界面：<b>① Inline Tab 脏点</b>（Tab 化 Block 组时，标签显示未保存修改状态）；
+            <b>② 冲突弹窗</b>（保存时检测到文件被外部/AI Agent 修改，弹出选择：覆盖 / 放弃 / 复制差异 / 取消）。
+        </p>
+        <p class="sub2">
+            镜像源：<code>frontend/app/block/block.tsx</code>,
+            <code>frontend/app/block/block.scss</code>,
+            <code>frontend/app/modals/unsavedfilemodal.tsx</code>,
+            <code>frontend/app/modals/modal.tsx</code>
+        </p>
+    </div>
+
+    <!-- ============================================================
+         场景一：Inline Tab 脏点
+         镜像 InlineTabBlock：tabs > group-handle + tab × N > active 内容区
+         ============================================================ -->
+    <div class="demo-section">
+        <div class="section-title">
+            ① Inline Tab 脏点
+            <span class="section-hint">未保存的 tab 标签显示绿色圆点（新增点 <code>.inline-tab-block-tab-dirty-dot</code>）</span>
+        </div>
+
+        <div class="demo-row">
+            <div class="tab-demo-area">
+                <!-- 顶部状态说明 -->
+                <div class="tab-state-strip" id="tabStateStrip"></div>
+
+                <!-- InlineTabBlock（镜像 block.tsx DOM） -->
+                <div class="inline-tab-block">
+                    <div class="inline-tab-block-tabs" role="tablist">
+                        <button type="button" class="inline-tab-block-group-handle" title="Move Tab Group">
+                            <i class="fa-solid fa-grip-lines"></i>
+                        </button>
+
+                        <!-- Tab 1：干净（无脏点） -->
+                        <div class="inline-tab-block-tab active" data-block="note-a.md" data-dirty="false">
+                            <div class="inline-tab-block-tab-main-wrapper">
+                                <div class="inline-tab-block-tab-main">
+                                    <button type="button" class="inline-tab-block-tab-button" role="tab" aria-selected="true">
+                                        <i class="fa-regular fa-file-lines"></i>
+                                        <span>note-a.md</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" class="inline-tab-block-tab-close" title="Close Block">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <!-- Tab 2：脏（未保存 → 显示圆点） -->
+                        <div class="inline-tab-block-tab" data-block="note-b.md" data-dirty="true">
+                            <div class="inline-tab-block-tab-main-wrapper">
+                                <div class="inline-tab-block-tab-main">
+                                    <button type="button" class="inline-tab-block-tab-button" role="tab" aria-selected="false">
+                                        <i class="fa-regular fa-file-lines"></i>
+                                        <span>note-b.md</span>
+                                        <span class="inline-tab-block-tab-dirty-dot" title="未保存的修改"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" class="inline-tab-block-tab-close" title="Close Block">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <!-- Tab 3：Agent 状态点 + 脏点 共存 -->
+                        <div class="inline-tab-block-tab" data-block="agent.md" data-dirty="true">
+                            <div class="inline-tab-block-tab-main-wrapper">
+                                <div class="inline-tab-block-tab-main">
+                                    <button type="button" class="inline-tab-block-tab-button" role="tab" aria-selected="false">
+                                        <span class="agent-brand-icon" style="color: rgb(124, 84, 233)">
+                                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
+                                                <path d="M12 2 L20 6 V12 C20 17 16.5 21 12 22 C7.5 21 4 17 4 12 V6 Z" />
+                                            </svg>
+                                        </span>
+                                        <span>agent.md</span>
+                                        <span class="inline-tab-block-tab-dirty-dot" title="未保存的修改"></span>
+                                        <span class="inline-tab-block-tab-statusdot is-done" title="done">
+                                            <i class="fa-solid fa-check"></i>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" class="inline-tab-block-tab-close" title="Close Block">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 活动内容区（简化示意） -->
+                    <div class="inline-tab-block-active">
+                        <div class="tab-active-content">
+                            <div class="active-path">~ / notes / <b>note-a.md</b></div>
+                            <div class="active-body">
+                                <p># 笔记 A</p>
+                                <p>这是一个干净的已保存文件，无未保存修改。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 交互按钮 -->
+                <div class="tab-actions">
+                    <button type="button" class="wave-button solid green" id="btnEditB">
+                        <i class="fa-solid fa-pen-to-square"></i> 编辑 note-b.md（产生草稿）
+                    </button>
+                    <button type="button" class="wave-button solid grey" id="btnSaveB">
+                        <i class="fa-solid fa-floppy-disk"></i> 保存 note-b.md（草稿落盘）
+                    </button>
+                    <button type="button" class="wave-button outlined grey" id="btnResetDemo">
+                        <i class="fa-solid fa-rotate"></i> 重置演示
+                    </button>
+                </div>
+                <div class="tab-actions-note">
+                    点「编辑」→ 第二个 tab 出现绿点（draftContent 非空）；点「保存」→ 绿点消失。
+                    真实逻辑：<code>preview-dirty-state.ts</code> 的 <code>getBlockDirtyAtom()</code> 派生自 <code>PreviewSharedDraftRecord.draftContent</code>。
+                </div>
+            </div>
+
+            <div class="code-annotation">
+                <div class="annotation-title">新增点（唯一 DOM 变更）</div>
+                <pre>&lt;span class="inline-tab-block-tab-dirty-dot"
+      title="未保存的修改" /&gt;</pre>
+                <div class="annotation-title">block.scss 新增</div>
+                <pre>.inline-tab-block-tab-dirty-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  margin-left: 2px;
+  opacity: 0.9;
+}</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         场景二：冲突弹窗 FileConflictModal
+         镜像 UnsavedFileModal + FlexiModal 结构
+         ============================================================ -->
+    <div class="demo-section">
+        <div class="section-title">
+            ② 冲突弹窗 FileConflictModal
+            <span class="section-hint">保存前检测到磁盘内容与草稿基座不一致（Agent 已修改文件）</span>
+        </div>
+
+        <div class="demo-row">
+            <div class="conflict-demo-area">
+                <div class="conflict-sim-card">
+                    <div class="sim-title"><i class="fa-solid fa-circle-info"></i> 模拟前置状态</div>
+                    <div class="sim-line">
+                        <span class="sim-label">基座 (base)</span>
+                        <code># Hello\n- 第一行\n- 第二行</code>
+                    </div>
+                    <div class="sim-line">
+                        <span class="sim-label">你的草稿 (mine)</span>
+                        <code># Hello\n- 第一行\n- 第二行\n- 我新增的第三行</code>
+                    </div>
+                    <div class="sim-line">
+                        <span class="sim-label">磁盘当前 (theirs)</span>
+                        <code># Hello\n- 第一行\n- Agent 改写第二行</code>
+                    </div>
+                    <div class="sim-action-row">
+                        <button type="button" class="wave-button solid green" id="btnTriggerConflict">
+                            <i class="fa-solid fa-triangle-exclamation"></i> 模拟保存 → 触发冲突检测
+                        </button>
+                    </div>
+                    <div class="sim-action-note">
+                        真实触发：<code>handleFileSave()</code> 写入前重读磁盘，<code>currentDisk !== baseContent</code> 时
+                        <code>pushModal("FileConflictModal", …)</code>。
+                    </div>
+                </div>
+
+                <!-- 复制差异结果预览（模拟剪贴板内容） -->
+                <div class="copy-output" id="copyOutput" hidden>
+                    <div class="copy-output-head">
+                        <span><i class="fa-solid fa-clipboard"></i> 复制差异预览（点击「复制差异」后的剪贴板内容）</span>
+                        <button type="button" class="wave-button ghost grey" id="btnDismissCopy">
+                            <i class="fa-solid fa-xmark"></i> 收起
+                        </button>
+                    </div>
+                    <pre id="copyOutputText"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         冲突弹窗本体（隐藏，由 script 控制显示）
+         镜像 modal-wrapper > modal-backdrop + modal（FlexiModal）
+         ============================================================ -->
+    <div class="modal-wrapper conflict-modal-host" id="conflictModal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal file-conflict-modal">
+            <div class="modal-content">
+                <div class="flex flex-col gap-2 conflict-body">
+                    <div class="conflict-title">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 文件已被外部修改
+                    </div>
+                    <div class="conflict-desc">
+                        <code class="conflict-path">notes/note-b.md</code>
+                        在你编辑期间被外部修改（可能是 AI Agent）。直接保存将覆盖外部修改。
+                    </div>
+                    <div class="conflict-summary">
+                        <div class="summary-row">
+                            <span class="summary-tag tag-base">基座</span>
+                            <span class="summary-text">你打开文件时的磁盘版本</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-tag tag-theirs">外部</span>
+                            <span class="summary-text">磁盘当前版本（Agent 已修改）</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-tag tag-mine">你的</span>
+                            <span class="summary-text">未保存草稿（基于基座）</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer conflict-footer">
+                <button type="button" class="wave-button ghost red" id="btnDiscard">
+                    <i class="fa-solid fa-trash"></i> 放弃修改
+                </button>
+                <button type="button" class="wave-button ghost grey" id="btnCancel">
+                    取消
+                </button>
+                <button type="button" class="wave-button outlined green" id="btnCopyDiff">
+                    <i class="fa-solid fa-clipboard"></i> 复制差异
+                </button>
+                <button type="button" class="wave-button solid green" id="btnOverwrite">
+                    <i class="fa-solid fa-floppy-disk"></i> 覆盖保存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

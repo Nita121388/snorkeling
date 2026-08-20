@@ -1,0 +1,81 @@
+/* ============================================================
+   Snorkling 主持模式配置 — 特有样式（公共 token 见 ../_shared.css）
+   ============================================================ */
+
+/* ---- 主持模式开关行 ---- */
+.moderator-toggle-row {
+    display: flex; align-items: center; gap: 16px; margin-top: 6px;
+}
+.toggle-desc { display: flex; flex-direction: column; gap: 2px; }
+.toggle-label { font-size: 13px; font-weight: 600; color: var(--main-text-color); }
+.toggle-sub { font-size: 11.5px; color: var(--grey-text-color); }
+
+/* ---- 开关 ---- */
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-switch .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #555; border-radius: 12px; transition: 0.25s;
+}
+.toggle-switch .slider:before {
+    position: absolute; content: ""; height: 18px; width: 18px;
+    left: 3px; bottom: 3px;
+    background-color: #ccc; border-radius: 50%; transition: 0.25s;
+}
+.toggle-switch input:checked + .slider { background-color: var(--accent-color); }
+.toggle-switch input:checked + .slider:before { transform: translateX(20px); background-color: #fff; }
+
+/* ---- 模式卡片网格 ---- */
+.mode-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+}
+@media (max-width: 700px) { .mode-grid { grid-template-columns: 1fr; } }
+
+.mode-card {
+    cursor: pointer; border-radius: 9px; border: 2px solid var(--border-color);
+    background: var(--surface); transition: border-color 0.2s, background 0.2s;
+    padding: 0; overflow: hidden;
+}
+.mode-card:hover { border-color: rgba(255, 255, 255, 0.3); }
+.mode-card input { display: none; }
+.mode-card input:checked ~ .mode-card-inner { background: rgba(88, 193, 66, 0.06); }
+.mode-card:has(input:checked) { border-color: var(--accent-color); }
+
+.mode-card-inner {
+    padding: 16px; display: flex; flex-direction: column; align-items: center;
+    gap: 10px; text-align: center;
+}
+.mode-icon { font-size: 28px; line-height: 1; }
+.mode-info strong { display: block; font-size: 13px; color: var(--main-text-color); margin-bottom: 4px; }
+.mode-info p { font-size: 11.5px; color: var(--grey-text-color); line-height: 1.55; }
+
+/* ---- 配额卡片 ---- */
+.quota-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 700px) { .quota-grid { grid-template-columns: 1fr; } }
+
+.quota-card {
+    padding: 14px; border-radius: 9px;
+    border: 1px solid var(--border-color); background: var(--surface);
+}
+.quota-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.quota-head .member-avatar { width: 30px; height: 30px; font-size: 13px; border-radius: 6px; }
+.quota-identity { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.quota-name { font-size: 12.5px; font-weight: 600; color: var(--main-text-color); }
+.quota-model { font-family: var(--font-mono); font-size: 10px; color: var(--grey-text-color); }
+.quota-badge { font-size: 9.5px; padding: 1px 6px; }
+
+.quota-bar { height: 6px; background: var(--button-grey-bg); border-radius: 3px; overflow: hidden; }
+.quota-used {
+    height: 100%; background: var(--accent-color); border-radius: 3px;
+    transition: width 0.4s ease;
+}
+.quota-stats {
+    display: flex; justify-content: space-between; margin-top: 6px;
+    font-size: 10.5px; color: var(--grey-text-color);
+}
+
+/* ---- 底部栏 ---- */
+.footer-bar { display: flex; justify-content: flex-end; }
+.footer-bar .wave-button { padding: 9px 20px; font-size: 13px; }
