@@ -989,7 +989,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         selectedId={currentPath}
                         height="100%"
                         width="100%"
-                        minWidth={160}
+                        minWidth={32}
                         maxWidth={9999}
                         maxDirEntries={TreeMaxEntries}
                         maxExpandAllDepth={TreeExpandAllMaxDepth}
