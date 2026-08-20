@@ -52,3 +52,6 @@ tmp/
 # Local dev artifacts
 cream-snazzy-green.jpeg
 electron-vite
+
+# GitNexus temp scratch
+.gitnexus-tmp/
