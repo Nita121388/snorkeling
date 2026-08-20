@@ -27,6 +27,16 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "BackupStats", Array.from(arguments))
     }
 
+    // abort a running turn in a live chat session
+    ChatAbort(request: AISessionsChatControlRequest): Promise<void> {
+        return callBackendService(this?.waveEnv, "aisessions", "ChatAbort", Array.from(arguments))
+    }
+
+    // shut down a live chat session and its underlying subprocess
+    ChatClose(request: AISessionsChatControlRequest): Promise<void> {
+        return callBackendService(this?.waveEnv, "aisessions", "ChatClose", Array.from(arguments))
+    }
+
     // delete old AI session migration backups
     // @returns AI session backup cleanup result
     CleanupBackups(request: AISessionsBackupRequest): Promise<BackupCleanupResult> {

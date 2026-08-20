@@ -61,6 +61,10 @@
 - `design-system.html` — 项目唯一权威 visual reference,`docs/design-system.md` 显式引用
 - `light-theme-variations.html` — 150KB 浅色主题候选总集,light 选型母本
 
+## `aisessions-chat-redesign/` — 1 项（自建目录）
+
+- `aisessions-chat-redesign/` — **▲ 设计活跃**;AI Sessions GUI 对话界面重构（上下布局）+ New Agent GUI/TUI 双模式选择设计。覆盖范围：(1) aisessions 视图改造（左右列表+上下聊天详情）(2) 底部输入框 PromptInput (3) 消息组件 MessageCard/ToolCallCard/StreamingBubble (4) New Agent 多步创建表单（来源选择→提炼设定→绑定Agent→GUI/TUI模式→加入群组）(5) 群聊界面预览。镜像源：`frontend/app/view/aisessions/session-detail.tsx, session-message.tsx, chat-composer.tsx, aisessions.tsx`；参考：beui PromptInput/MessageScroller/SignupForm + Paseo 聊天界面。
+
 ## `ssh-config-edit/` — 1 项（自建目录）
 
 - `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。

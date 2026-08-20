@@ -49,6 +49,12 @@ declare global {
         maxAgeDays?: number;
     };
 
+    // aisessionsservice.AISessionsChatControlRequest
+    type AISessionsChatControlRequest = {
+        source: string;
+        sessionId: string;
+    };
+
     // aisessionsservice.AISessionsDetailDeltaRequest
     type AISessionsDetailDeltaRequest = {
         id: string;
