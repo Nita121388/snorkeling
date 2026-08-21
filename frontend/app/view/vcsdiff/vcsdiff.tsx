@@ -4,6 +4,7 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { DiffViewer } from "@/app/view/codeeditor/diffviewer";
+import { getFileLanguage } from "@/app/view/preview/preview-edit";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import * as WOS from "@/store/wos";
@@ -289,6 +290,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                         original={originalText}
                         modified={modifiedText}
                         fileName={filePath}
+                        language={getFileLanguage(filePath)}
                         mode={mode}
                         copyContextFilePath={absoluteDiffPath}
                     />

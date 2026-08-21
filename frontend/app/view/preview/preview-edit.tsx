@@ -145,7 +145,7 @@ function getAbsoluteFilePath(fileInfo: FileInfo | null): string {
     return fileInfo.name ?? "";
 }
 
-function getFileLanguage(fileName: string | null): string | undefined {
+export function getFileLanguage(fileName: string | null): string | undefined {
     const baseName = fileName ? fileName.split("/").pop() : null;
     if (!baseName) {
         return undefined;
