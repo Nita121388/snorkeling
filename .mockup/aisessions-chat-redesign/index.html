@@ -193,20 +193,17 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .follow-pill.show{opacity:1;transform:translateX(-50%);pointer-events:auto}
 .follow-pill:hover{color:var(--text)}
 
-/* Message Scroller · PreviewRail（beui 同款） */
-.prail{position:absolute;right:6px;top:0;bottom:0;z-index:15;width:48px;display:grid;align-content:center}
+/* Message Scroller · 大纲轨（Paseo 药丸几何 + 余弦衰减 + beui 弹簧物理） */
+.prail{position:absolute;right:8px;top:10%;bottom:10%;z-index:15;width:36px;display:flex;flex-direction:column;justify-content:center}
 .prail.off{display:none}
-.pitem{position:relative;height:24px;width:48px;display:flex;align-items:center;color:var(--muted)}
-.ptick{display:block;height:3px;width:48px;border-radius:1.5px;background:currentColor;transform-origin:left;transform:scaleX(.25);transition:transform .38s cubic-bezier(.22,1,.36,1),color .2s}
-/* 无 hover 静息态：活动回合稍大 + accent 色；其余统一小，保证 hover 绽放对比明显 */
-.pitem.active .ptick{color:var(--accent)}
-.pitem.hot .ptick{color:var(--text)}
+.pslot{display:flex;height:8px;width:36px;align-items:center;background:none;border:none;padding:0 0 0 6px;cursor:pointer;flex-shrink:0}
+.ppill{display:block;height:2px;width:10px;border-radius:999px;background:var(--muted);margin-right:auto;will-change:width,height}
+.pslot.active .ppill{background:var(--accent)}
+.pslot.hot .ppill{background:var(--text)}
 .pcard{position:absolute;z-index:30;width:min(360px,68%);border:1px solid var(--border);border-radius:16px;background:var(--overlay);box-shadow:0 12px 40px var(--shadow);padding:14px 16px;pointer-events:none;opacity:0;transform:translateY(4px);filter:blur(6px);transition:opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
 .pcard.show{opacity:1;transform:none;filter:blur(0)}
 .pcard .pt-title{font-size:13px;font-weight:600;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .pcard .pt-desc{margin-top:5px;font-size:12.5px;line-height:1.55;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.prail.pulse .ptick{animation:rpulse 0.9s ease}
-@keyframes rpulse{50%{transform:scaleX(1)}}
 
 /* 只读横幅 */
 .ro-banner{display:flex;align-items:center;gap:10px;margin:0 24px 14px;padding:11px 14px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:12.5px}
@@ -582,7 +579,7 @@ function renderChat(){
   } else {
     stream.innerHTML=aiGroup(`<div class="prose"><p>CI 失败原因是缓存目录权限变更，修复见 diff：</p><pre><code>- chmod 777 .cache\n+ chown -R runner:runner .cache</code></pre></div>`,{name:"codex",model:"gpt-5.2",time:"周一"});
   }
-  buildOutline();renderRail();activeTurn=-1;setIdleScales();scrollBottom(false);
+  buildOutline();renderRail();activeTurn=-1;applyAll();scrollBottom(false);
 }
 
 /* ================= Message Scroller · PreviewRail ================= */
@@ -606,65 +603,115 @@ function buildOutline(){
     }
   }
 }
+/* ===== 弹簧物理（beui SPRING_LAYOUT：stiffness 360 / damping 32 / mass 0.6）===== */
+const SPRING_CFG={stiffness:360,damping:32,mass:0.6};
+const reduceMotion=matchMedia("(prefers-reduced-motion: reduce)").matches;
+class Spring{
+  constructor(v){this.v=v;this.vel=0;this.target=v}
+  set(t){this.target=t;if(reduceMotion){this.v=t;this.vel=0}}
+  step(dt){
+    if(reduceMotion)return false;
+    const disp=this.v-this.target;
+    if(Math.abs(disp)<0.0005&&Math.abs(this.vel)<0.0005){this.v=this.target;return false}
+    const a=(-SPRING_CFG.stiffness*disp-SPRING_CFG.damping*this.vel)/SPRING_CFG.mass;
+    this.vel+=a*dt;this.v+=this.vel*dt;
+    return true;
+  }
+}
+let slots=[];           // {el,pill,spring,idx}
+let rafId=null,lastT=0;
+function kick(){if(rafId==null){lastT=performance.now();rafId=requestAnimationFrame(tickLoop)}}
+function tickLoop(now){
+  const dt=Math.min((now-lastT)/1000,0.032);lastT=now;
+  let live=false;
+  for(const s of slots)if(s.spring.step(dt)){live=true;applyPill(s)}
+  rafId=live?requestAnimationFrame(tickLoop):null;
+}
+/* Paseo 药丸几何：静止 10px(活动18px) → 最大26px，高度 2→4px；左对齐向右生长 */
+const GEO={W:10,W_ACTIVE:18,W_MAX:26,H:2,H_MAX:4};
+function applyPill(s){
+  const m=Math.max(0,Math.min(1,s.spring.v));
+  const rest=s.idx===activeTurn?GEO.W_ACTIVE:GEO.W;
+  s.pill.style.width=(rest+m*(GEO.W_MAX-rest))+"px";
+  s.pill.style.height=(GEO.H+m*(GEO.H_MAX-GEO.H))+"px";
+}
+function applyAll(){slots.forEach(s=>{applyPill(s);s.el.classList.toggle("active",s.idx===activeTurn)})}
+/* ===== Paseo 余弦衰减：凸包随指针游动的波浪 ===== */
+const MAG_RADIUS=3;
+function tickMag(d){d=Math.abs(d);return d>=MAG_RADIUS?0:(1+Math.cos(Math.PI*d/MAG_RADIUS))/2}
+function retarget(){
+  for(const s of slots){
+    s.spring.set(attention<0?0:tickMag(s.idx-attention));
+    s.el.classList.toggle("hot",s.idx===attention);
+  }
+  kick();
+}
+/* ===== hover-intent（Paseo 同款）：首次进入 150ms 激活；横向扫过跳过延迟 ===== */
+const HOVER={timer:null,candidate:null,anchor:null,active:false,DELAY:150,DIST:4};
+function scheduleActivation(){
+  if(HOVER.candidate==null||HOVER.timer!=null)return;
+  HOVER.timer=setTimeout(()=>{HOVER.timer=null;HOVER.active=true;if(HOVER.candidate!=null)activate(HOVER.candidate)},HOVER.DELAY);
+}
+function pointAt(i){
+  HOVER.candidate=i;
+  if(HOVER.active){activate(i);return}
+  scheduleActivation();
+}
+function activate(i){
+  attention=i;hoveringRail=true;retarget();showCard(i);
+}
+function leaveRail(){
+  if(HOVER.timer){clearTimeout(HOVER.timer);HOVER.timer=null}
+  HOVER.candidate=null;HOVER.active=false;attention=-1;hoveringRail=false;
+  retarget();hideCard();
+}
+function jumpTo(i){
+  activeTurn=i;applyAll();retarget();hideCard();
+  turns[i].el.scrollIntoView({behavior:"smooth",block:"start"});
+}
 function renderRail(){
-  const rail=document.getElementById("prail");rail.innerHTML="";
+  const rail=document.getElementById("prail");rail.innerHTML="";slots=[];
   if(turns.length<2){rail.classList.add("off");return}
   rail.classList.remove("off");
   turns.forEach((t,i)=>{
-    const b=document.createElement("button");
-    b.className="pitem";b.type="button";b.setAttribute("aria-label",`跳到回合 ${i+1}: ${t.label}`);
-    b.innerHTML='<span class="ptick"></span>';
-    b.addEventListener("mouseenter",()=>{hoveringRail=true;showCard(i,b);setBloom(i)});
-    b.addEventListener("click",()=>{activeTurn=i;setBloom(i);hideCard();t.el.scrollIntoView({behavior:"smooth",block:"start"})});
-    rail.appendChild(b);
+    const slot=document.createElement("button");
+    slot.className="pslot"+(i===activeTurn?" active":"");slot.type="button";
+    slot.setAttribute("aria-label",`跳到回合 ${i+1}: ${t.label}`);
+    const pill=document.createElement("span");pill.className="ppill";
+    slot.appendChild(pill);
+    slot.addEventListener("mouseenter",()=>pointAt(i));
+    slot.addEventListener("click",()=>jumpTo(i));
+    rail.appendChild(slot);
+    slots.push({el:slot,pill,spring:new Spring(0),idx:i});
   });
-  setIdleScales();
+  applyAll();
 }
-/* 无 hover 静息态：活动回合稍大 + accent 色，其余统一小 */
-function setIdleScales(){
-  [...document.querySelectorAll("#prail .pitem")].forEach((b,i)=>{
-    b.querySelector(".ptick").style.transform=`scaleX(${i===activeTurn?.55:.25})`;
-    b.classList.toggle("active",i===activeTurn);
-    b.classList.remove("hot");
-  });
-}
-/* hover 态：以光标为中心的 fisheye 绽放（beui 距离衰减）*/
-function setBloom(hot){
-  [...document.querySelectorAll("#prail .pitem")].forEach((b,i)=>{
-    const d=Math.abs(i-hot);
-    const s=d===0?1:d===1?.68:d===2?.44:.25;
-    b.querySelector(".ptick").style.transform=`scaleX(${s})`;
-    b.classList.toggle("hot",d===0);
-    b.classList.remove("active");
-  });
-}
-function showCard(i,btn){
+function showCard(i){
   const t=turns[i],card=document.getElementById("pcard");
   card.querySelector(".pt-title").textContent=`${String(i+1).padStart(2,"0")} · ${t.label}`;
   const d=card.querySelector(".pt-desc");
   d.textContent=t.desc||"";d.style.display=t.desc?"":"none";
-  card.style.right="60px";card.style.top="-999px";card.classList.add("show");
+  card.style.right="52px";card.style.top="-999px";card.classList.add("show");
   const wrap=document.getElementById("scroller").parentElement;
-  const br=btn.getBoundingClientRect(),wr=wrap.getBoundingClientRect(),cr=card.getBoundingClientRect();
-  let top=br.top-wr.top+br.height/2-cr.height/2;
+  const sr=slots[i].el.getBoundingClientRect(),wr=wrap.getBoundingClientRect(),cr=card.getBoundingClientRect();
+  let top=sr.top-wr.top+sr.height/2-cr.height/2;
   top=Math.max(10,Math.min(top,wr.height-cr.height-10));
   card.style.top=top+"px";
 }
 function hideCard(){document.getElementById("pcard").classList.remove("show")}
 const prailEl=document.getElementById("prail");
-prailEl.addEventListener("mouseleave",()=>{hoveringRail=false;hideCard();setIdleScales()});
-function pulseRail(){
-  prailEl.classList.remove("pulse");void prailEl.offsetWidth;prailEl.classList.add("pulse");
-  setTimeout(()=>prailEl.classList.remove("pulse"),950);
-}
-/* 滚动追踪：更新活动回合；hover 中不干扰预览卡与绽放态 */
-const scrollerEl=document.getElementById("scroller");
-scrollerEl.addEventListener("scroll",()=>{
-  if(!hoveringRail)hideCard();
-  let idx=-1;
-  turns.forEach((t,i)=>{if(t.el.getBoundingClientRect().top<scrollerEl.getBoundingClientRect().top+120)idx=i});
-  if(idx!==activeTurn){activeTurn=idx;if(!hoveringRail)setIdleScales()}
-},{passive:true});
+prailEl.addEventListener("mouseenter",e=>{HOVER.anchor={x:e.clientX,y:e.clientY}});
+prailEl.addEventListener("mousemove",e=>{
+  if(HOVER.active||!HOVER.anchor)return;
+  const dx=e.clientX-HOVER.anchor.x,dy=e.clientY-HOVER.anchor.y;
+  if(Math.abs(dy)>=Math.abs(dx)){HOVER.anchor={x:e.clientX,y:e.clientY};return}
+  if(Math.abs(dx)<HOVER.DIST)return;
+  HOVER.anchor={x:e.clientX,y:e.clientY};scheduleActivation();
+});
+prailEl.addEventListener("mouseleave",leaveRail);
+/* 头部大纲按钮：跳到下一回合 */
+function pulseRail(){if(turns.length)jumpTo((activeTurn+1+turns.length)%turns.length)}
+
 function toggleSearch(){document.getElementById("srchpop").classList.toggle("open");document.getElementById("srchinput").focus()}
 
 /* ================= 滚动跟随 ================= */

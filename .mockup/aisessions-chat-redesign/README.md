@@ -21,7 +21,7 @@ v2 直接对齐 beui/Paseo 的现代 Agent 对话设计：
 | **内容限宽居中** | 消息列与输入卡统一 `max-width: 768px` 居中，两侧留白呼吸 |
 | **消息分组** | 连续同角色消息合并组；头像/名/时间只在组首出现一次 |
 | **系统消息 = 居中胶囊** | 压缩提示等用 `rounded-full bg-surface` pill |
-| **会话大纲 = MessageScroller PreviewRail** | 右缘垂直刻度轨（每回合一条 2px 横线，24px 行距）；hover 邻近项按距离 fisheye 缩放（1/0.68/0.44/0.25）；悬停弹出预览卡（用户消息标题 ≤56 字符 + AI 回复摘要 ≤88 字符，rounded-2xl border 卡片 + blur 进场）；点击跳转；滚动自动高亮当前所在回合 |
+| **会话大纲 = Paseo 药丸波浪轨** | 右缘药丸轨道（静止 10px/活动 18px，最大 26px，左对齐向右生长）；hover 时按**余弦衰减**形成随指针游动的凸包波浪：`mag(d)=(1+cos(π·d/3))/2`，半径 3 格；每根药丸由独立**弹簧物理**驱动（beui SPRING_LAYOUT：stiffness 360/damping 32/mass 0.6），扫过时依次伸缩如波浪；hover-intent 防误触（首次 150ms 延迟、横向扫过跳过）；预览卡同前；源码参考已下载至 ~/Primary/projects/{beui-ref,paseo-ref} |
 | **滚动跟随** | 流式时贴底跟随；用户上滚立即放权 + 底部浮现「跳到最新」胶囊 |
 | **大纲轨** | 右缘 hover 浮出细轨按钮 → 弹出用户消息目录（替代旧常驻侧栏） |
 
