@@ -206,6 +206,22 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .pcard .pt-title{font-size:13px;font-weight:600;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .pcard .pt-desc{margin-top:5px;font-size:12.5px;line-height:1.55;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 
+/* 头栏 ··· 菜单 */
+.more-wrap{position:relative}
+.more-pop{position:absolute;top:36px;right:0;z-index:60;min-width:200px;background:var(--overlay);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 32px var(--shadow);padding:5px;display:none}
+.more-pop.open{display:block}
+.mi{display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 9px;border-radius:7px;font-size:12.5px;color:var(--text-2);text-align:left}
+.mi:hover{background:var(--hover);color:var(--text)}
+.mi .ic{color:var(--muted);flex-shrink:0}
+.mi .arr{margin-left:auto;color:var(--muted)}
+.msep{height:1px;background:var(--border-soft);margin:4px 6px}
+.msub{position:absolute;left:calc(100% - 4px);top:-5px;min-width:190px;background:var(--overlay);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 32px var(--shadow);padding:5px;display:none}
+.mi-sub{position:relative}
+.mi-sub:hover>.msub,.msub.open{display:block}
+.rename-input{font-size:14px;font-weight:600;border:1px solid var(--accent)!important;border-radius:6px;background:var(--surface-soft);outline:none;padding:2px 6px;max-width:340px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);z-index:99;background:var(--overlay);border:1px solid var(--accent-soft-border);color:var(--accent);border-radius:999px;padding:7px 16px;font-size:12px;opacity:0;pointer-events:none;transition:all .2s;box-shadow:0 6px 20px var(--shadow)}
+.toast.show{opacity:1;transform:translateX(-50%)}
+
 /* 只读横幅 */
 .ro-banner{display:flex;align-items:center;gap:10px;margin:0 24px 14px;padding:11px 14px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:12.5px}
 .ro-banner b{color:var(--text-2);font-weight:600}
@@ -337,7 +353,24 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
             <button class="tb-btn" title="消息大纲" onclick="pulseRail()"><svg class="ic s14"><use href="#i-list"/></svg></button>
             <button class="tb-btn" title="备注与标签"><svg class="ic s14"><use href="#i-note"/></svg></button>
             <button class="tb-btn" title="标记"><svg class="ic s14"><use href="#i-star"/></svg></button>
-            <button class="tb-btn" title="更多"><svg class="ic s14"><use href="#i-more"/></svg></button>
+            <div class="more-wrap">
+              <button class="tb-btn" title="更多" onclick="toggleMore(event)"><svg class="ic s14"><use href="#i-more"/></svg></button>
+              <div class="more-pop" id="morepop">
+                <button class="mi" onclick="startRename()"><svg class="ic s14"><use href="#i-note"/></svg>重命名聊天</button>
+                <div class="msep"></div>
+                <div class="mi mi-sub">
+                  <svg class="ic s14"><use href="#i-copy"/></svg>复制
+                  <svg class="ic s12 arr"><use href="#i-chev"/></svg>
+                  <div class="msub">
+                    <button class="mi" onclick="copySession('dir')"><svg class="ic s14"><use href="#i-term"/></svg>工作目录</button>
+                    <button class="mi" onclick="copySession('file')"><svg class="ic s14"><use href="#i-note"/></svg>会话文件路径</button>
+                    <button class="mi" onclick="copySession('id')"><svg class="ic s14"><use href="#i-spark"/></svg>会话 ID</button>
+                    <div class="msep"></div>
+                    <button class="mi" onclick="copySession('md')"><svg class="ic s14"><use href="#i-list"/></svg>Markdown（全文）</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -489,7 +522,8 @@ function showView(id,btn){document.querySelectorAll(".view").forEach(v=>v.classL
 
 /* ================= 会话数据 ================= */
 const SESSIONS=[
- {id:"pi1",name:"Debug Snorkeling Session",src:"pi",color:"var(--src-pi)",meta:"14 条消息 · 2 小时前",tags:["debug"],live:true},
+ {id:"pi1",name:"Debug Snorkeling Session",src:"pi",color:"var(--src-pi)",meta:"14 条消息 · 2 小时前",tags:["debug"],live:true,
+  dir:"~/Primary/projects/snorkeling-gui-chat",file:"~/.pi/agent/sessions/019f8958-bda4.jsonl",sid:"019f8958-bda4-7570"},
  {id:"pi2",name:"优化 SQL 慢查询",src:"pi",color:"var(--src-pi)",meta:"8 条消息 · 昨天",tags:["sql"]},
  {id:"cl1",name:"数据库索引策略讨论",src:"claude",color:"var(--src-claude)",meta:"22 条消息 · 周二",tags:["database"]},
  {id:"cx1",name:"CI/CD 配置排查",src:"codex",color:"var(--src-codex)",meta:"12 条消息 · 周一",tags:["ci"]},
@@ -714,6 +748,87 @@ prailEl.addEventListener("mouseleave",leaveRail);
 function pulseRail(){if(turns.length)jumpTo((activeTurn+1+turns.length)%turns.length)}
 
 function toggleSearch(){document.getElementById("srchpop").classList.toggle("open");document.getElementById("srchinput").focus()}
+
+/* ================= 头栏 ··· 菜单：重命名 / 复制 ================= */
+const morepop=document.getElementById("morepop");
+function toggleMore(e){e.stopPropagation();morepop.classList.toggle("open")}
+document.addEventListener("click",e=>{if(!morepop.contains(e.target))morepop.classList.remove("open")});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")morepop.classList.remove("open")});
+
+function curSessionObj(){return SESSIONS.find(s=>s.id===curSession)||{name:"",dir:"~/project",file:"~/.pi/sessions/demo.jsonl",sid:"demo-0000"}}
+
+let toastTimer=null;
+function toast(msg){
+  let t=document.querySelector(".toast");
+  if(!t){t=document.createElement("div");t.className="toast";document.body.appendChild(t)}
+  t.textContent=msg;t.classList.add("show");
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),1400);
+}
+async function copyText(text,label){
+  try{await navigator.clipboard.writeText(text)}
+  catch(_){
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);
+    ta.select();document.execCommand("copy");ta.remove();
+  }
+  toast((label||"已复制")+" ✓");
+}
+function startRename(){
+  morepop.classList.remove("open");
+  const el=document.getElementById("tb-title"),s=curSessionObj();
+  const input=document.createElement("input");
+  input.className="rename-input";input.value=s.name;
+  el.replaceWith(input);input.focus();input.select();
+  let done=false;
+  const commit=()=>{
+    if(done||!input.isConnected)return;done=true;
+    document.removeEventListener("pointerdown",outside,true);
+    const v=input.value.trim()||s.name;
+    s.name=v;
+    const span=document.createElement("div");span.className="tb-title";span.id="tb-title";span.textContent=v;
+    input.replaceWith(span);
+    renderSessions();
+    toast("已重命名 \u2713");
+  };
+  /* 提交三保险：Enter / blur / 点击外部（不单点依赖 focus 语义） */
+  const outside=e=>{if(e.target!==input)commit()};
+  input.addEventListener("keydown",ev=>{
+    if(ev.key==="Enter"){ev.preventDefault();commit()}
+    if(ev.key==="Escape"){done=true;document.removeEventListener("pointerdown",outside,true);
+      const span=document.createElement("div");span.className="tb-title";span.id="tb-title";span.textContent=s.name;
+      input.replaceWith(span);}
+  });
+  input.addEventListener("blur",commit,{once:true});
+  document.addEventListener("pointerdown",outside,true);
+}
+/* 会话全文导出为 Markdown：用户气泡 + AI 散文 + 工具调用 */
+function sessionToMarkdown(){
+  const s=curSessionObj();
+  const lines=[`# ${s.name}`,"",`> 来源: ${s.src} · 会话 ID: \`${s.sid}\``,""];
+  document.querySelectorAll("#stream > .mgroup").forEach(g=>{
+    const ub=g.querySelector(".ububble");
+    if(ub){lines.push("**🧑 你：**","",ub.textContent.trim(),"");return}
+    const prose=g.querySelector(".prose");
+    if(prose){
+      const name=g.querySelector(".mg-name")?.textContent||"assistant";
+      lines.push(`**🤖 ${name}：**`,"",prose.innerText.replace(/\n?\u200b/g,"").trim(),"");
+    }
+  });
+  document.querySelectorAll("#stream .tool").forEach(t=>{
+    const name=t.querySelector(".tname")?.textContent||"tool";
+    const prev=t.querySelector(".tprev")?.textContent||"";
+    const body=t.querySelector(".termout")?.textContent||"";
+    lines.push(`<details><summary><code>${name}</code> — ${prev.slice(0,80)}</summary>`,"","```",body.trim(),"```","","</details>","");
+  });
+  return lines.join("\n");
+}
+function copySession(kind){
+  morepop.classList.remove("open");
+  const s=curSessionObj();
+  if(kind==="dir")return copyText(s.dir,"已复制工作目录");
+  if(kind==="file")return copyText(s.file,"已复制文件路径");
+  if(kind==="id")return copyText(s.sid,"已复制会话 ID");
+  if(kind==="md")return copyText(sessionToMarkdown(),"已复制 Markdown 全文");
+}
 
 /* ================= 滚动跟随 ================= */
 const scroller=document.getElementById("scroller"),pill=document.getElementById("followpill");
