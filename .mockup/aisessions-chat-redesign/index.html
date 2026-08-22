@@ -194,10 +194,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .follow-pill:hover{color:var(--text)}
 
 /* Message Scroller · 大纲轨（Paseo 药丸几何 + 余弦衰减 + beui 弹簧物理） */
-.prail{position:absolute;right:8px;top:10%;bottom:10%;z-index:15;width:44px;display:flex;flex-direction:column;justify-content:center}
-.prail::before{content:"";position:absolute;left:8px;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--border);opacity:.55}
+.prail{position:absolute;right:8px;top:10%;bottom:10%;z-index:15;width:40px;display:flex;flex-direction:column;justify-content:center}
+.prail::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:1px;background:var(--border);opacity:.35}
 .prail.off{display:none}
-.pslot{display:flex;height:12px;width:44px;align-items:center;background:none;border:none;padding:0 0 0 7px;cursor:pointer;flex-shrink:0;position:relative;z-index:1}
+.pslot{display:flex;height:10px;width:40px;align-items:center;background:none;border:none;padding:0 0 0 7px;cursor:pointer;flex-shrink:0;position:relative;z-index:1}
 .ppill{display:block;height:3px;width:16px;border-radius:999px;background:var(--text-2);margin-right:auto;will-change:width,height}
 .pslot.active .ppill{background:var(--accent)}
 .pslot.hot .ppill{background:var(--text)}
@@ -629,7 +629,7 @@ function tickLoop(now){
   rafId=live?requestAnimationFrame(tickLoop):null;
 }
 /* Paseo 药丸几何：静止 10px(活动18px) → 最大26px，高度 2→4px；左对齐向右生长 */
-const GEO={W:16,W_ACTIVE:24,W_MAX:34,H:3,H_MAX:5};
+const GEO={W:12,W_ACTIVE:17,W_MAX:26,H:2,H_MAX:3};
 function applyPill(s){
   const m=Math.max(0,Math.min(1,s.spring.v));
   const rest=s.idx===activeTurn?GEO.W_ACTIVE:GEO.W;
@@ -692,7 +692,7 @@ function showCard(i){
   card.querySelector(".pt-title").textContent=`${String(i+1).padStart(2,"0")} · ${t.label}`;
   const d=card.querySelector(".pt-desc");
   d.textContent=t.desc||"";d.style.display=t.desc?"":"none";
-  card.style.right="58px";card.style.top="-999px";card.classList.add("show");
+  card.style.right="54px";card.style.top="-999px";card.classList.add("show");
   const wrap=document.getElementById("scroller").parentElement;
   const sr=slots[i].el.getBoundingClientRect(),wr=wrap.getBoundingClientRect(),cr=card.getBoundingClientRect();
   let top=sr.top-wr.top+sr.height/2-cr.height/2;
