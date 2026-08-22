@@ -19,7 +19,7 @@ import "../../session-overview/session-overview.scss";
 import { ClaudeLogo, IconButton, OpenAILogo, PiLogo, SortButton, SourceButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
-import { SessionDetailPane } from "./session-detail";
+import { SessionDetailPane, NewChatPane } from "./session-detail";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
@@ -32,6 +32,7 @@ import {
     DefaultDateRange,
     DefaultPathFilter,
     DefaultTagPresence,
+    NewSessionKey,
     PathFilterOtherRoot,
     dateRangeToSinceBefore,
 } from "./types";
@@ -105,6 +106,9 @@ export class AiSessionsViewModel implements ViewModel {
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
+    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
+        SessionSummary | null
+    >;
     deletingAtom = jotai.atom<boolean>(false);
     lastSessionsRefreshAtAtom = jotai.atom<number>(0);
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
@@ -175,6 +179,28 @@ export class AiSessionsViewModel implements ViewModel {
         ];
     }
 
+    // Start a transient "new chat" placeholder. The real session id is only
+    // assigned by pi after the first message; bindNewSession promotes it then.
+    startNewSession(): void {
+        const existing = globalStore.get(this.newSessionAtom);
+        if (existing != null) {
+            globalStore.set(this.selectedKeyAtom, NewSessionKey);
+            globalStore.set(this.detailAtom, null);
+            return;
+        }
+        globalStore.set(this.newSessionAtom, { key: NewSessionKey, id: "", source: "pi", title: "New Chat" });
+        globalStore.set(this.selectedKeyAtom, NewSessionKey);
+        globalStore.set(this.detailAtom, null);
+    }
+
+    // Called when the chat stream reports a freshly assigned session id.
+    bindNewSession(sessionId: string): void {
+        const placeholder = globalStore.get(this.newSessionAtom);
+        if (placeholder == null || placeholder.id !== "" || sessionId === "") return;
+        globalStore.set(this.newSessionAtom, { ...placeholder, id: sessionId });
+        void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+    }
+
     async loadSessions(refresh = false, sortDescending = false): Promise<void> {
         const loadSeq = ++this.sessionsLoadSeq;
         const source = globalStore.get(this.sourceAtom);
@@ -226,9 +252,24 @@ export class AiSessionsViewModel implements ViewModel {
             }
             globalStore.set(this.sessionsAtom, sessions);
             globalStore.set(this.lastSessionsRefreshAtAtom, Date.now());
+            // Promote the pending new-chat placeholder once its real session
+            // shows up in the list (pi wrote the session file after turn 1).
+            const newPlaceholder = globalStore.get(this.newSessionAtom);
+            if (newPlaceholder != null && newPlaceholder.id !== "") {
+                const promoted = sessions.find((session) => session.id === newPlaceholder.id);
+                if (promoted != null) {
+                    globalStore.set(this.newSessionAtom, null);
+                    if (globalStore.get(this.selectedKeyAtom) === NewSessionKey) {
+                        globalStore.set(this.selectedKeyAtom, promoted.key);
+                        globalStore.set(this.detailAtom, null);
+                        void this.loadDetail(promoted, refresh);
+                    }
+                }
+            }
             void this.loadTags(refresh);
             const selectedKey = globalStore.get(this.selectedKeyAtom);
-            const selectedStillExists = sessions.some((session) => session.key === selectedKey);
+            const selectedStillExists =
+                sessions.some((session) => session.key === selectedKey) || selectedKey === NewSessionKey;
             if (!selectedStillExists) {
                 const detail = globalStore.get(this.detailAtom);
                 if (selectedKey !== "" && detail?.summary?.key === selectedKey) {
@@ -813,6 +854,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const blockData = jotai.useAtomValue(model.blockAtom);
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
+    const newSession = jotai.useAtomValue(model.newSessionAtom);
     const projectPaths = jotai.useAtomValue(model.projectPathsAtom);
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
     const source = jotai.useAtomValue(model.sourceAtom);
@@ -843,7 +885,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
-    const visibleSessions = useMemo(() => sortSessionsByTime(sessions, sortDescending), [sessions, sortDescending]);
+    const visibleSessions = useMemo(() => {
+        const base = sortSessionsByTime(sessions, sortDescending);
+        return newSession != null ? [newSession, ...base] : base;
+    }, [sessions, sortDescending, newSession]);
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
@@ -950,6 +995,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const activeSession = selectedSession ?? fallbackSession;
 
     useEffect(() => {
+        if (activeSession?.key === NewSessionKey) return; // placeholder has no server detail yet
         if (activeSession && detail?.summary?.key !== activeSession.key && !detailLoading) {
             model.loadDetail(activeSession);
         }
@@ -1240,7 +1286,25 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 ) : visibleSessions.length === 0 ? (
                                     <EmptyState text={emptySessionsText(markedFilter, remoteFilterActive)} />
                                 ) : (
-                                    visibleSessions.map((session) => (
+                                    visibleSessions.map((session) =>
+                                        session.key === NewSessionKey ? (
+                                            <button
+                                                key={session.key}
+                                                type="button"
+                                                onClick={() => {
+                                                    globalStore.set(model.selectedKeyAtom, NewSessionKey);
+                                                    globalStore.set(model.detailAtom, null);
+                                                }}
+                                                className={cn(
+                                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs ring-inset hover:bg-hover",
+                                                    selectedKey === NewSessionKey && "bg-accent/5 ring-1 ring-accent/40"
+                                                )}
+                                            >
+                                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                                                <span className="min-w-0 truncate font-medium text-primary">New Chat</span>
+                                                <span className="ml-auto shrink-0 text-[10px] text-secondary">unsent</span>
+                                            </button>
+                                        ) : (
                                         <SessionRow
                                             key={session.key}
                                             session={session}
@@ -1262,8 +1326,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 null
                                             }
                                             onJumpToBlock={jumpToRunningSessionBlock}
-                                        />
-                                    ))
+                                            />
+                                        )
+                                    )
                                 )}
                             </div>
                         </>
@@ -1278,15 +1343,19 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         />
                     ) : null}
                 </div>
-                <SessionDetailPane
-                    model={model}
-                    detail={detail}
-                    loading={detailLoading}
-                    deltaLoading={detailDeltaLoading}
-                    toolCallsLoading={toolCallsLoading}
-                    restoring={restoring}
-                    deleting={deleting}
-                />
+                {activeSession?.key === NewSessionKey ? (
+                    <NewChatPane onBound={(sessionId) => model.bindNewSession(sessionId)} />
+                ) : (
+                    <SessionDetailPane
+                        model={model}
+                        detail={detail}
+                        loading={detailLoading}
+                        deltaLoading={detailDeltaLoading}
+                        toolCallsLoading={toolCallsLoading}
+                        restoring={restoring}
+                        deleting={deleting}
+                    />
+                )}
             </div>
         </div>
     );

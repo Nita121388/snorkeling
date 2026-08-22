@@ -50,7 +50,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         setInput("");
         send({
             source,
-            sessionId,
+            sessionId: sessionId || undefined, // empty => backend spawns a new session
             projectPath: projectPath ?? undefined,
             provider: provider ?? undefined,
             model: model ?? undefined,

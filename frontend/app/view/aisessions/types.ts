@@ -3,6 +3,10 @@
 
 export type SourceFilter = "" | "codex" | "claude" | "opencode" | "pi";
 
+// Key of the transient "new chat" placeholder shown in the session list until
+// the backend assigns a real session id (first message) and List picks it up.
+export const NewSessionKey = "__new__";
+
 export type MarkedFilter = "all" | "starred" | "unstarred";
 
 // Tag-presence filter. "any" = no constraint (default). "untagged" = sessions

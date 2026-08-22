@@ -19,6 +19,39 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
+import { ChatComposer } from "./chat-composer";
+
+/**
+ * Transient pane shown while the "new chat" placeholder is selected. The
+ * backend assigns the real session id on the first message; onBound promotes
+ * the placeholder to a canonical session entry.
+ *
+ * ponytail: no project picker yet — pi spawns with its default cwd. Upgrade
+ * path is the project selector from the M3 New Agent GUI work.
+ */
+export function NewChatPane({ onBound }: { onBound: (sessionId: string) => void }) {
+    return (
+        <div className="flex h-full min-w-0 flex-1 flex-col bg-bg">
+            <div className="flex flex-1 items-center justify-center px-6">
+                <div className="max-w-md text-center">
+                    <div className="mb-2 text-sm font-medium text-primary">开始新对话</div>
+                    <div className="text-xs leading-5 text-secondary">
+                        输入第一条消息后 pi 会自动创建会话，完成后会出现在左侧列表中。
+                    </div>
+                </div>
+            </div>
+            <ChatComposer
+                source="pi"
+                sessionId=""
+                onEvent={(evt) => {
+                    if (evt.type === "session_state" && evt.state?.sessionId) {
+                        onBound(evt.state.sessionId as string);
+                    }
+                }}
+            />
+        </div>
+    );
+}
 import {
     buildSessionDetailTimeline,
     formatDateTimeToSecond,
@@ -32,7 +65,6 @@ import {
     shortSessionId,
     trimMessageText,
 } from "./utils";
-import { ChatComposer } from "./chat-composer";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const OutlineTooltipPreviewLength = 1800;
