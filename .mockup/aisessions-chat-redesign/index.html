@@ -197,7 +197,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .prail{position:absolute;right:6px;top:0;bottom:0;z-index:15;width:48px;display:grid;align-content:center}
 .prail.off{display:none}
 .pitem{position:relative;height:24px;width:48px;display:flex;align-items:center;color:var(--muted)}
-.ptick{display:block;height:2px;width:48px;border-radius:1px;background:currentColor;transform-origin:left;transform:scaleX(.25);transition:transform .38s cubic-bezier(.22,1,.36,1),color .2s}
+.ptick{display:block;height:3px;width:48px;border-radius:1.5px;background:currentColor;transform-origin:left;transform:scaleX(.25);transition:transform .38s cubic-bezier(.22,1,.36,1),color .2s}
+/* 无 hover 静息态：活动回合稍大 + accent 色；其余统一小，保证 hover 绽放对比明显 */
+.pitem.active .ptick{color:var(--accent)}
 .pitem.hot .ptick{color:var(--text)}
 .pcard{position:absolute;z-index:30;width:min(360px,68%);border:1px solid var(--border);border-radius:16px;background:var(--overlay);box-shadow:0 12px 40px var(--shadow);padding:14px 16px;pointer-events:none;opacity:0;transform:translateY(4px);filter:blur(6px);transition:opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
 .pcard.show{opacity:1;transform:none;filter:blur(0)}
@@ -580,7 +582,7 @@ function renderChat(){
   } else {
     stream.innerHTML=aiGroup(`<div class="prose"><p>CI 失败原因是缓存目录权限变更，修复见 diff：</p><pre><code>- chmod 777 .cache\n+ chown -R runner:runner .cache</code></pre></div>`,{name:"codex",model:"gpt-5.2",time:"周一"});
   }
-  buildOutline();renderRail();activeTurn=-1;setScales(-1);scrollBottom(false);
+  buildOutline();renderRail();activeTurn=-1;setIdleScales();scrollBottom(false);
 }
 
 /* ================= Message Scroller · PreviewRail ================= */
@@ -612,18 +614,28 @@ function renderRail(){
     const b=document.createElement("button");
     b.className="pitem";b.type="button";b.setAttribute("aria-label",`跳到回合 ${i+1}: ${t.label}`);
     b.innerHTML='<span class="ptick"></span>';
-    b.addEventListener("mouseenter",()=>{hoveringRail=true;showCard(i,b);setScales(i)});
-    b.addEventListener("click",()=>{activeTurn=i;setScales(i);hideCard();t.el.scrollIntoView({behavior:"smooth",block:"start"})});
+    b.addEventListener("mouseenter",()=>{hoveringRail=true;showCard(i,b);setBloom(i)});
+    b.addEventListener("click",()=>{activeTurn=i;setBloom(i);hideCard();t.el.scrollIntoView({behavior:"smooth",block:"start"})});
     rail.appendChild(b);
   });
-  setScales(-1);
+  setIdleScales();
 }
-function setScales(hot){
+/* 无 hover 静息态：活动回合稍大 + accent 色，其余统一小 */
+function setIdleScales(){
   [...document.querySelectorAll("#prail .pitem")].forEach((b,i)=>{
-    const d=hot<0?99:Math.abs(i-hot);
-    const s=d===0?1:d===1?.68:d===2?.44:.25;   // beui fisheye 衰减
+    b.querySelector(".ptick").style.transform=`scaleX(${i===activeTurn?.55:.25})`;
+    b.classList.toggle("active",i===activeTurn);
+    b.classList.remove("hot");
+  });
+}
+/* hover 态：以光标为中心的 fisheye 绽放（beui 距离衰减）*/
+function setBloom(hot){
+  [...document.querySelectorAll("#prail .pitem")].forEach((b,i)=>{
+    const d=Math.abs(i-hot);
+    const s=d===0?1:d===1?.68:d===2?.44:.25;
     b.querySelector(".ptick").style.transform=`scaleX(${s})`;
     b.classList.toggle("hot",d===0);
+    b.classList.remove("active");
   });
 }
 function showCard(i,btn){
@@ -640,18 +652,18 @@ function showCard(i,btn){
 }
 function hideCard(){document.getElementById("pcard").classList.remove("show")}
 const prailEl=document.getElementById("prail");
-prailEl.addEventListener("mouseleave",()=>{hoveringRail=false;hideCard();setScales(activeTurn)});
+prailEl.addEventListener("mouseleave",()=>{hoveringRail=false;hideCard();setIdleScales()});
 function pulseRail(){
   prailEl.classList.remove("pulse");void prailEl.offsetWidth;prailEl.classList.add("pulse");
   setTimeout(()=>prailEl.classList.remove("pulse"),950);
 }
-/* 滚动追踪：当前视口顶部所在回合高亮 */
+/* 滚动追踪：更新活动回合；hover 中不干扰预览卡与绽放态 */
 const scrollerEl=document.getElementById("scroller");
 scrollerEl.addEventListener("scroll",()=>{
-  hideCard();
+  if(!hoveringRail)hideCard();
   let idx=-1;
   turns.forEach((t,i)=>{if(t.el.getBoundingClientRect().top<scrollerEl.getBoundingClientRect().top+120)idx=i});
-  if(idx!==activeTurn){activeTurn=idx;if(!hoveringRail)setScales(idx)}
+  if(idx!==activeTurn){activeTurn=idx;if(!hoveringRail)setIdleScales()}
 },{passive:true});
 function toggleSearch(){document.getElementById("srchpop").classList.toggle("open");document.getElementById("srchinput").focus()}
 
