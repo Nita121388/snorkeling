@@ -76,6 +76,17 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .search-box input{width:100%;height:30px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);padding:0 10px 0 30px;font-size:12.5px;outline:none;transition:border-color .12s}
 .search-box input:focus{border-color:var(--accent)}
 .filter-row{display:flex;gap:5px;flex-wrap:wrap}
+.fbtn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;color:var(--text-2)}
+.fbtn:hover{background:var(--hover)}
+.fbtn.on{color:var(--accent);background:var(--accent-soft)}
+.fbtn .fbadge{position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:9px;font-weight:700;display:grid;place-items:center;padding:0 3px}
+.fpanel{display:none;flex-direction:column;gap:10px;border:1px solid var(--border-soft);border-radius:10px;background:var(--surface-soft);padding:10px;margin-top:2px}
+.fpanel.open{display:flex}
+.fp-sec{display:flex;flex-direction:column;gap:4px}
+.fp-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.fp-chips{display:flex;gap:4px;flex-wrap:wrap}
+.fp-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border-soft);padding-top:8px}
+.fp-count{font-size:11px;color:var(--muted)}
 .chip{height:22px;padding:0 9px;border-radius:999px;font-size:11px;color:var(--text-2);border:1px solid transparent;display:inline-flex;align-items:center;gap:4px}
 .chip:hover{background:var(--hover)}
 .chip.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft-border);font-weight:600}
@@ -215,7 +226,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .mi .ic{color:var(--muted);flex-shrink:0}
 .mi .arr{margin-left:auto;color:var(--muted)}
 .msep{height:1px;background:var(--border-soft);margin:4px 6px}
-.msub{position:absolute;left:calc(100% - 4px);top:-5px;min-width:190px;background:var(--overlay);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 32px var(--shadow);padding:5px;display:none}
+.msub{position:absolute;right:calc(100% + 4px);left:auto;top:-5px;min-width:190px;background:var(--overlay);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 32px var(--shadow);padding:5px;display:none}
 .mi-sub{position:relative}
 .mi-sub:hover>.msub,.msub.open{display:block}
 .rename-input{font-size:14px;font-weight:600;border:1px solid var(--accent)!important;border-radius:6px;background:var(--surface-soft);outline:none;padding:2px 6px;max-width:340px}
@@ -323,7 +334,35 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
         </div>
       </div>
       <button class="newchat-btn" onclick="newChat()"><svg class="ic s14"><use href="#i-plus"/></svg>新对话</button>
-      <div class="search-box"><svg class="ic s12"><use href="#i-search"/></svg><input placeholder="搜索会话…" /></div>
+      <div style="display:flex;gap:6px">
+            <div class="search-box" style="flex:1"><svg class="ic s12"><use href="#i-search"/></svg><input placeholder="搜索会话…" /></div>
+            <button class="fbtn" id="fbtn" title="筛选" onclick="toggleFilterPanel()"><svg class="ic s14"><use href="#i-tool"/></svg><span class="fbadge" id="fbadge" style="display:none">0</span></button>
+          </div>
+          <div class="fpanel" id="fpanel">
+            <div class="fp-sec"><span class="fp-label">时间</span>
+              <div class="fp-chips" data-fgroup="date">
+                <span class="chip on">全部</span><span class="chip">今天</span><span class="chip">7 天</span><span class="chip">30 天</span><span class="chip">自定义…</span>
+              </div></div>
+            <div class="fp-sec"><span class="fp-label">标记</span>
+              <div class="fp-chips" data-fgroup="marked">
+                <span class="chip on">全部</span><span class="chip">★ 已标</span><span class="chip">未标</span>
+              </div></div>
+            <div class="fp-sec"><span class="fp-label">标签</span>
+              <div class="fp-chips" data-fgroup="tags">
+                <span class="chip">#debug</span><span class="chip">#sql</span><span class="chip">#database</span><span class="chip">#deploy</span><span class="chip">#ci</span>
+              </div>
+              <div class="fp-chips" data-fgroup="presence">
+                <span class="chip on">任意标签</span><span class="chip">无标签</span>
+              </div></div>
+            <div class="fp-sec"><span class="fp-label">项目路径</span>
+              <div class="fp-chips" data-fgroup="path">
+                <span class="chip">snorkeling</span><span class="chip">医疗AI</span><span class="chip">obsidian</span><span class="chip">其他</span>
+              </div></div>
+            <div class="fp-foot">
+              <span class="fp-count" id="fpcount">匹配 6 个会话</span>
+              <button class="mi" style="width:auto;height:24px;padding:0 8px" onclick="clearFilters()">清除全部</button>
+            </div>
+          </div>
       <div class="filter-row">
         <span class="chip on">全部</span>
         <span class="chip"><i class="cdot" style="background:var(--src-pi)"></i>Pi</span>
@@ -747,6 +786,45 @@ prailEl.addEventListener("mouseleave",leaveRail);
 function pulseRail(){if(turns.length)jumpTo((activeTurn+1+turns.length)%turns.length)}
 
 function toggleSearch(){document.getElementById("srchpop").classList.toggle("open");document.getElementById("srchinput").focus()}
+
+/* ================= 侧栏筛选面板 ================= */
+const fpanel=document.getElementById("fpanel"),fbtn=document.getElementById("fbtn"),fbadge=document.getElementById("fbadge");
+function toggleFilterPanel(){fpanel.classList.toggle("open");fbtn.classList.toggle("on",fpanel.classList.contains("open"))}
+document.querySelectorAll(".fpanel .fp-chips").forEach(group=>{
+  group.addEventListener("click",e=>{
+    const chip=e.target.closest(".chip");if(!chip)return;
+    if(group.dataset.fgroup==="tags"){chip.classList.toggle("on");updateFilterCount();return}
+    group.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));
+    chip.classList.add("on");updateFilterCount();
+  });
+});
+function activeFilterCount(){
+  let n=0;
+  document.querySelectorAll(".fpanel .fp-chips").forEach(g=>{
+    const on=g.querySelectorAll(".chip.on");
+    if(g.dataset.fgroup==="tags"){n+=on.length;return}
+    const chips=[...g.querySelectorAll(".chip")];
+    const firstIdx=chips.findIndex(c=>c.classList.contains("on"));
+    if(firstIdx>0)n++;
+  });
+  return n;
+}
+function updateFilterCount(){
+  const n=activeFilterCount();
+  fbadge.style.display=n?"":"none";fbadge.textContent=n;
+  fbtn.classList.toggle("on",n>0||fpanel.classList.contains("open"));
+  document.getElementById("fpcount").textContent="匹配 "+(6-n)+" 个会话";
+}
+function clearFilters(){
+  document.querySelectorAll(".fpanel .fp-chips").forEach(g=>{
+    const chips=[...g.querySelectorAll(".chip")];
+    chips.forEach((c,i)=>{
+      if(g.dataset.fgroup==="tags"){c.classList.remove("on");return}
+      c.classList.toggle("on",i===0);
+    });
+  });
+  updateFilterCount();
+}
 
 /* ================= 头栏 ··· 菜单：重命名 / 复制 ================= */
 const morepop=document.getElementById("morepop");
