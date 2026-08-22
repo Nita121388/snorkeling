@@ -20,6 +20,7 @@ import {
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
+import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -747,7 +748,23 @@ export function SessionDetailPane({
                                 {summary.title || summary.id}
                             </div>
                         </button>
+                    <div className="flex items-center gap-2">
+                        <SessionMoreMenu
+                            projectDirectory={summary.projectPath?.trim() ?? ""}
+                            sessionFilePath={summary.filePath?.trim() ?? ""}
+                            sessionId={summary.id}
+                            buildMarkdown={() =>
+                                buildSessionMarkdown(
+                                    summary.title || summary.id,
+                                    summary.source,
+                                    summary.id,
+                                    detailMessages,
+                                    toolCalls
+                                )
+                            }
+                        />
                         <IconButton icon="fa-chevron-down" label="Expand session header" onClick={toggleHeader} />
+                    </div>
                     </div>
                 ) : (
                     <div className="flex items-start justify-between gap-3">
