@@ -1,244 +1,69 @@
-# AI Sessions GUI 对话界面重构 — 上下布局 + 共享组件
+# AI Sessions GUI 对话界面重构 — 现代 Agent Chat（v2）
 
 > 同步状态：▲ 设计活跃（未实现）｜● 已落地｜▼ 过时待清理｜◐ 部分落地
-> 镜像源：frontend/app/view/aisessions/session-detail.tsx, session-message.tsx, chat-composer.tsx, aisessions.tsx
-> 最后同步：2026-08-18
+> 镜像源：frontend/app/view/aisessions/session-detail.tsx, session-message.tsx, chat-composer.tsx, aisessions.tsx, workspace/agent-launch.ts
+> 最后同步：2026-08-20
+> 参考：beui agents 组件源码（prompt-input / message-scroller / message-bubble / tool-result / streaming-response）+ Paseo 聊天界面实现
 
 ---
 
-## 覆盖范围（三大核心场景）
+## v2 设计语言（推翻 v1 的"卡片盒子风"）
 
-| 场景 | 原型位置 | 状态 |
-|------|---------|------|
-| AI Sessions 上下布局重构 | 首页标签切换「History」→「Chat」 | ▲ |
-| New Agent 多步创建 + GUI/TUI 选择 | 侧边栏「New Agent」 | ▲ |
-| 群聊界面 + @mention | 侧边栏「Group Chat」 | ▲ |
+v1 原型问题：到处是边框盒子、满幅行宽、无视觉层级，像管理工具不像聊天。
+v2 直接对齐 beui/Paseo 的现代 Agent 对话设计：
 
-## 解决的问题
+| 决策 | 内容 |
+|---|---|
+| **AI 回复 = 开放散文** | 不加气泡、无边框，`text-sm leading-6` 直接排在画布上；代码块 `rounded-xl border bg-code` |
+| **用户消息 = 软气泡** | accent 柔和底色 + 描边，右对齐，右下角小圆角，发送时 spring pop 动画 |
+| **工具调用 = 一行摘要** | 收起态：chevron + 状态icon + 工具名 + 等宽截断预览 + 耗时；点击展开终端输出（限高滚动）。三态色：运行中蓝(shimmer扫光) / 成功绿 / 失败红 |
+| **悬浮输入卡片** | `rounded-2xl` 卡片带阴影（非贴边扁条）；工具栏内嵌卡内：左附件圆钮、中模型 ghost 选择、右发送圆钮（运行中 morph 为红色停止钮） |
+| **内容限宽居中** | 消息列与输入卡统一 `max-width: 768px` 居中，两侧留白呼吸 |
+| **消息分组** | 连续同角色消息合并组；头像/名/时间只在组首出现一次 |
+| **系统消息 = 居中胶囊** | 压缩提示等用 `rounded-full bg-surface` pill |
+| **滚动跟随** | 流式时贴底跟随；用户上滚立即放权 + 底部浮现「跳到最新」胶囊 |
+| **大纲轨** | 右缘 hover 浮出细轨按钮 → 弹出用户消息目录（替代旧常驻侧栏） |
 
-1. **布局不合理**：当前 `SessionDetailPane` 是左右布局——消息列表占左侧，`ChatComposer` 挤在右侧窄栏。用户回顾历史时输入框不自然，流式回复空间被压缩，与所有主流 AI 聊天界面（ChatGPT、Claude、Paseo）设计相悖。
-2. **组件不可复用**：`MessageCard`、`ToolCallCard`、`ChatComposer` 直接写在 `session-detail.tsx` 里，群聊功能无法复用这些消息渲染能力。
-3. **缺少身份创建流程**：群聊功能需要「从会话提炼成员」，当前无 UI 支撑「选会话 → 命名 → 绑定 Agent → 生成成员」的创建表单。
-4. **流式体验不足**：`ChatComposer` 只有基础气泡，缺少 beui `StreamingResponse` 的逐步渲染、工具状态、完成动画等精致体验。
+## 集成点（与现有系统的对接）
 
----
+### A. AI Sessions 配套修改
+1. **会话列表行**：新增实时对话指示（活跃 GUI 聊天时来源点 ping 动画），其余搜索/过滤/标记能力不动
+2. **详情区替换**：三行大 Header → 单行 46px 极简头栏（标题+来源点+模型chip+搜索/大纲/备注/标记/更多）；Note 编辑收进菜单
+3. **来源门控**：pi = 完整体验；claude/codex/opencode = 只读浏览 + 底部优雅禁用横幅「此来源的 GUI 对话即将支持」+ 终端 Resume 按钮（后续接 ClaudeAdapter 自动解锁）
+4. **新对话入口**：列表顶部「＋ 新对话」→ 空状态引导页（快捷建议可点）；首条消息触发后端 spawn pi 新会话（SessionID 省略机制已支持）
 
-## 设计参考
+### B. New Agent 的 GUI/TUI 双模式
+1. 面板新增「打开方式」分段选择：TUI 终端（默认，现状）/ GUI 对话
+2. 启动分叉（agent-launch.ts）：TUI = 现有终端 block；GUI = 打开 aisessions block 并经现有 `aisessions:sessionid` meta 绑定会话
+3. 偏好持久化 localStorage，一期默认 TUI
+4. 分段控件抽成共享件 `LaunchModeSegmented`，群成员创建向导复用
 
-### beui PromptInput（底部输入区）
-- Auto-resize textarea（min 2 rows，max 8 rows）
-- 模型选择下拉
-- 工具按钮栏（附件、工具、发送、停止）
-- 发送动画：按钮 morph 为 spinner → 完成后 morph 回 icon
-- 键盘快捷：Enter 发送，Shift+Enter 换行，Esc 中止
+### C. 群聊视图预览
+成员彩色标识 + @mention 高亮 + 发送到目标选择 + 主持模式徽章——全部复用同一套消息组件。
 
-### beui MessageScroller（消息滚动区）
-- 跟随最新消息（live edge）——AI 流式输出时自动滚底
-- 读者滚动时自动释放控制——不打断用户浏览历史
-- 消息分组（MessageGroup）+ 消息气泡（MessageBubble）
-- 搜索匹配跳转
+## 三套主题
 
-### beui SignupForm（成员创建表单）
-- 字段验证：只在 blur 后标记错误，修复后立即清除
-- 密码强度计量：这里改为「成员说明书质量评分」
-- 动画提交生命周期：idle → loading → success / error
-- 卡片式分段：基础信息 / 知识提炼 / 运行时绑定
+dark / light / monochrome 全量对齐 `frontend/app/theme.scss` 语义变量（--bg/--panel/--surface/--border/--accent/--error…），右上角 spark 图标循环切换验证。
 
-### Paseo（聊天界面形态）
-- 左侧会话列表 + 右侧聊天区（与我们的 aisessions 一致）
-- 消息历史：user_message / assistant_message / reasoning / tool_call / error / compaction
-- 底部固定输入区，session header 在最上方
+## 交互演示要点
 
----
+- 选不同会话体验三种状态：pi 流式中 / pi 历史 / claude 只读横幅
+- 输入框发消息：thinking → 逐字流式（闪烁光标）→ 工具运行 shimmer → 完成 → 操作条（复制/重新生成 hover 显现）
+- Esc 中止；Enter 发送 / Shift+Enter 换行；auto-resize 输入框
+- 上滚出跟随胶囊；右侧 hover 出大纲轨；头部放大镜出行内搜索
 
-## 核心设计
+## 实施路径（原型确认后）
 
-### 1. aisessions 视图改造（上下布局）
-
-**现状**（左右布局）：
-```
-┌─ 左侧列表 ─┬─ 右侧详情 ────────────────────────┐
-│             │ Header                             │
-│ [session 1] │ 消息列表                            │
-│ [session 2] │ [ChatComposer ← 问题：挤在右侧]    │
-│ [session 3] │                                     │
-└─────────────┴─────────────────────────────────────┘
-```
-
-**目标**（上下布局）：
-```
-┌─ 左侧列表 ─┬─ 右侧详情 ────────────────────────┐
-│             │ Header（可折叠）                    │
-│ [session 1] │ 搜索/过滤栏                        │
-│ [session 2] ├─────────────────────────────────────┤
-│ [session 3] │ 消息列表（MessageScroller）         │
-│             │  - 用户消息（右对齐）                │
-│             │  - AI 消息（左对齐）                 │
-│             │  - ToolCall 卡片                    │
-│             │  - 流式回复气泡                      │
-│             ├─────────────────────────────────────┤
-│             │ ChatComposer（底部固定）             │
-│             │  [textarea auto-resize]             │
-│             │  [📎][⚙️][模型▾][发送/停止]          │
-└─────────────┴─────────────────────────────────────┘
-```
-
-### 2. New Agent 创建 + GUI/TUI 双模式
-
-**四步向导表单**（参考 beui SignupForm 的逐字段验证 + 动画提交）：
-
-| Step | 内容 | 设计要点 |
-|------|------|---------|
-| 1. 选择来源 | 从 AI Sessions 列表勾选会话 | 可多选，选中高亮 |
-| 2. 提炼设定 | 成员名称 + 自动说明书 + 标签 + 关键点 | 自动生成 + 手动编辑 |
-| 3. 运行时绑定 | Provider 选择 + **GUI/TUI 模式选择** + Auto-resume | 双卡片模式切换 |
-| 4. 加入群组 | 选已有群或新建群 + 预览卡片 | 一键创建动画 |
-
-**GUI vs TUI 模式卡片**：
-```
-┌──────────────────────┬──────────────────────┐
-│ 🖥️ GUI               │ ⌨️ TUI               │
-│ Full visual chat      │ Terminal-based       │
-│ streaming + tool cards│ lighter weight       │
-│ + file diff viewer    │ keyboard-driven      │
-└──────────────────────┴──────────────────────┘
-```
-
-### 3. 群聊界面
-
-- 复用 aisessions 共享消息组件
-- 底部输入框 + @mention 下拉选择
-- 顶部成员栏显示在线成员
-- 可选主持模式（Moderator）
-
-### 4. 共享消息组件（抽离复用）
-
-| 组件 | 职责 | 复用场景 |
-|------|------|---------|
-| `MessageCard` | 单条消息气泡（用户/AI），含折叠、搜索高亮、复制 | aisessions 详情 + 群聊 |
-| `ToolCallCard` | 工具调用卡片（展开/收起、执行状态） | aisessions 详情 + 群聊 |
-| `StreamingBubble` | 流式回复实时渲染（逐帧 text_delta） | aisessions 详情 + 群聊 |
-| `MessageScroller` | 消息滚动区（自动跟随 + 释放控制） | aisessions 详情 + 群聊 |
-| `ChatComposer` | 底部输入区（auto-resize + 模型选择 + 动画） | aisessions 详情 + 群聊 |
-
-### 3. 成员创建表单（signup-form 风格）
-
-多步向导卡片式创建：
-
-**Step 1 — 选择来源**
-```
-┌─ 创建群聊成员 ─────────────────────────────────────┐
-│                                                     │
-│  来源会话（从 AI Sessions 选择）                     │
-│  ┌─ 会话卡片 ─────────────────────────────────────┐ │
-│  │ [✓] codex  "优化 SQL 慢查询"                   │ │
-│  │     2026-08-15 · 14 messages · #sql #perf     │ │
-│  └────────────────────────────────────────────────┘ │
-│  ┌─ 会话卡片 ─────────────────────────────────────┐ │
-│  │ [ ] claude "数据库索引策略"                     │ │
-│  │     2026-08-12 · 8 messages · #database       │ │
-│  └────────────────────────────────────────────────┘ │
-│                                                     │
-│              [下一步：提炼设定 →]                    │
-└─────────────────────────────────────────────────────┘
-```
-
-**Step 2 — 提炼设定 + 命名**
-```
-┌─ 创建群聊成员 ─────────────────────────────────────┐
-│                                                     │
-│  成员名称                                           │
-│  ┌────────────────────────────────────────────────┐ │
-│  │ 数据库优化专家                                  │ │
-│  └────────────────────────────────────────────────┘ │
-│                                                     │
-│  成员说明书（自动提炼，可编辑）                      │
-│  ┌────────────────────────────────────────────────┐ │
-│  │ 擅长 SQL 性能调优、索引策略、慢查询分析...      │ │
-│  │ 掌握 MySQL/PostgreSQL 调优经验...              │ │
-│  └────────────────────────────────────────────────┘ │
-│                                                     │
-│  知识标签                                            │
-│  [#sql] [#database] [#performance] [+ 添加]        │
-│                                                     │
-│  关键知识点                                          │
-│  • 覆盖索引设计原则                                  │
-│  • EXPLAIN 执行计划解读                              │
-│  • 慢查询日志分析流程                                │
-│                                                     │
-│  群组选择                                            │
-│  ○ 新建群组  ○ 加入已有 [部署讨论组 ▾]              │
-│                                                     │
-│      [← 返回]        [创建成员 ✓]                   │
-└─────────────────────────────────────────────────────┘
-```
-
-### 4. 群聊界面（复用共享组件）
-
-```
-┌─ 群聊：部署专家研讨会 ────────────────────────────┐
-│  👥 数据库专家 · 部署专家 · 代码审查专家 · 你       │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│ 👤 你            ── 10:24 AM                       │
-│ @数据库专家 帮忙看看这个慢查询                      │
-│                                                     │
-│ 🤖 数据库专家    ── 10:24 AM                       │
-│ 我来分析一下这条 SQL 的执行计划...                   │
-│ [Tool: shell] EXPLAIN ANALYZE SELECT ...            │
-│                                                     │
-│ 👤 你            ── 10:26 AM                       │
-│ @部署专家 这个索引会影响线上性能吗？                 │
-│                                                     │
-│ 🤖 部署专家      ── 10:26 AM                       │
-│ 从部署角度建议先在 staging 验证...                   │
-│                                                     │
-├─────────────────────────────────────────────────────┤
-│ $ 数据库专家正在思考...                              │
-│ [发送到 ▾: 数据库专家]                              │
-│ ┌─────────────────────────────────────────────────┐ │
-│ │ @部署专家 帮忙评估一下风险...                    │ │
-│ └─────────────────────────────────────────────────┘ │
-│ [📎][⚙️][发送/停止]                                  │
-└─────────────────────────────────────────────────────┘
-```
-
----
-
-## 实施路径
-
-### Phase 1 — 共享组件抽离（无破坏性）
-
-1. 把 `session-detail.tsx` 中的消息渲染逻辑抽成 `MessageCard`、`ToolCallCard` 组件
-2. 把 `ChatComposer` 抽成独立组件，支持底部固定布局
-3. 新增 `MessageScroller`（自动滚底 + 读者释放控制）
-4. 保持 `SessionDetailPane` 左右布局不动，只替换内部消息渲染为新组件
-
-### Phase 2 — 上下布局改造（破坏性，需同步改 aisessions）
-
-1. 修改 `SessionDetailPane` 布局：移除右侧 ChatComposer，改为底部固定
-2. 修改 `aisessions.tsx` 的 grid 配置，适配新的详情高度
-3. 完成流式回复动画和完成状态
-
-### Phase 3 — New Agent 创建表单 + GUI/TUI 模式
-
-1. 多步向导表单（来源选择 → 提炼设定 → 运行时绑定 + GUI/TUI 模式 → 加入群组）
-2. 从 aisessions 详情页发起的快捷入口（「设为群聊成员」按钮）
-3. TUI 模式：复用现有 agent-session.ts 的终端绑定逻辑
-
-### Phase 4 — 群聊界面
-
-1. 基于共享组件搭建群聊视图
-2. 加入 @mention 下拉选择 + 发送目标选择
-3. 成员列表侧边栏
-4. 主持模式基础版（select 模式）
-
----
+| 阶段 | 内容 | 文件 |
+|---|---|---|
+| P1 | ChatView 组件族：MessageGroup/UserBubble/AssistantProse(复用 markdown.tsx)/ToolRow/ComposerCard/useFollowScroll | `frontend/app/view/aisessions/chat/*`（新增） |
+| P2 | session-detail 切换到 ChatView（删右侧 Composer），接 SSE hook + DetailDelta 校准 | `session-detail.tsx` 重构 |
+| P3 | 列表实时指示 + 新对话入口 + 只读门控横幅 | `session-row.tsx`, `aisessions.tsx` |
+| P4 | LaunchModeSegmented + agent-launch 分叉 + New Agent 面板接入 | `workspace/agent-launch.ts` 等 |
+| P5 | 群聊视图基于同一组件族搭建 | 新视图 |
 
 ## 待决问题
 
-1. **列表+详情的分割比例**：左侧列表默认宽度多少？可拖拽范围？
-2. **消息气泡的 max-width**：AI 消息是全宽还是限制在容器 80%？
-3. **成员创建的“自动提炼”**：前端直接调 AI API 还是后端 RPC？
-4. **群聊入口**：侧边栏新视图还是弹窗？
-5. **GUI vs TUI 默认值**：新建成员默认选 GUI 还是 TUI？
+1. AI 散文的完成操作条（复制/重新生成）是否常显还是仅 hover？原型为 hover
+2. 只读来源是否允许「复制 resume 命令」以外的动作？
+3. GUI 模式偏好存 localStorage 还是 block meta（跨设备一致性的取舍）
