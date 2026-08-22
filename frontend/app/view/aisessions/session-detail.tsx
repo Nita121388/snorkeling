@@ -21,6 +21,7 @@ import {
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
+import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./session-outline-rail";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -386,6 +387,12 @@ export function SessionDetailPane({
         () => readableMessages.filter((message) => message.role === "user"),
         [readableMessages]
     );
+    // PreviewRail 数据：用户消息即 prompt 刻度
+    const outlinePrompts = useMemo<OutlinePrompt[]>(
+        () => outlineMessages.map((message) => ({ seq: message.seq, preview: outlinePreview(message) })),
+        [outlineMessages]
+    );
+    const activeOutlineSeq = useActiveOutlineSeq(detailScrollRef, outlinePrompts);
     const detailSearchMatches = useMemo(
         () => readableMessages.filter((message) => messageMatchesSearch(message, detailSearchQuery)),
         [detailSearchQuery, readableMessages]
@@ -1126,6 +1133,9 @@ export function SessionDetailPane({
                             </div>
                         </div>
                         <div className="relative min-h-0 flex-1">
+                            {!outlineOpen ? (
+                                <SessionOutlineRail prompts={outlinePrompts} activeSeq={activeOutlineSeq} onJump={jumpToMessage} />
+                            ) : null}
                             <div
                                 ref={detailScrollRef}
                                 className="h-full min-h-0 overflow-auto p-3 pb-10"
