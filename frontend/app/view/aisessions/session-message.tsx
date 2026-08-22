@@ -54,6 +54,7 @@ export function MessageCard({
   registerRef,
   searchQuery,
   searchActive = false,
+  groupStart = true,
 }: {
   message: Message;
   collapsed?: boolean;
@@ -61,6 +62,8 @@ export function MessageCard({
   registerRef: (node: HTMLDivElement | null) => void;
   searchQuery?: string;
   searchActive?: boolean;
+  /** 是否为同角色连续消息分组的开头（决定上间距 + 角色标签） */
+  groupStart?: boolean;
 }) {
   const isUser = message.role === "user";
   const collapsible = isCollapsibleMessage(message.text);
@@ -81,7 +84,7 @@ export function MessageCard({
     <div
       ref={registerRef}
       id={`aisession-message-${message.seq}`}
-      className={cn("group scroll-mt-3", isUser ? "flex justify-end" : "")}
+      className={cn("group scroll-mt-3", isUser ? "flex justify-end" : "", groupStart ? "mt-4" : "mt-1")}
     >
       <div
         className={cn(
@@ -91,6 +94,11 @@ export function MessageCard({
           searchActive && "ring-2 ring-accent/50"
         )}
       >
+      {groupStart && !isUser ? (
+        <div className="mb-0.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+          {message.role === "assistant" ? "Assistant" : message.role}
+        </div>
+      ) : null}
       <div className="flex items-center justify-end gap-1.5 text-xxs text-secondary">
         {collapsible ? (
           <button

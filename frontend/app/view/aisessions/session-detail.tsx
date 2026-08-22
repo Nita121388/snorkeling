@@ -153,35 +153,33 @@ function ToolCallCard({
     const detailText = toolCallDetailText(toolCall);
     const hasError = Boolean(toolCall.exitCode);
     return (
-        <div className="rounded border border-border bg-bg/50 text-xs">
+        <div className="my-1 min-w-0 text-xs">
+            {/* 原型规范：工具调用一行折叠——状态点 + 工具名 + 预览，点击展开 */}
             <button
                 type="button"
-                className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-hover"
+                className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
                 onClick={onToggle}
             >
                 <i
                     className={cn(
-                        "fa-sharp fa-solid mt-0.5 shrink-0 transition-transform duration-200",
+                        "fa-sharp fa-solid shrink-0 text-[9px] text-secondary transition-transform duration-200",
                         expanded ? "fa-chevron-down" : "fa-chevron-right"
                     )}
                 />
                 <span
                     className={cn(
-                        "mt-0.5 h-2 w-2 shrink-0 rounded-full",
-                        hasError ? "bg-error shadow-[0_0_4px_var(--color-error)]" : "bg-accent"
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        hasError ? "bg-error shadow-[0_0_4px_var(--color-error)]" : "bg-accent/70"
                     )}
                 />
-                <span className="min-w-0 flex-1">
-                    <span className="mb-1 flex flex-wrap items-center gap-2 text-[10px] uppercase text-secondary">
-                        <span>#{toolCall.seq}</span>
-                        <span>{toolCall.name || "tool"}</span>
-                        {hasError ? (
-                            <span className="rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-medium text-error">
-                                exit {toolCall.exitCode}
-                            </span>
-                        ) : null}
+                <span className="shrink-0 font-mono text-[11px] text-primary">{toolCall.name || "tool"}</span>
+                {hasError ? (
+                    <span className="shrink-0 rounded bg-error/15 px-1 py-px text-[9px] font-medium text-error">
+                        exit {toolCall.exitCode}
                     </span>
-                    <span className="block truncate text-primary">{formatToolCallPreview(toolCall)}</span>
+                ) : null}
+                <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">
+                    {formatToolCallPreview(toolCall)}
                 </span>
             </button>
             {expanded ? (
@@ -1136,7 +1134,7 @@ export function SessionDetailPane({
                                 {detailMessages.length === 0 ? (
                                     <EmptyState text="No readable messages." />
                                 ) : (
-                                    <div className="mx-auto w-full max-w-3xl space-y-3">
+                                    <div>
                                         <div className="flex items-center justify-between gap-2 text-xs text-secondary">
                                             <div>
                                                 Showing #{firstVisibleMessage?.seq ?? 0}-#
@@ -1163,8 +1161,14 @@ export function SessionDetailPane({
                                                 No tool calls.
                                             </div>
                                         ) : null}
-                                        {timelineItems.map((item) =>
-                                            item.kind === "message" ? (
+                                        {timelineItems.map((item, itemIdx) => {
+                                            const prevItem = itemIdx > 0 ? timelineItems[itemIdx - 1] : null;
+                                            const isGroupStart =
+                                                item.kind !== "message" ||
+                                                prevItem == null ||
+                                                prevItem.kind !== "message" ||
+                                                prevItem.message.role !== item.message.role;
+                                            return item.kind === "message" ? (
                                                 <MessageCard
                                                     key={`message-${item.message.seq}`}
                                                     message={item.message}
@@ -1174,6 +1178,7 @@ export function SessionDetailPane({
                                                     }
                                                     searchQuery={detailSearchQuery}
                                                     searchActive={item.message.seq === activeSearchSeq}
+                                                    groupStart={isGroupStart}
                                                     registerRef={(node) => {
                                                         messageRefs.current[item.message.seq] = node;
                                                     }}
@@ -1185,8 +1190,8 @@ export function SessionDetailPane({
                                                     expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
                                                     onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
                                                 />
-                                            )
-                                        )}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
