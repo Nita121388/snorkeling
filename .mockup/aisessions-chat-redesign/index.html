@@ -193,17 +193,18 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .follow-pill.show{opacity:1;transform:translateX(-50%);pointer-events:auto}
 .follow-pill:hover{color:var(--text)}
 
-/* 大纲轨 */
-.rail{position:absolute;right:0;top:0;bottom:0;width:26px;z-index:15;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;color:var(--muted)}
-.scrollwrap:hover .rail{opacity:.85}
-.rail-pop{position:absolute;right:30px;top:12px;bottom:12px;width:280px;z-index:25;background:var(--overlay);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 36px var(--shadow);display:none;flex-direction:column;overflow:hidden}
-.rail-pop.open{display:flex}
-.rp-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border-soft);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
-.rp-list{overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:1px}
-.rp-item{display:flex;gap:8px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--text-2);cursor:pointer;line-height:1.4}
-.rp-item:hover{background:var(--hover);color:var(--text)}
-.rp-item .n{color:var(--muted);font-size:10.5px;flex-shrink:0;padding-top:1px}
-.rp-item span.txt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Message Scroller · PreviewRail（beui 同款） */
+.prail{position:absolute;right:6px;top:0;bottom:0;z-index:15;width:48px;display:grid;align-content:center}
+.prail.off{display:none}
+.pitem{position:relative;height:24px;width:48px;display:flex;align-items:center;color:var(--muted)}
+.ptick{display:block;height:2px;width:48px;border-radius:1px;background:currentColor;transform-origin:left;transform:scaleX(.25);transition:transform .38s cubic-bezier(.22,1,.36,1),color .2s}
+.pitem.hot .ptick{color:var(--text)}
+.pcard{position:absolute;z-index:30;width:min(360px,68%);border:1px solid var(--border);border-radius:16px;background:var(--overlay);box-shadow:0 12px 40px var(--shadow);padding:14px 16px;pointer-events:none;opacity:0;transform:translateY(4px);filter:blur(6px);transition:opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
+.pcard.show{opacity:1;transform:none;filter:blur(0)}
+.pcard .pt-title{font-size:13px;font-weight:600;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.pcard .pt-desc{margin-top:5px;font-size:12.5px;line-height:1.55;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.prail.pulse .ptick{animation:rpulse 0.9s ease}
+@keyframes rpulse{50%{transform:scaleX(1)}}
 
 /* 只读横幅 */
 .ro-banner{display:flex;align-items:center;gap:10px;margin:0 24px 14px;padding:11px 14px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:12.5px}
@@ -333,7 +334,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
             <span class="mchip"><i class="sdot" id="tb-src-dot" style="background:var(--src-pi)"></i><span id="tb-src">pi</span></span>
             <span class="mchip" id="tb-model">claude-sonnet-4</span>
             <button class="tb-btn" title="搜索会话内" onclick="toggleSearch()"><svg class="ic s14"><use href="#i-search"/></svg></button>
-            <button class="tb-btn" title="消息大纲" onclick="toggleRail()"><svg class="ic s14"><use href="#i-list"/></svg></button>
+            <button class="tb-btn" title="消息大纲" onclick="pulseRail()"><svg class="ic s14"><use href="#i-list"/></svg></button>
             <button class="tb-btn" title="备注与标签"><svg class="ic s14"><use href="#i-note"/></svg></button>
             <button class="tb-btn" title="标记"><svg class="ic s14"><use href="#i-star"/></svg></button>
             <button class="tb-btn" title="更多"><svg class="ic s14"><use href="#i-more"/></svg></button>
@@ -353,12 +354,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
             <div class="stream" id="stream"></div>
           </div>
 
-          <!-- 大纲轨 -->
-          <button class="rail" title="用户消息大纲" onclick="toggleRail()"><svg class="ic s14"><use href="#i-list"/></svg></button>
-          <div class="rail-pop" id="railpop">
-            <div class="rp-head"><span>大纲 · 用户消息</span><button class="icon-btn" style="width:22px;height:22px" onclick="toggleRail()"><svg class="ic s12"><use href="#i-xc"/></svg></button></div>
-            <div class="rp-list" id="rplist"></div>
-          </div>
+          <!-- Message Scroller · PreviewRail（会话大纲） -->
+          <div class="prail" id="prail"></div>
+          <div class="pcard" id="pcard"><div class="pt-title"></div><div class="pt-desc"></div></div>
 
           <!-- 跟随胶囊 -->
           <button class="follow-pill" id="followpill" onclick="scrollBottom(true)">
@@ -582,21 +580,79 @@ function renderChat(){
   } else {
     stream.innerHTML=aiGroup(`<div class="prose"><p>CI 失败原因是缓存目录权限变更，修复见 diff：</p><pre><code>- chmod 777 .cache\n+ chown -R runner:runner .cache</code></pre></div>`,{name:"codex",model:"gpt-5.2",time:"周一"});
   }
-  buildOutline();scrollBottom(false);
+  buildOutline();renderRail();activeTurn=-1;setScales(-1);scrollBottom(false);
 }
 
-/* ================= 大纲 ================= */
+/* ================= Message Scroller · PreviewRail ================= */
+const TITLE_MAX=56, DESC_MAX=88;
+let turns=[];            // {el, label, desc}
+let activeTurn=-1;       // 滚动追踪的当前回合
+let hoveringRail=false;  // 鼠标在轨上时不被滚动追踪覆盖
+function clampText(t,max){t=t.replace(/\s+/g," ").trim();return t.length<=max?t:t.slice(0,max).trimEnd()+"…"}
 function buildOutline(){
-  const rp=document.getElementById("rplist");rp.innerHTML="";
-  document.querySelectorAll("#stream .ububble").forEach((b,i)=>{
-    const it=document.createElement("div");it.className="rp-item";
-    it.innerHTML=`<span class="n">${String(i+1).padStart(2,"0")}</span><span class="txt">${b.textContent.slice(0,60)}</span>`;
-    it.onclick=()=>{b.scrollIntoView({behavior:"smooth",block:"start"});closeRail()};
-    rp.appendChild(it);
+  /* 回合 = 用户气泡开头，后续 AI 散文作为描述（beui getMessagePreview 语义） */
+  turns=[];
+  const kids=[...document.querySelectorAll("#stream > .mgroup")];
+  let cur=null;
+  for(const g of kids){
+    const ub=g.querySelector(".ububble");
+    if(ub){cur={el:g,label:clampText(ub.textContent,TITLE_MAX),desc:""};turns.push(cur);continue}
+    if(cur){
+      const prose=g.querySelector(".prose");
+      const t=prose?prose.textContent:g.textContent||"";
+      if(!cur.desc)cur.desc=clampText(t,DESC_MAX);
+    }
+  }
+}
+function renderRail(){
+  const rail=document.getElementById("prail");rail.innerHTML="";
+  if(turns.length<2){rail.classList.add("off");return}
+  rail.classList.remove("off");
+  turns.forEach((t,i)=>{
+    const b=document.createElement("button");
+    b.className="pitem";b.type="button";b.setAttribute("aria-label",`跳到回合 ${i+1}: ${t.label}`);
+    b.innerHTML='<span class="ptick"></span>';
+    b.addEventListener("mouseenter",()=>{hoveringRail=true;showCard(i,b);setScales(i)});
+    b.addEventListener("click",()=>{activeTurn=i;setScales(i);hideCard();t.el.scrollIntoView({behavior:"smooth",block:"start"})});
+    rail.appendChild(b);
+  });
+  setScales(-1);
+}
+function setScales(hot){
+  [...document.querySelectorAll("#prail .pitem")].forEach((b,i)=>{
+    const d=hot<0?99:Math.abs(i-hot);
+    const s=d===0?1:d===1?.68:d===2?.44:.25;   // beui fisheye 衰减
+    b.querySelector(".ptick").style.transform=`scaleX(${s})`;
+    b.classList.toggle("hot",d===0);
   });
 }
-function toggleRail(){const p=document.getElementById("railpop");p.classList.toggle("open")}
-function closeRail(){document.getElementById("railpop").classList.remove("open")}
+function showCard(i,btn){
+  const t=turns[i],card=document.getElementById("pcard");
+  card.querySelector(".pt-title").textContent=`${String(i+1).padStart(2,"0")} · ${t.label}`;
+  const d=card.querySelector(".pt-desc");
+  d.textContent=t.desc||"";d.style.display=t.desc?"":"none";
+  card.style.right="60px";card.style.top="-999px";card.classList.add("show");
+  const wrap=document.getElementById("scroller").parentElement;
+  const br=btn.getBoundingClientRect(),wr=wrap.getBoundingClientRect(),cr=card.getBoundingClientRect();
+  let top=br.top-wr.top+br.height/2-cr.height/2;
+  top=Math.max(10,Math.min(top,wr.height-cr.height-10));
+  card.style.top=top+"px";
+}
+function hideCard(){document.getElementById("pcard").classList.remove("show")}
+const prailEl=document.getElementById("prail");
+prailEl.addEventListener("mouseleave",()=>{hoveringRail=false;hideCard();setScales(activeTurn)});
+function pulseRail(){
+  prailEl.classList.remove("pulse");void prailEl.offsetWidth;prailEl.classList.add("pulse");
+  setTimeout(()=>prailEl.classList.remove("pulse"),950);
+}
+/* 滚动追踪：当前视口顶部所在回合高亮 */
+const scrollerEl=document.getElementById("scroller");
+scrollerEl.addEventListener("scroll",()=>{
+  hideCard();
+  let idx=-1;
+  turns.forEach((t,i)=>{if(t.el.getBoundingClientRect().top<scrollerEl.getBoundingClientRect().top+120)idx=i});
+  if(idx!==activeTurn){activeTurn=idx;if(!hoveringRail)setScales(idx)}
+},{passive:true});
 function toggleSearch(){document.getElementById("srchpop").classList.toggle("open");document.getElementById("srchinput").focus()}
 
 /* ================= 滚动跟随 ================= */
@@ -632,6 +688,7 @@ function onSend(){
   /* 移除旧 demo 流式节点 */
   document.querySelectorAll("#liveprose").forEach(n=>n.parentElement.parentElement.remove());
   stream.insertAdjacentHTML("beforeend",userGroup(txt.replace(/</g,"&lt;"),"刚刚"));
+  buildOutline();renderRail();
   scrollBottom();
   cinput.value="";cinput.style.height="auto";
   setBusy(true);
@@ -675,6 +732,7 @@ function typeInto(el,text,done){
 /* ================= 新对话 / 群聊 ================= */
 function newChat(){
   curSession="__new";renderSessions();
+  turns=[];activeTurn=-1;renderRail();
   const stream=document.getElementById("stream");
   document.getElementById("tb-title").textContent="新对话";
   stream.innerHTML=`<div class="empty">
