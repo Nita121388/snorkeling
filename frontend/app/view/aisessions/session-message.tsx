@@ -81,12 +81,16 @@ export function MessageCard({
     <div
       ref={registerRef}
       id={`aisession-message-${message.seq}`}
-      className={cn(
-        "group scroll-mt-3 rounded border p-3",
-        isUser ? "border-accent/35 bg-accent/10 shadow-sm" : "border-border bg-surface-strong",
-        searchActive && "border-accent ring-2 ring-accent/50"
-      )}
+      className={cn("group scroll-mt-3", isUser ? "flex justify-end" : "")}
     >
+      <div
+        className={cn(
+          "min-w-0 rounded-2xl",
+          // 用户消息：软气泡右对齐；AI 消息：开放散文无框（原型规范）
+          isUser ? "max-w-[85%] border border-accent/25 bg-accent/10 px-4 py-2.5" : "w-full px-1 py-0.5",
+          searchActive && "ring-2 ring-accent/50"
+        )}
+      >
       <div className="flex items-center justify-end gap-1.5 text-xxs text-secondary">
         {collapsible ? (
           <button
@@ -116,8 +120,8 @@ export function MessageCard({
       </div>
       <div
         className={cn(
-          "whitespace-pre-wrap break-words text-xs leading-5",
-          isUser && "text-primary",
+          "whitespace-pre-wrap break-words leading-relaxed",
+          isUser ? "text-[13px] text-primary" : "text-xs text-primary/95",
           shouldClampText && "line-clamp-4"
         )}
       >
@@ -139,6 +143,7 @@ export function MessageCard({
           </span>
         ) : null}
         <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
+      </div>
       </div>
     </div>
   );

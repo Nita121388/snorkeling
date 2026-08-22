@@ -94,7 +94,8 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const hasStream = assistantText.length > 0 || toolEndEvents.length > 0 || runningToolNames.length > 0;
 
     return (
-        <div className="flex shrink-0 flex-col border-t border-border bg-panel">
+        <div className="shrink-0 border-t border-border bg-panel">
+            <div className="mx-auto w-full max-w-3xl">
             {/* Streaming bubble — only shown when there's active content. */}
             {hasStream && (
                 <div
@@ -129,7 +130,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             <div className="flex items-end gap-2 px-3 py-2">
                 <textarea
                     ref={inputRef}
-                    className="min-h-[36px] max-h-[120px] flex-1 resize-none rounded border border-border bg-bg px-3 py-2 text-xs text-primary outline-none focus:border-accent"
+                    className="min-h-[38px] max-h-[140px] flex-1 resize-none rounded-xl border border-border bg-bg px-3 py-2 text-xs text-primary outline-none focus:border-accent"
                     placeholder={isRunning ? "Agent is thinking..." : "Send a message..."}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -164,6 +165,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                         <i className="fa-sharp fa-solid fa-paper-plane text-[11px]" />
                     </button>
                 )}
+            </div>
             </div>
         </div>
     );

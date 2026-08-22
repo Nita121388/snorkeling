@@ -1119,7 +1119,7 @@ export function SessionDetailPane({
                                 {detailMessages.length === 0 ? (
                                     <EmptyState text="No readable messages." />
                                 ) : (
-                                    <div className="space-y-3">
+                                    <div className="mx-auto w-full max-w-3xl space-y-3">
                                         <div className="flex items-center justify-between gap-2 text-xs text-secondary">
                                             <div>
                                                 Showing #{firstVisibleMessage?.seq ?? 0}-#
