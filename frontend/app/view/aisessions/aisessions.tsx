@@ -259,6 +259,16 @@ export class AiSessionsViewModel implements ViewModel {
                 const promoted = sessions.find((session) => session.id === newPlaceholder.id);
                 if (promoted != null) {
                     globalStore.set(this.newSessionAtom, null);
+                    // 回写真实 sessionid 并清除 newchat 标志，block 从此永久绑定该会话
+                    void RpcApi.SetMetaCommand(TabRpcClient, {
+                        oref: `block:${this.blockId}`,
+                        meta: {
+                            "aisessions:sessionid": promoted.id,
+                            "aisessions:newchat": null,
+                        } as MetaType,
+                    }).catch(() => {
+                        // best-effort；列表内已提升，不影响使用
+                    });
                     if (globalStore.get(this.selectedKeyAtom) === NewSessionKey) {
                         globalStore.set(this.selectedKeyAtom, promoted.key);
                         globalStore.set(this.detailAtom, null);
@@ -282,6 +292,8 @@ export class AiSessionsViewModel implements ViewModel {
                     globalStore.set(this.detailAtom, null);
                 } else if (boundSessionId !== "" && (await this.loadDetailById(boundSessionId, refresh))) {
                     return;
+                } else if (this.shouldAutoStartNewChat()) {
+                    this.startNewSession();
                 } else {
                     const firstSession = sortSessionsByTime(sessions, sortDescending)[0];
                     globalStore.set(this.selectedKeyAtom, firstSession?.key ?? "");
@@ -407,6 +419,12 @@ export class AiSessionsViewModel implements ViewModel {
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
         const sessionId = meta["aisessions:sessionid"] ?? meta["agent:sessionid"];
         return typeof sessionId === "string" ? sessionId.trim() : "";
+    }
+
+    // New Agent GUI 模式的 block 带 newchat 标志：无绑定会话时自动开新会话。
+    shouldAutoStartNewChat(): boolean {
+        const blockData = globalStore.get(this.blockAtom);
+        return (blockData?.meta as Record<string, unknown> | undefined)?.["aisessions:newchat"] === true;
     }
 
     getConnection(): string {

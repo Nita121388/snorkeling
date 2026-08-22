@@ -605,6 +605,28 @@ const AgentTargetFloatingWindow = memo(
                 : (profileOptions[0]?.name ?? "");
         const [selectedProfile, setSelectedProfile] = useState(defaultProfileNameOrDefault);
         const [selectedIdx, setSelectedIdx] = useState(0);
+        // Launch mode：TUI 终端（默认）/ GUI 对话。仅 pi profile 提供 GUI；偏好存 localStorage。
+        const [launchMode, setLaunchMode] = useState<"tui" | "gui">(() =>
+            localStorage.getItem("snorkeling:newAgentLaunchMode") === "gui" ? "gui" : "tui"
+        );
+        const selectLaunchMode = useCallback((mode: "tui" | "gui") => {
+            setLaunchMode(mode);
+            try {
+                localStorage.setItem("snorkeling:newAgentLaunchMode", mode);
+            } catch {
+                // localStorage 不可用时仅本次会话内生效
+            }
+        }, []);
+        // GUI 对话模式：创建带 newchat 标志的 aisessions block，首条消息后自动绑定真实会话
+        const createGuiChatBlockDef = (): BlockDef => ({
+            meta: {
+                view: "aisessions",
+                "frame:title": "AI Chat",
+                icon: "comments",
+                "aisessions:newchat": true,
+                "aisessions:sessionlistcollapsed": true,
+            } as MetaType,
+        });
         // Vendor chip row collapse state: default only the current/selected chip shows, the rest are
         // hidden behind a "+N▾" inline toggle. Pure frontend; reset to collapsed each time the
         // floating window reopens (see the isOpen useEffect below) so a prior expand never leaks.
@@ -986,6 +1008,38 @@ const AgentTargetFloatingWindow = memo(
                             </div>
                         )}
 
+                    {isPiProfileActive ? (
+                        <div className="px-1 pb-1">
+                            <div className="px-2 pt-2 pb-1 text-xxs text-muted">启动方式</div>
+                            <div className="mx-2 mb-1 inline-flex rounded-lg border border-border bg-surface p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => selectLaunchMode("tui")}
+                                    className={clsx(
+                                        "h-[24px] cursor-pointer rounded-md px-3 text-xs font-medium transition-colors",
+                                        launchMode === "tui"
+                                            ? "bg-accent/15 text-accent shadow-sm"
+                                            : "text-secondary hover:text-foreground"
+                                    )}
+                                >
+                                    TUI 终端
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => selectLaunchMode("gui")}
+                                    className={clsx(
+                                        "h-[24px] cursor-pointer rounded-md px-3 text-xs font-medium transition-colors",
+                                        launchMode === "gui"
+                                            ? "bg-accent/15 text-accent shadow-sm"
+                                            : "text-secondary hover:text-foreground"
+                                    )}
+                                >
+                                    GUI 对话
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
                     {/* path list */}
                     <div className="px-1 pb-1">
                         <div className="px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
@@ -1105,20 +1159,23 @@ const AgentTargetFloatingWindow = memo(
                                         showNoDetectedAgentError();
                                         return;
                                     }
-                                    const blockDef = withLaunchEnv(
-                                        createAgentBlockDefForTarget(
-                                            settings,
-                                            selectedTarget,
-                                            effectiveSelectedProfile,
-                                            effectiveVendorOptions,
-                                            effectiveSelectedVendorId,
-                                            VendorModelPinningEnabled ? effectiveVendorModel : undefined
-                                        ),
-                                        launchEnv
-                                    );
+                                    const isGuiLaunch = isPiProfileActive && launchMode === "gui";
+                                    const blockDef = isGuiLaunch
+                                        ? createGuiChatBlockDef()
+                                        : withLaunchEnv(
+                                              createAgentBlockDefForTarget(
+                                                  settings,
+                                                  selectedTarget,
+                                                  effectiveSelectedProfile,
+                                                  effectiveVendorOptions,
+                                                  effectiveSelectedVendorId,
+                                                  VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                              ),
+                                              launchEnv
+                                          );
                                     fireAndForget(async () => {
                                         try {
-                                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                                            const resolvedBlockDef = isGuiLaunch ? blockDef : await prepareAgentBlockDef(blockDef);
                                             await createToCurrentTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
@@ -1139,20 +1196,23 @@ const AgentTargetFloatingWindow = memo(
                                         showNoDetectedAgentError();
                                         return;
                                     }
-                                    const blockDef = withLaunchEnv(
-                                        createAgentBlockDefForTarget(
-                                            settings,
-                                            selectedTarget,
-                                            effectiveSelectedProfile,
-                                            effectiveVendorOptions,
-                                            effectiveSelectedVendorId,
-                                            VendorModelPinningEnabled ? effectiveVendorModel : undefined
-                                        ),
-                                        launchEnv
-                                    );
+                                    const isGuiLaunchNewTab = isPiProfileActive && launchMode === "gui";
+                                    const blockDef = isGuiLaunchNewTab
+                                        ? createGuiChatBlockDef()
+                                        : withLaunchEnv(
+                                              createAgentBlockDefForTarget(
+                                                  settings,
+                                                  selectedTarget,
+                                                  effectiveSelectedProfile,
+                                                  effectiveVendorOptions,
+                                                  effectiveSelectedVendorId,
+                                                  VendorModelPinningEnabled ? effectiveVendorModel : undefined
+                                              ),
+                                              launchEnv
+                                          );
                                     fireAndForget(async () => {
                                         try {
-                                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                                            const resolvedBlockDef = isGuiLaunchNewTab ? blockDef : await prepareAgentBlockDef(blockDef);
                                             await onCreateToNewTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
