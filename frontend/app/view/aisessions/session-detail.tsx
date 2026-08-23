@@ -1324,15 +1324,15 @@ export function SessionDetailPane({
                                 </div>
                             ) : null}
                         </div>
+                        {summary?.source === "pi" && summary?.id ? (
+                            <ChatComposer
+                                source={summary.source}
+                                sessionId={summary.id}
+                                projectPath={summary.projectPath}
+                                onEvent={handleChatEvent}
+                            />
+                        ) : null}
                     </div>
-                    {summary?.source === "pi" && summary?.id ? (
-                        <ChatComposer
-                            source={summary.source}
-                            sessionId={summary.id}
-                            projectPath={summary.projectPath}
-                            onEvent={handleChatEvent}
-                        />
-                    ) : null}
                     {outlineOpen ? (
                         <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
                             <div className="flex h-10 items-center justify-between gap-2 border-b border-border px-3">
