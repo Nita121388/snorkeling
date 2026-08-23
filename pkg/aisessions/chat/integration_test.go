@@ -228,3 +228,33 @@ func TestPiAdapter_Integration_ThinkingLevels(t *testing.T) {
 	}
 	t.Logf("thinking levels: %#v", data)
 }
+
+// TestPiAdapter_Integration_ImagePromptAck verifies a prompt carrying a base64
+// image attachment is accepted by real pi (protocol-level evidence for the
+// attachment path). We abort immediately after the ack; nothing is billed
+// beyond an accepted prompt.
+func TestPiAdapter_Integration_ImagePromptAck(t *testing.T) {
+	requirePi(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	session, err := (&piAdapter{}).Start(ctx, StartOptions{SessionDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer session.Close()
+	time.Sleep(1500 * time.Millisecond)
+
+	// 1x1 red PNG
+	const redDotBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	err = session.PromptWithOptions(ctx, PromptOptions{
+		Message: "describe this image",
+		Images:  []ImageContent{{Type: "image", Data: redDotBase64, MimeType: "image/png"}},
+	})
+	if err != nil {
+		t.Fatalf("PromptWithOptions with image rejected: %v", err)
+	}
+	if err := session.Abort(ctx); err != nil {
+		t.Logf("abort after image prompt: %v", err)
+	}
+}
