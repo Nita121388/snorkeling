@@ -1,9 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Chat composer: real pi slash commands (get_commands registry + GUI-mapped
-// built-ins), image attachments, steering while streaming, model/thinking
-// pickers. Pure slash logic lives in chat-slash.ts (unit-tested).
+// Chat composer — Paseo-style card: borderless auto-growing textarea inside a
+// rounded floating card, bottom tool row (attach / model·thinking picker /
+// round send), keybinding hints. Real pi slash commands (get_commands registry
+// + GUI-mapped built-ins), image attachments, steering while streaming. Pure
+// slash logic lives in chat-slash.ts (unit-tested).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/util/util";
@@ -57,7 +59,7 @@ type AgentStateInfo = {
     model?: { provider?: string; id?: string; name?: string } | null;
 };
 
-type PanelMode = null | "commands" | "models" | "thinking";
+type PanelMode = null | "commands" | "picker";
 
 type ModelOption = { provider?: string; id?: string; name?: string };
 
@@ -110,20 +112,24 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         onEvent: handleEvent,
         onTurnEnd: (evt) => {
             onEvent?.(evt);
-            // After a short delay clear the streaming bubble so the detail
-            // refresh (DetailDelta) takes over with the canonical messages.
             setTimeout(() => {
                 sendEventsRef.current = [];
             }, 600);
         },
     });
 
-    // Keep a ref to the live events array so the turnEnd timeout always reads
-    // the latest state without re-mounting the callback.
     const sendEventsRef = useRef<ChatEvent[]>(events);
     useEffect(() => {
         sendEventsRef.current = events;
     }, [events]);
+
+    // Paseo-style auto-grow: height follows content up to ~190px.
+    useEffect(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 190)}px`;
+    }, [input]);
 
     const flashNotice = useCallback((text: string) => {
         setNotice(text);
@@ -171,21 +177,18 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
     const canSubmit = hasContent && (status === "idle" || status === "error" || isRunning);
 
-    const openModelPicker = useCallback(async () => {
-        setPanelMode("models");
-        const res = await runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_models" } });
-        setModelOptions(Array.isArray(res.data?.models) ? res.data.models : []);
+    const openPicker = useCallback(async () => {
+        setPanelMode("picker");
+        const [modelsRes, levelsRes] = await Promise.all([
+            runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_models" } }),
+            runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_thinking_levels" } }),
+        ]);
+        setModelOptions(Array.isArray(modelsRes.data?.models) ? modelsRes.data.models : []);
+        setThinkingLevels(Array.isArray(levelsRes.data?.levels) ? levelsRes.data.levels.map(String) : []);
     }, [endpoint, baseBody, runChatCommand]);
 
-    const openThinkingPicker = useCallback(async () => {
-        setPanelMode("thinking");
-        const res = await runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_thinking_levels" } });
-        setThinkingLevels(Array.isArray(res.data?.levels) ? res.data.levels.map(String) : []);
-    }, [endpoint, baseBody, runChatCommand]);
-
-    // —— 斜杠面板数据：按模式给出候选列表 ——
+    // —— 面板数据：命令过滤 / 模型+思考深度合并选择器 ——
     const slashQuery = parseSlashQuery(input);
-    // 输入 “/” 自动进入命令模式；选择内置项后切换到 models/thinking 子面板
     const effectiveMode: PanelMode = panelMode ?? (slashQuery != null ? "commands" : null);
     const allCommands = useMemo(() => mergeSlashItems(dynamicCommands), [dynamicCommands]);
     type PanelRow =
@@ -197,11 +200,11 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         if (effectiveMode === "commands" && slashQuery != null) {
             return filterSlashItems(allCommands, slashQuery).map((item) => ({ kind: "command" as const, item }));
         }
-        if (effectiveMode === "models") {
-            return modelOptions.map((m) => ({ kind: "model" as const, item: m }));
-        }
-        if (effectiveMode === "thinking") {
-            return thinkingLevels.map((level) => ({ kind: "level" as const, level }));
+        if (effectiveMode === "picker") {
+            return [
+                ...modelOptions.map((item) => ({ kind: "model" as const, item })),
+                ...thinkingLevels.map((level) => ({ kind: "level" as const, level })),
+            ];
         }
         return [];
     }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels]);
@@ -222,15 +225,13 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const applyBuiltin = useCallback(
         (name: string) => {
             setInput("");
-            if (name === "model") {
-                void openModelPicker();
-            } else if (name === "think") {
-                void openThinkingPicker();
+            if (name === "model" || name === "think") {
+                void openPicker();
             } else if (name === "compact") {
                 void runControl("compact", undefined, "已请求压缩上下文");
             }
         },
-        [openModelPicker, openThinkingPicker, runControl]
+        [openPicker, runControl]
     );
 
     const applyCommandRow = useCallback(
@@ -252,15 +253,21 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             if (row.kind === "model") {
                 const { item } = row;
                 if (item.provider && item.id) {
-                    void runControl("set_model", { provider: item.provider, modelId: item.id }, `模型已切换: ${item.name || item.id}`);
+                    void runControl(
+                        "set_model",
+                        { provider: item.provider, modelId: item.id },
+                        `模型已切换: ${item.name || item.id}`
+                    );
                 } else {
                     flashNotice("✗ 该模型缺少 provider/id");
                 }
                 setPanelMode(null);
+                inputRef.current?.focus();
                 return;
             }
             void runControl("set_thinking_level", { level: row.level }, `思考深度: ${row.level}`);
             setPanelMode(null);
+            inputRef.current?.focus();
         },
         [applyBuiltin, runControl, flashNotice, effectiveMode]
     );
@@ -322,7 +329,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                 handleSubmit();
             }
         },
-        [panelMode, panelRows, cmdIndex, moveIndex, applyCommandRow, handleSubmit]
+        [effectiveMode, panelRows, cmdIndex, moveIndex, applyCommandRow, handleSubmit]
     );
 
     // Auto-scroll the streaming bubble as new text arrives.
@@ -358,10 +365,8 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         .map((evt) => evt.text!)
         .join("");
 
-    // Show tool calls that completed during this turn.
     const toolEndEvents = events.filter((evt) => evt.type === "tool_call_end" && evt.toolName);
     const toolStartEvents = events.filter((evt) => evt.type === "tool_call_start" && evt.toolName);
-    // In-flight (started but not ended).
     const runningToolNames = toolStartEvents
         .filter((start) => !toolEndEvents.some((end) => end.toolName === start.toolName))
         .map((e) => e.toolName);
@@ -372,14 +377,16 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         agentState?.thinkingLevel && agentState.thinkingLevel !== "off" ? agentState.thinkingLevel : "";
     const panelOpen = effectiveMode != null && panelRows.length > 0;
 
+    const modelChipLabel = currentModelLabel ? `${source} · ${currentModelLabel}` : `${source} · 选择模型`;
+
     return (
-        <div className="shrink-0 border-t border-border bg-panel">
-            <div className="mx-auto w-full max-w-3xl">
+        <div className="shrink-0 bg-panel">
+            <div className="mx-auto w-full max-w-3xl px-6 pb-2.5 pt-1">
                 {/* Streaming bubble — only shown when there's active content. */}
                 {hasStream ? (
                     <div
                         ref={bubbleRef}
-                        className="max-h-[180px] overflow-y-auto border-b border-border/50 bg-bg/30 px-3 py-2 text-xs text-primary/90"
+                        className="mb-1.5 max-h-[180px] overflow-y-auto rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-primary/90"
                     >
                         {toolEndEvents.map((evt, idx) => (
                             <div key={`tc-${idx}`} className="mb-1 rounded bg-accent/5 px-2 py-1 text-[10px] text-secondary">
@@ -416,41 +423,23 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                         ) : null}
                     </div>
                 ) : null}
-                {/* Attachment preview chips */}
-                {images.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 px-3 pt-2">
-                        {images.map((img) => (
-                            <div
-                                key={img.id}
-                                className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border"
-                            >
-                                <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
-                                <button
-                                    type="button"
-                                    aria-label={`Remove ${img.name}`}
-                                    onClick={() => removeImage(img.id)}
-                                    className="absolute right-0 top-0 hidden h-4 w-4 items-center justify-center rounded-bl bg-error/80 text-[8px] text-white group-hover:flex"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                ) : null}
                 {notice ? (
-                    <div className="px-3 pt-2 text-[11px] text-secondary" role="status">
+                    <div className="pb-1 pt-0.5 text-[11px] text-secondary" role="status">
                         {notice}
                     </div>
                 ) : null}
-                <div className="relative flex items-end gap-2 px-3 py-2">
+                <div className="relative">
                     {panelOpen ? (
-                        <div className="absolute bottom-full left-3 z-40 mb-1 max-h-72 w-80 overflow-y-auto rounded-xl border border-border bg-panel py-1 shadow-2xl">
+                        <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-[22rem] overflow-y-auto rounded-xl border border-border bg-panel py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
-                                <div className="border-b border-border/50 px-3 py-1 text-[10px] uppercase text-secondary">
+                                <div className="border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
                                     Commands · Tab/Enter 补全 · Esc 关闭
                                 </div>
                             ) : null}
                             {panelRows.map((row, idx) => {
+                                const prev = idx > 0 ? panelRows[idx - 1] : null;
+                                const showSection =
+                                    effectiveMode === "picker" && row.kind !== "command" && prev?.kind !== row.kind;
                                 if (row.kind === "command") {
                                     const badge = slashSourceLabel(row.item.source);
                                     return (
@@ -480,8 +469,42 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                 }
                                 if (row.kind === "model") {
                                     return (
+                                        <div key={`model-${row.item.provider}-${row.item.id}`}>
+                                            {showSection ? (
+                                                <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
+                                                    模型
+                                                </div>
+                                            ) : null}
+                                            <button
+                                                type="button"
+                                                className={cn(
+                                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                                    idx === cmdIndex
+                                                        ? "bg-accent/10 text-primary"
+                                                        : "text-secondary hover:bg-hover"
+                                                )}
+                                                onMouseEnter={() => setCmdIndex(idx)}
+                                                onClick={() => applyCommandRow(row)}
+                                            >
+                                                <i className="fa-sharp fa-solid fa-microchip shrink-0 text-[10px] text-accent" />
+                                                <span className="min-w-0 flex-1 truncate">
+                                                    {row.item.name || row.item.id}
+                                                </span>
+                                                <span className="shrink-0 text-[9px] opacity-70">
+                                                    {row.item.provider}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div key={`level-${row.level}`}>
+                                        {showSection ? (
+                                            <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
+                                                思考深度
+                                            </div>
+                                        ) : null}
                                         <button
-                                            key={`model-${row.item.provider}-${row.item.id}`}
                                             type="button"
                                             className={cn(
                                                 "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
@@ -492,113 +515,145 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                             onMouseEnter={() => setCmdIndex(idx)}
                                             onClick={() => applyCommandRow(row)}
                                         >
-                                            <i className="fa-sharp fa-solid fa-microchip shrink-0 text-[10px] text-accent" />
-                                            <span className="min-w-0 flex-1 truncate">
-                                                {row.item.name || row.item.id}
-                                            </span>
-                                            <span className="shrink-0 text-[9px] opacity-70">{row.item.provider}</span>
+                                            <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
+                                            <span className="flex-1">{row.level}</span>
+                                            {currentThinking === row.level ? (
+                                                <span className="text-[9px] text-accent">当前</span>
+                                            ) : null}
                                         </button>
-                                    );
-                                }
-                                return (
-                                    <button
-                                        key={`level-${row.level}`}
-                                        type="button"
-                                        className={cn(
-                                            "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
-                                            idx === cmdIndex ? "bg-accent/10 text-primary" : "text-secondary hover:bg-hover"
-                                        )}
-                                        onMouseEnter={() => setCmdIndex(idx)}
-                                        onClick={() => applyCommandRow(row)}
-                                    >
-                                        <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
-                                        <span className="flex-1">{row.level}</span>
-                                        {currentThinking === row.level ? (
-                                            <span className="text-[9px] text-accent">当前</span>
-                                        ) : null}
-                                    </button>
+                                    </div>
                                 );
                             })}
                         </div>
                     ) : null}
-                    <button
-                        type="button"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary"
-                        title="Attach images"
-                        aria-label="Attach images"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <i className="fa-sharp fa-solid fa-paperclip text-[12px]" />
-                    </button>
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                            void pickFiles(e.target.files);
-                            e.target.value = ""; // allow re-picking the same file
+                    {/* Paseo 卡片：圆角浮起容器，无边框输入区在卡内 */}
+                    <div
+                        className={cn(
+                            "rounded-[18px] border bg-surface p-1.5 shadow-lg transition-colors",
+                            panelOpen || input ? "border-secondary/50" : "border-border focus-within:border-secondary/50"
+                        )}
+                        onClick={(e) => {
+                            // 点击卡片空白处聚焦输入框（按钮点击不触发）
+                            if (e.target === e.currentTarget) inputRef.current?.focus();
                         }}
-                    />
-                    <textarea
-                        ref={inputRef}
-                        className="min-h-[38px] max-h-[140px] flex-1 resize-none rounded-xl border border-border bg-bg px-3 py-2 text-xs text-primary outline-none focus:border-accent"
-                        placeholder={
-                            isRunning
-                                ? "Agent is thinking… (Enter 发送会排队 steer)"
-                                : "Send a message… (/ 唤起命令，📎 附图)"
-                        }
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        rows={1}
-                    />
-                    {isRunning ? (
-                        <button
-                            type="button"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-error/10 text-error hover:bg-error/20"
-                            title="Stop"
-                            aria-label="Stop"
-                            onClick={abort}
-                        >
-                            <i className="fa-sharp fa-solid fa-stop text-[11px]" />
-                        </button>
-                    ) : (
-                        <button
-                            type="button"
-                            className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded",
-                                canSubmit
-                                    ? "bg-accent text-primary-contrast hover:bg-accent/80"
-                                    : "bg-border/40 text-secondary"
-                            )}
-                            title="Send"
-                            aria-label="Send"
-                            disabled={!canSubmit}
-                            onClick={handleSubmit}
-                        >
-                            <i className="fa-sharp fa-solid fa-paper-plane text-[11px]" />
-                        </button>
-                    )}
-                </div>
-                {!hasStream && (currentModelLabel || currentThinking) ? (
-                    <div className="flex items-center justify-end gap-1.5 px-3 pb-1.5">
-                        {currentModelLabel ? (
-                            <span
-                                className="max-w-48 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary"
-                                title={currentModelLabel}
+                    >
+                        {/* Attachment preview chips — 卡内顶部 */}
+                        {images.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5 px-1.5 pb-1 pt-1">
+                                {images.map((img) => (
+                                    <div
+                                        key={img.id}
+                                        className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border"
+                                    >
+                                        <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
+                                        <button
+                                            type="button"
+                                            aria-label={`Remove ${img.name}`}
+                                            onClick={() => removeImage(img.id)}
+                                            className="absolute right-0 top-0 hidden h-4 w-4 items-center justify-center rounded-bl bg-error/80 text-[8px] text-white group-hover:flex"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+                        <textarea
+                            ref={inputRef}
+                            className="block max-h-[190px] w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
+                            placeholder={
+                                isRunning ? "Agent 运行中… Enter 插话排队" : "给 Agent 输入任务…"
+                            }
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            rows={1}
+                        />
+                        {/* 卡内底部工具行：➕ 附件 · 模型▾ · 发送 */}
+                        <div className="flex items-center gap-1 px-0.5 pb-0.5 pt-1">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                    void pickFiles(e.target.files);
+                                    e.target.value = ""; // allow re-picking the same file
+                                }}
+                            />
+                            <button
+                                type="button"
+                                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-secondary hover:bg-hover hover:text-primary"
+                                title="附加图片"
+                                aria-label="Attach images"
+                                onClick={() => fileInputRef.current?.click()}
                             >
-                                {currentModelLabel}
-                            </span>
-                        ) : null}
-                        {currentThinking ? (
-                            <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary">
-                                think:{currentThinking}
-                            </span>
-                        ) : null}
+                                <i className="fa-sharp fa-solid fa-plus text-[13px]" />
+                            </button>
+                            <button
+                                type="button"
+                                className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                title="切换模型与思考深度"
+                                onClick={() => {
+                                    if (effectiveMode === "picker") {
+                                        setPanelMode(null);
+                                    } else {
+                                        void openPicker();
+                                    }
+                                }}
+                            >
+                                <span className="max-w-52 truncate">{modelChipLabel}</span>
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
+                                        effectiveMode === "picker" && "rotate-180"
+                                    )}
+                                />
+                            </button>
+                            {isRunning ? (
+                                <button
+                                    type="button"
+                                    className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-error text-white hover:bg-error/85"
+                                    title="停止 (Esc 中止流式气泡后可再点)"
+                                    aria-label="Stop"
+                                    onClick={abort}
+                                >
+                                    <i className="fa-sharp fa-solid fa-square text-[10px]" />
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        "ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all",
+                                        canSubmit
+                                            ? "cursor-pointer bg-accent text-primary-contrast hover:brightness-110"
+                                            : "cursor-default bg-surface-strong text-secondary"
+                                    )}
+                                    title="发送 (Enter)"
+                                    aria-label="Send message"
+                                    disabled={!canSubmit}
+                                    onClick={handleSubmit}
+                                >
+                                    <i className="fa-sharp fa-solid fa-arrow-up text-[13px]" />
+                                </button>
+                            )}
+                        </div>
                     </div>
-                ) : null}
+                    {/* 键位提示行 */}
+                    <div className="flex gap-4 px-2 pb-0.5 pt-1.5 text-[10.5px] text-secondary/80">
+                        <span>
+                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Enter</span> 发送
+                        </span>
+                        <span>
+                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Shift</span>+
+                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Enter</span> 换行
+                        </span>
+                        <span>
+                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">/</span> 命令
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -52,12 +52,14 @@ export function SessionMoreMenu({
     sessionId,
     buildMarkdown,
     onRename,
+    onExpand,
 }: {
     projectDirectory: string;
     sessionFilePath: string;
     sessionId: string;
     buildMarkdown: () => string;
     onRename?: () => void;
+    onExpand?: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const [subOpen, setSubOpen] = useState(false);
@@ -117,6 +119,16 @@ export function SessionMoreMenu({
             </button>
             {open ? (
                 <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-border bg-panel p-1 shadow-2xl">
+                    {onExpand ? (
+                        <MenuRow
+                            icon="fa-window-maximize"
+                            label="查看完整信息"
+                            onClick={() => {
+                                setOpen(false);
+                                onExpand();
+                            }}
+                        />
+                    ) : null}
                     <MenuRow
                         icon="fa-pen"
                         label="重命名聊天"

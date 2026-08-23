@@ -243,6 +243,8 @@ export function SessionDetailPane({
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const [renaming, setRenaming] = useState(false);
     const [titleDraft, setTitleDraft] = useState("");
+    // 实时 agent 模型（来自聊天 session_state 事件，头栏药丸 chip 展示）
+    const [chatAgentModel, setChatAgentModel] = useState("");
     // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时默认极简 topbar（对齐原型）
     const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
         try {
@@ -486,7 +488,11 @@ export function SessionDetailPane({
     );
 
     const handleChatEvent = useCallback(
-        (evt: { type: string }) => {
+        (evt: { type: string; state?: any }) => {
+            if (evt.type === "session_state" && evt.state?.model) {
+                const m = evt.state.model;
+                setChatAgentModel(String(m.name || m.id || ""));
+            }
             if (evt.type === "turn_end" || evt.type === "turn_failed") {
                 void requestDetailDelta("bottom");
             }
@@ -771,10 +777,15 @@ export function SessionDetailPane({
     const hasNoteInfo = Boolean(summary.note || summaryTags.length);
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
-            <div className={cn("shrink-0 border-b border-border/70", headerCollapsed ? "p-1.5" : "p-3")}>
+            <div
+                className={cn(
+                    "shrink-0",
+                    headerCollapsed ? "flex h-[46px] items-center border-b border-border px-3" : "border-b border-border/70 p-3"
+                )}
+            >
                 {headerCollapsed ? (
-                    // 极简 topbar：标题 + 来源 + model + 图标组（对齐原型）
-                    <div className="flex items-center gap-2 px-1">
+                    // 极简 topbar：46px 固定高，标题 + 药丸 chips + 四键图标组（对齐原型）
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                         {renaming ? (
                             <input
                                 autoFocus
@@ -802,26 +813,24 @@ export function SessionDetailPane({
                                 {summary.title || summary.id}
                             </div>
                         )}
-                        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-secondary">
+                        <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary">
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
                             {summary.source}
                         </span>
-                        {actualModel ? (
+                        {(chatAgentModel || actualModel) && headerCollapsed ? (
                             <span
                                 className={cn(
-                                    "max-w-40 shrink-0 truncate rounded border px-1.5 py-0.5 text-[10px]",
-                                    actualModels.length > 1
-                                        ? "border-warning/60 text-warning"
-                                        : "border-border text-primary"
+                                    "inline-flex h-[22px] max-w-44 shrink-0 items-center overflow-hidden whitespace-nowrap rounded-full border px-2 text-[11px] text-secondary",
+                                    actualModels.length > 1 ? "border-warning/60 text-warning" : "border-border"
                                 )}
-                                title={`Actual response model${actualModels.length > 1 ? "s" : ""}: ${actualModels.join(", ")}`}
+                                title={`模型${actualModels.length > 1 ? `（多模型: ${actualModels.join(", ")}）` : ""}`}
                             >
-                                {actualModel}
+                                {chatAgentModel || actualModel}
                             </span>
                         ) : null}
-                        <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex shrink-0 items-center gap-0.5">
                             <IconButton
-                                icon={searchExpanded ? "fa-magnifying-glass" : "fa-magnifying-glass"}
+                                icon="fa-magnifying-glass"
                                 label="Search session"
                                 className={cn(searchExpanded && "border-accent bg-accent/10 text-accent")}
                                 onClick={() => setSearchExpanded((current) => !current)}
@@ -835,11 +844,28 @@ export function SessionDetailPane({
                                 )}
                                 onClick={() => setNoteCollapsed((current) => !current)}
                             />
+                            <IconButton
+                                icon="fa-star"
+                                label={summary.marked ? "Unmark session" : "Mark session"}
+                                className={cn(
+                                    !summary.marked && "text-secondary/50",
+                                    summary.marked && "border-warning/60 bg-warning/10 text-warning"
+                                )}
+                                onClick={() => void model.toggleMark(summary)}
+                            />
                             <SessionMoreMenu
                                 projectDirectory={summary.projectPath?.trim() ?? ""}
                                 sessionFilePath={summary.filePath?.trim() ?? ""}
                                 sessionId={summary.id}
                                 onRename={summary.key ? startRename : undefined}
+                                onExpand={
+                                    headerCollapsed
+                                        ? () => {
+                                              userTouchedHeaderRef.current = true;
+                                              setHeaderCollapsed(false);
+                                          }
+                                        : undefined
+                                }
                                 buildMarkdown={() =>
                                     buildSessionMarkdown(
                                         summary.title || summary.id,
@@ -849,14 +875,6 @@ export function SessionDetailPane({
                                         toolCalls
                                     )
                                 }
-                            />
-                            <IconButton
-                                icon="fa-chevron-down"
-                                label="Show full header"
-                                onClick={() => {
-                                    userTouchedHeaderRef.current = true;
-                                    setHeaderCollapsed(false);
-                                }}
                             />
                         </div>
                     </div>
@@ -1177,8 +1195,14 @@ export function SessionDetailPane({
             </div>
             <div className="relative min-h-0 flex-1">
                 <div className={cn("flex h-full min-h-0", outlineOpen && "pr-0")}>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                        <div className={cn("shrink-0 border-b border-border bg-panel px-3 py-2", !searchExpanded && "hidden")}>
+                    <div className="relative flex min-w-0 flex-1 flex-col">
+                        {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}
+                        <div
+                            className={cn(
+                                "absolute left-1/2 top-1.5 z-30 w-[min(520px,90%)] -translate-x-1/2 rounded-xl border border-border bg-panel p-2 shadow-2xl",
+                                !searchExpanded && "hidden"
+                            )}
+                        >
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                                 <div className="relative min-w-[220px] flex-[1_1_280px]">
                                     <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
