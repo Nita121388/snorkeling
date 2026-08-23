@@ -237,17 +237,19 @@ export function SessionDetailPane({
     const [showToolCalls, setShowToolCalls] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
-    // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时由 ResizeObserver 自适应
+    // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时默认极简 topbar（对齐原型）
     const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
         try {
             const stored = localStorage.getItem("snorkeling:sessionDetail:headerCollapsed");
             if (stored === "true") return true;
             if (stored === "false") return false;
-            return false;
+            return true;
         } catch {
-            return false;
+            return true;
         }
     });
+    // 搜索工具栏（第二行）默认隐藏，点 🔍 展开
+    const [searchExpanded, setSearchExpanded] = useState(false);
     // 用户在本 session 是否主动动过 Header 折叠（不写 localStorage，切 session 重置）
     const userTouchedHeaderRef = useRef(false);
     // 是否已有持久化偏好（影响自适应是否生效）
@@ -652,17 +654,18 @@ export function SessionDetailPane({
         window.requestAnimationFrame(() => scrollToVisibleMessage(pendingSeq, "smooth"));
     }, [detailMessages, scrollToVisibleMessage]);
 
-    // 打开 panel / 切换 session 后自动滚到底（最新一条），流式新增不跟随
+    // 打开 panel / 切换 session 后：仅在内容超出一屏时才置底（ponytail: 否则短对话应从顶部开始）
     useLayoutEffect(() => {
         if (autoScrolledToBottomRef.current) return;
         if (lastVisibleMessage == null) return;
-        // 等到最后一条消息的 ref 挂上来才滚，避免在 DOM 还没渲染时就跑
         if (!messageRefs.current[lastVisibleMessage.seq]) return;
         autoScrolledToBottomRef.current = true;
         const container = detailScrollRef.current;
         if (!container) return;
-        // 直接将滚动条置底（含 pb-10 padding 都能露出来）
-        container.scrollTop = container.scrollHeight;
+        // 内容未溢出视图时保持顶部对齐（首个消息从顶部开始）
+        if (container.scrollHeight > container.clientHeight) {
+            container.scrollTop = container.scrollHeight;
+        }
     }, [lastVisibleMessage?.seq]);
 
     useEffect(() => {
@@ -739,37 +742,70 @@ export function SessionDetailPane({
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
             <div className={cn("shrink-0 border-b border-border/70", headerCollapsed ? "p-1.5" : "p-3")}>
                 {headerCollapsed ? (
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={toggleHeader}
-                            className="flex min-w-0 flex-1 items-center rounded px-1 py-0.5 text-left hover:bg-hover"
-                            title="Expand session header"
+                    // 极简 topbar：标题 + 来源 + model + 图标组（对齐原型）
+                    <div className="flex items-center gap-2 px-1">
+                        <div
+                            className="min-w-0 flex-1 truncate text-sm font-medium"
+                            title={summary.title || summary.id}
                         >
-                            <div
-                                className="min-w-0 flex-1 truncate text-sm font-medium"
-                                title={summary.title || summary.id}
+                            {summary.title || summary.id}
+                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-secondary">
+                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
+                            {summary.source}
+                        </span>
+                        {actualModel ? (
+                            <span
+                                className={cn(
+                                    "max-w-40 shrink-0 truncate rounded border px-1.5 py-0.5 text-[10px]",
+                                    actualModels.length > 1
+                                        ? "border-warning/60 text-warning"
+                                        : "border-border text-primary"
+                                )}
+                                title={`Actual response model${actualModels.length > 1 ? "s" : ""}: ${actualModels.join(", ")}`}
                             >
-                                {summary.title || summary.id}
-                            </div>
-                        </button>
-                    <div className="flex items-center gap-2">
-                        <SessionMoreMenu
-                            projectDirectory={summary.projectPath?.trim() ?? ""}
-                            sessionFilePath={summary.filePath?.trim() ?? ""}
-                            sessionId={summary.id}
-                            buildMarkdown={() =>
-                                buildSessionMarkdown(
-                                    summary.title || summary.id,
-                                    summary.source,
-                                    summary.id,
-                                    detailMessages,
-                                    toolCalls
-                                )
-                            }
-                        />
-                        <IconButton icon="fa-chevron-down" label="Expand session header" onClick={toggleHeader} />
-                    </div>
+                                {actualModel}
+                            </span>
+                        ) : null}
+                        <div className="flex shrink-0 items-center gap-1">
+                            <IconButton
+                                icon={searchExpanded ? "fa-magnifying-glass" : "fa-magnifying-glass"}
+                                label="Search session"
+                                className={cn(searchExpanded && "border-accent bg-accent/10 text-accent")}
+                                onClick={() => setSearchExpanded((current) => !current)}
+                            />
+                            <IconButton
+                                icon="fa-pen"
+                                label="Edit note and tags"
+                                className={cn(
+                                    !noteCollapsed && "border-accent bg-accent/10 text-accent",
+                                    !headerCollapsed && "hidden"
+                                )}
+                                onClick={() => setNoteCollapsed((current) => !current)}
+                            />
+                            <SessionMoreMenu
+                                projectDirectory={summary.projectPath?.trim() ?? ""}
+                                sessionFilePath={summary.filePath?.trim() ?? ""}
+                                sessionId={summary.id}
+                                buildMarkdown={() =>
+                                    buildSessionMarkdown(
+                                        summary.title || summary.id,
+                                        summary.source,
+                                        summary.id,
+                                        detailMessages,
+                                        toolCalls
+                                    )
+                                }
+                            />
+                            <IconButton
+                                icon="fa-chevron-down"
+                                label="Show full header"
+                                onClick={() => {
+                                    userTouchedHeaderRef.current = true;
+                                    setHeaderCollapsed(false);
+                                }}
+                            />
+                        </div>
                     </div>
                 ) : (
                     <div className="flex items-start justify-between gap-3">
@@ -1068,7 +1104,7 @@ export function SessionDetailPane({
             <div className="relative min-h-0 flex-1">
                 <div className={cn("flex h-full min-h-0", outlineOpen && "pr-0")}>
                     <div className="flex min-w-0 flex-1 flex-col">
-                        <div className="shrink-0 border-b border-border bg-panel px-3 py-2">
+                        <div className={cn("shrink-0 border-b border-border bg-panel px-3 py-2", !searchExpanded && "hidden")}>
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                                 <div className="relative min-w-[220px] flex-[1_1_280px]">
                                     <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
