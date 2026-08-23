@@ -1,10 +1,24 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/util/util";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { useChatStream, type ChatEvent, type ChatStreamStatus } from "./use-chat-stream";
+
+/** 斜杠命令注册表：可扩展；insert 为发送文本，pi 自行解释 */
+export type SlashCommand = {
+    name: string;
+    description: string;
+};
+const SLASH_COMMANDS: SlashCommand[] = [
+    { name: "think", description: "切换深度思考级别" },
+    { name: "model", description: "切换模型" },
+    { name: "tools", description: "查看/开关工具" },
+    { name: "session", description: "会话信息与切换" },
+    { name: "clear", description: "清空当前对话上下文" },
+    { name: "help", description: "显示可用命令" },
+];
 
 type ChatComposerProps = {
     source: string;
@@ -44,6 +58,28 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const canSubmit = input.trim().length > 0 && (status === "idle" || status === "error");
     const isRunning = status === "sending" || status === "streaming";
 
+    // —— 斜杠命令面板：输入 “/xxx” 且未出现空格时弹出 ——
+    const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.slice(1) : null;
+    const cmdMatches = useMemo(
+        () =>
+            slashQuery == null
+                ? []
+                : SLASH_COMMANDS.filter((cmd) => cmd.name.startsWith(slashQuery.toLowerCase())),
+        [slashQuery]
+    );
+    const cmdOpen = cmdMatches.length > 0;
+    const [cmdIndex, setCmdIndex] = useState(0);
+    useEffect(() => {
+        setCmdIndex(0);
+    }, [slashQuery]);
+    const applyCommand = useCallback(
+        (cmd: SlashCommand) => {
+            setInput(`/${cmd.name} `);
+            inputRef.current?.focus();
+        },
+        []
+    );
+
     const handleSubmit = useCallback(() => {
         if (!canSubmit) return;
         const text = input.trim();
@@ -61,13 +97,35 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (cmdOpen) {
+                if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setCmdIndex((current) => (current + 1) % cmdMatches.length);
+                    return;
+                }
+                if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setCmdIndex((current) => (current - 1 + cmdMatches.length) % cmdMatches.length);
+                    return;
+                }
+                if (e.key === "Tab" || e.key === "Enter") {
+                    e.preventDefault();
+                    applyCommand(cmdMatches[cmdIndex]);
+                    return;
+                }
+                if (e.key === "Escape") {
+                    e.preventDefault();
+                    setInput("");
+                    return;
+                }
+            }
             if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (isRunning) return;
                 handleSubmit();
             }
         },
-        [handleSubmit, isRunning]
+        [handleSubmit, isRunning, cmdOpen, cmdMatches, cmdIndex, applyCommand]
     );
 
     // Auto-scroll the streaming bubble as new text arrives.
@@ -127,7 +185,26 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                     ) : null}
                 </div>
             )}
-            <div className="flex items-end gap-2 px-3 py-2">
+            <div className="relative flex items-end gap-2 px-3 py-2">
+                {cmdOpen ? (
+                    <div className="absolute bottom-full left-3 z-40 mb-1 w-72 overflow-hidden rounded-xl border border-border bg-panel py-1 shadow-2xl">
+                        {cmdMatches.map((cmd, idx) => (
+                            <button
+                                key={cmd.name}
+                                type="button"
+                                className={cn(
+                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                    idx === cmdIndex ? "bg-accent/10 text-primary" : "text-secondary hover:bg-hover"
+                                )}
+                                onMouseEnter={() => setCmdIndex(idx)}
+                                onClick={() => applyCommand(cmd)}
+                            >
+                                <span className="shrink-0 font-mono font-medium text-accent">/{cmd.name}</span>
+                                <span className="min-w-0 truncate">{cmd.description}</span>
+                            </button>
+                        ))}
+                    </div>
+                ) : null}
                 <textarea
                     ref={inputRef}
                     className="min-h-[38px] max-h-[140px] flex-1 resize-none rounded-xl border border-border bg-bg px-3 py-2 text-xs text-primary outline-none focus:border-accent"
