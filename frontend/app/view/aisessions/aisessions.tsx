@@ -676,6 +676,18 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
+    async updateTitle(session: SessionSummary, title: string): Promise<boolean> {
+        if (!session?.key) return false;
+        try {
+            const updated = await this.service.Title(session.key, title);
+            this.replaceSession(updated);
+            return true;
+        } catch (e) {
+            globalStore.set(this.errorAtom, getErrorMessage(e));
+            return false;
+        }
+    }
+
     async deleteSession(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
         globalStore.set(this.deletingAtom, true);

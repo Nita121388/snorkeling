@@ -215,6 +215,20 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                     return false;
                 }
             },
+            updateTitle: async (session, title) => {
+                if (isBlank(session?.key)) {
+                    return false;
+                }
+                setError("");
+                try {
+                    const updated = await service.Title(session.key, title);
+                    replaceSession(updated);
+                    return true;
+                } catch (e) {
+                    setError(getErrorMessage(e));
+                    return false;
+                }
+            },
             deleteSession: async (session) => {
                 if (isBlank(session?.key)) {
                     return;

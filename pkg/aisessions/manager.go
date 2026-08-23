@@ -689,6 +689,50 @@ func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note strin
 	return summary, nil
 }
 
+func (m *Manager) SetTitle(ctx context.Context, identifier string, title string) (SessionSummary, error) {
+	summary, err := m.resolveSession(ctx, identifier, false)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	cleanTitle := strings.TrimSpace(title)
+	var writeErr error
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.SetTitle(ctx, summary.Key, cleanTitle); err != nil {
+			debugf("Manager.SetTitle sqlite write error key=%q err=%v", summary.Key, err)
+			writeErr = err
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.SetTitle sqlite open skipped key=%q err=%v", summary.Key, sqliteErr)
+	}
+	if metaDualWriteEnabled() || writeErr != nil || sqliteIdx == nil {
+		meta, err := m.openMeta()
+		if meta == nil {
+			if sqliteIdx != nil && writeErr == nil {
+				debugf("Manager.SetTitle meta json dual-write open error key=%q err=%v", summary.Key, err)
+				summary.Title = cleanTitle
+				summary.TitleSource = "user"
+				return summary, nil
+			}
+			return SessionSummary{}, err
+		}
+		defer meta.Close()
+		if err := meta.SetTitle(ctx, summary.Key, cleanTitle); err != nil {
+			if writeErr != nil {
+				return SessionSummary{}, fmt.Errorf("cannot write AI session title to sqlite (%v) or meta json (%w)", writeErr, err)
+			}
+			if sqliteIdx == nil {
+				return SessionSummary{}, err
+			}
+			debugf("Manager.SetTitle meta json dual-write error key=%q err=%v", summary.Key, err)
+		}
+	}
+	summary.Title = cleanTitle
+	summary.TitleSource = "user"
+	return summary, nil
+}
+
 func (m *Manager) RenameTag(ctx context.Context, from string, to string) (int, error) {
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr != nil || sqliteIdx == nil {

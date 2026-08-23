@@ -21,6 +21,7 @@ type metaData struct {
 type sessionMeta struct {
 	Marked    bool   `json:"marked,omitempty"`
 	Note      string `json:"note,omitempty"`
+	Title     string `json:"title,omitempty"`
 	UpdatedAt int64  `json:"updatedAt,omitempty"`
 }
 
@@ -68,6 +69,10 @@ func (s *MetaStore) Apply(summary *SessionSummary) {
 	meta := s.data.Sessions[summary.Key]
 	summary.Marked = meta.Marked
 	summary.Note = meta.Note
+	if meta.Title != "" {
+		summary.Title = meta.Title
+		summary.TitleSource = "user"
+	}
 }
 
 func (s *MetaStore) SetMarked(ctx context.Context, key string, marked bool) error {
@@ -87,6 +92,17 @@ func (s *MetaStore) SetNote(ctx context.Context, key string, note string) error 
 	}
 	meta := s.data.Sessions[key]
 	meta.Note = note
+	meta.UpdatedAt = time.Now().UnixMilli()
+	s.data.Sessions[key] = meta
+	return s.save()
+}
+
+func (s *MetaStore) SetTitle(ctx context.Context, key string, title string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	meta := s.data.Sessions[key]
+	meta.Title = title
 	meta.UpdatedAt = time.Now().UnixMilli()
 	s.data.Sessions[key] = meta
 	return s.save()

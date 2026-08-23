@@ -115,6 +115,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Tags", Array.from(arguments))
     }
 
+    // set a local AI session title override
+    // @returns updated AI session summary
+    Title(id: string, title: string): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "Title", Array.from(arguments))
+    }
+
     // load paged user messages for an AI session
     // @returns AI session user lines
     UserLines(request: AISessionsUserLinesRequest): Promise<UserLinesResult> {

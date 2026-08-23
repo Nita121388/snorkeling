@@ -1043,6 +1043,25 @@ func restoreSessionBackup(ctx context.Context, dbPath string, backupPath string)
 	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_meta`); err != nil {
 		return err
 	}
+	// ponytail: 老备份库无 title 列，SELECT * 列数不匹配会整表失败；先给备份库补列再拷贝。
+	var backupColumns []struct {
+		Name string `db:"name"`
+	}
+	if err := tx.SelectContext(ctx, &backupColumns, `SELECT name FROM pragma_table_info('ai_session_meta', 'backup')`); err != nil {
+		return err
+	}
+	hasTitle := false
+	for _, column := range backupColumns {
+		if column.Name == "title" {
+			hasTitle = true
+			break
+		}
+	}
+	if !hasTitle {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE backup.ai_session_meta ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO ai_session_meta SELECT * FROM backup.ai_session_meta`); err != nil {
 		return err
 	}

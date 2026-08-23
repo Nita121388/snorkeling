@@ -81,12 +81,16 @@ function sourceDotClass(source: string): string {
     return "bg-secondary";
 }
 
+const RenameTitleInputClass =
+    "h-6 min-w-0 flex-1 rounded border border-accent bg-surface px-1.5 text-sm font-medium text-primary outline-none";
+
 export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
     loadDetailDelta?: (reason?: "manual" | "bottom") => Promise<boolean>;
     loadDetailTools: (refresh?: boolean) => Promise<void>;
     loadUserLines: (session: SessionSummary, request?: Partial<AISessionsUserLinesRequest>) => Promise<UserLinesResult>;
     updateNote: (session: SessionSummary, note: string, tags?: string[]) => Promise<boolean>;
+    updateTitle: (session: SessionSummary, title: string) => Promise<boolean>;
     deleteSession: (session: SessionSummary) => Promise<void>;
     restoreSession: (session: SessionSummary) => Promise<void>;
     openProjectDirectory: (summary: SessionSummary) => Promise<void>;
@@ -237,6 +241,8 @@ export function SessionDetailPane({
     const [showToolCalls, setShowToolCalls] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
+    const [renaming, setRenaming] = useState(false);
+    const [titleDraft, setTitleDraft] = useState("");
     // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时默认极简 topbar（对齐原型）
     const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
         try {
@@ -288,6 +294,31 @@ export function SessionDetailPane({
     const noteSaving = noteSaveStatus === "saving";
     const trimmedNoteDraft = noteDraft.trim();
     const refreshing = loading || deltaLoading || toolCallsLoading;
+
+    // 切换会话时退出改名态，避免把草稿写进别的会话
+    useEffect(() => {
+        setRenaming(false);
+        setTitleDraft("");
+    }, [summaryKey]);
+
+    const startRename = useCallback(() => {
+        if (!summary?.key) return;
+        setTitleDraft(summary.title || "");
+        setRenaming(true);
+    }, [summary]);
+
+    const commitRename = useCallback(async () => {
+        if (!summary) return;
+        const nextTitle = titleDraft.trim();
+        if (nextTitle === "" || nextTitle === summary.title) {
+            setRenaming(false);
+            return;
+        }
+        const ok = await model.updateTitle(summary, nextTitle);
+        if (ok) {
+            setRenaming(false);
+        }
+    }, [model, summary, titleDraft]);
 
     currentSummaryRef.current = summary;
 
@@ -744,12 +775,33 @@ export function SessionDetailPane({
                 {headerCollapsed ? (
                     // 极简 topbar：标题 + 来源 + model + 图标组（对齐原型）
                     <div className="flex items-center gap-2 px-1">
-                        <div
-                            className="min-w-0 flex-1 truncate text-sm font-medium"
-                            title={summary.title || summary.id}
-                        >
-                            {summary.title || summary.id}
-                        </div>
+                        {renaming ? (
+                            <input
+                                autoFocus
+                                value={titleDraft}
+                                onChange={(e) => setTitleDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        void commitRename();
+                                    } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        setRenaming(false);
+                                    }
+                                }}
+                                onBlur={() => void commitRename()}
+                                placeholder={summary.title || summary.id}
+                                className={RenameTitleInputClass}
+                            />
+                        ) : (
+                            <div
+                                className="min-w-0 flex-1 cursor-text truncate text-sm font-medium"
+                                title={summary.title || summary.id}
+                                onDoubleClick={startRename}
+                            >
+                                {summary.title || summary.id}
+                            </div>
+                        )}
                         <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-secondary">
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
                             {summary.source}
@@ -787,6 +839,7 @@ export function SessionDetailPane({
                                 projectDirectory={summary.projectPath?.trim() ?? ""}
                                 sessionFilePath={summary.filePath?.trim() ?? ""}
                                 sessionId={summary.id}
+                                onRename={summary.key ? startRename : undefined}
                                 buildMarkdown={() =>
                                     buildSessionMarkdown(
                                         summary.title || summary.id,
@@ -811,12 +864,33 @@ export function SessionDetailPane({
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                                <div
-                                    className="min-w-0 truncate text-sm font-medium"
-                                    title={summary.title || summary.id}
-                                >
-                                    {summary.title || summary.id}
-                                </div>
+                                {renaming ? (
+                                    <input
+                                        autoFocus
+                                        value={titleDraft}
+                                        onChange={(e) => setTitleDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                void commitRename();
+                                            } else if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                setRenaming(false);
+                                            }
+                                        }}
+                                        onBlur={() => void commitRename()}
+                                        placeholder={summary.title || summary.id}
+                                        className={RenameTitleInputClass}
+                                    />
+                                ) : (
+                                    <div
+                                        className="min-w-0 cursor-text truncate text-sm font-medium"
+                                        title={summary.title || summary.id}
+                                        onDoubleClick={startRename}
+                                    >
+                                        {summary.title || summary.id}
+                                    </div>
+                                )}
                                 <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
                                     <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
                                     {summary.source}

@@ -959,3 +959,61 @@ func TestSQLiteListBoundaryProjectFilterAndDistribution(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerSetTitleDualWriteAndPreservesOtherMeta(t *testing.T) {
+	dir := t.TempDir()
+	metaPath := filepath.Join(dir, "meta.json")
+	indexPath := filepath.Join(dir, "index.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	sessionKey := "codex:set-title:/tmp/set-title.jsonl"
+	provider := &cacheProvider{
+		source: SourceCodex,
+		summaries: []SessionSummary{
+			{Key: sessionKey, ID: "set-title", Source: SourceCodex, FilePath: "/tmp/set-title.jsonl", MTime: 1, Size: 10},
+		},
+		messages: []Message{{Seq: 1, Role: RoleUser, Text: "hello"}},
+	}
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  indexPath,
+		MetaPath:   metaPath,
+		SQLitePath: sqlitePath,
+	})
+	ctx := context.Background()
+
+	if _, err := manager.Note(ctx, "set-title", "keep me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Mark(ctx, "set-title", true); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := manager.SetTitle(ctx, "set-title", "  My Custom Title  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Title != "My Custom Title" || summary.TitleSource != "user" {
+		t.Fatalf("expected user title override, got %#v", summary)
+	}
+	reloaded, err := manager.Summary(ctx, "set-title", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Title != "My Custom Title" || reloaded.TitleSource != "user" {
+		t.Fatalf("expected title to persist, got %#v", reloaded)
+	}
+	if !reloaded.Marked || reloaded.Note != "keep me" {
+		t.Fatalf("expected SetTitle to preserve mark and note, got %#v", reloaded)
+	}
+
+	// 清空标题应回落到 provider 原始标题
+	if _, err := manager.SetTitle(ctx, "set-title", ""); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := manager.Summary(ctx, "set-title", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Title != "" || cleared.TitleSource == "user" {
+		t.Fatalf("expected cleared title to fall back to provider title, got %#v", cleared)
+	}
+}

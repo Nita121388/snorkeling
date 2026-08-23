@@ -51,11 +51,13 @@ export function SessionMoreMenu({
     sessionFilePath,
     sessionId,
     buildMarkdown,
+    onRename,
 }: {
     projectDirectory: string;
     sessionFilePath: string;
     sessionId: string;
     buildMarkdown: () => string;
+    onRename?: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const [subOpen, setSubOpen] = useState(false);
@@ -115,7 +117,20 @@ export function SessionMoreMenu({
             </button>
             {open ? (
                 <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-border bg-panel p-1 shadow-2xl">
-                    <MenuRow icon="fa-pen" label="重命名聊天" disabled disabledReason="即将支持（需后端标题覆盖）" />
+                    <MenuRow
+                        icon="fa-pen"
+                        label="重命名聊天"
+                        disabled={!onRename}
+                        disabledReason={onRename ? undefined : "即将支持（需后端标题覆盖）"}
+                        onClick={
+                            onRename
+                                ? () => {
+                                      setOpen(false);
+                                      onRename();
+                                  }
+                                : undefined
+                        }
+                    />
                     <div className="mx-2 my-1 h-px bg-border" />
                     <div
                         className="relative"

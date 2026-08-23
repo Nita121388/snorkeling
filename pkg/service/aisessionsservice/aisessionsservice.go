@@ -759,6 +759,26 @@ func (svc *AISessionsService) Note(ctx context.Context, id string, note string) 
 	return &summary, nil
 }
 
+func (svc *AISessionsService) Title_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "set a local AI session title override",
+		ArgNames:   []string{"ctx", "id", "title"},
+		ReturnDesc: "updated AI session summary",
+	}
+}
+
+func (svc *AISessionsService) Title(ctx context.Context, id string, title string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForIdentifier(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.SetTitle(ctx, id, title)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
 func (svc *AISessionsService) NoteAndTags_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "set a local AI session note and tags",

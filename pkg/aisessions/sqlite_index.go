@@ -164,6 +164,7 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			session_key TEXT PRIMARY KEY,
 			marked INTEGER NOT NULL DEFAULT 0,
 			note TEXT NOT NULL DEFAULT '',
+			title TEXT NOT NULL DEFAULT '',
 			updated_at INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT 0,
 			source TEXT NOT NULL DEFAULT 'migration',
@@ -194,6 +195,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		}
 	}
 	if err := idx.ensureAISessionProvenanceColumns(ctx); err != nil {
+		return err
+	}
+	if err := idx.ensureMetaTitleColumn(ctx); err != nil {
 		return err
 	}
 	if err := idx.MigrateMetaJSON(ctx); err != nil {
@@ -234,6 +238,22 @@ func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) er
 		}
 	}
 	return nil
+}
+
+func (idx *SQLiteIndex) ensureMetaTitleColumn(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_session_meta')`); err != nil {
+		return err
+	}
+	for _, column := range columns {
+		if column.Name == "title" {
+			return nil
+		}
+	}
+	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_session_meta ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+	return err
 }
 
 func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVersion string) (bool, error) {
@@ -457,8 +477,8 @@ func (idx *SQLiteIndex) upsertMetaTx(ctx context.Context, tx *sqlx.Tx, key strin
 	}
 	var existing sessionMeta
 	var existingCreatedAt int64
-	err := tx.QueryRowxContext(ctx, `SELECT marked, note, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
-		Scan(&existing.Marked, &existing.Note, &existing.UpdatedAt, &existingCreatedAt)
+	err := tx.QueryRowxContext(ctx, `SELECT marked, note, title, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
+		Scan(&existing.Marked, &existing.Note, &existing.Title, &existing.UpdatedAt, &existingCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -469,21 +489,25 @@ func (idx *SQLiteIndex) upsertMetaTx(ctx context.Context, tx *sqlx.Tx, key strin
 		if item.Note == "" && existing.Note != "" {
 			item.Note = existing.Note
 		}
+		if item.Title == "" && existing.Title != "" {
+			item.Title = existing.Title
+		}
 		item.Marked = item.Marked || existing.Marked
 	}
 	createdAt := existingCreatedAt
 	if createdAt == 0 {
 		createdAt = now
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, updated_at, created_at, source, dirty)
-		VALUES(?, ?, ?, ?, ?, ?, 0)
+	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, title, updated_at, created_at, source, dirty)
+		VALUES(?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(session_key) DO UPDATE SET
 			marked = excluded.marked,
 			note = excluded.note,
+			title = excluded.title,
 			updated_at = excluded.updated_at,
 			source = excluded.source,
 			dirty = excluded.dirty`,
-		key, boolToInt(item.Marked), item.Note, incomingUpdatedAt, createdAt, source)
+		key, boolToInt(item.Marked), item.Note, item.Title, incomingUpdatedAt, createdAt, source)
 	return err
 }
 
@@ -493,8 +517,9 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	}
 	var marked bool
 	var note string
-	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note FROM ai_session_meta WHERE session_key = ?`, summary.Key).
-		Scan(&marked, &note)
+	var title string
+	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note, title FROM ai_session_meta WHERE session_key = ?`, summary.Key).
+		Scan(&marked, &note, &title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -503,12 +528,20 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	}
 	summary.Marked = marked
 	summary.Note = note
+	if title != "" {
+		summary.Title = title
+		summary.TitleSource = "user"
+	}
 	tags, err := idx.tagsForSession(ctx, summary.Key)
 	if err != nil {
 		return err
 	}
 	summary.Tags = tags
 	return nil
+}
+
+func (idx *SQLiteIndex) SetTitle(ctx context.Context, key string, title string) error {
+	return idx.setMeta(ctx, key, sessionMeta{Title: strings.TrimSpace(title), UpdatedAt: time.Now().UnixMilli()}, "sqlite-title")
 }
 
 func (idx *SQLiteIndex) SetMarked(ctx context.Context, key string, marked bool) error {
@@ -653,15 +686,20 @@ func (idx *SQLiteIndex) setMetaTx(ctx context.Context, tx *sqlx.Tx, key string, 
 	now := time.Now().UnixMilli()
 	var existing sessionMeta
 	var existingCreatedAt int64
-	err := tx.QueryRowxContext(ctx, `SELECT marked, note, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
-		Scan(&existing.Marked, &existing.Note, &existing.UpdatedAt, &existingCreatedAt)
+	err := tx.QueryRowxContext(ctx, `SELECT marked, note, title, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
+		Scan(&existing.Marked, &existing.Note, &existing.Title, &existing.UpdatedAt, &existingCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if source == "sqlite-mark" {
 		incoming.Note = existing.Note
+		incoming.Title = existing.Title
 	} else if source == "sqlite-note" || source == "sqlite-note-tags" {
 		incoming.Marked = existing.Marked
+		incoming.Title = existing.Title
+	} else if source == "sqlite-title" {
+		incoming.Marked = existing.Marked
+		incoming.Note = existing.Note
 	}
 	if incoming.UpdatedAt == 0 {
 		incoming.UpdatedAt = now
@@ -670,15 +708,16 @@ func (idx *SQLiteIndex) setMetaTx(ctx context.Context, tx *sqlx.Tx, key string, 
 	if createdAt == 0 {
 		createdAt = now
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, updated_at, created_at, source, dirty)
-		VALUES(?, ?, ?, ?, ?, ?, 1)
+	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, title, updated_at, created_at, source, dirty)
+		VALUES(?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(session_key) DO UPDATE SET
 			marked = excluded.marked,
 			note = excluded.note,
+			title = excluded.title,
 			updated_at = excluded.updated_at,
 			source = excluded.source,
 			dirty = excluded.dirty`,
-		key, boolToInt(incoming.Marked), incoming.Note, incoming.UpdatedAt, createdAt, source)
+		key, boolToInt(incoming.Marked), incoming.Note, incoming.Title, incoming.UpdatedAt, createdAt, source)
 	return err
 }
 
@@ -1275,8 +1314,9 @@ func (idx *SQLiteIndex) applyMetaTx(ctx context.Context, tx *sqlx.Tx, summary *S
 	}
 	var marked bool
 	var note string
-	err := tx.QueryRowxContext(ctx, `SELECT marked, note FROM ai_session_meta WHERE session_key = ?`, summary.Key).
-		Scan(&marked, &note)
+	var title string
+	err := tx.QueryRowxContext(ctx, `SELECT marked, note, title FROM ai_session_meta WHERE session_key = ?`, summary.Key).
+		Scan(&marked, &note, &title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -1285,6 +1325,10 @@ func (idx *SQLiteIndex) applyMetaTx(ctx context.Context, tx *sqlx.Tx, summary *S
 	}
 	summary.Marked = marked
 	summary.Note = note
+	if title != "" {
+		summary.Title = title
+		summary.TitleSource = "user"
+	}
 	return nil
 }
 
