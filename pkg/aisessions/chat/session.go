@@ -168,21 +168,70 @@ func (s *Session) publish(evt ChatEvent) {
 	}
 }
 
+// ImageContent is one inline image attachment (pi ImageContent wire shape).
+type ImageContent struct {
+	Type     string `json:"type"`              // always "image"
+	Data     string `json:"data"`              // base64-encoded bytes
+	MimeType string `json:"mimeType"`          // e.g. image/png
+}
+
+// PromptOptions is one user turn: text plus optional image attachments. When
+// a turn is already running, StreamingBehavior ("steer"/"followUp") queues
+// the message instead of failing.
+type PromptOptions struct {
+	Message           string
+	Images            []ImageContent
+	StreamingBehavior string // "", "steer", "followUp"
+}
+
+// controlMethods is the RPC allowlist for GUI-driven session commands.
+// Anything outside it is rejected before reaching the agent subprocess.
+var controlMethods = map[string]bool{
+	"get_commands":                 true,
+	"get_available_models":         true,
+	"set_model":                    true,
+	"get_available_thinking_levels": true,
+	"set_thinking_level":            true,
+	"compact":                       true,
+	"get_state":                     true,
+}
+
 // Prompt sends a user message. It returns after the agent acknowledges the
 // prompt; the resulting events stream through OnEvent subscribers. Returns an
 // error if another turn is already running.
 func (s *Session) Prompt(ctx context.Context, text string) error {
+	return s.PromptWithOptions(ctx, PromptOptions{Message: text})
+}
+
+// PromptWithOptions sends a user message with optional images and queueing
+// behavior. With no behavior set while a turn is running, the prompt is
+// rejected (same contract as pi's raw "prompt").
+func (s *Session) PromptWithOptions(ctx context.Context, opts PromptOptions) error {
 	s.turnMu.Lock()
 	defer s.turnMu.Unlock()
 	if s.State() == StateClosed {
 		return fmt.Errorf("session closed")
 	}
-	if s.active {
-		return fmt.Errorf("agent is busy: another turn is still running")
+	args := map[string]any{"message": opts.Message}
+	if len(opts.Images) > 0 {
+		args["images"] = opts.Images
 	}
-	s.active = true
-	s.setState(StateRunning)
-	resp, err := s.rpc.Send("", "prompt", map[string]any{"message": text}, defaultRequestTimeout)
+	method := "prompt"
+	if s.active {
+		switch opts.StreamingBehavior {
+		case "steer":
+			method = "steer"
+		case "followUp":
+			method = "follow_up"
+		default:
+			return fmt.Errorf("agent is busy: pass streamingBehavior steer/followUp to queue this message")
+		}
+		args["streamingBehavior"] = opts.StreamingBehavior
+	} else {
+		s.active = true
+		s.setState(StateRunning)
+	}
+	resp, err := s.rpc.Send("", method, args, defaultRequestTimeout)
 	if err != nil {
 		s.active = false
 		s.setState(StateIdle)
@@ -194,6 +243,28 @@ func (s *Session) Prompt(ctx context.Context, text string) error {
 		return fmt.Errorf("prompt rejected: %s", resp.Error)
 	}
 	return nil
+}
+
+// Control runs one allowlisted agent RPC command (model/thinking/compaction/
+// command discovery) and returns its raw data payload.
+func (s *Session) Control(ctx context.Context, method string, args map[string]any) (any, error) {
+	if !controlMethods[method] {
+		return nil, fmt.Errorf("control method %q not allowed", method)
+	}
+	s.mu.Lock()
+	rpc := s.rpc
+	s.mu.Unlock()
+	if rpc == nil {
+		return nil, fmt.Errorf("session rpc not initialized")
+	}
+	resp, err := rpc.Send("", method, args, defaultRequestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("%s failed: %s", method, resp.Error)
+	}
+	return resp.Data, nil
 }
 
 // Abort interrupts the in-flight turn, if any.

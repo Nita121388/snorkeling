@@ -164,3 +164,67 @@ func TestManager_Sweep(t *testing.T) {
 var _ = filepath.Join // keep imports tidy
 
 var _ = os.Getenv // keep imports tidy
+// TestSession_ControlRejectsNonAllowlisted verifies the control allowlist
+// rejects unknown methods before any RPC is attempted (nil rpc is fine here).
+func TestSession_ControlRejectsNonAllowlisted(t *testing.T) {
+	s := &Session{}
+	if _, err := s.Control(context.Background(), "fork", nil); err == nil {
+		t.Fatal("expected non-allowlisted method to be rejected")
+	}
+	if _, err := s.Control(context.Background(), "get_commands", nil); err == nil {
+		t.Fatal("expected error from uninitialized rpc even for allowlisted method")
+	}
+}
+
+// TestPiAdapter_Integration_GetCommands spawns a real pi and fetches the
+// command registry the GUI slash panel should render. No LLM call.
+func TestPiAdapter_Integration_GetCommands(t *testing.T) {
+	requirePi(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	session, err := (&piAdapter{}).Start(ctx, StartOptions{SessionDir: t.TempDir(), NoExtensions: true})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer session.Close()
+	time.Sleep(1500 * time.Millisecond)
+
+	data, err := session.Control(ctx, "get_commands", nil)
+	if err != nil {
+		t.Fatalf("Control(get_commands) failed: %v", err)
+	}
+	m, ok := data.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected get_commands payload %#v", data)
+	}
+	cmds, _ := m["commands"].([]any)
+	t.Logf("pi exposes %d commands", len(cmds))
+	for i, c := range cmds {
+		if i >= 5 {
+			break
+		}
+		cm, _ := c.(map[string]any)
+		t.Logf("  /%v (%v)", cm["name"], cm["source"])
+	}
+}
+
+// TestPiAdapter_Integration_ThinkingLevels verifies thinking level discovery.
+func TestPiAdapter_Integration_ThinkingLevels(t *testing.T) {
+	requirePi(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	session, err := (&piAdapter{}).Start(ctx, StartOptions{SessionDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer session.Close()
+	time.Sleep(1500 * time.Millisecond)
+
+	data, err := session.Control(ctx, "get_available_thinking_levels", nil)
+	if err != nil {
+		t.Fatalf("Control(get_available_thinking_levels) failed: %v", err)
+	}
+	t.Logf("thinking levels: %#v", data)
+}

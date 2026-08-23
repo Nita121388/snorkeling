@@ -18,18 +18,34 @@ import (
 // (ChatAbort / ChatClose) share one manager.
 var chatManager = chat.NewManager()
 
+// ChatImage is one base64-encoded image attachment (pi ImageContent shape).
+type ChatImage struct {
+	Data     string `json:"data"`     // base64-encoded bytes
+	MimeType string `json:"mimeType"` // e.g. image/png
+}
+
+// ChatCommand is one allowlisted agent control call (model/thinking/compaction/
+// command discovery). Executed instead of a prompt when set.
+type ChatCommand struct {
+	Name string         `json:"name"`           // e.g. get_commands, set_model, compact
+	Args map[string]any `json:"args,omitempty"` // e.g. {"provider":"anthropic","modelId":"..."}
+}
+
 // AISessionsChatRequest is the POST body for the streaming chat endpoint.
 // SessionID is optional: omit it to create a new chat session; pi will assign
 // a session UUID accessible via the session_state snapshot event.
 type AISessionsChatRequest struct {
-	Source       string `json:"source"`                 // "pi" (others TBD)
-	SessionID    string `json:"sessionId,omitempty"`    // existing session uuid to resume; omit for new
-	ProjectPath  string `json:"projectPath,omitempty"`  // cwd
-	Provider     string `json:"provider,omitempty"`     // model provider
-	Model        string `json:"model,omitempty"`        // model id
-	SessionDir   string `json:"sessionDir,omitempty"`   // override (tests/isolated)
-	Message      string `json:"message,omitempty"`      // user text; empty = attach only
-	NoExtensions bool   `json:"noExtensions,omitempty"` // suppress agent extensions
+	Source       string       `json:"source"`                 // "pi" (others TBD)
+	SessionID    string       `json:"sessionId,omitempty"`    // existing session uuid to resume; omit for new
+	ProjectPath  string       `json:"projectPath,omitempty"`  // cwd
+	Provider     string       `json:"provider,omitempty"`     // model provider
+	Model        string       `json:"model,omitempty"`        // model id
+	SessionDir   string       `json:"sessionDir,omitempty"`   // override (tests/isolated)
+	Message      string       `json:"message,omitempty"`      // user text; empty = attach/command only
+	Images       []ChatImage  `json:"images,omitempty"`       // inline image attachments for Message
+	StreamingBehavior string  `json:"streamingBehavior,omitempty"` // steer/followUp when a turn is running
+	NoExtensions bool         `json:"noExtensions,omitempty"` // suppress agent extensions
+	Command      *ChatCommand `json:"command,omitempty"`      // control call (no prompt)
 }
 
 // chatProviderForSource maps a session source to its chat provider. Only local
@@ -101,6 +117,24 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
 	}
 
+	if req.Command != nil {
+		data, err := session.Control(r.Context(), req.Command.Name, req.Command.Args)
+		result := map[string]any{"type": "command_result", "command": req.Command.Name}
+		if err != nil {
+			result["error"] = err.Error()
+		} else {
+			result["data"] = data
+			// Model/thinking changes are reflected in a fresh state snapshot.
+			if req.Command.Name == "set_model" || req.Command.Name == "set_thinking_level" {
+				if st, err := session.GetState(r.Context()); err == nil {
+					_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
+				}
+			}
+		}
+		_ = sseHandler.WriteJsonData(result)
+		return
+	}
+
 	if req.Message == "" {
 		// Attach-only: snapshot emitted, stream ends. The GUI keeps the session
 		// alive for a later prompt via another POST.
@@ -121,7 +155,11 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	defer unsub()
 
-	if err := session.Prompt(r.Context(), req.Message); err != nil {
+	promptOpts := chat.PromptOptions{Message: req.Message, StreamingBehavior: req.StreamingBehavior}
+	for _, img := range req.Images {
+		promptOpts.Images = append(promptOpts.Images, chat.ImageContent{Type: "image", Data: img.Data, MimeType: img.MimeType})
+	}
+	if err := session.PromptWithOptions(r.Context(), promptOpts); err != nil {
 		_ = sseHandler.WriteError(fmt.Sprintf("prompt rejected: %v", err))
 		return
 	}

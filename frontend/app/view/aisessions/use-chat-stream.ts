@@ -22,7 +22,13 @@ export type ChatEvent = {
     usage?: { it?: number; ot?: number; cost?: number };
     turnId?: string;
     state?: any; // session_state shape
+    // command_result frames
+    command?: string;
+    data?: any;
 };
+
+/** One inline image attachment (base64). */
+export type ChatImage = { data: string; mimeType: string };
 
 export type ChatStreamStatus = "idle" | "sending" | "streaming" | "error";
 
@@ -31,14 +37,66 @@ type ChatStreamCallbacks = {
     onDone?: () => void;
 };
 
+export type ChatCommandResult = {
+    ok: boolean;
+    error?: string;
+    data?: any;
+    state?: any; // follow-up session_state snapshot if emitted
+};
+
+/**
+ * Run one allowlisted agent control call (get_commands/set_model/compact…)
+ * against the chat endpoint and collect the short-lived SSE result frames.
+ */
+export async function runChatCommand(
+    endpoint: string,
+    body: ChatRequestBody & { command: { name: string; args?: Record<string, unknown> } }
+): Promise<ChatCommandResult> {
+    const result: ChatCommandResult = { ok: false };
+    const ac = new AbortController();
+    await runChatStream(
+        endpoint,
+        body,
+        {
+            onEvent: (evt) => {
+                if (evt.type === "command_result") {
+                    result.ok = evt.error == null;
+                    result.error = evt.error;
+                    result.data = evt.data;
+                } else if (evt.type === "session_state") {
+                    result.state = evt.state;
+                } else if (evt.type === "error") {
+                    result.ok = false;
+                    result.error = evt.error ?? "unknown error";
+                }
+            },
+        },
+        ac.signal
+    );
+    return result;
+}
+
 /**
  * POST one chat turn and parse the SSE response stream, invoking onEvent for
  * every data frame. Resolves when the stream ends; rejects on abort or fetch
  * errors (AbortError is surfaced for the caller's abort handling).
  */
+export type ChatRequestBody = {
+    source: string;
+    sessionId?: string;
+    projectPath?: string;
+    provider?: string;
+    model?: string;
+    sessionDir?: string;
+    message?: string;
+    images?: ChatImage[];
+    streamingBehavior?: "steer" | "followUp";
+    command?: { name: string; args?: Record<string, unknown> };
+};
+
 export async function runChatStream(
     endpoint: string,
-    body: { source: string; sessionId?: string; projectPath?: string; provider?: string; model?: string; sessionDir?: string; message: string },
+    body: ChatRequestBody,
     callbacks: ChatStreamCallbacks,
     signal: AbortSignal
 ): Promise<void> {
@@ -102,16 +160,6 @@ type UseChatStreamOptions = {
     onTurnEnd?: (evt: ChatEvent) => void;
 };
 
-type ChatSendBody = {
-    source: string;
-    sessionId?: string;
-    projectPath?: string;
-    provider?: string;
-    model?: string;
-    sessionDir?: string;
-    message: string;
-};
-
 export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOptions) {
     const [status, setStatus] = useState<ChatStreamStatus>("idle");
     const [events, setEvents] = useState<ChatEvent[]>([]);
@@ -125,12 +173,17 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
     }, []);
 
     const send = useCallback(
-        (body: ChatSendBody) => {
-            abort(); // kill any in-flight turn
+        (body: ChatRequestBody) => {
+            const steering = body.streamingBehavior != null;
+            if (!steering) {
+                abort(); // kill any in-flight turn
+            }
             const ac = new AbortController();
             abortRef.current = ac;
-            setStatus("sending");
-            setEvents([]);
+            setStatus(steering ? "streaming" : "sending");
+            if (!steering) {
+                setEvents([]);
+            }
 
             runChatStream(
                 endpoint,
@@ -153,7 +206,10 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
                         setEvents([]);
                     } else {
                         setStatus("error");
-                        setEvents([]);
+                        setEvents((prev) => [
+                            ...prev,
+                            { type: "turn_failed", error: err.message },
+                        ]);
                         console.error("chat stream error", err);
                     }
                 })
@@ -164,5 +220,24 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
         [endpoint, onEvent, onTurnEnd, abort]
     );
 
-    return { status, events, send, abort } as const;
+    /**
+     * Queue a steering message on the running turn without disturbing the
+     * active event stream. ponytail: the second SSE connection is drained
+     * silently — events between steer acceptance and the final turn end are
+     * not rendered live; the post-turn DetailDelta refresh reconciles.
+     * Upgrade path: multiplex both connections through one event reducer.
+     */
+    const steer = useCallback(
+        (body: ChatRequestBody) => {
+            void runChatStream(
+                endpoint,
+                { ...body, streamingBehavior: "steer" },
+                {},
+                new AbortController().signal
+            ).catch((err: Error) => console.error("chat steer error", err));
+        },
+        [endpoint]
+    );
+
+    return { status, events, send, steer, abort } as const;
 }
