@@ -20,6 +20,8 @@ import {
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
+import { type ChatEvent } from "./use-chat-stream";
+import { LiveTurnBlock, useLiveTurn } from "./use-live-turn";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./session-outline-rail";
 
@@ -32,22 +34,38 @@ import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./s
  * path is the project selector from the M3 New Agent GUI work.
  */
 export function NewChatPane({ onBound }: { onBound: (sessionId: string) => void }) {
+    // 首条消息的流式过程留在本面板看完，turn 结束后再切到已绑定的会话详情
+    // （提前切换会卸载 composer 的 SSE 连接，当轮内容就丢了）。
+    const boundIdRef = useRef("");
+    const { liveTurn, handleChatEvent } = useLiveTurn();
     return (
         <div className="flex h-full min-w-0 flex-1 flex-col bg-bg">
-            <div className="flex flex-1 items-center justify-center px-6">
-                <div className="max-w-md text-center">
-                    <div className="mb-2 text-sm font-medium text-primary">开始新对话</div>
-                    <div className="text-xs leading-5 text-secondary">
-                        输入第一条消息后 pi 会自动创建会话，完成后会出现在左侧列表中。
-                    </div>
+            <div className="flex min-h-0 flex-1 flex-col justify-center px-6">
+                <div className="mx-auto w-full max-w-md text-center">
+                    {liveTurn != null ? (
+                        <div className="mb-4 text-left">
+                            <LiveTurnBlock turn={liveTurn} />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="mb-2 text-sm font-medium text-primary">开始新对话</div>
+                            <div className="text-xs leading-5 text-secondary">
+                                输入第一条消息后 pi 会自动创建会话，完成后会出现在左侧列表中。
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
             <ChatComposer
                 source="pi"
                 sessionId=""
                 onEvent={(evt) => {
+                    handleChatEvent(evt);
                     if (evt.type === "session_state" && evt.state?.sessionId) {
-                        onBound(evt.state.sessionId as string);
+                        boundIdRef.current = String(evt.state.sessionId);
+                    }
+                    if ((evt.type === "turn_end" || evt.type === "turn_failed") && boundIdRef.current) {
+                        onBound(boundIdRef.current);
                     }
                 }}
             />
@@ -468,6 +486,18 @@ export function SessionDetailPane({
         setVisibleMessageCount((current) => Math.min(current + visibleMessageCountStep, readableMessages.length));
     }, [readableMessages.length]);
 
+    // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
+    // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
+    const { liveTurn, handleChatEvent: handleLiveTurnEvent, clearLiveTurn } = useLiveTurn();
+    const nearBottomRef = useRef(true);
+
+    // 流式期间跟随滚动：仅当用户本就停在底部附近时才自动吸底。
+    useEffect(() => {
+        if (liveTurn == null || !nearBottomRef.current) return;
+        const node = detailScrollRef.current;
+        if (node != null) node.scrollTop = node.scrollHeight;
+    }, [liveTurn]);
+
     const requestDetailDelta = useCallback(
         (reason: "manual" | "bottom") => {
             if (reason === "manual" && showToolCalls) {
@@ -488,23 +518,30 @@ export function SessionDetailPane({
     );
 
     const handleChatEvent = useCallback(
-        (evt: { type: string; state?: any }) => {
+        (evt: ChatEvent) => {
             if (evt.type === "session_state" && evt.state?.model) {
                 const m = evt.state.model;
                 setChatAgentModel(String(m.name || m.id || ""));
+                return;
             }
             if (evt.type === "turn_end" || evt.type === "turn_failed") {
-                void requestDetailDelta("bottom");
+                // 先刷新正式数据，落地后再移除临时流式块，避免先清后加载的空窗。
+                void requestDetailDelta("bottom").finally(clearLiveTurn);
+                return;
             }
+            handleLiveTurnEvent(evt);
         },
-        [requestDetailDelta]
+        [requestDetailDelta, clearLiveTurn, handleLiveTurnEvent]
     );
 
     const handleDetailScroll = useCallback(() => {
+        const node = detailScrollRef.current;
+        if (node != null) {
+            nearBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
+        }
         if (deltaLoading || loading || model.loadDetailDelta == null || bottomDeltaRequestedRef.current) {
             return;
         }
-        const node = detailScrollRef.current;
         if (node == null) {
             return;
         }
@@ -1336,6 +1373,8 @@ export function SessionDetailPane({
                                                 />
                                             );
                                         })}
+                                        {/* 实时流式块：当前 turn 的临时渲染，turn_end 后由正式数据替换 */}
+                                        {liveTurn != null ? <LiveTurnBlock turn={liveTurn} /> : null}
                                     </div>
                                 )}
                             </div>

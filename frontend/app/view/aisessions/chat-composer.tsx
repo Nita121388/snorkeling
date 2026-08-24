@@ -84,7 +84,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const [pickerQuery, setPickerQuery] = useState("");
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const bubbleRef = useRef<HTMLDivElement>(null);
     const endpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
 
     const baseBody = useMemo(
@@ -174,6 +173,13 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     }, [endpoint, baseBody]);
 
     const isRunning = status === "sending" || status === "streaming";
+    // 停止后 SSE 直接断开，不会再来 turn_end；补发一个合成事件让主列表
+    // 刷新正式数据并清掉实时流式块。
+    const handleAbort = useCallback(() => {
+        abort();
+        onEvent?.({ type: "turn_end" });
+        inputRef.current?.focus();
+    }, [abort, onEvent]);
     const hasContent = input.trim().length > 0 || images.length > 0;
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
     const canSubmit = hasContent && (status === "idle" || status === "error" || isRunning);
@@ -342,13 +348,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         [effectiveMode, panelRows, cmdIndex, moveIndex, applyCommandRow, handleSubmit]
     );
 
-    // Auto-scroll the streaming bubble as new text arrives.
-    useEffect(() => {
-        if (bubbleRef.current && isRunning) {
-            bubbleRef.current.scrollTop = bubbleRef.current.scrollHeight;
-        }
-    }, [events.length, isRunning]);
-
     const pickFiles = useCallback(
         async (fileList: FileList | null) => {
             if (fileList == null) return;
@@ -369,19 +368,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         setImages((prev) => prev.filter((img) => img.id !== id));
     }, []);
 
-    // Derive the accumulated assistant text from the events stream.
-    const assistantText = events
-        .filter((evt) => evt.type === "assistant_delta" && evt.text)
-        .map((evt) => evt.text!)
-        .join("");
-
-    const toolEndEvents = events.filter((evt) => evt.type === "tool_call_end" && evt.toolName);
-    const toolStartEvents = events.filter((evt) => evt.type === "tool_call_start" && evt.toolName);
-    const runningToolNames = toolStartEvents
-        .filter((start) => !toolEndEvents.some((end) => end.toolName === start.toolName))
-        .map((e) => e.toolName);
-
-    const hasStream = assistantText.length > 0 || toolEndEvents.length > 0 || runningToolNames.length > 0;
     const currentModelLabel = agentState?.model ? agentState.model.name || agentState.model.id : "";
     const currentThinking =
         agentState?.thinkingLevel && agentState.thinkingLevel !== "off" ? agentState.thinkingLevel : "";
@@ -414,47 +400,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     return (
         <div className="shrink-0 bg-panel">
             <div className="mx-auto w-full max-w-3xl px-6 pb-2.5 pt-1">
-                {/* Streaming bubble — only shown when there's active content. */}
-                {hasStream ? (
-                    <div
-                        ref={bubbleRef}
-                        className="mb-1.5 max-h-[180px] overflow-y-auto rounded-xl border border-border/60 bg-bg/40 px-3 py-2 text-xs text-primary/90"
-                    >
-                        {toolEndEvents.map((evt, idx) => (
-                            <div key={`tc-${idx}`} className="mb-1 rounded bg-accent/5 px-2 py-1 text-[10px] text-secondary">
-                                <span
-                                    className={cn(
-                                        "mr-1 font-medium",
-                                        evt.toolStatus === "failed" ? "text-error" : "text-accent"
-                                    )}
-                                >
-                                    {evt.toolStatus === "failed" ? "✗" : "✓"}
-                                </span>
-                                <span className="font-medium">{evt.toolName}</span>
-                                {evt.detail ? (
-                                    <span className="ml-1 opacity-70">
-                                        {evt.detail.length > 120 ? evt.detail.slice(0, 120) + "…" : evt.detail}
-                                    </span>
-                                ) : null}
-                            </div>
-                        ))}
-                        {runningToolNames.map((name) => (
-                            <div
-                                key={`tc-run-${name}`}
-                                className="mb-1 rounded bg-accent/5 px-2 py-1 text-[10px] text-secondary"
-                            >
-                                <span className="mr-1 inline-block animate-spin">
-                                    <i className="fa-sharp fa-solid fa-spinner text-[8px]" />
-                                </span>
-                                <span className="font-medium">{name}</span>
-                                <span className="ml-1 opacity-70">running…</span>
-                            </div>
-                        ))}
-                        {assistantText ? (
-                            <div className="whitespace-pre-wrap break-words leading-5">{assistantText}</div>
-                        ) : null}
-                    </div>
-                ) : null}
                 {notice ? (
                     <div className="pb-1 pt-0.5 text-[11px] text-secondary" role="status">
                         {notice}
@@ -670,9 +615,9 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                 <button
                                     type="button"
                                     className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-error text-white hover:bg-error/85"
-                                    title="停止 (Esc 中止流式气泡后可再点)"
+                                    title="停止"
                                     aria-label="Stop"
-                                    onClick={abort}
+                                    onClick={handleAbort}
                                 >
                                     <i className="fa-sharp fa-solid fa-square text-[10px]" />
                                 </button>
