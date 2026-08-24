@@ -81,6 +81,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const [panelMode, setPanelMode] = useState<PanelMode>(null);
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
     const [thinkingLevels, setThinkingLevels] = useState<string[]>([]);
+    const [pickerQuery, setPickerQuery] = useState("");
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const bubbleRef = useRef<HTMLDivElement>(null);
@@ -179,6 +180,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
 
     const openPicker = useCallback(async () => {
         setPanelMode("picker");
+        setPickerQuery("");
         const [modelsRes, levelsRes] = await Promise.all([
             runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_models" } }),
             runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_thinking_levels" } }),
@@ -201,18 +203,26 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             return filterSlashItems(allCommands, slashQuery).map((item) => ({ kind: "command" as const, item }));
         }
         if (effectiveMode === "picker") {
+            // 模型搜索：按名称/id/provider 子串过滤；思考深度仅按级别名匹配
+            const q = pickerQuery.trim().toLowerCase();
+            const models = q
+                ? modelOptions.filter((m) =>
+                      `${m.name || ""} ${m.id || ""} ${m.provider || ""}`.toLowerCase().includes(q)
+                  )
+                : modelOptions;
+            const levels = q ? thinkingLevels.filter((l) => l.toLowerCase().includes(q)) : thinkingLevels;
             return [
-                ...modelOptions.map((item) => ({ kind: "model" as const, item })),
-                ...thinkingLevels.map((level) => ({ kind: "level" as const, level })),
+                ...models.map((item) => ({ kind: "model" as const, item })),
+                ...levels.map((level) => ({ kind: "level" as const, level })),
             ];
         }
         return [];
-    }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels]);
+    }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels, pickerQuery]);
 
     const [cmdIndex, setCmdIndex] = useState(0);
     useEffect(() => {
         setCmdIndex(0);
-    }, [panelMode, slashQuery, modelOptions.length, thinkingLevels.length]);
+    }, [panelMode, slashQuery, pickerQuery, modelOptions.length, thinkingLevels.length]);
     const moveIndex = useCallback(
         (delta: number) => {
             const count = panelRows.length;
@@ -379,6 +389,28 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
 
     const modelChipLabel = currentModelLabel ? `${source} · ${currentModelLabel}` : `${source} · 选择模型`;
 
+    // 搜索框内键盘导航：与 textarea 面板导航同一套行选中逻辑
+    const handlePickerSearchKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                moveIndex(1);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                moveIndex(-1);
+            } else if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                applyCommandRow(panelRows[cmdIndex]);
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                setPanelMode(null);
+                setPickerQuery("");
+                inputRef.current?.focus();
+            }
+        },
+        [moveIndex, applyCommandRow, panelRows, cmdIndex]
+    );
+
     return (
         <div className="shrink-0 bg-panel">
             <div className="mx-auto w-full max-w-3xl px-6 pb-2.5 pt-1">
@@ -430,12 +462,27 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                 ) : null}
                 <div className="relative">
                     {panelOpen ? (
-                        <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-[22rem] overflow-y-auto rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
+                        <div className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
-                                <div className="border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
+                                <div className="shrink-0 border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
                                     Commands · Tab/Enter 补全 · Esc 关闭
                                 </div>
                             ) : null}
+                            {effectiveMode === "picker" ? (
+                                <div className="shrink-0 border-b border-border/50 p-1.5">
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={pickerQuery}
+                                        onChange={(e) => setPickerQuery(e.target.value)}
+                                        onKeyDown={handlePickerSearchKeyDown}
+                                        placeholder="搜索模型…"
+                                        className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-primary outline-none placeholder:text-secondary/70 focus:border-secondary/50"
+                                        aria-label="Search models"
+                                    />
+                                </div>
+                            ) : null}
+                            <div className="min-h-0 flex-1 overflow-y-auto">
                             {panelRows.map((row, idx) => {
                                 const prev = idx > 0 ? panelRows[idx - 1] : null;
                                 const showSection =
@@ -524,6 +571,14 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                     </div>
                                 );
                             })}
+                            {panelRows.length === 0 ? (
+                                <div className="px-3 py-3 text-center text-xs text-secondary">
+                                    {effectiveMode === "picker" && pickerQuery.trim()
+                                        ? `无匹配「${pickerQuery.trim()}」`
+                                        : "暂无可选项"}
+                                </div>
+                            ) : null}
+                            </div>
                         </div>
                     ) : null}
                     {/* Paseo 卡片：圆角浮起容器，无边框输入区在卡内 */}
