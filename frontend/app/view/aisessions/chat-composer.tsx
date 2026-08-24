@@ -430,7 +430,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                 ) : null}
                 <div className="relative">
                     {panelOpen ? (
-                        <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-[22rem] overflow-y-auto rounded-xl border border-border bg-panel py-1 shadow-2xl">
+                        <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-[22rem] overflow-y-auto rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
                                 <div className="border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
                                     Commands · Tab/Enter 补全 · Esc 关闭

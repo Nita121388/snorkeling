@@ -1199,7 +1199,7 @@ export function SessionDetailPane({
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}
                         <div
                             className={cn(
-                                "absolute left-1/2 top-1.5 z-30 w-[min(520px,90%)] -translate-x-1/2 rounded-xl border border-border bg-panel p-2 shadow-2xl",
+                                "absolute left-1/2 top-1.5 z-30 w-[min(520px,90%)] -translate-x-1/2 rounded-xl border border-border bg-modalbg p-2 shadow-2xl",
                                 !searchExpanded && "hidden"
                             )}
                         >

@@ -118,7 +118,7 @@ export function SessionMoreMenu({
                 <i className={cn("fa-sharp fa-solid text-xs", hasCopied ? "fa-check text-accent" : "fa-ellipsis")} />
             </button>
             {open ? (
-                <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-border bg-panel p-1 shadow-2xl">
+                <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-border bg-modalbg p-1 shadow-2xl">
                     {onExpand ? (
                         <MenuRow
                             icon="fa-window-maximize"
