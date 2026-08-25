@@ -99,6 +99,9 @@ function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetEn
 // doesn't trigger the popup, but a deliberate pause still feels instant.
 const WidgetHoverOpenDelayMs = 500;
 
+// 收起态（hover-peek）下，鼠标离开按钮条多久后自动收回（毫秒）。
+const WidgetBarAutoCollapseMs = 1200;
+
 type WidgetPropsType = {
     widgetId: string;
     widget: WidgetConfigType;
@@ -1596,6 +1599,8 @@ const Widgets = memo(() => {
         env.isDev() ? env.electron.getDevRuntimeInfo() : null
     );
     const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
+    const [hovered, setHovered] = useState(false);
+    const collapseTimerRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     // 本次启动自定义变量（agent / terminal 各一份，浮窗关闭不清空——避免误关丢失）
     const [agentLaunchEnv, setAgentLaunchEnv] = useState<Record<string, string>>({});
@@ -2164,17 +2169,58 @@ const Widgets = memo(() => {
         env.showContextMenu(menu, e);
     };
 
+    const anyFloatingOpen =
+        isAppsOpen || isSettingsOpen || isAgentTargetOpen || isTerminalTargetOpen;
+    const expanded = hovered || anyFloatingOpen;
+
+    const clearCollapseTimer = useCallback(() => {
+        if (collapseTimerRef.current != null) {
+            window.clearTimeout(collapseTimerRef.current);
+            collapseTimerRef.current = null;
+        }
+    }, []);
+
+    const handleWidgetsBarMouseEnter = useCallback(() => {
+        clearCollapseTimer();
+        setHovered(true);
+    }, [clearCollapseTimer]);
+
+    const handleWidgetsBarMouseLeave = useCallback(() => {
+        // 浮窗打开时保持展开（由 anyFloatingOpen 维持），并置 hovered=false 以便浮窗关闭后自动收起。
+        if (anyFloatingOpen) {
+            setHovered(false);
+            return;
+        }
+        // 普通态：离开后延时收起，期间移回则取消。
+        clearCollapseTimer();
+        collapseTimerRef.current = window.setTimeout(() => {
+            collapseTimerRef.current = null;
+            setHovered(false);
+        }, WidgetBarAutoCollapseMs);
+    }, [anyFloatingOpen, clearCollapseTimer]);
+
+    // 卸载时清理待收起计时器。
+    useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
+
     return (
         <>
             <div
                 ref={containerRef}
-                className="flex flex-col w-12 overflow-hidden py-1 -ml-1 select-none shrink-0"
+                onMouseEnter={handleWidgetsBarMouseEnter}
+                onMouseLeave={handleWidgetsBarMouseLeave}
                 onContextMenu={handleWidgetsBarContextMenu}
+                className={clsx(
+                    "relative shrink-0 select-none transition-[width] duration-200 ease-out",
+                    expanded ? "-ml-1 w-12 overflow-hidden py-1" : "w-0"
+                )}
             >
-                {mode === "supercompact" ? (
+                {expanded ? (
                     <>
-                        <div className="grid grid-cols-2 gap-0 w-full">
-                            {widgets?.map((data) => (
+                        <div className="flex flex-col w-12 overflow-hidden h-full">
+                            {mode === "supercompact" ? (
+                                <>
+                                    <div className="grid grid-cols-2 gap-0 w-full">
+                                    {widgets?.map((data) => (
                                 <Widget
                                     key={`widget-${data.id}`}
                                     widgetId={data.id}
@@ -2287,8 +2333,14 @@ const Widgets = memo(() => {
                     </>
                 )}
                 {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} mode={mode} /> : null}
-            </div>
-            {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
+                    </div>
+                </>
+            ) : (
+                /* 隐形热区：贴窗口右缘约 8px 即滑出按钮条；仅收起态存在，展开后移除。 */
+                <div className="absolute right-0 top-0 h-full w-2" aria-hidden="true" />
+            )}
+        </div>
+        {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
                 <AppsFloatingWindow
                     isOpen={isAppsOpen}
                     onClose={() => setIsAppsOpen(false)}
