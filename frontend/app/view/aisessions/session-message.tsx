@@ -1,10 +1,22 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Chat message cards for the AI sessions detail pane.
+// - Assistant messages: streaming-grade markdown via WaveStreamdown (open
+//   prose, no bubble — mockup spec). Text-level search highlight uses the CSS
+//   Custom Highlight API so we never fight React over wrapped <mark> nodes.
+// - User messages: plain-text right-aligned bubble (chat convention: no md
+//   parsing of user input), classic <mark> highlighting.
+// Long-message auto-collapse was removed: it was built for history browsing;
+// the realtime chat flow renders everything (pagination lives upstream).
+
+import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
+import { useRef } from "react";
 import { CopyIconButton } from "./controls";
-import { formatDateTimeToSecond, isCollapsibleMessage, trimMessageText } from "./utils";
+import { formatDateTimeToSecond } from "./utils";
+import { useDomTextHighlight } from "./use-dom-highlight";
 
 export function HighlightedMessageText({
   text,
@@ -49,37 +61,34 @@ export function HighlightedMessageText({
 
 export function MessageCard({
   message,
-  collapsed,
-  onToggleCollapsed,
   registerRef,
   searchQuery,
   searchActive = false,
   groupStart = true,
 }: {
   message: Message;
-  collapsed?: boolean;
-  onToggleCollapsed: () => void;
   registerRef: (node: HTMLDivElement | null) => void;
   searchQuery?: string;
   searchActive?: boolean;
-  /** 是否为同角色连续消息分组的开头（决定上间距 + 角色标签） */
+  /** 是否为同角色连续消息分组的开头（决定上间距 + 组头） */
   groupStart?: boolean;
 }) {
   const isUser = message.role === "user";
-  const collapsible = isCollapsibleMessage(message.text);
-  const effectiveCollapsed = collapsed ?? collapsible;
   const normalizedSearchQuery = searchQuery?.trim().toLowerCase() ?? "";
-  const searchMatched = normalizedSearchQuery !== "" && message.text.toLowerCase().includes(normalizedSearchQuery);
-  const collapsedShownText = trimMessageText(message.text);
-  const collapsedSearchShown =
-    normalizedSearchQuery !== "" && collapsedShownText.toLowerCase().includes(normalizedSearchQuery);
-  // 展开后用全文，不再受 trimMessageText 的 2400 字截断；只在折叠时截断
-  const useFullText = !effectiveCollapsed || (searchActive && searchMatched && !collapsedSearchShown);
-  // whitespace-pre-wrap 会原样保留首尾换行；纯文本消息原文常带前导/尾部空行，
-  // 这里只去掉首尾空白，保留中间换行避免把消息内容压扁。
-  const shownText = (useFullText ? message.text : collapsedShownText).replace(/^\s+|\s+$/g, "");
-  const searchShown = normalizedSearchQuery !== "" && shownText.toLowerCase().includes(normalizedSearchQuery);
-  const shouldClampText = effectiveCollapsed && !(searchActive && searchMatched && !collapsedSearchShown);
+  const searchMatched =
+    normalizedSearchQuery !== "" && message.text.toLowerCase().includes(normalizedSearchQuery);
+  // whitespace-pre-wrap 会原样保留首尾换行；消息原文常带前导/尾部空行，去一下。
+  const shownText = message.text.replace(/^\s+|\s+$/g, "");
+  // AI 消息是 markdown 渲染，文本级高亮走 CSS Custom Highlight API（不改 DOM）；
+  // 用户消息仍是纯文本，直接 <mark> 包裹（HighlightedMessageText）。
+  const mdContentRef = useRef<HTMLDivElement>(null);
+  useDomTextHighlight(
+    `aisession-search-${message.seq}`,
+    mdContentRef,
+    normalizedSearchQuery,
+    !isUser && normalizedSearchQuery !== "",
+    shownText
+  );
   return (
     <div
       ref={registerRef}
@@ -90,68 +99,50 @@ export function MessageCard({
         className={cn(
           "min-w-0 rounded-2xl",
           // 用户消息：软气泡右对齐；AI 消息：开放散文无框（原型规范）
-          isUser ? "max-w-[85%] border border-accent/25 bg-accent/10 px-4 py-2.5" : "w-full px-1 py-0.5",
+          isUser ? "max-w-[78%] rounded-br-md border border-accent/25 bg-accent/10 px-3.5 py-2.5" : "w-full px-1 py-0.5",
           searchActive && "ring-2 ring-accent/50"
         )}
       >
-      {groupStart && !isUser ? (
-        <div className="mb-0.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-secondary">
-          {message.role === "assistant" ? "Assistant" : message.role}
-        </div>
-      ) : null}
-      <div className="flex items-center justify-end gap-1.5 text-xxs text-secondary">
-        {collapsible ? (
-          <button
-            type="button"
-            className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-            title={effectiveCollapsed ? "Expand message" : "Collapse message"}
-            aria-label={effectiveCollapsed ? "Expand message" : "Collapse message"}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleCollapsed();
-            }}
-          >
-            <i
+        {groupStart ? (
+          <div className="mb-1 flex items-center gap-1.5 px-1">
+            <span
               className={cn(
-                "fa-sharp fa-solid text-[10px]",
-                effectiveCollapsed ? "fa-chevron-down" : "fa-chevron-up"
+                "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px]",
+                isUser ? "border border-border bg-surface-strong text-secondary" : "bg-accent/15 text-accent"
               )}
-            />
-          </button>
+            >
+              <i className={cn("fa-sharp fa-solid", isUser ? "fa-user" : "fa-robot")} />
+            </span>
+            <span className="text-xs font-semibold text-primary/90">{isUser ? "You" : "Assistant"}</span>
+            {message.timestamp ? (
+              <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
+            ) : null}
+            <span className="text-[10px] text-secondary/70">#{message.seq}</span>
+          </div>
         ) : null}
-        <CopyIconButton
-          text={message.text}
-          label="Copy message"
-          className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-          size="xs"
-        />
-      </div>
-      <div
-        className={cn(
-          "whitespace-pre-wrap break-words leading-relaxed",
-          isUser ? "text-[13px] text-primary" : "text-xs text-primary/95",
-          shouldClampText && "line-clamp-4"
+        <div className="flex items-center justify-end gap-1.5 text-xxs text-secondary">
+          <CopyIconButton
+            text={message.text}
+            label="Copy message"
+            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            size="xs"
+          />
+        </div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-primary">
+            {searchMatched && !searchActive ? (
+              <span className="mr-1.5 inline-flex items-center gap-1 rounded border border-actionsoftborder bg-actionsoft px-1.5 py-0.5 align-middle text-[10px] text-actionsofttext">
+                <i className="fa-sharp fa-solid fa-magnifying-glass" />
+                Search match
+              </span>
+            ) : null}
+            <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
+          </div>
+        ) : (
+          <div ref={mdContentRef} className="min-w-0 text-sm">
+            <WaveStreamdown text={shownText} />
+          </div>
         )}
-      >
-        <span
-          className="mr-1.5 inline-flex h-5 min-w-[20px] shrink-0 cursor-pointer items-center justify-center rounded border border-border bg-bg px-1 text-[10px] leading-none text-secondary hover:bg-hover hover:text-primary"
-          title={message.timestamp ? formatDateTimeToSecond(message.timestamp) : undefined}
-          onClick={collapsible ? onToggleCollapsed : undefined}
-        >
-          {message.seq}
-        </span>
-        {searchMatched ? (
-          <span className="inline-flex items-center gap-1 rounded border border-actionsoftborder bg-actionsoft px-1.5 py-0.5 text-[10px] text-actionsofttext">
-            <i className="fa-sharp fa-solid fa-magnifying-glass" />
-            {searchActive
-              ? "Current match"
-              : effectiveCollapsed && !searchShown
-                ? "Match in collapsed text"
-                : "Search match"}
-          </span>
-        ) : null}
-        <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
-      </div>
       </div>
     </div>
   );

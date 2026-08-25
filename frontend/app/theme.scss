@@ -602,3 +602,13 @@
     --button-yellow-bg: #f59e0b;
     --button-yellow-hover-bg: #fcd472;
 }
+
+/* ---- AI 会话搜索：CSS Custom Highlight API（use-dom-highlight.ts 注册） ---- */
+::highlight(aisession-search-match) {
+    background-color: var(--action-soft-bg-color);
+    color: var(--action-soft-text-color);
+}
+::highlight(aisession-search-current) {
+    background-color: var(--accent-bg-color);
+    color: var(--accent-color);
+}

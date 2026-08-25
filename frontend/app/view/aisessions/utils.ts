@@ -4,13 +4,7 @@
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { isWindows } from "@/util/platformutil";
 import type { MarkedFilter, PathFilter } from "./types";
-import {
-    collapsedMessagePreviewLength,
-    collapsibleMessageCharCount,
-    collapsibleMessageLineCount,
-    PathFilterOtherRoot,
-    sortPreferenceStorageKey,
-} from "./types";
+import { PathFilterOtherRoot, sortPreferenceStorageKey } from "./types";
 
 const ExactToolCallAnchorPattern = /^\[Tool:\s*[^\]]+\]$/;
 const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
@@ -29,18 +23,6 @@ export function trimMessageText(text: string): string {
     if (!text) return "";
     if (text.length <= 2400) return text;
     return text.slice(0, 2400) + "\n...";
-}
-
-export function isCollapsibleMessage(text: string): boolean {
-    if (!text) return false;
-    if (text.length >= collapsibleMessageCharCount) return true;
-    return text.split(/\r\n|\r|\n/).length >= collapsibleMessageLineCount;
-}
-
-export function collapsedMessagePreview(text: string): string {
-    const normalized = text.trim();
-    if (normalized.length <= collapsedMessagePreviewLength) return normalized;
-    return normalized.slice(0, collapsedMessagePreviewLength).trimEnd() + "\n...";
 }
 
 export function isReadableMessage(message: Message): boolean {

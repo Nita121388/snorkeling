@@ -61,6 +61,3 @@ export function dateRangeToSinceBefore(range: DateRangeFilter, now: number): { s
 export const sortPreferenceStorageKey = "aisessions.sortDescending";
 export const defaultVisibleMessageCount = 30;
 export const visibleMessageCountStep = 30;
-export const collapsibleMessageCharCount = 600;
-export const collapsibleMessageLineCount = 5;
-export const collapsedMessagePreviewLength = 420;

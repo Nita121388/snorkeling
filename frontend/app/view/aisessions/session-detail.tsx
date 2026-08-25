@@ -77,7 +77,6 @@ import {
     formatDateTimeToSecond,
     formatSessionDate,
     formatToolCallPreview,
-    isCollapsibleMessage,
     isReadableMessage,
     outlinePreview,
     outlineRoleClass,
@@ -283,7 +282,6 @@ export function SessionDetailPane({
     // 测量 detail pane 可用高度以决定折叠态的自适应容器
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
-    const [collapsedMessages, setCollapsedMessages] = useState<Record<number, boolean>>({});
     const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
     const [detailSearchQuery, setDetailSearchQuery] = useState("");
     const [activeSearchSeq, setActiveSearchSeq] = useState<number | null>(null);
@@ -366,7 +364,6 @@ export function SessionDetailPane({
         setDeleteConfirmOpen(false);
         setNoteCollapsed(true);
         setNoteSaveStatus("idle");
-        setCollapsedMessages({});
         setExpandedToolCalls({});
         setShowToolCalls(false);
         setVisibleMessageCount(defaultVisibleMessageCount);
@@ -569,14 +566,6 @@ export function SessionDetailPane({
         };
     }, []);
 
-    const toggleMessageCollapsed = useCallback((seq: number, text: string) => {
-        setCollapsedMessages((current) => {
-            const currentValue = current[seq];
-            const nextValue = currentValue == null ? !isCollapsibleMessage(text) : !currentValue;
-            return { ...current, [seq]: nextValue };
-        });
-    }, []);
-
     const toggleToolCallExpanded = useCallback((seq: number) => {
         setExpandedToolCalls((current) => ({ ...current, [seq]: !current[seq] }));
     }, []);
@@ -631,12 +620,6 @@ export function SessionDetailPane({
             const normalizedIndex = (nextIndex + detailSearchMatches.length) % detailSearchMatches.length;
             const match = detailSearchMatches[normalizedIndex];
             setActiveSearchSeq(match.seq);
-            setCollapsedMessages((current) => {
-                if (!current[match.seq]) return current;
-                const next = { ...current };
-                delete next[match.seq];
-                return next;
-            });
             jumpToMessage(match.seq);
         },
         [detailSearchMatches, jumpToMessage]
@@ -1353,10 +1336,6 @@ export function SessionDetailPane({
                                                 <MessageCard
                                                     key={`message-${item.message.seq}`}
                                                     message={item.message}
-                                                    collapsed={collapsedMessages[item.message.seq]}
-                                                    onToggleCollapsed={() =>
-                                                        toggleMessageCollapsed(item.message.seq, item.message.text)
-                                                    }
                                                     searchQuery={detailSearchQuery}
                                                     searchActive={item.message.seq === activeSearchSeq}
                                                     groupStart={isGroupStart}

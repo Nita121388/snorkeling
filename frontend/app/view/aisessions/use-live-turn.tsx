@@ -11,6 +11,7 @@
 // Upgrade path: multiplex both connections through one event reducer.
 
 import { useCallback, useState } from "react";
+import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
 import type { ChatEvent } from "./use-chat-stream";
 
@@ -127,9 +128,12 @@ export function LiveTurnBlock({ turn }: { turn: LiveTurn }) {
                 </div>
             ))}
             {turn.text ? (
-                <div className="whitespace-pre-wrap break-words rounded-2xl rounded-bl-sm border border-border/60 bg-surface px-3 py-2 text-sm leading-relaxed">
-                    {turn.text}
-                    <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-accent align-middle" />
+                <div className="min-w-0 rounded-2xl rounded-bl-sm border border-border/60 bg-surface px-3 py-2 text-sm">
+                    {/* parseIncompleteMarkdown 兼容流中未闭合语法；▌作为字符追加，跟随最后一个文本块内联闪烁 */}
+                    <WaveStreamdown
+                        text={turn.text + (turn.tools.some((t) => t.status == null) ? "" : " ▌")}
+                        parseIncompleteMarkdown
+                    />
                 </div>
             ) : !turn.tools.some((t) => t.status == null) ? (
                 // 首包前的等待指示（TTFT 期间给足活感）
