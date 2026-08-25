@@ -1485,10 +1485,13 @@ export class LayoutModel {
         }
         nodePositions.delete(fromLeafNodeId);
 
-        const boundingRect = this.displayContainerRef?.current.getBoundingClientRect();
-        if (!boundingRect) {
+        // Container DOM may not be mounted yet when a PreviewModel is constructed during
+        // layout — bail out like the other defensive paths instead of crashing.
+        const containerEl = this.displayContainerRef?.current;
+        if (!containerEl) {
             return [];
         }
+        const boundingRect = containerEl.getBoundingClientRect();
 
         const maxX = boundingRect.left + boundingRect.width;
         const maxY = boundingRect.top + boundingRect.height;
