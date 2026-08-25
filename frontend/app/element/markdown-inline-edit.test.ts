@@ -267,6 +267,21 @@ describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
         expect(newLine).toBe(4);
     });
 
+    it("caret at end + MODIFIED draft → typed content is committed (Enter-loses-input bug)", () => {
+        // Regression: user types in a fresh placeholder row, presses Enter to confirm —
+        // the draft must land in the document instead of being silently discarded.
+        const blankDoc = "# title\n\nhello world\n\n\n\nend"; // line 6 is the blank placeholder row, line 7 = end
+        const { text, newLine } = splitBlockAtCaretText(blankDoc, 6, 6, "1. 测试内容", "1. 测试内容".length);
+        expect(text).toBe("# title\n\nhello world\n\n\n1. 测试内容\n\nend");
+        expect(newLine).toBe(7); // follow-up editor lands on the blank row below the content
+    });
+
+    it("caret at start + MODIFIED draft → typed content survives above-split", () => {
+        const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, "HELLO world", 0);
+        expect(text).toBe("# title\n\n\nHELLO world\n\nend");
+        expect(newLine).toBe(3);
+    });
+
     it("caret at the start → blank line inserted above, original text becomes the after block", () => {
         const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, 0);
         // placeholder path: exactly ONE blank row above

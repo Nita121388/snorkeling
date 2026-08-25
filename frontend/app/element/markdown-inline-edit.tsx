@@ -115,6 +115,13 @@ export type InlineEditSession = {
      * (zero stray blank rows, unlike block-level inserts).
      */
     placeholderInline?: boolean;
+    /**
+     * Enter-split continuation placeholder: the document already carries committed content
+     * from the same gesture (the line above this row). An empty commit (blur/Ctrl+S) must keep
+     * the committed content instead of firing insertRevert — which would erase it, and then
+     * Save would persist the erased text ("typed a line, Enter, Save → content disappears").
+     */
+    placeholderKeepOnEmpty?: boolean;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -275,6 +282,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 scrollTop: viewport.scrollTop,
             });
             setOverlayRect(null);
+            // The anchor block no longer exists in the DOM (deleted, or replaced beyond what
+            // the fallback selector can find). Keeping the session alive here would leave its
+            // block stuck with .inline-edit-hidden and NO textarea over it — the user just
+            // sees blank content ("typed a line, nothing renders") until they happen to press
+            // Esc. Closing the session lets the anchor-hide layout effect's cleanup remove the
+            // hidden class again.
+            setEditSession(null);
+            setDraftText("");
             return;
         }
         const targetRect = target.getBoundingClientRect();
@@ -448,7 +463,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             targetEl: HTMLElement,
             caretOffset?: number,
             insertRevert?: () => void,
-            placeholder?: boolean | "inline"
+            placeholder?: boolean | "inline",
+            keepOnEmpty?: boolean
         ): boolean => {
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = fullTextRef.current.split(/\r\n|\n/);
@@ -476,6 +492,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 insertRevert,
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
                 placeholderInline: placeholder === "inline",
+                placeholderKeepOnEmpty: keepOnEmpty || undefined,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -556,9 +573,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // new block), inline <p> inserts just replace with NO blank (the paragraph's own
             // separator blanks still bracket it → a flush soft-broken new line). Nothing
             // typed → the pre-insert must not survive: revert the document to its pre-insert
-            // state so the click leaves zero trace.
+            // state so the click leaves zero trace — UNLESS this is an Enter-split follow-up
+            // row: the same gesture already committed real content above, and reverting here
+            // would erase it so the next Save writes the erased text to disk ("typed a line,
+            // Enter, then Save → content disappears").
             if (draftText.trim().length === 0) {
-                current.insertRevert?.();
+                if (!current.placeholderKeepOnEmpty) {
+                    current.insertRevert?.();
+                }
                 return;
             }
             onCommit(
@@ -921,16 +943,25 @@ export function splitBlockAtCaretText(
     const lines = fullText.split(/\r\n|\n/);
 
     if (before === "") {
-        // Caret at line start: the split row goes ABOVE, the current row keeps all its
-        // content. Pre-insert exactly one blank row (not two) — the follow-up editor treats
-        // it as a placeholder row, see commitPlaceholderBlock.
-        const newFull = spliceBlankRow(lines, startLine, endLine, "before").join("\n");
+        // Caret at line start: the split row goes ABOVE, the current row keeps the
+        // user's draft content. Write the draft into the block first, then insert a
+        // single blank row above — the follow-up editor treats it as a placeholder
+        // row, see commitPlaceholderBlock.
+        const withDraft = replaceSourceRange(fullText, startLine, endLine, draftText);
+        const midLines = withDraft.split(/\r\n|\n/);
+        const newFull = spliceBlankRow(midLines, startLine, startLine, "before").join("\n");
         return { text: newFull, newLine: startLine };
     }
     if (after === "") {
-        // Caret at line end: the split row goes BELOW. One blank row, same placeholder math.
-        const newFull = spliceBlankRow(lines, startLine, endLine, "after").join("\n");
-        return { text: newFull, newLine: endLine + 1 };
+        // Caret at line end: commit the typed draft into the block first, then hang
+        // a blank row below for the follow-up placeholder editor. (Without the
+        // replaceSourceRange call, the draft is silently discarded — the block keeps
+        // its original text and the user sees their input vanish after pressing Enter.)
+        const withDraft = replaceSourceRange(fullText, startLine, endLine, draftText);
+        const midLines = withDraft.split(/\r\n|\n/);
+        const draftEnd = startLine + draftText.split(/\r\n|\n/).length - 1;
+        const newFull = spliceBlankRow(midLines, draftEnd, draftEnd, "after").join("\n");
+        return { text: newFull, newLine: draftEnd + 1 };
     }
     const afterBeforeCommit = replaceSourceRange(fullText, startLine, endLine, before);
     const midLines = afterBeforeCommit.split(/\r\n|\n/);

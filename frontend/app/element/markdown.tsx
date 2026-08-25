@@ -16,6 +16,7 @@ import {
     spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
+    inlineEditDebug,
     makeListItemInsertMarker,
     splitListItemDraft,
     useInlineEdit,
@@ -1572,8 +1573,25 @@ const Markdown = ({
     // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
     // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string) => {
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean) => {
             let attempts = 0;
+            // Safety net for exhausted retries: the caller committed an insert/split but we
+            // could never open its follow-up editor (re-render landed too late, viewport gone,
+            // …). Leaving the PREVIOUS session running here is what produced "pressed Enter and
+            // it all went blank": the stale session keeps its block .inline-edit-hidden with no
+            // textarea over it, and further typing lands in a draft bound to the WRONG line
+            // range (glued text, duplicated rows). Instead: undo the whole insert via the
+            // caller-wired revert, then close whatever session remains — worst case the gesture
+            // is a visible no-op the user can safely retry.
+            const giveUp = () => {
+                inlineEditDebug("focusEditedLine: retries exhausted — closing stale session", {
+                    newLine,
+                    attempts,
+                    hasRevert: revert != null,
+                });
+                revert?.();
+                inlineEdit.cancel();
+            };
             const tryOpen = () => {
                 attempts++;
                 const viewport = getViewportEl();
@@ -1583,12 +1601,14 @@ const Markdown = ({
                     ) ?? null;
                 if (el == null || el.closest("img") != null) {
                     if (attempts < 10) requestAnimationFrame(tryOpen);
+                    else giveUp();
                     return;
                 }
                 // A list element claiming the target row means the DOM is still the pre-insert
                 // render — keep waiting instead of anchoring the wrong range.
                 if ((placeholder ?? false) && (el.tagName === "OL" || el.tagName === "UL" || el.tagName === "LI")) {
                     if (attempts < 10) requestAnimationFrame(tryOpen);
+                    else giveUp();
                     return;
                 }
                 const opened = inlineEdit.beginEdit(
@@ -1597,10 +1617,15 @@ const Markdown = ({
                     el,
                     prefill != null ? prefill.length : 0,
                     revert,
-                    placeholder
+                    placeholder,
+                    keepOnEmpty
                 );
                 if (!opened && attempts < 10) {
                     requestAnimationFrame(tryOpen);
+                    return;
+                }
+                if (!opened) {
+                    giveUp();
                     return;
                 }
                 if (opened && prefill != null) {
@@ -1662,10 +1687,11 @@ const Markdown = ({
             handleInlineEditCommit(text); // restore the document to what it was before the split
         };
         handleInlineEditCommit(newFull);
-        // The split pre-inserted a single placeholder row — same commit/revert semantics as
-        // the block-edge insert buttons (see commitPlaceholderBlock), so Enter nets exactly
-        // one new block and an empty commit leaves nothing behind.
-        focusEditedLine(newLine, revert, true);
+        // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
+        // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
+        // before the split, or the next Save would persist the rollback and the typed line
+        // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
+        focusEditedLine(newLine, revert, true, undefined, true);
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
     // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
@@ -2122,12 +2148,23 @@ const Markdown = ({
             // user's live ref position, then reveal on the next animation frame once layout has
             // stabilized. visibility:hidden (vs display:none) keeps the box geometry intact so the
             // restore scrollTop value lands on the right row, the OS only skips painting the glow.
-            const prevVisibility = viewport.style.visibility;
+            // Mask exactly one frame while we snap scrollTop back. The reveal must NEVER ride
+            // on rAF alone: on a hidden/occluded window (background Electron window, minimized,
+            // fully covered by another window) rAF callbacks never run, so the viewport stayed
+            // visibility:hidden forever — the whole preview went blank after any inline edit
+            // ("typed a line, nothing renders" bug). A timeout fallback guarantees recovery on
+            // hidden pages (timers still fire, throttled to ≥1s), and restoring "" instead of
+            // the captured prevVisibility avoids re-applying a "hidden" value that an earlier
+            // interrupted cycle left behind (one stuck cycle used to poison all later ones).
+            // This effect is the only writer of inline visibility on the viewport, so "" is
+            // always the correct visible state.
             viewport.style.visibility = "hidden";
             viewport.scrollTop = lastViewportScrollTopRef.current;
-            requestAnimationFrame(() => {
-                viewport.style.visibility = prevVisibility;
-            });
+            const revealViewport = () => {
+                viewport.style.visibility = "";
+            };
+            requestAnimationFrame(revealViewport);
+            setTimeout(revealViewport, 120);
             liveScrollDebug("restore preview scroll after content update", {
                 restoredScrollTop: lastViewportScrollTopRef.current,
             });
