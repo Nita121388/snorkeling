@@ -113,6 +113,8 @@ const previewElectronApi: ElectronApi = {
     getPathForFile: (_file: File) => "",
     saveTextFile: (_fileName: string, _content: string) => Promise.resolve(false),
     setIsActive: async () => {},
+    startWindowDrag: () => {},
+    endWindowDrag: () => {},
 };
 
 function installPreviewElectronApi() {

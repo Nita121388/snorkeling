@@ -756,6 +756,17 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const tabsWrapperWidth = visibleTabIds.length * tabWidthRef.current;
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
+    const handleWindowDragMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        env.electron.startWindowDrag();
+        const onUp = () => {
+            env.electron.endWindowDrag();
+            window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mouseup", onUp);
+    };
+
     const handleWrapperMouseEnter = useCallback(() => {
         cancelPendingHideWrapperHover();
         setIsWrapperHovered(true);
@@ -803,6 +814,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 ref={draggerLeftRef}
                 className="h-full shrink-0 z-window-drag"
                 style={{ width: windowDragLeftWidth, WebkitAppRegion: "drag" } as any}
+                onMouseDown={env.isMacOS() ? undefined : handleWindowDragMouseDown}
             />
             {showAppMenuButton && (
                 <div
@@ -888,12 +900,14 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 className="flex-1 self-stretch"
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onMouseEnter={handleWrapperMouseEnter}
+                onMouseDown={handleWindowDragMouseDown}
             />
             <div ref={rightContainerRef} className="flex flex-row gap-1 items-end" style={{ pointerEvents: "none" }}>
                 <UpdateStatusBanner />
                 <div
                     className="h-full shrink-0 z-window-drag"
-                    style={{ width: windowDragRightWidth, WebkitAppRegion: "drag" } as any}
+                    style={{ width: windowDragRightWidth, WebkitAppRegion: "drag", pointerEvents: "auto" } as any}
+                    onMouseDown={handleWindowDragMouseDown}
                 />
             </div>
         </div>

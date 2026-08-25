@@ -1012,6 +1012,58 @@ ipcMain.handle("move-tab-back", async (event, tabId: string) => {
     }
 });
 
+// Window drag via IPC.
+// The tab bar is rendered inside a <webview>, where CSS `-webkit-app-region: drag` cannot move the
+// outer window. Instead the frontend sends start/stop events and we drive setBounds from the main
+// process using absolute screen coordinates (which natively cross displays).
+let activeWindowDrag: {
+    win: WaveBrowserWindow;
+    timer: ReturnType<typeof setInterval>;
+    startCursor: Electron.Point;
+    startBounds: Electron.Rectangle;
+} | null = null;
+
+function stopWindowDrag(win?: WaveBrowserWindow) {
+    if (activeWindowDrag && (!win || activeWindowDrag.win === win)) {
+        clearInterval(activeWindowDrag.timer);
+        activeWindowDrag = null;
+    }
+}
+
+ipcMain.on("window-start-drag", (event) => {
+    const ww = getWaveWindowByWebContentsId(event.sender.id);
+    if (!ww || ww.isDestroyed()) {
+        return;
+    }
+    if (ww.isFullScreen()) {
+        return;
+    }
+    if (ww.isMaximized()) {
+        ww.unmaximize();
+    }
+    if (activeWindowDrag?.win === ww) {
+        return;
+    }
+    stopWindowDrag();
+    const startCursor = screen.getCursorScreenPoint();
+    const startBounds = ww.getBounds();
+    const timer = setInterval(() => {
+        if (!ww || ww.isDestroyed()) {
+            stopWindowDrag(ww);
+            return;
+        }
+        const cur = screen.getCursorScreenPoint();
+        const dx = cur.x - startCursor.x;
+        const dy = cur.y - startCursor.y;
+        ww.setBounds({ ...startBounds, x: startBounds.x + dx, y: startBounds.y + dy });
+    }, 16);
+    activeWindowDrag = { win: ww, timer, startCursor, startBounds };
+});
+
+ipcMain.on("window-end-drag", () => {
+    stopWindowDrag();
+});
+
 ipcMain.on("switch-workspace", (event, workspaceId) => {
     fireAndForget(async () => {
         const ww = getWaveWindowByWebContentsId(event.sender.id);
@@ -1199,6 +1251,23 @@ function moveWindowToDisplay(win: WaveBrowserWindow, targetDisplay: Electron.Dis
     const nextY = targetArea.y + Math.min(Math.max(sourceYOffset, 0), maxYOffset);
 
     win.setBounds({ ...curBounds, x: nextX, y: nextY, width: nextWidth, height: nextHeight });
+}
+
+export function moveWaveWindowToRelativeDisplay(win: WaveBrowserWindow | null, dir: 1 | -1): void {
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    const displays = screen.getAllDisplays();
+    if (displays.length < 2) {
+        return;
+    }
+    const current = screen.getDisplayMatching(win.getBounds());
+    const idx = displays.findIndex((d) => d.id === current.id);
+    if (idx === -1) {
+        return;
+    }
+    const nextIdx = (idx + dir + displays.length) % displays.length;
+    moveWindowToDisplay(win, displays[nextIdx]);
 }
 
 const FullscreenTransitionTimeoutMs = 2000;

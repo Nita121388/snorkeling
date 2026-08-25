@@ -16,6 +16,7 @@ import {
     focusedWaveWindow,
     getAllWaveWindows,
     getWaveWindowByWorkspaceId,
+    moveWaveWindowToRelativeDisplay,
     relaunchBrowserWindows,
     WaveBrowserWindow,
 } from "./emain-window";
@@ -388,6 +389,23 @@ async function makeFullAppMenu(callbacks: AppMenuCallbacks, workspaceOrBuilderId
     const windowMenu: Electron.MenuItemConstructorOptions[] = [
         { role: "minimize", accelerator: "" },
         { role: "zoom" },
+        { type: "separator" },
+        {
+            label: "Move to Next Display",
+            accelerator: "CmdOrControl+Alt+Right",
+            click: () => {
+                const ww = focusedWaveWindow ?? getAllWaveWindows()[0];
+                moveWaveWindowToRelativeDisplay(ww, 1);
+            },
+        },
+        {
+            label: "Move to Previous Display",
+            accelerator: "CmdOrControl+Alt+Left",
+            click: () => {
+                const ww = focusedWaveWindow ?? getAllWaveWindows()[0];
+                moveWaveWindowToRelativeDisplay(ww, -1);
+            },
+        },
         { type: "separator" },
         { role: "front" },
     ];

@@ -12,6 +12,8 @@ export type TabBarEnv = WaveEnvSubset<{
         moveTabBack: WaveEnv["electron"]["moveTabBack"];
         showWorkspaceAppMenu: WaveEnv["electron"]["showWorkspaceAppMenu"];
         installAppUpdate: WaveEnv["electron"]["installAppUpdate"];
+        startWindowDrag: WaveEnv["electron"]["startWindowDrag"];
+        endWindowDrag: WaveEnv["electron"]["endWindowDrag"];
     };
     rpc: {
         ActivityCommand: WaveEnv["rpc"]["ActivityCommand"];
