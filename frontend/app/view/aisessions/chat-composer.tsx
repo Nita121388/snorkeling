@@ -29,6 +29,10 @@ type PendingImage = {
 
 let pendingImageSeq = 0;
 
+// 输入框高度范围：MIN ≈ 原始单行高度（可拖回初始大小），MAX = 窗口高度的 70%
+const COMPOSER_MIN_H = 36;
+const composerMaxH = () => Math.max(COMPOSER_MIN_H, Math.round(window.innerHeight * 0.7));
+
 function fileToPendingImage(file: File): Promise<PendingImage> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -94,7 +98,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const [maxH, setMaxH] = useState(() => {
         const saved = window.localStorage.getItem("aisessions.composerMaxH");
         const n = saved ? Number(saved) : NaN;
-        return Number.isFinite(n) && n >= 80 ? n : 190;
+        return Number.isFinite(n) && n >= COMPOSER_MIN_H ? n : 190;
     });
     // 模型 / 思考级别的懒加载标记（避免每次开弹层都打 RPC）
     const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -140,14 +144,15 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         sendEventsRef.current = events;
     }, [events]);
 
-    // Paseo-style auto-grow: height follows content up to the draggable max.
-    // draggingRef：拖拽中跳过自动收缩，否则空内容会把刚拖高的框立刻压回单行（看起来像“拖不动”）。
+    // Paseo-style auto-grow：内容超出当前高度才撑开（只增不缩），拖拽中跳过。
+    // 拖高的空框保持高度，想变小就往下拖；避免空框被压回单行、打字时高框突然缩回。
     const draggingRef = useRef(false);
     useEffect(() => {
         const el = inputRef.current;
         if (!el || draggingRef.current) return;
-        el.style.height = "auto";
-        el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+        if (el.scrollHeight > el.clientHeight) {
+            el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+        }
     }, [input, maxH]);
 
     // 卡片顶边整条可拖拽调高：向上拖变高、向下拖变矮（ponytail: 原生 mouse 事件，无依赖）
@@ -156,18 +161,16 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             down.preventDefault();
             draggingRef.current = true;
             const startY = down.clientY;
-            const startH = maxH;
-            const panelBottom = inputRef.current?.getBoundingClientRect().bottom ?? down.clientY;
+            // 基准用真实渲染高度而非 maxH：空框单行 ~35px，若从 maxH 起算首帧会跳变
+            const startHeight = Math.round(inputRef.current?.getBoundingClientRect().height ?? 35);
             const apply = (h: number) => {
                 setMaxH(h);
-                // 立即把可见高度设为拖拽值，空内容也能看到框变高
                 const el = inputRef.current;
                 if (el) el.style.height = `${h}px`;
             };
             const onMove = (e: MouseEvent) => {
                 const delta = startY - e.clientY; // up => taller
-                const ceiling = Math.max(80, Math.round(window.innerHeight * 0.7 - (window.innerHeight - panelBottom)));
-                apply(Math.min(Math.max(startH + delta, 80), Math.max(ceiling, 80)));
+                apply(Math.min(Math.max(startHeight + delta, COMPOSER_MIN_H), composerMaxH()));
             };
             const onUp = () => {
                 draggingRef.current = false;
@@ -181,7 +184,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             window.addEventListener("mousemove", onMove);
             window.addEventListener("mouseup", onUp);
         },
-        [maxH]
+        []
     );
 
     const flashNotice = useCallback((text: string) => {
@@ -457,6 +460,20 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         agentState?.thinkingLevel && agentState.thinkingLevel !== "off" ? agentState.thinkingLevel : "";
     const panelOpen = effectiveMode != null && panelRows.length > 0;
 
+    // 点击外部自动关闭面板（与 session-menu 同模式）：监听范围包住整张
+    // composer 卡片（弹层 + 三个 chip 都在内），点到卡片外才收起。
+    const cardRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!panelOpen) return;
+        const handlePointer = (e: PointerEvent) => {
+            if (cardRef.current != null && !cardRef.current.contains(e.target as Node)) {
+                setPanelMode(null);
+            }
+        };
+        document.addEventListener("pointerdown", handlePointer, true);
+        return () => document.removeEventListener("pointerdown", handlePointer, true);
+    }, [panelOpen]);
+
     // 搜索框内键盘导航：与 textarea 面板导航同一套行选中逻辑
     const handlePickerSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -651,6 +668,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                     ) : null}
                     {/* Paseo 卡片：圆角浮起容器，无边框输入区在卡内 */}
                     <div
+                        ref={cardRef}
                         className={cn(
                             "relative rounded-[9px] border bg-surface p-1.5 shadow-lg transition-colors",
                             panelOpen || input ? "border-secondary/50" : "border-border focus-within:border-secondary/50"
