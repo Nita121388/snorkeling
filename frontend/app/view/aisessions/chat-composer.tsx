@@ -504,7 +504,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                         {notice}
                     </div>
                 ) : null}
-                <div className="relative">
+                <div ref={cardRef} className="relative">
                     {panelOpen ? (
                         <div className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
@@ -668,7 +668,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                     ) : null}
                     {/* Paseo 卡片：圆角浮起容器，无边框输入区在卡内 */}
                     <div
-                        ref={cardRef}
                         className={cn(
                             "relative rounded-[9px] border bg-surface p-1.5 shadow-lg transition-colors",
                             panelOpen || input ? "border-secondary/50" : "border-border focus-within:border-secondary/50"

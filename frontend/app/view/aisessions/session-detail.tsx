@@ -458,7 +458,6 @@ export function SessionDetailPane({
     const toolCalls = detail?.toolCalls ?? [];
     const toolsLoaded = detail?.toolCalls != null;
     const hasPreviousMessages = visibleMessageCount < readableMessages.length;
-    const firstVisibleMessage = detailMessages[0];
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
@@ -1310,11 +1309,7 @@ export function SessionDetailPane({
                                     <EmptyState text="No readable messages." />
                                 ) : (
                                     <div>
-                                        <div className="flex items-center justify-between gap-2 text-xs text-secondary">
-                                            <div>
-                                                Showing #{firstVisibleMessage?.seq ?? 0}-#
-                                                {lastVisibleMessage?.seq ?? 0} of {readableMessages.length}
-                                            </div>
+                                        <div className="flex items-center justify-end gap-2 text-xs text-secondary">
                                             {hasPreviousMessages ? (
                                                 <button
                                                     className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
