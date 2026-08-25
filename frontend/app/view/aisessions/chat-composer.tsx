@@ -59,9 +59,17 @@ type AgentStateInfo = {
     model?: { provider?: string; id?: string; name?: string } | null;
 };
 
-type PanelMode = null | "commands" | "picker";
+type PanelMode = null | "commands" | "agents" | "models" | "levels";
 
 type ModelOption = { provider?: string; id?: string; name?: string };
+
+// GUI 聊天可选的 agent 清单。后端 chatProviderForSource 目前只实现 pi；
+// 其余项仅展示并禁用（升级路径：后端补 Provider 后去掉 available:false）。
+const AGENT_CHOICES = [
+    { id: "pi", label: "Pi", available: true },
+    { id: "codex", label: "Codex", available: false },
+    { id: "claude", label: "Claude Code", available: false },
+] as const;
 
 type ChatComposerProps = {
     source: string;
@@ -82,6 +90,15 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
     const [thinkingLevels, setThinkingLevels] = useState<string[]>([]);
     const [pickerQuery, setPickerQuery] = useState("");
+    // 可拖拽调整的输入框最大高度，持久化到 localStorage
+    const [maxH, setMaxH] = useState(() => {
+        const saved = window.localStorage.getItem("aisessions.composerMaxH");
+        const n = saved ? Number(saved) : NaN;
+        return Number.isFinite(n) && n >= 80 ? n : 190;
+    });
+    // 模型 / 思考级别的懒加载标记（避免每次开弹层都打 RPC）
+    const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [levelsLoaded, setLevelsLoaded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const endpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
@@ -123,13 +140,49 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         sendEventsRef.current = events;
     }, [events]);
 
-    // Paseo-style auto-grow: height follows content up to ~190px.
+    // Paseo-style auto-grow: height follows content up to the draggable max.
+    // draggingRef：拖拽中跳过自动收缩，否则空内容会把刚拖高的框立刻压回单行（看起来像“拖不动”）。
+    const draggingRef = useRef(false);
     useEffect(() => {
         const el = inputRef.current;
-        if (!el) return;
+        if (!el || draggingRef.current) return;
         el.style.height = "auto";
-        el.style.height = `${Math.min(el.scrollHeight, 190)}px`;
-    }, [input]);
+        el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+    }, [input, maxH]);
+
+    // 卡片顶边整条可拖拽调高：向上拖变高、向下拖变矮（ponytail: 原生 mouse 事件，无依赖）
+    const startResize = useCallback(
+        (down: React.MouseEvent) => {
+            down.preventDefault();
+            draggingRef.current = true;
+            const startY = down.clientY;
+            const startH = maxH;
+            const panelBottom = inputRef.current?.getBoundingClientRect().bottom ?? down.clientY;
+            const apply = (h: number) => {
+                setMaxH(h);
+                // 立即把可见高度设为拖拽值，空内容也能看到框变高
+                const el = inputRef.current;
+                if (el) el.style.height = `${h}px`;
+            };
+            const onMove = (e: MouseEvent) => {
+                const delta = startY - e.clientY; // up => taller
+                const ceiling = Math.max(80, Math.round(window.innerHeight * 0.7 - (window.innerHeight - panelBottom)));
+                apply(Math.min(Math.max(startH + delta, 80), Math.max(ceiling, 80)));
+            };
+            const onUp = () => {
+                draggingRef.current = false;
+                window.removeEventListener("mousemove", onMove);
+                window.removeEventListener("mouseup", onUp);
+                setMaxH((h) => {
+                    window.localStorage.setItem("aisessions.composerMaxH", String(h));
+                    return h;
+                });
+            };
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp);
+        },
+        [maxH]
+    );
 
     const flashNotice = useCallback((text: string) => {
         setNotice(text);
@@ -184,16 +237,30 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
     const canSubmit = hasContent && (status === "idle" || status === "error" || isRunning);
 
-    const openPicker = useCallback(async () => {
-        setPanelMode("picker");
-        setPickerQuery("");
-        const [modelsRes, levelsRes] = await Promise.all([
-            runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_models" } }),
-            runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_thinking_levels" } }),
-        ]);
-        setModelOptions(Array.isArray(modelsRes.data?.models) ? modelsRes.data.models : []);
-        setThinkingLevels(Array.isArray(levelsRes.data?.levels) ? levelsRes.data.levels.map(String) : []);
-    }, [endpoint, baseBody, runChatCommand]);
+    const openPicker = useCallback(
+        async (mode: "models" | "levels") => {
+            setPanelMode(mode);
+            setPickerQuery("");
+            // 懒加载：模型/思考级别各自首次打开时拉一次；失败后重置标记允许重试
+            if (mode === "models" && modelsLoaded) return;
+            if (mode === "levels" && levelsLoaded) return;
+            const cmd = mode === "models" ? "get_available_models" : "get_available_thinking_levels";
+            const res = await runChatCommand(endpoint, { ...baseBody, command: { name: cmd } });
+            if (!res.ok) {
+                flashNotice(`✗ ${cmd}: ${res.error ?? "failed"}`);
+                setPanelMode(null);
+                return;
+            }
+            if (mode === "models") {
+                setModelOptions(Array.isArray(res.data?.models) ? res.data.models : []);
+                setModelsLoaded(true);
+            } else {
+                setThinkingLevels(Array.isArray(res.data?.levels) ? res.data.levels.map(String) : []);
+                setLevelsLoaded(true);
+            }
+        },
+        [endpoint, baseBody, modelsLoaded, levelsLoaded, flashNotice]
+    );
 
     // —— 面板数据：命令过滤 / 模型+思考深度合并选择器 ——
     const slashQuery = parseSlashQuery(input);
@@ -202,25 +269,33 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     type PanelRow =
         | { kind: "command"; item: SlashItem }
         | { kind: "model"; item: ModelOption }
-        | { kind: "level"; level: string };
+        | { kind: "level"; level: string }
+        | { kind: "agent"; agent: (typeof AGENT_CHOICES)[number] };
 
     const panelRows: PanelRow[] = useMemo(() => {
         if (effectiveMode === "commands" && slashQuery != null) {
             return filterSlashItems(allCommands, slashQuery).map((item) => ({ kind: "command" as const, item }));
         }
-        if (effectiveMode === "picker") {
-            // 模型搜索：按名称/id/provider 子串过滤；思考深度仅按级别名匹配
-            const q = pickerQuery.trim().toLowerCase();
-            const models = q
+        // 模型搜索：按名称/id/provider 子串过滤；思考深度仅按级别名匹配
+        const q = pickerQuery.trim().toLowerCase();
+        if (effectiveMode === "models") {
+            return (q
                 ? modelOptions.filter((m) =>
                       `${m.name || ""} ${m.id || ""} ${m.provider || ""}`.toLowerCase().includes(q)
                   )
-                : modelOptions;
-            const levels = q ? thinkingLevels.filter((l) => l.toLowerCase().includes(q)) : thinkingLevels;
-            return [
-                ...models.map((item) => ({ kind: "model" as const, item })),
-                ...levels.map((level) => ({ kind: "level" as const, level })),
-            ];
+                : modelOptions
+            ).map((item) => ({ kind: "model" as const, item }));
+        }
+        if (effectiveMode === "levels") {
+            return (q ? thinkingLevels.filter((l) => l.toLowerCase().includes(q)) : thinkingLevels).map(
+                (level) => ({ kind: "level" as const, level })
+            );
+        }
+        if (effectiveMode === "agents") {
+            return AGENT_CHOICES.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
+                kind: "agent" as const,
+                agent,
+            }));
         }
         return [];
     }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels, pickerQuery]);
@@ -242,7 +317,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         (name: string) => {
             setInput("");
             if (name === "model" || name === "think") {
-                void openPicker();
+                void openPicker(name === "model" ? "models" : "levels");
             } else if (name === "compact") {
                 void runControl("compact", undefined, "已请求压缩上下文");
             }
@@ -253,6 +328,16 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const applyCommandRow = useCallback(
         (row: PanelRow | undefined) => {
             if (row == null) return;
+            if (row.kind === "agent") {
+                if (!row.agent.available) {
+                    flashNotice(`✗ ${row.agent.label} 暂未支持`);
+                    return;
+                }
+                flashNotice(`当前 agent: ${row.agent.label}（后端仅实现 Pi）`);
+                setPanelMode(null);
+                inputRef.current?.focus();
+                return;
+            }
             if (row.kind === "command") {
                 const { item } = row;
                 if (item.source === "gui") {
@@ -287,7 +372,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         },
         [applyBuiltin, runControl, flashNotice, effectiveMode]
     );
-
     const handleSubmit = useCallback(() => {
         if (!canSubmit) return;
         const text = input.trim();
@@ -373,8 +457,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         agentState?.thinkingLevel && agentState.thinkingLevel !== "off" ? agentState.thinkingLevel : "";
     const panelOpen = effectiveMode != null && panelRows.length > 0;
 
-    const modelChipLabel = currentModelLabel ? `${source} · ${currentModelLabel}` : `${source} · 选择模型`;
-
     // 搜索框内键盘导航：与 textarea 面板导航同一套行选中逻辑
     const handlePickerSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -399,7 +481,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
 
     return (
         <div className="shrink-0 bg-panel">
-            <div className="mx-auto w-full max-w-3xl px-6 pb-2.5 pt-1">
+            <div className="w-full px-3 pb-2.5 pt-1">
                 {notice ? (
                     <div className="pb-1 pt-0.5 text-[11px] text-secondary" role="status">
                         {notice}
@@ -413,7 +495,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                     Commands · Tab/Enter 补全 · Esc 关闭
                                 </div>
                             ) : null}
-                            {effectiveMode === "picker" ? (
+                            {effectiveMode != null && effectiveMode !== "commands" ? (
                                 <div className="shrink-0 border-b border-border/50 p-1.5">
                                     <input
                                         autoFocus
@@ -421,17 +503,58 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                         value={pickerQuery}
                                         onChange={(e) => setPickerQuery(e.target.value)}
                                         onKeyDown={handlePickerSearchKeyDown}
-                                        placeholder="搜索模型…"
+                                        placeholder={
+                                            effectiveMode === "models"
+                                                ? "搜索模型…"
+                                                : effectiveMode === "levels"
+                                                  ? "搜索思考强度…"
+                                                  : "搜索 Agent…"
+                                        }
                                         className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-primary outline-none placeholder:text-secondary/70 focus:border-secondary/50"
-                                        aria-label="Search models"
+                                        aria-label={
+                                            effectiveMode === "models"
+                                                ? "Search models"
+                                                : effectiveMode === "levels"
+                                                  ? "Search thinking levels"
+                                                  : "Search agents"
+                                        }
                                     />
                                 </div>
                             ) : null}
                             <div className="min-h-0 flex-1 overflow-y-auto">
                             {panelRows.map((row, idx) => {
+                                if (row.kind === "agent") {
+                                    return (
+                                        <button
+                                            key={`agent-${row.agent.id}`}
+                                            type="button"
+                                            className={cn(
+                                                "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                                row.agent.available
+                                                    ? idx === cmdIndex
+                                                        ? "bg-accent/10 text-primary"
+                                                        : "text-secondary hover:bg-hover"
+                                                    : "cursor-not-allowed text-secondary/40"
+                                            )}
+                                            onMouseEnter={() => setCmdIndex(idx)}
+                                            onClick={() => applyCommandRow(row)}
+                                        >
+                                            <i className="fa-sharp fa-solid fa-robot shrink-0 text-[10px] text-accent" />
+                                            <span className="flex-1">{row.agent.label}</span>
+                                            {!row.agent.available ? (
+                                                <span className="shrink-0 text-[9px] opacity-60">暂未支持</span>
+                                            ) : source === row.agent.id ? (
+                                                <span className="text-[9px] text-accent">当前</span>
+                                            ) : null}
+                                        </button>
+                                    );
+                                }
                                 const prev = idx > 0 ? panelRows[idx - 1] : null;
                                 const showSection =
-                                    effectiveMode === "picker" && row.kind !== "command" && prev?.kind !== row.kind;
+                                    effectiveMode != null &&
+                                    effectiveMode !== "commands" &&
+                                    row.kind !== "command" &&
+                                    prev?.kind !== row.kind;
                                 if (row.kind === "command") {
                                     const badge = slashSourceLabel(row.item.source);
                                     return (
@@ -518,7 +641,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                             })}
                             {panelRows.length === 0 ? (
                                 <div className="px-3 py-3 text-center text-xs text-secondary">
-                                    {effectiveMode === "picker" && pickerQuery.trim()
+                                    {effectiveMode != null && effectiveMode !== "commands" && pickerQuery.trim()
                                         ? `无匹配「${pickerQuery.trim()}」`
                                         : "暂无可选项"}
                                 </div>
@@ -529,7 +652,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                     {/* Paseo 卡片：圆角浮起容器，无边框输入区在卡内 */}
                     <div
                         className={cn(
-                            "rounded-[18px] border bg-surface p-1.5 shadow-lg transition-colors",
+                            "relative rounded-[9px] border bg-surface p-1.5 shadow-lg transition-colors",
                             panelOpen || input ? "border-secondary/50" : "border-border focus-within:border-secondary/50"
                         )}
                         onClick={(e) => {
@@ -537,6 +660,14 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                             if (e.target === e.currentTarget) inputRef.current?.focus();
                         }}
                     >
+                        {/* 顶部隐形拖拽区：覆盖卡片上边缘整条宽度 */}
+                        <div
+                            role="separator"
+                            aria-label="Resize input area"
+                            aria-orientation="horizontal"
+                            className="absolute inset-x-0 -top-1.5 z-10 h-3 cursor-row-resize"
+                            onMouseDown={startResize}
+                        />
                         {/* Attachment preview chips — 卡内顶部 */}
                         {images.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5 px-1.5 pb-1 pt-1">
@@ -560,7 +691,8 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                         ) : null}
                         <textarea
                             ref={inputRef}
-                            className="block max-h-[190px] w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
+                            style={{ maxHeight: `${maxH}px` }}
+                            className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
                             placeholder={
                                 isRunning ? "Agent 运行中… Enter 插话排队" : "给 Agent 输入任务…"
                             }
@@ -594,20 +726,59 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                             <button
                                 type="button"
                                 className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="切换模型与思考深度"
-                                onClick={() => {
-                                    if (effectiveMode === "picker") {
-                                        setPanelMode(null);
-                                    } else {
-                                        void openPicker();
-                                    }
-                                }}
+                                title="选择 Agent"
+                                onClick={() => setPanelMode(panelMode === "agents" ? null : "agents")}
                             >
-                                <span className="max-w-52 truncate">{modelChipLabel}</span>
+                                <i className="fa-sharp fa-solid fa-robot text-[11px]" />
+                                <span className="max-w-24 truncate">{source || "Pi"}</span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
-                                        effectiveMode === "picker" && "rotate-180"
+                                        panelMode === "agents" && "rotate-180"
+                                    )}
+                                />
+                            </button>
+                            <button
+                                type="button"
+                                className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                title="切换模型"
+                                onClick={() => {
+                                    if (panelMode === "models") {
+                                        setPanelMode(null);
+                                    } else {
+                                        void openPicker("models");
+                                    }
+                                }}
+                            >
+                                <span className="max-w-40 truncate">{currentModelLabel || "选择模型"}</span>
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
+                                        panelMode === "models" && "rotate-180"
+                                    )}
+                                />
+                            </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-hover",
+                                    currentThinking ? "text-accent" : "text-secondary hover:text-primary"
+                                )}
+                                title="思考强度"
+                                onClick={() => {
+                                    if (panelMode === "levels") {
+                                        setPanelMode(null);
+                                    } else {
+                                        void openPicker("levels");
+                                    }
+                                }}
+                            >
+                                <i className="fa-sharp fa-solid fa-brain text-[11px]" />
+                                <span>{currentThinking || "思考"}</span>
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
+                                        panelMode === "levels" && "rotate-180"
                                     )}
                                 />
                             </button>
