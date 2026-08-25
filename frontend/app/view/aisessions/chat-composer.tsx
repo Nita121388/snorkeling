@@ -829,19 +829,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                             )}
                         </div>
                     </div>
-                    {/* 键位提示行 */}
-                    <div className="flex gap-4 px-2 pb-0.5 pt-1.5 text-[10.5px] text-secondary/80">
-                        <span>
-                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Enter</span> 发送
-                        </span>
-                        <span>
-                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Shift</span>+
-                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">Enter</span> 换行
-                        </span>
-                        <span>
-                            <span className="rounded border border-border px-1 py-px font-mono text-[10px]">/</span> 命令
-                        </span>
-                    </div>
                 </div>
             </div>
         </div>
