@@ -912,15 +912,18 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     Explorer
                 </button>
                 <button
-                    className={clsx(
-                        "cursor-pointer rounded-md px-2 py-1 text-[11px] font-[600] transition-colors",
-                        searchActive
-                            ? "bg-surface-strong text-primary shadow-sm"
-                            : "text-secondary hover:bg-hover hover:text-primary"
-                    )}
-                    onClick={() => setSearchActive(true)}
+                    className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary"
+                    title="Go to Path"
+                    aria-label="Go to Path"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        // ponytail: 该按钮顶替了原 Search 一键入口；搜索仍可经 Cmd:F 或直接敲字符唤起
+                        // (directoryKeyDownHandler)。要恢复入口，换回 setSearchActive(true) 即可。
+                        closeSearch();
+                        model.toggleOpenFileModal();
+                    }}
                 >
-                    Search
+                    <i className="fa-sharp fa-solid fa-location-crosshairs text-[11px]" />
                 </button>
                 {!searchActive && (
                     <div className="ml-auto flex items-center gap-1">
