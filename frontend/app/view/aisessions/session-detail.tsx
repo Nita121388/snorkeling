@@ -241,6 +241,7 @@ export function SessionDetailPane({
     restoring,
     deleting,
     onClose,
+    onExpandSessionList,
 }: {
     model: SessionDetailController;
     detail: SessionDetail | null;
@@ -250,6 +251,8 @@ export function SessionDetailPane({
     restoring: boolean;
     deleting: boolean;
     onClose?: () => void;
+    /** 会话列表收起时，头栏行首展示「展开列表」按钮（左右同行，非悬浮叠加） */
+    onExpandSessionList?: () => void;
 }) {
     const [noteDraft, setNoteDraft] = useState("");
     const [noteCollapsed, setNoteCollapsed] = useState(true);
@@ -806,6 +809,14 @@ export function SessionDetailPane({
                 {headerCollapsed ? (
                     // 极简 topbar：46px 固定高，标题 + 药丸 chips + 四键图标组（对齐原型）
                     <div className="flex min-w-0 flex-1 items-center gap-2">
+                        {onExpandSessionList ? (
+                            <IconButton
+                                icon="fa-chevron-right"
+                                label="Expand sessions list"
+                                onClick={onExpandSessionList}
+                                className="mr-1 shrink-0"
+                            />
+                        ) : null}
                         {renaming ? (
                             <input
                                 autoFocus

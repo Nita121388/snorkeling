@@ -1148,17 +1148,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 </div>
             ) : null}
             <div className="relative grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
-                {sessionListCollapsed ? (
-                    <button
-                        type="button"
-                        title="Expand sessions list"
-                        aria-label="Expand sessions list"
-                        onClick={() => setSessionListCollapsed(false)}
-                        className="absolute left-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-secondary shadow-sm hover:bg-hover hover:text-primary"
-                    >
-                        <i className="fa-sharp fa-solid fa-chevron-right" />
-                    </button>
-                ) : null}
                 <div
                     className={cn(
                         "relative flex min-h-0 flex-col border-r border-border",
@@ -1384,6 +1373,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         toolCallsLoading={toolCallsLoading}
                         restoring={restoring}
                         deleting={deleting}
+                        onExpandSessionList={
+                            sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined
+                        }
                     />
                 )}
             </div>
