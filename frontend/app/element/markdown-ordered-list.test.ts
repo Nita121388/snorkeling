@@ -121,14 +121,16 @@ describe("markdown ordered list helpers", () => {
                 "1. Second",
                 "   second detail",
                 "   second detail two",
+                "",
                 "2. First",
                 "   first detail",
-                "",
                 "3. Third",
             ].join("\n"),
             targetLineNumber: 2,
             movedRange: { startLineNumber: 1, endLineNumber: 3 },
-            swappedRange: { startLineNumber: 4, endLineNumber: 6 },
+            // Blank separators now belong to neither item: the moved-down sibling starts after
+            // the blank run, so its range begins one line later than the pre-fix behavior.
+            swappedRange: { startLineNumber: 5, endLineNumber: 6 },
         });
     });
 
@@ -209,5 +211,52 @@ describe("markdown ordered list helpers", () => {
     it("returns null when the current line is not part of an ordered list", () => {
         expect(moveOrderedListItem("plain\ntext", 1, "up")).toBeNull();
         expect(getOrderedListMoveState("plain\ntext", 1)).toBeNull();
+    });
+
+    // --- regressions: insert-below landing at EOF / cross-list renumber / fence pollution ---
+
+    it("inserts below the last item before a trailing paragraph, not after it", () => {
+        const text = ["1. One", "2. Two", "3. Three", "4. Four", "5. Five", "", "Some paragraph"].join("\n");
+
+        const result = insertOrderedListItem(text, 5, "below");
+        expect(result?.text).toEqual(
+            ["1. One", "2. Two", "3. Three", "4. Four", "5. Five", "6. ", "", "Some paragraph"].join("\n")
+        );
+        expect(result?.targetLineNumber).toBe(6);
+    });
+
+    it("does not renumber a second list that follows the edited one across a blank line", () => {
+        const text = ["1. One", "2. Two", "3. Three", "4. Four", "5. Five", "", "1. Alpha", "2. Beta"].join("\n");
+
+        const result = insertOrderedListItem(text, 5, "below");
+        expect(result?.text).toEqual(
+            [
+                "1. One",
+                "2. Two",
+                "3. Three",
+                "4. Four",
+                "5. Five",
+                "6. ",
+                "",
+                "1. Alpha",
+                "2. Beta",
+            ].join("\n")
+        );
+    });
+
+    it("never renumbers ordered-list markers inside fenced code blocks", () => {
+        const text = ["1. One", "2. Two", "3. Three", "4. Four", "5. Five", "", "```", "1. x", "```"].join("\n");
+
+        const result = insertOrderedListItem(text, 5, "below");
+        expect(result?.text).toEqual(
+            ["1. One", "2. Two", "3. Three", "4. Four", "5. Five", "6. ", "", "```", "1. x", "```"].join("\n")
+        );
+    });
+
+    it("stops item extent at blank line followed by shallow content (no EOF swallow)", () => {
+        const text = ["1. First", "2. Second", "", "tail paragraph"].join("\n");
+
+        // Cursor on the tail paragraph must NOT resolve into item 2's insert flow.
+        expect(getOrderedListMoveState(text, 4)).toBeNull();
     });
 });

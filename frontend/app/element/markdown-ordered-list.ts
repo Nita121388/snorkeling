@@ -68,11 +68,16 @@ export function isMarkdownOrderedListPath(filePath: string | null | undefined): 
     return MarkdownPathPattern.test(filePath ?? "");
 }
 
+function getParseOptions(lines: string[]): MarkdownParseOptions {
+    return { ignoredLineIndexes: getMarkdownFenceLineIndexes(lines) };
+}
+
 export function getOrderedListMoveState(text: string, lineNumber: number): OrderedListMoveState | null {
     const { lines } = splitTextLines(text);
-    const item = findOrderedListItemAtLine(lines, lineNumberToIndex(lineNumber));
+    const options = getParseOptions(lines);
+    const item = findOrderedListItemAtLine(lines, lineNumberToIndex(lineNumber), options);
     if (item == null) return null;
-    const block = findOrderedListBlock(lines, item);
+    const block = findOrderedListBlock(lines, item, options);
     const itemIndex = block.items.findIndex((candidate) => candidate.startLineIndex === item.startLineIndex);
     return {
         itemStartLineNumber: item.startLineIndex + 1,
@@ -106,9 +111,10 @@ export function moveOrderedListItem(
     direction: "up" | "down"
 ): OrderedListEditResult | null {
     const textLines = splitTextLines(text);
-    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    const options = getParseOptions(textLines.lines);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber), options);
     if (item == null) return null;
-    const block = findOrderedListBlock(textLines.lines, item);
+    const block = findOrderedListBlock(textLines.lines, item, options);
     const itemIndex = block.items.findIndex((candidate) => candidate.startLineIndex === item.startLineIndex);
     const swapIndex = direction === "up" ? itemIndex - 1 : itemIndex + 1;
     const swapItem = block.items[swapIndex];
@@ -150,7 +156,7 @@ export function moveOrderedListItem(
         targetLineIndex = movedStartLineIndex + Math.min(cursorLineOffset, itemLines.length - 1);
     }
 
-    renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex);
+    renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex, options);
     return {
         text: joinTextLines(lines, textLines.eol),
         targetLineNumber: targetLineIndex + 1,
@@ -171,9 +177,10 @@ export function getOrderedListSwapPreview(
     direction: "up" | "down"
 ): OrderedListSwapPreview | null {
     const { lines } = splitTextLines(text);
-    const item = findOrderedListItemAtLine(lines, lineNumberToIndex(lineNumber));
+    const options = getParseOptions(lines);
+    const item = findOrderedListItemAtLine(lines, lineNumberToIndex(lineNumber), options);
     if (item == null) return null;
-    const block = findOrderedListBlock(lines, item);
+    const block = findOrderedListBlock(lines, item, options);
     const itemIndex = block.items.findIndex((candidate) => candidate.startLineIndex === item.startLineIndex);
     const swapIndex = direction === "up" ? itemIndex - 1 : itemIndex + 1;
     const swapItem = block.items[swapIndex];
@@ -190,15 +197,16 @@ export function insertOrderedListItem(
     placement: "above" | "below"
 ): OrderedListEditResult | null {
     const textLines = splitTextLines(text);
-    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    const options = getParseOptions(textLines.lines);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber), options);
     if (item == null) return null;
-    const block = findOrderedListBlock(textLines.lines, item);
+    const block = findOrderedListBlock(textLines.lines, item, options);
     const insertLineIndex = placement === "above" ? item.startLineIndex : item.endLineIndex + 1;
     const insertNumber = placement === "above" ? item.marker.number : item.marker.number + 1;
     const insertLine = `${" ".repeat(item.marker.indent)}${insertNumber}${item.marker.delimiter} `;
     const lines = [...textLines.lines];
     lines.splice(insertLineIndex, 0, insertLine);
-    renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex + 1);
+    renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex + 1, options);
 
     return {
         text: joinTextLines(lines, textLines.eol),
@@ -207,18 +215,37 @@ export function insertOrderedListItem(
     };
 }
 
+/**
+ * Renumber just the ordered-list BLOCK containing `lineNumber` (1-based). Fence-aware and
+ * bounded by the same block-boundary rules used for move/cut, so stray line-start
+ * "NN." paragraphs elsewhere in the document are never touched. Returns null when the
+ * line is not inside an ordered list or nothing changed.
+ */
+export function renumberOrderedListBlockAtLine(text: string, lineNumber: number): OrderedListEditResult | null {
+    const textLines = splitTextLines(text);
+    const options = getParseOptions(textLines.lines);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber), options);
+    if (item == null) return null;
+    const block = findOrderedListBlock(textLines.lines, item, options);
+    const lines = [...textLines.lines];
+    const changed = renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex, options);
+    if (!changed) return null;
+    return { text: joinTextLines(lines, textLines.eol) };
+}
+
 export function cutOrderedListItem(text: string, lineNumber: number): OrderedListEditResult | null {
     const textLines = splitTextLines(text);
-    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber));
+    const options = getParseOptions(textLines.lines);
+    const item = findOrderedListItemAtLine(textLines.lines, lineNumberToIndex(lineNumber), options);
     if (item == null) return null;
-    const block = findOrderedListBlock(textLines.lines, item);
+    const block = findOrderedListBlock(textLines.lines, item, options);
     const lines = [...textLines.lines];
     const deleteCount = item.endLineIndex - item.startLineIndex + 1;
     const cutText = lines.slice(item.startLineIndex, item.endLineIndex + 1).join(textLines.eol);
     lines.splice(item.startLineIndex, deleteCount);
     const renumberEndLineIndex = block.endLineIndex - deleteCount;
     if (lines.length > 0 && block.startLineIndex <= renumberEndLineIndex) {
-        renumberOrderedListsInLines(lines, block.startLineIndex, renumberEndLineIndex);
+        renumberOrderedListsInLines(lines, block.startLineIndex, renumberEndLineIndex, options);
     }
     const targetLineNumber = Math.max(1, Math.min(item.startLineIndex + 1, lines.length || 1));
 
@@ -239,7 +266,7 @@ export function renumberOrderedListsInSelection(
     const startLineIndex = lineNumberToIndex(Math.min(startLineNumber, endLineNumber));
     const endLineIndex = lineNumberToIndex(Math.max(startLineNumber, endLineNumber));
     const lines = [...textLines.lines];
-    const changed = renumberOrderedListsInLines(lines, startLineIndex, endLineIndex);
+    const changed = renumberOrderedListsInLines(lines, startLineIndex, endLineIndex, getParseOptions(lines));
     if (!changed) return null;
     return { text: joinTextLines(lines, textLines.eol) };
 }
@@ -294,12 +321,16 @@ function isHardBoundaryLine(line: string, indent: number, lineIndex?: number, op
     return /^#{1,6}\s+/.test(line.trimStart());
 }
 
-function findOrderedListItemAtLine(lines: string[], lineIndex: number): OrderedListItem | null {
+function findOrderedListItemAtLine(
+    lines: string[],
+    lineIndex: number,
+    options?: MarkdownParseOptions
+): OrderedListItem | null {
     const boundedLineIndex = Math.max(0, Math.min(lines.length - 1, lineIndex));
     for (let idx = boundedLineIndex; idx >= 0; idx--) {
-        const marker = parseOrderedListMarker(lines[idx], idx);
+        const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker == null) continue;
-        const item = makeOrderedListItem(lines, marker);
+        const item = makeOrderedListItem(lines, marker, options);
         if (boundedLineIndex >= item.startLineIndex && boundedLineIndex <= item.endLineIndex) {
             return item;
         }
@@ -312,33 +343,69 @@ function makeOrderedListItem(
     marker: OrderedListMarker,
     options?: MarkdownParseOptions
 ): OrderedListItem {
-    let endLineIndex = lines.length - 1;
+    // Item extent rules (CommonMark-ish):
+    //   - sibling/shallower marker → item ends before it
+    //   - heading hard boundary → ends before it
+    //   - fenced code content is opaque (ignored lines count as item content)
+    //   - non-blank content without a preceding blank is lazy continuation → belongs to item
+    //   - after a blank line, only deeper-indented content continues the item; any
+    //     shallower/equal content ends the item BEFORE the blank run. This stops the old
+    //     behavior where a trailing paragraph/code block got swallowed into the last item and
+    //     insert-below landed at EOF.
+    let endLineIndex = marker.lineIndex;
+    let lastContentLineIndex = marker.lineIndex;
+    let pendingBlank = false;
     for (let idx = marker.lineIndex + 1; idx < lines.length; idx++) {
-        if (isHardBoundaryLine(lines[idx], marker.indent, idx, options)) {
-            endLineIndex = idx - 1;
+        const line = lines[idx];
+        if (options?.ignoredLineIndexes?.has(idx)) {
+            // A fence after a blank line starts a separate top-level block — stop before it.
+            // A fence directly attached (no blank) folds into the item like other content.
+            if (pendingBlank) {
+                break;
+            }
+            endLineIndex = idx;
+            lastContentLineIndex = idx;
+            pendingBlank = false;
+            continue;
+        }
+        if (line.trim() === "") {
+            pendingBlank = true;
+            continue;
+        }
+        if (isHardBoundaryLine(line, marker.indent, idx, options)) {
             break;
         }
-        const nextMarker = parseOrderedListMarker(lines[idx], idx, options);
-        if (nextMarker != null && nextMarker.indent <= marker.indent) {
-            endLineIndex = idx - 1;
+        const leadingWhitespace = line.match(/^\s*/)?.[0].length ?? 0;
+        if (pendingBlank && leadingWhitespace <= marker.indent) {
             break;
         }
+        const nextMarker = parseOrderedListMarker(line, idx, options);
+        if (!pendingBlank && nextMarker != null && nextMarker.indent <= marker.indent) {
+            break;
+        }
+        endLineIndex = idx;
+        lastContentLineIndex = idx;
+        pendingBlank = false;
     }
     return {
         startLineIndex: marker.lineIndex,
-        endLineIndex,
+        endLineIndex: pendingBlank ? lastContentLineIndex : endLineIndex,
         marker,
     };
 }
 
-function findOrderedListBlock(lines: string[], item: OrderedListItem): OrderedListBlock {
-    const startBoundary = findBlockStartBoundary(lines, item);
-    const endBoundary = findBlockEndBoundary(lines, item);
+function findOrderedListBlock(
+    lines: string[],
+    item: OrderedListItem,
+    options?: MarkdownParseOptions
+): OrderedListBlock {
+    const startBoundary = findBlockStartBoundary(lines, item, options);
+    const endBoundary = findBlockEndBoundary(lines, item, options);
     const items: OrderedListItem[] = [];
     for (let idx = startBoundary; idx <= endBoundary; idx++) {
-        const marker = parseOrderedListMarker(lines[idx], idx);
+        const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker == null || marker.indent !== item.marker.indent) continue;
-        const sibling = makeOrderedListItem(lines, marker);
+        const sibling = makeOrderedListItem(lines, marker, options);
         items.push(sibling);
         idx = sibling.endLineIndex;
     }
@@ -349,39 +416,83 @@ function findOrderedListBlock(lines: string[], item: OrderedListItem): OrderedLi
     };
 }
 
-function findBlockStartBoundary(lines: string[], item: OrderedListItem): number {
+// ponytail: same-indent marker after a blank line starts a NEW list when its number goes
+// backwards relative to what we've seen (CommonMark treats it as a fresh list, loose lists
+// keep ascending numbers). Misfires on hand-written decreasing loose lists — acceptable;
+// upgrade path: full markdown AST block mapping.
+function findBlockStartBoundary(lines: string[], item: OrderedListItem, options?: MarkdownParseOptions): number {
+    let pendingBlank = false;
     for (let idx = item.startLineIndex - 1; idx >= 0; idx--) {
+        if (options?.ignoredLineIndexes?.has(idx)) {
+            pendingBlank = false;
+            continue;
+        }
+        if (lines[idx].trim() === "") {
+            pendingBlank = true;
+            continue;
+        }
         if (isHardBoundaryLine(lines[idx], item.marker.indent)) {
             return idx + 1;
         }
-        const marker = parseOrderedListMarker(lines[idx], idx);
+        const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker != null && marker.indent < item.marker.indent) {
             return idx + 1;
         }
+        if (
+            marker != null &&
+            marker.indent === item.marker.indent &&
+            pendingBlank &&
+            marker.number >= item.marker.number
+        ) {
+            return idx + 1;
+        }
+        pendingBlank = false;
     }
     return 0;
 }
 
-function findBlockEndBoundary(lines: string[], item: OrderedListItem): number {
+function findBlockEndBoundary(lines: string[], item: OrderedListItem, options?: MarkdownParseOptions): number {
+    let pendingBlank = false;
+    let prevNumber = item.marker.number;
     for (let idx = item.endLineIndex + 1; idx < lines.length; idx++) {
+        if (options?.ignoredLineIndexes?.has(idx)) {
+            pendingBlank = false;
+            continue;
+        }
+        if (lines[idx].trim() === "") {
+            pendingBlank = true;
+            continue;
+        }
         if (isHardBoundaryLine(lines[idx], item.marker.indent)) {
             return idx - 1;
         }
-        const marker = parseOrderedListMarker(lines[idx], idx);
+        const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker != null && marker.indent < item.marker.indent) {
             return idx - 1;
         }
+        if (marker != null && marker.indent === item.marker.indent && pendingBlank && marker.number <= prevNumber) {
+            return idx - 1;
+        }
+        if (marker != null) {
+            prevNumber = marker.number;
+        }
+        pendingBlank = false;
     }
     return lines.length - 1;
 }
 
-function renumberOrderedListsInLines(lines: string[], startLineIndex: number, endLineIndex: number): boolean {
+function renumberOrderedListsInLines(
+    lines: string[],
+    startLineIndex: number,
+    endLineIndex: number,
+    options?: MarkdownParseOptions
+): boolean {
     const counters = new Map<number, number>();
     let changed = false;
     const boundedStart = Math.max(0, Math.min(lines.length - 1, startLineIndex));
     const boundedEnd = Math.max(0, Math.min(lines.length - 1, endLineIndex));
     for (let idx = boundedStart; idx <= boundedEnd; idx++) {
-        const marker = parseOrderedListMarker(lines[idx], idx);
+        const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker == null) {
             if (isHardBoundaryLine(lines[idx], 0)) {
                 counters.clear();
