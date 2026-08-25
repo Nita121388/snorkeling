@@ -81,7 +81,9 @@ export class AiSessionsViewModel implements ViewModel {
     blockAtom: jotai.Atom<Block>;
     viewType = "aisessions";
     viewIcon = jotai.atom("comments");
-    viewName = jotai.atom("AI Sessions");
+    // 头栏不再显示视图名文字（AI Chat / AI Sessions），仅保留图标
+    viewName = jotai.atom("");
+    hideViewName = jotai.atom(true);
     noPadding = jotai.atom(true);
 
     sortDescendingAtom = jotai.atom<boolean>(readSortPreference());
