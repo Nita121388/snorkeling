@@ -1,0 +1,260 @@
+/* ============================================================
+   VCS Header Hover Panel — 原型样式
+   token 对齐项目真实主题（design-system / vcs-block-redesign）
+   ============================================================ */
+:root {
+  --accent: #7c49a1;
+  --accent-hover: #955ab8;
+  --accent-soft: rgba(124, 73, 161, 0.12);
+  --text: #4c3924;
+  --text-secondary: #675033;
+  --text-muted: #777167;
+  --panel: #f3efe4;
+  --surface: #fffdf8;
+  --surface-strong: #f0ede6;
+  --hoverbg: rgba(167, 111, 202, 0.1);
+  --border: #d6cfbe;
+  --warning: #e65100;
+  --error: #d32f2f;
+  --success: #2e7d32;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #ebe5d9;
+  color: var(--text);
+  font: 14px/1.45 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  padding: 24px;
+}
+button { font: inherit; cursor: pointer; }
+code, .mono {
+  font-family: Hack, "JetBrains Mono", Consolas, ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.page { max-width: 980px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.subtitle { color: var(--text-muted); margin: 0 0 20px; font-size: 13px; }
+
+/* ---------- 场景切换 ---------- */
+.scenario-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 13px;
+}
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ============================================================
+   ↓↓↓ 结构镜像区：对齐真实 blockframe-header.tsx + block.scss
+   .block-frame-header > .block-frame-textelems-wrapper
+                         + .block-frame-end-icons(.is-hovered)
+   iconbutton: .wave-iconbutton.block-frame-header-iconbutton
+   ============================================================ */
+.block-frame-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+.block-frame-textelems-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.block-frame-text {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block-frame-end-icons {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.wave-iconbutton {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  padding: 4px 6px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+.wave-iconbutton:hover { background: var(--hoverbg); color: var(--text); }
+.wave-iconbutton svg { width: 14px; height: 14px; fill: currentColor; }
+
+/* hover 目标包裹层 —— 新增点：vcsButton 外包 Tooltip/hover 容器 */
+.vcs-hover-anchor { position: relative; display: flex; }
+
+/* ============================================================
+   新增点：VCS hover flyout 面板（真实实现 = IconButtonDecl.tooltipNode
+   包在 <Tooltip> floating-ui 卡片里；此处用绝对定位模拟）
+   ============================================================ */
+.vcs-hover-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(60, 42, 16, 0.18);
+  padding: 10px 12px;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+}
+.vcs-hover-panel.open { visibility: visible; opacity: 1; transform: translateY(0); }
+
+.vhp-repo { padding: 6px 0; }
+.vhp-repo + .vhp-repo { border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 10px; }
+
+.vhp-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vhp-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.vhp-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vhp-branch {
+  margin-left: auto;
+  font-family: Hack, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--surface-strong);
+  border-radius: 3px;
+  padding: 1px 6px;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vhp-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.vhp-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  line-height: 17px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.vhp-pill.warn { color: var(--warning); border-color: rgba(230, 81, 0, 0.4); }
+.vhp-pill.muted { color: var(--text-muted); }
+
+.vhp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.vhp-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.vhp-btn:hover:not(:disabled) { background: var(--hoverbg); color: var(--text); border-color: var(--accent); }
+.vhp-btn:disabled { opacity: 0.45; cursor: default; }
+.vhp-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.vhp-btn.primary:hover:not(:disabled) { background: var(--accent-hover); color: #fff; }
+.vhp-btn.more { border-style: dashed; }
+
+/* Detecting / Error 态 */
+.vhp-state { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 12px; color: var(--text-secondary); }
+.vhp-state.error { color: var(--error); }
+.spinner {
+  width: 12px; height: 12px; flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.linklike { background: none; border: none; color: var(--accent); text-decoration: underline; font-size: 12px; padding: 0; }
+
+/* ---------- 演示 block 本体 ---------- */
+.mock-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(60, 42, 16, 0.07);
+  overflow: visible; /* 面板要能伸出 header */
+}
+.mock-block-body { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
+.file-line { display: flex; gap: 8px; padding: 3px 0; align-items: center; }
+.file-line .fname { color: var(--text); }
+.status-code { font-family: Hack, Consolas, monospace; font-size: 11px; width: 16px; }
+.st-m { color: var(--warning); }
+.st-u { color: var(--success); }
+
+/* 点击反馈 toast */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--text);
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 8px 16px;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
+  z-index: 99;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- 说明区 ---------- */
+.notes {
+  margin-top: 28px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 13px;
+}
+.notes h2 { font-size: 14px; margin: 10px 0 6px; }
+.notes table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.notes th, .notes td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.notes th { background: var(--panel); }
+.log { font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 18px; }

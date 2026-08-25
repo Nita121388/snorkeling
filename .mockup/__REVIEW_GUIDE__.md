@@ -65,6 +65,10 @@
 
 - `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。
 
+## `vcs-header-hover-panel/` — 1 项（自建目录）
+
+- `vcs-header-hover-panel/` — **▲ 设计活跃**;Files Block header 版本管理图标 hover 快捷面板:按 Git/SVN 区分内容(分支/ahead-behind vs Update/远端文件数),8 场景可切换(Git/SVN × 文件/目录、多仓库、非 repo、检测中、解析失败);点击图标本体行为不变。镜像 `preview-model.tsx` endIconButtons + `blockframe-header.tsx`,真实组件尚未实现。
+
 ## `save-conflict-protection/` — 1 项（自建目录）
 
 - `save-conflict-protection/` — **▲ 设计活跃**;保存状态优化两个界面:① Inline Tab 脏点（未保存圆点）② 冲突弹窗（覆盖/放弃/复制差异交 Agent/取消）;对应 Obsidian 方案 `Snorkeling-打开md预览与保存状态优化方案.md`,真实组件尚未实现。
