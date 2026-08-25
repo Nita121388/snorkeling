@@ -13,7 +13,6 @@ import {
     makeInlineEditKeydown,
     deleteBlockRange,
     replaceSourceRange,
-    spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
     inlineEditDebug,
@@ -253,6 +252,55 @@ function sourceLineAttrs(sourceLine?: number, endLine?: number): Record<string, 
 // a one-line `srcLineAttrs(props)` spread, no need to remember the end-attr fallback.
 function srcLineAttrs(props: any): Record<string, number> {
     return sourceLineAttrs(getSourceLine(props), getSourceLineEnd(props));
+}
+
+// Pure planner for the block-edge "+" buttons on a LIST ITEM (ordered "N." or bullet "-/*").
+//
+// List items must NOT use the generic blank-row insert: blank lines inside a list render as
+// nothing (remark blank-line spacers are injected between top-level blocks only), so the
+// follow-up inline editor could never anchor on them — every mid-list insert silently
+// reverted ("+ button does nothing" bug). Instead we insert a REAL sibling marker row
+// ("4. " / "- ") which renders as a genuine empty <li>, giving the editor a real anchor.
+//
+// Callers guarantee startLine is the <li>'s FIRST source line (el.dataset.sourceLine), so no
+// upward scan is needed — we only measure how far the item extends downward so "below"
+// lands after the WHOLE item (multi-line / soft-broken items), never mid-item.
+// Returns null when the line has no list marker — caller falls back to the generic insert.
+export function computeListInsertAnchor(
+    text: string,
+    startLine: number,
+    mode: "before" | "after"
+): { insertAtLine: number; prefillMarker: string } | null {
+    const sourceLines = text.split(/\r\n|\n/);
+    const markerLine = sourceLines[Math.max(0, Math.min(startLine - 1, sourceLines.length - 1))] ?? "";
+    const markerMatch = markerLine.match(/^(\s*)(\d+[.)]|[-+*])(\s+)/);
+    if (markerMatch == null) {
+        return null;
+    }
+    const indent = markerMatch[1].length;
+    // Item extends over following lines until a sibling/shallower marker, a heading, or
+    // (after a blank run) shallower-or-equal content — mirrors makeOrderedListItem's rules.
+    let endLine = startLine;
+    let pendingBlank = false;
+    for (let idx = startLine; idx < sourceLines.length; idx++) {
+        const line = sourceLines[idx];
+        if (line.trim() === "") {
+            pendingBlank = true;
+            continue;
+        }
+        if (/^#{1,6}\s+/.test(line.trimStart())) break;
+        const leading = line.match(/^\s*/)?.[0].length ?? 0;
+        if (/^(\s*)(\d+[.)]|[-+*])(\s+)/.test(line) && leading <= indent) break;
+        if (pendingBlank && leading <= indent) break;
+        pendingBlank = false;
+        endLine = idx + 1;
+    }
+    // Marker derives from the ITEM'S OWN first line: a multi-line item's continuation rows
+    // carry no marker, so anchoring on them yielded an empty prefill.
+    return {
+        insertAtLine: mode === "before" ? startLine : endLine + 1,
+        prefillMarker: makeListItemInsertMarker(markerLine, mode),
+    };
 }
 
 const OrderedListContext = createContext(false);
@@ -1605,8 +1653,15 @@ const Markdown = ({
                     return;
                 }
                 // A list element claiming the target row means the DOM is still the pre-insert
-                // render — keep waiting instead of anchoring the wrong range.
-                if ((placeholder ?? false) && (el.tagName === "OL" || el.tagName === "UL" || el.tagName === "LI")) {
+                // render — keep waiting instead of anchoring the wrong range. EXCEPTION: list
+                // inserts (prefill set) intentionally create a real sibling "N. " row that
+                // renders as an empty <li> — that li IS the correct anchor, waiting would
+                // exhaust retries and revert the whole insert ("+ does nothing" bug).
+                if (
+                    (placeholder ?? false) &&
+                    prefill == null &&
+                    (el.tagName === "OL" || el.tagName === "UL" || el.tagName === "LI")
+                ) {
                     if (attempts < 10) requestAnimationFrame(tryOpen);
                     else giveUp();
                     return;
@@ -2043,11 +2098,27 @@ const Markdown = ({
             // one click nets exactly one new row/block, with no stray blanks left behind.
             const originalText = text;
             const sourceLines = text.split(/\r\n|\n/);
-            const newFull = spliceBlankRow(sourceLines, startLine, endLine, mode).join("\n");
-            handleInlineEditCommit(newFull);
-            const newLine = mode === "before" ? startLine : endLine + 1;
-            const prefillMarker = isListItem ? makeListItemInsertMarker(sourceLines[startLine - 1] ?? "", mode) : undefined;
-            focusEditedLine(newLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
+
+            // List items get a REAL sibling marker row ("4. " / "- ") instead of a blank line:
+            // blank rows inside a list render as nothing (remark spacers are top-level only),
+            // so the follow-up editor could never anchor and every mid-list insert silently
+            // reverted ("+ does nothing on middle items" bug). The marker row renders as an
+            // actual empty <li> the editor can own; typing fills it, commit renumbers via the
+            // usual list path.
+            const listItemAnchor = isListItem ? computeListInsertAnchor(text, startLine, mode) : null;
+            let insertAtLine: number;
+            let prefillMarker: string | undefined;
+            if (listItemAnchor != null) {
+                insertAtLine = listItemAnchor.insertAtLine;
+                prefillMarker = listItemAnchor.prefillMarker || undefined;
+            } else {
+                insertAtLine = mode === "before" ? startLine : endLine + 1;
+            }
+            const insertIdx = Math.max(0, Math.min(insertAtLine - 1, sourceLines.length));
+            const spliced = [...sourceLines];
+            spliced.splice(insertIdx, 0, prefillMarker ?? "");
+            handleInlineEditCommit(spliced.join("\n"));
+            focusEditedLine(insertAtLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
 
             setInsertAnchor(null);
             setInsertPos(null);

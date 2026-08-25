@@ -220,7 +220,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         targetEl: HTMLElement,
         caretOffset?: number,
         insertRevert?: () => void,
-        placeholder?: boolean | "inline"
+        placeholder?: boolean | "inline",
+        keepOnEmpty?: boolean
     ) => boolean;
     beginInsertEdit: (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => void;
     commit: () => void;
