@@ -108,26 +108,16 @@ export function MessageCard({
             <span
               className={cn(
                 "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px]",
-                isUser ? "border border-border bg-surface-strong text-secondary" : "bg-accent/15 text-accent"
+                isUser
+                  ? "border border-border bg-surface-strong text-secondary"
+                  : "bg-accent/15 text-accent"
               )}
             >
               <i className={cn("fa-sharp fa-solid", isUser ? "fa-user" : "fa-robot")} />
             </span>
-            <span className="text-xs font-semibold text-primary/90">{isUser ? "You" : "Assistant"}</span>
-            {message.timestamp ? (
-              <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
-            ) : null}
-            <span className="text-[10px] text-secondary/70">#{message.seq}</span>
+            {isUser ? <span className="text-xs font-semibold text-primary/90">You</span> : null}
           </div>
         ) : null}
-        <div className="flex items-center justify-end gap-1.5 text-xxs text-secondary">
-          <CopyIconButton
-            text={message.text}
-            label="Copy message"
-            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-            size="xs"
-          />
-        </div>
         {isUser ? (
           <div className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-primary">
             {searchMatched && !searchActive ? (
@@ -143,6 +133,26 @@ export function MessageCard({
             <WaveStreamdown text={shownText} />
           </div>
         )}
+        {/* 元信息行：用户消息右上（气泡内），AI 消息左下角；复制保持 hover 显示 */}
+        <div
+          className={cn(
+            "mt-1 flex items-center gap-1.5 px-1",
+            isUser ? "justify-end" : "justify-start"
+          )}
+        >
+          {!isUser && message.timestamp ? (
+            <span className="text-[10px] text-secondary">
+              {formatDateTimeToSecond(message.timestamp)}
+            </span>
+          ) : null}
+          {!isUser ? <span className="text-[10px] text-secondary/70">#{message.seq}</span> : null}
+          <CopyIconButton
+            text={message.text}
+            label="Copy message"
+            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            size="xs"
+          />
+        </div>
       </div>
     </div>
   );
