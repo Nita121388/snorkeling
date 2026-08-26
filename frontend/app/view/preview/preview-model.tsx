@@ -677,6 +677,15 @@ export class PreviewModel implements ViewModel {
                             title: "Click to copy full path",
                             className: "preview-filename cursor-pointer",
                         },
+                        // 悬浮文件夹名时浮现的路径跳转入口；hover-reveal 样式复用 block.scss
+                        // 里 .preview-filename-copy-button 那套 opacity 过渡。
+                        {
+                            elemtype: "iconbutton",
+                            icon: "magnifying-glass",
+                            title: "Go to Path",
+                            click: () => this.toggleOpenFileModal(),
+                            className: "preview-filename-copy-button",
+                        },
                     ],
                 },
             ];
@@ -2202,6 +2211,10 @@ export class PreviewModel implements ViewModel {
         const overrideFontSize = blockData?.meta?.["editor:fontsize"];
         const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const menuItems: ContextMenuItem[] = [];
+        menuItems.push({
+            label: "Go to Path...",
+            click: () => this.toggleOpenFileModal(),
+        });
         menuItems.push({
             label: "Copy Full Path",
             click: () => fireAndForget(() => this.copyCurrentPathToClipboard()),
