@@ -93,7 +93,7 @@ export function MessageCard({
     <div
       ref={registerRef}
       id={`aisession-message-${message.seq}`}
-      className={cn("group scroll-mt-3", isUser ? "flex justify-end" : "", groupStart ? "mt-4" : "mt-1")}
+      className={cn("group scroll-mt-3", isUser ? "flex flex-col items-end" : "", groupStart ? "mt-4" : "mt-1")}
     >
       <div
         className={cn(
@@ -133,19 +133,13 @@ export function MessageCard({
             <WaveStreamdown text={shownText} />
           </div>
         )}
-        {/* 元信息行：用户消息右上（气泡内），AI 消息左下角；复制保持 hover 显示 */}
-        <div
-          className={cn(
-            "mt-1 flex items-center gap-1.5 px-1",
-            isUser ? "justify-end" : "justify-start"
-          )}
-        >
-          {!isUser && message.timestamp ? (
-            <span className="text-[10px] text-secondary">
-              {formatDateTimeToSecond(message.timestamp)}
-            </span>
+      </div>
+      {isUser ? (
+        // 元信息（时间 + 复制）置于气泡外、下方、右对齐，不在边框内
+        <div className="mt-1 flex items-center justify-end gap-1.5 px-1">
+          {message.timestamp ? (
+            <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
           ) : null}
-          {!isUser ? <span className="text-[10px] text-secondary/70">#{message.seq}</span> : null}
           <CopyIconButton
             text={message.text}
             label="Copy message"
@@ -153,7 +147,21 @@ export function MessageCard({
             size="xs"
           />
         </div>
-      </div>
+      ) : (
+        // AI：meta 行（时间 + #seq + 复制）落在 prose 之外（左对齐）
+        <div className="mt-1 flex items-center justify-start gap-1.5 px-1">
+          {message.timestamp ? (
+            <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
+          ) : null}
+          <span className="text-[10px] text-secondary/70">#{message.seq}</span>
+          <CopyIconButton
+            text={message.text}
+            label="Copy message"
+            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            size="xs"
+          />
+        </div>
+      )}
     </div>
   );
 }
