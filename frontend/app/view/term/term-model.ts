@@ -543,21 +543,9 @@ export class TermViewModel implements ViewModel {
 
     getAgentStatusHeaderElem(get: jotai.Getter, blockMeta: MetaType | null | undefined): HeaderElem | null {
         const status = get(this.agentStatusAtom);
-        if (!isAgentTerminalMeta(blockMeta) && status == null) {
-            return null;
-        }
-        const explicitProvider =
-            typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";
-        const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
+        // 新建 agent 尚无任何上报时直接不渲染徽章 (不显示 "No data"), 首次 agentstatus 到达后正常亮起.
         if (status == null) {
-            const provider = formatAgentProvider(normalizeAgentProvider(explicitProvider || commandProvider));
-            return {
-                elemtype: "text",
-                text: "No data",
-                className: "agent-status-header is-unknown",
-                title: `${provider} agent status: no explicit agent report received yet.`,
-                noGrow: true,
-            };
+            return null;
         }
         const presentation = agentStatusPresentation(status);
         // Ack: read the shared `agentStatusAckedFpAtom` (fingerprint map from SessionOverviewModel)
