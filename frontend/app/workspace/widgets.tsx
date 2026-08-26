@@ -32,16 +32,26 @@ import {
     withLaunchEnv,
 } from "@/app/workspace/agent-launch";
 import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
+import { subscribeLaunchPopup } from "@/app/workspace/launch-popup-bus";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import {
+    getLayoutModelForStaticTab,
+    LayoutTreeActionType,
+    newLayoutNode,
+} from "@/layout/index";
+import type { LayoutTreeInsertNodeAction } from "@/layout/index";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
     autoUpdate,
+    flip,
     FloatingPortal,
+    limitShift,
     offset,
     shift,
+    size,
     useDismiss,
     useFloating,
     useInteractions,
@@ -333,6 +343,8 @@ type AgentTargetFloatingWindowProps = {
     canCreateToExistingTab: boolean;
     prepareAgentBlockDef: (blockDef: BlockDef) => Promise<BlockDef>;
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
+    // footer 主按钮文案；Blocks 组「＋」菜单来源时传 "Add to Group"（行为经 createToCurrentTab 改道进组）
+    currentTabLabel?: string;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -378,6 +390,8 @@ type TerminalTargetFloatingWindowProps = {
     defaultTargetKey?: string;
     canCreateToExistingTab: boolean;
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
+    // footer 主按钮文案；同 AgentTargetFloatingWindow.currentTabLabel
+    currentTabLabel?: string;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -588,12 +602,28 @@ const AgentTargetFloatingWindow = memo(
         onPiRefreshVendors,
         launchEnv,
         onLaunchEnvChange,
+        currentTabLabel,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(8), shift({ padding: 12 })],
+            // flip: 锚点靠左时翻到右侧；shift+limitShift: 视口内夹紧且防抖；size: 超高时压回视口内
+            // 配合 overflowY 内部滚动 —— 保证任何锚点位置/窗口尺寸下浮窗完整可见。
+            middleware: [
+                offset(8),
+                flip(),
+                shift({ padding: 12, limiter: limitShift() }),
+                size({
+                    padding: 12,
+                    // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
+                    // it must stay well below real content height so the clamp actually wins.
+                    apply({ availableHeight, elements }) {
+                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.overflowY = "auto";
+                    },
+                }),
+            ],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -1131,7 +1161,7 @@ const AgentTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                Current Tab
+                                {currentTabLabel ?? "Current Tab"}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1230,12 +1260,27 @@ const TerminalTargetFloatingWindow = memo(
         onSetDefaultTarget,
         launchEnv,
         onLaunchEnvChange,
+        currentTabLabel,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(8), shift({ padding: 12 })],
+            // flip/shift/size 同 AgentTargetFloatingWindow —— 保证浮窗完整显示（边界加固）。
+            middleware: [
+                offset(8),
+                flip(),
+                shift({ padding: 12, limiter: limitShift() }),
+                size({
+                    padding: 12,
+                    // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
+                    // it must stay well below real content height so the clamp actually wins.
+                    apply({ availableHeight, elements }) {
+                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.overflowY = "auto";
+                    },
+                }),
+            ],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -1416,7 +1461,7 @@ const TerminalTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                Current Tab
+                                {currentTabLabel ?? "Current Tab"}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1623,10 +1668,13 @@ const Widgets = memo(() => {
     const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
     const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
     const [isTerminalTargetOpen, setIsTerminalTargetOpen] = useState(false);
+    // 非 null 时，浮窗的入 tab 创建（createToCurrentTab 漏斗）改道进该 inline-tab 组 ——
+    // 由 Blocks 组「＋」菜单经 launch-popup-bus 发起打开时设置，浮窗关闭时清空。
     const [terminalTargets, setTerminalTargets] = useState<AgentLaunchTarget[]>([]);
     const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
     const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
     const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
+    const [groupSinkNodeId, setGroupSinkNodeId] = useState<string | null>(null);
     const agentHoverTimerRef = useRef<number | null>(null);
     const terminalHoverTimerRef = useRef<number | null>(null);
     const [agentCommandPaths, setAgentCommandPaths] = useState<Record<string, string | null>>({});
@@ -1762,6 +1810,7 @@ const Widgets = memo(() => {
         setCcCodexSelectedVendorId(undefined);
         setCcOpencodeSelectedVendorId(undefined);
         setCcPiSelectedVendorId(undefined);
+        setGroupSinkNodeId(null);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -1769,12 +1818,40 @@ const Widgets = memo(() => {
         setTerminalReferenceElement(null);
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
+        setGroupSinkNodeId(null);
     }, []);
 
     const createBlockInCurrentTab = useCallback(
         (blockDef: BlockDef, magnified: boolean) => env.createBlock(blockDef, magnified),
         [env]
     );
+
+    // 组 sink 模式：创建后追加进发起「＋」菜单的 inline-tab 组并激活。
+    // 组已被关（addBlockToInlineTab 失败）则回退为普通入 tab 插入 —— 不丢用户在浮窗里选好的目标/Env。
+    const createBlockInGroupSink = useCallback(
+        async (blockDef: BlockDef, magnified: boolean): Promise<string> => {
+            const sinkNodeId = groupSinkNodeId;
+            const layoutModel = getLayoutModelForStaticTab();
+            const newBlockId = await env.services.object.CreateBlock(blockDef, DefaultCreateBlockRuntimeOpts);
+            if (sinkNodeId != null && layoutModel?.addBlockToInlineTab(sinkNodeId, newBlockId)) {
+                return newBlockId;
+            }
+            if (layoutModel != null) {
+                const insertNodeAction: LayoutTreeInsertNodeAction = {
+                    type: LayoutTreeActionType.InsertNode,
+                    node: newLayoutNode(undefined, undefined, undefined, { blockId: newBlockId }),
+                    magnified,
+                    focused: true,
+                };
+                layoutModel.treeReducer(insertNodeAction);
+            }
+            return newBlockId;
+        },
+        [env, groupSinkNodeId]
+    );
+
+    // 浮窗的入 tab 创建漏斗：无 sink 时行为与原来完全一致（env.createBlock）。
+    const createToCurrentTabForWindows = groupSinkNodeId == null ? createBlockInCurrentTab : createBlockInGroupSink;
 
     const createBlockInNewTab = useCallback(
         async (blockDef: BlockDef, magnified: boolean) => {
@@ -1921,36 +1998,66 @@ const Widgets = memo(() => {
         [env]
     );
 
-    const openAgentTargetPopup = useCallback(
-        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+    // Shared open path: the widget-bar buttons and the Blocks-group "+" menu (via
+    // launch-popup-bus) both land here. sinkNodeId != null redirects in-tab creation into that
+    // inline-tab group (see createBlockInGroupSink).
+    const openAgentTargetsAt = useCallback(
+        (referenceElement: HTMLElement, magnified: boolean, sinkNodeId: string | null) => {
             closeTerminalTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets()),
                 agentDefaultTargetKey
             );
             setAgentTargets(launchTargets);
-            setAgentWidgetMagnified(Boolean(widget.magnified));
+            setAgentWidgetMagnified(magnified);
             setAgentReferenceElement(referenceElement);
+            setGroupSinkNodeId(sinkNodeId);
             setIsAgentTargetOpen(true);
         },
         [closeTerminalTargetSelector, agentDefaultTargetKey]
     );
 
-    const openTerminalTargetPopup = useCallback(
+    const openAgentTargetPopup = useCallback(
         (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            openAgentTargetsAt(referenceElement, Boolean(widget.magnified), null);
+        },
+        [openAgentTargetsAt]
+    );
+
+    const openTerminalTargetsAt = useCallback(
+        (referenceElement: HTMLElement, magnified: boolean, baseBlockDef: BlockDef | undefined, sinkNodeId: string | null) => {
             closeAgentTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets()),
                 terminalDefaultTargetKey
             );
             setTerminalTargets(launchTargets);
-            setTerminalWidgetMagnified(Boolean(widget.magnified));
+            setTerminalWidgetMagnified(magnified);
             setTerminalReferenceElement(referenceElement);
-            setTerminalBaseBlockDef(widget.blockdef);
+            setTerminalBaseBlockDef(baseBlockDef);
+            setGroupSinkNodeId(sinkNodeId);
             setIsTerminalTargetOpen(true);
         },
         [closeAgentTargetSelector, terminalDefaultTargetKey]
     );
+
+    const openTerminalTargetPopup = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            openTerminalTargetsAt(referenceElement, Boolean(widget.magnified), widget.blockdef, null);
+        },
+        [openTerminalTargetsAt]
+    );
+
+    // Blocks 组「＋」菜单 → 打开同款浮窗，创建漏斗改道进组（sink）。
+    useEffect(() => {
+        return subscribeLaunchPopup((req) => {
+            if (req.mode === "agent") {
+                openAgentTargetsAt(req.anchorEl, false, req.nodeId);
+            } else {
+                openTerminalTargetsAt(req.anchorEl, false, undefined, req.nodeId);
+            }
+        });
+    }, [openAgentTargetsAt, openTerminalTargetsAt]);
 
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
@@ -2380,7 +2487,8 @@ const Widgets = memo(() => {
                     defaultProfileName={agentDefaultProfileName}
                     canCreateToExistingTab={canCreateToExistingTab}
                     prepareAgentBlockDef={prepareAgentBlockDef}
-                    createToCurrentTab={createBlockInCurrentTab}
+                    createToCurrentTab={createToCurrentTabForWindows}
+                    currentTabLabel={groupSinkNodeId != null ? "Add to Group" : undefined}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultAgentTarget}
@@ -2420,7 +2528,8 @@ const Widgets = memo(() => {
                     baseBlockDef={terminalBaseBlockDef}
                     defaultTargetKey={terminalDefaultTargetKey}
                     canCreateToExistingTab={canCreateToExistingTab}
-                    createToCurrentTab={createBlockInCurrentTab}
+                    createToCurrentTab={createToCurrentTabForWindows}
+                    currentTabLabel={groupSinkNodeId != null ? "Add to Group" : undefined}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultTerminalTarget}

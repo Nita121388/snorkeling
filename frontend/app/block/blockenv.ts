@@ -22,6 +22,8 @@ export type BlockEnv = WaveEnvSubset<{
         modalOpen: WaveEnv["atoms"]["modalOpen"];
         controlShiftDelayAtom: WaveEnv["atoms"]["controlShiftDelayAtom"];
         workspace: WaveEnv["atoms"]["workspace"];
+        workspaceId: WaveEnv["atoms"]["workspaceId"];
+        fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
     };
     services: {
         object: WaveEnv["services"]["object"];
