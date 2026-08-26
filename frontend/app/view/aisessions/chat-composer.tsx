@@ -94,6 +94,11 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
     const [thinkingLevels, setThinkingLevels] = useState<string[]>([]);
     const [pickerQuery, setPickerQuery] = useState("");
+    // 联动：切换 agent（source）时，模型/思考深度缓存按 source 失效重拉
+    useEffect(() => {
+        setModelsLoadedFor(null);
+        setLevelsLoadedFor(null);
+    }, [source]);
     // 可拖拽调整的输入框最大高度，持久化到 localStorage
     const [maxH, setMaxH] = useState(() => {
         const saved = window.localStorage.getItem("aisessions.composerMaxH");
@@ -101,8 +106,8 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         return Number.isFinite(n) && n >= COMPOSER_MIN_H ? n : 190;
     });
     // 模型 / 思考级别的懒加载标记（避免每次开弹层都打 RPC）
-    const [modelsLoaded, setModelsLoaded] = useState(false);
-    const [levelsLoaded, setLevelsLoaded] = useState(false);
+    const [modelsLoadedFor, setModelsLoadedFor] = useState<string | null>(null);
+    const [levelsLoadedFor, setLevelsLoadedFor] = useState<string | null>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const endpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
@@ -240,13 +245,25 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
     const canSubmit = hasContent && (status === "idle" || status === "error" || isRunning);
 
+    // 联动：切模型后按新模型刷新思考深度列表（不同模型支持的级别可能不同）
+    const refreshThinkingLevels = useCallback(async () => {
+        const res = await runChatCommand(endpoint, {
+            ...baseBody,
+            command: { name: "get_available_thinking_levels" },
+        });
+        if (res.ok) {
+            setThinkingLevels(Array.isArray(res.data?.levels) ? res.data.levels.map(String) : []);
+            setLevelsLoadedFor(source);
+        }
+    }, [endpoint, baseBody, source]);
+
     const openPicker = useCallback(
         async (mode: "models" | "levels") => {
             setPanelMode(mode);
             setPickerQuery("");
-            // 懒加载：模型/思考级别各自首次打开时拉一次；失败后重置标记允许重试
-            if (mode === "models" && modelsLoaded) return;
-            if (mode === "levels" && levelsLoaded) return;
+            // 懒加载：按 source（agent）缓存；切换 agent 后失效重拉
+            if (mode === "models" && modelsLoadedFor === source) return;
+            if (mode === "levels" && levelsLoadedFor === source) return;
             const cmd = mode === "models" ? "get_available_models" : "get_available_thinking_levels";
             const res = await runChatCommand(endpoint, { ...baseBody, command: { name: cmd } });
             if (!res.ok) {
@@ -256,13 +273,13 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             }
             if (mode === "models") {
                 setModelOptions(Array.isArray(res.data?.models) ? res.data.models : []);
-                setModelsLoaded(true);
+                setModelsLoadedFor(source);
             } else {
                 setThinkingLevels(Array.isArray(res.data?.levels) ? res.data.levels.map(String) : []);
-                setLevelsLoaded(true);
+                setLevelsLoadedFor(source);
             }
         },
-        [endpoint, baseBody, modelsLoaded, levelsLoaded, flashNotice]
+        [endpoint, baseBody, source, modelsLoadedFor, levelsLoadedFor, flashNotice]
     );
 
     // —— 面板数据：命令过滤 / 模型+思考深度合并选择器 ——
@@ -362,6 +379,8 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                         { provider: item.provider, modelId: item.id },
                         `模型已切换: ${item.name || item.id}`
                     );
+                    // 联动：模型变化后刷新思考深度选项（以新模型的可用级别为准）
+                    void refreshThinkingLevels();
                 } else {
                     flashNotice("✗ 该模型缺少 provider/id");
                 }
