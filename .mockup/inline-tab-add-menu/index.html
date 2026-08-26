@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inline Tab Add Menu — Blocks 组右上角「＋」新建菜单原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="page-head">
+        <h1>Blocks 组（Tab 化 Block）右上角「＋」新建菜单</h1>
+        <p>
+            结构逐字段镜像真实 <code>frontend/app/block/block.tsx</code>（<code>InlineTabBlock</code> /
+            <code>InlineTabLabel</code>）+ <code>block.scss</code>（<code>.inline-tab-block-*</code>），
+            菜单数据源镜像 <code>pkg/wconfig/defaultconfig/widgets.json</code>（与右侧 WidgetsBar 同一份注册表）。
+        </p>
+        <p class="sub2">
+            新增点仅两处：① tab 行拆为「tabs 滚动区 + 右侧固定区」，<b>「＋」钉死在组右上角</b>，tabs 横向溢出滚动时不动；
+            ② 点击弹出 widget 驱动的菜单 —— Terminal / Agent / Files 三项继承激活 tab 的
+            <code>connection</code>/<code>cmd:cwd</code>，其余 widget 用自身 <code>blockdef</code> 直通创建。
+            action 型 widget（commontext，无 blockdef）本期跳过。
+        </p>
+    </div>
+
+    <div class="stage">
+
+        <!-- ===== 场景 1：常规（3 tabs） ===== -->
+        <div class="scene">
+            <div class="scene-title">场景 1 · 常规（3 tabs）— 点右上角「＋」试菜单</div>
+            <div class="tile-node">
+                <div class="inline-tab-block" id="group-1">
+                    <!-- 新增 wrapper：tabs 滚动区 + 固定区 共用一行 -->
+                    <div class="inline-tab-block-tabsrow">
+                        <div class="inline-tab-block-tabs" role="tablist" aria-orientation="horizontal"
+                             ondragstart="return false">
+                            <button type="button" class="inline-tab-block-group-handle" title="Move Tab Group">
+                                <i class="fa-sharp fa-solid fa-grip-lines"></i>
+                            </button>
+                            <!-- tabs 由 script.js 按 demo 数据渲染 -->
+                        </div>
+                        <div class="inline-tab-block-addzone"><!-- 新增 -->
+                            <button type="button" class="inline-tab-block-addbtn"
+                                    title="Add to Group" aria-label="Add to Group" data-addbtn>
+                                <i class="fa-sharp fa-regular fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="inline-tab-block-active"><!-- 激活块内容由 script.js 渲染 --></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 场景 2：tabs 溢出滚动（9 tabs） ===== -->
+        <div class="scene">
+            <div class="scene-title">场景 2 · tabs 溢出横向滚动 — 「＋」仍钉死右上角（拖 tabs 滚动验证）</div>
+            <div class="tile-node narrow">
+                <div class="inline-tab-block" id="group-2">
+                    <div class="inline-tab-block-tabsrow">
+                        <div class="inline-tab-block-tabs" role="tablist" aria-orientation="horizontal"
+                             ondragstart="return false">
+                            <button type="button" class="inline-tab-block-group-handle" title="Move Tab Group">
+                                <i class="fa-sharp fa-solid fa-grip-lines"></i>
+                            </button>
+                        </div>
+                        <div class="inline-tab-block-addzone">
+                            <button type="button" class="inline-tab-block-addbtn"
+                                    title="Add to Group" aria-label="Add to Group" data-addbtn>
+                                <i class="fa-sharp fa-regular fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="inline-tab-block-active"></div>
+                </div>
+            </div>
+            <div class="scene-note">
+                ⓘ 真实实现中滚动发生在 <code>.inline-tab-block-tabs</code>（flex:1, overflow-x:auto）内部，
+                「＋」位于其右侧的固定 cell —— 无论滚到哪，「＋」都不动、不挨着最后一个 tab。
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 说明 + 调用链日志 ===== -->
+    <div class="bottom">
+        <div class="explain">
+            <div class="panel-title">设计要点</div>
+            <ul>
+                <li><b>显示条件</b>：仅 <code>blockIds.length &gt; 1</code> 的组显示；preview 预览态 / ephemeral 节点不显示。单 block 节点本期不做。</li>
+                <li><b>菜单 = widget 注册表</b>：<code>fullConfig.widgets</code> → workspace 过滤 →
+                    <code>display:order</code> 排序。用户自定义 widget 自动出现，零额外代码。</li>
+                <li><b>仅三项特判继承</b>：从激活 tab 读 <code>meta.connection</code> + <code>meta["cmd:cwd"]</code>
+                    （复用 <code>extractTerminalContextMeta</code>）；拿不到则落本地 home（与 Workspace Home 启动一致）。</li>
+                <li><b>创建即入组</b>：<code>CreateBlock</code> 后走现成
+                    <code>layoutModel.addBlockToInlineTab(nodeId, blockId)</code> —— 追加到组尾并自动激活聚焦，零新布局代码。</li>
+                <li><b>magnified 时可用</b>：往组里加 tab 无害，按钮不隐藏。</li>
+            </ul>
+        </div>
+        <div class="logwrap">
+            <div class="panel-title">模拟调用链日志 <span class="muted">（对应真实 API）</span></div>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
