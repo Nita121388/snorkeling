@@ -2209,13 +2209,25 @@ const Widgets = memo(() => {
                 onMouseEnter={handleWidgetsBarMouseEnter}
                 onMouseLeave={handleWidgetsBarMouseLeave}
                 onContextMenu={handleWidgetsBarContextMenu}
-                className={clsx(
-                    "relative shrink-0 select-none transition-[width] duration-200 ease-out",
-                    expanded ? "-ml-1 w-12 overflow-hidden py-1" : "w-0"
-                )}
+                className="relative w-0 shrink-0 select-none"
             >
-                {expanded ? (
-                    <>
+                {/* 悬浮层：absolute 覆盖在内容上方、不占布局空间；展开/收起只做 transform+opacity
+                    合成器过渡，TabContent 尺寸零变化（不再挤压触发整行 relayout / 终端 refit）。
+                    ponytail: 常驻挂载 + 收起态 pointer-events-none，换取滑入滑出动画。
+                    内联 transform 而非 Tailwind translate 类：TW v4 的 translate 走独立 CSS 属性，
+                    transition-transform 不会对其生效。 */}
+                <div
+                    className={clsx(
+                        // 毛玻璃浮层：与 Agent/Terminal 启动弹窗同一套视觉语言（modalbg token，亮暗主题自适应）
+                        "absolute right-0 top-0 z-50 h-full w-12 overflow-hidden py-1 bg-modalbg/85 backdrop-blur-xl border-l border-border/60 shadow-2xl rounded-l-xl",
+                        !expanded && "pointer-events-none"
+                    )}
+                    style={{
+                        transform: expanded ? "translateX(0)" : "translateX(100%)",
+                        opacity: expanded ? 1 : 0,
+                        transition: "transform 200ms ease-out, opacity 200ms ease-out",
+                    }}
+                >
                         <div className="flex flex-col w-12 overflow-hidden h-full">
                             {mode === "supercompact" ? (
                                 <>
@@ -2334,12 +2346,12 @@ const Widgets = memo(() => {
                 )}
                 {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} mode={mode} /> : null}
                     </div>
-                </>
-            ) : (
-                /* 隐形热区：贴窗口右缘约 8px 即滑出按钮条；仅收起态存在，展开后移除。 */
-                <div className="absolute right-0 top-0 h-full w-2" aria-hidden="true" />
-            )}
-        </div>
+                </div>
+                {!expanded && (
+                    /* 隐形热区：贴窗口右缘约 8px 即滑出按钮条；仅收起态存在，展开后移除。 */
+                    <div className="absolute right-0 top-0 h-full w-2" aria-hidden="true" />
+                )}
+            </div>
         {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
                 <AppsFloatingWindow
                     isOpen={isAppsOpen}
