@@ -18,6 +18,7 @@ import {
     type SlashItem,
 } from "./chat-slash";
 import { runChatCommand, useChatStream, type ChatEvent } from "./use-chat-stream";
+import { CHAT_SOURCES, getChatSource, type ChatSourceDef } from "./sources";
 
 type PendingImage = {
     id: string;
@@ -67,13 +68,6 @@ type PanelMode = null | "commands" | "agents" | "models" | "levels";
 
 type ModelOption = { provider?: string; id?: string; name?: string };
 
-// GUI 聊天可选的 agent 清单。后端 chatProviderForSource 目前只实现 pi；
-// 其余项仅展示并禁用（升级路径：后端补 Provider 后去掉 available:false）。
-const AGENT_CHOICES = [
-    { id: "pi", label: "Pi", available: true },
-    { id: "codex", label: "Codex", available: false },
-    { id: "claude", label: "Claude Code", available: false },
-] as const;
 
 type ChatComposerProps = {
     source: string;
@@ -82,9 +76,10 @@ type ChatComposerProps = {
     provider?: string;
     model?: string;
     onEvent?: (evt: ChatEvent) => void;
+    onSourceChange?: (source: string) => void;
 };
 
-function ChatComposerInner({ source, sessionId, projectPath, provider, model, onEvent }: ChatComposerProps) {
+function ChatComposerInner({ source, sessionId, projectPath, provider, model, onEvent, onSourceChange }: ChatComposerProps) {
     const [input, setInput] = useState("");
     const [images, setImages] = useState<PendingImage[]>([]);
     const [dynamicCommands, setDynamicCommands] = useState<SlashItem[]>([]);
@@ -290,7 +285,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         | { kind: "command"; item: SlashItem }
         | { kind: "model"; item: ModelOption }
         | { kind: "level"; level: string }
-        | { kind: "agent"; agent: (typeof AGENT_CHOICES)[number] };
+        | { kind: "agent"; agent: ChatSourceDef };
 
     const panelRows: PanelRow[] = useMemo(() => {
         if (effectiveMode === "commands" && slashQuery != null) {
@@ -312,7 +307,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             );
         }
         if (effectiveMode === "agents") {
-            return AGENT_CHOICES.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
+            return CHAT_SOURCES.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
                 kind: "agent" as const,
                 agent,
             }));
@@ -349,11 +344,30 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         (row: PanelRow | undefined) => {
             if (row == null) return;
             if (row.kind === "agent") {
-                if (!row.agent.available) {
-                    flashNotice(`✗ ${row.agent.label} 暂未支持`);
+                const { agent } = row;
+                if (!agent.available) {
+                    flashNotice(`✗ ${agent.label} 暂未支持`);
+                    setPanelMode(null);
+                    inputRef.current?.focus();
                     return;
                 }
-                flashNotice(`当前 agent: ${row.agent.label}（后端仅实现 Pi）`);
+                if (agent.id === source) {
+                    flashNotice(`当前 agent: ${agent.label}`);
+                    setPanelMode(null);
+                    inputRef.current?.focus();
+                    return;
+                }
+                if (sessionId) {
+                    // 会话创建时即绑定到某一 source，运行期切换 agent 不被后端支持。
+                    // ponytail: 若日后支持跨 agent 迁移，这里改调 onSourceChange 并在
+                    // session_state 刷新后重新拉取模型/思考级别即可。
+                    flashNotice(`该会话已绑定到 ${getChatSource(source).label}，无法切换 agent`);
+                    setPanelMode(null);
+                    inputRef.current?.focus();
+                    return;
+                }
+                onSourceChange?.(agent.id);
+                flashNotice(`已选择 ${agent.label}（新会话将使用此 agent）`);
                 setPanelMode(null);
                 inputRef.current?.focus();
                 return;
@@ -766,7 +780,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                                 onClick={() => setPanelMode(panelMode === "agents" ? null : "agents")}
                             >
                                 <i className="fa-sharp fa-solid fa-robot text-[11px]" />
-                                <span className="max-w-24 truncate">{source || "Pi"}</span>
+                                <span className="max-w-24 truncate">{getChatSource(source).label}</span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",

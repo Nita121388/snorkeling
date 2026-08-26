@@ -16,7 +16,8 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../session-overview/session-overview.scss";
-import { ClaudeLogo, IconButton, OpenAILogo, PiLogo, SortButton, SourceButton } from "./controls";
+import { IconButton, SortButton, SourceButton } from "./controls";
+import { CHAT_SOURCES, defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane, NewChatPane } from "./session-detail";
@@ -190,7 +191,7 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             return;
         }
-        globalStore.set(this.newSessionAtom, { key: NewSessionKey, id: "", source: "pi", title: "New Chat" });
+        globalStore.set(this.newSessionAtom, { key: NewSessionKey, id: "", source: defaultChatSource().id, title: "New Chat" });
         globalStore.set(this.selectedKeyAtom, NewSessionKey);
         globalStore.set(this.detailAtom, null);
     }
@@ -1198,27 +1199,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             busy={filterBusy && source === ""}
                                             onClick={() => setSource("")}
                                         />
-                                        <SourceButton
-                                            label="Codex"
-                                            icon={<OpenAILogo />}
-                                            active={source === "codex"}
-                                            busy={filterBusy && source === "codex"}
-                                            onClick={() => setSource("codex")}
-                                        />
-                                        <SourceButton
-                                            label="Claude Code"
-                                            icon={<ClaudeLogo />}
-                                            active={source === "claude"}
-                                            busy={filterBusy && source === "claude"}
-                                            onClick={() => setSource("claude")}
-                                        />
-                                        <SourceButton
-                                            label="Pi"
-                                            icon={<PiLogo />}
-                                            active={source === "pi"}
-                                            busy={filterBusy && source === "pi"}
-                                            onClick={() => setSource("pi")}
-                                        />
+                                        {CHAT_SOURCES.map((s) => (
+                                            <SourceButton
+                                                key={s.id}
+                                                label={s.label}
+                                                icon={s.icon}
+                                                active={source === s.id}
+                                                busy={filterBusy && source === s.id}
+                                                onClick={() => setSource(s.id as SourceFilter)}
+                                            />
+                                        ))}
                                     </div>
                                     <div className="flex-1" />
                                     <button

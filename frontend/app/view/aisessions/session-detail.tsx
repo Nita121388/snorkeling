@@ -20,6 +20,7 @@ import {
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
+import { defaultChatSource, getChatSource, isSourceAvailable } from "./sources";
 import { type ChatEvent } from "./use-chat-stream";
 import { LiveTurnBlock, useLiveTurn } from "./use-live-turn";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
@@ -34,6 +35,8 @@ import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./s
  * path is the project selector from the M3 New Agent GUI work.
  */
 export function NewChatPane({ onBound }: { onBound: (sessionId: string) => void }) {
+    // 新会话的 source 选择：在发送首条消息前可切换 agent，之后由后端按所选 source 落地。
+    const [composeSource, setComposeSource] = useState<string>(() => defaultChatSource().id);
     // 首条消息的流式过程留在本面板看完，turn 结束后再切到已绑定的会话详情
     // （提前切换会卸载 composer 的 SSE 连接，当轮内容就丢了）。
     const boundIdRef = useRef("");
@@ -57,8 +60,9 @@ export function NewChatPane({ onBound }: { onBound: (sessionId: string) => void 
                 </div>
             </div>
             <ChatComposer
-                source="pi"
+                source={composeSource}
                 sessionId=""
+                onSourceChange={setComposeSource}
                 onEvent={(evt) => {
                     handleChatEvent(evt);
                     if (evt.type === "session_state" && evt.state?.sessionId) {
@@ -92,10 +96,7 @@ const UserLinesPageSize = 8;
 const UserLinesSearchLimit = 50;
 
 function sourceDotClass(source: string): string {
-    if (source === "claude") return "bg-source-claude";
-    if (source === "codex") return "bg-source-codex";
-    if (source === "pi") return "bg-source-pi";
-    return "bg-secondary";
+    return getChatSource(source).dotClass ?? "bg-secondary";
 }
 
 const RenameTitleInputClass =
@@ -1372,7 +1373,7 @@ export function SessionDetailPane({
                                 </div>
                             ) : null}
                         </div>
-                        {summary?.source === "pi" && summary?.id ? (
+                        {summary != null && summary.id != null && isSourceAvailable(summary.source) ? (
                             <ChatComposer
                                 source={summary.source}
                                 sessionId={summary.id}

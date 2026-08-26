@@ -6,6 +6,7 @@ import { cn } from "@/util/util";
 import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
+import { getChatSource } from "./sources";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -31,10 +32,7 @@ function noteHasProse(note: string | null | undefined): boolean {
 }
 
 function sourceDotClass(source: string): string {
-    if (source === "claude") return "bg-source-claude";
-    if (source === "codex") return "bg-source-codex";
-    if (source === "pi") return "bg-source-pi";
-    return "bg-secondary";
+    return getChatSource(source).dotClass ?? "bg-secondary";
 }
 
 /**
