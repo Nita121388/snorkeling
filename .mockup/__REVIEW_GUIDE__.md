@@ -79,7 +79,7 @@
 
 ## `inline-tab-add-menu/` — 1 项（自建目录）
 
-- `inline-tab-add-menu/` — **▲ 设计活跃**（2026-08-26）;Blocks 组（Inline Tab 化 Block）tab 行右上角新增固定区「＋」按钮（拆滚动区+固定区,tabs 溢出滚动时钉死右上角不挨着最后一个 tab）,点击弹出 widget 注册表驱动的新建菜单:Terminal/Agent/Files 继承激活 tab 的 connection/cmd:cwd,其余 widget 直通 blockdef 创建并加入本组（`addBlockToInlineTab`）,action 型跳过;镜像 `block.tsx` InlineTabBlock + `block.scss` + `widgets.json`,真实组件尚未实现。
+- `inline-tab-add-menu/` — **◉ 真实代码已落地**（2026-08-26，行为二次迭代：菜单条目点击而非悬浮、右栏不再被连带带出）;Blocks 组（Inline Tab 化 Block）tab 行右上角新增固定区「＋」按钮（拆滚动区+固定区,tabs 溢出滚动时钉死右上角不挨着最后一个 tab）,点击弹出 widget 注册表驱动的新建菜单:Terminal/Agent 经 launch-popup-bus 复用右栏同款目标浮窗（footer 标 "Add to Group",创建改道进组）、Files 继承激活 tab 的 connection/cmd:cwd、其余 widget 直通 blockdef 创建并加入本组（`addBlockToInlineTab`）,action 型跳过;新增 `inlinetab-addmenu.tsx` + `launch-popup-bus.ts`,复用 `block.tsx` InlineTabBlock + `block.scss` + `widgets.json` + `widgets.tsx`。
 
 > **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
 > - `aisessions-no-tag-filter.html` / `aisessions-path-filter/` — session 列表筛选方向

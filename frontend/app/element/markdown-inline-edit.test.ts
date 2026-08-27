@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
     commitPlaceholderBlock,
     deleteBlockRange,
+    expandBlockSelection,
     isSelectingRange,
+    makeInlineEditKeydown,
+    moveBlockRange,
     replaceSourceRange,
     resolveInlineEditTarget,
     spliceBlankRow,
@@ -16,6 +19,73 @@ import {
     type InlineEditSession,
 } from "./markdown-inline-edit";
 
+describe("makeInlineEditKeydown — merge-up on an emptied line", () => {
+    // The handler only DETECTS the intent (empty draft + Backspace/Delete) and forwards to
+    // onNavigateUp; the DOM navigation itself lives in markdown.tsx (focusEditedLine). This
+    // keeps the decision pure and testable without a rendered editor.
+    type KeyEv = Parameters<ReturnType<typeof makeInlineEditKeydown>>[0];
+    const makeKeyEvent = (opts: {
+        key: string;
+        value?: string;
+        selectionStart?: number;
+        selectionEnd?: number;
+        composing?: boolean;
+        meta?: boolean;
+        ctrl?: boolean;
+        shift?: boolean;
+    }): KeyEv => {
+        const currentTarget = {
+            value: opts.value ?? "",
+            selectionStart: opts.selectionStart ?? 0,
+            selectionEnd: opts.selectionEnd ?? 0,
+        } as HTMLTextAreaElement;
+        return {
+            key: opts.key,
+            metaKey: opts.meta ?? false,
+            ctrlKey: opts.ctrl ?? false,
+            shiftKey: opts.shift ?? false,
+            currentTarget,
+            nativeEvent: { isComposing: opts.composing ?? false } as KeyboardEvent,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+        } as unknown as KeyEv;
+    };
+
+    it("forwards Backspace on an empty draft to onNavigateUp", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
+        handler(makeKeyEvent({ key: "Backspace", value: "" }));
+        expect(onNavigateUp).toHaveBeenCalledTimes(1);
+    });
+
+    it("forwards Delete on an empty draft to onNavigateUp", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
+        handler(makeKeyEvent({ key: "Delete", value: "" }));
+        expect(onNavigateUp).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT navigate up when the draft has content (native delete preserved)", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
+        handler(makeKeyEvent({ key: "Backspace", value: "hello", selectionStart: 0, selectionEnd: 0 }));
+        expect(onNavigateUp).not.toHaveBeenCalled();
+    });
+
+    it("does NOT navigate up while IME is composing", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
+        handler(makeKeyEvent({ key: "Backspace", value: "", composing: true }));
+        expect(onNavigateUp).not.toHaveBeenCalled();
+    });
+
+    it("does NOT navigate up with Cmd/Ctrl held (system delete, not merge-up)", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
+        handler(makeKeyEvent({ key: "Backspace", value: "", meta: true }));
+        expect(onNavigateUp).not.toHaveBeenCalled();
+    });
+});
 describe("isSelectingRange (click-to-edit drag suppression)", () => {
     it("only treats an active non-collapsed Range selection as an in-progress select gesture", () => {
         expect(isSelectingRange({ type: "Range", rangeCount: 1 })).toBe(true);
@@ -385,3 +455,89 @@ describe("makeListItemInsertMarker (+ button prefill)", () => {
         expect(makeListItemInsertMarker("plain text", "after")).toBe("");
     });
 });
+
+describe("expandBlockSelection (Ctrl/Cmd + drag range)", () => {
+    it("anchors at the start and grows downward", () => {
+        expect(expandBlockSelection(3, 5, 7)).toEqual({ startLine: 3, endLine: 7 });
+    });
+
+    it("anchors at the end and grows upward", () => {
+        expect(expandBlockSelection(7, 3, 4)).toEqual({ startLine: 3, endLine: 7 });
+    });
+
+    it("normalizes min/max even when the crossed block straddles the anchor", () => {
+        expect(expandBlockSelection(4, 2, 9)).toEqual({ startLine: 2, endLine: 9 });
+    });
+
+    it("a single crossed block equals the anchor → collapses to one line", () => {
+        expect(expandBlockSelection(3, 3, 3)).toEqual({ startLine: 3, endLine: 3 });
+    });
+});
+
+describe("moveBlockRange (drag-and-drop reorder)", () => {
+    it("moves a block below its neighbor (before → after)", () => {
+        // "hello" (line3) moved after "tail" (line5)
+        const { text, newStartLine } = moveBlockRange("# title\n\nhello\n\ntail", 3, 3, 5, "after");
+        expect(text).toBe("# title\n\ntail\n\nhello");
+        expect(newStartLine).toBe(5);
+    });
+
+    it("moves a block above its neighbor (before → before)", () => {
+        // "tail" (line5) moved before "hello" (line3)
+        const { text, newStartLine } = moveBlockRange("# title\n\nhello\n\ntail", 5, 5, 3, "before");
+        expect(text).toBe("# title\n\ntail\n\nhello");
+        expect(newStartLine).toBe(3);
+    });
+
+    it("is a no-op when dropping a block onto itself", () => {
+        const doc = "# title\n\nhello\n\ntail";
+        const result = moveBlockRange(doc, 3, 3, 3, "after");
+        expect(result.text).toBe(doc);
+    });
+
+    it("is a no-op when dropping within the source range", () => {
+        const doc = "a\n\nb\nc\n\nd";
+        const result = moveBlockRange(doc, 2, 3, 2, "before");
+        expect(result.text).toBe(doc);
+    });
+
+    it("preserves a code block's internal blank lines during the move", () => {
+        const doc = "# title\n\n\`\`\`\ncode line 1\n\ncode line 2\n\`\`\`\n\nhello";
+        const { text } = moveBlockRange(doc, 2, 7, 9, "after");
+        // The fence block (2 blank lines + ``` + 4 lines + ```) moves after hello,
+        // and its internal blank lines survive intact.
+        expect(text).toBe("# title\n\nhello\n\n\`\`\`\ncode line 1\n\ncode line 2\n\`\`\`");
+    });
+
+    it("collapses excess blank separators but never drops block internals", () => {
+        const doc = "a\n\n\nb"; // line1=a, line2=blank, line3=blank, line4=b
+        const { text, newStartLine } = moveBlockRange(doc, 1, 1, 4, "before");
+        expect(text).toBe("b\n\na");
+        expect(newStartLine).toBe(3);
+    });
+
+    it("moves a contiguous multi-block range (e.g. a Ctrl-selected span) as one unit", () => {
+        // Blocks B (line3) + C (line5) are the dragged range [3..5]; drop after D (line7).
+        const doc = "# title\n\nB\n\nC\n\nD";
+        const { text, newStartLine } = moveBlockRange(doc, 3, 5, 7, "after");
+        expect(text).toBe("# title\n\nD\n\nB\n\nC");
+        expect(newStartLine).toBe(5); // B..C now occupy lines 5..7
+    });
+
+    it("moves a multi-block range upward (before a higher block)", () => {
+        const doc = "A\n\nB\n\nC\n\nD";
+        // range [5..7] (C + D) moved before A (line1)
+        const { text, newStartLine } = moveBlockRange(doc, 5, 7, 1, "before");
+        expect(text).toBe("C\n\nD\n\nA\n\nB");
+        expect(newStartLine).toBe(1);
+    });
+
+    it("trims leading/trailing blanks after the move", () => {
+        const doc = "hello\n\nworld";
+        const { text, newStartLine } = moveBlockRange(doc, 3, 3, 1, "before");
+        // world moved before hello (line 1); source [3..3] removed, world inserted at top.
+        expect(text).toBe("world\n\nhello");
+        expect(newStartLine).toBe(1);
+    });
+});
+

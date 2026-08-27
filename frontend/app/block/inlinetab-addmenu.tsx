@@ -15,7 +15,6 @@ import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockEnv } from "./blockenv";
 
-const WidgetHoverOpenDelayMs = 500; // mirror right-side WidgetsBar hover dwell
 const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
 export type GroupAddableWidget = {
@@ -79,7 +78,6 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
     const workspaceId = useAtomValue(waveEnv.atoms.workspaceId);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const hoverTimerRef = useRef<number | null>(null);
 
     // Active block context (for Files cwd/connection inheritance)
     const activeBlockAtom = useMemo(
@@ -129,15 +127,6 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
         };
     }, [menuOpen, refs]);
 
-    useEffect(
-        () => () => {
-            if (hoverTimerRef.current != null) {
-                window.clearTimeout(hoverTimerRef.current);
-            }
-        },
-        []
-    );
-
     // Terminal / Agent: close menu and ask WorkspaceWidgets to open its target-selector popup
     // anchored at this "+" button; creation funnels back into this group (group sink nodeId).
     const requestTargetPopup = useCallback(
@@ -152,23 +141,8 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
         [closeMenu, nodeId]
     );
 
-    const clearHoverTimer = useCallback(() => {
-        if (hoverTimerRef.current != null) {
-            window.clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-    }, []);
-
-    const handleTargetItemPointerEnter = useCallback(
-        (mode: "terminal" | "agent") => {
-            clearHoverTimer();
-            hoverTimerRef.current = window.setTimeout(() => {
-                hoverTimerRef.current = null;
-                requestTargetPopup(mode);
-            }, WidgetHoverOpenDelayMs);
-        },
-        [clearHoverTimer, requestTargetPopup]
-    );
+    // click-only (hover just highlights via CSS): the "+" menu must stay open while the
+    // pointer dwells on an item, so we never auto-fire the selector from hover.
 
     const handleDirectCreate = useCallback(
         (widgetId: string, widget: WidgetConfigType) => {
@@ -236,10 +210,6 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                                     role="menuitem"
                                     className="inline-tab-block-addmenu-item"
                                     title={config.description || config.label}
-                                    onPointerEnter={
-                                        mode != null ? () => handleTargetItemPointerEnter(mode) : clearHoverTimer
-                                    }
-                                    onPointerLeave={mode != null ? clearHoverTimer : undefined}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         if (mode != null) {

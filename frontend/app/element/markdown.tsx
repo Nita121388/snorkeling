@@ -18,6 +18,8 @@ import {
     inlineEditDebug,
     makeListItemInsertMarker,
     splitListItemDraft,
+    moveBlockRange,
+    expandBlockSelection,
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
@@ -1449,12 +1451,92 @@ const Markdown = ({
         [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint]
     );
 
+    // --- Block anchor resolvers (lifted above handleInlineEditMouseDown so the Ctrl/Cmd +
+    // drag-select handler can reference them without a use-before-declaration error) ----
+    // Resolves the rendered block element for a given source line (used to anchor inserts,
+    // menus, and selection ranges).
+    const resolveInsertAnchorEl = useCallback(
+        (line: number): HTMLElement | null => {
+            const viewport = getViewportEl();
+            if (viewport == null) {
+                return null;
+            }
+            return viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        },
+        [getViewportEl]
+    );
+
+    // Resolve the BLOCK-level anchor for an insert/menu action: same lookup as
+    // resolveInsertAnchorEl. Per-item granularity: a hovered <LI> stays itself unless it has
+    // nested sublists — then promote to the parent <OL>/<UL> so insert/copy/delete never tear
+    // a nested list open. Mirrors resolveEditTargetFromEvent.
+    const resolveBlockAnchorEl = useCallback(
+        (line: number): HTMLElement | null => {
+            const el = resolveInsertAnchorEl(line);
+            if (el == null || el.tagName !== "LI") {
+                return el;
+            }
+            if (el.querySelector("ol, ul") == null) {
+                return el;
+            }
+            const parentList = el.parentElement?.closest<HTMLElement>("ol, ul");
+            return parentList != null && parentList.dataset.sourceLine != null ? parentList : el;
+        },
+        [resolveInsertAnchorEl]
+    );
+
     const handleInlineEditMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) {
             return;
         }
         mousedownSelectionRef.current = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
-    }, []);
+
+        // Ctrl/Cmd + drag → select a RANGE of blocks. This must NOT start a native text selection,
+        // so we preventDefault and own the gesture. Plain (no-modifier) drags fall through to the
+        // browser's native text selection untouched. Disabled while the inline editor is open.
+        if ((e.ctrlKey || e.metaKey) && inlineEdit.editSession == null) {
+            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]:not(img)");
+            if (target == null) {
+                return; // not pressed on a block (e.g. padding / gutter) → let default happen
+            }
+            const blockEl = resolveBlockAnchorEl(Number(target.dataset.sourceLine)) ?? target;
+            if (blockEl == null) {
+                return;
+            }
+            const bs = Number(blockEl.dataset.sourceLine);
+            const be = blockEl.dataset.sourceLineEnd != null ? Number(blockEl.dataset.sourceLineEnd) : bs;
+            e.preventDefault();
+            setSelectedBlock(null); // single-select highlight yields to the range select
+            setSelectedRange({ startLine: bs, endLine: be });
+            const anchorLine = bs;
+            const onMove = (ev: MouseEvent) => {
+                if (!(ev.ctrlKey || ev.metaKey)) {
+                    cleanup();
+                    return;
+                }
+                const el = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest?.(
+                    "[data-source-line]"
+                ) as HTMLElement | null;
+                if (el == null) {
+                    return; // pointer over a gap / gutter → keep the current range
+                }
+                const cur = resolveBlockAnchorEl(Number(el.dataset.sourceLine)) ?? el;
+                if (cur == null) {
+                    return;
+                }
+                const cbs = Number(cur.dataset.sourceLine);
+                const cbe = cur.dataset.sourceLineEnd != null ? Number(cur.dataset.sourceLineEnd) : cbs;
+                setSelectedRange(expandBlockSelection(anchorLine, cbs, cbe));
+            };
+            const onUp = () => cleanup();
+            const cleanup = () => {
+                window.removeEventListener("mousemove", onMove);
+                window.removeEventListener("mouseup", onUp);
+            };
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp);
+        }
+    }, [inlineEdit.editSession, resolveBlockAnchorEl]);
 
     // ---- Block-edge insert buttons --------------------------------------------------
     // Hovering an editable block shows a small ↑/↓ pair at its left edge; clicking one
@@ -1552,6 +1634,24 @@ const Markdown = ({
     const selectedLineRef = useRef<number | null>(null);
     selectedLineRef.current = selectedBlock?.line ?? null;
 
+    // --- Block drag-and-drop reorder -------------------------------------------------
+    // dragSourceRef holds the block range being dragged (set on dragstart, cleared on dragend/
+    // drop). It lives in a ref (not state) so starting a drag doesn't churn the render. dropTarget
+    // is state because the drop indicator line must re-render as the pointer moves between blocks.
+    const dragSourceRef = useRef<{ startLine: number; endLine: number } | null>(null);
+    const [dropTarget, setDropTarget] = useState<{ line: number; mode: "before" | "after"; rect: { top: number; left: number; width: number } } | null>(null);
+
+    // --- Ctrl/Cmd + drag multi-block selection ----------------------------------------
+    // A CONTIGUOUS range of source lines [startLine..endLine] the user selected by Ctrl/Cmd-
+    // dragging across blocks. Parallel to `selectedBlock` (single), and mutually exclusive:
+    // starting a range select clears the single selection and vice-versa. selectedRangeRect is
+    // the spanning highlight box (top of the first block → bottom of the last), re-measured on
+    // scroll/resize so it tracks re-renders.
+    const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
+    const selectedRangeRef = useRef<{ startLine: number; endLine: number } | null>(null);
+    selectedRangeRef.current = selectedRange;
+    const [selectedRangeRect, setSelectedRangeRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+
     // Measure the currently selected block element (re-resolving from its line) so the
     // highlight overlay follows re-renders and scrolls. Kept in step with insertAnchor's own
     // scroll/resize watcher below.
@@ -1598,11 +1698,71 @@ const Markdown = ({
         };
     }, [selectedBlock, getViewportEl, measureSelectedBlock]);
 
+    // Resolve the rendered block element whose source range contains `line` (handles multi-line
+    // blocks whose data-source-line-end exceeds their start). Used to span the selection highlight
+    // from the first block's top to the last block's bottom.
+    const findBlockElement = useCallback(
+        (line: number): HTMLElement | null => {
+            const viewport = getViewportEl();
+            const root = viewport?.querySelector<HTMLElement>(".markdown-render-root");
+            if (root == null) return null;
+            const exact = root.querySelector<HTMLElement>(`[data-source-line="${line}"]`);
+            if (exact != null) return exact;
+            let found: HTMLElement | null = null;
+            root.querySelectorAll<HTMLElement>("[data-source-line]").forEach((el) => {
+                const s = Number(el.dataset.sourceLine);
+                const e = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : s;
+                if (Number.isFinite(s) && line >= s && line <= e) found = el;
+            });
+            return found;
+        },
+        [getViewportEl]
+    );
+
+    // Measure the spanning highlight box for the current selection range. Re-resolves the first
+    // and last blocks from their lines so it follows re-renders / line edits, and stores the box.
+    const measureSelectedRange = useCallback(() => {
+        const sel = selectedRangeRef.current;
+        if (sel == null) {
+            setSelectedRangeRect(null);
+            return;
+        }
+        const startEl = findBlockElement(sel.startLine);
+        const endEl = findBlockElement(sel.endLine);
+        if (startEl == null || endEl == null) {
+            setSelectedRangeRect(null);
+            return;
+        }
+        const sRect = startEl.getBoundingClientRect();
+        const eRect = endEl.getBoundingClientRect();
+        const left = Math.min(sRect.left, eRect.left);
+        const width = Math.max(sRect.right, eRect.right) - left;
+        setSelectedRangeRect({ top: sRect.top, left, width, height: eRect.bottom - sRect.top });
+    }, [findBlockElement]);
+
+    // Re-measure the selection range box on scroll/resize/selection change.
+    useEffect(() => {
+        if (selectedRange == null) {
+            setSelectedRangeRect(null);
+            return;
+        }
+        measureSelectedRange();
+        const viewport = getViewportEl();
+        const onScrollOrResize = () => requestAnimationFrame(measureSelectedRange);
+        viewport?.addEventListener("scroll", onScrollOrResize, { passive: true });
+        window.addEventListener("resize", onScrollOrResize);
+        return () => {
+            viewport?.removeEventListener("scroll", onScrollOrResize);
+            window.removeEventListener("resize", onScrollOrResize);
+        };
+    }, [selectedRange, getViewportEl, measureSelectedRange]);
+
     // Escape clears any block selection (unless the inline editor is open — it owns Escape).
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && selectedLineRef.current != null && inlineEdit.editSession == null) {
+            if (e.key === "Escape" && (selectedLineRef.current != null || selectedRangeRef.current != null) && inlineEdit.editSession == null) {
                 setSelectedBlock(null);
+                setSelectedRange(null);
             }
         };
         window.addEventListener("keydown", onKey);
@@ -1621,7 +1781,7 @@ const Markdown = ({
     // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
     // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean) => {
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p") => {
             let attempts = 0;
             // Safety net for exhausted retries: the caller committed an insert/split but we
             // could never open its follow-up editor (re-render landed too late, viewport gone,
@@ -1667,7 +1827,7 @@ const Markdown = ({
                     return;
                 }
                 const opened = inlineEdit.beginEdit(
-                    "p",
+                    blockKind,
                     newLine,
                     el,
                     prefill != null ? prefill.length : 0,
@@ -1749,6 +1909,84 @@ const Markdown = ({
         focusEditedLine(newLine, revert, true, undefined, true);
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
+    // --- Navigate up from an emptied line ------------------------------------------------
+    // Standard text-editor behavior: Backspace (or Delete) on a blank line pulls the caret up into
+    // the PREVIOUS block. We close the emptied editor and open the previous rendered block instead.
+    // Lists are excluded from the delete step: a list edits as one multi-line block, so
+    // deleteBlockRange would remove the whole list — lists keep their grip-menu delete + Enter-to-
+    // add-item UX, and for an emptied list session we just cancel (drop the editor, list survives).
+    const getPreviousBlockLine = useCallback(
+        (startLine: number): number | null => {
+            const viewport = getViewportEl();
+            const root = viewport?.querySelector<HTMLElement>(".markdown-render-root");
+            if (root == null) return null;
+            // Largest rendered block start line strictly before `startLine`. Blank separator lines
+            // carry no data-source-line, so they're skipped — we always land on a real block.
+            let prev: number | null = null;
+            root.querySelectorAll<HTMLElement>("[data-source-line]").forEach((b) => {
+                const line = Number(b.dataset.sourceLine);
+                if (Number.isFinite(line) && line < startLine && (prev == null || line > prev)) {
+                    prev = line;
+                }
+            });
+            return prev;
+        },
+        [getViewportEl]
+    );
+
+    const blockKindFromElement = (el: HTMLElement | null): InlineEditBlockKind => {
+        if (el == null) return "p";
+        switch (el.tagName) {
+            case "H1":
+            case "H2":
+            case "H3":
+            case "H4":
+            case "H5":
+            case "H6":
+                return "h";
+            case "PRE":
+            case "CODE":
+                return "code";
+            case "TABLE":
+                return "table";
+            case "HR":
+                return "hr";
+            case "OL":
+            case "UL":
+            case "LI":
+                return "list";
+            default:
+                return "p";
+        }
+    };
+
+    const handleNavigateUp = useCallback(() => {
+        const session = inlineEdit.editSession;
+        if (session == null) {
+            return;
+        }
+        // Lists: never delete the whole list — just close the editor.
+        if (session.blockKind === "list") {
+            inlineEdit.cancel();
+            return;
+        }
+        const prevLine = getPreviousBlockLine(session.startLine);
+        if (prevLine == null) {
+            // Topmost block: nowhere to merge into — close the editor, leaving the cleared line.
+            inlineEdit.commit();
+            return;
+        }
+        // Remove the emptied block (collapsing its separator blanks) and open the previous block.
+        const newFull = deleteBlockRange(text, session.startLine, session.endLine);
+        const revert = () => handleInlineEditCommit(text);
+        handleInlineEditCommit(newFull);
+        const viewport = getViewportEl();
+        const prevEl = viewport?.querySelector<HTMLElement>(
+            `.markdown-render-root [data-source-line="${prevLine}"]`
+        );
+        focusEditedLine(prevLine, revert, true, undefined, undefined, blockKindFromElement(prevEl));
+    }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine, getPreviousBlockLine, getViewportEl]);
+
     // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
     // Mirrors Obsidian: pasting an image while editing a block saves it to a sibling `assets`
     // directory (created on demand) and inserts a markdown image reference at the caret. The
@@ -1815,36 +2053,6 @@ const Markdown = ({
         [inlineEdit, resolveOpts, text, handleInlineEditCommit]
     );
 
-    const resolveInsertAnchorEl = useCallback(
-        (line: number): HTMLElement | null => {
-            const viewport = getViewportEl();
-            if (viewport == null) {
-                return null;
-            }
-            return viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
-        },
-        [getViewportEl]
-    );
-
-    // Resolve the BLOCK-level anchor for an insert/menu action: same lookup as
-    // resolveInsertAnchorEl. Per-item granularity: a hovered <LI> stays itself unless it has
-    // nested sublists — then promote to the parent <OL>/<UL> so insert/copy/delete never tear
-    // a nested list open. Mirrors resolveEditTargetFromEvent.
-    const resolveBlockAnchorEl = useCallback(
-        (line: number): HTMLElement | null => {
-            const el = resolveInsertAnchorEl(line);
-            if (el == null || el.tagName !== "LI") {
-                return el;
-            }
-            if (el.querySelector("ol, ul") == null) {
-                return el;
-            }
-            const parentList = el.parentElement?.closest<HTMLElement>("ol, ul");
-            return parentList != null && parentList.dataset.sourceLine != null ? parentList : el;
-        },
-        [resolveInsertAnchorEl]
-    );
-
     // --- Grip menu: click the 4-dot grip → select the block + popup (copy / copy context / duplicate / delete)
     // Resolves the current anchor block's [start..end] source range, shows a selection
     // highlight overlay over it, and opens a native context menu. Block-scoped operations are
@@ -1878,6 +2086,7 @@ const Markdown = ({
 
             // Live-highlight: set the overlay now; measureSelectedBlock re-anchors after render if needed.
             const rect = el.getBoundingClientRect();
+            setSelectedRange(null); // single-select highlight yields to the range select
             setSelectedBlock({
                 line: startLineRaw,
                 rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
@@ -1916,10 +2125,165 @@ const Markdown = ({
                 { label: "删除", click: deleteBlock },
             ];
             ContextMenuModel.getInstance().showContextMenu(menu, e, {
-                onClose: () => setSelectedBlock(null),
+                onClose: () => {
+                    setSelectedBlock(null);
+                    setSelectedRange(null);
+                },
             });
         },
         [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath, pointerOnGripActionsRef, cancelPendingAnchorSwitch]
+    );
+
+    // --- Block drag-and-drop handlers ---------------------------------------------------
+    // The 4-dot grip is the drag handle (Notion/Obsidian style): hover reveals it, press and
+    // drag to reorder. Clicking it still opens the block menu — HTML5 DnD and click are mutually
+    // exclusive (a drag that moves never fires click). Dragging is disabled while the inline
+    // editor is open (the grip only renders then anyway) and when no block is hovered.
+    const resolveDragBlock = (hoveredLine: number): HTMLElement | null => {
+        // Whole-block granularity, identical to the grip menu: an LI hover resolves to its parent
+        // list so the whole list moves as one block.
+        return resolveBlockAnchorEl(hoveredLine);
+    };
+
+    const handleBlockDragStart = useCallback(
+        (e: React.DragEvent<HTMLDivElement>) => {
+            const anchor = insertAnchorRef.current;
+            if (anchor == null || inlineEdit.editSession != null) {
+                e.preventDefault();
+                return;
+            }
+            // Prefer the active multi-block selection (Ctrl/Cmd + drag select): dragging any block's
+            // grip moves the WHOLE range. Fall back to the hovered single block when nothing is
+            // selected, so single-block reorder still works as before.
+            const range = selectedRangeRef.current;
+            let start: number;
+            let end: number;
+            if (range != null) {
+                start = range.startLine;
+                end = range.endLine;
+            } else {
+                const el = resolveDragBlock(anchor.line);
+                if (el == null) {
+                    e.preventDefault();
+                    return;
+                }
+                start = Number(el.dataset.sourceLine);
+                const endRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : start;
+                end = Number.isFinite(endRaw) && endRaw >= start ? endRaw : start;
+            }
+            dragSourceRef.current = { startLine: start, endLine: end };
+            e.dataTransfer.effectAllowed = "move";
+            // Firefox requires data to be set for a drag to actually start.
+            e.dataTransfer.setData("text/plain", `${start}-${end}`);
+            // Highlight what's moving: the whole selection range, or the single hovered block.
+            setSelectedBlock(null);
+            setSelectedRange({ startLine: start, endLine: end });
+        },
+        [inlineEdit, resolveBlockAnchorEl, selectedRangeRef]
+    );
+
+    const handleBlockDragEnd = useCallback(() => {
+        dragSourceRef.current = null;
+        setDropTarget(null);
+    }, []);
+
+    const handleBlockDragOver = useCallback(
+        (e: React.DragEvent<HTMLDivElement>) => {
+            const src = dragSourceRef.current;
+            if (src == null) {
+                return; // not a block drag in progress
+            }
+            const hovered = (e.target as HTMLElement).closest("[data-source-line]") as HTMLElement | null;
+            if (hovered == null) {
+                setDropTarget(null);
+                return;
+            }
+            const blockEl = resolveDragBlock(Number(hovered.dataset.sourceLine)) ?? hovered;
+            const line = Number(blockEl.dataset.sourceLine);
+            // Dropping onto the source block itself is a no-op (can't move a block onto itself).
+            if (line >= src.startLine && line <= src.endLine) {
+                setDropTarget(null);
+                return;
+            }
+            const rect = blockEl.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            const mode: "before" | "after" = e.clientY < mid ? "before" : "after";
+            e.preventDefault(); // mark the element as a valid drop target
+            e.dataTransfer.dropEffect = "move";
+            setDropTarget({
+                line,
+                mode,
+                rect: { top: mode === "before" ? rect.top : rect.bottom, left: rect.left, width: rect.width },
+            });
+        },
+        [resolveBlockAnchorEl]
+    );
+
+    const handleBlockDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+        // Only clear when the pointer truly leaves the markdown root (relatedTarget is outside it),
+        // not when it passes over child blocks (which fire dragleave/dragenter spuriously).
+        const related = e.relatedTarget as Node | null;
+        const root = e.currentTarget.querySelector(".markdown-render-root");
+        if (related == null || root == null || !root.contains(related)) {
+            setDropTarget(null);
+        }
+    }, []);
+
+    const handleBlockDrop = useCallback(
+        (e: React.DragEvent<HTMLDivElement>) => {
+            const src = dragSourceRef.current;
+            dragSourceRef.current = null;
+            setDropTarget(null);
+            if (src == null) {
+                return;
+            }
+            const hovered = (e.target as HTMLElement).closest("[data-source-line]") as HTMLElement | null;
+            if (hovered == null) {
+                return;
+            }
+            const blockEl = resolveDragBlock(Number(hovered.dataset.sourceLine)) ?? hovered;
+            const tgtLine = Number(blockEl.dataset.sourceLine);
+            if (tgtLine >= src.startLine && tgtLine <= src.endLine) {
+                return; // dropped on self
+            }
+            const rect = blockEl.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            const mode: "before" | "after" = e.clientY < mid ? "before" : "after";
+            e.preventDefault();
+            // src is the full dragged range (a multi-block selection, or a single block). moveBlockRange
+            // already handles a contiguous [srcStart..srcEnd], so dragging N selected blocks is free.
+            const { text: movedText, newStartLine } = moveBlockRange(text, src.startLine, src.endLine, tgtLine, mode);
+            if (movedText === text) {
+                return; // no-op (defensive)
+            }
+            // Renumber based on the MOVED content (source block), not the drop target — so an ordered
+            // list block keeps consecutive numbers after the move.
+            const srcEl = resolveDragBlock(src.startLine);
+            const isSourceList = srcEl != null && (srcEl.tagName === "LI" || srcEl.tagName === "OL" || srcEl.tagName === "UL");
+            const renumberOpts = isSourceList ? { renumberOrderedListFromLine: newStartLine } : undefined;
+            handleInlineEditCommit(movedText, renumberOpts);
+            // Re-select the moved block(s) so the highlight follows them to the new position. The commit
+            // re-renders through an async atom, so resolve the element after a couple of frames.
+            const movedHeight = src.endLine - src.startLine;
+            const reselectStart = newStartLine;
+            const reselectEnd = newStartLine + movedHeight;
+            let attempts = 0;
+            const retry = () => {
+                attempts++;
+                const viewport = getViewportEl();
+                const el = viewport?.querySelector<HTMLElement>(
+                    `.markdown-render-root [data-source-line="${reselectStart}"]`
+                );
+                if (el != null) {
+                    setSelectedBlock(null);
+                    setSelectedRange({ startLine: reselectStart, endLine: reselectEnd });
+                } else if (attempts < 10) {
+                    requestAnimationFrame(retry);
+                }
+            };
+            requestAnimationFrame(() => requestAnimationFrame(retry));
+        },
+        [text, resolveBlockAnchorEl, handleInlineEditCommit, getViewportEl]
     );
 
     const measureInsertAnchor = useCallback(() => {
@@ -2134,8 +2498,9 @@ const Markdown = ({
                 cancel: inlineEdit.cancel,
                 save: onInlineEditSave,
                 onSplitCaret: handleEnterSplit,
+                onNavigateUp: handleNavigateUp,
             }),
-        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit]
+        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp]
     );
 
     const normalizedScrollTargetText = useMemo(
@@ -2927,6 +3292,9 @@ const Markdown = ({
                     onClick={handleInlineEditClick}
                     onMouseOver={handleRootMouseOver}
                     onMouseLeave={handleRootMouseLeave}
+                    onDragOver={handleBlockDragOver}
+                    onDragLeave={handleBlockDragLeave}
+                    onDrop={handleBlockDrop}
                 >
                     <ReactMarkdown
                         remarkPlugins={remarkPlugins}
@@ -2962,19 +3330,36 @@ const Markdown = ({
                             />,
                             document.body
                         )}
+                    {onInlineEditCommit && selectedRange != null && selectedRangeRect != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <div
+                                className="markdown-block-selected markdown-block-range-selected"
+                                style={{
+                                    top: selectedRangeRect.top,
+                                    left: selectedRangeRect.left,
+                                    width: selectedRangeRect.width,
+                                    height: selectedRangeRect.height,
+                                }}
+                            />,
+                            document.body
+                        )}
                     {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <>
-                                {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu. */}
+                                {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu;
+                                    press and drag reorders the block (handleBlockDragStart). */}
                                 <div
                                     className="markdown-block-grip-dots"
                                     style={{ top: insertPos.top, left: insertPos.left }}
+                                    draggable
                                     onMouseEnter={handleGripEnter}
                                     onMouseLeave={handleGripLeave}
                                     onClick={handleGripMenuClick}
+                                    onDragStart={handleBlockDragStart}
+                                    onDragEnd={handleBlockDragEnd}
                                     role="button"
-                                    aria-label="Block actions"
-                                    title="Block actions"
+                                    aria-label="Block actions — drag to reorder"
+                                    title="Block actions — drag to reorder"
                                 >
                                     <i className="markdown-block-grip-dot" aria-hidden="true" />
                                     <i className="markdown-block-grip-dot" aria-hidden="true" />
@@ -3012,6 +3397,14 @@ const Markdown = ({
                                     <i className="fa-sharp fa-solid fa-plus" />
                                 </button>
                             </>,
+                            document.body
+                        )}
+                    {dropTarget != null && inlineEdit.editSession == null &&
+                        ReactDOM.createPortal(
+                            <div
+                                className="markdown-block-drop-indicator"
+                                style={{ top: dropTarget.rect.top, left: dropTarget.rect.left, width: dropTarget.rect.width }}
+                            />,
                             document.body
                         )}
                 </OverlayScrollbarsComponent>

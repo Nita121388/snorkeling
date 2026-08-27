@@ -2277,7 +2277,7 @@ const Widgets = memo(() => {
     };
 
     const anyFloatingOpen =
-        isAppsOpen || isSettingsOpen || isAgentTargetOpen || isTerminalTargetOpen;
+        isAppsOpen || isSettingsOpen || (isAgentTargetOpen && groupSinkNodeId == null) || (isTerminalTargetOpen && groupSinkNodeId == null);
     const expanded = hovered || anyFloatingOpen;
 
     const clearCollapseTimer = useCallback(() => {

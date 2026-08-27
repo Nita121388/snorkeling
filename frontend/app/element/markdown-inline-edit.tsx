@@ -730,6 +730,9 @@ export function makeInlineEditKeydown(opts: {
     save?: () => void;
     /** Called on a bare Enter (no Shift/Cmd/Ctrl, not IME-composing) so the caller can split the block at the caret. */
     onSplitCaret?: () => void;
+    /** Called when Backspace/Delete is pressed on an EMPTY draft so the caller can merge the
+     *  cursor up into the previous block (standard text-editor behavior on a blank line). */
+    onNavigateUp?: () => void;
 }) {
     return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Escape") {
@@ -738,6 +741,20 @@ export function makeInlineEditKeydown(opts: {
             return;
         }
         const isCmd = e.metaKey || e.ctrlKey;
+        // Merge-up on a blank line: pressing Backspace (or Delete) while the draft is empty jumps
+        // to the PREVIOUS block and opens its editor — the same way Backspace on a blank line in
+        // any standard editor pulls the caret up into the line above. Skipped while IME is composing
+        // (candidates consume the key) and when the caller didn't wire onNavigateUp. Non-empty drafts
+        // keep the textarea's native Backspace/Delete so deleting characters is unaffected.
+        if ((e.key === "Backspace" || e.key === "Delete") && !isCmd && !e.shiftKey && opts.onNavigateUp != null) {
+            const ta = e.currentTarget;
+            const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+            if (!native.isComposing && ta.value.length === 0) {
+                e.preventDefault();
+                opts.onNavigateUp();
+                return;
+            }
+        }
         // Split-on-Enter (note-app behavior): bare Enter ends the block, Shift+Enter keeps the
         // soft line break. Skip while IME is composing (Chinese/Japanese candidates send
         // Enter to pick a word) and when the caller didn't wire a split handler.
@@ -796,6 +813,90 @@ export function spliceInsertBlock(
     const next = lines.slice();
     next.splice(mode === "before" ? startIdx : endIdx + 1, 0, ...block);
     return next;
+}
+
+/** Result of moving a block: the rewritten text plus the moved block's new 1-based start line. */
+export type MoveBlockResult = { text: string; newStartLine: number };
+
+/**
+ * Pure helper for Ctrl/Cmd + drag multi-block selection: given the anchor line the drag started
+ * on and the [start..end] of the block currently under the pointer, return the contiguous
+ * selection range [min, max]. Named so the (trivial) min/max merge has a tested contract and
+ * the drag handler stays declarative.
+ */
+export function expandBlockSelection(
+    anchorLine: number,
+    crossedStart: number,
+    crossedEnd: number
+): { startLine: number; endLine: number } {
+    return { startLine: Math.min(anchorLine, crossedStart), endLine: Math.max(anchorLine, crossedEnd) };
+}
+
+/**
+ * Pure helper for block drag-and-drop reorder: move the source block range [srcStart..srcEnd]
+ * (1-based, original coords) to before/after the target block anchored at `tgtLine`.
+ *
+ * Algorithm (order matters — remove first to avoid line-number drift):
+ *   1) Remove the source block via `deleteBlockRange`, which handles the blank separator
+ *      cleanup at the original junction so no orphaned blanks remain.
+ *   2) Re-index the target against the post-deletion array — a source ABOVE the target shifts
+ *      the target up by the source's height, so the insertion index is compensated.
+ *   3) Splice the block back in, adding a separator blank ONLY where both neighbors are content.
+ *      The block's internal lines (incl. blanks) are pushed verbatim, so code fences survive.
+ *
+ * Dropping a block onto itself (tgtLine inside [srcStart..srcEnd]) is a no-op.
+ */
+export function moveBlockRange(
+    fullText: string,
+    srcStart: number,
+    srcEnd: number,
+    tgtLine: number,
+    mode: "before" | "after"
+): MoveBlockResult {
+    const lines = fullText.split(/\r\n|\n/);
+    const n = lines.length || 1;
+    const s = Math.max(1, Math.min(Math.trunc(srcStart), n));
+    const e = Math.max(s, Math.min(Math.trunc(srcEnd), n));
+    const block = lines.slice(s - 1, e);
+    const tgt = Math.max(1, Math.min(Math.trunc(tgtLine), n));
+
+    // Dropping a block onto itself (anchor equals either edge of its own range) → no-op.
+    if (tgt >= s && tgt <= e) {
+        return { text: fullText, newStartLine: s };
+    }
+
+    // 1) Remove the source block (deleteBlockRange collapses one separator at the junction).
+    const afterDelete = deleteBlockRange(fullText, s, e);
+    const afterLines = afterDelete.split(/\r\n|\n/);
+
+    // 2) Re-index the target against the post-deletion array.
+    const height = e - s + 1;
+    const tgtIdx = tgt < s ? tgt - 1 : tgt - 1 - height; // 0-based line index in afterLines
+    const insertIdx = mode === "before" ? Math.max(0, tgtIdx) : Math.min(afterLines.length, tgtIdx + 1);
+
+    // 3) Splice back in, adding a separator blank only where both neighbors are content.
+    const before = afterLines.slice(0, insertIdx);
+    const after = afterLines.slice(insertIdx);
+    const top = block[0];
+    const bottom = block[block.length - 1];
+    const above = before.length > 0 ? before[before.length - 1] : null;
+    const below = after.length > 0 ? after[0] : null;
+    const needAboveSep = above != null && above !== "" && top !== "";
+    const needBelowSep = below != null && below !== "" && bottom !== "";
+
+    const out: string[] = [];
+    out.push(...before);
+    if (needAboveSep) out.push("");
+    out.push(...block);
+    if (needBelowSep) out.push("");
+    out.push(...after);
+
+    // Trim any leading/trailing blank the move may have left at the document edges.
+    while (out.length > 0 && out[0] === "") out.shift();
+    while (out.length > 0 && out[out.length - 1] === "") out.pop();
+
+    const newStartLine = before.length + (needAboveSep ? 1 : 0) + 1;
+    return { text: out.join("\n"), newStartLine };
 }
 
 /**

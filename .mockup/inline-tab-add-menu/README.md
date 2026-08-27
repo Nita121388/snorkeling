@@ -1,8 +1,8 @@
 # Inline Tab Add Menu — Blocks 组右上角「＋」新建菜单原型
 
-> 同步状态：▲ 设计活跃（未实现）
-> 镜像源：frontend/app/block/block.tsx, frontend/app/block/block.scss, frontend/app/workspace/widgets.tsx, pkg/wconfig/defaultconfig/widgets.json, frontend/app/theme.scss
-> 最后同步：2026-08-26
+> 同步状态：◉ 真实代码已落地（与本文原型存在两处行为差异，见末尾「与原型差异」）
+> 镜像源：frontend/app/block/block.tsx, frontend/app/block/block.scss, frontend/app/block/inlinetab-addmenu.tsx, frontend/app/workspace/widgets.tsx, frontend/app/workspace/launch-popup-bus.ts, pkg/wconfig/defaultconfig/widgets.json, frontend/app/theme.scss
+> 最后同步：2026-08-26（行为二次迭代：点击而非悬浮；右栏不再被带出）
 > 对应方案：暂无 Obsidian 方案笔记，设计决策记录于本 README
 
 ## 一句话
@@ -75,3 +75,10 @@ file:///E:/code/snorkeling/.mockup/inline-tab-add-menu/index.html
 - ❌ 单 block 节点显示「＋」
 - ❌ Files 路径选择弹窗
 - ❌ action 型 widget 进菜单
+
+## 与原型差异（真实代码已二次迭代）
+
+1. **菜单条目交互：点击而非悬浮。** 原型 `script.js` 里 Terminal/Agent 条目用 500ms 悬浮计时器自动弹出目标选择浮窗；真实代码改为 **仅点击** 打开（`onClick` 调 `requestLaunchPopup`），悬浮只做 CSS 高亮。原因：下拉菜单里悬浮自动触发会误关菜单、且鼠标划过其它条目时易误触。右栏 WidgetsBar 自己的 hover 行为不变。
+2. **右栏不再被连带带出。** 真实代码复用了 WidgetsBar 同一个 `TerminalTargetFloatingWindow`/`AgentTargetFloatingWindow`；原来一打开浮窗 `anyFloatingOpen` 为真会让右栏 `expanded` 滑出，造成“右侧 widget 也展示”的连锁。已在 `widgets.tsx` 让 `anyFloatingOpen` 排除 group-sink 浮窗（`groupSinkNodeId != null` 时不计入），从「＋」菜单打开时右栏保持收起。
+
+> 注： prototype `index.html` / `script.js` 仍保留 500ms hover 演示，仅作交互参考；与真实代码以本段为准。
