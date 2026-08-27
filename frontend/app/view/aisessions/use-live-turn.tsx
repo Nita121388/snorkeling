@@ -10,9 +10,9 @@
 // NOT feed this hook; their content appears via the next DetailDelta refresh.
 // Upgrade path: multiplex both connections through one event reducer.
 
-import { useCallback, useState } from "react";
 import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent } from "./use-chat-stream";
 
 export type LiveToolRun = { name: string; status?: string; detail?: string };
@@ -24,65 +24,145 @@ export type LiveTurn = {
     tools: LiveToolRun[];
 };
 
+export type LiveTurns = Record<string, LiveTurn>;
+
 const emptyTurn = (): LiveTurn => ({ userText: "", text: "", thinking: false, tools: [] });
+const LiveTurnFlushIntervalMs = 32;
 
-/**
- * Returns the current live turn (null when idle) and an event handler that
- * feeds it. onTurnFinal fires on turn_end/turn_failed BEFORE the live turn is
- * cleared by clearLiveTurn() — wire it to requestDetailDelta so canonical
- * data replaces the temporary block without flicker:
- *
- *   const { liveTurn, handleChatEvent } = useLiveTurn({
- *       onTurnFinal: () => void requestDetailDelta("bottom").finally(clearLiveTurn),
- *   });
- */
-export function useLiveTurn(opts?: { onTurnFinal?: () => void }) {
-    const [liveTurn, setLiveTurn] = useState<LiveTurn | null>(null);
+export function reduceLiveTurn(base: LiveTurn, evt: ChatEvent): LiveTurn {
+    switch (evt.type) {
+        case "message_start":
+            return evt.role === "user" ? { ...base, userText: evt.text ?? "" } : base;
+        case "assistant_delta":
+            return { ...base, text: base.text + (evt.text ?? "") };
+        case "thinking_delta":
+            return { ...base, thinking: true };
+        case "tool_call_start":
+            return {
+                ...base,
+                thinking: false,
+                tools: [...base.tools, { name: evt.toolName ?? "" }],
+            };
+        case "tool_call_end": {
+            const tools = [...base.tools];
+            for (let i = tools.length - 1; i >= 0; i--) {
+                if (tools[i].name === evt.toolName && tools[i].status == null) {
+                    tools[i] = { ...tools[i], status: evt.toolStatus, detail: evt.detail };
+                    break;
+                }
+            }
+            return { ...base, tools };
+        }
+        default:
+            return base;
+    }
+}
 
-    // Turn end keeps the bubble until refresh lands; caller invokes
-    // clearLiveTurn in the refresh's finally().
-    const clearLiveTurn = useCallback(() => setLiveTurn(null), []);
+export function reduceLiveTurns(turns: LiveTurns, key: string, evt: ChatEvent): LiveTurns {
+    return { ...turns, [key]: reduceLiveTurn(turns[key] ?? emptyTurn(), evt) };
+}
+
+export function moveLiveTurn(turns: LiveTurns, fromKey: string, toKey: string): LiveTurns {
+    const turn = turns[fromKey];
+    if (turn == null || fromKey === toKey) return turns;
+    const next = { ...turns, [toKey]: turn };
+    delete next[fromKey];
+    return next;
+}
+
+export function useLiveTurns() {
+    const [liveTurns, setLiveTurns] = useState<LiveTurns>({});
+    const pendingEventsRef = useRef(new Map<string, ChatEvent[]>());
+    const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const flushPending = useCallback(() => {
+        if (flushTimerRef.current != null) {
+            clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = null;
+        }
+        const pending = pendingEventsRef.current;
+        pendingEventsRef.current = new Map();
+        if (pending.size === 0) return;
+        setLiveTurns((current) => {
+            let next = current;
+            for (const [key, events] of pending) {
+                for (const evt of events) {
+                    next = reduceLiveTurns(next, key, evt);
+                }
+            }
+            return next;
+        });
+    }, []);
+
+    const scheduleFlush = useCallback(() => {
+        if (flushTimerRef.current != null) return;
+        flushTimerRef.current = setTimeout(flushPending, LiveTurnFlushIntervalMs);
+    }, [flushPending]);
+
+    useEffect(() => {
+        return () => {
+            if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
+            pendingEventsRef.current.clear();
+        };
+    }, []);
+
+    const startLiveTurn = useCallback((key: string) => {
+        if (key === "") return;
+        pendingEventsRef.current.delete(key);
+        setLiveTurns((current) => ({ ...current, [key]: emptyTurn() }));
+    }, []);
+
+    const clearLiveTurn = useCallback((key: string) => {
+        if (key === "") return;
+        pendingEventsRef.current.delete(key);
+        setLiveTurns((current) => {
+            if (current[key] == null) return current;
+            const next = { ...current };
+            delete next[key];
+            return next;
+        });
+    }, []);
+
+    const moveLiveTurnState = useCallback((fromKey: string, toKey: string) => {
+        if (fromKey === "" || toKey === "" || fromKey === toKey) return;
+        const pending = pendingEventsRef.current.get(fromKey);
+        if (pending != null) {
+            pendingEventsRef.current.set(toKey, [...(pendingEventsRef.current.get(toKey) ?? []), ...pending]);
+            pendingEventsRef.current.delete(fromKey);
+        }
+        setLiveTurns((current) => moveLiveTurn(current, fromKey, toKey));
+    }, []);
+
+    const flushLiveTurn = useCallback((key: string) => {
+        if (key === "") return;
+        if (flushTimerRef.current != null) {
+            clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = null;
+        }
+        const pending = pendingEventsRef.current.get(key);
+        if (pending == null || pending.length === 0) return;
+        pendingEventsRef.current.delete(key);
+        setLiveTurns((current) => {
+            let next = current;
+            for (const evt of pending) {
+                next = reduceLiveTurns(next, key, evt);
+            }
+            return next;
+        });
+    }, []);
 
     const handleChatEvent = useCallback(
-        (evt: ChatEvent) => {
-            if (evt.type === "turn_end" || evt.type === "turn_failed") {
-                opts?.onTurnFinal?.();
-                return;
-            }
-            setLiveTurn((prev) => {
-                const base = prev ?? emptyTurn();
-                switch (evt.type) {
-                    case "message_start":
-                        return evt.role === "user" ? { ...base, userText: evt.text ?? "" } : base;
-                    case "assistant_delta":
-                        return { ...base, text: base.text + (evt.text ?? "") };
-                    case "thinking_delta":
-                        return { ...base, thinking: true };
-                    case "tool_call_start":
-                        return {
-                            ...base,
-                            thinking: false,
-                            tools: [...base.tools, { name: evt.toolName ?? "" }],
-                        };
-                    case "tool_call_end": {
-                        const tools = [...base.tools];
-                        for (let i = tools.length - 1; i >= 0; i--) {
-                            if (tools[i].name === evt.toolName && tools[i].status == null) {
-                                tools[i] = { ...tools[i], status: evt.toolStatus, detail: evt.detail };
-                                break;
-                            }
-                        }
-                        return { ...base, tools };
-                    }
-                    default:
-                        return prev ?? base;
-                }
-            });
+        (key: string, evt: ChatEvent) => {
+            if (key === "" || evt.type === "turn_end" || evt.type === "turn_failed") return;
+            const pending = pendingEventsRef.current.get(key) ?? [];
+            pending.push(evt);
+            pendingEventsRef.current.set(key, pending);
+            scheduleFlush();
         },
-        [opts?.onTurnFinal]
+        [scheduleFlush]
     );
 
-    return { liveTurn, handleChatEvent, clearLiveTurn };
+    return { liveTurns, startLiveTurn, handleChatEvent, clearLiveTurn, moveLiveTurn: moveLiveTurnState, flushLiveTurn };
 }
 
 /**

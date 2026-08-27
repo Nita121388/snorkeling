@@ -17,8 +17,8 @@ import {
     slashSourceLabel,
     type SlashItem,
 } from "./chat-slash";
-import { runChatCommand, useChatStream, type ChatEvent } from "./use-chat-stream";
-import { CHAT_SOURCES, getChatSource, type ChatSourceDef } from "./sources";
+import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
+import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
 
 type PendingImage = {
     id: string;
@@ -72,14 +72,18 @@ type ModelOption = { provider?: string; id?: string; name?: string };
 type ChatComposerProps = {
     source: string;
     sessionId: string;
+    availableSources: ReadonlySet<string>;
     projectPath?: string;
     provider?: string;
     model?: string;
-    onEvent?: (evt: ChatEvent) => void;
+    streamStatus: ChatStreamStatus;
+    onSend: (body: ChatRequestBody) => void;
+    onSteer: (body: ChatRequestBody) => void;
+    onAbort: () => void;
     onSourceChange?: (source: string) => void;
 };
 
-function ChatComposerInner({ source, sessionId, projectPath, provider, model, onEvent, onSourceChange }: ChatComposerProps) {
+function ChatComposerInner({ source, sessionId, availableSources, projectPath, provider, model, streamStatus, onSend, onSteer, onAbort, onSourceChange }: ChatComposerProps) {
     const [input, setInput] = useState("");
     const [images, setImages] = useState<PendingImage[]>([]);
     const [dynamicCommands, setDynamicCommands] = useState<SlashItem[]>([]);
@@ -117,32 +121,6 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         }),
         [source, sessionId, projectPath, provider, model]
     );
-
-    const handleEvent = useCallback(
-        (evt: ChatEvent) => {
-            if (evt.type === "session_state" && evt.state) {
-                setAgentState(evt.state as AgentStateInfo);
-            }
-            onEvent?.(evt);
-        },
-        [onEvent]
-    );
-
-    const { status, events, send, steer, abort } = useChatStream({
-        endpoint,
-        onEvent: handleEvent,
-        onTurnEnd: (evt) => {
-            onEvent?.(evt);
-            setTimeout(() => {
-                sendEventsRef.current = [];
-            }, 600);
-        },
-    });
-
-    const sendEventsRef = useRef<ChatEvent[]>(events);
-    useEffect(() => {
-        sendEventsRef.current = events;
-    }, [events]);
 
     // Paseo-style auto-grow：内容超出当前高度才撑开（只增不缩），拖拽中跳过。
     // 拖高的空框保持高度，想变小就往下拖；避免空框被压回单行、打字时高框突然缩回。
@@ -228,17 +206,21 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         };
     }, [endpoint, baseBody]);
 
-    const isRunning = status === "sending" || status === "streaming";
+    const chatSources = useMemo(
+        () => chatSourcesForAvailability(availableSources),
+        [availableSources]
+    );
+    const sourceAvailable = availableSources.has(source);
+    const isRunning = streamStatus === "sending" || streamStatus === "streaming";
     // 停止后 SSE 直接断开，不会再来 turn_end；补发一个合成事件让主列表
     // 刷新正式数据并清掉实时流式块。
     const handleAbort = useCallback(() => {
-        abort();
-        onEvent?.({ type: "turn_end" });
+        onAbort();
         inputRef.current?.focus();
-    }, [abort, onEvent]);
+    }, [onAbort]);
     const hasContent = input.trim().length > 0 || images.length > 0;
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
-    const canSubmit = hasContent && (status === "idle" || status === "error" || isRunning);
+    const canSubmit = sourceAvailable && hasContent && (streamStatus === "idle" || streamStatus === "error" || isRunning);
 
     // 联动：切模型后按新模型刷新思考深度列表（不同模型支持的级别可能不同）
     const refreshThinkingLevels = useCallback(async () => {
@@ -285,7 +267,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         | { kind: "command"; item: SlashItem }
         | { kind: "model"; item: ModelOption }
         | { kind: "level"; level: string }
-        | { kind: "agent"; agent: ChatSourceDef };
+        | { kind: "agent"; agent: AvailableChatSourceDef };
 
     const panelRows: PanelRow[] = useMemo(() => {
         if (effectiveMode === "commands" && slashQuery != null) {
@@ -307,13 +289,13 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
             );
         }
         if (effectiveMode === "agents") {
-            return CHAT_SOURCES.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
+            return chatSources.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
                 kind: "agent" as const,
                 agent,
             }));
         }
         return [];
-    }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels, pickerQuery]);
+    }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels, pickerQuery, chatSources]);
 
     const [cmdIndex, setCmdIndex] = useState(0);
     useEffect(() => {
@@ -428,12 +410,12 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
         setInput("");
         setImages([]);
         if (isRunning) {
-            steer(body);
+            onSteer(body);
         } else {
-            send(body);
+            onSend(body);
         }
         inputRef.current?.focus();
-    }, [canSubmit, input, slashQuery, allCommands, applyBuiltin, baseBody, images, isRunning, steer, send]);
+    }, [canSubmit, input, slashQuery, allCommands, applyBuiltin, baseBody, images, isRunning, onSend, onSteer]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -744,7 +726,7 @@ function ChatComposerInner({ source, sessionId, projectPath, provider, model, on
                             style={{ maxHeight: `${maxH}px` }}
                             className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
                             placeholder={
-                                isRunning ? "Agent 运行中… Enter 插话排队" : "给 Agent 输入任务…"
+                                !sourceAvailable ? "当前 Agent 暂未支持 GUI 对话" : isRunning ? "Agent 运行中… Enter 插话排队" : "给 Agent 输入任务…"
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}

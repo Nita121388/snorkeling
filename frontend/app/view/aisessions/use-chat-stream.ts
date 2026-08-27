@@ -7,7 +7,7 @@
 // is unit-testable; useChatStream is a thin React wrapper that maps events to
 // state and exposes abort().
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** A single SSE data frame the backend emits. */
 export type ChatEvent = {
@@ -157,19 +157,16 @@ export function parseSseDataLine(rawLine: string): ChatEvent | null {
 type UseChatStreamOptions = {
     endpoint: string;
     onEvent?: (evt: ChatEvent) => void;
-    onTurnEnd?: (evt: ChatEvent) => void;
 };
 
-export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOptions) {
+export function useChatStream({ endpoint, onEvent }: UseChatStreamOptions) {
     const [status, setStatus] = useState<ChatStreamStatus>("idle");
-    const [events, setEvents] = useState<ChatEvent[]>([]);
     const abortRef = useRef<AbortController | null>(null);
 
     const abort = useCallback(() => {
         abortRef.current?.abort();
         abortRef.current = null;
         setStatus("idle");
-        setEvents([]);
     }, []);
 
     const send = useCallback(
@@ -181,20 +178,13 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
             const ac = new AbortController();
             abortRef.current = ac;
             setStatus(steering ? "streaming" : "sending");
-            if (!steering) {
-                setEvents([]);
-            }
 
             runChatStream(
                 endpoint,
                 body,
                 {
                     onEvent: (evt) => {
-                        setEvents((prev) => [...prev, evt]);
                         onEvent?.(evt);
-                        if (evt.type === "turn_end" || evt.type === "turn_failed") {
-                            onTurnEnd?.(evt);
-                        }
                     },
                     onDone: () => setStatus("idle"),
                 },
@@ -203,13 +193,9 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
                 .catch((err: Error) => {
                     if (err.name === "AbortError") {
                         setStatus("idle");
-                        setEvents([]);
                     } else {
                         setStatus("error");
-                        setEvents((prev) => [
-                            ...prev,
-                            { type: "turn_failed", error: err.message },
-                        ]);
+                        onEvent?.({ type: "turn_failed", error: err.message });
                         console.error("chat stream error", err);
                     }
                 })
@@ -217,7 +203,7 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
                     abortRef.current = null;
                 });
         },
-        [endpoint, onEvent, onTurnEnd, abort]
+        [endpoint, onEvent, abort]
     );
 
     /**
@@ -239,5 +225,108 @@ export function useChatStream({ endpoint, onEvent, onTurnEnd }: UseChatStreamOpt
         [endpoint]
     );
 
-    return { status, events, send, steer, abort } as const;
+    return { status, send, steer, abort } as const;
+}
+
+export function useChatStreams() {
+    const [statuses, setStatuses] = useState<Record<string, ChatStreamStatus>>({});
+    const controllersRef = useRef(new Map<string, AbortController>());
+    const aliasesRef = useRef(new Map<string, string>());
+
+    const resolveKey = useCallback((key: string) => aliasesRef.current.get(key) ?? key, []);
+
+    const setStatus = useCallback((key: string, status: ChatStreamStatus) => {
+        setStatuses((current) => {
+            if (status !== "idle") return { ...current, [key]: status };
+            if (current[key] == null) return current;
+            const next = { ...current };
+            delete next[key];
+            return next;
+        });
+    }, []);
+
+    const abort = useCallback(
+        (key: string) => {
+            const resolvedKey = resolveKey(key);
+            controllersRef.current.get(resolvedKey)?.abort();
+            controllersRef.current.delete(resolvedKey);
+            setStatus(resolvedKey, "idle");
+        },
+        [resolveKey, setStatus]
+    );
+
+    const move = useCallback(
+        (fromKey: string, toKey: string) => {
+            if (fromKey === "" || toKey === "" || fromKey === toKey) return;
+            const resolvedFrom = resolveKey(fromKey);
+            aliasesRef.current.set(fromKey, toKey);
+            const controller = controllersRef.current.get(resolvedFrom);
+            if (controller != null) {
+                controllersRef.current.set(toKey, controller);
+                controllersRef.current.delete(resolvedFrom);
+            }
+            setStatuses((current) => {
+                const status = current[resolvedFrom];
+                if (status == null) return current;
+                const next = { ...current, [toKey]: status };
+                delete next[resolvedFrom];
+                return next;
+            });
+        },
+        [resolveKey]
+    );
+
+    const send = useCallback(
+        (key: string, endpoint: string, body: ChatRequestBody, onEvent?: (evt: ChatEvent, key: string) => void) => {
+            const resolvedKey = resolveKey(key);
+            abort(resolvedKey);
+            const controller = new AbortController();
+            controllersRef.current.set(resolvedKey, controller);
+            setStatus(resolvedKey, "sending");
+            void runChatStream(
+                endpoint,
+                body,
+                {
+                    onEvent: (evt) => onEvent?.(evt, resolveKey(key)),
+                    onDone: () => {
+                        const finalKey = resolveKey(key);
+                        if (controllersRef.current.get(finalKey) === controller) {
+                            setStatus(finalKey, "idle");
+                        }
+                    },
+                },
+                controller.signal
+            )
+                .catch((err: Error) => {
+                    if (err.name === "AbortError") return;
+                    const finalKey = resolveKey(key);
+                    if (controllersRef.current.get(finalKey) !== controller) return;
+                    setStatus(finalKey, "error");
+                    onEvent?.({ type: "turn_failed", error: err.message }, finalKey);
+                    console.error("chat stream error", err);
+                })
+                .finally(() => {
+                    const finalKey = resolveKey(key);
+                    if (controllersRef.current.get(finalKey) === controller) {
+                        controllersRef.current.delete(finalKey);
+                    }
+                    aliasesRef.current.delete(key);
+                });
+        },
+        [abort, resolveKey, setStatus]
+    );
+
+    const steer = useCallback((endpoint: string, body: ChatRequestBody) => {
+        void runChatStream(endpoint, { ...body, streamingBehavior: "steer" }, {}, new AbortController().signal).catch(
+            (err: Error) => console.error("chat steer error", err)
+        );
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            for (const controller of controllersRef.current.values()) controller.abort();
+        };
+    }, []);
+
+    return { statuses, send, steer, abort, move } as const;
 }

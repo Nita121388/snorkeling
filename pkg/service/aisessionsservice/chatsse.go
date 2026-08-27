@@ -35,28 +35,21 @@ type ChatCommand struct {
 // SessionID is optional: omit it to create a new chat session; pi will assign
 // a session UUID accessible via the session_state snapshot event.
 type AISessionsChatRequest struct {
-	Source       string       `json:"source"`                 // "pi" (others TBD)
-	SessionID    string       `json:"sessionId,omitempty"`    // existing session uuid to resume; omit for new
-	ProjectPath  string       `json:"projectPath,omitempty"`  // cwd
-	Provider     string       `json:"provider,omitempty"`     // model provider
-	Model        string       `json:"model,omitempty"`        // model id
-	SessionDir   string       `json:"sessionDir,omitempty"`   // override (tests/isolated)
-	Message      string       `json:"message,omitempty"`      // user text; empty = attach/command only
-	Images       []ChatImage  `json:"images,omitempty"`       // inline image attachments for Message
-	StreamingBehavior string  `json:"streamingBehavior,omitempty"` // steer/followUp when a turn is running
-	NoExtensions bool         `json:"noExtensions,omitempty"` // suppress agent extensions
-	Command      *ChatCommand `json:"command,omitempty"`      // control call (no prompt)
+	Source            string       `json:"source"`                      // "pi" (others TBD)
+	SessionID         string       `json:"sessionId,omitempty"`         // existing session uuid to resume; omit for new
+	ProjectPath       string       `json:"projectPath,omitempty"`       // cwd
+	Provider          string       `json:"provider,omitempty"`          // model provider
+	Model             string       `json:"model,omitempty"`             // model id
+	SessionDir        string       `json:"sessionDir,omitempty"`        // override (tests/isolated)
+	Message           string       `json:"message,omitempty"`           // user text; empty = attach/command only
+	Images            []ChatImage  `json:"images,omitempty"`            // inline image attachments for Message
+	StreamingBehavior string       `json:"streamingBehavior,omitempty"` // steer/followUp when a turn is running
+	NoExtensions      bool         `json:"noExtensions,omitempty"`      // suppress agent extensions
+	Command           *ChatCommand `json:"command,omitempty"`           // control call (no prompt)
 }
 
-// chatProviderForSource maps a session source to its chat provider. Only local
-// sources can be driven from the GUI today.
-func chatProviderForSource(source string) (chat.Provider, error) {
-	switch source {
-	case chat.SourcePi:
-		return chat.NewPiAdapter(), nil
-	default:
-		return nil, fmt.Errorf("chat not supported for source %q (only pi today)", source)
-	}
+type aiSessionsChatSourcesResponse struct {
+	Sources []chat.ProviderDescriptor `json:"sources"`
 }
 
 // AISessionsChatStreamHandler implements POST /api/aisessions-chat (SSE).
@@ -69,6 +62,11 @@ func chatProviderForSource(source string) (chat.Provider, error) {
 // On client disconnect mid-turn the running turn is aborted so the agent is
 // never left doing orphaned work after the GUI view closed.
 func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(aiSessionsChatSourcesResponse{Sources: chat.AvailableProviders()})
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -82,7 +80,7 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "source is required", http.StatusBadRequest)
 		return
 	}
-	provider, err := chatProviderForSource(req.Source)
+	provider, err := chat.ProviderForSource(req.Source)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -20,7 +20,7 @@ import { IconButton, SortButton, SourceButton } from "./controls";
 import { CHAT_SOURCES, defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
-import { SessionDetailPane, NewChatPane } from "./session-detail";
+import { SessionDetailPane } from "./session-detail";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
@@ -201,7 +201,38 @@ export class AiSessionsViewModel implements ViewModel {
         const placeholder = globalStore.get(this.newSessionAtom);
         if (placeholder == null || placeholder.id !== "" || sessionId === "") return;
         globalStore.set(this.newSessionAtom, { ...placeholder, id: sessionId });
-        void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+        void RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: {
+                "aisessions:sessionid": sessionId,
+                "aisessions:newchat": null,
+            } as MetaType,
+        }).catch(() => undefined);
+        void this.promoteNewSession(sessionId);
+    }
+
+    async promoteNewSession(sessionId: string): Promise<void> {
+        try {
+            const summary = await this.service.Summary({
+                id: sessionId,
+                connection: this.getConnection(),
+                refresh: true,
+            });
+            const placeholder = globalStore.get(this.newSessionAtom);
+            if (placeholder == null || placeholder.id !== sessionId) return;
+            const sessions = globalStore.get(this.sessionsAtom);
+            globalStore.set(this.sessionsAtom, [
+                summary,
+                ...sessions.filter((session) => session.key !== summary.key && session.id !== summary.id),
+            ]);
+            globalStore.set(this.newSessionAtom, null);
+            globalStore.set(this.selectedKeyAtom, summary.key);
+            globalStore.set(this.detailAtom, null);
+            void this.loadDetail(summary, true);
+            void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+        } catch {
+            void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+        }
     }
 
     async loadSessions(refresh = false, sortDescending = false): Promise<void> {
@@ -915,6 +946,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const [blockVisible, setBlockVisible] = useState(true);
+    const [runningChatSessionIds, setRunningChatSessionIds] = useState<ReadonlySet<string>>(() => new Set());
     const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1047,6 +1079,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         },
         [model]
     );
+
+    const handleRunningChatSessionIdsChange = useCallback((sessionIds: ReadonlySet<string>) => {
+        setRunningChatSessionIds(new Set(sessionIds));
+    }, []);
 
     const setQuery = useCallback(
         (next: string) => {
@@ -1336,6 +1372,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 sessionsRunning.get(session.id) ??
                                                 null
                                             }
+                                            chatRunning={runningChatSessionIds.has(session.key) || runningChatSessionIds.has(session.id)}
                                             onJumpToBlock={jumpToRunningSessionBlock}
                                             />
                                         )
@@ -1354,22 +1391,21 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         />
                     ) : null}
                 </div>
-                {activeSession?.key === NewSessionKey ? (
-                    <NewChatPane onBound={(sessionId) => model.bindNewSession(sessionId)} />
-                ) : (
-                    <SessionDetailPane
-                        model={model}
-                        detail={detail}
-                        loading={detailLoading}
-                        deltaLoading={detailDeltaLoading}
-                        toolCallsLoading={toolCallsLoading}
-                        restoring={restoring}
-                        deleting={deleting}
-                        onExpandSessionList={
-                            sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined
-                        }
-                    />
-                )}
+                <SessionDetailPane
+                    model={model}
+                    detail={detail}
+                    isNewChat={activeSession?.key === NewSessionKey}
+                    loading={detailLoading}
+                    deltaLoading={detailDeltaLoading}
+                    toolCallsLoading={toolCallsLoading}
+                    restoring={restoring}
+                    deleting={deleting}
+                    onBound={(sessionId) => model.bindNewSession(sessionId)}
+                    onRunningSessionIdsChange={handleRunningChatSessionIdsChange}
+                    onExpandSessionList={
+                        sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined
+                    }
+                />
             </div>
         </div>
     );

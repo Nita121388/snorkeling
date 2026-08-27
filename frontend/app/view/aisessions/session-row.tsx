@@ -95,6 +95,7 @@ export function SessionRow({
     onResume,
     resumeDisabled = false,
     runningState = null,
+    chatRunning = false,
     onJumpToBlock,
 }: {
     session: SessionSummary;
@@ -105,6 +106,7 @@ export function SessionRow({
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
     runningState?: SessionRunningState | null;
+    chatRunning?: boolean;
     onJumpToBlock: (runningState: SessionRunningState) => void;
 }) {
     const [noteEditing, setNoteEditing] = useState(false);
@@ -249,6 +251,12 @@ export function SessionRow({
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
                             {session.source}
                         </span>
+                        {chatRunning ? (
+                            <span className="inline-flex items-center gap-1 text-accent" title="GUI Chat is running">
+                                <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
+                                GUI Chat
+                            </span>
+                        ) : null}
                         {session.vendorid ? (
                             <span
                                 className="max-w-40 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"

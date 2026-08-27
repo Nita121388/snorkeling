@@ -1,26 +1,17 @@
-// 聊天来源（agent）单一注册表。
-//
-// 新增 / 移除一个 agent = 只改这里 + 后端 chatProviderForSource 加 case：
-//   - composer 的 agent 选择器从这里派生
-//   - 会话列表的 source 筛选从这里派生
-// 不再有“pi/codex/claude”字面量散落在两处。
-import { ClaudeLogo, OpenAILogo, PiLogo } from "./controls";
+import { getWebServerEndpoint } from "@/util/endpoints";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { ClaudeLogo, OpenAILogo, PiLogo } from "./controls";
 
-// ponytail: available 暂由前端写死。后端若提供 /capabilities（返回可用源清单），
-// 应在此用其结果覆盖 available，做到“实现后端即自动可用”，无需手动翻 true。
 export const CHAT_SOURCES = [
-    { id: "pi", label: "Pi", available: true, icon: <PiLogo />, dotClass: "bg-source-pi" },
-    { id: "codex", label: "Codex", available: false, icon: <OpenAILogo />, dotClass: "bg-source-codex" },
-    { id: "claude", label: "Claude Code", available: false, icon: <ClaudeLogo />, dotClass: "bg-source-claude" },
-] as const;
-
-export type ChatSourceId = (typeof CHAT_SOURCES)[number]["id"];
+    { id: "pi", label: "Pi", icon: <PiLogo />, dotClass: "bg-source-pi" },
+    { id: "codex", label: "Codex", icon: <OpenAILogo />, dotClass: "bg-source-codex" },
+    { id: "claude", label: "Claude Code", icon: <ClaudeLogo />, dotClass: "bg-source-claude" },
+] satisfies readonly ChatSourceDef[];
 
 export interface ChatSourceDef {
-    id: ChatSourceId;
+    id: string;
     label: string;
-    available: boolean; // 后端 chatProviderForSource 是否实现（今天只有 pi）
     icon?: ReactNode;
     dotClass?: string; // 会话列表中来源色点的 CSS 类
 }
@@ -28,7 +19,51 @@ export interface ChatSourceDef {
 export const defaultChatSource = (): ChatSourceDef => CHAT_SOURCES[0];
 
 export const getChatSource = (id: string): ChatSourceDef =>
-    CHAT_SOURCES.find((s) => s.id === id) ?? defaultChatSource();
+    CHAT_SOURCES.find((s) => s.id === id) ?? (id ? { id, label: id } : defaultChatSource());
 
-export const isSourceAvailable = (id: string): boolean =>
-    !!CHAT_SOURCES.find((s) => s.id === id)?.available;
+export type AvailableChatSourceDef = ChatSourceDef & { available: boolean };
+
+export function chatSourcesForAvailability(availableSources: ReadonlySet<string>): AvailableChatSourceDef[] {
+    const knownSources = new Set(CHAT_SOURCES.map((source) => source.id));
+    return [
+        ...CHAT_SOURCES,
+        ...[...availableSources]
+            .filter((source) => !knownSources.has(source))
+            .sort()
+            .map((source) => ({ id: source, label: source })),
+    ].map((source) => ({ ...source, available: availableSources.has(source.id) }));
+}
+
+export async function fetchChatSourceIds(
+    endpoint = `${getWebServerEndpoint()}/api/aisessions-chat`
+): Promise<string[]> {
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+        throw new Error(`chat source list ${response.status}: ${response.statusText}`);
+    }
+    const body = (await response.json()) as { sources?: Array<{ source?: unknown }> };
+    return (body.sources ?? []).flatMap((item) => (typeof item.source === "string" ? [item.source] : []));
+}
+
+export function useChatSourceAvailability(): ReadonlySet<string> {
+    const [availableSources, setAvailableSources] = useState<ReadonlySet<string>>(
+        () => new Set([defaultChatSource().id])
+    );
+
+    useEffect(() => {
+        let cancelled = false;
+        void fetchChatSourceIds()
+            .then((sources) => {
+                if (!cancelled) setAvailableSources(new Set(sources));
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    return availableSources;
+}
+
+export const isSourceAvailable = (id: string, availableSources: ReadonlySet<string>): boolean =>
+    availableSources.has(id);

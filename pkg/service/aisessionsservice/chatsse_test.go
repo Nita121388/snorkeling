@@ -68,3 +68,15 @@ func TestChatStreamHandler_RejectsBadSource(t *testing.T) {
 		t.Fatalf("expected 400 for unknown source, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
+
+func TestChatStreamHandler_ListsAvailableSources(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/aisessions-chat", nil)
+	rec := httptest.NewRecorder()
+	AISessionsChatStreamHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"source":"pi"`) {
+		t.Fatalf("source list did not include pi: %s", rec.Body.String())
+	}
+}

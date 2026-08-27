@@ -4,6 +4,7 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
+import { getWebServerEndpoint } from "@/util/endpoints";
 import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton, CopyTextButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
@@ -20,9 +21,9 @@ import {
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
-import { defaultChatSource, getChatSource, isSourceAvailable } from "./sources";
-import { type ChatEvent } from "./use-chat-stream";
-import { LiveTurnBlock, useLiveTurn } from "./use-live-turn";
+import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
+import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
+import { LiveTurnBlock, useLiveTurns } from "./use-live-turn";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./session-outline-rail";
 
@@ -34,48 +35,9 @@ import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./s
  * ponytail: no project picker yet — pi spawns with its default cwd. Upgrade
  * path is the project selector from the M3 New Agent GUI work.
  */
-export function NewChatPane({ onBound }: { onBound: (sessionId: string) => void }) {
-    // 新会话的 source 选择：在发送首条消息前可切换 agent，之后由后端按所选 source 落地。
-    const [composeSource, setComposeSource] = useState<string>(() => defaultChatSource().id);
-    // 首条消息的流式过程留在本面板看完，turn 结束后再切到已绑定的会话详情
-    // （提前切换会卸载 composer 的 SSE 连接，当轮内容就丢了）。
-    const boundIdRef = useRef("");
-    const { liveTurn, handleChatEvent } = useLiveTurn();
-    return (
-        <div className="flex h-full min-w-0 flex-1 flex-col bg-bg">
-            <div className="flex min-h-0 flex-1 flex-col justify-center px-6">
-                <div className="mx-auto w-full max-w-md text-center">
-                    {liveTurn != null ? (
-                        <div className="mb-4 text-left">
-                            <LiveTurnBlock turn={liveTurn} />
-                        </div>
-                    ) : (
-                        <>
-                            <div className="mb-2 text-sm font-medium text-primary">开始新对话</div>
-                            <div className="text-xs leading-5 text-secondary">
-                                输入第一条消息后 pi 会自动创建会话，完成后会出现在左侧列表中。
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-            <ChatComposer
-                source={composeSource}
-                sessionId=""
-                onSourceChange={setComposeSource}
-                onEvent={(evt) => {
-                    handleChatEvent(evt);
-                    if (evt.type === "session_state" && evt.state?.sessionId) {
-                        boundIdRef.current = String(evt.state.sessionId);
-                    }
-                    if ((evt.type === "turn_end" || evt.type === "turn_failed") && boundIdRef.current) {
-                        onBound(boundIdRef.current);
-                    }
-                }}
-            />
-        </div>
-    );
-}
+// 新会话（detail == null）现由统一的 SessionDetailPane 处理：组件常驻持有 live turn，
+// 首条消息流式内容内联渲染、绑定落地后无缝替换为 canonical，不再有居中浮卡 / loading 闪烁。
+
 import {
     buildSessionDetailTimeline,
     formatDateTimeToSecond,
@@ -94,6 +56,7 @@ const OutlineTooltipPreviewLength = 1800;
 const ToolCallPreviewLength = 1200;
 const UserLinesPageSize = 8;
 const UserLinesSearchLimit = 50;
+const NewChatLiveTurnKey = "__new-chat-live-turn__";
 
 function sourceDotClass(source: string): string {
     return getChatSource(source).dotClass ?? "bg-secondary";
@@ -243,9 +206,13 @@ export function SessionDetailPane({
     deleting,
     onClose,
     onExpandSessionList,
+    onBound,
+    onRunningSessionIdsChange,
+    isNewChat = false,
 }: {
     model: SessionDetailController;
     detail: SessionDetail | null;
+    isNewChat?: boolean;
     loading: boolean;
     deltaLoading?: boolean;
     toolCallsLoading: boolean;
@@ -254,7 +221,11 @@ export function SessionDetailPane({
     onClose?: () => void;
     /** 会话列表收起时，头栏行首展示「展开列表」按钮（左右同行，非悬浮叠加） */
     onExpandSessionList?: () => void;
+    /** 新会话收到真实 session id 后据此绑定占位 session（由 aisessions.tsx 传入） */
+    onBound?: (sessionId: string) => void;
+    onRunningSessionIdsChange?: (sessionIds: ReadonlySet<string>) => void;
 }) {
+    const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
     const [noteCollapsed, setNoteCollapsed] = useState(true);
     const [outlineOpen, setOutlineOpen] = useState(false);
@@ -266,6 +237,13 @@ export function SessionDetailPane({
     const [titleDraft, setTitleDraft] = useState("");
     // 实时 agent 模型（来自聊天 session_state 事件，头栏药丸 chip 展示）
     const [chatAgentModel, setChatAgentModel] = useState("");
+    // 新会话（detail == null）使用的 agent 选择；绑定后由后端按所选 source 落地。
+    const [composeSource, setComposeSource] = useState<string>(() => defaultChatSource().id);
+    // 新会话首条消息流式期间暂存后端回派的 sessionId。
+    const boundRef = useRef("");
+    const newChatTurnRef = useRef(false);
+    const [newChatTurnFinished, setNewChatTurnFinished] = useState(false);
+    const wasNewChatRef = useRef(false);
     // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时默认极简 topbar（对齐原型）
     const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
         try {
@@ -279,6 +257,8 @@ export function SessionDetailPane({
     });
     // 搜索工具栏（第二行）默认隐藏，点 🔍 展开
     const [searchExpanded, setSearchExpanded] = useState(false);
+    // 上滚离开底部时浮出「跳到最新」胶囊（流式吸底/回到底部则收起）
+    const [showJumpPill, setShowJumpPill] = useState(false);
     // 用户在本 session 是否主动动过 Header 折叠（不写 localStorage，切 session 重置）
     const userTouchedHeaderRef = useRef(false);
     // 是否已有持久化偏好（影响自适应是否生效）
@@ -316,6 +296,15 @@ export function SessionDetailPane({
     const noteSaving = noteSaveStatus === "saving";
     const trimmedNoteDraft = noteDraft.trim();
     const refreshing = loading || deltaLoading || toolCallsLoading;
+
+    useEffect(() => {
+        if (isNewChat && !wasNewChatRef.current) {
+            boundRef.current = "";
+            newChatTurnRef.current = false;
+            setNewChatTurnFinished(false);
+        }
+        wasNewChatRef.current = isNewChat;
+    }, [isNewChat]);
 
     // 切换会话时退出改名态，避免把草稿写进别的会话
     useEffect(() => {
@@ -488,8 +477,34 @@ export function SessionDetailPane({
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
     // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
-    const { liveTurn, handleChatEvent: handleLiveTurnEvent, clearLiveTurn } = useLiveTurn();
+    const {
+        liveTurns,
+        startLiveTurn,
+        handleChatEvent: handleLiveTurnEvent,
+        clearLiveTurn,
+        moveLiveTurn,
+        flushLiveTurn,
+    } = useLiveTurns();
+    const {
+        statuses: chatStreamStatuses,
+        send: sendChatStream,
+        steer: steerChatStream,
+        abort: abortChatStream,
+        move: moveChatStream,
+    } = useChatStreams();
+    const chatEndpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
+    const activeLiveTurnKey = summary?.id || (isNewChat ? boundRef.current || NewChatLiveTurnKey : "");
+    const liveTurn = liveTurns[activeLiveTurnKey] ?? null;
+    const activeChatStreamStatus = chatStreamStatuses[activeLiveTurnKey] ?? "idle";
+    const turnIdBySessionRef = useRef(new Map<string, string>());
+    const activeSessionIdRef = useRef("");
     const nearBottomRef = useRef(true);
+    activeSessionIdRef.current = summary?.id ?? "";
+
+    useEffect(() => {
+        const sessionIds = new Set(Object.keys(liveTurns).filter((key) => key !== NewChatLiveTurnKey));
+        onRunningSessionIdsChange?.(sessionIds);
+    }, [liveTurns, onRunningSessionIdsChange]);
 
     // 流式期间跟随滚动：仅当用户本就停在底部附近时才自动吸底。
     useEffect(() => {
@@ -516,28 +531,93 @@ export function SessionDetailPane({
         },
         [model, showToolCalls, summary]
     );
+    const requestDetailDeltaRef = useRef(requestDetailDelta);
+    requestDetailDeltaRef.current = requestDetailDelta;
+
+    // 新会话的正式详情可能先于 SSE 结束到达，必须等本轮结束再替换临时内容。
+    useEffect(() => {
+        const sessionId = boundRef.current;
+        if (newChatTurnRef.current && newChatTurnFinished && detail?.summary?.id === sessionId) {
+            void requestDetailDelta("bottom").finally(() => clearLiveTurn(sessionId));
+            newChatTurnRef.current = false;
+            setNewChatTurnFinished(false);
+        }
+    }, [detail?.summary?.id, newChatTurnFinished, clearLiveTurn, requestDetailDelta]);
 
     const handleChatEvent = useCallback(
-        (evt: ChatEvent) => {
-            if (evt.type === "session_state" && evt.state?.model) {
-                const m = evt.state.model;
-                setChatAgentModel(String(m.name || m.id || ""));
+        (evt: ChatEvent, streamSessionId: string) => {
+            let key = streamSessionId || boundRef.current || NewChatLiveTurnKey;
+            if (evt.type === "session_state") {
+                if (evt.state?.model) {
+                    const m = evt.state.model;
+                    setChatAgentModel(String(m.name || m.id || ""));
+                }
+                // 新会话：后端在首条消息后回派真实 sessionId，暂存待 turn_end 绑定。
+                if (isNewChat && evt.state?.sessionId && boundRef.current === "") {
+                    boundRef.current = String(evt.state.sessionId);
+                    key = boundRef.current;
+                    moveLiveTurn(NewChatLiveTurnKey, key);
+                    moveChatStream(NewChatLiveTurnKey, key);
+                    newChatTurnRef.current = true;
+                    setNewChatTurnFinished(false);
+                    onBound?.(boundRef.current);
+                }
                 return;
             }
+
+            const eventTurnId = evt.turnId?.trim() ?? "";
+            const currentTurnId = turnIdBySessionRef.current.get(key) ?? "";
+            if (evt.type === "turn_start" && eventTurnId !== "") {
+                turnIdBySessionRef.current.set(key, eventTurnId);
+            } else if (eventTurnId !== "" && currentTurnId !== "" && eventTurnId !== currentTurnId) {
+                return;
+            }
+
             if (evt.type === "turn_end" || evt.type === "turn_failed") {
-                // 先刷新正式数据，落地后再移除临时流式块，避免先清后加载的空窗。
-                void requestDetailDelta("bottom").finally(clearLiveTurn);
+                flushLiveTurn(key);
+                turnIdBySessionRef.current.delete(key);
+                if (newChatTurnRef.current) {
+                    setNewChatTurnFinished(true);
+                    return;
+                }
+                if (activeSessionIdRef.current === key) {
+                    void requestDetailDeltaRef.current("bottom").finally(() => clearLiveTurn(key));
+                } else {
+                    clearLiveTurn(key);
+                }
                 return;
             }
-            handleLiveTurnEvent(evt);
+            handleLiveTurnEvent(key, evt);
         },
-        [requestDetailDelta, clearLiveTurn, handleLiveTurnEvent]
+        [clearLiveTurn, flushLiveTurn, handleLiveTurnEvent, isNewChat, moveChatStream, moveLiveTurn, onBound]
     );
+
+    const handleChatSend = useCallback(
+        (body: ChatRequestBody) => {
+            const key = summary?.id || boundRef.current || NewChatLiveTurnKey;
+            turnIdBySessionRef.current.delete(key);
+            startLiveTurn(key);
+            sendChatStream(key, chatEndpoint, body, handleChatEvent);
+        },
+        [chatEndpoint, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
+    );
+
+    const handleChatSteer = useCallback(
+        (body: ChatRequestBody) => steerChatStream(chatEndpoint, body),
+        [chatEndpoint, steerChatStream]
+    );
+
+    const handleChatAbort = useCallback(() => {
+        abortChatStream(activeLiveTurnKey);
+        handleChatEvent({ type: "turn_end" }, activeLiveTurnKey);
+    }, [abortChatStream, activeLiveTurnKey, handleChatEvent]);
 
     const handleDetailScroll = useCallback(() => {
         const node = detailScrollRef.current;
         if (node != null) {
             nearBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
+            // 上滚离开底部 → 浮出「跳到最新」胶囊；流式吸底 / 回到底部则收起。
+            setShowJumpPill(!nearBottomRef.current && (readableMessages.length > 0 || liveTurn != null));
         }
         if (deltaLoading || loading || model.loadDetailDelta == null || bottomDeltaRequestedRef.current) {
             return;
@@ -777,10 +857,10 @@ export function SessionDetailPane({
         return () => window.clearTimeout(handle);
     }, [noteCollapsed, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
 
-    if (loading && detail == null) {
+    if (loading && detail == null && liveTurn == null) {
         return <EmptyState text="Loading detail..." />;
     }
-    if (detail == null) {
+    if (detail == null && !isNewChat) {
         return <EmptyState text="Select a session to view details." />;
     }
     const noteStatusText =
@@ -806,7 +886,8 @@ export function SessionDetailPane({
                     headerCollapsed ? "flex h-[46px] items-center border-b border-border px-3" : "border-b border-border/70 p-3"
                 )}
             >
-                {headerCollapsed ? (
+                {summary != null ? (
+                headerCollapsed ? (
                     // 极简 topbar：46px 固定高，标题 + 药丸 chips + 四键图标组（对齐原型）
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                         {onExpandSessionList ? (
@@ -1222,6 +1303,19 @@ export function SessionDetailPane({
                             />
                         </div>
                     </div>
+                )
+                ) : (
+                    <div className="flex h-[46px] items-center gap-2 border-b border-border px-3">
+                        {onExpandSessionList ? (
+                            <IconButton icon="fa-chevron-right" label="Expand sessions list" onClick={onExpandSessionList} className="mr-1 shrink-0" />
+                        ) : null}
+                        <div className="min-w-0 flex-1 truncate text-sm font-medium text-primary">New Chat</div>
+                        <span className={cn("inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary")}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary == null ? composeSource : summary.source))} />
+                            {getChatSource(summary == null ? composeSource : summary.source).label}
+                        </span>
+                        <IconButton icon={outlineOpen ? "fa-chevron-right" : "fa-list"} label={outlineOpen ? "Collapse outline" : "Open outline"} className={cn(outlineOpen && "border-accent bg-accent/10 text-accent")} onClick={() => setOutlineOpen((c) => !c)} />
+                    </div>
                 )}
             </div>
             <div className="relative min-h-0 flex-1">
@@ -1306,21 +1400,30 @@ export function SessionDetailPane({
                                 className="h-full min-h-0 overflow-auto p-3 pb-10"
                                 onScroll={handleDetailScroll}
                             >
-                                {detailMessages.length === 0 ? (
-                                    <EmptyState text="No readable messages." />
+                                {detailMessages.length === 0 && liveTurn == null ? (
+                                    isNewChat ? (
+                                        <div className="px-1 py-10">
+                                            <div className="text-sm font-medium text-primary">开始新对话</div>
+                                            <div className="mt-1 text-xs leading-5 text-secondary">
+                                                输入第一条消息后 pi 会自动创建会话，完成后会出现在左侧列表中。
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <EmptyState text="No readable messages." />
+                                    )
                                 ) : (
                                     <div>
                                         <div className="flex items-center justify-end gap-2 text-xs text-secondary">
-                                            {hasPreviousMessages ? (
+                                            {detail != null && hasPreviousMessages ? (
                                                 <button
                                                     className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
                                                     onClick={loadPreviousMessages}
                                                 >
                                                     Load more
                                                 </button>
-                                            ) : (
+                                            ) : detail != null ? (
                                                 <div className="text-xxs uppercase text-secondary">Start reached</div>
-                                            )}
+                                            ) : null}
                                         </div>
                                         {showToolCalls && !toolsLoaded ? (
                                             <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
@@ -1372,13 +1475,44 @@ export function SessionDetailPane({
                                     </span>
                                 </div>
                             ) : null}
+                            {showJumpPill && !deltaLoading ? (
+                                <button
+                                    type="button"
+                                    className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border/60 bg-panel/80 px-3 py-1.5 text-xxs text-secondary shadow-lg backdrop-blur-sm hover:text-primary"
+                                    onClick={() => {
+                                        const node = detailScrollRef.current;
+                                        if (node != null) node.scrollTop = node.scrollHeight;
+                                        setShowJumpPill(false);
+                                    }}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <i className="fa-sharp fa-solid fa-arrow-down" />
+                                        跳到最新
+                                    </span>
+                                </button>
+                            ) : null}
                         </div>
-                        {summary != null && summary.id != null && isSourceAvailable(summary.source) ? (
+                        {summary != null && summary.id != null && isSourceAvailable(summary.source, availableChatSources) ? (
                             <ChatComposer
                                 source={summary.source}
                                 sessionId={summary.id}
+                                availableSources={availableChatSources}
                                 projectPath={summary.projectPath}
-                                onEvent={handleChatEvent}
+                                streamStatus={activeChatStreamStatus}
+                                onSend={handleChatSend}
+                                onSteer={handleChatSteer}
+                                onAbort={handleChatAbort}
+                            />
+                        ) : isNewChat ? (
+                            <ChatComposer
+                                source={composeSource}
+                                sessionId=""
+                                availableSources={availableChatSources}
+                                onSourceChange={setComposeSource}
+                                streamStatus={activeChatStreamStatus}
+                                onSend={handleChatSend}
+                                onSteer={handleChatSteer}
+                                onAbort={handleChatAbort}
                             />
                         ) : null}
                     </div>
