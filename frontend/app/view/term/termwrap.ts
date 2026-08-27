@@ -304,11 +304,12 @@ export class TermWrap {
                         }
                         this.repaintScrollTimer = setTimeout(() => {
                             this.repaintScrollTimer = null;
-                            if (this.terminal.isDisposed) {
-                                return;
+                            try {
+                                console.log("[termwrap] repaint transaction complete, scrolling to bottom");
+                                this.terminal.scrollToBottom();
+                            } catch {
+                                // terminal already disposed during the 20ms delay — safe to ignore
                             }
-                            console.log("[termwrap] repaint transaction complete, scrolling to bottom");
-                            this.terminal.scrollToBottom();
                         }, 20);
                     }
                 }

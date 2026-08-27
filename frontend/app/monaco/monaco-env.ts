@@ -67,7 +67,13 @@ export function loadMonaco() {
         inherit: true,
         rules: [],
         colors: {
-            "editor.background": "#fefefe",
+            // ponytail: transparent so the editor inherits the app's current light theme background
+            // (mirrors wave-theme-dark). No solid color needed; follows window:bgcolor automatically.
+            "editor.background": "#00000000",
+            // light-tint backplates for sticky scroll / minimap so they read as distinct panels
+            // (parity with wave-theme-dark's #00000055 / #00000077, inverted for light)
+            "editorStickyScroll.background": "#ffffff55",
+            "minimap.background": "#ffffff77",
             focusBorder: "#00000000",
         },
     });

@@ -97,3 +97,31 @@ describe("PreviewModel Obsidian header actions", () => {
         expect(flattenHeaderTitles(viewText)).not.toContain("Open in Obsidian");
     });
 });
+
+describe("PreviewModel path-jump modal", () => {
+    it("toggleOpenFileModal opens and closes the address modal", () => {
+        const model = makePreviewModel("local");
+
+        expect(globalStore.get(model.openFileModal)).toBe(false);
+        model.toggleOpenFileModal();
+        expect(globalStore.get(model.openFileModal)).toBe(true);
+        model.toggleOpenFileModal();
+        expect(globalStore.get(model.openFileModal)).toBe(false);
+    });
+
+    it("toggle respects the reopen delay after close", () => {
+        vi.useFakeTimers();
+        try {
+            const model = makePreviewModel("local");
+            model.toggleOpenFileModal();
+            model.toggleOpenFileModal(); // close → arms 200ms reopen delay
+            model.toggleOpenFileModal(); // inside delay window → ignored
+            expect(globalStore.get(model.openFileModal)).toBe(false);
+            vi.advanceTimersByTime(250);
+            model.toggleOpenFileModal();
+            expect(globalStore.get(model.openFileModal)).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

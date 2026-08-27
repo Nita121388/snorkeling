@@ -3,20 +3,26 @@
 
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
-import { shouldHideMarkdownElementForCollapsedHeadings } from "@/app/element/markdown-collapse";
+import {
+    computeCollapsedHiddenFlags,
+    findCollapsedScrollPinIndex,
+} from "@/app/element/markdown-collapse";
 import {
     InlineEditOverlay,
     isSelectingRange,
     makeInlineEditKeydown,
     deleteBlockRange,
     replaceSourceRange,
-    spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
+    inlineEditDebug,
+    makeListItemInsertMarker,
+    splitListItemDraft,
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
+import { renumberOrderedListBlockAtLine } from "@/app/element/markdown-ordered-list";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -72,6 +78,7 @@ import {
     parseMarkdownWikiLink,
 } from "../view/preview/file-link-navigation";
 import { IconButton } from "./iconbutton";
+import { buildCopyContextText } from "./selection-copy-overlay";
 import "./markdown.scss";
 
 function isLiveScrollDebugEnabled(): boolean {
@@ -245,6 +252,55 @@ function sourceLineAttrs(sourceLine?: number, endLine?: number): Record<string, 
 // a one-line `srcLineAttrs(props)` spread, no need to remember the end-attr fallback.
 function srcLineAttrs(props: any): Record<string, number> {
     return sourceLineAttrs(getSourceLine(props), getSourceLineEnd(props));
+}
+
+// Pure planner for the block-edge "+" buttons on a LIST ITEM (ordered "N." or bullet "-/*").
+//
+// List items must NOT use the generic blank-row insert: blank lines inside a list render as
+// nothing (remark blank-line spacers are injected between top-level blocks only), so the
+// follow-up inline editor could never anchor on them — every mid-list insert silently
+// reverted ("+ button does nothing" bug). Instead we insert a REAL sibling marker row
+// ("4. " / "- ") which renders as a genuine empty <li>, giving the editor a real anchor.
+//
+// Callers guarantee startLine is the <li>'s FIRST source line (el.dataset.sourceLine), so no
+// upward scan is needed — we only measure how far the item extends downward so "below"
+// lands after the WHOLE item (multi-line / soft-broken items), never mid-item.
+// Returns null when the line has no list marker — caller falls back to the generic insert.
+export function computeListInsertAnchor(
+    text: string,
+    startLine: number,
+    mode: "before" | "after"
+): { insertAtLine: number; prefillMarker: string } | null {
+    const sourceLines = text.split(/\r\n|\n/);
+    const markerLine = sourceLines[Math.max(0, Math.min(startLine - 1, sourceLines.length - 1))] ?? "";
+    const markerMatch = markerLine.match(/^(\s*)(\d+[.)]|[-+*])(\s+)/);
+    if (markerMatch == null) {
+        return null;
+    }
+    const indent = markerMatch[1].length;
+    // Item extends over following lines until a sibling/shallower marker, a heading, or
+    // (after a blank run) shallower-or-equal content — mirrors makeOrderedListItem's rules.
+    let endLine = startLine;
+    let pendingBlank = false;
+    for (let idx = startLine; idx < sourceLines.length; idx++) {
+        const line = sourceLines[idx];
+        if (line.trim() === "") {
+            pendingBlank = true;
+            continue;
+        }
+        if (/^#{1,6}\s+/.test(line.trimStart())) break;
+        const leading = line.match(/^\s*/)?.[0].length ?? 0;
+        if (/^(\s*)(\d+[.)]|[-+*])(\s+)/.test(line) && leading <= indent) break;
+        if (pendingBlank && leading <= indent) break;
+        pendingBlank = false;
+        endLine = idx + 1;
+    }
+    // Marker derives from the ITEM'S OWN first line: a multi-line item's continuation rows
+    // carry no marker, so anchoring on them yielded an empty prefill.
+    return {
+        insertAtLine: mode === "before" ? startLine : endLine + 1,
+        prefillMarker: makeListItemInsertMarker(markerLine, mode),
+    };
 }
 
 const OrderedListContext = createContext(false);
@@ -661,6 +717,8 @@ const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: Code
         </pre>
     );
 };
+
+const MarkdownAnchorSwitchDelayMs = 180;
 
 const MarkdownSource = ({
     props,
@@ -1082,6 +1140,10 @@ const Markdown = ({
     const previousTransformedTextRef = useRef<string | null>(null);
     const savedScrollTopAppliedRef = useRef(false);
     const scrollTopWriteRafRef = useRef<number | null>(null);
+    // 上次应用到 DOM 的 collapsedHeadings 引用：用户 toggle 时 Set 引用变化，据此区分
+    // 「真正的折叠/展开切换」（需要钉住阅读位置）与「remount/文本变化后的重新同步」
+    // （只重新应用 class，不动滚动位置——后者由 transformedText 恢复逻辑负责）。
+    const collapsedHeadingsPrevRef = useRef<Set<string> | null>(null);
     const [initialScrollReadyKey, setInitialScrollReadyKey] = useState<string | null>(null);
     const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
     // Controlled seeding: when a caller persists collapse across remounts it passes a snapshot
@@ -1132,14 +1194,18 @@ const Markdown = ({
         return inst.elements().viewport;
     }, []);
 
+    // Ref bridge: the commit funnel needs the ACTIVE edit session (to decide list renumbering),
+    // but useInlineEdit needs onCommit — a declaration cycle. The stable callback delegates to
+    // an impl ref assigned right after the hook returns; the impl closes over the current
+    // inlineEdit.editSession each render.
+    const handleInlineEditCommitImplRef = useRef<(newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => void>(
+        () => {}
+    );
     const handleInlineEditCommit = useCallback(
-        (newFullText: string) => {
-            if (!onInlineEditCommit) {
-                return;
-            }
-            onInlineEditCommit(newFullText);
+        (newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => {
+            handleInlineEditCommitImplRef.current(newFullText, opts);
         },
-        [onInlineEditCommit]
+        []
     );
 
     const inlineEdit = useInlineEdit({
@@ -1148,6 +1214,23 @@ const Markdown = ({
         getViewportEl,
         resetKey: onInlineEditCommit,
     });
+
+    handleInlineEditCommitImplRef.current = (newFullText, opts) => {
+        if (!onInlineEditCommit) {
+            return;
+        }
+        let nextText = newFullText;
+        // After ANY inline edit, if the edited line resolves inside (or adjacent to) an ordered
+        // list block, renumber that block so SOURCE numbering matches what remark renders
+        // (CommonMark silently renumbers, leaving stale wrong numbers like 1,2,2 in the file).
+        // Scoped to one block + fence-aware; a no-op for edits outside any list.
+        const renumberAnchorLine =
+            opts?.renumberOrderedListFromLine ?? inlineEdit.editSession?.startLine ?? null;
+        if (renumberAnchorLine != null) {
+            nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
+        }
+        onInlineEditCommit(nextText);
+    };
 
     // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
     // to its enclosing [data-source-line] block, promoting <LI> to its parent <OL>/<UL> so the
@@ -1171,9 +1254,14 @@ const Markdown = ({
                 return null;
             }
             if (target.tagName === "LI") {
-                const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
-                if (parentList != null && (parentList.tagName === "OL" || parentList.tagName === "UL")) {
-                    target = parentList;
+                // Per-item granularity (Obsidian-style): clicking one item edits THAT item's
+                // source lines. Only items with nested sublists promote to the whole list, so
+                // the editor never tears a nested list open.
+                if (target.querySelector("ol, ul") != null) {
+                    const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
+                    if (parentList != null && (parentList.tagName === "OL" || parentList.tagName === "UL")) {
+                        target = parentList;
+                    }
                 }
             }
             const lineAttr = target.dataset.sourceLine;
@@ -1207,7 +1295,7 @@ const Markdown = ({
                 target.classList.contains("heading")
             ) {
                 blockKind = "h";
-            } else if (tag === "OL" || tag === "UL") {
+            } else if (tag === "OL" || tag === "UL" || tag === "LI") {
                 blockKind = "list";
             } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
                 blockKind = "table";
@@ -1425,12 +1513,32 @@ const Markdown = ({
     }, []);
     // Shared enter/leave handlers for C, A and B: hovering any of them keeps the block anchor
     // alive (cancelHideInsert, in case the pointer is crossing from the block) and reveals A/B.
+    // While the pointer is on the action column, the anchor is FROZEN — moving across adjacent
+    // list items must never re-anchor (the +/- buttons sit right at item boundaries, so an
+    // instant switch made them impossible to click).
+    // Hover-intent: switching the anchor to a DIFFERENT block requires the pointer to dwell on
+    // it briefly (see MarkdownAnchorSwitchDelayMs). Fast transit (e.g. beelining from item text
+    // toward a + button across the neighbouring item) must not yank the buttons away mid-move.
+    const pendingAnchorSwitchRef = useRef<number | null>(null);
+    const cancelPendingAnchorSwitch = useCallback(() => {
+        if (pendingAnchorSwitchRef.current != null) {
+            window.clearTimeout(pendingAnchorSwitchRef.current);
+            pendingAnchorSwitchRef.current = null;
+        }
+    }, []);
+    const pointerOnGripActionsRef = useRef(false);
     const handleGripEnter = useCallback(() => {
         cancelHideInsert();
         cancelHideGrip();
+        cancelPendingAnchorSwitch();
+        // Freeze the anchor while the pointer is genuinely over the action column. Released on
+        // mouseleave (handleGripLeave) or as soon as a click commits an action, so a click that
+        // opens the editor doesn't leave the lock stuck true and silently block every later hover.
+        pointerOnGripActionsRef.current = true;
         setGripOpen(true);
-    }, [cancelHideInsert, cancelHideGrip]);
+    }, [cancelHideInsert, cancelHideGrip, cancelPendingAnchorSwitch]);
     const handleGripLeave = useCallback(() => {
+        pointerOnGripActionsRef.current = false;
         scheduleHideGrip();
     }, [scheduleHideGrip]);
 
@@ -1505,21 +1613,83 @@ const Markdown = ({
     // Helper: wait for the markdown preview to re-render after a commit, then open a blank
     // editor at `newLine` (used by handleInsertClick and handleEnterSplit). The revert callback
     // is forwarded so Esc can undo the whole insert.
+    //
+    // The committed text reaches ReactMarkdown through an async atom, so the re-render carrying
+    // the pre-inserted row can land later than two rAFs. Anchoring on the STALE DOM used to
+    // resolve [data-source-line=N] to the whole <ol> and made beginEdit slice the entire list
+    // as the placeholder draft — the source of duplicated items after clicking insert. So:
+    // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
+    // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline") => {
-            // Give ReactMarkdown time to commit the new text to the DOM (one frame is usually
-            // sufficient; a second rAF guards against double-batched concurrent renders).
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    const viewport = getViewportEl();
-                    const el =
-                        viewport &&
-                        viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${newLine}"]`);
-                    if (el != null) {
-                        inlineEdit.beginEdit("p", newLine, el, 0, revert, placeholder);
-                    }
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean) => {
+            let attempts = 0;
+            // Safety net for exhausted retries: the caller committed an insert/split but we
+            // could never open its follow-up editor (re-render landed too late, viewport gone,
+            // …). Leaving the PREVIOUS session running here is what produced "pressed Enter and
+            // it all went blank": the stale session keeps its block .inline-edit-hidden with no
+            // textarea over it, and further typing lands in a draft bound to the WRONG line
+            // range (glued text, duplicated rows). Instead: undo the whole insert via the
+            // caller-wired revert, then close whatever session remains — worst case the gesture
+            // is a visible no-op the user can safely retry.
+            const giveUp = () => {
+                inlineEditDebug("focusEditedLine: retries exhausted — closing stale session", {
+                    newLine,
+                    attempts,
+                    hasRevert: revert != null,
                 });
-            });
+                revert?.();
+                inlineEdit.cancel();
+            };
+            const tryOpen = () => {
+                attempts++;
+                const viewport = getViewportEl();
+                const el =
+                    viewport?.querySelector<HTMLElement>(
+                        `.markdown-render-root [data-source-line="${newLine}"]`
+                    ) ?? null;
+                if (el == null || el.closest("img") != null) {
+                    if (attempts < 10) requestAnimationFrame(tryOpen);
+                    else giveUp();
+                    return;
+                }
+                // A list element claiming the target row means the DOM is still the pre-insert
+                // render — keep waiting instead of anchoring the wrong range. EXCEPTION: list
+                // inserts (prefill set) intentionally create a real sibling "N. " row that
+                // renders as an empty <li> — that li IS the correct anchor, waiting would
+                // exhaust retries and revert the whole insert ("+ does nothing" bug).
+                if (
+                    (placeholder ?? false) &&
+                    prefill == null &&
+                    (el.tagName === "OL" || el.tagName === "UL" || el.tagName === "LI")
+                ) {
+                    if (attempts < 10) requestAnimationFrame(tryOpen);
+                    else giveUp();
+                    return;
+                }
+                const opened = inlineEdit.beginEdit(
+                    "p",
+                    newLine,
+                    el,
+                    prefill != null ? prefill.length : 0,
+                    revert,
+                    placeholder,
+                    keepOnEmpty
+                );
+                if (!opened && attempts < 10) {
+                    requestAnimationFrame(tryOpen);
+                    return;
+                }
+                if (!opened) {
+                    giveUp();
+                    return;
+                }
+                if (opened && prefill != null) {
+                    // New list-item rows come pre-filled with their marker (e.g. "3. ") so the
+                    // user types straight into a real list item instead of a plain paragraph.
+                    inlineEdit.setDraftText(prefill);
+                }
+            };
+            requestAnimationFrame(() => requestAnimationFrame(tryOpen));
         },
         [getViewportEl, inlineEdit]
     );
@@ -1541,15 +1711,11 @@ const Markdown = ({
 
         // --- List: add a new item within the same list (same editor stays open) -----------
         if (session.blockKind === "list") {
-            const lineEnd = draft.indexOf("\n", pos);
-            const lineStart = draft.lastIndexOf("\n", pos) + 1;
-            const line = draft.slice(lineStart, lineEnd === -1 ? draft.length : lineEnd);
-            const prefix = (line.match(/^(\s*[-+*]\s|\s*\d+\.\s)/) || [""])[0];
-            const before = draft.slice(0, pos);
-            const after = draft.slice(pos);
-            const newDraft = before + "\n" + prefix + after;
+            // Pure helper fixes two bugs: the marker number now INCREMENTS (+1) instead of
+            // copying the current number verbatim, and a caret at line start inserts an empty
+            // sibling above instead of concatenating prefix+content (which duplicated items).
+            const { text: newDraft, newPos } = splitListItemDraft(draft, pos);
             inlineEdit.setDraftText(newDraft);
-            const newPos = pos + 1 + prefix.length; // after the newline + prefix
             // schedule after the render so setSelectionRange sticks
             requestAnimationFrame(() => {
                 ta.selectionStart = newPos;
@@ -1576,10 +1742,11 @@ const Markdown = ({
             handleInlineEditCommit(text); // restore the document to what it was before the split
         };
         handleInlineEditCommit(newFull);
-        // The split pre-inserted a single placeholder row — same commit/revert semantics as
-        // the block-edge insert buttons (see commitPlaceholderBlock), so Enter nets exactly
-        // one new block and an empty commit leaves nothing behind.
-        focusEditedLine(newLine, revert, true);
+        // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
+        // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
+        // before the split, or the next Save would persist the rollback and the typed line
+        // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
+        focusEditedLine(newLine, revert, true, undefined, true);
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
     // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
@@ -1660,15 +1827,16 @@ const Markdown = ({
     );
 
     // Resolve the BLOCK-level anchor for an insert/menu action: same lookup as
-    // resolveInsertAnchorEl, but a hovered <LI> is promoted to its parent <OL>/<UL> so
-    // insert-above/below (and the copy/duplicate/delete menu) act on the WHOLE list, never
-    // tearing a (possibly nested) list open mid-level. Mirrors resolveEditTargetFromEvent's
-    // LI→list promotion; keeping it here means the insert path and the menu path share the
-    // same block-granularity understanding of "the hovered block".
+    // resolveInsertAnchorEl. Per-item granularity: a hovered <LI> stays itself unless it has
+    // nested sublists — then promote to the parent <OL>/<UL> so insert/copy/delete never tear
+    // a nested list open. Mirrors resolveEditTargetFromEvent.
     const resolveBlockAnchorEl = useCallback(
         (line: number): HTMLElement | null => {
             const el = resolveInsertAnchorEl(line);
             if (el == null || el.tagName !== "LI") {
+                return el;
+            }
+            if (el.querySelector("ol, ul") == null) {
                 return el;
             }
             const parentList = el.parentElement?.closest<HTMLElement>("ol, ul");
@@ -1677,12 +1845,15 @@ const Markdown = ({
         [resolveInsertAnchorEl]
     );
 
-    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / duplicate / delete)
+    // --- Grip menu: click the 4-dot grip → select the block + popup (copy / copy context / duplicate / delete)
     // Resolves the current anchor block's [start..end] source range, shows a selection
     // highlight overlay over it, and opens a native context menu. Block-scoped operations are
     // applied to the markdown source via the same range helpers the editor uses.
     const handleGripMenuClick = useCallback(
         (e: React.MouseEvent) => {
+            // Releasing the hover-lock here too: opening the menu counts as leaving the grip hover.
+            pointerOnGripActionsRef.current = false;
+            cancelPendingAnchorSwitch();
             const anchor = insertAnchorRef.current;
             if (anchor == null) {
                 return;
@@ -1715,18 +1886,31 @@ const Markdown = ({
             const copyBlock = async () => {
                 await navigator.clipboard.writeText(blockSource);
             };
+            // Copy Context reuses the app-wide convention (path:line + markdown-fenced block
+            // source) so the block can be pasted into an AI prompt with its location. Falls
+            // back to "(unknown-path)" when the preview has no file path (e.g. unsaved buffer).
+            const copyContext = async () => {
+                await navigator.clipboard.writeText(
+                    buildCopyContextText(copyContextPath || "(unknown-path)", startLineRaw, blockSource)
+                );
+            };
+            // Per-item ops on a list change the sibling count — renumber the containing list
+            // block so source numbering stays consistent with what renders.
+            const isListItemBlock = el.tagName === "LI" || el.tagName === "OL" || el.tagName === "UL";
+            const renumberOpts = isListItemBlock ? { renumberOrderedListFromLine: startLineRaw } : undefined;
             const duplicateBlock = () => {
                 const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
-                handleInlineEditCommit(newFull);
+                handleInlineEditCommit(newFull, renumberOpts);
             };
             const deleteBlock = () => {
                 const newFull = deleteBlockRange(text, startLineRaw, endLine);
-                handleInlineEditCommit(newFull);
+                handleInlineEditCommit(newFull, renumberOpts);
                 setSelectedBlock(null);
             };
 
             const menu: ContextMenuItem[] = [
                 { label: "复制", click: () => void copyBlock() },
+                { label: "Copy Context", click: () => void copyContext() },
                 { label: "复制为副本", click: duplicateBlock },
                 { type: "separator" },
                 { label: "删除", click: deleteBlock },
@@ -1735,7 +1919,7 @@ const Markdown = ({
                 onClose: () => setSelectedBlock(null),
             });
         },
-        [resolveBlockAnchorEl, text, handleInlineEditCommit]
+        [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath, pointerOnGripActionsRef, cancelPendingAnchorSwitch]
     );
 
     const measureInsertAnchor = useCallback(() => {
@@ -1807,17 +1991,31 @@ const Markdown = ({
                 return;
             }
             cancelHideInsert();
-            // Dedupe by line: crossing <strong>/<em>/<code> boundaries inside ONE block fires
-            // mouseover repeatedly with the same [data-source-line] — a fresh {line} object
-            // every time would force a Markdown re-render mid-drag-select. React bails out
-            // when the state value is identical (same object reference), so an unchanged line
-            // must return `prev` instead of allocating a new object.
+            // Action column (grip dots / +/- buttons): freeze the anchor entirely — never
+            // switch blocks while the user is reaching for or holding the buttons.
+            if ((e.target as HTMLElement | null)?.closest(".markdown-block-grip-dots, .markdown-block-grip-action") != null) {
+                cancelPendingAnchorSwitch();
+                return;
+            }
+            if (pointerOnGripActionsRef.current) {
+                return;
+            }
             const hoverLine = Number(lineAttr);
-            setInsertAnchor((prev) => (prev != null && prev.line === hoverLine ? prev : { line: hoverLine }));
-            // Clear any active block selection when hovering a new block.
+            // Clear any active block selection when hovering a block.
             setSelectedBlock(null);
+            if (insertAnchorRef.current?.line === hoverLine) {
+                cancelPendingAnchorSwitch();
+                return;
+            }
+            // Different block: dwell briefly before re-anchoring so fast transit across a
+            // neighbouring item doesn't yank the buttons away mid-move.
+            cancelPendingAnchorSwitch();
+            pendingAnchorSwitchRef.current = window.setTimeout(() => {
+                pendingAnchorSwitchRef.current = null;
+                setInsertAnchor({ line: hoverLine });
+            }, MarkdownAnchorSwitchDelayMs);
         },
-        [cancelHideInsert, inlineEdit.editSession, onInlineEditCommit]
+        [cancelHideInsert, cancelPendingAnchorSwitch, inlineEdit.editSession, onInlineEditCommit]
     );
 
     // Measure AFTER the anchor state has been committed to a render (so insertAnchorRef is
@@ -1834,8 +2032,9 @@ const Markdown = ({
     }, [insertAnchor, measureInsertAnchor]);
 
     const handleRootMouseLeave = useCallback(() => {
+        cancelPendingAnchorSwitch();
         scheduleHideInsert();
-    }, [scheduleHideInsert]);
+    }, [cancelPendingAnchorSwitch, scheduleHideInsert]);
 
     // Re-position the insert buttons while scrolling / resizing so they track the block.
     useEffect(() => {
@@ -1854,10 +2053,16 @@ const Markdown = ({
 
     const handleInsertClick = useCallback(
         (mode: "before" | "after") => {
+            // Clicking a grip action ends the hover-lock AND cancels any in-flight anchor switch,
+            // so the buttons (showing the just-edited row) don't get stuck hidden and another
+            // block's pending switch can't fire late and yank them away.
+            pointerOnGripActionsRef.current = false;
+            cancelPendingAnchorSwitch();
             const anchor = insertAnchorRef.current;
             if (anchor == null) {
                 return;
             }
+            cancelPendingAnchorSwitch();
             // Whole-block granularity: an LI hover resolves to its parent list so inserting
             // below a nested item lands after the WHOLE list, never mid-level.
             const el = resolveBlockAnchorEl(anchor.line);
@@ -1879,7 +2084,11 @@ const Markdown = ({
             // heading / list / table / code / quote / hr would tear its structure.
             const isParagraph = el.tagName === "P" || el.classList.contains("paragraph");
             const isBlankSpacer = el.classList.contains("blank-spacer");
-            const inlineMode = isParagraph && !isBlankSpacer;
+            // List items insert as REAL list items: the new row comes pre-filled with the
+            // sibling marker (e.g. "3. ") and commits flush (no separator blanks — blanks
+            // would split the list in two).
+            const isListItem = el.tagName === "LI";
+            const inlineMode = (isParagraph && !isBlankSpacer) || isListItem;
 
             // Insert a SINGLE blank row into the document immediately (so the preview visibly
             // gains one line the moment the user clicks), remember the pre-edit text for
@@ -1888,16 +2097,34 @@ const Markdown = ({
             // blanks (flush new line), block-level anchors re-add separators as needed — so
             // one click nets exactly one new row/block, with no stray blanks left behind.
             const originalText = text;
-            const newFull = spliceBlankRow(text.split(/\r\n|\n/), startLine, endLine, mode).join("\n");
-            handleInlineEditCommit(newFull);
-            const newLine = mode === "before" ? startLine : endLine + 1;
-            focusEditedLine(newLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true);
+            const sourceLines = text.split(/\r\n|\n/);
+
+            // List items get a REAL sibling marker row ("4. " / "- ") instead of a blank line:
+            // blank rows inside a list render as nothing (remark spacers are top-level only),
+            // so the follow-up editor could never anchor and every mid-list insert silently
+            // reverted ("+ does nothing on middle items" bug). The marker row renders as an
+            // actual empty <li> the editor can own; typing fills it, commit renumbers via the
+            // usual list path.
+            const listItemAnchor = isListItem ? computeListInsertAnchor(text, startLine, mode) : null;
+            let insertAtLine: number;
+            let prefillMarker: string | undefined;
+            if (listItemAnchor != null) {
+                insertAtLine = listItemAnchor.insertAtLine;
+                prefillMarker = listItemAnchor.prefillMarker || undefined;
+            } else {
+                insertAtLine = mode === "before" ? startLine : endLine + 1;
+            }
+            const insertIdx = Math.max(0, Math.min(insertAtLine - 1, sourceLines.length));
+            const spliced = [...sourceLines];
+            spliced.splice(insertIdx, 0, prefillMarker ?? "");
+            handleInlineEditCommit(spliced.join("\n"));
+            focusEditedLine(insertAtLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
 
             setInsertAnchor(null);
             setInsertPos(null);
             setGripOpen(false);
         },
-        [handleInlineEditCommit, resolveBlockAnchorEl, text, focusEditedLine]
+        [pointerOnGripActionsRef, cancelPendingAnchorSwitch, handleInlineEditCommit, resolveBlockAnchorEl, text, focusEditedLine]
     );
 
     const inlineEditKeyDown = useMemo(
@@ -1916,6 +2143,12 @@ const Markdown = ({
         [scrollTargetText]
     );
 
+    // 折叠标题的「内容隐藏」走命令式 `.collapsed-hidden`：标题自己的 chevron/collapsed class
+    // 是声明式（React 渲染派生），而正文的隐藏是渲染后补在 DOM 上的。若 ReactMarkdown 子树
+    // 发生 remount（DOM 重建）而 collapsedHeadings/transformedText 都没变，旧 effect 就不会
+    // 重跑 → 新 DOM 上 `.collapsed-hidden` 丢失 → 标题显示「已折叠（chevron→Expand）」但内容
+    // 仍展开 → 折叠与展开样式不匹配。因此这里必须「每次提交后都同步」（useLayoutEffect 无
+    // deps）：无论 remount 还是状态变化，render 提交后立即重算，且发生在 paint 前（无闪跳）。
     const updateCollapsedHeadingVisibility = () => {
         if (!contentsOsRef.current?.osInstance()) {
             return;
@@ -1925,24 +2158,51 @@ const Markdown = ({
         if (root == null) {
             return;
         }
-        const elements = Array.from(root.children) as HTMLElement[];
-        const collapsedHeadingStack: number[] = [];
-        for (const elem of elements) {
-            const headingLevelValue = Number(elem.dataset.headingLevel);
-            const headingLevel = Number.isFinite(headingLevelValue) && headingLevelValue > 0 ? headingLevelValue : null;
-            const hidden = shouldHideMarkdownElementForCollapsedHeadings(
-                headingLevel,
-                elem.dataset.headingId ?? null,
-                collapsedHeadings,
-                collapsedHeadingStack
+        const flags = computeCollapsedHiddenFlags(
+            Array.from(root.children, (elem) => {
+                const elemEl = elem as HTMLElement;
+                const headingLevelValue = Number(elemEl.dataset.headingLevel);
+                return {
+                    level: Number.isFinite(headingLevelValue) && headingLevelValue > 0 ? headingLevelValue : null,
+                    id: elemEl.dataset.headingId ?? null,
+                };
+            }),
+            collapsedHeadings
+        );
+        // 用户实际 toggle 折叠/展开时（collapsedHeadings 引用变化）钉住阅读位置：折叠用
+        // display:none 移除章节高度，Chromium 的滚动锚定算法会挑错锚点（跳到文档顶/底）
+        // 或在锚点被隐藏后强制钳制。这里选一个「折叠后仍可见、且位于视口顶部附近」的块，
+        // 应用 class 前后测量其顶部位移，反向补偿 scrollTop，让阅读内容原地不动。
+        const isUserToggle =
+            collapsedHeadingsPrevRef.current != null && collapsedHeadingsPrevRef.current !== collapsedHeadings;
+        const viewportTop = viewport.getBoundingClientRect().top;
+        let pinIndex: number | null = null;
+        let pinOldTop = 0;
+        if (isUserToggle) {
+            const preToggleBottoms = Array.from(root.children, (elem) =>
+                (elem as HTMLElement).getBoundingClientRect().bottom
             );
-            elem.classList.toggle("collapsed-hidden", hidden);
+            pinIndex = findCollapsedScrollPinIndex(flags, preToggleBottoms, viewportTop);
+            if (pinIndex != null) {
+                pinOldTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
+            }
         }
+        Array.from(root.children).forEach((elem, i) => {
+            (elem as HTMLElement).classList.toggle("collapsed-hidden", flags[i]);
+        });
+        if (isUserToggle && pinIndex != null) {
+            const pinNewTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
+            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+            viewport.scrollTop = Math.max(0, Math.min(viewport.scrollTop + (pinNewTop - pinOldTop), maxScrollTop));
+        }
+        collapsedHeadingsPrevRef.current = collapsedHeadings;
     };
 
-    useEffect(() => {
+    // 每次提交后同步（无 deps 数组）：见 updateCollapsedHeadingVisibility 注释——折叠可见性
+    // 不能只在 collapsedHeadings/transformedText 变化时修补，remount 后必须无条件重算。
+    useLayoutEffect(() => {
         updateCollapsedHeadingVisibility();
-    }, [collapsedHeadings, transformedText]);
+    });
 
     useLayoutEffect(() => {
         const instance = contentsOsRef.current?.osInstance();
@@ -1959,12 +2219,23 @@ const Markdown = ({
             // user's live ref position, then reveal on the next animation frame once layout has
             // stabilized. visibility:hidden (vs display:none) keeps the box geometry intact so the
             // restore scrollTop value lands on the right row, the OS only skips painting the glow.
-            const prevVisibility = viewport.style.visibility;
+            // Mask exactly one frame while we snap scrollTop back. The reveal must NEVER ride
+            // on rAF alone: on a hidden/occluded window (background Electron window, minimized,
+            // fully covered by another window) rAF callbacks never run, so the viewport stayed
+            // visibility:hidden forever — the whole preview went blank after any inline edit
+            // ("typed a line, nothing renders" bug). A timeout fallback guarantees recovery on
+            // hidden pages (timers still fire, throttled to ≥1s), and restoring "" instead of
+            // the captured prevVisibility avoids re-applying a "hidden" value that an earlier
+            // interrupted cycle left behind (one stuck cycle used to poison all later ones).
+            // This effect is the only writer of inline visibility on the viewport, so "" is
+            // always the correct visible state.
             viewport.style.visibility = "hidden";
             viewport.scrollTop = lastViewportScrollTopRef.current;
-            requestAnimationFrame(() => {
-                viewport.style.visibility = prevVisibility;
-            });
+            const revealViewport = () => {
+                viewport.style.visibility = "";
+            };
+            requestAnimationFrame(revealViewport);
+            setTimeout(revealViewport, 120);
             liveScrollDebug("restore preview scroll after content update", {
                 restoredScrollTop: lastViewportScrollTopRef.current,
             });
@@ -2634,7 +2905,13 @@ const Markdown = ({
                     className={cn("content", contentClassName, shouldHideForInitialScroll && "invisible")}
                     options={{ scrollbars: { autoHide: "leave" } }}
                     events={{
-                        initialized: () => requestAnimationFrame(() => applyScrollTarget("initialized")),
+                        initialized: () =>
+                            requestAnimationFrame(() => {
+                                applyScrollTarget("initialized");
+                                // OSB 挂载前（osInstance 未 ready）的渲染里折叠可见性无从落脚，
+                                // 这里补一次强制同步，堵住「首次打开折叠内容不隐藏」的边界。
+                                updateCollapsedHeadingVisibility();
+                            }),
                         scroll: handleMarkdownScroll,
                     }}
                     // Capture-phase dblclick so we beat CollapsibleHeading's own dblclick toggle

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkling - 主持模式配置</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../_shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-head">
+  <h1>主持模式配置 — 产品讨论组</h1>
+  <p>由一个「主持人」Agent 控制发言路由、过滤和调度。三种权限模式可按需切换。</p>
+  <p class="sub2">镜像源：<code>server/src/agents/computer/daemon.ts</code>, <code>docs/COORDINATION.md</code></p>
+</div>
+
+<!-- 模式开关 -->
+<div class="demo-section">
+  <div class="section-title">
+    <i class="fa-solid fa-toggle-on" style="color:var(--accent-color)"></i>
+    开启主持模式
+    <span class="section-hint">启用后，所有消息路由将由主持人 Agent 控制</span>
+  </div>
+
+  <div class="moderator-toggle-row">
+    <label class="toggle-switch" for="moderatorSwitch">
+      <input type="checkbox" id="moderatorSwitch" checked>
+      <span class="slider"></span>
+    </label>
+    <div class="toggle-desc">
+      <span class="toggle-label" id="toggleLabel">主持模式已开启</span>
+      <span class="toggle-sub" id="toggleSub">Claude (s-1) · 路由模式</span>
+    </div>
+  </div>
+</div>
+
+<!-- 三种工作模式 -->
+<div class="demo-section" id="modeSection">
+  <div class="section-title">
+    <i class="fa-solid fa-route" style="color:var(--accent-color)"></i>
+    工作模式
+    <span class="section-hint">决定主持人如何调度群组成员</span>
+  </div>
+
+  <div class="mode-grid">
+    <label class="mode-card" data-mode="select">
+      <input type="radio" name="mode" id="modeSelect" checked>
+      <div class="mode-card-inner">
+        <div class="mode-icon">🎯</div>
+        <div class="mode-info">
+          <strong>精选模式</strong>
+          <p>主持人逐一选定 Agent 回应，确保高质量输出。适合关键决策时刻。</p>
+        </div>
+      </div>
+    </label>
+
+    <label class="mode-card" data-mode="route">
+      <input type="radio" name="mode" id="modeRoute">
+      <div class="mode-card-inner">
+        <div class="mode-icon">🔀</div>
+        <div class="mode-info">
+          <strong>路由模式</strong>
+          <p>自动将消息路由到最匹配的 Agent。代码问题给 Codex，写作给 Claude。</p>
+        </div>
+      </div>
+    </label>
+
+    <label class="mode-card" data-mode="filter">
+      <input type="radio" name="mode" id="modeFilter">
+      <div class="mode-card-inner">
+        <div class="mode-icon">✓</div>
+        <div class="mode-info">
+          <strong>过滤模式</strong>
+          <p>收集所有 Agent 的回应，主持人筛选后发出最优答案。适合质量敏感场景。</p>
+        </div>
+      </div>
+    </label>
+  </div>
+</div>
+
+<!-- 主持人选择 -->
+<div class="demo-section">
+  <div class="section-title">
+    <i class="fa-solid fa-crown" style="color:var(--warning-color)"></i>
+    指定主持人
+    <span class="section-hint">选择一位 Agent 担任主持人</span>
+  </div>
+
+  <div class="field" style="max-width:420px;">
+    <select class="field-select" id="moderatorSelect">
+      <option value="claude-s1">Claude (s-1) · claude-opus-4-7</option>
+      <option value="codex-s2">Codex (s-2) · codex-cli</option>
+      <option value="gpt4-s3">GPT-4 (s-3) · gpt-4-turbo</option>
+    </select>
+    <span class="field-hint">主持人拥有最高发言权，可跳过其他 Agent 直接回应</span>
+  </div>
+</div>
+
+<!-- 配额管理 -->
+<div class="demo-section">
+  <div class="section-title">
+    <i class="fa-solid fa-gauge-high" style="color:var(--accent-color)"></i>
+    LLM 调用配额
+    <span class="section-hint">每日配额限制，避免单个 Agent 被过度调用</span>
+  </div>
+
+  <div class="quota-grid">
+    <div class="quota-card">
+      <div class="quota-head">
+        <div class="member-avatar avatar-s">C</div>
+        <div class="quota-identity">
+          <span class="quota-name">Claude</span>
+          <span class="quota-model">claude-opus-4-7</span>
+        </div>
+        <span class="quota-badge badge-moderator">主持人</span>
+      </div>
+      <div class="quota-bar">
+        <div class="quota-used" style="width:23%"></div>
+      </div>
+      <div class="quota-stats">
+        <span>23 / 100 次调用</span>
+        <span>23% 已用</span>
+      </div>
+    </div>
+
+    <div class="quota-card">
+      <div class="quota-head">
+        <div class="member-avatar avatar-codex">X</div>
+        <div class="quota-identity">
+          <span class="quota-name">Codex</span>
+          <span class="quota-model">codex-cli</span>
+        </div>
+        <span class="quota-badge badge-assistant">助手</span>
+      </div>
+      <div class="quota-bar">
+        <div class="quota-used" style="width:15%"></div>
+      </div>
+      <div class="quota-stats">
+        <span>15 / 100 次调用</span>
+        <span>15% 已用</span>
+      </div>
+    </div>
+
+    <div class="quota-card">
+      <div class="quota-head">
+        <div class="member-avatar avatar-gpt">G</div>
+        <div class="quota-identity">
+          <span class="quota-name">GPT-4</span>
+          <span class="quota-model">gpt-4-turbo</span>
+        </div>
+        <span class="quota-badge badge-observer">观察者</span>
+      </div>
+      <div class="quota-bar">
+        <div class="quota-used" style="width:0%"></div>
+      </div>
+      <div class="quota-stats">
+        <span>0 / 100 次调用</span>
+        <span>未使用</span>
+      </div>
+    </div>
+  </div>
+  <p class="field-hint" style="margin-top:10px;">配额重置：每天 00:00 (本地时间)</p>
+</div>
+
+<!-- 保存 -->
+<div class="demo-section footer-bar">
+  <button class="wave-button solid green" id="btnSaveConfig">
+    <i class="fa-solid fa-floppy-disk"></i> 保存配置
+  </button>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

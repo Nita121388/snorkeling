@@ -1,0 +1,182 @@
+/* ============================================================
+   Snorkling 群聊 UI 原型 — 共享样式基础
+   token 取自 frontend/app/theme.scss `:root`（dark 默认主题）
+   组件镜像：frontend/app/element/button.scss (.wave-button)
+            frontend/app/modals/modal.scss (modal-wrapper)
+   ============================================================ */
+
+/* ---- 真实主题 token ---- */
+:root {
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #999;
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --action-bg-color: var(--accent-color);
+    --action-hover-bg-color: var(--accent-hover-color);
+    --action-text-color: #0b0d0b;
+    --modal-bg-color: #232323;
+    --modal-border-color: rgba(255, 255, 255, 0.16);
+    --modal-backdrop-color: rgba(0, 0, 0, 0.5);
+    --highlight-bg-color: rgba(255, 255, 255, 0.1);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --surface: rgba(255, 255, 255, 0.06);
+    --button-grey-bg: rgba(255, 255, 255, 0.12);
+    --button-grey-hover-bg: rgba(255, 255, 255, 0.18);
+    --button-grey-outlined-color: var(--secondary-text-color);
+    --button-red-bg: #c0392b;
+    --button-red-hover-bg: #e74c3c;
+    --button-red-border-color: #c0392b;
+    --button-text-color: #fff;
+    --zindex-modal-wrapper: 1300;
+    --zindex-modal-backdrop: 1301;
+    --zindex-modal: 1302;
+    --font-mono: "Hack", "SF Mono", Menlo, Consolas, monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+    --danger-color: #e74c3c;
+    --warning-color: #e0b956;
+}
+
+/* ---- 基础重置 ---- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    font-family: var(--font-sans);
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+body { padding: 32px 20px 80px; }
+
+/* ---- 页面头部 ---- */
+.page-head { max-width: 1080px; margin: 0 auto 24px; }
+.page-head h1 { font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+.page-head p { color: var(--grey-text-color); font-size: 12.5px; line-height: 1.7; max-width: 900px; }
+.page-head p.sub2 { margin-top: 6px; }
+.page-head code {
+    background: var(--surface-soft); color: var(--secondary-text-color);
+    padding: 1px 6px; border-radius: 5px; font-size: 11px; font-family: var(--font-mono);
+}
+.page-head b { color: var(--main-text-color); }
+
+/* ---- 演示区块 ---- */
+.demo-section {
+    max-width: 1080px; margin: 0 auto 36px;
+    border: 1px solid var(--border-color); border-radius: 10px;
+    padding: 18px 20px 20px; background: var(--surface-soft);
+}
+.section-title {
+    font-size: 15px; font-weight: 700; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.section-hint { font-size: 11.5px; font-weight: 400; color: var(--grey-text-color); }
+.section-hint code {
+    background: var(--surface); padding: 1px 5px; border-radius: 4px;
+    font-size: 10.5px; font-family: var(--font-mono); color: var(--secondary-text-color);
+}
+
+/* ---- 按钮（镜像 button.scss .wave-button 完整语义）---- */
+.wave-button {
+    border: 1px solid transparent; outline: 1px solid transparent;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 6px; height: auto; line-height: 16px;
+    white-space: nowrap; user-select: none; font-size: 12.5px;
+    font-family: var(--font-sans); transition: all 0.2s ease;
+    background: transparent; color: var(--main-text-color);
+}
+.wave-button i { font-size: 12px; }
+.wave-button.solid.green {
+    color: var(--action-text-color); background-color: var(--action-bg-color);
+    border: 1px solid var(--action-bg-color);
+}
+.wave-button.solid.green:hover { background-color: var(--action-hover-bg-color); border-color: var(--action-hover-bg-color); }
+.wave-button.solid.grey { background-color: var(--button-grey-bg); border: 1px solid var(--button-grey-bg); color: var(--main-text-color); }
+.wave-button.solid.grey:hover { background-color: var(--button-grey-hover-bg); }
+.wave-button.outlined.green { background-color: transparent; color: var(--accent-color); border: 1px solid var(--accent-color); }
+.wave-button.outlined.green:hover { color: var(--accent-hover-color); border-color: var(--accent-hover-color); }
+.wave-button.outlined.grey { background-color: transparent; border: 1px solid var(--button-grey-outlined-color); color: var(--button-grey-outlined-color); }
+.wave-button.outlined.grey:hover { color: var(--main-text-color); border-color: var(--main-text-color); }
+.wave-button.ghost { background-color: transparent; padding: 6px 10px; }
+.wave-button.ghost.grey { border: none; color: var(--button-grey-outlined-color); }
+.wave-button.ghost.grey:hover { color: var(--main-text-color); }
+.wave-button.ghost.red { border: none; color: var(--button-red-bg); }
+.wave-button.ghost.red:hover { color: var(--button-red-hover-bg); }
+
+/* ---- 表单控件 ---- */
+.field { margin-bottom: 16px; }
+.field-label {
+    display: block; font-size: 12.5px; font-weight: 600; color: var(--secondary-text-color);
+    margin-bottom: 6px; letter-spacing: 0.02em;
+}
+.field-input, .field-select {
+    width: 100%; padding: 9px 12px; font-size: 13.5px; color: var(--main-text-color);
+    background: #313131; border: 1px solid var(--border-color);
+    border-radius: 7px; transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: var(--font-sans);
+}
+.field-input::placeholder { color: #777; }
+.field-input:focus, .field-select:focus {
+    outline: none; border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(88, 193, 66, 0.15);
+}
+.field-hint { color: var(--grey-text-color); font-size: 11.5px; margin-top: 4px; display: block; }
+
+/* ---- 状态点 ---- */
+.status-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.status-dot.online { background: #22c55e; box-shadow: 0 0 4px rgba(34, 197, 94, 0.5); }
+.status-dot.offline { background: #6b7280; }
+.status-dot.thinking { background: #e0b956; box-shadow: 0 0 4px rgba(224, 185, 86, 0.5); }
+
+/* ---- 徽章 ---- */
+.badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 9px;
+    line-height: 16px; white-space: nowrap;
+}
+.badge-owner { background: rgba(224, 185, 86, 0.18); color: #e0b956; }
+.badge-moderator { background: rgba(88, 193, 66, 0.18); color: #58c141; }
+.badge-assistant { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+.badge-observer { background: rgba(255, 255, 255, 0.12); color: var(--secondary-text-color); }
+
+/* ---- 弹窗宿主 ---- */
+.modal-wrapper {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; justify-content: center; align-items: center;
+    z-index: var(--zindex-modal-wrapper);
+}
+.modal-backdrop {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--modal-backdrop-color);
+    z-index: var(--zindex-modal-backdrop);
+}
+.modal {
+    position: relative; z-index: var(--zindex-modal);
+    display: flex; flex-direction: column; align-items: flex-start;
+    border-radius: 8px; border: 1px solid var(--modal-border-color);
+    background: var(--modal-bg-color);
+    box-shadow: 0px 8px 32px 0px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    width: 470px; max-width: calc(100vw - 32px);
+    animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal .modal-content { width: 100%; padding: 20px 20px 0; min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.modal .modal-footer {
+    display: flex; justify-content: flex-end; align-items: center;
+    width: 100%; padding: 16px 20px 20px; gap: 4px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ---- 空状态 ---- */
+.empty-state {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 40px 20px; color: var(--grey-text-color);
+}
+.empty-state i { font-size: 28px; opacity: 0.4; }
+.empty-state p { font-size: 12.5px; }

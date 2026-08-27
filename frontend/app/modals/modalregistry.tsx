@@ -14,6 +14,7 @@ import { EnvModalView } from "@/app/view/term/envmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
+import { FileConflictModal } from "./file-conflict-modal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
 
@@ -29,6 +30,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
     [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,
+    [FileConflictModal.displayName || "FileConflictModal"]: FileConflictModal,
     [UnsavedFileModal.displayName || "UnsavedFileModal"]: UnsavedFileModal,
     [CloseTabModal.displayName || "CloseTabModal"]: CloseTabModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snorkling - 群组消息列表</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../_shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-head">
+  <h1>群组消息列表 — 产品讨论组</h1>
+  <p>群组所有成员共享的实时消息流。蓝色左边框表示群组消息；输入 <code>@名称</code> 可触发特定 Agent 回应。</p>
+  <p class="sub2">镜像源：<code>frontend/app/aipanel/aipanelmessages.tsx</code>, <code>frontend/app/store/global.ts</code></p>
+</div>
+
+<!-- 消息列表区 -->
+<div class="demo-section">
+  <div class="section-title">
+    消息历史
+    <span class="section-hint">3 条未读 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent-color);margin-left:2px;vertical-align:middle"></span></span>
+  </div>
+
+  <div class="messages-list" id="messagesList">
+    <!-- 动态渲染 -->
+  </div>
+</div>
+
+<!-- 输入区 -->
+<div class="demo-section input-bar">
+  <div class="input-group">
+    <button type="button" class="wave-button ghost grey" title="添加附件">
+      <i class="fa-solid fa-paperclip"></i>
+    </button>
+    <input type="text" id="messageInput" class="field-input" placeholder="输入消息，@Codex 请求代码审查…" style="flex:1">
+    <button type="button" class="wave-button solid green" id="btnSend">
+      <i class="fa-solid fa-paper-plane"></i> 发送
+    </button>
+  </div>
+  <div class="input-hint">Enter 发送 · Shift+Enter 换行 · 输入 <code>@</code> 弹出成员选择</div>
+</div>
+
+<!-- @mention 下拉（由 script 控制显示） -->
+<div class="mention-dropdown" id="mentionDropdown" hidden>
+  <div class="mention-item" data-name="Claude">
+    <span class="member-avatar avatar-s">C</span>
+    <span class="mention-name">Claude</span>
+    <span class="status-dot online"></span>
+  </div>
+  <div class="mention-item" data-name="Codex">
+    <span class="member-avatar avatar-codex">X</span>
+    <span class="mention-name">Codex</span>
+    <span class="status-dot online"></span>
+  </div>
+  <div class="mention-item" data-name="GPT-4">
+    <span class="member-avatar avatar-gpt">G</span>
+    <span class="mention-name">GPT-4</span>
+    <span class="status-dot offline"></span>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

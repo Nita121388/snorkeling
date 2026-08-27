@@ -1,0 +1,64 @@
+/* ============================================================
+   Snorkling 群组成员管理 — 特有样式（公共 token 见 ../_shared.css）
+   ============================================================ */
+
+/* ---- 成员面板 ---- */
+.member-panel { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- 成员行 ---- */
+.member-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border-color);
+    transition: border-color 0.15s, background 0.15s;
+}
+.member-item:hover { border-color: rgba(255, 255, 255, 0.28); background: var(--surface-soft); }
+
+/* 头像 */
+.member-avatar {
+    flex: 0 0 34px; width: 34px; height: 34px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700;
+    background: rgba(88, 193, 66, 0.18); color: #58c141;
+    user-select: none;
+}
+.member-avatar.avatar-codex { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+.member-avatar.avatar-gpt { background: rgba(224, 185, 86, 0.18); color: #e0b956; }
+.member-avatar.avatar-s { background: rgba(168, 85, 247, 0.18); color: #a855f7; }
+.member-avatar.avatar-g { background: rgba(236, 72, 153, 0.18); color: #ec4899; }
+
+/* 主体 */
+.member-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.member-topline { display: flex; align-items: center; gap: 8px; }
+.member-name { font-size: 13.5px; font-weight: 600; color: var(--main-text-color); }
+.member-meta { display: flex; align-items: center; gap: 12px; }
+.member-model { font-family: var(--font-mono); font-size: 10.5px; color: var(--grey-text-color); }
+.member-mem { font-size: 11px; color: var(--grey-text-color); }
+
+/* 操作区 */
+.member-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.member-role-select { width: auto; min-width: 96px; padding: 6px 8px; font-size: 11.5px; }
+.btn-remove { padding: 6px 8px; }
+
+/* ---- 底部操作栏 ---- */
+.member-actions-bar {
+    display: flex; justify-content: flex-end; gap: 10px;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color);
+}
+.member-actions-bar .wave-button { padding: 7px 14px; }
+
+/* ---- 添加成员弹窗 ---- */
+.add-member-modal { width: 400px; }
+.available-sessions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.session-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 7px;
+    border: 1px solid var(--border-color); background: var(--surface-soft);
+    cursor: pointer; font-size: 12.5px; transition: border-color 0.15s;
+}
+.session-option:hover { border-color: var(--accent-color); }
+.session-option.is-selected { border-color: var(--accent-color); background: rgba(88, 193, 66, 0.08); }
+.session-option .member-avatar { width: 24px; height: 24px; font-size: 11px; border-radius: 5px; }
+
+/* 移除后的置灰态 */
+.member-item.is-removing { opacity: 0.45; pointer-events: none; }

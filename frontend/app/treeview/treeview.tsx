@@ -822,7 +822,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                             <div
                                 key={row.id}
                                 className={clsx(
-                                    "absolute left-0 right-0 flex items-center whitespace-nowrap rounded-[5px] text-sm",
+                                    "absolute left-0 right-0 flex items-center overflow-hidden rounded-[5px] text-sm",
                                     row.kind === "node" ? "cursor-pointer" : "text-muted",
                                     selected ? "bg-accent/25 text-foreground" : "text-foreground hover:bg-hoverbg"
                                 )}
@@ -909,14 +909,14 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                             }}
                                         />
                                         <span
-                                            className={clsx("ml-2 pr-3", row.node.isReadonly && "text-muted")}
+                                            className={clsx("ml-1 truncate", row.node.isReadonly && "text-muted")}
                                             title={row.label}
                                         >
                                             {row.label}
                                         </span>
                                     </>
                                 ) : (
-                                    <span className="ml-6 pr-3 text-xs">{row.label}</span>
+                                    <span className="ml-1 truncate text-xs">{row.label}</span>
                                 )}
                             </div>
                         );

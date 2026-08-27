@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Files Block Header — VCS Icon Hover Panel 原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <h1>Files Block Header · 版本管理图标 Hover 快捷面板</h1>
+  <p class="subtitle">
+    Hover the <b>code-branch</b> icon in the header → a lightweight panel pops up (content differs for Git vs SVN);
+    clicking the icon itself keeps its current behavior (opens the full VCS Block).
+    Structure mirrors real <code>blockframe-header.tsx</code> + <code>preview-model.tsx</code> endIconButtons.
+    All in-app copy is English (no i18n yet); Chinese below is reviewer-facing notes only.
+  </p>
+
+  <!-- 场景切换：覆盖全场景（评审用控件，非应用 UI） -->
+  <div id="scenario-bar" class="scenario-bar"></div>
+
+  <!-- ============ 结构镜像区：Files Block ============ -->
+  <div class="mock-block">
+    <div class="block-frame-header">
+      <div class="block-frame-textelems-wrapper is-hovered">
+        <!-- 真实来源：preview-model.tsx viewText（路径文本） -->
+        <div class="block-frame-text">~/Primary/projects/snorkeling/frontend/app/view/preview</div>
+      </div>
+      <!-- 真实来源：blockframe-header.tsx HeaderEndIcons → .block-frame-end-icons -->
+      <div class="block-frame-end-icons is-hovered">
+        <!-- 已有按钮（保持原样，仅作占位对照） -->
+        <button class="wave-iconbutton block-frame-header-iconbutton" title="Show Hidden Files">
+          <svg viewBox="0 0 24 24"><path d="M12 5c-5 0-9.3 3.1-11 7 1.7 3.9 6 7 11 7s9.3-3.1 11-7c-1.7-3.9-6-7-11-7zm0 12a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
+        </button>
+        <button class="wave-iconbutton block-frame-header-iconbutton" title="Refresh">
+          <svg viewBox="0 0 24 24"><path d="M17.65 6.35A8 8 0 106 16.9l1.42-1.42A6 6 0 1112 18a5.97 5.97 0 01-4.24-1.76L11 13H4v7l2.35-2.35A8 8 0 0017.65 6.35z"/></svg>
+        </button>
+
+        <!-- ★ 新增点①：vcsButton 外包 hover 容器（真实实现 = IconButtonDecl.tooltipNode 包 <Tooltip>） -->
+        <span class="vcs-hover-anchor" id="vcs-hover-anchor">
+          <button class="wave-iconbutton block-frame-header-iconbutton" id="vcs-icon-btn" title="Version Control">
+            <svg viewBox="0 0 24 24"><path d="M17 3a3 3 0 00-3 3c0 1.31.84 2.41 2 2.83v.34c0 .55-.45 1-1 1h-6c-.55 0-1 .45-1 1v2.17A3 3 0 007 21a3 3 0 001-5.83V13h6v2.17A3 3 0 0013 21a3 3 0 104 0v-.17c0-.02 0-.04 0-.06V13.66c1.16-.42 2-1.52 2-2.83v-.34A3 3 0 0017 3z"/></svg>
+          </button>
+
+          <!-- ★ 新增点②：hover flyout 面板（真实实现为 floating-ui Tooltip 卡片，此处绝对定位模拟） -->
+          <div class="vcs-hover-panel" id="vcs-hover-panel"></div>
+        </span>
+      </div>
+    </div>
+    <div class="mock-block-body" id="mock-block-body"></div>
+  </div>
+
+  <div class="log" id="log">Hover the code-branch icon above; clicking it opens the full VCS Block.</div>
+
+  <!-- ============ 设计说明（评审注释，非应用 UI） ============ -->
+  <div class="notes">
+    <h2>Git vs SVN 面板差异（面板文案均为英文，与现有 VCS 视图一致）</h2>
+    <table>
+      <tr><th>项目</th><th>Git</th><th>SVN</th></tr>
+      <tr><td>徽章</td><td><code>GIT</code></td><td><code>SVN</code></td></tr>
+      <tr><td>分支行</td><td>显示本地分支名（如 main）</td><td>无分支概念，不显示</td></tr>
+      <tr><td>远端状态</td><td>↓落后 / ↑领先 pill</td><td>远端变更文件数（svn status -u）</td></tr>
+      <tr><td>同步按钮</td><td>Pull（behind=0 禁用）/ Push（ahead=0 禁用）/ Fetch</td><td>Update（唯一同步动作）</td></tr>
+      <tr><td>历史入口</td><td>Commits</td><td>Log</td></tr>
+      <tr><td>文件操作</td><td colspan="2">History（文件/目录均有）；Diff 仅<b>文件 block</b> 显示（工作区 diff）</td></tr>
+      <tr><td>兜底入口</td><td colspan="2">Open VCS Block —— 点击图标本体的完整视图始终可用</td></tr>
+    </table>
+
+    <h2>全场景状态机</h2>
+    <table>
+      <tr><th>场景</th><th>行为</th></tr>
+      <tr><td>非 repo 路径（kind=none）</td><td>不弹面板，保留原生 title；点击仍打开 VCS Block（内提示 No repos found）</td></tr>
+      <tr><td>检测中（懒加载首触）</td><td>先渲染 "Detecting..."，resolve 就绪后原地更新（复用 directoryVcsResolveCache）</td></tr>
+      <tr><td>resolve 失败/超时</td><td>Resolve Failed + Copy Debug Info（与右键菜单降级一致）</td></tr>
+      <tr><td>嵌套多仓库</td><td>includeparent=true 返回多个 repo，面板分组列出、各自按钮</td></tr>
+      <tr><td>连接断开</td><td>endIconButtons 在 connStatus != connected 时不渲染，天然覆盖</td></tr>
+      <tr><td>Windows 盘符根</td><td>跳过 resolve（与 preIconButton 排除逻辑一致）</td></tr>
+      <tr><td>sync 成功后</td><td>清除该 path 缓存条目并刷新面板计数；失败走 setErrorMsg 通道</td></tr>
+      <tr><td>触屏/无 hover</td><td>无 hover 则无面板；点击打开完整 VCS Block，功能不丢失</td></tr>
+    </table>
+
+    <h2>交互时序（对齐真实 Tooltip 组件参数）</h2>
+    <ul style="margin:4px 0 0;padding-left:18px">
+      <li>hover 图标 <b>350ms</b> 后弹面板（openDelay，防滑过误触发）</li>
+      <li>移开图标/面板 <b>250ms 宽限</b>后收起（Tooltip 关闭延迟 300ms 同款体验）</li>
+      <li>首次悬浮才触发 resolve RPC（statuslimit 50 轻量调用），结果进 conn+path 内存缓存，与右键菜单共享</li>
+      <li>点击图标本体 = <code>openVersionControlBlock()</code>，与现状完全一致</li>
+    </ul>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="script.js"></script>
+</body>
+</html>

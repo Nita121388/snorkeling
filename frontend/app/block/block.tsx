@@ -17,6 +17,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
 import {
     agentStatusPresentation,
     isInferredAgentStatus,
@@ -173,6 +174,8 @@ const InlineTabLabel = memo(
         const inputRef = useRef<HTMLInputElement>(null);
         const tabRef = useRef<HTMLDivElement>(null);
         const isLocked = ((blockData?.meta ?? {}) as Record<string, unknown>)[BlockLockMetaKey] === true;
+        const dirtyAtom = useMemo(() => getBlockDirtyAtom(blockId), [blockId]);
+        const isDirty = useAtomValue(dirtyAtom);
         const toggleLock = useCallback(() => {
             void RpcApi.SetMetaCommand(TabRpcClient, {
                 oref: makeORef("block", blockId),
@@ -420,6 +423,9 @@ const InlineTabLabel = memo(
                                 <i className={iconClass} />
                             )}
                             <span>{displayTitle}</span>
+                            {isDirty ? (
+                                <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
+                            ) : null}
                             {isLocked ? (
                                 <i
                                     className={makeIconClass("lock", true) + " inline-tab-block-tab-lockicon"}

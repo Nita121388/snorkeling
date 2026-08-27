@@ -33,6 +33,7 @@ import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
 import { modalsModel } from "./modalmodel";
+import { resolvePreviewSaveTarget } from "./save-preview-draft";
 import { isBuilderWindow, isTabWindow } from "./windowtype";
 
 type KeyHandler = (event: WaveKeyboardEvent) => boolean;
@@ -73,6 +74,29 @@ function getFocusedBlockInStaticTab(): string {
     const layoutModel = getLayoutModelForStaticTab();
     const focusedNode = globalStore.get(layoutModel.focusedNode);
     return getLayoutDataActiveBlockId(focusedNode?.data);
+}
+
+// Global Cmd/Ctrl+S: flush the focused preview block's staged draft to disk.
+// Preview (rendered markdown) mode has no editor-local keydown handler once the
+// inline-edit textarea / Monaco editor is closed, so previously Ctrl+S silently
+// no-op'd while the header Save button stayed lit (draft dirty, disk untouched).
+// Monaco keeps its own editor.onKeyDown handler (fires first + stops propagation),
+// and the inline textarea handler also stopPropagation's now, so this global path
+// only fires when no editor is consuming the keystroke. Returns false for non-
+// preview blocks so other modules (e.g. waveconfig Cmd:s) keep their own keys.
+function saveFocusedPreviewDraft(): boolean {
+    if (!isTabWindow()) {
+        return false;
+    }
+    const target = resolvePreviewSaveTarget(getFocusedBlockInStaticTab(), (blockId) => {
+        const bcm = getBlockComponentModel(blockId);
+        return bcm == null ? undefined : { viewModel: bcm.viewModel };
+    });
+    if (target == null || target.handleFileSave == null) {
+        return false;
+    }
+    fireAndForget(target.handleFileSave.bind(target));
+    return true;
 }
 
 function getSimpleControlShiftAtom() {
@@ -745,6 +769,8 @@ function registerGlobalKeys() {
         }
         return false;
     }
+    globalKeyMap.set("Cmd:s", () => saveFocusedPreviewDraft());
+    globalKeyMap.set("Ctrl:s", () => saveFocusedPreviewDraft());
     globalKeyMap.set("Cmd:f", activateSearch);
     globalKeyMap.set("Escape", () => {
         if (modalsModel.cancelTopModal()) return true;

@@ -3,6 +3,7 @@
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import type { UnsavedFileModalChoice } from "@/app/modals/unsavedfilemodal";
+import type { FileConflictChoice } from "@/app/modals/file-conflict-modal";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -437,6 +438,8 @@ export class PreviewModel implements ViewModel {
     errorMsgAtom: PrimitiveAtom<ErrorMsg>;
     copyPathStatus: PrimitiveAtom<CopyPathStatus>;
     copyPathStatusResetTimer: number | null;
+    diskBaseContent: PrimitiveAtom<string | null>;
+    private _diskBaseUnsub: (() => void) | undefined;
 
     openFileModal: PrimitiveAtom<boolean>;
     openFileModalDelay: PrimitiveAtom<boolean>;
@@ -487,6 +490,7 @@ export class PreviewModel implements ViewModel {
         this.openFileError = atom(null) as PrimitiveAtom<string>;
         this.copyPathStatus = atom("idle") as PrimitiveAtom<CopyPathStatus>;
         this.copyPathStatusResetTimer = null;
+        this.diskBaseContent = atom(null) as PrimitiveAtom<string | null>;
         this.openFileModalGiveFocusRef = createRef();
         this.manageConnection = atom(true);
         this.blockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
@@ -1160,6 +1164,19 @@ export class PreviewModel implements ViewModel {
         );
 
         this.fullFile = fullFileAtom;
+        // Capture the initial disk content for conflict detection (baseContent).
+        // When the user first edits, their draft is based on the file as loaded.
+        // If disk changes underneath before save, we compare against this snapshot.
+        this._diskBaseUnsub = globalStore.sub(this.fullFile, () => {
+            if (globalStore.get(this.diskBaseContent) != null) {
+                return;
+            }
+            void globalStore.get(this.fullFile)?.then((ff) => {
+                if (ff?.data64 != null && globalStore.get(this.diskBaseContent) == null) {
+                    globalStore.set(this.diskBaseContent, base64ToString(ff.data64));
+                }
+            });
+        });
         this.fileContent = fileContentAtom;
         this.fileContentLoadable = loadable(this.fileContent);
         this.liveSourceFileContent = atom(async (get) => {
@@ -1882,6 +1899,40 @@ export class PreviewModel implements ViewModel {
             return;
         }
         const savingRevision = stateBeforeSave.revision;
+        // Conflict detection: re-read disk before writing.
+        // baseContent = savedContent from last save, or the initial disk snapshot
+        // captured when the PreviewModel was created.
+        let currentDiskContent: string | null = null;
+        try {
+            currentDiskContent = await this.readCurrentFileContentFromDisk(filePath);
+        } catch {
+            // If we can't read disk, skip conflict check and write anyway
+        }
+        const baseContent = stateBeforeSave?.savedContent ?? globalStore.get(this.diskBaseContent);
+        if (
+            baseContent != null &&
+            currentDiskContent != null &&
+            currentDiskContent !== baseContent
+        ) {
+            const choice = await this.promptFileConflict(filePath, {
+                baseContent,
+                myContent: newFileContent,
+                theirsContent: currentDiskContent,
+            });
+            if (choice === "cancel") {
+                return;
+            }
+            if (choice === "discard") {
+                discardPreviewSharedDraftIfUnshared(fileKey);
+                globalStore.set(this.refreshVersion, (v) => v + 1);
+                return;
+            }
+            if (choice === "copy-diff") {
+                // Diff was copied to clipboard by the modal; don't write to disk.
+                return;
+            }
+            // choice === "overwrite" → proceed with write
+        }
         try {
             await this.env.rpc.FileWriteCommand(TabRpcClient, {
                 info: {
@@ -1950,6 +2001,25 @@ export class PreviewModel implements ViewModel {
 
     hasUnsavedChanges(): boolean {
         return globalStore.get(this.newFileContent) != null;
+    }
+
+    private promptFileConflict(
+        filePath: string,
+        opts: { baseContent: string; myContent: string; theirsContent: string }
+    ): Promise<FileConflictChoice> {
+        return new Promise<FileConflictChoice>((resolve) => {
+            modalsModel.pushModal(
+                "FileConflictModal",
+                {
+                    filePath,
+                    baseContent: opts.baseContent,
+                    myContent: opts.myContent,
+                    theirsContent: opts.theirsContent,
+                    onResolve: resolve,
+                },
+                () => resolve("cancel")
+            );
+        });
     }
 
     private async promptUnsavedFileChoice(filePath: string): Promise<UnsavedFileModalChoice> {
@@ -2293,5 +2363,10 @@ export class PreviewModel implements ViewModel {
 
     async formatRemoteUri(path: string, get: Getter): Promise<string> {
         return formatRemoteUri(path, await get(this.connection));
+    }
+
+    dispose(): void {
+        this._diskBaseUnsub?.();
+        this._diskBaseUnsub = undefined;
     }
 }

@@ -36,32 +36,12 @@ import { getWaveVersion } from "./emain-wavesrv";
 import { createNewWaveWindow, getWaveWindowByWebContentsId } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 import { getResolvedUpdateChannel, updater } from "./updater";
+import { encodeFilePathsBplist, encodeFileUrlsBplist } from "./encode-clipboard";
 
 const electronApp = electron.app;
 
 let webviewFocusId: number = null;
 let webviewKeys: string[] = [];
-
-function encodeMacClipboardFileList(filePaths: string[]): Buffer {
-    const escapedFilePaths = filePaths.map((filePath) => {
-        return filePath
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&apos;");
-    });
-    const plist = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-        '<plist version="1.0">',
-        "<array>",
-        ...escapedFilePaths.map((filePath) => `  <string>${filePath}</string>`),
-        "</array>",
-        "</plist>",
-    ].join("\n");
-    return Buffer.from(plist, "utf8");
-}
 
 export function openBuilderWindow(appId?: string) {
     const normalizedAppId = appId || "";
@@ -820,7 +800,8 @@ export function initIpcHandlers() {
             electron.clipboard.write({
                 text,
             });
-            electron.clipboard.writeBuffer("NSFilenamesPboardType", encodeMacClipboardFileList(validFilePaths));
+            electron.clipboard.writeBuffer("NSFilenamesPboardType", encodeFilePathsBplist(validFilePaths));
+            electron.clipboard.writeBuffer("public.file-url", encodeFileUrlsBplist(validFilePaths));
             return true;
         }
         electron.clipboard.writeText(text);

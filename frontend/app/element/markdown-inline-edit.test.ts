@@ -11,6 +11,8 @@ import {
     spliceBlankRow,
     spliceInsertBlock,
     splitBlockAtCaretText,
+    splitListItemDraft,
+    makeListItemInsertMarker,
     type InlineEditSession,
 } from "./markdown-inline-edit";
 
@@ -265,6 +267,21 @@ describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {
         expect(newLine).toBe(4);
     });
 
+    it("caret at end + MODIFIED draft → typed content is committed (Enter-loses-input bug)", () => {
+        // Regression: user types in a fresh placeholder row, presses Enter to confirm —
+        // the draft must land in the document instead of being silently discarded.
+        const blankDoc = "# title\n\nhello world\n\n\n\nend"; // line 6 is the blank placeholder row, line 7 = end
+        const { text, newLine } = splitBlockAtCaretText(blankDoc, 6, 6, "1. 测试内容", "1. 测试内容".length);
+        expect(text).toBe("# title\n\nhello world\n\n\n1. 测试内容\n\nend");
+        expect(newLine).toBe(7); // follow-up editor lands on the blank row below the content
+    });
+
+    it("caret at start + MODIFIED draft → typed content survives above-split", () => {
+        const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, "HELLO world", 0);
+        expect(text).toBe("# title\n\n\nHELLO world\n\nend");
+        expect(newLine).toBe(3);
+    });
+
     it("caret at the start → blank line inserted above, original text becomes the after block", () => {
         const { text, newLine } = splitBlockAtCaretText(fullText, startLine, endLine, draft, 0);
         // placeholder path: exactly ONE blank row above
@@ -307,5 +324,64 @@ describe("deleteBlockRange (block menu delete)", () => {
     it("clamps end beyond the text length", () => {
         const text = "a\n\nb";
         expect(deleteBlockRange(text, 1, 99)).toBe(""); // deletes every remaining line
+    });
+});
+
+describe("splitListItemDraft (list Enter behavior)", () => {
+    it("increments the marker number when splitting at line end", () => {
+        const { text, newPos } = splitListItemDraft("5. Five", 7);
+        expect(text).toBe("5. Five\n6. ");
+        expect(newPos).toBe("5. Five\n".length + "6. ".length);
+    });
+
+    it("never copies content when the caret is at line start (the duplicated-1 bug)", () => {
+        const item = "1. chatchat release notes";
+        const { text } = splitListItemDraft(item, 0);
+        // Old buggy behavior produced "\n1. 1. chatchat release notes" — a full copy.
+        expect(text).toBe("1. \n" + item);
+        expect(text.split("chatchat").length - 1).toBe(1);
+    });
+
+    it("splits mid-line text into the next item with an incremented marker", () => {
+        const { text, newPos } = splitListItemDraft("2. helloworld", 8); // caret after "hello"
+        expect(text).toBe("2. hello\n3. world");
+        expect(newPos).toBe("2. hello\n".length + "3. ".length);
+    });
+
+    it("keeps bullet markers without inventing numbers", () => {
+        expect(splitListItemDraft("- task", 6).text).toBe("- task\n- ");
+    });
+
+    it("uses a bare newline on continuation lines without a marker", () => {
+        const draft = "3. item\ncontinuation";
+        expect(splitListItemDraft(draft, draft.length)).toEqual({ text: `${draft}\n`, newPos: draft.length + 1 });
+    });
+
+    it("preserves indentation and delimiter style", () => {
+        const { text } = splitListItemDraft("  1) indented", 13);
+        expect(text).toBe("  1) indented\n  2) ");
+    });
+});
+
+describe("makeListItemInsertMarker (+ button prefill)", () => {
+    it("increments the number when inserting below", () => {
+        expect(makeListItemInsertMarker("5. Five", "after")).toBe("6. ");
+    });
+
+    it("reuses the number when inserting above (renumbering normalizes later)", () => {
+        expect(makeListItemInsertMarker("5. Five", "before")).toBe("5. ");
+    });
+
+    it("keeps bullet style without inventing numbers", () => {
+        expect(makeListItemInsertMarker("- task", "after")).toBe("- ");
+        expect(makeListItemInsertMarker("* task", "before")).toBe("* ");
+    });
+
+    it("preserves indentation and paren delimiters", () => {
+        expect(makeListItemInsertMarker("  3) item", "after")).toBe("  4) ");
+    });
+
+    it("yields empty string for non-marker lines", () => {
+        expect(makeListItemInsertMarker("plain text", "after")).toBe("");
     });
 });

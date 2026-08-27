@@ -115,6 +115,13 @@ export type InlineEditSession = {
      * (zero stray blank rows, unlike block-level inserts).
      */
     placeholderInline?: boolean;
+    /**
+     * Enter-split continuation placeholder: the document already carries committed content
+     * from the same gesture (the line above this row). An empty commit (blur/Ctrl+S) must keep
+     * the committed content instead of firing insertRevert — which would erase it, and then
+     * Save would persist the erased text ("typed a line, Enter, Save → content disappears").
+     */
+    placeholderKeepOnEmpty?: boolean;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -203,9 +210,33 @@ type UseInlineEditArgs = {
     resetKey?: unknown;
 };
 
-export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, resetKey }: UseInlineEditArgs) {
+export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, resetKey }: UseInlineEditArgs): {
+    editSession: InlineEditSession | null;
+    draftText: string;
+    setDraftText: (v: string) => void;
+    beginEdit: (
+        blockKind: InlineEditBlockKind,
+        line: number,
+        targetEl: HTMLElement,
+        caretOffset?: number,
+        insertRevert?: () => void,
+        placeholder?: boolean | "inline",
+        keepOnEmpty?: boolean
+    ) => boolean;
+    beginInsertEdit: (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => void;
+    commit: () => void;
+    cancel: () => void;
+    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    overlayRect: { top: number; left: number; width: number; height: number } | null;
+} {
     const [editSession, setEditSession] = useState<InlineEditSession | null>(null);
     const [draftText, setDraftTextState] = useState<string>("");
+    // Latest committed text, assigned during render. beginEdit/commit read THIS instead of the
+    // render-closure `fullText`: the insert flows schedule beginEdit ~2 frames after a commit,
+    // and the captured closure can still hold the pre-commit text (async atom round-trip),
+    // which used to compute initialContent over the WRONG line range and duplicate content.
+    const fullTextRef = useRef(fullText);
+    fullTextRef.current = fullText;
     // Wrap setText so each user keystroke / external draft write is observable in the debug
     // ring buffer at equal granularity with the layout-effect measurements. A bare useState
     // setter has no hook we can attach, so we route through this thunk instead.
@@ -252,6 +283,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 scrollTop: viewport.scrollTop,
             });
             setOverlayRect(null);
+            // The anchor block no longer exists in the DOM (deleted, or replaced beyond what
+            // the fallback selector can find). Keeping the session alive here would leave its
+            // block stuck with .inline-edit-hidden and NO textarea over it — the user just
+            // sees blank content ("typed a line, nothing renders") until they happen to press
+            // Esc. Closing the session lets the anchor-hide layout effect's cleanup remove the
+            // hidden class again.
+            setEditSession(null);
+            setDraftText("");
             return;
         }
         const targetRect = target.getBoundingClientRect();
@@ -425,12 +464,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             targetEl: HTMLElement,
             caretOffset?: number,
             insertRevert?: () => void,
-            placeholder?: boolean | "inline"
-        ) => {
+            placeholder?: boolean | "inline",
+            keepOnEmpty?: boolean
+        ): boolean => {
             const safeLine = Math.max(1, Math.trunc(line));
-            const lines = fullText.split(/\r\n|\n/);
+            const lines = fullTextRef.current.split(/\r\n|\n/);
             if (safeLine > lines.length) {
-                return;
+                return false;
             }
             // Multi-line visual blocks (soft-broken paragraphs/headings) carry an explicit
             // data-source-line-end so we slice the whole range. Headings without a soft break and
@@ -453,6 +493,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 insertRevert,
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
                 placeholderInline: placeholder === "inline",
+                placeholderKeepOnEmpty: keepOnEmpty || undefined,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -466,8 +507,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             });
             setEditSession(session);
             setDraftText(initialContent);
+            return true;
         },
-        [fullText]
+        []
     );
 
     // Opens a blank editor that inserts a NEW block before/after the anchor block on commit.
@@ -532,15 +574,20 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // new block), inline <p> inserts just replace with NO blank (the paragraph's own
             // separator blanks still bracket it → a flush soft-broken new line). Nothing
             // typed → the pre-insert must not survive: revert the document to its pre-insert
-            // state so the click leaves zero trace.
+            // state so the click leaves zero trace — UNLESS this is an Enter-split follow-up
+            // row: the same gesture already committed real content above, and reverting here
+            // would erase it so the next Save writes the erased text to disk ("typed a line,
+            // Enter, then Save → content disappears").
             if (draftText.trim().length === 0) {
-                current.insertRevert?.();
+                if (!current.placeholderKeepOnEmpty) {
+                    current.insertRevert?.();
+                }
                 return;
             }
             onCommit(
                 current.placeholderInline
-                    ? replaceSourceRange(fullText, current.startLine, current.endLine, draftText)
-                    : commitPlaceholderBlock(fullText, current.startLine, current.endLine, draftText)
+                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText)
+                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, draftText)
             );
             return;
         }
@@ -559,7 +606,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // Insert the draft as a new block before/after the anchor line. Draft lines are
             // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
             // with a blank line so it renders as its own paragraph.
-            const lines = fullText.split(/\r\n|\n/);
+            const lines = fullTextRef.current.split(/\r\n|\n/);
             const draftLines = draftText.split(/\r\n|\n/);
             newFull = spliceInsertBlock(
                 lines,
@@ -569,10 +616,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 draftLines
             ).join("\n");
         } else {
-            newFull = replaceSourceRange(fullText, current.startLine, current.endLine, draftText);
+            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText);
         }
         onCommit(newFull);
-    }, [editSession, draftText, fullText, onCommit]);
+    }, [editSession, draftText, onCommit]);
 
     const cancel = useCallback(() => {
         // If this editor was opened by an immediate-insert flow (click A/B or Enter split),
@@ -704,9 +751,12 @@ export function makeInlineEditKeydown(opts: {
         }
         if (isCmd && (e.key === "s" || e.key === "S")) {
             // Commit synchronously so the draft atom carries the just-typed text before save runs.
-            // If the parent wired `save`, flush it directly — preview-mode has no global ⌘S
-            // listener, so bubbling would do nothing and the draft would sit unsaved.
+            // Then flush it directly via the wired `save` callback. stopPropagation prevents the
+            // event from reaching the global Cmd/Ctrl+S handler (keymodel saveFocusedPreviewDraft),
+            // which would otherwise double-fire handleFileSave (harmless — it no-ops when the
+            // draft is already cleared — but avoid the redundant write).
             e.preventDefault();
+            e.stopPropagation();
             opts.commit();
             opts.save?.();
             return;
@@ -804,6 +854,74 @@ export function commitPlaceholderBlock(
 }
 
 /**
+ * Pure helper for the block-edge "+" buttons on a LIST ITEM: derive the pre-filled marker
+ * text of the new sibling row from the hovered item's own source line.
+ *   - "after" → next number (N+1); "before" → same number (source renumbering normalizes).
+ *   - Bullet items keep their bullet; a line without any marker yields "" (plain row).
+ */
+export function makeListItemInsertMarker(itemSourceLine: string, placement: "before" | "after"): string {
+    const ordered = itemSourceLine.match(/^(\s*)(\d+)([.)])\s+/);
+    if (ordered != null) {
+        const base = parseInt(ordered[2], 10);
+        const num = placement === "after" ? base + 1 : base;
+        return `${ordered[1]}${num}${ordered[3]} `;
+    }
+    const bullet = itemSourceLine.match(/^(\s*)([-+*])\s+/);
+    if (bullet != null) {
+        return `${bullet![1]}${bullet![2]} `;
+    }
+    return "";
+}
+
+/**
+ * Pure helper for Enter inside a LIST block's draft (single item or whole list): splits the
+ * draft at the caret into the current line and a NEW list line, returning the new draft plus
+ * the new caret offset.
+ *
+ * Rules (fixes the "extra duplicated 1." bug):
+ *   - Caret at line start + ordered marker → insert an empty sibling line ABOVE (same number;
+ *     source renumbering fixes the sequence on commit). Never concatenates prefix+content,
+ *     so nothing is duplicated.
+ *   - Otherwise → split: text after the caret moves to a new line whose marker number is
+ *     CURRENT+1 (real increment — the old code copied the current number verbatim, which made
+ *     rendered numbering disagree with source).
+ *   - Current line has no list marker (continuation text) → bare newline, no prefix invented.
+ */
+export function splitListItemDraft(draft: string, pos: number): { text: string; newPos: number } {
+    const lineStart = draft.lastIndexOf("\n", pos) + 1;
+    const nextBreak = draft.indexOf("\n", pos);
+    const lineEnd = nextBreak === -1 ? draft.length : nextBreak;
+    const line = draft.slice(lineStart, lineEnd);
+
+    const ordered = line.match(/^(\s*)(\d+)([.)])\s+/);
+    const bullet = ordered == null ? line.match(/^(\s*)([-+*])\s+/) : null;
+    if (ordered == null && bullet == null) {
+        // Continuation line without a marker: plain newline, cursor right after it.
+        return { text: `${draft.slice(0, pos)}\n${draft.slice(pos)}`, newPos: pos + 1 };
+    }
+
+    const prefix = ordered
+        ? `${ordered[1]}${ordered[2]}${ordered[3]} `
+        : `${bullet![1]}${bullet![2]} `;
+    const incrementedPrefix = ordered
+        ? `${ordered[1]}${parseInt(ordered[2], 10) + 1}${ordered[3]} `
+        : prefix;
+
+    if (pos === lineStart) {
+        // Line start: new empty sibling ABOVE, current line untouched (no content copy).
+        return {
+            text: `${draft.slice(0, lineStart)}${prefix}\n${draft.slice(lineStart)}`,
+            newPos: lineStart + prefix.length,
+        };
+    }
+    // Mid/end of line: tail becomes the next item with an incremented marker.
+    return {
+        text: `${draft.slice(0, pos)}\n${incrementedPrefix}${draft.slice(pos)}`,
+        newPos: pos + 1 + incrementedPrefix.length,
+    };
+}
+
+/**
  * Pure helper for "Enter at caret splits the block": keeps the BEFORE part in the anchor
  * block's source range and inserts the AFTER part as a new block right below it. Returns the
  * new full text plus the 1-based source line of the new block's CONTENT row (the second of
@@ -826,16 +944,25 @@ export function splitBlockAtCaretText(
     const lines = fullText.split(/\r\n|\n/);
 
     if (before === "") {
-        // Caret at line start: the split row goes ABOVE, the current row keeps all its
-        // content. Pre-insert exactly one blank row (not two) — the follow-up editor treats
-        // it as a placeholder row, see commitPlaceholderBlock.
-        const newFull = spliceBlankRow(lines, startLine, endLine, "before").join("\n");
+        // Caret at line start: the split row goes ABOVE, the current row keeps the
+        // user's draft content. Write the draft into the block first, then insert a
+        // single blank row above — the follow-up editor treats it as a placeholder
+        // row, see commitPlaceholderBlock.
+        const withDraft = replaceSourceRange(fullText, startLine, endLine, draftText);
+        const midLines = withDraft.split(/\r\n|\n/);
+        const newFull = spliceBlankRow(midLines, startLine, startLine, "before").join("\n");
         return { text: newFull, newLine: startLine };
     }
     if (after === "") {
-        // Caret at line end: the split row goes BELOW. One blank row, same placeholder math.
-        const newFull = spliceBlankRow(lines, startLine, endLine, "after").join("\n");
-        return { text: newFull, newLine: endLine + 1 };
+        // Caret at line end: commit the typed draft into the block first, then hang
+        // a blank row below for the follow-up placeholder editor. (Without the
+        // replaceSourceRange call, the draft is silently discarded — the block keeps
+        // its original text and the user sees their input vanish after pressing Enter.)
+        const withDraft = replaceSourceRange(fullText, startLine, endLine, draftText);
+        const midLines = withDraft.split(/\r\n|\n/);
+        const draftEnd = startLine + draftText.split(/\r\n|\n/).length - 1;
+        const newFull = spliceBlankRow(midLines, draftEnd, draftEnd, "after").join("\n");
+        return { text: newFull, newLine: draftEnd + 1 };
     }
     const afterBeforeCommit = replaceSourceRange(fullText, startLine, endLine, before);
     const midLines = afterBeforeCommit.split(/\r\n|\n/);
