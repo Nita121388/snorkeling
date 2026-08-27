@@ -660,10 +660,9 @@ export class PreviewModel implements ViewModel {
             // Shared across code-edit AND preview inline-edit dirty signals so the preview branch
             // can render a Save button with the same accent color the editor branch does — without
             // this, a para dblclick→blur commit shows up as "nothing changed in the header".
-            let saveClassName = "grey";
-            if (get(this.newFileContent) !== null) {
-                saveClassName = "green";
-            }
+            // 文件是否有未落盘的草稿(脏). 同一份信号驱动两处: ① 地址栏文件名未保存样式
+            // ② 保存按钮仅在脏时显示. 取代原先"始终显示、干净时也占着"的冗余按钮.
+            const isDirty = get(this.newFileContent) !== null;
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
@@ -675,7 +674,8 @@ export class PreviewModel implements ViewModel {
                             displayText: displayName,
                             tooltipText: tooltipText,
                             title: "Click to copy full path",
-                            className: "preview-filename cursor-pointer",
+                            // 脏标记挂到文件名上: 编辑未保存时文件名变强调色+斜体(单文件与 tab 组统一).
+                            className: clsx("preview-filename cursor-pointer", { "is-dirty": isDirty }),
                         },
                         // 悬浮文件夹名时浮现的路径跳转入口；hover-reveal 样式复用 block.scss
                         // 里 .preview-filename-copy-button 那套 opacity 过渡。
@@ -728,13 +728,16 @@ export class PreviewModel implements ViewModel {
                         onClick: () => {},
                     });
                 } else {
-                    viewTextChildren.push({
-                        elemtype: "iconbutton",
-                        icon: "floppy-disk",
-                        title: "Save",
-                        iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
-                        click: () => fireAndForget(this.handleFileSave.bind(this)),
-                    });
+                    // 保存按钮仅在脏时显示, 干净态隐藏以减少冗余(Ctrl/Cmd+S 已全局可落盘).
+                    if (isDirty) {
+                        viewTextChildren.push({
+                            elemtype: "iconbutton",
+                            icon: "floppy-disk",
+                            title: "Save",
+                            iconColor: "var(--accent-color)",
+                            click: () => fireAndForget(this.handleFileSave.bind(this)),
+                        });
+                    }
                 }
                 if (get(this.canPreview)) {
                     const previewMenuItems: MenuItem[] = [
@@ -769,25 +772,17 @@ export class PreviewModel implements ViewModel {
                     });
                 }
             } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
-                viewTextChildren.push({
-                    elemtype: "iconbutton",
-                    icon: "pen-to-square",
-                    title: "Edit",
-                    className: "grey",
-                    click: () => fireAndForget(() => this.setEditMode(true)),
-                });
-                // Preview-only inline edit (dblclick a paragraph) commits the draft atom on blur
-                // but never lands on disk without this — surface the same green Save affordance the
-                // code-edit branch shows, so the user sees that their dblclick edit is staged-and-unsaved
-                // and can flush it via one click. Revert / undo stays on the context-menu (line 2080),
-                // same as the editor view.
-                viewTextChildren.push({
-                    elemtype: "iconbutton",
-                    icon: "floppy-disk",
-                    title: "Save",
-                    iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
-                    click: () => fireAndForget(this.handleFileSave.bind(this)),
-                });
+                // Edit 按钮已移到 endIconButtons(紧贴 X 按钮), 这里只保留 Save.
+                // 同上: 仅脏时显示保存按钮, 文件名样式已承担"未保存"提示.
+                if (isDirty) {
+                    viewTextChildren.push({
+                        elemtype: "iconbutton",
+                        icon: "floppy-disk",
+                        title: "Save",
+                        iconColor: "var(--accent-color)",
+                        click: () => fireAndForget(this.handleFileSave.bind(this)),
+                    });
+                }
             }
             return [
                 {
@@ -829,6 +824,10 @@ export class PreviewModel implements ViewModel {
                 title: "Version Control",
                 click: () => fireAndForget(() => this.openVersionControlBlock()),
             };
+            const isLivePreviewView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
+            const canPreview = get(this.canPreview);
+            const loadableFileInfo = get(this.loadableFileInfo);
+            const isKnownDirectory = loadableFileInfo.state == "hasData" && (!!loadableFileInfo.data?.isdir || loadableFileInfo.data?.mimetype === "directory");
             if (!explorerActive && !mimeType) {
                 return null;
             }
@@ -872,6 +871,16 @@ export class PreviewModel implements ViewModel {
                     icon: "arrows-rotate",
                     title: "Refresh",
                     click: () => this.refresh(),
+                });
+            }
+            // Edit 按钮: 始终可见, 紧贴 close (X) 按钮, 不参与 hover-reveal.
+            if (!isCeView && canPreview && !isKnownDirectory && !isLivePreviewView && mimeType !== "directory") {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "pen-to-square",
+                    title: "Edit",
+                    className: "preview-edit-fixed",
+                    click: () => fireAndForget(() => this.setEditMode(true)),
                 });
             }
             if (buttons.length > 0) {

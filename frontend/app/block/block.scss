@@ -269,6 +269,13 @@
                         min-width: 0;
                         flex: 0 1 auto;
                         max-width: calc(100% - 24px);
+
+                        // 未保存(脏)状态: 文件名强调色 + 斜体, 与 tab 标签脏点同源信号.
+                        &.is-dirty {
+                            color: var(--accent-color);
+                            font-style: italic;
+                            font-weight: 600;
+                        }
                     }
 
                     .wave-iconbutton.preview-filename-copy-button {
@@ -470,6 +477,13 @@
 
                     &.is-hovered .wave-iconbutton:not(.block-frame-default-close):not(.disabled) {
                         display: flex;
+                    }
+
+                    // Edit 按钮始终可见, 紧贴 close (X) 按钮, 不参与 hover-reveal 切换.
+                    .wave-iconbutton.preview-edit-fixed {
+                        display: flex;
+                        opacity: 1;
+                        pointer-events: auto;
                     }
 
                     .wave-iconbutton {
