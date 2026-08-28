@@ -35,6 +35,7 @@ import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/work
 import { subscribeLaunchPopup } from "@/app/workspace/launch-popup-bus";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
+import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import {
     getLayoutModelForStaticTab,
@@ -2301,6 +2302,12 @@ const Widgets = memo(() => {
                         };
                         await env.createBlock(blockDef, false, true);
                     });
+                },
+            },
+            {
+                label: "Quick Launch Widgets",
+                click: () => {
+                    openWidgetQuickLaunch();
                 },
             },
         ];

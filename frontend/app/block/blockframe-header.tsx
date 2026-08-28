@@ -229,6 +229,10 @@ const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error, isHove
 });
 HeaderTextElems.displayName = "HeaderTextElems";
 
+function resolveZoneClass(decl: IconButtonDecl): string {
+    return decl.zone === "pinned" ? "end-icon-pinned" : "end-icon-reveal";
+}
+
 type HeaderEndIconsProps = {
     viewModel: ViewModel;
     nodeModel: NodeModel;
@@ -258,13 +262,16 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
     const endIconsElem: React.ReactElement[] = [];
 
     if (endIconButtons && endIconButtons.length > 0) {
-        endIconsElem.push(...endIconButtons.map((button, idx) => <IconButton key={idx} decl={button} />));
+        endIconsElem.push(...endIconButtons.map((button, idx) => (
+            <IconButton key={idx} decl={button} className={resolveZoneClass(button)} />
+        )));
     }
     if (showSplitButtons && viewModel?.viewType === "term") {
         const splitHorizontalDecl: IconButtonDecl = {
             elemtype: "iconbutton",
             icon: "columns",
             title: "Split Horizontally",
+            zone: "reveal",
             click: (e) => {
                 e.stopPropagation();
                 const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
@@ -279,6 +286,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
             elemtype: "iconbutton",
             icon: "grip-lines",
             title: "Split Vertically",
+            zone: "reveal",
             click: (e) => {
                 e.stopPropagation();
                 const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
@@ -289,16 +297,17 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 createBlockSplitVertically(blockDef, blockId, "after");
             },
         };
-        endIconsElem.push(<IconButton key="split-horizontal" decl={splitHorizontalDecl} />);
-        endIconsElem.push(<IconButton key="split-vertical" decl={splitVerticalDecl} />);
+        endIconsElem.push(<IconButton key="split-horizontal" decl={splitHorizontalDecl} className="end-icon-reveal" />);
+        endIconsElem.push(<IconButton key="split-vertical" decl={splitVerticalDecl} className="end-icon-reveal" />);
     }
     const settingsDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "cog",
         title: "Settings",
+        zone: "reveal",
         click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext),
     };
-    endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings" />);
+    endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings end-icon-reveal" />);
     if (isNoteBlock && (minimizedPreview || ephemeral)) {
         endIconsElem.push(
             <OptMagnifyButton
@@ -306,6 +315,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 magnified={true}
                 title="Collapse to Tab"
                 disabled={false}
+                className="end-icon-reveal"
                 toggleMagnify={() => {
                     if (minimizedPreview) {
                         const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
@@ -324,6 +334,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
             elemtype: "iconbutton",
             icon: "arrow-up-right-from-square",
             title: "Show in Tab",
+            zone: "reveal",
             click: () => {
                 const restored = restoreMinimizedBlockToLayout(tabModel.tabId, blockId);
                 if (restored) {
@@ -331,17 +342,18 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 }
             },
         };
-        endIconsElem.push(<IconButton key="restore-minimized" decl={restoreDecl} />);
+        endIconsElem.push(<IconButton key="restore-minimized" decl={restoreDecl} className="end-icon-reveal" />);
     } else if (ephemeral) {
         const addToLayoutDecl: IconButtonDecl = {
             elemtype: "iconbutton",
             icon: "circle-plus",
             title: "Add to Layout",
+            zone: "reveal",
             click: () => {
                 nodeModel.addEphemeralNodeToLayout();
             },
         };
-        endIconsElem.push(<IconButton key="add-to-layout" decl={addToLayoutDecl} />);
+        endIconsElem.push(<IconButton key="add-to-layout" decl={addToLayoutDecl} className="end-icon-reveal" />);
     } else {
         endIconsElem.push(
             <OptMagnifyButton
@@ -352,6 +364,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                     setTimeout(() => refocusNode(blockId), 50);
                 }}
                 disabled={magnifyDisabled}
+                className="end-icon-reveal"
             />
         );
         const inlineMinimizeDecl: IconButtonDecl = {
@@ -359,6 +372,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
             icon: isInlineTabGroup ? "box-open" : "box",
             title: isInlineTabGroup ? "Restore as Block" : "Merge into Previous Block",
             disabled: isInlineTabGroup ? false : !layoutModel?.canInlineMinimizeBlock(blockId),
+            zone: "reveal",
             click: () => {
                 if (isInlineTabGroup) {
                     layoutModel?.restoreInlineTabBlock(blockId);
@@ -367,17 +381,18 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 }
             },
         };
-        endIconsElem.push(<IconButton key="inline-tab-minimize" decl={inlineMinimizeDecl} />);
+        endIconsElem.push(<IconButton key="inline-tab-minimize" decl={inlineMinimizeDecl} className="end-icon-reveal" />);
     }
 
     const closeDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "xmark-large",
         title: minimizedPreview ? "Close Preview" : "Close",
+        zone: "pinned",
         click: () =>
             minimizedPreview ? nodeModel.onClose() : util.fireAndForget(() => uxCloseBlock(nodeModel.blockId)),
     };
-    endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close" />);
+    endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close end-icon-pinned" />);
 
     return <div className={cn("block-frame-end-icons", isHovered && "is-hovered")}>{endIconsElem}</div>;
 });

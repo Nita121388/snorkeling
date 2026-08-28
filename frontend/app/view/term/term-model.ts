@@ -74,6 +74,31 @@ import { TermWrap, WebGLSupported } from "./termwrap";
 
 const TerminalFontFamilies = ["Hack", "JetBrains Mono", "SF Mono", "Menlo", "Berkeley Mono"];
 
+// Detects whether a font family is actually renderable (bundled via FontFace or
+// installed on the system). document.fonts.check() is unreliable here (it returns
+// true for missing fonts on some setups), so we compare canvas text metrics of the
+// target font against a generic fallback: if the widths differ, the font is applied.
+function isFontFamilyAvailable(fontFamily: string): boolean {
+    if (typeof document === "undefined" || !document.createElement) {
+        return true;
+    }
+    try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return true;
+        }
+        const testStr = "mmMMilliW中文字体0O1";
+        ctx.font = "12px serif";
+        const baseline = ctx.measureText(testStr).width;
+        ctx.font = `12px "${fontFamily}", serif`;
+        const test = ctx.measureText(testStr).width;
+        return Math.abs(test - baseline) > 0.5;
+    } catch {
+        return true;
+    }
+}
+
 export class TermViewModel implements ViewModel {
     viewType: string;
     nodeModel: BlockNodeModel;
@@ -374,6 +399,7 @@ export class TermViewModel implements ViewModel {
             if (isAIPanelOpen) {
                 const shellIntegrationButton = this.getShellIntegrationIconButton(get);
                 if (shellIntegrationButton) {
+                    shellIntegrationButton.zone = "reveal";
                     rtn.push(shellIntegrationButton);
                 }
             }
@@ -381,6 +407,7 @@ export class TermViewModel implements ViewModel {
             if (get(getSettingsKeyAtom("debug:webglstatus"))) {
                 const webglButton = this.getWebGlIconButton(get);
                 if (webglButton) {
+                    webglButton.zone = "reveal";
                     rtn.push(webglButton);
                 }
             }
@@ -1437,10 +1464,13 @@ export class TermViewModel implements ViewModel {
             },
         });
         const fontFamilySubMenu: ContextMenuItem[] = TerminalFontFamilies.map((fontFamily) => {
+            const available = isFontFamilyAvailable(fontFamily);
             return {
-                label: fontFamily,
+                label: (available ? "✅ " : "❌ ") + fontFamily,
                 type: "checkbox",
                 checked: overrideFontFamily == fontFamily,
+                enabled: available,
+                sublabel: available ? undefined : "未安装",
                 click: () => {
                     RpcApi.SetMetaCommand(TabRpcClient, {
                         oref: WOS.makeORef("block", this.blockId),

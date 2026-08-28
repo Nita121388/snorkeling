@@ -470,20 +470,30 @@
                 .block-frame-end-icons {
                     display: flex;
                     flex-shrink: 0;
+                    justify-content: flex-end;
 
-                    .wave-iconbutton:not(.block-frame-default-close) {
+                    // ── reveal 区: 默认隐藏, 悬浮才显示 ──
+                    .wave-iconbutton.end-icon-reveal {
                         display: none;
                     }
 
-                    &.is-hovered .wave-iconbutton:not(.block-frame-default-close):not(.disabled) {
+                    &.is-hovered .wave-iconbutton.end-icon-reveal:not(.disabled) {
                         display: flex;
                     }
 
-                    // Edit 按钮始终可见, 紧贴 close (X) 按钮, 不参与 hover-reveal 切换.
-                    .wave-iconbutton.preview-edit-fixed {
+                    // ── pinned 区: 始终显示, 不参与 hover 切换 ──
+                    .wave-iconbutton.end-icon-pinned {
                         display: flex;
-                        opacity: 1;
                         pointer-events: auto;
+                    }
+
+                    // ── 固定排序: reveal(0) 在左, pinned(2) 在右 ──
+                    .wave-iconbutton.end-icon-reveal {
+                        order: 0;
+                    }
+
+                    .wave-iconbutton.end-icon-pinned {
+                        order: 2;
                     }
 
                     .wave-iconbutton {

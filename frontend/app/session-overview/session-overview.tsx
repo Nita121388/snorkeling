@@ -2674,6 +2674,7 @@ export class SessionOverviewViewModel implements ViewModel {
                 elemtype: "iconbutton",
                 icon: "rotate-right",
                 title: "Refresh overview",
+                zone: "pinned",
                 click: (e) => {
                     e.stopPropagation();
                     this.refresh();

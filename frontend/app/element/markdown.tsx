@@ -1,6 +1,36 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// =============================================================================
+// NOTE SURFACE — primary editing surface of the note system.
+//
+// This component renders markdown as rich HTML AND serves as the live, inline-
+// editable note editor. It is NOT a generic markdown renderer and NOT the same
+// layer as the source editor (preview-edit.tsx / Monaco), which edits raw
+// markdown as code. Two paradigms edit the same file:
+//   - Source editor  : raw text, code-style (Cmd+E toggle).
+//   - Note surface   : rendered, WYSIWYG-ish, click/dblclick-to-edit inline.
+//
+// COORDINATE CONTRACT (read before touching edit logic):
+//   Every editable block in the rendered tree carries `data-source-line`
+//   (+ optional `data-source-line-end` for multi-line blocks). This attribute
+//   IS the bridge between the DOM and the markdown source. All edits resolve a
+//   block via [data-source-line] then rewrite source through the pure helpers
+//   in markdown-inline-edit.tsx (replaceSourceRange / spliceInsertBlock /
+//   commitPlaceholderBlock / splitBlockAtCaretText). Do NOT invent new ways to
+//   locate blocks.
+//
+// EXTENSION POINTS (prefer reusing these over adding parallel top-level handlers):
+//   - Block kinds   : InlineEditBlockKind union (markdown-inline-edit.tsx).
+//   - Click gestures: handleInlineEditClick / DblClick / MouseDown.
+//   - Edit session  : useInlineEdit (beginEdit / commit / cancel lifecycle).
+//
+// EDGE CASE — empty-space click: a click that resolves to NO [data-source-line]
+// block (the blank area below the rendered content, or the left gutter) is a
+// defined case, not an oversight. See handleInlineEditClick's empty-space
+// branch (cursor falls to the last line so the user can keep writing).
+// =============================================================================
+
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
 import {
@@ -983,6 +1013,8 @@ const MarkdownImg = ({
     return <span>[img]</span>;
 };
 
+// === Markdown component + inline-edit logic (render helpers are above) =================
+
 type MarkdownProps = {
     text?: string;
     textAtom?: Atom<string> | Atom<Promise<string>>;
@@ -1234,6 +1266,8 @@ const Markdown = ({
         onInlineEditCommit(nextText);
     };
 
+    // === Inline-edit: target resolution + click/dblclick handlers =======================
+
     // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
     // to its enclosing [data-source-line] block, promoting <LI> to its parent <OL>/<UL> so the
     // editor owns the whole list (M2 ships list-as-block, not listitem-as-block), then maps the
@@ -1439,6 +1473,65 @@ const Markdown = ({
             }
             const resolved = resolveEditTargetFromEvent(e);
             if (resolved == null) {
+                // Click landed on empty space (not on any [data-source-line] block). Only treat
+                // it as "continue writing at the end" when it is the TRAILING blank area — below
+                // the last rendered block and inside the content's horizontal extent. Gaps
+                // between blocks and side gutters are no-ops (don't jump the caret to the end).
+                // The insert-then-edit flow mirrors handleInsertClick("after").
+                const viewport = getViewportEl();
+                const root = viewport?.querySelector<HTMLElement>(".markdown-render-root");
+                if (root == null) {
+                    return;
+                }
+                let lastEl: HTMLElement | null = null;
+                let lastLine = -1;
+                root.querySelectorAll<HTMLElement>("[data-source-line]").forEach((el) => {
+                    const line = Number(el.dataset.sourceLine);
+                    if (Number.isFinite(line) && line > lastLine) {
+                        lastLine = line;
+                        lastEl = el;
+                    }
+                });
+                if (lastEl == null) {
+                    return;
+                }
+                const rootRect = root.getBoundingClientRect();
+                const lastRect = lastEl.getBoundingClientRect();
+                // Only the TRAILING blank area counts as "continue at the end": below the last
+                // block AND inside the content's horizontal extent. Gaps between blocks and side
+                // gutters are no-ops so the caret never jumps to the end unexpectedly.
+                const isTrailingBlank =
+                    e.clientY > lastRect.bottom &&
+                    e.clientX >= rootRect.left &&
+                    e.clientX <= rootRect.right;
+                if (!isTrailingBlank) {
+                    return;
+                }
+                const startLine = lastLine;
+                const endLineRaw = lastEl.dataset.sourceLineEnd != null ? Number(lastEl.dataset.sourceLineEnd) : startLine;
+                const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
+                const isParagraph = lastEl.tagName === "P" || lastEl.classList.contains("paragraph");
+                const isBlankSpacer = lastEl.classList.contains("blank-spacer");
+                const isListItem = lastEl.tagName === "LI";
+                const inlineMode = (isParagraph && !isBlankSpacer) || isListItem;
+                const originalText = text;
+                const sourceLines = text.split(/\r\n|\n/);
+                const listItemAnchor = isListItem ? computeListInsertAnchor(text, startLine, "after") : null;
+                let insertAtLine: number;
+                let prefillMarker: string | undefined;
+                if (listItemAnchor != null) {
+                    insertAtLine = listItemAnchor.insertAtLine;
+                    prefillMarker = listItemAnchor.prefillMarker || undefined;
+                } else {
+                    insertAtLine = endLine + 1;
+                }
+                const insertIdx = Math.max(0, Math.min(insertAtLine - 1, sourceLines.length));
+                const spliced = [...sourceLines];
+                spliced.splice(insertIdx, 0, prefillMarker ?? "");
+                e.preventDefault();
+                e.stopPropagation();
+                handleInlineEditCommit(spliced.join("\n"));
+                focusEditedLine(insertAtLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
                 return;
             }
             e.preventDefault();
@@ -1448,8 +1541,10 @@ const Markdown = ({
             // gestures complement each other.
             beginEditAtPoint(e, resolved);
         },
-        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint]
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint, getViewportEl, text, handleInlineEditCommit]
     );
+
+    // === Block grip / insert / drag-reorder / selection ==================================
 
     // --- Block anchor resolvers (lifted above handleInlineEditMouseDown so the Ctrl/Cmd +
     // drag-select handler can reference them without a use-before-declaration error) ----
@@ -1885,28 +1980,46 @@ const Markdown = ({
         }
 
         // --- Paragraph / blank row: split into two blocks ---------------------------------
-        // Only split for the block kinds the user actually presses Enter in; headings,
-        // code, and tables fall through (browser's native line-break is fine).
-        if (session.blockKind !== "p" && session.blockKind !== "blank") {
-            return; // let the textarea do its native newline
+        if (session.blockKind === "p" || session.blockKind === "blank") {
+            const { text: newFull, newLine } = splitBlockAtCaretText(
+                text,
+                session.startLine,
+                session.endLine,
+                draft,
+                pos
+            );
+            const revert = () => {
+                handleInlineEditCommit(text); // restore the document to what it was before the split
+            };
+            handleInlineEditCommit(newFull);
+            // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
+            // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
+            // before the split, or the next Save would persist the rollback and the typed line
+            // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
+            focusEditedLine(newLine, revert, true, undefined, true);
+            return;
         }
 
-        const { text: newFull, newLine } = splitBlockAtCaretText(
-            text,
-            session.startLine,
-            session.endLine,
-            draft,
-            pos
-        );
-        const revert = () => {
-            handleInlineEditCommit(text); // restore the document to what it was before the split
-        };
-        handleInlineEditCommit(newFull);
-        // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
-        // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
-        // before the split, or the next Save would persist the rollback and the typed line
-        // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
-        focusEditedLine(newLine, revert, true, undefined, true);
+        // --- Code / heading: insert a real newline at the caret ----------------------------
+        // These blocks don't "split into two blocks" on Enter, but users still expect Enter to
+        // add a line (multi-line code; heading -> heading + following line). The keydown handler
+        // above already preventDefaults the Enter before invoking this, so the browser's native
+        // newline never fires — we must insert "\n" here, or Enter is a silent no-op (the old
+        // "fall through to native newline" comment was wrong; that was the bug behind "some
+        // lines don't support Enter").
+        if (session.blockKind === "code" || session.blockKind === "h") {
+            const newDraft = draft.slice(0, pos) + "\n" + draft.slice(pos);
+            inlineEdit.setDraftText(newDraft);
+            const newPos = pos + 1;
+            requestAnimationFrame(() => {
+                ta.selectionStart = newPos;
+                ta.selectionEnd = newPos;
+            });
+            return;
+        }
+
+        // --- Table / hr: no meaningful inline newline — leave Enter as a no-op. -------------
+        return;
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine]);
 
     // --- Navigate up from an emptied line ------------------------------------------------
@@ -2514,6 +2627,8 @@ const Markdown = ({
     // 重跑 → 新 DOM 上 `.collapsed-hidden` 丢失 → 标题显示「已折叠（chevron→Expand）」但内容
     // 仍展开 → 折叠与展开样式不匹配。因此这里必须「每次提交后都同步」（useLayoutEffect 无
     // deps）：无论 remount 还是状态变化，render 提交后立即重算，且发生在 paint 前（无闪跳）。
+    // === Scroll / collapse visibility sync ==============================================
+
     const updateCollapsedHeadingVisibility = () => {
         if (!contentsOsRef.current?.osInstance()) {
             return;
@@ -3019,6 +3134,8 @@ const Markdown = ({
             onUserScrollSourceLine(targetLine);
         }
     };
+
+    // === ReactMarkdown component map + JSX render =========================================
 
     // useMemo 稳定整张 components 映射（根治「拖选文本时选中态被销毁」）：
     // 若 a/p/h1-h6/…/pre/mermaidblock 每次渲染都重建（内联箭头函数），元素 type 引用每次

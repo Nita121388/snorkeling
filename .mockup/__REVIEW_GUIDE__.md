@@ -81,6 +81,10 @@
 
 - `inline-tab-add-menu/` — **◉ 真实代码已落地**（2026-08-26，行为二次迭代：菜单条目点击而非悬浮、右栏不再被连带带出）;Blocks 组（Inline Tab 化 Block）tab 行右上角新增固定区「＋」按钮（拆滚动区+固定区,tabs 溢出滚动时钉死右上角不挨着最后一个 tab）,点击弹出 widget 注册表驱动的新建菜单:Terminal/Agent 经 launch-popup-bus 复用右栏同款目标浮窗（footer 标 "Add to Group",创建改道进组）、Files 继承激活 tab 的 connection/cmd:cwd、其余 widget 直通 blockdef 创建并加入本组（`addBlockToInlineTab`）,action 型跳过;新增 `inlinetab-addmenu.tsx` + `launch-popup-bus.ts`,复用 `block.tsx` InlineTabBlock + `block.scss` + `widgets.json` + `widgets.tsx`。
 
+## `widget-quick-launch/` — 1 项（自建目录）
+
+- `widget-quick-launch/` — **● 已落地**（2026-08-28；居中浮层 `widget-quick-launch.tsx` + `keymodel.ts` 加 `Cmd:Shift:p` + `widgets.tsx` 右键菜单；Terminal/Agent 经 `requestLaunchPopup` 复用右栏目标浮窗，sink 改道进组）键盘快捷启动面板:按 `Cmd/Ctrl+Shift+p` 弹居中浮层,列出全部 supported widget(无搜索框,widget 数量少),选一个后底部出现两按钮 `[New Block]` / `[Current Group]`——New Block=当前 Tab 新建兄弟 Block;Current Group=加入当前 focused Block 所在组成为新 Tab(单 Block 节点被 `addBlockToInlineTab` 自动升级为组)。Terminal/Agent 同样两选放置,经 `requestLaunchPopup({mode, anchorEl, sinkNodeId?})` 复用右栏目标浮窗(sink 改道进组)。镜像 `widgets.tsx`(WidgetsBar 点击=createBlock) + `inlinetab-addmenu.tsx`(widget 注册表菜单) + `keymodel.ts`(全局快捷键) + `inlineTabs.ts`/`layoutModel.addBlockToInlineTab`(Blocks 组);计划新增 `widget-quick-launch.tsx`,真实组件尚未实现。
+
 > **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
 > - `aisessions-no-tag-filter.html` / `aisessions-path-filter/` — session 列表筛选方向
 > - `commontext-pinned-detail-insert.html` — pinned 详情插入方向

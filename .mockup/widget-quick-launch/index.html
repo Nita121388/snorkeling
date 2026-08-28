@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Widget Quick Launch — 键盘快捷启动面板（New Block / Current Group）</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="page-head">
+        <h1>Widget Quick Launch — 键盘快捷启动面板</h1>
+        <p>
+            结构镜像真实 <code>frontend/app/workspace/widgets.tsx</code>（WidgetsBar 点击 = <code>createBlock</code>）
+            + <code>inlinetab-addmenu.tsx</code>（widget 注册表驱动菜单）+ <code>keymodel.ts</code>（全局快捷键）
+            + <code>inlineTabs.ts</code> / <code>layoutModel.addBlockToInlineTab</code>（Blocks 组）。
+            新增文件 <code>widget-quick-launch.tsx</code>（计划中）。
+        </p>
+        <p class="sub2">
+            设计定稿：按 <code>Cmd/Ctrl+Shift+p</code> 弹<b>居中浮层</b>，列出全部 supported widget（<b>无搜索框</b>——目前 widget 仅几个）；
+            点一个 widget → 底部出现两个放置按钮 <code>[New Block]</code> / <code>[Current Group]</code>。
+            <b>New Block</b> = 当前 Tab 新建兄弟 Block；<b>Current Group</b> = 加入当前 focused Block 所在组、成为新 Tab
+            （单 Block 节点会被 <code>addBlockToInlineTab</code> 自动升级为组）。
+            Terminal / Agent 同样走两选放置，经 <code>requestLaunchPopup</code> 唤起现有目标选择浮窗（sink 改道进组）。
+        </p>
+    </div>
+
+    <!-- ===== 触发器 ===== -->
+    <div class="trigger-bar">
+        <button id="openPalette" class="kbd-btn" type="button">
+            <i class="fa-sharp fa-regular fa-bolt"></i>
+            <span>Quick Launch Widgets</span>
+            <span class="kbd kbd-mac"><i class="fa-brands fa-apple"></i>⇧P</span>
+            <span class="kbd kbd-win">Ctrl+Shift+P</span>
+        </button>
+        <span class="trigger-hint">按快捷键或点按钮打开 · 列表无过滤框（widget 数量少）</span>
+        <span class="trigger-hint dim">提示：面板上 ↑↓ 移动 · Enter 选中 · Esc 关闭</span>
+    </div>
+
+    <!-- ===== 舞台：当前 Tab 布局（结果预览） ===== -->
+    <div class="stage">
+        <div class="scene">
+            <div class="scene-title">当前 Tab 布局 — focused = 高亮块（点 block 切换 focus）</div>
+            <div class="tile-node" id="tabWindow"><!-- 由 script.js 渲染 --></div>
+            <div class="scene-note">
+                ⓘ <b>New Block</b>：在当前 Tab 追加一个兄弟 pane（等同现在点右侧 WidgetsBar）。<br>
+                ⓘ <b>Current Group</b>：focused 是组 → 追加为新 Tab；focused 是单 Block → 自动升级为组（原块 + 新块两 Tab）。
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 说明 + 调用链日志 ===== -->
+    <div class="bottom">
+        <div class="explain">
+            <div class="panel-title">设计要点</div>
+            <ul>
+                <li><b>触发</b>：<code>keymodel.ts</code> 新增 <code>Cmd:Shift:p</code> → <code>openWidgetQuickLaunch()</code>（对标现有 <code>openCommonTextSearch</code>）。</li>
+                <li><b>数据源</b>：与 WidgetsBar / 组「＋」菜单同源 —— <code>pickGroupAddableWidgets(fullConfig.widgets, workspaceId)</code>；用户自定义 widget 自动出现。</li>
+                <li><b>无搜索框</b>：widget 数量少，直接列表；点选为主，轻量 ↑↓/Enter 键盘导航。</li>
+                <li><b>两选放置</b>：底部 <code>[New Block]</code> / <code>[Current Group]</code>。Current Group 调 <code>layoutModel.addBlockToInlineTab(focusedNodeId, blockId)</code>。</li>
+                <li><b>Terminal/Agent 二级弹窗</b>：选 widget → 底部 <code>[New Block]</code>/<code>[Current Group]</code> → 点击后打开<b>二级弹窗</b>（New Agent / New Terminal 目标选择器：profile 选择 · path 列表 · Env · 底部确认），placement 作为 <code>sinkNodeId</code> 带入；确认后 <code>CreateBlock</code> + <code>addBlockToInlineTab</code>(Current Group) / <code>createBlock</code>(New Block)。与右栏 WidgetsBar 同款弹窗。</li>
+                <li><b>不改</b>：<code>addBlockToInlineTab</code> / <code>requestLaunchPopup</code> / 布局模型 / Agent·Terminal 浮窗 —— 全复用。</li>
+            </ul>
+        </div>
+        <div class="logwrap">
+            <div class="panel-title">模拟调用链日志 <span class="muted">（对应真实 API）</span></div>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <!-- ===== 快速启动面板（居中浮层，无搜索框） ===== -->
+    <div class="qlaunch-overlay" id="qlaunchOverlay" hidden>
+        <div class="qlaunch" role="dialog" aria-label="Quick Launch Widgets">
+            <div class="qlaunch-head">
+                <div class="qlaunch-title"><i class="fa-sharp fa-regular fa-bolt"></i> Quick Launch Widgets</div>
+                <div class="qlaunch-sub">支持的 widget · 无过滤（数量少）</div>
+            </div>
+            <div class="qlaunch-list" id="qlaunchList"><!-- widget 行由 script.js 渲染 --></div>
+            <div class="qlaunch-footer" id="qlaunchFooter" hidden>
+                <div class="qlaunch-footer-label" id="footerLabel">放置到</div>
+                <div class="qlaunch-footer-btns">
+                    <button class="qbtn" type="button" data-place="new"><i class="fa-sharp fa-solid fa-square-plus"></i> New Block</button>
+                    <button class="qbtn qbtn-accent" type="button" data-place="group"><i class="fa-sharp fa-solid fa-table-columns"></i> Current Group</button>
+                </div>
+                <button class="qbtn qbtn-ghost" type="button" id="footerBack"><i class="fa-sharp fa-solid fa-arrow-rotate-left"></i> 重选</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 二级弹窗：New Agent / New Terminal 目标选择（Terminal/Agent 选中+放置后出现） ===== -->
+    <div class="qtarget-overlay" id="qtargetOverlay" hidden>
+        <div class="qtarget" role="dialog" aria-label="New Agent/New Terminal target">
+            <div class="qtarget-head">
+                <div class="qtarget-title" id="qtargetTitle"><i class="fa-sharp fa-solid fa-square-terminal"></i> New Terminal</div>
+                <button class="qtarget-env" id="qtargetEnv" type="button" title="Set environment variables for this launch"><i class="fa fa-solid fa-gears"></i> Env</button>
+            </div>
+            <div class="qtarget-profiles" id="qtargetProfiles" hidden>
+                <div class="qtarget-profiles-label">Select an agent type</div>
+                <div class="qtarget-profiles-row" id="qtargetProfilesRow"></div>
+            </div>
+            <div class="qtarget-paths-label">Select a path</div>
+            <div class="qtarget-paths" id="qtargetPaths"></div>
+            <div class="qtarget-footer" id="qtargetFooter">
+                <span class="qtarget-footer-hint" id="qtargetFooterHint">New Block</span>
+                <button class="qbtn qbtn-ghost" id="qtargetCancel" type="button">Cancel</button>
+                <button class="qbtn qbtn-accent" id="qtargetCreate" type="button"><i class="fa-sharp fa-solid fa-square-plus"></i> Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

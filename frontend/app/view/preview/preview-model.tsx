@@ -657,11 +657,8 @@ export class PreviewModel implements ViewModel {
             }
             const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
             const tooltipText = headerPath == "~" ? "~ (C:/Users/chemclin)" : headerPath;
-            // Shared across code-edit AND preview inline-edit dirty signals so the preview branch
-            // can render a Save button with the same accent color the editor branch does — without
-            // this, a para dblclick→blur commit shows up as "nothing changed in the header".
-            // 文件是否有未落盘的草稿(脏). 同一份信号驱动两处: ① 地址栏文件名未保存样式
-            // ② 保存按钮仅在脏时显示. 取代原先"始终显示、干净时也占着"的冗余按钮.
+            // 文件是否有未落盘的草稿(脏). 信号驱动地址栏文件名样式(accent+italic)与 Tab 脏点.
+            // 保存入口: Ctrl/Cmd+S 全局落盘 + 右键菜单 Save File, 头部不再保留 Save 按钮.
             const isDirty = get(this.newFileContent) !== null;
             const viewTextChildren: HeaderElem[] = [
                 {
@@ -727,17 +724,6 @@ export class PreviewModel implements ViewModel {
                         className: clsx(`yellow rounded-[4px] !py-[2px] !px-[10px] text-[11px] font-[500]`),
                         onClick: () => {},
                     });
-                } else {
-                    // 保存按钮仅在脏时显示, 干净态隐藏以减少冗余(Ctrl/Cmd+S 已全局可落盘).
-                    if (isDirty) {
-                        viewTextChildren.push({
-                            elemtype: "iconbutton",
-                            icon: "floppy-disk",
-                            title: "Save",
-                            iconColor: "var(--accent-color)",
-                            click: () => fireAndForget(this.handleFileSave.bind(this)),
-                        });
-                    }
                 }
                 if (get(this.canPreview)) {
                     const previewMenuItems: MenuItem[] = [
@@ -772,17 +758,7 @@ export class PreviewModel implements ViewModel {
                     });
                 }
             } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
-                // Edit 按钮已移到 endIconButtons(紧贴 X 按钮), 这里只保留 Save.
-                // 同上: 仅脏时显示保存按钮, 文件名样式已承担"未保存"提示.
-                if (isDirty) {
-                    viewTextChildren.push({
-                        elemtype: "iconbutton",
-                        icon: "floppy-disk",
-                        title: "Save",
-                        iconColor: "var(--accent-color)",
-                        click: () => fireAndForget(this.handleFileSave.bind(this)),
-                    });
-                }
+                // Edit 按钮已移到 endIconButtons(紧贴 X 按钮). 保存交由 Ctrl/Cmd+S + 右键菜单 Save File.
             }
             return [
                 {
@@ -822,6 +798,7 @@ export class PreviewModel implements ViewModel {
                 elemtype: "iconbutton",
                 icon: "code-branch",
                 title: "Version Control",
+                zone: "reveal",
                 click: () => fireAndForget(() => this.openVersionControlBlock()),
             };
             const isLivePreviewView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
@@ -838,6 +815,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: showHiddenFiles ? "eye" : "eye-slash",
                     title: showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
+                    zone: "reveal",
                     click: () => {
                         globalStore.set(this.showHiddenFiles, (prev) => !prev);
                     },
@@ -848,6 +826,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "book",
                     title: "Table of Contents",
+                    zone: "reveal",
                     click: () => this.markdownShowTocToggle(),
                 });
             }
@@ -857,6 +836,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "book-open",
                     title: "Open in Obsidian",
+                    zone: "reveal",
                     click: () => {
                         fireAndForget(async () => {
                             await loadObsidianVaults();
@@ -870,6 +850,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
                     title: "Refresh",
+                    zone: "pinned",
                     click: () => this.refresh(),
                 });
             }
@@ -879,7 +860,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "pen-to-square",
                     title: "Edit",
-                    className: "preview-edit-fixed",
+                    zone: "pinned",
                     click: () => fireAndForget(() => this.setEditMode(true)),
                 });
             }

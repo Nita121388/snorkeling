@@ -217,6 +217,7 @@ declare global {
         title?: string;
         disabled?: boolean;
         noAction?: boolean;
+        zone?: "pinned" | "reveal";
     };
 
     type IconButtonDecl = IconButtonCommon & {

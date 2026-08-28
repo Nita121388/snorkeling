@@ -192,6 +192,7 @@ export class WebViewModel implements ViewModel {
                     icon: mobileIcon,
                     title: mobileTitle,
                     noAction: true,
+                    zone: "reveal",
                 });
             }
 
@@ -199,6 +200,7 @@ export class WebViewModel implements ViewModel {
                 elemtype: "iconbutton",
                 icon: "arrow-up-right-from-square",
                 title: "Open in External Browser",
+                zone: "pinned",
                 click: () => {
                     console.log("open external", url);
                     if (url != null && url != "") {

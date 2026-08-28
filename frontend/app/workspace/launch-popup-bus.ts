@@ -15,17 +15,19 @@ export type LaunchPopupMode = "terminal" | "agent";
 export type LaunchPopupRequest = {
     mode: LaunchPopupMode;
     /**
+     * Layout nodeId of the inline-tab group that requested the popup. While set, the floating
+     * window's in-tab creation funnels into this group via layoutModel.addBlockToInlineTab.
+     * Omit (undefined) for a plain "New Block" placement into the current tab.
+     */
+    nodeId?: string;
+    /**
      * Live anchor element (the "+" button of the group). Passed as a real HTMLElement so the
      * floating windows' autoUpdate keeps the popup clamped to the viewport when tab content
      * scrolls or the window resizes — a static rect snapshot would go stale.
      */
     anchorEl: HTMLElement;
-    /**
-     * Layout nodeId of the inline-tab group that requested the popup. While set, the floating
-     * window's in-tab creation funnels into this group via layoutModel.addBlockToInlineTab.
-     */
-    nodeId: string;
 };
+
 
 type Listener = (req: LaunchPopupRequest) => void;
 
