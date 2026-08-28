@@ -223,6 +223,8 @@ const FlyoutMenuComponent = memo(
                                                 subMenuRefs={subMenuRefs}
                                                 renderMenu={renderMenu}
                                                 renderMenuItem={renderMenuItem}
+                                                hoverHandlers={hoverHandlers}
+                                                hoverMode={hoverMode}
                                             />
                                         )}
                                     </Fragment>
@@ -256,6 +258,10 @@ type SubMenuProps = {
     handleOnClick: (e: React.MouseEvent<HTMLDivElement>, item: MenuItem) => void;
     renderMenu?: (subMenu: React.ReactElement, props: any) => React.ReactElement;
     renderMenuItem?: (item: MenuItem, props: any) => React.ReactElement;
+    // hoverMode: when true the submenu counts as part of the menu tree's hover region, so
+    // dwelling on it cancels the close timer (the parent L1 menu stays open while hovering L2).
+    hoverHandlers?: { onPointerEnter: () => void; onPointerLeave: () => void };
+    hoverMode?: boolean;
 };
 
 const SubMenu = memo(
@@ -270,6 +276,8 @@ const SubMenu = memo(
         handleOnClick,
         renderMenu,
         renderMenuItem,
+        hoverHandlers,
+        hoverMode,
     }: SubMenuProps) => {
         subItems.forEach((_, idx) => {
             const newKey = `${parentKey}-${idx}`;
@@ -292,6 +300,8 @@ const SubMenu = memo(
                     zIndex: 1000,
                     visibility: visibleSubMenus[parentKey]?.visible && isPositioned ? "visible" : "hidden",
                 }}
+                onPointerEnter={hoverMode ? hoverHandlers?.onPointerEnter : undefined}
+                onPointerLeave={hoverMode ? hoverHandlers?.onPointerLeave : undefined}
             >
                 {subItems.map((item, idx) => {
                     const newKey = `${parentKey}-${idx}`;
@@ -328,6 +338,8 @@ const SubMenu = memo(
                                     subMenuRefs={subMenuRefs}
                                     renderMenu={renderMenu}
                                     renderMenuItem={renderMenuItem}
+                                    hoverHandlers={hoverHandlers}
+                                    hoverMode={hoverMode}
                                 />
                             )}
                         </Fragment>
