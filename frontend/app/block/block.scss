@@ -265,17 +265,10 @@
                     overflow: hidden;
                     gap: 4px;
 
-                    .block-frame-text.preview-filename {
-                        min-width: 0;
-                        flex: 0 1 auto;
-                        max-width: calc(100% - 24px);
-
-                        // 未保存(脏)状态: 文件名强调色 + 斜体, 与 tab 标签脏点同源信号.
-                        &.is-dirty {
-                            color: var(--accent-color);
-                            font-style: italic;
-                            font-weight: 600;
-                        }
+                    .preview-filename.is-dirty {
+                        color: var(--accent-color);
+                        font-style: italic;
+                        font-weight: 600;
                     }
 
                     .wave-iconbutton.preview-filename-copy-button {
