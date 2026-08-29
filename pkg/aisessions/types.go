@@ -52,6 +52,7 @@ type Message struct {
 	Model     string `json:"model,omitempty"`
 	Timestamp int64  `json:"timestamp,omitempty"`
 	ToolName  string `json:"toolName,omitempty"`
+	Thinking  string `json:"thinking,omitempty"`
 	CharCount int    `json:"charCount"`
 }
 

@@ -14,19 +14,27 @@ import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent } from "./use-chat-stream";
+import { ThinkingDisclosure } from "./session-message";
 
-export type LiveToolRun = { name: string; status?: string; detail?: string };
+export type LiveToolRun = { id?: string; name: string; status?: string; detail?: string };
 
 export type LiveTurn = {
     userText: string;
+    userMessageSeqFloor: number;
     text: string;
-    thinking: boolean;
+    thinkingText: string;
     tools: LiveToolRun[];
 };
 
 export type LiveTurns = Record<string, LiveTurn>;
 
-const emptyTurn = (): LiveTurn => ({ userText: "", text: "", thinking: false, tools: [] });
+const emptyTurn = (userText = "", userMessageSeqFloor = 0): LiveTurn => ({
+    userText,
+    userMessageSeqFloor,
+    text: "",
+    thinkingText: "",
+    tools: [],
+});
 const LiveTurnFlushIntervalMs = 32;
 
 export function reduceLiveTurn(base: LiveTurn, evt: ChatEvent): LiveTurn {
@@ -34,19 +42,36 @@ export function reduceLiveTurn(base: LiveTurn, evt: ChatEvent): LiveTurn {
         case "message_start":
             return evt.role === "user" ? { ...base, userText: evt.text ?? "" } : base;
         case "assistant_delta":
+            // 不清空 thinkingText：思考过程在正文开始流式后仍保留展示，
+            // turn_end 时与历史消息的 Thinking（后端从会话文件提取）衔接。
             return { ...base, text: base.text + (evt.text ?? "") };
         case "thinking_delta":
-            return { ...base, thinking: true };
+            return { ...base, thinkingText: (base.thinkingText + (evt.text ?? "")).slice(-320) };
         case "tool_call_start":
             return {
                 ...base,
-                thinking: false,
-                tools: [...base.tools, { name: evt.toolName ?? "" }],
+                tools: [...base.tools, { ...(evt.toolCallId ? { id: evt.toolCallId } : {}), name: evt.toolName ?? "" }],
             };
+        case "tool_call_update": {
+            const tools = [...base.tools];
+            for (let i = tools.length - 1; i >= 0; i--) {
+                const matches = evt.toolCallId ? tools[i].id === evt.toolCallId : tools[i].name === evt.toolName;
+                if (matches) {
+                    tools[i] = {
+                        ...tools[i],
+                        status: evt.toolStatus ?? tools[i].status,
+                        detail: evt.detail ?? tools[i].detail,
+                    };
+                    break;
+                }
+            }
+            return { ...base, tools };
+        }
         case "tool_call_end": {
             const tools = [...base.tools];
             for (let i = tools.length - 1; i >= 0; i--) {
-                if (tools[i].name === evt.toolName && tools[i].status == null) {
+                const matches = evt.toolCallId ? tools[i].id === evt.toolCallId : tools[i].name === evt.toolName;
+                if (matches) {
                     tools[i] = { ...tools[i], status: evt.toolStatus, detail: evt.detail };
                     break;
                 }
@@ -106,10 +131,10 @@ export function useLiveTurns() {
         };
     }, []);
 
-    const startLiveTurn = useCallback((key: string) => {
+    const startLiveTurn = useCallback((key: string, userText = "", userMessageSeqFloor = 0) => {
         if (key === "") return;
         pendingEventsRef.current.delete(key);
-        setLiveTurns((current) => ({ ...current, [key]: emptyTurn() }));
+        setLiveTurns((current) => ({ ...current, [key]: emptyTurn(userText, userMessageSeqFloor) }));
     }, []);
 
     const clearLiveTurn = useCallback((key: string) => {
@@ -133,23 +158,30 @@ export function useLiveTurns() {
         setLiveTurns((current) => moveLiveTurn(current, fromKey, toKey));
     }, []);
 
-    const flushLiveTurn = useCallback((key: string) => {
-        if (key === "") return;
-        if (flushTimerRef.current != null) {
-            clearTimeout(flushTimerRef.current);
-            flushTimerRef.current = null;
-        }
-        const pending = pendingEventsRef.current.get(key);
-        if (pending == null || pending.length === 0) return;
-        pendingEventsRef.current.delete(key);
-        setLiveTurns((current) => {
-            let next = current;
-            for (const evt of pending) {
-                next = reduceLiveTurns(next, key, evt);
+    const flushLiveTurn = useCallback(
+        (key: string) => {
+            if (key === "") return;
+            if (flushTimerRef.current != null) {
+                clearTimeout(flushTimerRef.current);
+                flushTimerRef.current = null;
             }
-            return next;
-        });
-    }, []);
+            const pending = pendingEventsRef.current.get(key);
+            if (pending == null || pending.length === 0) {
+                if (pendingEventsRef.current.size > 0) scheduleFlush();
+                return;
+            }
+            pendingEventsRef.current.delete(key);
+            setLiveTurns((current) => {
+                let next = current;
+                for (const evt of pending) {
+                    next = reduceLiveTurns(next, key, evt);
+                }
+                return next;
+            });
+            if (pendingEventsRef.current.size > 0) scheduleFlush();
+        },
+        [scheduleFlush]
+    );
 
     const handleChatEvent = useCallback(
         (key: string, evt: ChatEvent) => {
@@ -162,7 +194,14 @@ export function useLiveTurns() {
         [scheduleFlush]
     );
 
-    return { liveTurns, startLiveTurn, handleChatEvent, clearLiveTurn, moveLiveTurn: moveLiveTurnState, flushLiveTurn };
+    return {
+        liveTurns,
+        startLiveTurn,
+        handleChatEvent,
+        clearLiveTurn,
+        moveLiveTurn: moveLiveTurnState,
+        flushLiveTurn,
+    };
 }
 
 /**
@@ -170,15 +209,22 @@ export function useLiveTurns() {
  * echo bubble, live tool rows, growing assistant text with cursor, and a
  * typing-dots placeholder covering TTFT dead time.
  */
-export function LiveTurnBlock({ turn }: { turn: LiveTurn }) {
+export function LiveTurnBlock({ turn, userMessagePersisted = false }: { turn: LiveTurn; userMessagePersisted?: boolean }) {
     return (
         <div className="mt-2 flex flex-col gap-2">
-            {turn.userText ? (
+            {turn.userText && !userMessagePersisted ? (
                 <div className="flex justify-end">
-                    <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-accent/15 px-3 py-2 text-sm leading-relaxed">
+                    <div className="max-w-[78%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/25 bg-accent/10 px-3.5 py-2.5 text-[13.5px] leading-relaxed text-primary">
                         {turn.userText}
                     </div>
                 </div>
+            ) : null}
+            {/* 流式思考与历史思考用同一组件（Paseo 风格）：思考进行时展开+脉冲，正文/工具接管后收起 */}
+            {turn.thinkingText ? (
+                <ThinkingDisclosure
+                    text={turn.thinkingText}
+                    streaming={turn.text === "" && !turn.tools.some((t) => t.status == null)}
+                />
             ) : null}
             {turn.tools.map((tool, idx) => (
                 <div
@@ -215,7 +261,7 @@ export function LiveTurnBlock({ turn }: { turn: LiveTurn }) {
                         parseIncompleteMarkdown
                     />
                 </div>
-            ) : !turn.tools.some((t) => t.status == null) ? (
+            ) : !turn.thinkingText && !turn.tools.some((t) => t.status == null) ? (
                 // 首包前的等待指示（TTFT 期间给足活感）
                 <div className="flex items-center gap-1 px-1 py-2">
                     {[0, 1, 2].map((i) => (

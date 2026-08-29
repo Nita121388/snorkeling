@@ -23,6 +23,12 @@ describe("parseSseDataLine", () => {
     it("tolerates trailing spaces", () => {
         expect(parseSseDataLine('data: {"type":"turn_end"}   ')).toEqual({ type: "turn_end" });
     });
+    it("normalizes backend SSE errors into terminal failures", () => {
+        expect(parseSseDataLine('data: {"type":"error","errorText":"agent is busy"}')).toEqual({
+            type: "turn_failed",
+            error: "agent is busy",
+        });
+    });
 });
 
 describe("runChatStream", () => {

@@ -6,7 +6,8 @@ import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CopyIconButton, CopyTextButton, IconButton } from "./controls";
+import { flushSync } from "react-dom";
+import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { HighlightedMessageText, MessageCard } from "./session-message";
 import { SessionTagChips } from "./session-tag-chips";
@@ -14,10 +15,8 @@ import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave
 import {
     extractSessionTagsFromNote,
     mergeSessionTags,
-    normalizeSessionTags,
     removeSessionTagFromNote,
     sessionTagsEqual,
-    stripSessionTagHashes,
 } from "./session-tags";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { ChatComposer } from "./chat-composer";
@@ -41,13 +40,11 @@ import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./s
 import {
     buildSessionDetailTimeline,
     formatDateTimeToSecond,
-    formatSessionDate,
     formatToolCallPreview,
     isReadableMessage,
     outlinePreview,
     outlineRoleClass,
     restoreCommandForSession,
-    shortSessionId,
     trimMessageText,
 } from "./utils";
 
@@ -68,7 +65,7 @@ const RenameTitleInputClass =
 export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
     loadDetailDelta?: (reason?: "manual" | "bottom") => Promise<boolean>;
-    loadDetailTools: (refresh?: boolean) => Promise<void>;
+    loadDetailTools: (refresh?: boolean) => Promise<boolean>;
     loadUserLines: (session: SessionSummary, request?: Partial<AISessionsUserLinesRequest>) => Promise<UserLinesResult>;
     updateNote: (session: SessionSummary, note: string, tags?: string[]) => Promise<boolean>;
     updateTitle: (session: SessionSummary, title: string) => Promise<boolean>;
@@ -181,10 +178,7 @@ function ToolCallCard({
                                 {trimToolCallText(detailText)}
                             </pre>
                             <div className="mt-2 flex items-center gap-2">
-                                <CopyIconButton text={detailText} label="Copy tool call detail" size="xs" />
-                                {toolCall.output ? (
-                                    <CopyIconButton text={toolCall.output} label="Copy tool output" size="xs" />
-                                ) : null}
+                                <CopyIconButton text={detailText} label="Copy" size="xs" />
                             </div>
                         </>
                     ) : (
@@ -227,10 +221,9 @@ export function SessionDetailPane({
 }) {
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
-    const [noteCollapsed, setNoteCollapsed] = useState(true);
+    const [noteEditorOpen, setNoteEditorOpen] = useState(false);
     const [outlineOpen, setOutlineOpen] = useState(false);
     const [userMessageListOpen, setUserMessageListOpen] = useState(false);
-    const [showToolCalls, setShowToolCalls] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const [renaming, setRenaming] = useState(false);
@@ -244,26 +237,10 @@ export function SessionDetailPane({
     const newChatTurnRef = useRef(false);
     const [newChatTurnFinished, setNewChatTurnFinished] = useState(false);
     const wasNewChatRef = useRef(false);
-    // Header 折叠状态：lazy init 读 localStorage 全局偏好；无偏好时默认极简 topbar（对齐原型）
-    const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(() => {
-        try {
-            const stored = localStorage.getItem("snorkeling:sessionDetail:headerCollapsed");
-            if (stored === "true") return true;
-            if (stored === "false") return false;
-            return true;
-        } catch {
-            return true;
-        }
-    });
     // 搜索工具栏（第二行）默认隐藏，点 🔍 展开
     const [searchExpanded, setSearchExpanded] = useState(false);
     // 上滚离开底部时浮出「跳到最新」胶囊（流式吸底/回到底部则收起）
     const [showJumpPill, setShowJumpPill] = useState(false);
-    // 用户在本 session 是否主动动过 Header 折叠（不写 localStorage，切 session 重置）
-    const userTouchedHeaderRef = useRef(false);
-    // 是否已有持久化偏好（影响自适应是否生效）
-    const hasStoredPreferenceRef = useRef(false);
-    // 测量 detail pane 可用高度以决定折叠态的自适应容器
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
     const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
@@ -355,10 +332,9 @@ export function SessionDetailPane({
             bottomDeltaTimerRef.current = null;
         }
         setDeleteConfirmOpen(false);
-        setNoteCollapsed(true);
+        setNoteEditorOpen(false);
         setNoteSaveStatus("idle");
         setExpandedToolCalls({});
-        setShowToolCalls(false);
         setVisibleMessageCount(defaultVisibleMessageCount);
         setUserMessageListOpen(false);
         setDetailSearchQuery("");
@@ -371,8 +347,6 @@ export function SessionDetailPane({
         setUserLinesLoading(false);
         setUserLinesError("");
         userLinesRequestSeqRef.current++;
-        // 切 session 时重置「用户在本 session 是否动过 Header」标志，让新 session 重新自适应
-        userTouchedHeaderRef.current = false;
         // 切 session 时重置「自动滚到底已执行」标志，让新 session 重新滚到底
         autoScrolledToBottomRef.current = false;
     }, [detail?.summary?.key]);
@@ -380,29 +354,6 @@ export function SessionDetailPane({
     useEffect(() => {
         bottomDeltaRequestedRef.current = false;
     }, [detail?.messages?.length, deltaLoading]);
-
-    // 初始化持久化偏好标记
-    useEffect(() => {
-        try {
-            hasStoredPreferenceRef.current = localStorage.getItem("snorkeling:sessionDetail:headerCollapsed") !== null;
-        } catch {
-            hasStoredPreferenceRef.current = false;
-        }
-    }, []);
-
-    // 自适应 Header 折叠：仅在「无持久化偏好 + 用户在本 session 未动过」时按高度决定
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const el = containerRef.current;
-        const observer = new ResizeObserver((entries) => {
-            if (hasStoredPreferenceRef.current) return;
-            if (userTouchedHeaderRef.current) return;
-            const h = entries[0]?.contentRect.height ?? 0;
-            setHeaderCollapsed(h < 320);
-        });
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, []);
 
     const readableMessages = useMemo(
         () => (detail?.messages ?? []).filter((message) => isReadableMessage(message)),
@@ -423,8 +374,8 @@ export function SessionDetailPane({
         [readableMessages, visibleMessageCount]
     );
     const timelineItems = useMemo(
-        () => buildSessionDetailTimeline(detail?.messages ?? [], detailMessages, detail?.toolCalls, showToolCalls),
-        [detail?.messages, detailMessages, detail?.toolCalls, showToolCalls]
+        () => buildSessionDetailTimeline(detail?.messages ?? [], detailMessages, detail?.toolCalls, true),
+        [detail?.messages, detailMessages, detail?.toolCalls]
     );
     const outlineMessages = useMemo(
         () => readableMessages.filter((message) => message.role === "user"),
@@ -446,7 +397,6 @@ export function SessionDetailPane({
     );
     const normalizedDetailSearchQuery = normalizedSearchQuery(detailSearchQuery);
     const toolCalls = detail?.toolCalls ?? [];
-    const toolsLoaded = detail?.toolCalls != null;
     const hasPreviousMessages = visibleMessageCount < readableMessages.length;
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
@@ -492,9 +442,17 @@ export function SessionDetailPane({
         abort: abortChatStream,
         move: moveChatStream,
     } = useChatStreams();
+    // ref 指向最新值，供异步交接逻辑读取，避免使用陈旧闭包中的 detail / liveTurns。
+    const liveTurnsRef = useRef(liveTurns);
+    liveTurnsRef.current = liveTurns;
+    const detailRef = useRef<SessionDetail | null>(detail);
+    detailRef.current = detail;
     const chatEndpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
     const activeLiveTurnKey = summary?.id || (isNewChat ? boundRef.current || NewChatLiveTurnKey : "");
     const liveTurn = liveTurns[activeLiveTurnKey] ?? null;
+    const liveUserMessagePersisted =
+        liveTurn != null &&
+        detailMessages.some((message) => message.seq > liveTurn.userMessageSeqFloor && message.role === "user");
     const activeChatStreamStatus = chatStreamStatuses[activeLiveTurnKey] ?? "idle";
     const turnIdBySessionRef = useRef(new Map<string, string>());
     const activeSessionIdRef = useRef("");
@@ -515,9 +473,9 @@ export function SessionDetailPane({
 
     const requestDetailDelta = useCallback(
         (reason: "manual" | "bottom") => {
-            if (reason === "manual" && showToolCalls) {
+            if (reason === "manual") {
                 if (summary != null) {
-                    return model.loadDetailTools(true).then(() => true);
+                    return model.loadDetail(summary, true).then(() => true);
                 }
                 return Promise.resolve(false);
             }
@@ -529,20 +487,59 @@ export function SessionDetailPane({
             }
             return Promise.resolve(false);
         },
-        [model, showToolCalls, summary]
+        [model, summary]
     );
-    const requestDetailDeltaRef = useRef(requestDetailDelta);
-    requestDetailDeltaRef.current = requestDetailDelta;
+
+    // 交接保护：turn_end 后先确认正式 assistant 消息已落盘，再清除 live 临时块。
+    // 否则后端持久化滞后时会出现「回应显示后内容消失」的空窗（见 use-live-turn.tsx 顶部注释）。
+    // ponytail: 轮询限 4s，超时则保留 live 副本——绝不擦除未确认内容。
+    const clearLiveTurnWhenPersisted = useCallback(
+        async (key: string) => {
+            if (key === "") return;
+            // 先抓取本 turn 的 seq 基线（live 块被清后就读不到了）
+            const seqFloor = liveTurnsRef.current[key]?.userMessageSeqFloor ?? 0;
+            const hasLanded = () =>
+                (detailRef.current?.messages ?? []).some(
+                    (m) => m.role === "assistant" && (m.seq ?? 0) > seqFloor
+                );
+            if (hasLanded()) {
+                clearLiveTurn(key);
+                return;
+            }
+            const startedAt = Date.now();
+            const MaxWaitMs = 4000;
+            const PollMs = 150;
+            while (Date.now() - startedAt < MaxWaitMs) {
+                await requestDetailDelta("bottom");
+                // 让 React 提交本次详情刷新，更新 detailRef 后再判定
+                await new Promise((r) => setTimeout(r, PollMs));
+                if (hasLanded()) {
+                    clearLiveTurn(key);
+                    return;
+                }
+            }
+            // 最终兜底：全量刷新再确认；仍缺失则保留 live 副本（不擦除未确认内容）。
+            await requestDetailDelta("manual");
+            await new Promise((r) => setTimeout(r, PollMs));
+            if (hasLanded()) {
+                clearLiveTurn(key);
+            }
+        },
+        [clearLiveTurn, requestDetailDelta]
+    );
 
     // 新会话的正式详情可能先于 SSE 结束到达，必须等本轮结束再替换临时内容。
     useEffect(() => {
         const sessionId = boundRef.current;
         if (newChatTurnRef.current && newChatTurnFinished && detail?.summary?.id === sessionId) {
-            void requestDetailDelta("bottom").finally(() => clearLiveTurn(sessionId));
-            newChatTurnRef.current = false;
-            setNewChatTurnFinished(false);
+            void (async () => {
+                await model.loadDetailTools(true);
+                await clearLiveTurnWhenPersisted(sessionId);
+                newChatTurnRef.current = false;
+                setNewChatTurnFinished(false);
+            })();
         }
-    }, [detail?.summary?.id, newChatTurnFinished, clearLiveTurn, requestDetailDelta]);
+    }, [detail?.summary?.id, newChatTurnFinished, clearLiveTurnWhenPersisted, model]);
 
     const handleChatEvent = useCallback(
         (evt: ChatEvent, streamSessionId: string) => {
@@ -581,25 +578,33 @@ export function SessionDetailPane({
                     return;
                 }
                 if (activeSessionIdRef.current === key) {
-                    void requestDetailDeltaRef.current("bottom").finally(() => clearLiveTurn(key));
+                    void (async () => {
+                        await model.loadDetailTools(true);
+                        await clearLiveTurnWhenPersisted(key);
+                    })();
                 } else {
+                    // 非激活会话：直接清临时块，正式内容切回时由详情加载补齐
                     clearLiveTurn(key);
                 }
                 return;
             }
             handleLiveTurnEvent(key, evt);
         },
-        [clearLiveTurn, flushLiveTurn, handleLiveTurnEvent, isNewChat, moveChatStream, moveLiveTurn, onBound]
+        [clearLiveTurn, clearLiveTurnWhenPersisted, flushLiveTurn, handleLiveTurnEvent, isNewChat, model, moveChatStream, moveLiveTurn, onBound]
     );
 
     const handleChatSend = useCallback(
         (body: ChatRequestBody) => {
             const key = summary?.id || boundRef.current || NewChatLiveTurnKey;
+            const messageSeqFloor = (detail?.messages ?? []).reduce(
+                (maxSeq, message) => Math.max(maxSeq, message.seq),
+                0
+            );
             turnIdBySessionRef.current.delete(key);
-            startLiveTurn(key);
+            flushSync(() => startLiveTurn(key, body.message ?? "", messageSeqFloor));
             sendChatStream(key, chatEndpoint, body, handleChatEvent);
         },
-        [chatEndpoint, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
+        [chatEndpoint, detail?.messages, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
     );
 
     const handleChatSteer = useCallback(
@@ -619,7 +624,15 @@ export function SessionDetailPane({
             // 上滚离开底部 → 浮出「跳到最新」胶囊；流式吸底 / 回到底部则收起。
             setShowJumpPill(!nearBottomRef.current && (readableMessages.length > 0 || liveTurn != null));
         }
-        if (deltaLoading || loading || model.loadDetailDelta == null || bottomDeltaRequestedRef.current) {
+        if (
+            liveTurn != null ||
+            activeChatStreamStatus === "sending" ||
+            activeChatStreamStatus === "streaming" ||
+            deltaLoading ||
+            loading ||
+            model.loadDetailDelta == null ||
+            bottomDeltaRequestedRef.current
+        ) {
             return;
         }
         if (node == null) {
@@ -639,7 +652,7 @@ export function SessionDetailPane({
                 bottomDeltaTimerRef.current = null;
             }, 500);
         });
-    }, [deltaLoading, loading, model.loadDetailDelta, requestDetailDelta]);
+    }, [activeChatStreamStatus, deltaLoading, liveTurn, loading, model.loadDetailDelta, requestDetailDelta]);
 
     useEffect(() => {
         return () => {
@@ -652,33 +665,6 @@ export function SessionDetailPane({
     const toggleToolCallExpanded = useCallback((seq: number) => {
         setExpandedToolCalls((current) => ({ ...current, [seq]: !current[seq] }));
     }, []);
-
-    const toggleToolCalls = useCallback(() => {
-        setShowToolCalls((current) => {
-            const next = !current;
-            if (next && !toolsLoaded) {
-                void model.loadDetailTools(false);
-            }
-            return next;
-        });
-    }, [model, toolsLoaded]);
-
-    // 切换 Header 折叠/展开。Note 未保存改动由失焦/防抖自动保存兜底（点击折叠按钮会使 textarea
-    // 失焦并触发 onBlur 保存），不再阻止折叠；删除确认条打开时仍阻止折叠。
-    const toggleHeader = useCallback(() => {
-        setHeaderCollapsed((current) => {
-            if (!current && deleteConfirmOpen) return current;
-            userTouchedHeaderRef.current = true;
-            const next = !current;
-            try {
-                localStorage.setItem("snorkeling:sessionDetail:headerCollapsed", String(next));
-                hasStoredPreferenceRef.current = true;
-            } catch {
-                // ignore storage errors (隐私模式/被禁用)
-            }
-            return next;
-        });
-    }, [deleteConfirmOpen]);
 
     const jumpToMessage = useCallback(
         (seq: number) => {
@@ -841,12 +827,23 @@ export function SessionDetailPane({
         [model, noteSaveStatus, summary]
     );
 
+    const closeNoteEditor = useCallback(() => {
+        if (noteSaving) return;
+        if (!noteUnchanged) {
+            void saveNote(trimmedNoteDraft).then((saved) => {
+                if (saved) setNoteEditorOpen(false);
+            });
+            return;
+        }
+        setNoteEditorOpen(false);
+    }, [noteSaving, noteUnchanged, saveNote, trimmedNoteDraft]);
+
     // 防抖自动保存：停止输入 NoteAutoSaveDelayMs 后落盘，与列表行/Note 弹窗行为一致。
     useEffect(() => {
         if (
             !shouldAutoSaveNote({
                 loaded: summary != null,
-                visible: !noteCollapsed,
+                visible: noteEditorOpen,
                 unchanged: noteUnchanged,
                 saving: noteSaving,
             })
@@ -855,13 +852,20 @@ export function SessionDetailPane({
         }
         const handle = window.setTimeout(() => void saveNote(trimmedNoteDraft), NoteAutoSaveDelayMs);
         return () => window.clearTimeout(handle);
-    }, [noteCollapsed, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
+    }, [noteEditorOpen, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
 
-    if (loading && detail == null && liveTurn == null) {
-        return <EmptyState text="Loading detail..." />;
-    }
     if (detail == null && !isNewChat) {
-        return <EmptyState text="Select a session to view details." />;
+        return (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+                {loading && liveTurn == null ? (
+                    <i
+                        className="fa-sharp fa-solid fa-spinner animate-spin text-sm text-accent"
+                        role="status"
+                        aria-label="Loading conversation"
+                    />
+                ) : null}
+            </div>
+        );
     }
     const noteStatusText =
         noteSaveStatus === "saving"
@@ -873,31 +877,21 @@ export function SessionDetailPane({
                 : !noteUnchanged
                   ? "Unsaved changes"
                   : "";
-    const projectDirectory = summary.projectPath?.trim() ?? "";
-    const sessionFilePath = summary.filePath?.trim() ?? "";
-    const summaryTags = normalizeSessionTags(summary.tags);
-    const visibleSummaryTags = summaryTags.slice(0, 3);
-    const hasNoteInfo = Boolean(summary.note || summaryTags.length);
+    const projectDirectory = summary?.projectPath?.trim() ?? "";
+    const sessionFilePath = summary?.filePath?.trim() ?? "";
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
-            <div
-                className={cn(
-                    "shrink-0",
-                    headerCollapsed ? "flex h-[46px] items-center border-b border-border px-3" : "border-b border-border/70 p-3"
-                )}
-            >
+            <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-border px-3">
+                {onExpandSessionList ? (
+                    <IconButton
+                        icon="fa-chevron-right"
+                        label="Expand sessions list"
+                        onClick={onExpandSessionList}
+                        className="mr-1 shrink-0"
+                    />
+                ) : null}
                 {summary != null ? (
-                headerCollapsed ? (
-                    // 极简 topbar：46px 固定高，标题 + 药丸 chips + 四键图标组（对齐原型）
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                        {onExpandSessionList ? (
-                            <IconButton
-                                icon="fa-chevron-right"
-                                label="Expand sessions list"
-                                onClick={onExpandSessionList}
-                                className="mr-1 shrink-0"
-                            />
-                        ) : null}
+                    <>
                         {renaming ? (
                             <input
                                 autoFocus
@@ -929,7 +923,7 @@ export function SessionDetailPane({
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
                             {summary.source}
                         </span>
-                        {(chatAgentModel || actualModel) && headerCollapsed ? (
+                        {chatAgentModel || actualModel ? (
                             <span
                                 className={cn(
                                     "inline-flex h-[22px] max-w-44 shrink-0 items-center overflow-hidden whitespace-nowrap rounded-full border px-2 text-[11px] text-secondary",
@@ -948,15 +942,6 @@ export function SessionDetailPane({
                                 onClick={() => setSearchExpanded((current) => !current)}
                             />
                             <IconButton
-                                icon="fa-pen"
-                                label="Edit note and tags"
-                                className={cn(
-                                    !noteCollapsed && "border-accent bg-accent/10 text-accent",
-                                    !headerCollapsed && "hidden"
-                                )}
-                                onClick={() => setNoteCollapsed((current) => !current)}
-                            />
-                            <IconButton
                                 icon="fa-star"
                                 label={summary.marked ? "Unmark session" : "Mark session"}
                                 className={cn(
@@ -966,18 +951,20 @@ export function SessionDetailPane({
                                 onClick={() => void model.toggleMark(summary)}
                             />
                             <SessionMoreMenu
-                                projectDirectory={summary.projectPath?.trim() ?? ""}
-                                sessionFilePath={summary.filePath?.trim() ?? ""}
+                                projectDirectory={projectDirectory}
+                                sessionFilePath={sessionFilePath}
                                 sessionId={summary.id}
+                                restoreCommand={restoreCommandForSession(summary)}
                                 onRename={summary.key ? startRename : undefined}
-                                onExpand={
-                                    headerCollapsed
-                                        ? () => {
-                                              userTouchedHeaderRef.current = true;
-                                              setHeaderCollapsed(false);
-                                          }
-                                        : undefined
-                                }
+                                onEditNote={() => setNoteEditorOpen(true)}
+                                onResume={() => void model.restoreSession(summary)}
+                                onRefresh={() => void requestDetailDelta("manual")}
+                                onOpenProjectDirectory={() => void model.openProjectDirectory(summary)}
+                                onOpenSessionFile={() => void model.openSessionFile(summary)}
+                                onDelete={() => setDeleteConfirmOpen(true)}
+                                restoring={restoring}
+                                refreshing={refreshing}
+                                deleting={deleting}
                                 buildMarkdown={() =>
                                     buildSessionMarkdown(
                                         summary.title || summary.id,
@@ -989,333 +976,21 @@ export function SessionDetailPane({
                                 }
                             />
                         </div>
-                    </div>
+                    </>
                 ) : (
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 items-center gap-2">
-                                {renaming ? (
-                                    <input
-                                        autoFocus
-                                        value={titleDraft}
-                                        onChange={(e) => setTitleDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                                e.preventDefault();
-                                                void commitRename();
-                                            } else if (e.key === "Escape") {
-                                                e.preventDefault();
-                                                setRenaming(false);
-                                            }
-                                        }}
-                                        onBlur={() => void commitRename()}
-                                        placeholder={summary.title || summary.id}
-                                        className={RenameTitleInputClass}
-                                    />
-                                ) : (
-                                    <div
-                                        className="min-w-0 cursor-text truncate text-sm font-medium"
-                                        title={summary.title || summary.id}
-                                        onDoubleClick={startRename}
-                                    >
-                                        {summary.title || summary.id}
-                                    </div>
-                                )}
-                                <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
-                                    <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary.source))} />
-                                    {summary.source}
-                                </span>
-                                {summary.vendorid ? (
-                                    <span
-                                        className="max-w-48 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"
-                                        title={summary.configdir || summary.vendorid}
-                                    >
-                                        Vendor {summary.vendorid.slice(0, 8)}
-                                    </span>
-                                ) : null}
-                                {actualModel ? (
-                                    <span
-                                        className={cn(
-                                            "max-w-48 truncate rounded border px-1.5 py-0.5 text-[10px]",
-                                            actualModels.length > 1
-                                                ? "border-warning/60 text-warning"
-                                                : "border-border text-primary"
-                                        )}
-                                        title={`Actual response model${actualModels.length > 1 ? "s" : ""}: ${actualModels.join(", ")}`}
-                                    >
-                                        Model {actualModel}
-                                    </span>
-                                ) : null}
-                            </div>
-                            <div className="mt-1 flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 text-xxs text-secondary">
-                                <div className="flex min-w-[220px] flex-[1_1_360px] items-center gap-2">
-                                    {projectDirectory ? (
-                                        <CopyTextButton
-                                            text={projectDirectory}
-                                            label="Copy project directory"
-                                            displayText={projectDirectory}
-                                            tooltipText={projectDirectory}
-                                            wrapperClassName="min-w-0"
-                                            className="justify-start"
-                                            textClassName="truncate"
-                                        />
-                                    ) : (
-                                        <span
-                                            className="min-w-0 truncate text-secondary"
-                                            title="Project directory unavailable"
-                                        >
-                                            No project directory
-                                        </span>
-                                    )}
-                                    {projectDirectory ? (
-                                        <IconButton
-                                            icon="fa-folder-open"
-                                            label="Open project directory"
-                                            size="xs"
-                                            className="!border-transparent"
-                                            onClick={() => void model.openProjectDirectory(summary)}
-                                        />
-                                    ) : null}
-                                </div>
-                                <div className="ml-auto flex min-w-[260px] max-w-full flex-[0_1_460px] flex-col items-end gap-1">
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <CopyTextButton
-                                            text={summary.id}
-                                            label="Copy session ID"
-                                            displayText={`ID: ${shortSessionId(summary.id)}`}
-                                            tooltipText={summary.id}
-                                            wrapperClassName="min-w-0"
-                                            className="justify-start"
-                                            textClassName="truncate"
-                                        />
-                                    </div>
-                                    <div className="flex w-full min-w-0 items-center justify-end gap-2">
-                                        <span className="shrink-0 text-[10px] uppercase">Session file:</span>
-                                        {sessionFilePath ? (
-                                            <CopyTextButton
-                                                text={sessionFilePath}
-                                                label="Copy session file path"
-                                                displayText={formatSessionDate(
-                                                    summary.updatedAt || summary.createdAt || 0
-                                                )}
-                                                tooltipText={sessionFilePath}
-                                                wrapperClassName="min-w-0"
-                                                className="ml-auto justify-end text-right"
-                                                textClassName="truncate"
-                                            />
-                                        ) : (
-                                            <span className="text-right text-secondary">No session file</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
-                                <button
-                                    className="flex h-7 items-center gap-2 rounded border border-action bg-action px-2 text-actiontext hover:bg-actionhover disabled:opacity-60 cursor-pointer disabled:cursor-default"
-                                    disabled={restoring}
-                                    onClick={() => void model.restoreSession(summary)}
-                                >
-                                    <i className="fa-sharp fa-solid fa-square-terminal" />
-                                    <span>{restoring ? "Resuming..." : "Resume"}</span>
-                                </button>
-                                <CopyIconButton text={restoreCommandForSession(summary)} label="Copy resume command" />
-                                <IconButton
-                                    icon="fa-trash"
-                                    label="Delete session"
-                                    className={deleteConfirmOpen ? "border-error text-error" : ""}
-                                    disabled={deleting}
-                                    onClick={() => setDeleteConfirmOpen(true)}
-                                />
-                                <IconButton
-                                    icon={showToolCalls && toolCallsLoading ? "fa-spinner animate-spin" : "fa-wrench"}
-                                    label={showToolCalls ? "Hide tool calls" : "Show tool calls"}
-                                    className={cn(showToolCalls && "border-accent bg-accent/10 text-accent")}
-                                    disabled={toolCallsLoading && !toolsLoaded}
-                                    onClick={toggleToolCalls}
-                                />
-                                {hasNoteInfo ? (
-                                    <button
-                                        type="button"
-                                        className={cn(
-                                            "flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-l-2 border-accent/50 pl-2 text-left text-xs text-primary hover:text-accent",
-                                            !noteCollapsed && "text-accent"
-                                        )}
-                                        title="Edit note and tags"
-                                        aria-label="Edit note and tags"
-                                        onClick={() => setNoteCollapsed((current) => !current)}
-                                    >
-                                        <span className="flex min-w-0 max-w-full items-center gap-1.5">
-                                            {summary.note ? (
-                                                <span className="min-w-0 truncate">
-                                                    {stripSessionTagHashes(summary.note)}
-                                                </span>
-                                            ) : null}
-                                            {visibleSummaryTags.map((tag) => (
-                                                <span
-                                                    key={tag}
-                                                    className="shrink-0 rounded-md bg-surface-soft px-1.5 py-0.5 text-[10px] leading-none text-secondary"
-                                                >
-                                                    <span className="opacity-50">#</span>
-                                                    {tag}
-                                                </span>
-                                            ))}
-                                            {summaryTags.length > visibleSummaryTags.length ? (
-                                                <span className="shrink-0 text-[10px] text-secondary">
-                                                    +{summaryTags.length - visibleSummaryTags.length}
-                                                </span>
-                                            ) : null}
-                                        </span>
-                                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary">
-                                            <i className="fa-sharp fa-solid fa-pen text-[10px]" />
-                                        </span>
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                        title="Add note and tags"
-                                        onClick={() => setNoteCollapsed(false)}
-                                    >
-                                        <i className="fa-sharp fa-solid fa-pen text-[10px]" />
-                                        <span>Add note</span>
-                                    </button>
-                                )}
-                            </div>
-                            {deleteConfirmOpen ? (
-                                <div className="mt-2 flex items-center justify-between gap-3 rounded border border-error/40 bg-error/10 px-2 py-2 text-xs">
-                                    <div className="min-w-0 text-error">
-                                        Delete this session? The source file will be moved to deleted storage.
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <button
-                                            className="h-7 rounded border border-border px-2 text-secondary hover:bg-hover hover:text-primary"
-                                            disabled={deleting}
-                                            onClick={() => setDeleteConfirmOpen(false)}
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            className="flex h-7 items-center gap-2 rounded border border-error bg-error px-2 text-white disabled:opacity-60"
-                                            disabled={deleting}
-                                            onClick={() => void model.deleteSession(summary)}
-                                        >
-                                            <i
-                                                className={cn(
-                                                    "fa-sharp fa-solid",
-                                                    deleting ? "fa-spinner animate-spin" : "fa-trash"
-                                                )}
-                                            />
-                                            <span>{deleting ? "Deleting..." : "Delete"}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : null}
-                            {!noteCollapsed ? (
-                                <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
-                                    <SessionTagChips
-                                        tags={nextTags}
-                                        removable
-                                        onRemove={(tag) => {
-                                            const baseTags = normalizeSessionTags(summary?.tags ?? []).filter(
-                                                (item) => item !== tag
-                                            );
-                                            const nextNote = removeSessionTagFromNote(parsedNoteDraft.note, tag);
-                                            latestNoteDraftRef.current = nextNote;
-                                            setNoteDraft(nextNote);
-                                            void model.updateNote(summary, nextNote, baseTags);
-                                        }}
-                                    />
-                                    <textarea
-                                        className="min-h-[72px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                        placeholder="Add a note, use #tag to add tags"
-                                        value={noteDraft}
-                                        onChange={(e) => {
-                                            latestNoteDraftRef.current = e.target.value;
-                                            setNoteDraft(e.target.value);
-                                            if (noteSaveStatus !== "saving") {
-                                                setNoteSaveStatus("idle");
-                                            }
-                                        }}
-                                        onBlur={() => {
-                                            if (!noteUnchanged && !noteSaving) {
-                                                void saveNote(trimmedNoteDraft);
-                                            }
-                                        }}
-                                    />
-                                    <div className="flex items-center gap-2">
-                                        <IconButton
-                                            icon="fa-eraser"
-                                            label="Clear note"
-                                            disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
-                                            onClick={() => {
-                                                latestNoteDraftRef.current = "";
-                                                setNoteDraft("");
-                                                void saveNote("");
-                                            }}
-                                        />
-                                        <span
-                                            className={cn(
-                                                "min-w-[64px] text-[11px] text-secondary",
-                                                noteSaveStatus === "saved" && "text-accent",
-                                                noteSaveStatus === "error" && "text-error"
-                                            )}
-                                            aria-live="polite"
-                                        >
-                                            {noteStatusText}
-                                        </span>
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-                        <div className="shrink-0 flex flex-col items-end gap-1">
-                            <IconButton icon="fa-chevron-up" label="Collapse session header" onClick={toggleHeader} />
-                            {onClose ? (
-                                <button
-                                    className="h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
-                                    title="Close"
-                                    aria-label="Close"
-                                    onClick={onClose}
-                                >
-                                    <i className="fa-sharp fa-solid fa-xmark" />
-                                </button>
-                            ) : null}
-                            <button
-                                className={cn(
-                                    "h-7 w-7 shrink-0 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary",
-                                    summary.marked && "border-accent bg-accent/10 text-accent"
-                                )}
-                                title={summary.marked ? "Unmark session" : "Mark session"}
-                                aria-label={summary.marked ? "Unmark session" : "Mark session"}
-                                onClick={() => void model.toggleMark(summary)}
-                            >
-                                <i
-                                    className={cn(
-                                        "fa-sharp",
-                                        summary.marked ? "fa-solid fa-star" : "fa-regular fa-star"
-                                    )}
-                                />
-                            </button>
-                            <IconButton
-                                icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
-                                label="Refresh session detail"
-                                disabled={refreshing}
-                                onClick={() => void requestDetailDelta("manual")}
-                            />
-                        </div>
-                    </div>
-                )
-                ) : (
-                    <div className="flex h-[46px] items-center gap-2 border-b border-border px-3">
-                        {onExpandSessionList ? (
-                            <IconButton icon="fa-chevron-right" label="Expand sessions list" onClick={onExpandSessionList} className="mr-1 shrink-0" />
-                        ) : null}
+                    <>
                         <div className="min-w-0 flex-1 truncate text-sm font-medium text-primary">New Chat</div>
-                        <span className={cn("inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary")}>
-                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(summary == null ? composeSource : summary.source))} />
-                            {getChatSource(summary == null ? composeSource : summary.source).label}
+                        <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary">
+                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(composeSource))} />
+                            {getChatSource(composeSource).label}
                         </span>
-                        <IconButton icon={outlineOpen ? "fa-chevron-right" : "fa-list"} label={outlineOpen ? "Collapse outline" : "Open outline"} className={cn(outlineOpen && "border-accent bg-accent/10 text-accent")} onClick={() => setOutlineOpen((c) => !c)} />
-                    </div>
+                        <IconButton
+                            icon={outlineOpen ? "fa-chevron-right" : "fa-list"}
+                            label={outlineOpen ? "Collapse outline" : "Open outline"}
+                            className={cn(outlineOpen && "border-accent bg-accent/10 text-accent")}
+                            onClick={() => setOutlineOpen((current) => !current)}
+                        />
+                    </>
                 )}
             </div>
             <div className="relative min-h-0 flex-1">
@@ -1421,20 +1096,8 @@ export function SessionDetailPane({
                                                 >
                                                     Load more
                                                 </button>
-                                            ) : detail != null ? (
-                                                <div className="text-xxs uppercase text-secondary">Start reached</div>
                                             ) : null}
                                         </div>
-                                        {showToolCalls && !toolsLoaded ? (
-                                            <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                                Loading tool calls...
-                                            </div>
-                                        ) : null}
-                                        {showToolCalls && toolsLoaded && toolCalls.length === 0 ? (
-                                            <div className="rounded border border-border bg-bg/40 px-3 py-3 text-center text-xs text-secondary">
-                                                No tool calls.
-                                            </div>
-                                        ) : null}
                                         {timelineItems.map((item, itemIdx) => {
                                             const prevItem = itemIdx > 0 ? timelineItems[itemIdx - 1] : null;
                                             const isGroupStart =
@@ -1463,18 +1126,12 @@ export function SessionDetailPane({
                                             );
                                         })}
                                         {/* 实时流式块：当前 turn 的临时渲染，turn_end 后由正式数据替换 */}
-                                        {liveTurn != null ? <LiveTurnBlock turn={liveTurn} /> : null}
+                                        {liveTurn != null ? (
+                                            <LiveTurnBlock turn={liveTurn} userMessagePersisted={liveUserMessagePersisted} />
+                                        ) : null}
                                     </div>
                                 )}
                             </div>
-                            {deltaLoading && detailMessages.length > 0 ? (
-                                <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border/60 bg-panel/80 px-4 py-1.5 text-xxs text-secondary shadow-lg backdrop-blur-sm">
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
-                                        Loading new messages...
-                                    </span>
-                                </div>
-                            ) : null}
                             {showJumpPill && !deltaLoading ? (
                                 <button
                                     type="button"
@@ -1579,6 +1236,104 @@ export function SessionDetailPane({
                     ) : null}
                 </div>
             </div>
+            {noteEditorOpen && summary != null ? (
+                <Modal
+                    className="w-[520px] max-w-[calc(100vw-32px)]"
+                    onClose={closeNoteEditor}
+                    onClickBackdrop={closeNoteEditor}
+                >
+                    <div className="space-y-3 text-primary">
+                        <div className="space-y-1 pr-8">
+                            <div className="text-base font-semibold">Session Note</div>
+                            <div className="truncate text-xs text-secondary">{summary.title || summary.id}</div>
+                        </div>
+                        <SessionTagChips tags={nextTags} />
+                        <textarea
+                            autoFocus
+                            className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
+                            placeholder="Add a note, use #tag to add tags"
+                            value={noteDraft}
+                            onChange={(event) => {
+                                latestNoteDraftRef.current = event.target.value;
+                                setNoteDraft(event.target.value);
+                                if (noteSaveStatus !== "saving") setNoteSaveStatus("idle");
+                            }}
+                            onBlur={() => {
+                                if (!noteUnchanged && !noteSaving) void saveNote(trimmedNoteDraft);
+                            }}
+                        />
+                        <div className="flex items-center justify-between gap-3">
+                            <span
+                                className={cn(
+                                    "min-w-[72px] text-xs text-secondary",
+                                    noteSaveStatus === "saved" && "text-accent",
+                                    noteSaveStatus === "error" && "text-error"
+                                )}
+                                aria-live="polite"
+                            >
+                                {noteStatusText}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                                    disabled={noteSaving || (!summary.note && noteDraft.trim() === "")}
+                                    onClick={() => {
+                                        latestNoteDraftRef.current = "";
+                                        setNoteDraft("");
+                                        void saveNote("");
+                                    }}
+                                >
+                                    Clear
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                                    disabled={noteSaving}
+                                    onClick={closeNoteEditor}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+            ) : null}
+            {deleteConfirmOpen && summary != null ? (
+                <Modal
+                    className="w-[440px] max-w-[calc(100vw-32px)]"
+                    onClose={() => setDeleteConfirmOpen(false)}
+                    onClickBackdrop={() => setDeleteConfirmOpen(false)}
+                >
+                    <div className="space-y-4 text-primary">
+                        <div className="space-y-1 pr-8">
+                            <div className="text-base font-semibold">Delete session?</div>
+                            <div className="text-sm leading-5 text-secondary">
+                                The source file will be moved to deleted storage.
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                disabled={deleting}
+                                onClick={() => setDeleteConfirmOpen(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="flex h-8 items-center gap-2 rounded bg-error px-3 text-xs text-white disabled:opacity-60"
+                                disabled={deleting}
+                                onClick={() => void model.deleteSession(summary)}
+                            >
+                                <i className={cn("fa-sharp fa-solid", deleting ? "fa-spinner animate-spin" : "fa-trash")} />
+                                <span>{deleting ? "Deleting..." : "Delete"}</span>
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            ) : null}
             {userMessageListOpen ? (
                 <Modal
                     className="w-[min(780px,calc(100vw-32px))] max-h-[calc(100vh-72px)] overflow-hidden pt-10 pb-4 animate-in-scale"

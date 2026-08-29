@@ -129,7 +129,7 @@ const RailTick = memo(function RailTick({ index, prompt, isActive, attentionInde
 
     return (
         <div
-            className="relative flex shrink-0 items-center justify-start"
+            className="pointer-events-auto relative flex shrink-0 items-center justify-start"
             style={{ width: RAIL_WIDTH, height: SLOT_HEIGHT }}
             onMouseEnter={() => onHover(index)}
         >
@@ -197,7 +197,7 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
 
     return (
         <div
-            className="absolute bottom-[8%] right-0 top-[8%] z-20 flex flex-col justify-center overflow-visible py-1"
+            className="pointer-events-none absolute bottom-[8%] right-0 top-[8%] z-20 flex flex-col justify-center overflow-visible py-1"
             style={{ width: RAIL_WIDTH }}
             onMouseEnter={(e) => hoverIntent.current.enter({ x: e.clientX, y: e.clientY })}
             onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}

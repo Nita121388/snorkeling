@@ -65,6 +65,7 @@ type ChatEvent struct {
 	Usage     *ChatUsage    `json:"usage,omitempty"`
 	// tool call
 	ToolName   string      `json:"toolName,omitempty"`
+	ToolCallID string      `json:"toolCallId,omitempty"`
 	ToolStatus string      `json:"toolStatus,omitempty"`   // running/completed/failed
 	Detail     string      `json:"detail,omitempty"`       // tool output / partial result
 	// error / meta

@@ -13,10 +13,62 @@
 import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
-import { useRef } from "react";
+import { memo, useRef, useState } from "react";
 import { CopyIconButton } from "./controls";
 import { formatDateTimeToSecond } from "./utils";
 import { useDomTextHighlight } from "./use-dom-highlight";
+
+// 思考块（Paseo 风格：与工具调用同式的可展开徽章行）。
+// streaming=true 时默认展开看实时内容，行头用脉冲点+脉冲标签表示“正在思考”；
+// 状态收尾/历史消息默认折叠为单行（chevron + 首行预览），点击展开全文。
+export function ThinkingDisclosure({
+  text,
+  streaming = false,
+}: {
+  text: string;
+  streaming?: boolean;
+}) {
+  const trimmed = text.trim();
+  // 用户点击优先于默认状态；未操作时跟随 streaming（流式展开 / 完结折叠）。
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const open = userToggled ?? streaming;
+  if (!trimmed) return null;
+  const preview = trimmed.split(/\r?\n/, 1)[0];
+  return (
+    <div className="my-1 min-w-0 text-xs">
+      <button
+        type="button"
+        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
+        onClick={() => setUserToggled(!open)}
+      >
+        <i
+          className={cn(
+            "fa-sharp fa-solid shrink-0 text-[9px] text-secondary transition-transform duration-200",
+            open ? "fa-chevron-down" : "fa-chevron-right"
+          )}
+        />
+        <span
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            streaming ? "animate-pulse bg-accent shadow-[0_0_4px_var(--color-accent)]" : "bg-accent/70"
+          )}
+        />
+        <span className={cn("shrink-0 font-mono text-[11px]", streaming ? "animate-pulse text-primary" : "text-primary")}>
+          Thinking
+        </span>
+        {!open ? <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{preview}</span> : null}
+      </button>
+      {open ? (
+        <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
+          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary">
+            {trimmed}
+            {streaming ? " ▌" : null}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function HighlightedMessageText({
   text,
@@ -59,7 +111,7 @@ export function HighlightedMessageText({
   return <>{parts}</>;
 }
 
-export function MessageCard({
+export const MessageCard = memo(function MessageCard({
   message,
   registerRef,
   searchQuery,
@@ -103,21 +155,6 @@ export function MessageCard({
           searchActive && "ring-2 ring-accent/50"
         )}
       >
-        {groupStart ? (
-          <div className="mb-1 flex items-center gap-1.5 px-1">
-            <span
-              className={cn(
-                "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px]",
-                isUser
-                  ? "border border-border bg-surface-strong text-secondary"
-                  : "bg-accent/15 text-accent"
-              )}
-            >
-              <i className={cn("fa-sharp fa-solid", isUser ? "fa-user" : "fa-robot")} />
-            </span>
-            {isUser ? <span className="text-xs font-semibold text-primary/90">You</span> : null}
-          </div>
-        ) : null}
         {isUser ? (
           <div className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-primary">
             {searchMatched && !searchActive ? (
@@ -130,6 +167,8 @@ export function MessageCard({
           </div>
         ) : (
           <div ref={mdContentRef} className="min-w-0 text-sm">
+            {/* 思考过程：从会话历史还原，以 Paseo 风格徽章行折叠展示（点击展开全文） */}
+            {message.thinking ? <ThinkingDisclosure text={message.thinking} /> : null}
             <WaveStreamdown text={shownText} />
           </div>
         )}
@@ -138,12 +177,13 @@ export function MessageCard({
         // 元信息（时间 + 复制）置于气泡外、下方、右对齐，不在边框内
         <div className="mt-1 flex items-center justify-end gap-1.5 px-1">
           {message.timestamp ? (
-            <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
+            <span className="text-[10px] text-secondary opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {formatDateTimeToSecond(message.timestamp)}
+            </span>
           ) : null}
           <CopyIconButton
             text={message.text}
             label="Copy message"
-            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             size="xs"
           />
         </div>
@@ -151,7 +191,9 @@ export function MessageCard({
         // AI：meta 行（时间 + #seq + 复制）落在 prose 之外（左对齐）
         <div className="mt-1 flex items-center justify-start gap-1.5 px-1">
           {message.timestamp ? (
-            <span className="text-[10px] text-secondary">{formatDateTimeToSecond(message.timestamp)}</span>
+            <span className="text-[10px] text-secondary opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {formatDateTimeToSecond(message.timestamp)}
+            </span>
           ) : null}
           <span className="text-[10px] text-secondary/70">#{message.seq}</span>
           <CopyIconButton
@@ -164,4 +206,10 @@ export function MessageCard({
       )}
     </div>
   );
-}
+}, (previous, next) =>
+  previous.message === next.message &&
+  previous.searchQuery === next.searchQuery &&
+  previous.searchActive === next.searchActive &&
+  previous.groupStart === next.groupStart
+);
+MessageCard.displayName = "MessageCard";

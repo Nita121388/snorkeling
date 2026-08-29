@@ -90,7 +90,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
             setLoading(true);
             setError("");
             try {
-                const nextDetail = await service.Detail({ id: session.key, refresh });
+                const nextDetail = await service.Detail({ id: session.key, refresh, includeTools: true });
                 if (loadSeq === detailLoadSeqRef.current) {
                     setDetail(nextDetail);
                 }
@@ -149,7 +149,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                         void loadDetailDeltaRef.current?.("bottom");
                     }, 0);
                 }
-                return deltaMessages.length > 0;
+                return true;
             } catch (e) {
                 if (loadSeq === detailLoadSeqRef.current) {
                     setError(getErrorMessage(e));
@@ -173,15 +173,17 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
             loadDetailTools: async (refresh = false) => {
                 const currentSummary = detailRef.current?.summary;
                 if (isBlank(currentSummary?.key)) {
-                    return;
+                    return false;
                 }
                 setToolCallsLoading(true);
                 setError("");
                 try {
                     const nextDetail = await service.Detail({ id: currentSummary.key, refresh, includeTools: true });
                     setDetail(nextDetail);
+                    return true;
                 } catch (e) {
                     setError(getErrorMessage(e));
+                    return false;
                 } finally {
                     setToolCallsLoading(false);
                 }
@@ -310,7 +312,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
         setLoading(true);
         setError("");
         service
-            .Detail({ id: trimmedSessionId })
+            .Detail({ id: trimmedSessionId, includeTools: true })
             .then((nextDetail) => {
                 if (!cancelled && loadSeq === detailLoadSeqRef.current) {
                     setDetail(nextDetail);

@@ -1568,6 +1568,7 @@ declare global {
         model?: string;
         timestamp?: number;
         toolName?: string;
+        thinking?: string;
         charCount: number;
     };
 

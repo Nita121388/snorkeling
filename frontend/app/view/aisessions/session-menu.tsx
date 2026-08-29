@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// 头栏 "···" 会话操作菜单：重命名 + 复制子菜单（目录/文件路径/ID/Markdown 全文）。
+// 头栏 "···" 会话操作菜单：低频操作、会话信息与复制入口。
 // 对齐 .mockup/aisessions-chat-redesign 的极简头栏规范。
 
 import { cn } from "@/util/util";
@@ -16,6 +16,7 @@ function MenuRow({
     disabledReason,
     trailing,
     onMouseEnter,
+    danger,
 }: {
     icon: string;
     label: string;
@@ -24,6 +25,7 @@ function MenuRow({
     disabledReason?: string;
     trailing?: React.ReactNode;
     onMouseEnter?: () => void;
+    danger?: boolean;
 }) {
     return (
         <button
@@ -36,10 +38,18 @@ function MenuRow({
                 "flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs",
                 disabled
                     ? "cursor-default text-secondary/50"
-                    : "cursor-pointer text-primary hover:bg-hover"
+                    : danger
+                      ? "cursor-pointer text-error hover:bg-error/10"
+                      : "cursor-pointer text-primary hover:bg-hover"
             )}
         >
-            <i className={cn("fa-sharp fa-solid w-3.5 shrink-0 text-center text-[11px] text-secondary", icon)} />
+            <i
+                className={cn(
+                    "fa-sharp fa-solid w-3.5 shrink-0 text-center text-[11px]",
+                    danger ? "text-error" : "text-secondary",
+                    icon
+                )}
+            />
             <span className="min-w-0 flex-1 truncate">{label}</span>
             {trailing}
         </button>
@@ -50,26 +60,50 @@ export function SessionMoreMenu({
     projectDirectory,
     sessionFilePath,
     sessionId,
+    restoreCommand,
     buildMarkdown,
     onRename,
-    onExpand,
+    onEditNote,
+    onResume,
+    onRefresh,
+    onOpenProjectDirectory,
+    onOpenSessionFile,
+    onDelete,
+    restoring = false,
+    refreshing = false,
+    deleting = false,
 }: {
     projectDirectory: string;
     sessionFilePath: string;
     sessionId: string;
+    restoreCommand: string;
     buildMarkdown: () => string;
     onRename?: () => void;
-    onExpand?: () => void;
+    onEditNote: () => void;
+    onResume: () => void;
+    onRefresh: () => void;
+    onOpenProjectDirectory: () => void;
+    onOpenSessionFile: () => void;
+    onDelete: () => void;
+    restoring?: boolean;
+    refreshing?: boolean;
+    deleting?: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [subOpen, setSubOpen] = useState(false);
     const [copiedLabel, setCopiedLabel] = useState("");
     const rootRef = useRef<HTMLDivElement | null>(null);
+    // 二级菜单 hover 关闭防抖计时器：跨越行与弹窗间隙时避免误关。
+    const subCloseTimer = useRef<number | null>(null);
 
     useEffect(() => {
         if (!open) return;
         const handlePointer = (e: MouseEvent) => {
             if (rootRef.current != null && !rootRef.current.contains(e.target as Node)) {
+                if (subCloseTimer.current != null) {
+                    window.clearTimeout(subCloseTimer.current);
+                    subCloseTimer.current = null;
+                }
                 setOpen(false);
                 setSubOpen(false);
             }
@@ -85,23 +119,41 @@ export function SessionMoreMenu({
         return () => {
             document.removeEventListener("mousedown", handlePointer);
             document.removeEventListener("keydown", handleKey);
+            if (subCloseTimer.current != null) window.clearTimeout(subCloseTimer.current);
         };
     }, [open]);
 
-    const copyAndClose = useCallback(
-        (text: string, label: string) => {
-            void copyText(text);
-            setCopiedLabel(label);
-            window.setTimeout(() => {
-                setCopiedLabel("");
-                setOpen(false);
-                setSubOpen(false);
-            }, 700);
-        },
-        []
-    );
+    const copyAndClose = useCallback((text: string, label: string) => {
+        void copyText(text);
+        setCopiedLabel(label);
+        window.setTimeout(() => {
+            setCopiedLabel("");
+            setOpen(false);
+            setSubOpen(false);
+        }, 700);
+    }, []);
 
     const hasCopied = copiedLabel !== "";
+    const closeAndRun = useCallback((action: () => void) => {
+        setOpen(false);
+        setSubOpen(false);
+        action();
+    }, []);
+
+    // 二级菜单延迟关闭：跨越行与弹窗之间的间隙时给光标 140ms 进入弹窗，避免误关。
+    const cancelSubClose = useCallback(() => {
+        if (subCloseTimer.current != null) {
+            window.clearTimeout(subCloseTimer.current);
+            subCloseTimer.current = null;
+        }
+    }, []);
+    const scheduleSubClose = useCallback(() => {
+        if (subCloseTimer.current != null) window.clearTimeout(subCloseTimer.current);
+        subCloseTimer.current = window.setTimeout(() => {
+            subCloseTimer.current = null;
+            setSubOpen(false);
+        }, 140);
+    }, []);
 
     return (
         <div ref={rootRef} className="relative shrink-0">
@@ -118,17 +170,7 @@ export function SessionMoreMenu({
                 <i className={cn("fa-sharp fa-solid text-xs", hasCopied ? "fa-check text-accent" : "fa-ellipsis")} />
             </button>
             {open ? (
-                <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-border bg-modalbg p-1 shadow-2xl">
-                    {onExpand ? (
-                        <MenuRow
-                            icon="fa-window-maximize"
-                            label="查看完整信息"
-                            onClick={() => {
-                                setOpen(false);
-                                onExpand();
-                            }}
-                        />
-                    ) : null}
+                <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-modalbg p-1 shadow-2xl">
                     <MenuRow
                         icon="fa-pen"
                         label="重命名聊天"
@@ -137,17 +179,48 @@ export function SessionMoreMenu({
                         onClick={
                             onRename
                                 ? () => {
-                                      setOpen(false);
-                                      onRename();
+                                      closeAndRun(onRename);
                                   }
                                 : undefined
                         }
                     />
+                    <MenuRow icon="fa-note-sticky" label="编辑 Note 和 Tags" onClick={() => closeAndRun(onEditNote)} />
+                    <MenuRow
+                        icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
+                        label={restoring ? "正在 Resume..." : "Resume 到终端"}
+                        disabled={restoring}
+                        disabledReason="正在恢复会话"
+                        onClick={() => closeAndRun(onResume)}
+                    />
+                    <MenuRow
+                        icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
+                        label={refreshing ? "正在刷新..." : "刷新会话"}
+                        disabled={refreshing}
+                        disabledReason="正在刷新会话"
+                        onClick={() => closeAndRun(onRefresh)}
+                    />
+                    <MenuRow
+                        icon="fa-folder-open"
+                        label="打开项目目录"
+                        disabled={!projectDirectory}
+                        disabledReason="无项目目录"
+                        onClick={() => closeAndRun(onOpenProjectDirectory)}
+                    />
+                    <MenuRow
+                        icon="fa-file-arrow-up"
+                        label="打开会话文件"
+                        disabled={!sessionFilePath}
+                        disabledReason="无会话文件"
+                        onClick={() => closeAndRun(onOpenSessionFile)}
+                    />
                     <div className="mx-2 my-1 h-px bg-border" />
                     <div
                         className="relative"
-                        onMouseEnter={() => setSubOpen(true)}
-                        onMouseLeave={() => setSubOpen(false)}
+                        onMouseEnter={() => {
+                            cancelSubClose();
+                            setSubOpen(true);
+                        }}
+                        onMouseLeave={scheduleSubClose}
                     >
                         <MenuRow
                             icon="fa-copy"
@@ -163,7 +236,10 @@ export function SessionMoreMenu({
                             }
                         />
                         {subOpen ? (
-                            <div className="absolute right-full top-0 mr-1 w-56 rounded-xl border border-border bg-panel p-1 shadow-2xl">
+                            <div
+                                className="absolute right-0 top-full z-10 mt-1 w-56 rounded-lg border border-border bg-modalbg p-1 shadow-2xl"
+                                onMouseEnter={cancelSubClose}
+                            >
                                 <MenuRow
                                     icon="fa-folder"
                                     label={hasCopied === true && copiedLabel.includes("目录") ? "已复制 ✓" : "工作目录"}
@@ -183,6 +259,11 @@ export function SessionMoreMenu({
                                     label="会话 ID"
                                     onClick={() => copyAndClose(sessionId, "已复制会话 ID")}
                                 />
+                                <MenuRow
+                                    icon="fa-terminal"
+                                    label="Resume 命令"
+                                    onClick={() => copyAndClose(restoreCommand, "已复制 Resume 命令")}
+                                />
                                 <div className="mx-2 my-1 h-px bg-border" />
                                 <MenuRow
                                     icon="fa-brackets-curly"
@@ -192,6 +273,15 @@ export function SessionMoreMenu({
                             </div>
                         ) : null}
                     </div>
+                    <div className="mx-2 my-1 h-px bg-border" />
+                    <MenuRow
+                        icon={deleting ? "fa-spinner animate-spin" : "fa-trash"}
+                        label={deleting ? "正在删除..." : "删除会话..."}
+                        disabled={deleting}
+                        disabledReason="正在删除会话"
+                        danger
+                        onClick={() => closeAndRun(onDelete)}
+                    />
                 </div>
             ) : null}
         </div>

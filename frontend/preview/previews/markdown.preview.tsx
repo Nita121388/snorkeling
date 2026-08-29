@@ -61,6 +61,37 @@ function CaseCard({ label, md, collapsible }: { label: string; md: string; colla
     );
 }
 
+// Editable case: mirrors preview-markdown.tsx (onInlineEditCommit + 15px left content
+// padding) so the block grip / insert actions can be exercised in this harness.
+const EditableMd = `# Grip 复现场景\n\n普通段落：hover 时四点 grip 应位于左侧 gutter，不压字。\n\n- 无序列表项 A：grip 不应压住 bullet\n- 无序列表项 B\n  - 嵌套子项\n\n1. 有序列表第一项\n2. 有序列表第二项\n\n## 小节标题\n\n末尾段落。\n`;
+
+function EditableCase() {
+    const [text, setText] = useState(EditableMd);
+    return (
+        <div
+            data-md-case
+            style={{
+                border: "1px solid #444",
+                borderRadius: 8,
+                padding: 0,
+                margin: 8,
+                minWidth: 420,
+                maxWidth: 560,
+            }}
+        >
+            <div style={{ fontWeight: 600, margin: "8px 8px 0" }}>editable (grip hover)</div>
+            <div style={{ border: "1px dashed #777", borderRadius: 6, margin: 8, height: 420, overflow: "hidden" }}>
+                <Markdown
+                    text={text}
+                    onInlineEditCommit={(t) => setText(t)}
+                    collapsibleOrderedLists={false}
+                    contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
+                />
+            </div>
+        </div>
+    );
+}
+
 export default function MarkdownPreview() {
     const [collapsible, setCollapsible] = useAtom(collapsibleAtom);
     const [, force] = useState(0);
@@ -83,6 +114,7 @@ export default function MarkdownPreview() {
                 {Cases.map((c) => (
                     <CaseCard key={c.key} label={c.label} md={c.md} collapsible={collapsible} />
                 ))}
+                <EditableCase />
             </div>
         </div>
     );

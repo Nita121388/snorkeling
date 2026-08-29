@@ -15,6 +15,7 @@ export type ChatEvent = {
     text?: string;
     role?: string;
     toolName?: string;
+    toolCallId?: string;
     toolStatus?: string;
     detail?: string;
     error?: string;
@@ -148,7 +149,11 @@ export function parseSseDataLine(rawLine: string): ChatEvent | null {
     if (line === "" || line.startsWith(":")) return null;
     if (!line.startsWith("data: ")) return null;
     try {
-        return JSON.parse(line.slice(6)) as ChatEvent;
+        const event = JSON.parse(line.slice(6)) as ChatEvent & { errorText?: string };
+        if (event.type === "error") {
+            return { type: "turn_failed", error: event.errorText ?? event.error ?? "Chat request failed" };
+        }
+        return event;
     } catch {
         return null;
     }
@@ -281,17 +286,30 @@ export function useChatStreams() {
             const resolvedKey = resolveKey(key);
             abort(resolvedKey);
             const controller = new AbortController();
+            let terminalEvent: "turn_end" | "turn_failed" | null = null;
             controllersRef.current.set(resolvedKey, controller);
             setStatus(resolvedKey, "sending");
             void runChatStream(
                 endpoint,
                 body,
                 {
-                    onEvent: (evt) => onEvent?.(evt, resolveKey(key)),
+                    onEvent: (evt) => {
+                        if (evt.type === "turn_end" || evt.type === "turn_failed") {
+                            terminalEvent = evt.type;
+                        }
+                        onEvent?.(evt, resolveKey(key));
+                    },
                     onDone: () => {
                         const finalKey = resolveKey(key);
                         if (controllersRef.current.get(finalKey) === controller) {
-                            setStatus(finalKey, "idle");
+                            if (terminalEvent == null) {
+                                terminalEvent = "turn_failed";
+                                onEvent?.(
+                                    { type: "turn_failed", error: "Chat stream ended before the turn completed" },
+                                    finalKey
+                                );
+                            }
+                            setStatus(finalKey, terminalEvent === "turn_failed" ? "error" : "idle");
                         }
                     },
                 },

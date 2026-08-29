@@ -11,6 +11,7 @@ import {
     isReadableMessage,
     restoreCommandForSession,
     restoreMetaForSession,
+    shouldStartEmptyChat,
 } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
@@ -30,6 +31,17 @@ function makeToolCall(seq: number, name: string): ToolCall {
         output: `${name} output`,
     };
 }
+
+describe("AI sessions empty state", () => {
+    it("starts a new chat only after an unfiltered empty list loads successfully", () => {
+        expect(shouldStartEmptyChat(false, 0, false, false, "")).toBe(true);
+        expect(shouldStartEmptyChat(true, 0, false, false, "")).toBe(false);
+        expect(shouldStartEmptyChat(false, 0, false, true, "")).toBe(false);
+        expect(shouldStartEmptyChat(false, 0, false, false, "load failed")).toBe(false);
+        expect(shouldStartEmptyChat(false, 1, false, false, "")).toBe(false);
+        expect(shouldStartEmptyChat(false, 0, true, false, "")).toBe(false);
+    });
+});
 
 describe("AI session detail timeline", () => {
     it("keeps tool placeholders hidden from readable messages", () => {

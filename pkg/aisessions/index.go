@@ -14,7 +14,9 @@ import (
 	"time"
 )
 
-const indexVersion = 1
+// indexVersion v2: parser now emits Message.Thinking; message caches written
+// by v1 binaries miss the field, so load() drops them and forces a re-parse.
+const indexVersion = 2
 
 type Index struct {
 	path string
@@ -293,7 +295,11 @@ func (idx *Index) load() error {
 	if err := json.Unmarshal(data, &idx.data); err != nil {
 		return err
 	}
-	if idx.data.Version == 0 {
+	if idx.data.Version < indexVersion {
+		// cached messages were parsed by an older binary; invalidate them so
+		// the current parser re-runs (freshness keys on file mtime+size only)
+		idx.data.Messages = make(map[string][]Message)
+		idx.data.Files = make(map[string]indexFile)
 		idx.data.Version = indexVersion
 	}
 	if idx.data.Sessions == nil {

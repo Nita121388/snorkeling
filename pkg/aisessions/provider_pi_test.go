@@ -183,8 +183,11 @@ func TestPiProvider_LoadMessages(t *testing.T) {
 }
 
 func TestPiProvider_LoadMessagesTree(t *testing.T) {
-	// Tree with a branch: root → m1 (user), m1 → m2 (asst), m1 → m3 (asst second).
-	// BFS from root should produce m1, m2, m3 in order.
+	// Branched tree: m1 (user) has two replies, m2 and m3. Ordering follows pi's
+	// own buildSessionPath: the visible conversation is the ACTIVE branch only,
+	// i.e. the parentId chain from the file's last entry back to the root.
+	// Here the last entry is m3, so the path is m1 → m3; the abandoned branch
+	// m2 is not part of the current conversation.
 	dir := t.TempDir()
 	content := `{"type":"session","version":3,"id":"pi-sess-2","timestamp":1700000001,"cwd":"/home/user/work"}` + "\n" +
 		`{"type":"message","id":"m1","parentId":"","role":"user","content":"hello"}` + "\n" +
@@ -196,17 +199,46 @@ func TestPiProvider_LoadMessagesTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadMessages: %v", err)
 	}
-	if len(messages) != 3 {
-		t.Fatalf("expected 3 messages, got %d: %#v", len(messages), messages)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages (active branch only), got %d: %#v", len(messages), messages)
 	}
 	if messages[0].Text != "hello" {
 		t.Fatalf("expected first text hello, got %q", messages[0].Text)
 	}
-	if messages[1].Text != "first reply" {
-		t.Fatalf("expected second text 'first reply', got %q", messages[1].Text)
+	if messages[1].Text != "second reply" {
+		t.Fatalf("expected second text 'second reply' (active branch head), got %q", messages[1].Text)
 	}
-	if messages[2].Text != "second reply" {
-		t.Fatalf("expected third text 'second reply', got %q", messages[2].Text)
+}
+
+func TestPiProvider_LoadMessagesNonMessageNodes(t *testing.T) {
+	// Regression: a model_change entry between messages makes the second user
+	// message parent at a NON-message node. The parentId walk must traverse
+	// those nodes so the displayed order stays the real Q/A chronology.
+	dir := t.TempDir()
+	content := `{"type":"session","version":3,"id":"pi-sess-2b","timestamp":1700000002,"cwd":"/home/user/work"}` + "\n" +
+		`{"type":"model_change","id":"n0","parentId":"h0","timestamp":"2026-08-28T15:19:48.263Z","provider":"anthropic","modelId":"claude"}` + "\n" +
+		`{"type":"message","id":"m1","parentId":"n0","timestamp":"2026-08-28T15:19:53.422Z","message":{"role":"user","content":[{"type":"text","text":"first question"}]}}` + "\n" +
+		`{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-08-28T15:20:00.558Z","message":{"role":"assistant","content":[{"type":"text","text":"first answer"}]}}` + "\n" +
+		`{"type":"model_change","id":"n1","parentId":"m2","timestamp":"2026-08-28T15:20:18.404Z","provider":"openai","modelId":"gpt-5"}` + "\n" +
+		`{"type":"message","id":"m3","parentId":"n1","timestamp":"2026-08-28T15:20:32.970Z","message":{"role":"user","content":[{"type":"text","text":"second question"}]}}` + "\n" +
+		`{"type":"message","id":"m4","parentId":"m3","timestamp":"2026-08-28T15:20:41.299Z","message":{"role":"assistant","content":[{"type":"text","text":"second answer"}]}}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	messages, err := p.LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	want := []string{"first question", "first answer", "second question", "second answer"}
+	if len(messages) != len(want) {
+		t.Fatalf("expected %d messages in order %v, got %d: %#v", len(want), want, len(messages), messages)
+	}
+	for i, text := range want {
+		if messages[i].Text != text {
+			t.Fatalf("message %d: expected %q, got %q", i, text, messages[i].Text)
+		}
+		if messages[i].Seq != i+1 {
+			t.Fatalf("message %d: expected seq %d, got %d", i, i+1, messages[i].Seq)
+		}
 	}
 }
 
@@ -442,6 +474,31 @@ func TestPiProvider_RealFormatLoadToolCalls(t *testing.T) {
 	// output is paired back from the toolResult message by toolCallId
 	if toolCalls[0].Output != "file1\nfile2" {
 		t.Fatalf("expected output 'file1\nfile2', got %q", toolCalls[0].Output)
+	}
+}
+
+func TestPiProvider_LoadMessagesExtractsThinking(t *testing.T) {
+	// assistant message with thinking blocks: history keeps the reasoning so
+	// the detail pane can show it (collapsed) after the live stream ends.
+	dir := t.TempDir()
+	content := `{"type":"session","version":3,"id":"pi-sess-think","timestamp":1700000003,"cwd":"/home/user/proj"}` + "\n" +
+		`{"type":"message","id":"t1","parentId":"","timestamp":"2026-08-28T15:19:53.000Z","message":{"role":"user","content":[{"type":"text","text":"plan it"}]}}` + "\n" +
+		`{"type":"message","id":"t2","parentId":"t1","timestamp":"2026-08-28T15:19:54.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"step one"},{"type":"text","text":"done"},{"type":"thinking","thinking":"step two"}]}}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	messages, err := p.LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d: %#v", len(messages), messages)
+	}
+	assistant := messages[1]
+	if assistant.Text != "done" {
+		t.Fatalf("expected text 'done', got %q", assistant.Text)
+	}
+	if assistant.Thinking != "step one\n\nstep two" {
+		t.Fatalf("expected joined thinking, got %q", assistant.Thinking)
 	}
 }
 

@@ -90,13 +90,13 @@ func (m *piMapper) mapEvent(evt RpcEvent) *ChatEvent {
 		return m.mapMessageUpdate(evt)
 	case "tool_execution_start":
 		return &ChatEvent{
-			Type: ToolCallStart, TurnID: m.turnID,
+			Type: ToolCallStart, TurnID: m.turnID, ToolCallID: str(evt.Raw["toolCallId"]),
 			ToolName: str(evt.Raw["toolName"]), ToolStatus: "running",
 			Detail: previewArgs(evt.Raw["args"]),
 		}
 	case "tool_execution_update":
 		return &ChatEvent{
-			Type: ToolCallUpdate, TurnID: m.turnID,
+			Type: ToolCallUpdate, TurnID: m.turnID, ToolCallID: str(evt.Raw["toolCallId"]),
 			ToolName: str(evt.Raw["toolName"]), ToolStatus: "running",
 			Detail: previewAny(evt.Raw["partialResult"]),
 		}
@@ -106,7 +106,7 @@ func (m *piMapper) mapEvent(evt RpcEvent) *ChatEvent {
 			status = "failed"
 		}
 		return &ChatEvent{
-			Type: ToolCallEnd, TurnID: m.turnID,
+			Type: ToolCallEnd, TurnID: m.turnID, ToolCallID: str(evt.Raw["toolCallId"]),
 			ToolName: str(evt.Raw["toolName"]), ToolStatus: status,
 			Detail: previewAny(evt.Raw["result"]),
 		}

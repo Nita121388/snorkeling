@@ -1941,9 +1941,21 @@ const Markdown = ({
         // multi-line paragraphs) floated the grip mid-block, looking detached from the hovered
         // row. The insert actions (A/B) are placed relative to the same anchor in the JSX.
         // Clamp to viewport for far-left blocks (content has ~15px padding).
-        // ponytail: the block's hovered row can be deep in a list (LI) while data-source-line
-        // resolves to the UL — the grip then anchors to the list's top-left, acceptable.
-        setInsertPos({ top: rect.top + 8, left: Math.max(rect.left - 26, 8) });
+        //
+        // X axis: for a list item (<li>) we must NOT anchor to the item's own box — the bullet
+        // marker is rendered OUTSIDE it (list-style-position: outside), so a fixed 26px offset
+        // landed the grip's right edge right on the bullet, and it overlapped the marker as
+        // soon as the font size grew (the marker zone scales with em, our offset didn't).
+        // Anchor X to the parent <ul>/<ol> instead: the whole list then shares one grip column
+        // a fixed distance left of the bullet column, at any font size. Y stays with the item.
+        let xAnchorLeft = rect.left;
+        if (el.tagName === "LI") {
+            const listEl = el.parentElement?.closest<HTMLElement>("ol, ul");
+            if (listEl != null) {
+                xAnchorLeft = listEl.getBoundingClientRect().left;
+            }
+        }
+        setInsertPos({ top: rect.top + 8, left: Math.max(xAnchorLeft - 26, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
     insertAnchorRef.current = insertAnchor;

@@ -19,6 +19,16 @@ export function emptySessionsText(markedFilter: MarkedFilter, remoteFilterActive
     return remoteFilterActive ? "No matching sessions." : "No sessions found.";
 }
 
+export function shouldStartEmptyChat(
+    loading: boolean,
+    visibleSessionCount: number,
+    hasDetail: boolean,
+    filterActive: boolean,
+    error: string
+): boolean {
+    return !loading && visibleSessionCount === 0 && !hasDetail && !filterActive && error === "";
+}
+
 export function trimMessageText(text: string): string {
     if (!text) return "";
     if (text.length <= 2400) return text;

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	sqliteIndexSchemaVersion = "2"
+	sqliteIndexSchemaVersion = "3"
 	summaryParserVersionKey  = "summary_parser_version"
 	summaryParserVersion     = "3"
 )
@@ -157,6 +157,7 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			text TEXT NOT NULL,
 			timestamp INTEGER,
 			tool_name TEXT,
+			thinking TEXT NOT NULL DEFAULT '',
 			char_count INTEGER,
 			PRIMARY KEY(session_key, seq)
 		)`,
@@ -198,6 +199,12 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		return err
 	}
 	if err := idx.ensureMetaTitleColumn(ctx); err != nil {
+		return err
+	}
+	if err := idx.ensureMessageThinkingColumn(ctx); err != nil {
+		return err
+	}
+	if err := idx.migrateThinkingMessageCache(ctx, existingSchemaVersion); err != nil {
 		return err
 	}
 	if err := idx.MigrateMetaJSON(ctx); err != nil {
@@ -253,6 +260,43 @@ func (idx *SQLiteIndex) ensureMetaTitleColumn(ctx context.Context) error {
 		}
 	}
 	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_session_meta ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// ensureMessageThinkingColumn adds the thinking column to ai_session_messages
+// for databases created before schema v3 (CREATE TABLE only covers fresh DBs).
+func (idx *SQLiteIndex) ensureMessageThinkingColumn(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_session_messages')`); err != nil {
+		return err
+	}
+	for _, column := range columns {
+		if column.Name == "thinking" {
+			return nil
+		}
+	}
+	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_session_messages ADD COLUMN thinking TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// migrateThinkingMessageCache (schema v3): the pi parser started emitting
+// Message.Thinking; rows cached by older binaries are beyond repair because
+// cache freshness only checks file mtime+size, so drop them once and let the
+// next access re-parse from the session file.
+func (idx *SQLiteIndex) migrateThinkingMessageCache(ctx context.Context, existingSchemaVersion string) error {
+	version, err := strconv.Atoi(strings.TrimSpace(existingSchemaVersion))
+	if err != nil {
+		version = 0
+	}
+	if version >= 3 {
+		return nil
+	}
+	if _, err := idx.db.ExecContext(ctx, `DELETE FROM ai_session_messages`); err != nil {
+		return err
+	}
+	_, err = idx.db.ExecContext(ctx, `UPDATE ai_files SET message_indexed = 0`)
 	return err
 }
 
@@ -760,9 +804,10 @@ func (idx *SQLiteIndex) GetMessages(ctx context.Context, summary SessionSummary)
 		Text      string `db:"text"`
 		Timestamp int64  `db:"timestamp"`
 		ToolName  string `db:"tool_name"`
+		Thinking  string `db:"thinking"`
 		CharCount int    `db:"char_count"`
 	}
-	err = idx.db.SelectContext(ctx, &rows, `SELECT seq, role, text, timestamp, tool_name, char_count
+	err = idx.db.SelectContext(ctx, &rows, `SELECT seq, role, text, timestamp, tool_name, thinking, char_count
 		FROM ai_session_messages WHERE session_key = ? ORDER BY seq`, summary.Key)
 	if err != nil {
 		return nil, false, err
@@ -778,6 +823,7 @@ func (idx *SQLiteIndex) GetMessages(ctx context.Context, summary SessionSummary)
 			Text:      row.Text,
 			Timestamp: row.Timestamp,
 			ToolName:  row.ToolName,
+			Thinking:  row.Thinking,
 			CharCount: row.CharCount,
 		})
 	}
@@ -798,8 +844,8 @@ func (idx *SQLiteIndex) SaveMessages(ctx context.Context, summary SessionSummary
 	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_messages WHERE session_key = ?`, summary.Key); err != nil {
 		return err
 	}
-	stmt, err := tx.PreparexContext(ctx, `INSERT INTO ai_session_messages(session_key, seq, role, text, timestamp, tool_name, char_count)
-		VALUES(?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PreparexContext(ctx, `INSERT INTO ai_session_messages(session_key, seq, role, text, timestamp, tool_name, thinking, char_count)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -808,7 +854,7 @@ func (idx *SQLiteIndex) SaveMessages(ctx context.Context, summary SessionSummary
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if _, err := stmt.ExecContext(ctx, summary.Key, message.Seq, message.Role, message.Text, message.Timestamp, message.ToolName, message.CharCount); err != nil {
+		if _, err := stmt.ExecContext(ctx, summary.Key, message.Seq, message.Role, message.Text, message.Timestamp, message.ToolName, message.Thinking, message.CharCount); err != nil {
 			return err
 		}
 	}

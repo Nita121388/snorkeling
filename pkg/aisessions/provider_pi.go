@@ -136,17 +136,17 @@ func (p *PiProvider) scanSnippet(tail []string) string {
 		if strValue(value, "type") != "message" {
 			continue
 		}
-		entry, ok := piEntryFromLine(value, 0)
+		msg, ok := piEntryFromLine(value)
 		if !ok {
 			continue
 		}
-		text := strings.TrimSpace(entry.msg.Text)
+		text := strings.TrimSpace(msg.Text)
 		if text == "" {
 			continue
 		}
 		// A tool-call-only message renders as "[Tool: bash]"; skip it and keep
 		// scanning for the last message that carries real content.
-		if entry.msg.ToolName != "" && strings.HasPrefix(text, "[Tool: ") {
+		if msg.ToolName != "" && strings.HasPrefix(text, "[Tool: ") {
 			continue
 		}
 		return truncateSummary(text, snippetMaxChars)
@@ -231,10 +231,15 @@ func (p *PiProvider) LoadMessages(ctx context.Context, filePath string) ([]Messa
 	return parsePiMessages(ctx, file)
 }
 
-type piMessageEntry struct {
-	msg      Message
+// piRawEntry is one parsed JSONL line that carries an id. Every typed entry
+// (message, model_change, thinking_level_change, compaction, ...) stays in
+// the tree because later messages may parent at non-message nodes; `display`
+// marks the subset that renders as a chat message.
+type piRawEntry struct {
 	id       string
 	parentID string
+	msg      Message
+	display  bool
 }
 
 // piMsgMap returns the effective message payload for a `type:"message"` line.
@@ -250,7 +255,7 @@ func piMsgMap(value map[string]any) map[string]any {
 func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	var entries []piMessageEntry
+	var entries []piRawEntry
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -263,76 +268,97 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 		if err := json.Unmarshal([]byte(line), &value); err != nil {
 			continue
 		}
-		if strValue(value, "type") != "message" {
-			continue
-		}
 		id := strValue(value, "id")
 		if id == "" {
 			continue
 		}
-		entry, ok := piEntryFromLine(value, len(entries)+1)
-		if !ok {
-			continue
+		raw := piRawEntry{id: id, parentID: strValue(value, "parentId")}
+		if strValue(value, "type") == "message" {
+			if entry, ok := piEntryFromLine(value); ok {
+				raw.msg = entry
+				raw.display = true
+			}
 		}
-		entries = append(entries, entry)
+		entries = append(entries, raw)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
-	// pi writes a linear conversation chain whose first message's parentId
-	// points at the last non-message node (model_change / thinking_level_change
-	// / compaction). A message is a tree root when its parentId is empty or
-	// names a node that is not itself a message; BFS from those roots restores
-	// the conversation order.
-	ids := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		ids[e.id] = true
+	if len(entries) == 0 {
+		return nil, nil
 	}
-	childrenByParent := make(map[string][]int)
-	queue := make([]int, 0, 1)
+
+	// Ordering mirrors pi's own buildSessionPath (pi core/session-manager.js):
+	// the visible conversation is the path from the session header down to the
+	// file's last entry (the current leaf), recovered by walking parentId links
+	// backwards from that leaf and reversing. This keeps the real Q/A chronology
+	// even when non-message nodes (model_change / thinking_level_change /
+	// compaction) sit between messages, and shows only the active branch of a
+	// forked session, exactly like the pi TUI.
+	byID := make(map[string]int, len(entries))
 	for i, e := range entries {
-		if e.parentID == "" || !ids[e.parentID] {
-			queue = append(queue, i)
-			continue
+		byID[e.id] = i
+	}
+	visited := make(map[string]bool, len(entries))
+	var path []piRawEntry
+	for id := entries[len(entries)-1].id; id != ""; {
+		idx, ok := byID[id]
+		if !ok || visited[id] {
+			break
 		}
-		childrenByParent[e.parentID] = append(childrenByParent[e.parentID], i)
+		visited[id] = true
+		path = append(path, entries[idx])
+		id = entries[idx].parentID
 	}
 
-	visited := make(map[int]bool, len(entries))
 	var messages []Message
-	for len(queue) > 0 {
-		idx := queue[0]
-		queue = queue[1:]
-		if idx < 0 || idx >= len(entries) || visited[idx] {
+	for i := len(path) - 1; i >= 0; i-- {
+		if !path[i].display {
 			continue
 		}
-		visited[idx] = true
-		messages = append(messages, entries[idx].msg)
-		for _, childIdx := range childrenByParent[entries[idx].id] {
-			if !visited[childIdx] {
-				queue = append(queue, childIdx)
-			}
-		}
-	}
-
-	for i := range messages {
-		messages[i].Seq = i + 1
+		msg := path[i].msg
+		msg.Seq = len(messages) + 1
+		messages = append(messages, msg)
 	}
 	return messages, nil
 }
 
-func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
+// piExtractThinking joins the thinking blocks of a pi assistant message
+// (content items of type "thinking" carry their reasoning in "thinking").
+// Mirrors the schema of pi's agent_event stream; empty for non-assistant or
+// thinking-free messages.
+func piExtractThinking(content any) string {
+	arr, ok := content.([]any)
+	if !ok {
+		return ""
+	}
+	var parts []string
+	for _, item := range arr {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if !strings.EqualFold(strValue(itemMap, "type"), "thinking") {
+			continue
+		}
+		if text := strings.TrimSpace(strValue(itemMap, "thinking")); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func piEntryFromLine(value map[string]any) (Message, bool) {
 	msgMap := piMsgMap(value)
 	role := normalizeRole(strValue(msgMap, "role"))
 	content := msgMap["content"]
 	if content == nil {
-		return piMessageEntry{}, false
+		return Message{}, false
 	}
 
 	text, toolName, ok := piExtractContent(content, role)
 	if !ok {
-		return piMessageEntry{}, false
+		return Message{}, false
 	}
 	// toolResult messages carry their tool name at the message level.
 	if toolName == "" && role == RoleTool {
@@ -342,18 +368,17 @@ func piEntryFromLine(value map[string]any, seq int) (piMessageEntry, bool) {
 		text = "[Tool: " + toolName + "]"
 	}
 
-	return piMessageEntry{
-		msg: Message{
-			Seq:       seq,
-			Role:      role,
-			Text:      text,
-			ToolName:  toolName,
-			Timestamp: parseTimestampToMS(value["timestamp"]),
-			CharCount: runeCount(text),
-		},
-		id:       strValue(value, "id"),
-		parentID: strValue(value, "parentId"),
-	}, true
+	msg := Message{
+		Role:      role,
+		Text:      text,
+		ToolName:  toolName,
+		Timestamp: parseTimestampToMS(value["timestamp"]),
+		CharCount: runeCount(text),
+	}
+	if role == RoleAssistant {
+		msg.Thinking = piExtractThinking(content)
+	}
+	return msg, true
 }
 
 // piExtractContent returns (text, toolName, ok). toolName is set for special
@@ -453,14 +478,18 @@ func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
 		text = "[Tool: " + toolName + "]"
 	}
 
-	return Message{
+	msg := Message{
 		Seq:       seq,
 		Role:      role,
 		Text:      text,
 		ToolName:  toolName,
 		Timestamp: parseTimestampToMS(value["timestamp"]),
 		CharCount: runeCount(text),
-	}, true
+	}
+	if role == RoleAssistant {
+		msg.Thinking = piExtractThinking(content)
+	}
+	return msg, true
 }
 
 func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {

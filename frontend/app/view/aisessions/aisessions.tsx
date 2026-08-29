@@ -51,6 +51,7 @@ import {
     pathFilterToPrefix,
     readSortPreference,
     restoreMetaForSession,
+    shouldStartEmptyChat,
     sortSessionsByTime,
     writeSortPreference,
 } from "./utils";
@@ -117,6 +118,7 @@ export class AiSessionsViewModel implements ViewModel {
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
     detailLoadSeq = 0;
+    detailToolsLoadSeq = 0;
     markRequestSeqByKey = new Map<string, number>();
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
@@ -477,7 +479,12 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            const detail = await this.service.Detail({ id: session.key, connection: this.getConnection(), refresh });
+            const detail = await this.service.Detail({
+                id: session.key,
+                connection: this.getConnection(),
+                refresh,
+                includeTools: true,
+            });
             if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
                 return;
             }
@@ -535,7 +542,7 @@ export class AiSessionsViewModel implements ViewModel {
                     void this.loadDetailDelta("bottom");
                 }, 0);
             }
-            return deltaMessages.length > 0;
+            return true;
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -567,12 +574,14 @@ export class AiSessionsViewModel implements ViewModel {
         this.replaceSession(nextSummary);
     }
 
-    async loadDetailTools(refresh = false): Promise<void> {
+    async loadDetailTools(refresh = false): Promise<boolean> {
         const currentDetail = globalStore.get(this.detailAtom);
         const currentSummary = currentDetail?.summary;
         if (!currentSummary?.key) {
-            return;
+            return false;
         }
+        const loadSeq = ++this.detailToolsLoadSeq;
+        const selectedKey = globalStore.get(this.selectedKeyAtom);
         globalStore.set(this.toolCallsLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
@@ -582,12 +591,26 @@ export class AiSessionsViewModel implements ViewModel {
                 refresh,
                 includeTools: true,
             });
+            const latest = globalStore.get(this.detailAtom);
+            if (
+                loadSeq !== this.detailToolsLoadSeq ||
+                globalStore.get(this.selectedKeyAtom) !== selectedKey ||
+                latest?.summary?.key !== currentSummary.key
+            ) {
+                return false;
+            }
             globalStore.set(this.detailAtom, detail);
             this.replaceSession(detail.summary);
+            return true;
         } catch (e) {
-            globalStore.set(this.errorAtom, getErrorMessage(e));
+            if (loadSeq === this.detailToolsLoadSeq && globalStore.get(this.selectedKeyAtom) === selectedKey) {
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            }
+            return false;
         } finally {
-            globalStore.set(this.toolCallsLoadingAtom, false);
+            if (loadSeq === this.detailToolsLoadSeq) {
+                globalStore.set(this.toolCallsLoadingAtom, false);
+            }
         }
     }
 
@@ -633,6 +656,7 @@ export class AiSessionsViewModel implements ViewModel {
                 id: trimmedSessionId,
                 connection: this.getConnection(),
                 refresh,
+                includeTools: true,
             });
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
             globalStore.set(this.detailAtom, detail);
@@ -962,7 +986,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const dateActive = dateRange.preset !== "all";
     const pathActive = pathFilter.root !== "";
     const remoteFilterActive =
-        queryActive || source !== "" || tagFilterActive || markedActive || dateActive || pathActive;
+        queryActive ||
+        source !== "" ||
+        tagFilterActive ||
+        tagPresenceActive ||
+        markedActive ||
+        dateActive ||
+        pathActive;
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
@@ -1067,10 +1097,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [activeSession, detail?.summary?.key, detailLoading, model]);
 
     useEffect(() => {
-        if (!loading && visibleSessions.length === 0 && detail == null) {
-            globalStore.set(model.selectedKeyAtom, "");
+        if (shouldStartEmptyChat(loading, visibleSessions.length, detail != null, filterActive, error)) {
+            model.startNewSession();
+            return;
         }
-    }, [detail, loading, model, visibleSessions.length]);
+        if (loading || visibleSessions.length > 0 || detail != null) return;
+        globalStore.set(model.selectedKeyAtom, "");
+    }, [detail, error, filterActive, loading, model, visibleSessions.length]);
 
     const setSource = useCallback(
         (next: SourceFilter) => {
@@ -1395,7 +1428,14 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     model={model}
                     detail={detail}
                     isNewChat={activeSession?.key === NewSessionKey}
-                    loading={detailLoading}
+                    loading={
+                        error === "" &&
+                        (loading ||
+                            detailLoading ||
+                            (activeSession != null &&
+                                activeSession.key !== NewSessionKey &&
+                                detail?.summary?.key !== activeSession.key))
+                    }
                     deltaLoading={detailDeltaLoading}
                     toolCallsLoading={toolCallsLoading}
                     restoring={restoring}
