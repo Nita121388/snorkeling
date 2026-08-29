@@ -190,7 +190,13 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
     useEffect(() => {
         let cancelled = false;
         void runChatCommand(endpoint, { ...baseBody, command: { name: "get_commands" } }).then((res) => {
-            if (cancelled || !res.ok || !Array.isArray(res.data?.commands)) return;
+            if (cancelled || !res.ok) return;
+            // 命令请求同样会带上 session_state 快照：用它兜底填充默认模型/思考级别，
+            // 让新会话在用户首次选择前就显示真实的默认值。
+            if (res.state) {
+                setAgentState(res.state as AgentStateInfo);
+            }
+            if (!Array.isArray(res.data?.commands)) return;
             setDynamicCommands(
                 res.data.commands
                     .filter((c: any) => typeof c?.name === "string")
@@ -471,8 +477,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
     }, []);
 
     const currentModelLabel = agentState?.model ? agentState.model.name || agentState.model.id : "";
-    const currentThinking =
-        agentState?.thinkingLevel && agentState.thinkingLevel !== "off" ? agentState.thinkingLevel : "";
+    // 拿到会话状态后就显示真实级别（包括 off，与校选择列表的 off 选项一致），
+    // 未拿到状态时保持[思考]占位。
+    const currentThinking = agentState?.thinkingLevel?.trim() ? agentState.thinkingLevel : "";
     const panelOpen = effectiveMode != null && panelRows.length > 0;
 
     // 点击外部自动关闭面板（与 session-menu 同模式）：监听范围包住整张
@@ -794,7 +801,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 type="button"
                                 className={cn(
                                     "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-hover",
-                                    currentThinking ? "text-accent" : "text-secondary hover:text-primary"
+                                    currentThinking && currentThinking !== "off" ? "text-accent" : "text-secondary hover:text-primary"
                                 )}
                                 title="思考强度"
                                 onClick={() => {

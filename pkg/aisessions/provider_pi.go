@@ -136,20 +136,21 @@ func (p *PiProvider) scanSnippet(tail []string) string {
 		if strValue(value, "type") != "message" {
 			continue
 		}
-		msg, ok := piEntryFromLine(value)
-		if !ok {
-			continue
+		msgs := piEntryMessages(value)
+		// 一条 entry 可能拆成多条（正文 + 工具锚点）；取最后一个锚点之外的消息。
+		for i := len(msgs) - 1; i >= 0; i-- {
+			msg := msgs[i]
+			text := strings.TrimSpace(msg.Text)
+			if text == "" {
+				continue
+			}
+			// A tool-call-only message renders as "[Tool: bash]"; skip it and keep
+			// scanning for the last message that carries real content.
+			if msg.ToolName != "" && strings.HasPrefix(text, "[Tool: ") {
+				continue
+			}
+			return truncateSummary(text, snippetMaxChars)
 		}
-		text := strings.TrimSpace(msg.Text)
-		if text == "" {
-			continue
-		}
-		// A tool-call-only message renders as "[Tool: bash]"; skip it and keep
-		// scanning for the last message that carries real content.
-		if msg.ToolName != "" && strings.HasPrefix(text, "[Tool: ") {
-			continue
-		}
-		return truncateSummary(text, snippetMaxChars)
 	}
 	return ""
 }
@@ -233,13 +234,13 @@ func (p *PiProvider) LoadMessages(ctx context.Context, filePath string) ([]Messa
 
 // piRawEntry is one parsed JSONL line that carries an id. Every typed entry
 // (message, model_change, thinking_level_change, compaction, ...) stays in
-// the tree because later messages may parent at non-message nodes; `display`
-// marks the subset that renders as a chat message.
+// the tree because later messages may parent at non-message nodes. `msgs`
+// holds the display messages this entry converts into (0 for non-message
+// nodes, possibly >1 for an assistant entry with tool calls).
 type piRawEntry struct {
 	id       string
 	parentID string
-	msg      Message
-	display  bool
+	msgs     []Message
 }
 
 // piMsgMap returns the effective message payload for a `type:"message"` line.
@@ -274,10 +275,7 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 		}
 		raw := piRawEntry{id: id, parentID: strValue(value, "parentId")}
 		if strValue(value, "type") == "message" {
-			if entry, ok := piEntryFromLine(value); ok {
-				raw.msg = entry
-				raw.display = true
-			}
+			raw.msgs = piEntryMessages(value)
 		}
 		entries = append(entries, raw)
 	}
@@ -313,12 +311,10 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 
 	var messages []Message
 	for i := len(path) - 1; i >= 0; i-- {
-		if !path[i].display {
-			continue
+		for _, msg := range path[i].msgs {
+			msg.Seq = len(messages) + 1
+			messages = append(messages, msg)
 		}
-		msg := path[i].msg
-		msg.Seq = len(messages) + 1
-		messages = append(messages, msg)
 	}
 	return messages, nil
 }
@@ -348,87 +344,11 @@ func piExtractThinking(content any) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func piEntryFromLine(value map[string]any) (Message, bool) {
-	msgMap := piMsgMap(value)
-	role := normalizeRole(strValue(msgMap, "role"))
-	content := msgMap["content"]
-	if content == nil {
-		return Message{}, false
-	}
-
-	text, toolName, ok := piExtractContent(content, role)
-	if !ok {
-		return Message{}, false
-	}
-	// toolResult messages carry their tool name at the message level.
-	if toolName == "" && role == RoleTool {
-		toolName = strValue(msgMap, "toolName")
-	}
-	if toolName != "" && strings.TrimSpace(text) == "" {
-		text = "[Tool: " + toolName + "]"
-	}
-
-	msg := Message{
-		Role:      role,
-		Text:      text,
-		ToolName:  toolName,
-		Timestamp: parseTimestampToMS(value["timestamp"]),
-		CharCount: runeCount(text),
-	}
-	if role == RoleAssistant {
-		msg.Thinking = piExtractThinking(content)
-	}
-	return msg, true
-}
-
-// piExtractContent returns (text, toolName, ok). toolName is set for special
-// content kinds (bashExecution) or for assistant toolcall items. ok=false
-// means no readable content.
-func piExtractContent(content any, role string) (string, string, bool) {
-	if contentMap, ok := content.(map[string]any); ok {
-		if kind, _ := contentMap["kind"].(string); kind == "bashExecution" {
-			text := strValue(contentMap, "bashOutput")
-			if strings.TrimSpace(text) == "" {
-				return "", "", false
-			}
-			return text, "bash", true
-		}
-		text := extractText(contentMap)
-		if strings.TrimSpace(text) == "" {
-			return "", "", false
-		}
-		return text, "", true
-	}
-
-	if role == RoleAssistant {
-		if arr, ok := content.([]any); ok {
-			text := extractText(arr)
-			toolName, bashOutput := piScanAssistantTool(arr)
-			if strings.TrimSpace(text) == "" && toolName == "" {
-				return "", "", false
-			}
-			if strings.TrimSpace(text) == "" && bashOutput != "" {
-				text = bashOutput
-			}
-			if toolName != "" && strings.TrimSpace(text) == "" {
-				return "", toolName, true
-			}
-			return text, toolName, true
-		}
-	}
-
-	text := extractText(content)
-	if strings.TrimSpace(text) == "" {
-		return "", "", false
-	}
-	return text, "", true
-}
-
-// piScanAssistantTool scans an assistant content array for the first
-// bashExecution or toolcall item and returns the tool name and bashOutput (if
-// bashExecution). Returns ("", "") when no tool item is found. Real pi files
-// use the camelCase item type "toolCall"; older fixtures used "toolcall".
-func piScanAssistantTool(arr []any) (toolName, bashOutput string) {
+// piScanAssistantTools returns the tool names of an assistant content array,
+// one entry per toolCall/bashExecution item, in order. Real pi files use the
+// camelCase item type "toolCall"; older fixtures used "toolcall".
+func piScanAssistantTools(arr []any) []string {
+	var names []string
 	for _, item := range arr {
 		itemMap, ok := item.(map[string]any)
 		if !ok {
@@ -437,59 +357,100 @@ func piScanAssistantTool(arr []any) (toolName, bashOutput string) {
 		kind := strValue(itemMap, "kind")
 		itemType := strValue(itemMap, "type")
 		if kind == "bashExecution" || itemType == "bashExecution" {
-			toolName = "bash"
-			bashOutput = strValue(itemMap, "bashOutput")
-			return toolName, bashOutput
+			names = append(names, "bash")
+			continue
 		}
 		if strings.EqualFold(itemType, "toolCall") {
-			toolName = strValue(itemMap, "name")
-			if toolName == "" {
-				toolName = "unknown"
+			name := strValue(itemMap, "name")
+			if name == "" {
+				name = "unknown"
 			}
-			return toolName, ""
+			names = append(names, name)
 		}
 	}
-	return "", ""
+	return names
 }
 
-func parsePiMessageDeltaLine(line []byte, seq int) (Message, bool) {
-	var value map[string]any
-	if err := json.Unmarshal(line, &value); err != nil {
-		return Message{}, false
-	}
-	if strValue(value, "type") != "message" {
-		return Message{}, false
-	}
+// piEntryMessages converts one pi message entry into its display messages
+// (0..n). An assistant entry with N tool calls becomes an optional text
+// message plus ONE anchor message ("[Tool: name]") per tool call, so the
+// timeline pairs every anchor with a ToolCall row positionally; thinking
+// blocks attach to the first emitted message. Previously a mixed
+// text+toolCall entry emitted no anchor at all and the tool calls never
+// appeared in the detail view.
+func piEntryMessages(value map[string]any) []Message {
 	msgMap := piMsgMap(value)
 	role := normalizeRole(strValue(msgMap, "role"))
 	content := msgMap["content"]
 	if content == nil {
-		return Message{}, false
+		return nil
+	}
+	timestamp := parseTimestampToMS(value["timestamp"])
+
+	// Special whole-entry bashExecution blob (pi `! bash` runs).
+	if contentMap, ok := content.(map[string]any); ok {
+		if kind, _ := contentMap["kind"].(string); kind == "bashExecution" {
+			text := strings.TrimSpace(strValue(contentMap, "bashOutput"))
+			if text == "" {
+				return nil
+			}
+			return []Message{{Role: role, Text: text, ToolName: "bash", Timestamp: timestamp, CharCount: runeCount(text)}}
+		}
 	}
 
-	text, toolName, ok := piExtractContent(content, role)
-	if !ok {
-		return Message{}, false
+	text := strings.TrimSpace(extractText(content))
+	thinking := ""
+	var toolNames []string
+	if role == RoleAssistant {
+		thinking = piExtractThinking(content)
+		if arr, ok := content.([]any); ok {
+			toolNames = piScanAssistantTools(arr)
+		}
 	}
-	if toolName == "" && role == RoleTool {
+
+	toolName := ""
+	if role == RoleTool {
 		toolName = strValue(msgMap, "toolName")
 	}
-	if toolName != "" && strings.TrimSpace(text) == "" {
+	if toolName != "" && text == "" {
 		text = "[Tool: " + toolName + "]"
 	}
 
-	msg := Message{
-		Seq:       seq,
-		Role:      role,
-		Text:      text,
-		ToolName:  toolName,
-		Timestamp: parseTimestampToMS(value["timestamp"]),
-		CharCount: runeCount(text),
+	var msgs []Message
+	if text != "" {
+		msgs = append(msgs, Message{
+			Role: role, Text: text, ToolName: toolName, Thinking: thinking,
+			Timestamp: timestamp, CharCount: runeCount(text),
+		})
+		thinking = ""
 	}
-	if role == RoleAssistant {
-		msg.Thinking = piExtractThinking(content)
+	for _, name := range toolNames {
+		anchorText := "[Tool: " + name + "]"
+		msgs = append(msgs, Message{
+			Role: role, Text: anchorText, ToolName: name, Thinking: thinking,
+			Timestamp: timestamp, CharCount: len(anchorText),
+		})
+		thinking = ""
 	}
-	return msg, true
+	return msgs
+}
+
+func parsePiMessageDeltaLine(line []byte, seq int) ([]Message, bool) {
+	var value map[string]any
+	if err := json.Unmarshal(line, &value); err != nil {
+		return nil, false
+	}
+	if strValue(value, "type") != "message" {
+		return nil, false
+	}
+	msgs := piEntryMessages(value)
+	if len(msgs) == 0 {
+		return nil, false
+	}
+	for i := range msgs {
+		msgs[i].Seq = seq + i
+	}
+	return msgs, true
 }
 
 func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {
@@ -551,7 +512,20 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 			if !ok {
 				continue
 			}
-			if !strings.EqualFold(strValue(itemMap, "type"), "toolCall") {
+			// bashExecution items (pi `! bash` runs) render as anchor messages too,
+			// so they must appear here to pair up with the timeline anchors.
+			itemType := strValue(itemMap, "type")
+			if strValue(itemMap, "kind") == "bashExecution" || itemType == "bashExecution" {
+				pending = append(pending, piToolCallItem{
+					tc: ToolCall{
+						Seq:    len(pending) + 1,
+						Name:   "bash",
+						Output: strValue(itemMap, "bashOutput"),
+					},
+				})
+				continue
+			}
+			if !strings.EqualFold(itemType, "toolCall") {
 				continue
 			}
 			name := strValue(itemMap, "name")

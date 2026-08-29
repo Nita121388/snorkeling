@@ -243,7 +243,8 @@ func TestPiProvider_LoadMessagesNonMessageNodes(t *testing.T) {
 }
 
 func TestPiProvider_LoadMessagesBashExecution(t *testing.T) {
-	// bashExecution kind → special message with tool-name "bash".
+	// bashExecution item → anchor message "[Tool: bash]"; the bash output shows
+	// through the paired ToolCall row (LoadToolCalls), not as message text.
 	dir := t.TempDir()
 	content := `{"type":"session","version":3,"id":"pi-sess-3","timestamp":1700000002,"cwd":"/home/user/proj"}` + "\n" +
 		`{"type":"message","id":"b1","parentId":"","role":"user","content":"run ls"}` + "\n" +
@@ -258,16 +259,24 @@ func TestPiProvider_LoadMessagesBashExecution(t *testing.T) {
 		t.Fatalf("expected 2 messages, got %d: %#v", len(messages), messages)
 	}
 	if messages[1].ToolName != "bash" {
-		t.Fatalf("expected ToolName bash on bashExecution message, got %q", messages[1].ToolName)
+		t.Fatalf("expected ToolName bash on bashExecution anchor, got %q", messages[1].ToolName)
 	}
-	if messages[1].Text == "" {
-		t.Fatalf("expected non-empty bashExecution text")
+	if messages[1].Text != "[Tool: bash]" {
+		t.Fatalf("expected bash anchor text, got %q", messages[1].Text)
+	}
+	toolCalls, err := p.LoadToolCalls(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadToolCalls: %v", err)
+	}
+	if len(toolCalls) != 1 || toolCalls[0].Output != "file1\nfile2" {
+		t.Fatalf("expected bashExecution ToolCall with output, got %#v", toolCalls)
 	}
 }
 
 func TestPiProvider_LoadMessagesMixedTextAndBash(t *testing.T) {
-	// Mixed array: text item comes first, bashExecution second.
-	// The real text must be preserved; bashOutput is NOT used when text exists.
+	// Mixed array: text item comes first, a tool item second. The text becomes
+	// its own message and the tool becomes an anchor — the timeline pairs the
+	// anchor with the matching ToolCall row (bashOutput rides the ToolCall).
 	dir := t.TempDir()
 	content := `{"type":"session","version":3,"id":"pi-sess-5","timestamp":1700000004,"cwd":"/home/user/mixed"}` + "\n" +
 		`{"type":"message","id":"x1","parentId":"","role":"user","content":"run build"}` + "\n" +
@@ -278,17 +287,47 @@ func TestPiProvider_LoadMessagesMixedTextAndBash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadMessages: %v", err)
 	}
-	if len(messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d: %#v", len(messages), messages)
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages (user, text, anchor), got %d: %#v", len(messages), messages)
 	}
-	if messages[1].Role != RoleAssistant {
-		t.Fatalf("expected second message role assistant, got %q", messages[1].Role)
+	if messages[1].Role != RoleAssistant || messages[1].Text != "internal step" {
+		t.Fatalf("expected second message assistant 'internal step', got %#v", messages[1])
 	}
-	if messages[1].Text != "internal step" {
-		t.Fatalf("expected assistant text 'internal step' (preserved), got %q", messages[1].Text)
+	if messages[2].Role != RoleAssistant || messages[2].Text != "[Tool: bash]" || messages[2].ToolName != "bash" {
+		t.Fatalf("expected third message bash anchor, got %#v", messages[2])
 	}
-	if messages[1].ToolName != "bash" {
-		t.Fatalf("expected ToolName bash, got %q", messages[1].ToolName)
+}
+
+func TestPiProvider_LoadMessagesTextPlusTwoToolCalls(t *testing.T) {
+	// Assistant entry with thinking + text + TWO tool calls: previously only a
+	// single tool (or none) surfaced. Now: text message + one anchor per tool.
+	dir := t.TempDir()
+	content := `{"type":"session","version":3,"id":"pi-sess-6","timestamp":1700000005,"cwd":"/home/user/multi"}` + "\n" +
+		`{"type":"message","id":"y1","parentId":"","timestamp":"2026-08-29T05:50:00.000Z","message":{"role":"user","content":[{"type":"text","text":"run tools"}]}}` + "\n" +
+		`{"type":"message","id":"y2","parentId":"y1","timestamp":"2026-08-29T05:50:01.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"plan"},{"type":"text","text":"done"}]}}` + "\n" +
+		`{"type":"message","id":"y3","parentId":"y2","timestamp":"2026-08-29T05:50:02.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"running tools"},{"type":"toolCall","id":"c1","name":"bash","arguments":{"command":"ls"}},{"type":"toolCall","id":"c2","name":"read","arguments":{"path":"/tmp/x"}}]}}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	p := NewPiProvider(dir)
+	messages, err := p.LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	want := []struct{ text, tool, thinking string }{
+		{"run tools", "", ""},
+		{"done", "", "plan"},
+		{"[Tool: bash]", "bash", "running tools"},
+		{"[Tool: read]", "read", ""},
+	}
+	if len(messages) != len(want) {
+		t.Fatalf("expected %d messages, got %d: %#v", len(want), len(messages), messages)
+	}
+	for i, w := range want {
+		if messages[i].Text != w.text || messages[i].ToolName != w.tool || messages[i].Thinking != w.thinking {
+			t.Fatalf("message %d: want %#v, got %#v", i, w, messages[i])
+		}
+		if messages[i].Seq != i+1 {
+			t.Fatalf("message %d: expected seq %d, got %d", i, i+1, messages[i].Seq)
+		}
 	}
 }
 

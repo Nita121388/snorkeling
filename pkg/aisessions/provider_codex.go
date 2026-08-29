@@ -79,7 +79,15 @@ func parseCodexMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 	return messages, err
 }
 
-func parseCodexMessageLine(line []byte, seq int) (Message, bool) {
+func parseCodexMessageLine(line []byte, seq int) ([]Message, bool) {
+	msg, ok := parseCodexMessageLineSingle(line, seq)
+	if !ok {
+		return nil, false
+	}
+	return []Message{msg}, true
+}
+
+func parseCodexMessageLineSingle(line []byte, seq int) (Message, bool) {
 	var value map[string]any
 	if err := json.Unmarshal(line, &value); err != nil {
 		return Message{}, false

@@ -395,8 +395,8 @@ func TestClaudeLoadToolCalls(t *testing.T) {
 
 func TestParseCompleteJSONLFromReaderIncludesFinalLineWithoutNewline(t *testing.T) {
 	ctx := context.Background()
-	items, seq, bytesRead, err := parseCompleteJSONLFromReader(ctx, bytes.NewBufferString("one\ntwo"), 1, func(line []byte, seq int) (string, bool) {
-		return string(line), true
+	items, seq, bytesRead, err := parseCompleteJSONLFromReader(ctx, bytes.NewBufferString("one\ntwo"), 1, func(line []byte, seq int) ([]string, bool) {
+		return []string{string(line)}, true
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -195,7 +195,9 @@ export const MessageCard = memo(function MessageCard({
               {formatDateTimeToSecond(message.timestamp)}
             </span>
           ) : null}
-          <span className="text-[10px] text-secondary/70">#{message.seq}</span>
+          <span className="text-[10px] text-secondary/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            #{message.seq}
+          </span>
           <CopyIconButton
             text={message.text}
             label="Copy message"

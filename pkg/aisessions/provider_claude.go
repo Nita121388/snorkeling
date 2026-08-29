@@ -84,7 +84,15 @@ func parseClaudeMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 	return messages, err
 }
 
-func parseClaudeMessageLine(line []byte, seq int) (Message, bool) {
+func parseClaudeMessageLine(line []byte, seq int) ([]Message, bool) {
+	msg, ok := parseClaudeMessageLineSingle(line, seq)
+	if !ok {
+		return nil, false
+	}
+	return []Message{msg}, true
+}
+
+func parseClaudeMessageLineSingle(line []byte, seq int) (Message, bool) {
 	var value map[string]any
 	if err := json.Unmarshal(line, &value); err != nil {
 		return Message{}, false

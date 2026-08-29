@@ -85,7 +85,10 @@ func readAllLines(r io.Reader) ([]string, error) {
 	return lines, scanner.Err()
 }
 
-type jsonlLineParser[T any] func(line []byte, seq int) (T, bool)
+// jsonlLineParser parses ONE jsonl line into ZERO OR MORE display items
+// (a pi assistant entry with N tool calls becomes 1 text message + N anchor
+// messages). seq is the next free sequence number.
+type jsonlLineParser[T any] func(line []byte, seq int) ([]T, bool)
 
 func parseJSONLFromReader[T any](ctx context.Context, r io.Reader, startSeq int, parser jsonlLineParser[T]) ([]T, int, int64, error) {
 	reader := bufio.NewReader(r)
@@ -107,9 +110,9 @@ func parseJSONLFromReader[T any](ctx context.Context, r io.Reader, startSeq int,
 			continue
 		}
 		if err == io.EOF && !bytes.HasSuffix(line, []byte("\n")) {
-			if item, ok := parser(bytes.TrimRight(line, "\r\n"), seq); ok {
-				items = append(items, item)
-				seq++
+			if parsed, ok := parser(bytes.TrimRight(line, "\r\n"), seq); ok {
+				items = append(items, parsed...)
+				seq += len(parsed)
 			}
 			bytesRead += int64(len(line))
 			return items, seq, bytesRead, nil
@@ -119,9 +122,9 @@ func parseJSONLFromReader[T any](ctx context.Context, r io.Reader, startSeq int,
 			bytesRead += int64(len(line))
 			continue
 		}
-		if item, ok := parser(trimmed, seq); ok {
-			items = append(items, item)
-			seq++
+		if parsed, ok := parser(trimmed, seq); ok {
+			items = append(items, parsed...)
+			seq += len(parsed)
 		}
 		bytesRead += int64(len(line))
 	}
@@ -152,13 +155,13 @@ func parseCompleteJSONLFromReader[T any](ctx context.Context, r io.Reader, start
 				bytesRead += int64(len(line))
 				return items, seq, bytesRead, nil
 			}
-			item, ok := parser(trimmed, seq)
+			parsed, ok := parser(trimmed, seq)
 			if !ok && !json.Valid(trimmed) {
 				return items, seq, bytesRead, nil
 			}
 			if ok {
-				items = append(items, item)
-				seq++
+				items = append(items, parsed...)
+				seq += len(parsed)
 			}
 			bytesRead += int64(len(line))
 			return items, seq, bytesRead, nil
@@ -168,9 +171,9 @@ func parseCompleteJSONLFromReader[T any](ctx context.Context, r io.Reader, start
 			bytesRead += int64(len(line))
 			continue
 		}
-		if item, ok := parser(trimmed, seq); ok {
-			items = append(items, item)
-			seq++
+		if parsed, ok := parser(trimmed, seq); ok {
+			items = append(items, parsed...)
+			seq += len(parsed)
 		}
 		bytesRead += int64(len(line))
 	}
