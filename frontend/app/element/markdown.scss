@@ -583,10 +583,12 @@
 //   A/B .markdown-block-grip-action  "insert above / insert below" buttons, same column as C,
 //                                    stacked just above / below C; independently mounted and
 //                                    faded in/out (opacity + pointer-events, 120ms).
-// All three live at the block's left gutter so they never overlap the text. Portal'd to body;
-// the 400ms hide grace in markdown.tsx (scheduleHideInsert/cancelHideInsert for the block
-// anchor, scheduleHideGrip/cancelHideGrip for A+B) keeps them alive while the pointer travels
-// between the block, C, A and B.
+// For a list item the X anchor uses the parent <ul>/<ol> left edge (markdown.tsx
+// measureInsertAnchor), not the <li>: the bullet marker renders OUTSIDE the item box, so a
+// <li>-anchored grip would land on the marker. All three live in the far-left gutter so they
+// never overlap the text. Portal'd to body; the 400ms hide grace in markdown.tsx
+// (scheduleHideInsert/cancelHideInsert for the block anchor, scheduleHideGrip/cancelHideGrip
+// for A+B) keeps them alive while the pointer travels between the block, C, A and B.
 
 // C — the 4-dot grip. Centered on the anchor point with translate(-50%, -50%), so the
 // anchor (block vertical middle) is the exact center and A/B can be placed relative to it.
@@ -691,4 +693,12 @@
     background: var(--accent-color, #32afff);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color, #32afff) 30%, transparent);
     transition: top 80ms ease, left 80ms ease, width 80ms ease;
+}
+
+// Inline-editable task checkboxes (GFM task lists) — pointer affordance for the
+// click-to-toggle wiring in markdown.tsx (MarkdownTaskCheckbox). Disabled checkboxes in
+// read-only contexts keep the browser default cursor.
+.markdown-task-checkbox {
+    cursor: pointer;
+    accent-color: var(--accent-color, #32afff);
 }

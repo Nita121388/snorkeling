@@ -55,6 +55,7 @@ import {
 } from "@/app/element/markdown-inline-edit";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import { renumberOrderedListBlockAtLine } from "@/app/element/markdown-ordered-list";
+import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -604,6 +605,38 @@ const MarkdownListItem = ({
         return <CollapsibleOrderedListItem props={props} collapsed={collapsed} onToggle={onToggle} />;
     }
     return <li {...props} {...srcLineAttrs(props)} />;
+};
+
+// Clickable task-list checkbox (Note surface). The parent <li> carries data-source-line;
+// the click flips `[ ]` ⇄ `[x]` on exactly that source line via the caller's commit path —
+// no editor session, no full-document re-serialization. Only mounted when the Markdown
+// instance got onInlineEditCommit, so read-only contexts (vdom, AI panels) keep the default
+// disabled checkbox.
+const MarkdownTaskCheckbox = ({
+    props,
+    onToggle,
+}: {
+    props: React.InputHTMLAttributes<HTMLInputElement>;
+    onToggle: (line: number) => void;
+}) => {
+    return (
+        <input
+            type="checkbox"
+            checked={Boolean(props.checked)}
+            readOnly
+            className="markdown-task-checkbox"
+            aria-label="Toggle task"
+            onClick={(e) => {
+                e.preventDefault(); // checkbox state derives from source text, not the DOM
+                e.stopPropagation(); // don't bubble into the click-to-edit handler
+                const li = (e.target as HTMLElement).closest("li[data-source-line]");
+                const line = Number((li as HTMLElement | null)?.dataset?.sourceLine);
+                if (Number.isFinite(line) && line > 0) {
+                    onToggle(line);
+                }
+            }}
+        />
+    );
 };
 
 const CollapsibleTable = ({
@@ -1265,6 +1298,21 @@ const Markdown = ({
         }
         onInlineEditCommit(nextText);
     };
+
+    // Task-list checkbox click: flip `[ ]` <=> `[x]` on the one source line via the same
+    // commit funnel (renumber-safe), then flush to disk immediately — a toggle is a single
+    // atomic gesture, waiting for ⌘S/autosave would make "click to check" feel broken.
+    const handleTaskCheckboxToggle = useCallback(
+        (line: number) => {
+            const next = toggleTaskCheckboxAtLine(text, line);
+            if (next == null) {
+                return;
+            }
+            handleInlineEditCommit(next);
+            onInlineEditSave?.();
+        },
+        [text, handleInlineEditCommit, onInlineEditSave]
+    );
 
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
@@ -2411,6 +2459,20 @@ const Markdown = ({
             return;
         }
         const rect = el.getBoundingClientRect();
+        // X axis: for a list item (<li>) the bullet marker is rendered OUTSIDE the item's box
+        // (list-style-position: outside), so anchoring off the <li> puts the grip's right edge
+        // right on the bullet — worse when the markdown font size is enlarged (the 26px offset
+        // is fixed while the marker widens). Anchor X to the parent <ul>/<ol> instead: the whole
+        // list shares one grip column a fixed distance left of the bullet column, so it never
+        // overlaps the marker regardless of font size. (Vertical anchor still uses the <li>'s
+        // first line via rect.top.)
+        let xAnchorLeft = rect.left;
+        if (el.tagName === "LI") {
+            const listEl = el.parentElement?.closest<HTMLElement>("ol, ul");
+            if (listEl != null) {
+                xAnchorLeft = listEl.getBoundingClientRect().left;
+            }
+        }
         // Grip sits in the gutter left of the block, anchored to the block's TOP-LEFT (like
         // Notion's handle): insertPos.top is the anchor center for translate(-50%, -50%), so
         // rect.top + 8 centers the 16px grip on the block's top edge (half above, half beside
@@ -2420,7 +2482,7 @@ const Markdown = ({
         // Clamp to viewport for far-left blocks (content has ~15px padding).
         // ponytail: the block's hovered row can be deep in a list (LI) while data-source-line
         // resolves to the UL — the grip then anchors to the list's top-left, acceptable.
-        setInsertPos({ top: rect.top + 8, left: Math.max(rect.left - 26, 8) });
+        setInsertPos({ top: rect.top + 8, left: Math.max(xAnchorLeft - 26, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
     insertAnchorRef.current = insertAnchor;
@@ -3263,6 +3325,13 @@ const Markdown = ({
             const chartText = getTextContent(props.children);
             return <Mermaid chart={chartText} />;
         };
+        // Clickable task checkboxes only exist when the caller opted into inline editing;
+        // otherwise keep react-markdown's default disabled <input>.
+        if (onInlineEditCommit != null) {
+            components["input"] = (props: any) => (
+                <MarkdownTaskCheckbox props={props} onToggle={handleTaskCheckboxToggle} />
+            );
+        }
         return components;
     }, [
         focusHeading,
@@ -3277,6 +3346,8 @@ const Markdown = ({
         onClickExecute,
         text,
         handleInlineEditCommit,
+        onInlineEditCommit,
+        handleTaskCheckboxToggle,
         contentBlocksMap,
         waveBlockRenderers,
     ]);
