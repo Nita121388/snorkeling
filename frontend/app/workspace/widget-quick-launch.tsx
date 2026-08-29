@@ -15,16 +15,24 @@ import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import "./widget-quick-launch.scss";
+
 // ponytail: matches widgets.tsx DefaultCreateBlockRuntimeOpts — same default term size for
 // a freshly-created block before it reflows to its container.
 const DefaultRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
 type Placement = "new" | "group";
 
+// bloom-menu 风格网格列数：数量少时更稀疏，避免格子被挤扁。
+function gridCols(count: number): number {
+    if (count <= 4) return 2;
+    if (count <= 9) return 3;
+    return 4;
+}
+
 const WidgetQuickLaunchModal = memo(() => {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const workspaceId = useAtomValue(atoms.workspaceId);
-    const [selected, setSelected] = useState<GroupAddableWidget | null>(null);
     const [highlightIdx, setHighlightIdx] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
 
@@ -48,40 +56,31 @@ const WidgetQuickLaunchModal = memo(() => {
         return focused?.id ?? null;
     }, []);
 
-    const handleSelect = useCallback((w: GroupAddableWidget) => {
-        setSelected(w);
-    }, []);
-
-    const handlePlacement = useCallback(
-        (place: Placement) => {
-            if (selected == null) {
-                return;
-            }
-            const isTarget = selected.id === DefaultTerminalWidgetId || selected.id === DefaultAgentWidgetId;
+    const launch = useCallback(
+        (w: GroupAddableWidget, place: Placement) => {
+            const isTarget = w.id === DefaultTerminalWidgetId || w.id === DefaultAgentWidgetId;
             // Terminal / Agent: route to the existing target-selector popup (same as the right WidgetsBar),
             // carrying the placement as the group sink.
             if (isTarget) {
                 const sinkNodeId = place === "group" ? getSinkNodeId() : undefined;
-                // 创建一个临时锚点 div（1px，视口中部），避免 body 满幅导致 floating-ui 全 placement 越界。
-                // 浮窗渲染后由 autoUpdate 锚定；清理不影响 positioning。
-                const anchor = document.createElement("div");
-                anchor.style.cssText = "position:fixed;top:50%;left:50%;width:1px;height:1px;z-index:-1;pointer-events:none;";
-                document.body.appendChild(anchor);
+                // 冻结的视口正中锚点（取代之前的 1px 临时 div + 300ms 后移除）：
+                // 旧方案在弹窗仍开着时移除锚点 DOM，floating-ui autoUpdate 重算 → 弹窗瞬移。冻结 rect 一劳永逸。
+                const rect = new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 1, 1);
                 close();
                 requestLaunchPopup({
-                    mode: selected.id === DefaultTerminalWidgetId ? "terminal" : "agent",
-                    anchorEl: anchor,
+                    mode: w.id === DefaultTerminalWidgetId ? "terminal" : "agent",
+                    anchorEl: { getBoundingClientRect: () => rect },
                     nodeId: sinkNodeId,
+                    centered: true,
                 });
-                setTimeout(() => anchor.remove(), 300);
                 return;
             }
-            const blockDef = selected.config.blockdef;
+            const blockDef = w.config.blockdef;
             if (blockDef == null) {
                 close();
                 return;
             }
-            const magnified = Boolean(selected.config.magnified);
+            const magnified = Boolean(w.config.magnified);
             if (place === "group") {
                 const sinkNodeId = getSinkNodeId();
                 fireAndForget(async () => {
@@ -104,108 +103,131 @@ const WidgetQuickLaunchModal = memo(() => {
             }
             close();
         },
-        [selected, getSinkNodeId, close]
+        [getSinkNodeId, close]
     );
+
+    const cols = gridCols(widgets.length);
+    const rows = Math.ceil(widgets.length / cols);
 
     const onKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
             if (widgets.length === 0) {
                 return;
             }
-            if (e.key === "ArrowDown") {
+            if (e.key === "ArrowDown" || e.key === "ArrowRight") {
                 e.preventDefault();
                 setHighlightIdx((i) => (i + 1) % widgets.length);
-            } else if (e.key === "ArrowUp") {
+            } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
                 e.preventDefault();
                 setHighlightIdx((i) => (i - 1 + widgets.length) % widgets.length);
             } else if (e.key === "Enter") {
                 e.preventDefault();
-                if (selected == null) {
-                    const w = widgets[highlightIdx];
-                    if (w != null) {
-                        setSelected(w);
-                    }
+                const w = widgets[highlightIdx];
+                if (w != null) {
+                    launch(w, "new");
+                }
+            } else if (e.key === "Tab") {
+                e.preventDefault();
+                const w = widgets[highlightIdx];
+                if (w != null) {
+                    launch(w, "group");
                 }
             }
         },
-        [widgets, highlightIdx, selected]
+        [widgets, highlightIdx, launch]
     );
 
     return (
-        <Modal className="widget-quick-launch w-[420px] max-w-[92vw]" onClickBackdrop={close} onClose={close}>
-            <div className="wql-header px-4 pt-3 pb-1">
-                <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <i className="fa-sharp fa-regular fa-bolt text-accent" />
-                    Quick Launch Widgets
-                </div>
-                <div className="text-xxs text-muted mt-0.5">支持的 widget · 无过滤</div>
+        <Modal className="widget-quick-launch w-[min(92vw,460px)]" onClickBackdrop={close} onClose={close}>
+            {/* header：仅左侧标题；关闭走 Modal 基类右上角的 X（Bloom 同款），不再自放 esc 键帽撞车 */}
+            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <i className="fa-sharp fa-regular fa-bolt text-accent text-sm" />
+                <span className="text-sm font-medium text-muted">Quick Launch</span>
             </div>
+
+            {/* bloom-menu 风格网格：发丝线边框、图标在上标签在下、cell 悬浮仅换色 */}
             <div
                 ref={listRef}
                 tabIndex={0}
-                className="wql-list px-2 py-1 max-h-80 overflow-y-auto outline-none"
+                className="max-h-[min(52vh,440px)] overflow-y-auto outline-none"
                 onKeyDown={onKeyDown}
             >
                 {widgets.length === 0 ? (
-                    <div className="px-3 py-4 text-xs text-muted text-center">No widgets available</div>
+                    <div className="px-4 py-8 text-center text-xs text-muted">No widgets available</div>
                 ) : (
-                    widgets.map((w, idx) => {
-                        const isTarget = w.id === DefaultTerminalWidgetId || w.id === DefaultAgentWidgetId;
-                        const isSelected = selected?.id === w.id;
-                        const isHighlight = selected == null && idx === highlightIdx;
-                        return (
-                            <div
-                                key={w.id}
-                                className={clsx(
-                                    "flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors",
-                                    isSelected ? "bg-accent/12 text-foreground" : "hover:bg-hoverbg text-secondary",
-                                    isHighlight && !isSelected && "bg-surface-soft"
-                                )}
-                                onMouseEnter={() => setHighlightIdx(idx)}
-                                onClick={() => handleSelect(w)}
-                            >
-                                <i
-                                    className={makeIconClass(w.config.icon, false, { defaultIcon: "browser" })}
-                                    style={{ color: w.config.color }}
-                                />
-                                <span className="text-xs whitespace-nowrap">{w.config.label}</span>
-                                {isTarget && <span className="ml-auto pl-3 text-xxs text-muted whitespace-nowrap">→ 目标选择</span>}
-                            </div>
-                        );
-                    })
+                    <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                        {widgets.map((w, i) => {
+                            const isTarget = w.id === DefaultTerminalWidgetId || w.id === DefaultAgentWidgetId;
+                            const isHighlight = i === highlightIdx;
+                            return (
+                                <div
+                                    key={w.id}
+                                    className={clsx(
+                                        "group relative flex cursor-pointer flex-col items-center justify-center gap-2 px-3 pb-6 pt-4 text-secondary transition-colors hover:text-foreground",
+                                        i % cols !== cols - 1 && "border-r border-border/60",
+                                        Math.floor(i / cols) < rows - 1 && "border-b border-border/60",
+                                        isHighlight && "bg-accent/10 text-foreground"
+                                    )}
+                                    onMouseEnter={() => setHighlightIdx(i)}
+                                    onClick={() => launch(w, "new")}
+                                >
+                                    <i
+                                        className={clsx(
+                                            makeIconClass(w.config.icon, false, { defaultIcon: "browser" }),
+                                            "text-lg"
+                                        )}
+                                        style={{ color: w.config.color }}
+                                    />
+                                    <span className="text-xs font-medium">{w.config.label}</span>
+                                    {/* terminal/agent 走二级目标选择器的角标 */}
+                                    {isTarget && (
+                                        <i className="fa-sharp fa-regular fa-chevron-right absolute right-2 top-2 text-[9px] text-muted/70" />
+                                    )}
+                                    {/* 悬浮才露出的放置选项：block = 点击默认，group = 进组（底部留位，不挤压布局） */}
+                                    <div className="pointer-events-none absolute inset-x-0 bottom-1.5 flex justify-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                                        <button
+                                            type="button"
+                                            className="pointer-events-auto cursor-pointer rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-accent hover:text-accent"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                launch(w, "new");
+                                            }}
+                                        >
+                                            block
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="pointer-events-auto cursor-pointer rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-accent hover:text-accent"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                launch(w, "group");
+                                            }}
+                                        >
+                                            group
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
-            {selected != null && (
-                <div className="wql-footer border-t border-border px-3 py-2 flex items-center gap-3">
-                    <span className="text-xxs text-muted mr-1">放置「{selected.config.label}」到</span>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-secondary hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
-                            onClick={() => handlePlacement("new")}
-                        >
-                            <i className="fa-sharp fa-solid fa-square-plus text-[9px]" />
-                            New Block
-                        </button>
-                        <button
-                            type="button"
-                            className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-accent hover:bg-accent/12 hover:text-accenthover active:scale-[0.97] transition-all cursor-pointer border-none p-0"
-                            onClick={() => handlePlacement("group")}
-                        >
-                            <i className="fa-sharp fa-solid fa-table-columns text-[9px]" />
-                            Current Group
-                        </button>
-                    </div>
-                    <button
-                        type="button"
-                        className="ml-auto inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
-                        onClick={() => setSelected(null)}
-                    >
-                        <i className="fa-sharp fa-solid fa-arrow-rotate-left text-[10px]" />
-                        重选
-                    </button>
-                </div>
-            )}
+
+            {/* footer：键位提示统一收这里（esc 挪下来，与右上角 X 彻底解联） */}
+            <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted">
+                <span>
+                    <kbd className="rounded border border-border bg-surface-soft px-1">←↑→↓</kbd> select
+                </span>
+                <span>
+                    <kbd className="rounded border border-border bg-surface-soft px-1">↵</kbd> new block
+                </span>
+                <span>
+                    <kbd className="rounded border border-border bg-surface-soft px-1">⇥</kbd> into group
+                </span>
+                <span>
+                    <kbd className="rounded border border-border bg-surface-soft px-1">esc</kbd> close
+                </span>
+            </div>
         </Modal>
     );
 });

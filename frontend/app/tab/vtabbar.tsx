@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
-import { NoteButton, SessionOverviewButton } from "@/app/session-overview/session-overview";
+import { SessionOverviewButton } from "@/app/session-overview/session-overview";
 import {
     filterSessionOverviewTabIds,
     mergeVisibleTabIdsWithSessionOverview,
@@ -410,7 +410,6 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
             onContextMenu={handleTabBarContextMenu}
         >
             {env.isMacOS() && <MacOSHeader />}
-            <NoteButton vertical />
             <SessionOverviewButton vertical />
             <div
                 ref={scrollContainerRef}

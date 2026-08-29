@@ -2074,6 +2074,7 @@ declare global {
         "markdown:fontsize"?: number;
         "markdown:fixedfontsize"?: number;
         "note:dir"?: string;
+        "note:autosave"?: boolean;
         "preview:showhiddenfiles"?: boolean;
         "preview:defaultsort"?: string;
         "preview:defaultdirectorydisplay"?: string;

@@ -1,0 +1,9 @@
+/* Bloom-menu 风格：发丝线网格要顶满面板边缘，去掉 .modal-content 默认左右 20px 内边距；
+   圆角对齐 bloom（base .modal 是 8px）。 */
+.widget-quick-launch {
+    border-radius: 16px;
+
+    .modal-content {
+        padding: 0;
+    }
+}

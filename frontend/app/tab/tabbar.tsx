@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
-import { NoteButton, SessionOverviewButton } from "@/app/session-overview/session-overview";
+import { SessionOverviewButton } from "@/app/session-overview/session-overview";
 import {
     filterSessionOverviewTabIds,
     mergeVisibleTabIdsWithSessionOverview,
@@ -875,7 +875,6 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 </div>
             )}
             <WaveAIButton divRef={waveAIButtonRef} />
-            {!noTabs && <NoteButton />}
             {!noTabs && <SessionOverviewButton />}
             <Tooltip
                 content="Workspace Switcher"

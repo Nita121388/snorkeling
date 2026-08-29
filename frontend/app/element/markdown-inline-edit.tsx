@@ -53,6 +53,23 @@ export function inlineEditDebug(msg: string, details: Record<string, unknown> = 
 }
 
 /**
+ * Snapshot the rendered block's typography so the editing textarea can inherit it. Read
+ * once at edit-open; a stale snapshot is fine because the block's own style is static for
+ * the session's lifetime (its CSS derives from the kind, not per-keystroke state).
+ */
+function captureBlockTypography(el: HTMLElement): React.CSSProperties {
+    const cs = getComputedStyle(el);
+    return {
+        fontFamily: cs.fontFamily,
+        fontSize: cs.fontSize,
+        fontWeight: cs.fontWeight as React.CSSProperties["fontWeight"],
+        fontStyle: cs.fontStyle as React.CSSProperties["fontStyle"],
+        lineHeight: cs.lineHeight,
+        letterSpacing: cs.letterSpacing,
+    };
+}
+
+/**
  * Block kinds the inline editor knows how to open. Each maps to a renderer-emitted block: the
  * block's DOM carries data-source-line + data-source-line-end so the editor can slice the
  * matching source range. Add a new kind in three places:
@@ -66,8 +83,7 @@ export type InlineEditBlockKind = "p" | "h" | "list" | "table" | "code" | "blank
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
     /** 1-based, inclusive, original text coordinate (NOT transformedText). */
-    startLine: number;
-    /**
+    startLine: number;    /**
      * 1-based, inclusive. Equal to startLine for single-line blocks (h without trailing
      * soft-break). Paragraphs (and soft-broken headings) render one visual block across multiple
      * source lines once remarkSoftBreaks merges them — this endLine brackets that range so the
@@ -80,6 +96,12 @@ export type InlineEditSession = {
     initialContent: string;
     /** DOM element we anchored on; kept hidden (visibility:hidden) while textarea is mounted. */
     targetEl: HTMLElement;
+    /**
+     * Typography snapshot of the rendered block (getComputedStyle at edit-open time). The
+     * overlay textarea inherits these so typing looks pixel-identical to reading — no font
+     * size/line-height jump when entering or leaving edit ("zero layout shift").
+     */
+    typography?: React.CSSProperties;
     /**
      * Optional caret position (0-based char offset into the draft text). When present the
      * textarea caret lands here instead of select-all — the single-click-to-edit path maps
@@ -368,8 +390,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             setOverlayRect(null);
             return;
         }
+        // `inline-edit-active` rides along so the block keeps an affordance (accent stripe)
+        // through the hidden-but-still-laid-out element.
         target.classList.add("inline-edit-hidden");
-        return () => target.classList.remove("inline-edit-hidden");
+        target.classList.add("inline-edit-active");
+        return () => {
+            target.classList.remove("inline-edit-hidden");
+            target.classList.remove("inline-edit-active");
+        };
     });
 
     useLayoutEffect(() => {
@@ -489,6 +517,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 endLine,
                 initialContent,
                 targetEl,
+                typography: captureBlockTypography(targetEl),
                 caretOffset,
                 insertRevert,
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
@@ -647,6 +676,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
 type InlineEditOverlayProps = {
     overlayRect: { top: number; left: number; width: number; height: number } | null;
     blockKind: InlineEditBlockKind | null;
+    typography?: React.CSSProperties;
     draftText: string;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onTextChange: (v: string) => void;
@@ -658,6 +688,7 @@ type InlineEditOverlayProps = {
 export function InlineEditOverlay({
     overlayRect,
     blockKind,
+    typography,
     draftText,
     textareaRef,
     onTextChange,
@@ -696,6 +727,7 @@ export function InlineEditOverlay({
             <textarea
                 ref={textareaRef}
                 className="inline-edit-textarea"
+                style={typography}
                 value={draftText}
                 rows={1}
                 onChange={(e) => onTextChange(e.target.value)}

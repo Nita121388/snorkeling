@@ -532,6 +532,164 @@
     }
 }
 
+// Link action tooltip + link edit form — share the flyout skin of the app's menus
+// (flyoutmenu.scss): --overlay-bg-color backdrop, 4px panel radius / 2px item radius,
+// 0 8px 24px modal shadow, ghost icon buttons with accent hover fill.
+@keyframes markdown-flyout-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+// One slim 20px capsule: three ghost icon buttons, no URL text (the document text already
+// shows the label; the URL surfaces via the anchor's native title on longer hover).
+.markdown-link-tooltip {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 26px;
+    padding: 0 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--overlay-bg-color);
+    box-shadow: 0 8px 24px var(--modal-shadow-color);
+    animation: markdown-flyout-in 80ms ease-out;
+
+    button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: 0;
+        border-radius: 2px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--accent-color);
+            color: var(--button-text-color);
+        }
+    }
+}
+
+// Link edit form — same skin as the tooltip, with the menu typography (12px / -0.12px).
+.markdown-link-editor {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 240px;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--overlay-bg-color);
+    box-shadow: 0 8px 24px var(--modal-shadow-color);
+    font-size: 12px;
+    letter-spacing: -0.12px;
+    color: var(--main-text-color);
+    animation: markdown-flyout-in 80ms ease-out;
+
+    .markdown-link-editor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--secondary-text-color);
+    }
+
+    .markdown-link-editor-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        border: 0;
+        border-radius: 2px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--accent-color);
+            color: var(--button-text-color);
+        }
+    }
+
+    .markdown-link-editor-field {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        span {
+            font-size: 11px;
+            color: var(--secondary-text-color);
+        }
+
+        input {
+            height: 24px;
+            padding: 2px 6px;
+            font-size: 12px;
+            color: var(--main-text-color);
+            background: var(--input-bg-color, rgba(255, 255, 255, 0.06));
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+            outline: none;
+
+            &:focus {
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 22%, transparent);
+            }
+        }
+    }
+
+    .markdown-link-editor-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 4px;
+
+        button {
+            padding: 3px 10px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+            background: transparent;
+            color: var(--main-text-color);
+            cursor: pointer;
+        }
+
+        .markdown-link-editor-save {
+            background: var(--accent-color);
+            border-color: transparent;
+            color: var(--button-text-color);
+
+            &:hover {
+                filter: brightness(1.08);
+            }
+
+            &:active {
+                filter: brightness(0.94);
+            }
+        }
+
+        .markdown-link-editor-cancel:hover {
+            background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+        }
+    }
+}
+
 // Images in rendered markdown are click-to-zoom / right-click-to-act on (see MarkdownImg).
 .markdown-img-clickable {
     cursor: zoom-in;
@@ -701,4 +859,23 @@
 .markdown-task-checkbox {
     cursor: pointer;
     accent-color: var(--accent-color, #32afff);
+}
+
+// === Editable-context affordances (Note surface, items ④/⑤) ============================
+// Only when the caller opted into inline editing (.markdown-editable). Both rules keep the
+// block's box untouched (no layout shift): hover paints a faint tint, the active block adds
+// an INSET accent stripe (box-shadow, not border, so width/height stay identical).
+.markdown.markdown-editable [data-source-line] {
+    border-radius: 3px;
+    transition: background-color 140ms ease;
+}
+
+// Innermost hovered block only: without :has, nested blocks (li inside ul) would stack tints.
+.markdown.markdown-editable [data-source-line]:hover:not(:has([data-source-line]:hover)) {
+    background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
+}
+
+.markdown.markdown-editable [data-source-line].inline-edit-active {
+    box-shadow: inset 3px 0 0 0 var(--accent-color, #32afff);
+    background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
 }

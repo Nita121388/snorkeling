@@ -32,8 +32,9 @@ import {
     withLaunchEnv,
 } from "@/app/workspace/agent-launch";
 import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
-import { subscribeLaunchPopup } from "@/app/workspace/launch-popup-bus";
+import { subscribeLaunchPopup, type LaunchPopupAnchor } from "@/app/workspace/launch-popup-bus";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
+import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
@@ -334,7 +335,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
 type AgentTargetFloatingWindowProps = {
     isOpen: boolean;
     onClose: () => void;
-    referenceElement: HTMLElement;
+    referenceElement: LaunchPopupAnchor;
     targets: AgentLaunchTarget[];
     settings?: SettingsType;
     magnified?: boolean;
@@ -346,6 +347,8 @@ type AgentTargetFloatingWindowProps = {
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
     // footer 主按钮文案；Blocks 组「＋」菜单来源时传 "Add to Group"（行为经 createToCurrentTab 改道进组）
     currentTabLabel?: string;
+    /** 居中渲染（Quick Launch 等无稳定锚点的入口）。见 useFloating 处说明。 */
+    centered?: boolean;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -383,7 +386,7 @@ type AgentTargetFloatingWindowProps = {
 type TerminalTargetFloatingWindowProps = {
     isOpen: boolean;
     onClose: () => void;
-    referenceElement: HTMLElement;
+    referenceElement: LaunchPopupAnchor;
     targets: AgentLaunchTarget[];
     settings?: SettingsType;
     magnified?: boolean;
@@ -393,6 +396,8 @@ type TerminalTargetFloatingWindowProps = {
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
     // footer 主按钮文案；同 AgentTargetFloatingWindow.currentTabLabel
     currentTabLabel?: string;
+    /** 居中渲染（Quick Launch 等无稳定锚点的入口）。见 useFloating 处说明。 */
+    centered?: boolean;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -623,17 +628,19 @@ const AgentTargetFloatingWindow = memo(
         launchEnv,
         onLaunchEnvChange,
         currentTabLabel,
+        centered,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
-            placement: "left-start",
-            // flip: 锚点靠左时翻到右侧；shift+limitShift: 视口内夹紧且防抖；size: 超高时压回视口内
-            // 配合 overflowY 内部滚动 —— 保证任何锚点位置/窗口尺寸下浮窗完整可见。
+            // 居中模式：锚点是视口正中的 1px div，关闭 flip/shift 避免被推离中心，
+            // 仅靠 offset(0) 定位、size 限高；渲染时再追加 translate(-50%, -50%) 把浮窗中心压到锚点上。
+            placement: centered ? "right-start" : "left-start",
             middleware: [
-                offset(8),
-                flip(),
-                shift({ padding: 12, limiter: limitShift() }),
+                offset(centered ? 0 : 8),
+                ...(centered
+                    ? []
+                    : [flip(), shift({ padding: 12, limiter: limitShift() })]),
                 size({
                     padding: 12,
                     // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
@@ -646,7 +653,7 @@ const AgentTargetFloatingWindow = memo(
             ],
             whileElementsMounted: autoUpdate,
             elements: {
-                reference: referenceElement,
+                reference: referenceElement as Element,
             },
         });
         const dismiss = useDismiss(context);
@@ -838,7 +845,7 @@ const AgentTargetFloatingWindow = memo(
             <FloatingPortal>
                 <div
                     ref={refs.setFloating}
-                    style={floatingStyles}
+                    style={centered ? { ...floatingStyles, transform: `${floatingStyles.transform ?? ""} translate(-50%, -50%)`.trim() } : floatingStyles}
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
                     onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
@@ -1281,16 +1288,18 @@ const TerminalTargetFloatingWindow = memo(
         launchEnv,
         onLaunchEnvChange,
         currentTabLabel,
+        centered,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
-            placement: "left-start",
-            // flip/shift/size 同 AgentTargetFloatingWindow —— 保证浮窗完整显示（边界加固）。
+            // 居中模式同 AgentTargetFloatingWindow。
+            placement: centered ? "right-start" : "left-start",
             middleware: [
-                offset(8),
-                flip(),
-                shift({ padding: 12, limiter: limitShift() }),
+                offset(centered ? 0 : 8),
+                ...(centered
+                    ? []
+                    : [flip(), shift({ padding: 12, limiter: limitShift() })]),
                 size({
                     padding: 12,
                     // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
@@ -1303,7 +1312,7 @@ const TerminalTargetFloatingWindow = memo(
             ],
             whileElementsMounted: autoUpdate,
             elements: {
-                reference: referenceElement,
+                reference: referenceElement as Element,
             },
         });
         const dismiss = useDismiss(context);
@@ -1341,7 +1350,7 @@ const TerminalTargetFloatingWindow = memo(
             <FloatingPortal>
                 <div
                     ref={refs.setFloating}
-                    style={floatingStyles}
+                    style={centered ? { ...floatingStyles, transform: `${floatingStyles.transform ?? ""} translate(-50%, -50%)`.trim() } : floatingStyles}
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
                     onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
@@ -1688,17 +1697,23 @@ const Widgets = memo(() => {
     const [isAgentTargetOpen, setIsAgentTargetOpen] = useState(false);
     const [agentTargets, setAgentTargets] = useState<AgentLaunchTarget[]>([]);
     const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
-    const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
+    const [agentReferenceElement, setAgentReferenceElement] = useState<LaunchPopupAnchor | null>(null);
     const [isTerminalTargetOpen, setIsTerminalTargetOpen] = useState(false);
     // 非 null 时，浮窗的入 tab 创建（createToCurrentTab 漏斗）改道进该 inline-tab 组 ——
     // 由 Blocks 组「＋」菜单经 launch-popup-bus 发起打开时设置，浮窗关闭时清空。
     const [terminalTargets, setTerminalTargets] = useState<AgentLaunchTarget[]>([]);
     const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
-    const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
+    const [terminalReferenceElement, setTerminalReferenceElement] = useState<LaunchPopupAnchor | null>(null);
     const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
     const [groupSinkNodeId, setGroupSinkNodeId] = useState<string | null>(null);
     const agentHoverTimerRef = useRef<number | null>(null);
     const terminalHoverTimerRef = useRef<number | null>(null);
+    // ponytail: bus 发起的（Blocks 组「＋」菜单 / Quick Launch）二级浮窗，需要把 open 状态回传给发起方，
+    // 且其居中意图（centered）要透传给浮窗本身。两个 ref 在 subscribeLaunchPopup 命中时写入，
+    // 浮窗关闭时回传 false 并复位。仅 bus 来源置位，右侧 WidgetsBar 自身 hover 不会误触回调。
+    const launchPopupOnOpenChangeRef = useRef<((open: boolean) => void) | null>(null);
+    const launchPopupCenteredRef = useRef<boolean>(false);
+    const launchPopupBusOpenedRef = useRef<boolean>(false);
     const [agentCommandPaths, setAgentCommandPaths] = useState<Record<string, string | null>>({});
     const [createToExistingTabRequest, setCreateToExistingTabRequest] = useState<CreateToExistingTabRequest | null>(
         null
@@ -1832,6 +1847,12 @@ const Widgets = memo(() => {
         setCcCodexSelectedVendorId(undefined);
         setCcOpencodeSelectedVendorId(undefined);
         setCcPiSelectedVendorId(undefined);
+        // 回传 bus 发起方：二级已关闭（用于其一级菜单收起协调）。仅 bus 来源置位才会触发。
+        if (launchPopupBusOpenedRef.current) {
+            launchPopupOnOpenChangeRef.current?.(false);
+            launchPopupBusOpenedRef.current = false;
+            launchPopupOnOpenChangeRef.current = null;
+        }
         setGroupSinkNodeId(null);
     }, []);
 
@@ -1840,6 +1861,11 @@ const Widgets = memo(() => {
         setTerminalReferenceElement(null);
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
+        if (launchPopupBusOpenedRef.current) {
+            launchPopupOnOpenChangeRef.current?.(false);
+            launchPopupBusOpenedRef.current = false;
+            launchPopupOnOpenChangeRef.current = null;
+        }
         setGroupSinkNodeId(null);
     }, []);
 
@@ -2024,7 +2050,7 @@ const Widgets = memo(() => {
     // launch-popup-bus) both land here. sinkNodeId != null redirects in-tab creation into that
     // inline-tab group (see createBlockInGroupSink).
     const openAgentTargetsAt = useCallback(
-        (referenceElement: HTMLElement, magnified: boolean, sinkNodeId: string | null) => {
+        (referenceElement: LaunchPopupAnchor, magnified: boolean, sinkNodeId: string | null) => {
             closeTerminalTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets()),
@@ -2047,7 +2073,7 @@ const Widgets = memo(() => {
     );
 
     const openTerminalTargetsAt = useCallback(
-        (referenceElement: HTMLElement, magnified: boolean, baseBlockDef: BlockDef | undefined, sinkNodeId: string | null) => {
+        (referenceElement: LaunchPopupAnchor, magnified: boolean, baseBlockDef: BlockDef | undefined, sinkNodeId: string | null) => {
             closeAgentTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets()),
@@ -2071,8 +2097,12 @@ const Widgets = memo(() => {
     );
 
     // Blocks 组「＋」菜单 → 打开同款浮窗，创建漏斗改道进组（sink）。
+    // 命中时记录发起方的 onOpenChange / centered 意图，供下方浮窗渲染与关闭回传使用。
     useEffect(() => {
         return subscribeLaunchPopup((req) => {
+            launchPopupBusOpenedRef.current = true;
+            launchPopupOnOpenChangeRef.current = req.onOpenChange ?? null;
+            launchPopupCenteredRef.current = req.centered ?? false;
             if (req.mode === "agent") {
                 openAgentTargetsAt(req.anchorEl, false, req.nodeId);
             } else {
@@ -2083,6 +2113,15 @@ const Widgets = memo(() => {
 
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
+            if (widget.action === NoteWidgetAction) {
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                const blockDef = makeNoteBlockDef(getNoteDirectory());
+                fireAndForget(async () => {
+                    await env.createBlock(blockDef, widget.magnified);
+                });
+                return;
+            }
             if (runWidgetAction(widget.action)) {
                 closeAgentTargetSelector();
                 closeTerminalTargetSelector();
@@ -2586,6 +2625,7 @@ const Widgets = memo(() => {
                     piSelectedVendorId={ccPiSelectedVendorId}
                     onPiSelectVendor={setCcPiSelectedVendorId}
                     onPiRefreshVendors={() => refreshCcSwitchVendors("pi", true)}
+                    centered={launchPopupCenteredRef.current}
                 />
             )}
             {terminalReferenceElement != null && (
@@ -2606,6 +2646,7 @@ const Widgets = memo(() => {
                     onSetDefaultTarget={setDefaultTerminalTarget}
                     launchEnv={terminalLaunchEnv}
                     onLaunchEnvChange={setTerminalLaunchEnv}
+                    centered={launchPopupCenteredRef.current}
                 />
             )}
             {createToExistingTabRequest != null ? (

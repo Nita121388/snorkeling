@@ -3,7 +3,7 @@
 
 import { Markdown } from "@/element/markdown";
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
-import { getBlockComponentModel, getOverrideConfigAtom } from "@/store/global";
+import { getBlockComponentModel, getOverrideConfigAtom, getSettingsKeyAtom } from "@/store/global";
 import { fireAndForget } from "@/util/util";
 import { globalStore } from "@/store/jotaiStore";
 import { useAtomValue } from "jotai";
@@ -69,6 +69,8 @@ function MarkdownPreview({
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
     const collapsibleOrderedLists = MarkdownFilePattern.test(fileInfo.path ?? fileInfo.name ?? "");
+    // note:autosave (default ON): inline-edit commits flush to disk automatically after 1.5s.
+    const inlineEditAutosave = useAtomValue(getSettingsKeyAtom("note:autosave")) ?? true;
     // Stable heading-id prefix + collapse snapshot so the rehype-slug ids (and the Set of collapsed
     // heading ids) survive BlockInner remount on tab switch. We only seed the initial snapshot here
     // (read once on mount) and write back live via the toggle callbacks — Markdown owns local
@@ -138,6 +140,7 @@ function MarkdownPreview({
                 copyContextPath={fileInfo.path}
                 onInlineEditCommit={handleInlineEditCommit}
                 onInlineEditSave={handleInlineEditSave}
+                inlineEditAutosave={inlineEditAutosave}
                 idPrefix={idPrefix}
                 collapsedHeadings={collapseSeed}
                 onCollapsedHeadingsChange={onCollapsedHeadingsChange}
