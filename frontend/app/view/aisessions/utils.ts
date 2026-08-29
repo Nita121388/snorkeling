@@ -133,19 +133,6 @@ export function formatToolCallPreview(toolCall: ToolCall): string {
     return "No details";
 }
 
-export function outlineRoleClass(message: Message): string {
-    switch (message.role) {
-        case "user":
-            return "border-l-2 border-accent/30 bg-accent/10 pl-2";
-        case "assistant":
-            return "border-l-2 border-border bg-bg pl-3";
-        case "system":
-            return "border-l-2 border-border/70 bg-bg/60 pl-4 text-secondary";
-        default:
-            return "border-l-2 border-border bg-bg pl-3";
-    }
-}
-
 export function displayRole(role: string): string {
     return role === "assistant" ? "AI" : role;
 }

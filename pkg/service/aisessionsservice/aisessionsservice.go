@@ -111,15 +111,6 @@ type AISessionsUserOutlineResponse struct {
 	UserMessageCount int                       `json:"userMessageCount"`
 }
 
-type AISessionsUserLinesRequest struct {
-	ID         string `json:"id"`
-	Connection string `json:"connection,omitempty"`
-	BeforeSeq  int    `json:"beforeSeq,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
-	Query      string `json:"query,omitempty"`
-	Refresh    bool   `json:"refresh,omitempty"`
-}
-
 type AISessionsSummaryRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
@@ -505,34 +496,6 @@ func latestUserOutlineMessages(messages []aisessions.Message, limit int) ([]aise
 		latest[len(latest)-1] = message
 	}
 	return latest, count
-}
-
-func (svc *AISessionsService) UserLines_Meta() tsgenmeta.MethodMeta {
-	return tsgenmeta.MethodMeta{
-		Desc:       "load paged user messages for an AI session",
-		ArgNames:   []string{"ctx", "request"},
-		ReturnDesc: "AI session user lines",
-	}
-}
-
-func (svc *AISessionsService) UserLines(ctx context.Context, request *AISessionsUserLinesRequest) (*aisessions.UserLinesResult, error) {
-	if request == nil || strings.TrimSpace(request.ID) == "" {
-		return nil, fmt.Errorf("session id is required")
-	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
-	if err != nil {
-		return nil, err
-	}
-	result, err := manager.UserLines(ctx, request.ID, aisessions.UserLinesOptions{
-		BeforeSeq: request.BeforeSeq,
-		Limit:     request.Limit,
-		Query:     request.Query,
-		Refresh:   request.Refresh,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
 }
 
 func (svc *AISessionsService) Summary_Meta() tsgenmeta.MethodMeta {

@@ -172,16 +172,6 @@ declare global {
         tags: SessionTagSummary[];
     };
 
-    // aisessionsservice.AISessionsUserLinesRequest
-    type AISessionsUserLinesRequest = {
-        id: string;
-        connection?: string;
-        beforeSeq?: number;
-        limit?: number;
-        query?: string;
-        refresh?: boolean;
-    };
-
     // aisessionsservice.AISessionsUserOutlineRequest
     type AISessionsUserOutlineRequest = {
         id: string;
@@ -2446,15 +2436,6 @@ declare global {
         confirm?: boolean;
         errormsg?: string;
         checkboxstat?: boolean;
-    };
-
-    // aisessions.UserLinesResult
-    type UserLinesResult = {
-        summary: SessionSummary;
-        messages: Message[];
-        userMessageCount: number;
-        hasMore: boolean;
-        nextBeforeSeq?: number;
     };
 
     // vdom.VDomAsyncInitiationRequest

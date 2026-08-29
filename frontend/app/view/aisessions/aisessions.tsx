@@ -615,22 +615,6 @@ export class AiSessionsViewModel implements ViewModel {
         }
     }
 
-    async loadUserLines(
-        session: SessionSummary,
-        request: Partial<AISessionsUserLinesRequest> = {}
-    ): Promise<UserLinesResult> {
-        if (!session?.key) {
-            throw new Error("session id is required");
-        }
-        const result = await this.service.UserLines({
-            ...request,
-            id: session.key,
-            connection: this.getConnection(),
-        });
-        this.replaceSession(result.summary);
-        return result;
-    }
-
     async refreshBoundSessionSummary(): Promise<void> {
         const boundSessionId = this.getBoundSessionId();
         if (boundSessionId === "") return;

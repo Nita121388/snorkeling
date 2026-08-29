@@ -322,7 +322,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
             if (name === "model" || name === "think") {
                 void openPicker(name === "model" ? "models" : "levels");
             } else if (name === "compact") {
-                void runControl("compact", undefined, "已请求压缩上下文");
+                void runControl("compact", undefined, "Context compression requested");
             }
         },
         [openPicker, runControl]
@@ -334,13 +334,13 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
             if (row.kind === "agent") {
                 const { agent } = row;
                 if (!agent.available) {
-                    flashNotice(`✗ ${agent.label} 暂未支持`);
+                    flashNotice(`✗ ${agent.label} not supported yet`);
                     setPanelMode(null);
                     inputRef.current?.focus();
                     return;
                 }
                 if (agent.id === source) {
-                    flashNotice(`当前 agent: ${agent.label}`);
+                    flashNotice(`Current agent: ${agent.label}`);
                     setPanelMode(null);
                     inputRef.current?.focus();
                     return;
@@ -349,13 +349,13 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                     // 会话创建时即绑定到某一 source，运行期切换 agent 不被后端支持。
                     // ponytail: 若日后支持跨 agent 迁移，这里改调 onSourceChange 并在
                     // session_state 刷新后重新拉取模型/思考级别即可。
-                    flashNotice(`该会话已绑定到 ${getChatSource(source).label}，无法切换 agent`);
+                    flashNotice(`This session is bound to ${getChatSource(source).label} — switching agents is not supported`);
                     setPanelMode(null);
                     inputRef.current?.focus();
                     return;
                 }
                 onSourceChange?.(agent.id);
-                flashNotice(`已选择 ${agent.label}（新会话将使用此 agent）`);
+                flashNotice(`Selected ${agent.label} (new sessions will use this agent)`);
                 setPanelMode(null);
                 inputRef.current?.focus();
                 return;
@@ -379,18 +379,18 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                     void runControl(
                         "set_model",
                         { provider: item.provider, modelId: item.id },
-                        `模型已切换: ${item.name || item.id}`
+                        `Model switched: ${item.name || item.id}`
                     );
                     // 联动：模型变化后刷新思考深度选项（以新模型的可用级别为准）
                     void refreshThinkingLevels();
                 } else {
-                    flashNotice("✗ 该模型缺少 provider/id");
+                    flashNotice("✗ Missing provider/id for this model");
                 }
                 setPanelMode(null);
                 inputRef.current?.focus();
                 return;
             }
-            void runControl("set_thinking_level", { level: row.level }, `思考深度: ${row.level}`);
+            void runControl("set_thinking_level", { level: row.level }, `Thinking level: ${row.level}`);
             setPanelMode(null);
             inputRef.current?.focus();
         },
@@ -466,7 +466,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                 // ponytail: cap at 8 images per turn; raise if a use case appears
                 setImages((prev) => [...prev, ...pending].slice(0, 8));
             } catch {
-                flashNotice("✗ 图片读取失败");
+                flashNotice("✗ Failed to read image");
             }
         },
         [flashNotice]
@@ -531,7 +531,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                         <div className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
                                 <div className="shrink-0 border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
-                                    Commands · Tab/Enter 补全 · Esc 关闭
+                                    Commands · Tab/Enter to complete · Esc to close
                                 </div>
                             ) : null}
                             {effectiveMode != null && effectiveMode !== "commands" ? (
@@ -544,10 +544,10 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                         onKeyDown={handlePickerSearchKeyDown}
                                         placeholder={
                                             effectiveMode === "models"
-                                                ? "搜索模型…"
+                                                ? "Search models…"
                                                 : effectiveMode === "levels"
-                                                  ? "搜索思考强度…"
-                                                  : "搜索 Agent…"
+                                                  ? "Search thinking level…"
+                                                  : "Search agents…"
                                         }
                                         className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-primary outline-none placeholder:text-secondary/70 focus:border-secondary/50"
                                         aria-label={
@@ -581,9 +581,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                             <i className="fa-sharp fa-solid fa-robot shrink-0 text-[10px] text-accent" />
                                             <span className="flex-1">{row.agent.label}</span>
                                             {!row.agent.available ? (
-                                                <span className="shrink-0 text-[9px] opacity-60">暂未支持</span>
+                                                <span className="shrink-0 text-[9px] opacity-60">Not supported yet</span>
                                             ) : source === row.agent.id ? (
-                                                <span className="text-[9px] text-accent">当前</span>
+                                                <span className="text-[9px] text-accent">Current</span>
                                             ) : null}
                                         </button>
                                     );
@@ -626,7 +626,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                         <div key={`model-${row.item.provider}-${row.item.id}`}>
                                             {showSection ? (
                                                 <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                    模型
+                                                    Model
                                                 </div>
                                             ) : null}
                                             <button
@@ -655,7 +655,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                     <div key={`level-${row.level}`}>
                                         {showSection ? (
                                             <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                思考深度
+                                                Thinking depth
                                             </div>
                                         ) : null}
                                         <button
@@ -672,7 +672,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                             <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
                                             <span className="flex-1">{row.level}</span>
                                             {currentThinking === row.level ? (
-                                                <span className="text-[9px] text-accent">当前</span>
+                                                <span className="text-[9px] text-accent">Current</span>
                                             ) : null}
                                         </button>
                                     </div>
@@ -681,8 +681,8 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             {panelRows.length === 0 ? (
                                 <div className="px-3 py-3 text-center text-xs text-secondary">
                                     {effectiveMode != null && effectiveMode !== "commands" && pickerQuery.trim()
-                                        ? `无匹配「${pickerQuery.trim()}」`
-                                        : "暂无可选项"}
+                                        ? `No match for "${pickerQuery.trim()}"`
+                                        : "No options"}
                                 </div>
                             ) : null}
                             </div>
@@ -733,7 +733,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             style={{ maxHeight: `${maxH}px` }}
                             className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
                             placeholder={
-                                !sourceAvailable ? "当前 Agent 暂未支持 GUI 对话" : isRunning ? "Agent 运行中… Enter 插话排队" : "给 Agent 输入任务…"
+                                !sourceAvailable ? "Current agent doesn't support GUI chat yet" : isRunning ? "Agent running… press Enter to queue a message" : "Message the agent…"
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
@@ -756,7 +756,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             <button
                                 type="button"
                                 className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-secondary hover:bg-hover hover:text-primary"
-                                title="附加图片"
+                                title="Attach image"
                                 aria-label="Attach images"
                                 onClick={() => fileInputRef.current?.click()}
                             >
@@ -765,7 +765,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             <button
                                 type="button"
                                 className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="选择 Agent"
+                                title="Select agent"
                                 onClick={() => setPanelMode(panelMode === "agents" ? null : "agents")}
                             >
                                 <i className="fa-sharp fa-solid fa-robot text-[11px]" />
@@ -780,7 +780,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             <button
                                 type="button"
                                 className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="切换模型"
+                                title="Switch model"
                                 onClick={() => {
                                     if (panelMode === "models") {
                                         setPanelMode(null);
@@ -789,7 +789,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                     }
                                 }}
                             >
-                                <span className="max-w-40 truncate">{currentModelLabel || "选择模型"}</span>
+                                <span className="max-w-40 truncate">{currentModelLabel || "Select model"}</span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
@@ -803,7 +803,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                     "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-hover",
                                     currentThinking && currentThinking !== "off" ? "text-accent" : "text-secondary hover:text-primary"
                                 )}
-                                title="思考强度"
+                                title="Thinking level"
                                 onClick={() => {
                                     if (panelMode === "levels") {
                                         setPanelMode(null);
@@ -813,7 +813,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 }}
                             >
                                 <i className="fa-sharp fa-solid fa-brain text-[11px]" />
-                                <span>{currentThinking || "思考"}</span>
+                                <span>{currentThinking || "Thinking"}</span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
@@ -825,7 +825,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 <button
                                     type="button"
                                     className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-error text-white hover:bg-error/85"
-                                    title="停止"
+                                    title="Stop"
                                     aria-label="Stop"
                                     onClick={handleAbort}
                                 >
@@ -840,7 +840,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                             ? "cursor-pointer bg-accent text-primary-contrast hover:brightness-110"
                                             : "cursor-default bg-surface-strong text-secondary"
                                     )}
-                                    title="发送 (Enter)"
+                                    title="Send (Enter)"
                                     aria-label="Send message"
                                     disabled={!canSubmit}
                                     onClick={handleSubmit}

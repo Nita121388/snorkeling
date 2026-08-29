@@ -19,9 +19,9 @@ export type SlashItem = {
  * purpose: they do not execute via the RPC prompt path.
  */
 export const BUILTIN_SLASH_COMMANDS: SlashItem[] = [
-    { name: "model", description: "切换模型", source: "gui" },
-    { name: "think", description: "调整思考深度", source: "gui" },
-    { name: "compact", description: "压缩对话上下文", source: "gui" },
+    { name: "model", description: "Switch model", source: "gui" },
+    { name: "think", description: "Adjust thinking level", source: "gui" },
+    { name: "compact", description: "Compact context", source: "gui" },
 ];
 
 /** Extract the slash query from raw input, or null when no panel should show. */
@@ -47,11 +47,11 @@ export function mergeSlashItems(dynamic: SlashItem[]): SlashItem[] {
 export function slashSourceLabel(source?: string): string {
     switch (source) {
         case "extension":
-            return "扩展";
+            return "Extension";
         case "prompt":
-            return "模板";
+            return "Template";
         case "skill":
-            return "技能";
+            return "Skill";
         default:
             return "";
     }

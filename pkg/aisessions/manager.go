@@ -540,32 +540,6 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 	return delta, nil
 }
 
-func (m *Manager) UserLines(ctx context.Context, identifier string, opts UserLinesOptions) (UserLinesResult, error) {
-	summary, err := m.resolveSession(ctx, identifier, opts.Refresh)
-	if err != nil {
-		return UserLinesResult{}, err
-	}
-	messages, err := m.loadMessages(ctx, summary, opts.Refresh)
-	if err != nil {
-		return UserLinesResult{}, err
-	}
-	userMessages := filterUserMessages(messages, opts.Query)
-	limit := normalizeUserLinesLimit(opts.Limit)
-	window, hasMore := userLineWindow(userMessages, opts.BeforeSeq, limit)
-	nextBeforeSeq := 0
-	if len(window) > 0 && hasMore {
-		nextBeforeSeq = window[0].Seq
-	}
-	summary.MessageCount = readableMessageCount(messages)
-	return UserLinesResult{
-		Summary:          summary,
-		Messages:         window,
-		UserMessageCount: len(userMessages),
-		HasMore:          hasMore,
-		NextBeforeSeq:    nextBeforeSeq,
-	}, nil
-}
-
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
@@ -1042,55 +1016,6 @@ func cachedSummaryFileIsCurrent(summary SessionSummary) bool {
 		return false
 	}
 	return info.ModTime().UnixMilli() == summary.MTime && info.Size() == summary.Size
-}
-
-func normalizeUserLinesLimit(limit int) int {
-	if limit <= 0 {
-		return 8
-	}
-	if limit > 50 {
-		return 50
-	}
-	return limit
-}
-
-func filterUserMessages(messages []Message, query string) []Message {
-	query = strings.ToLower(strings.TrimSpace(query))
-	var userMessages []Message
-	for _, message := range messages {
-		if message.Role != RoleUser || strings.TrimSpace(message.Text) == "" {
-			continue
-		}
-		if query != "" && !strings.Contains(strings.ToLower(message.Text), query) {
-			continue
-		}
-		userMessages = append(userMessages, message)
-	}
-	return userMessages
-}
-
-func userLineWindow(userMessages []Message, beforeSeq int, limit int) ([]Message, bool) {
-	if limit <= 0 {
-		limit = 8
-	}
-	end := len(userMessages)
-	if beforeSeq > 0 {
-		for idx, message := range userMessages {
-			if message.Seq >= beforeSeq {
-				end = idx
-				break
-			}
-		}
-	}
-	if end < 0 {
-		end = 0
-	}
-	start := end - limit
-	if start < 0 {
-		start = 0
-	}
-	window := append([]Message(nil), userMessages[start:end]...)
-	return window, start > 0
 }
 
 func moveSessionFileToDeleted(ctx context.Context, summary SessionSummary) (string, error) {

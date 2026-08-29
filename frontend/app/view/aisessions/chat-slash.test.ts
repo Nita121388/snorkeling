@@ -64,9 +64,9 @@ describe("mergeSlashItems", () => {
 
 describe("slashSourceLabel", () => {
     it("maps known sources to badges", () => {
-        expect(slashSourceLabel("extension")).toBe("扩展");
-        expect(slashSourceLabel("prompt")).toBe("模板");
-        expect(slashSourceLabel("skill")).toBe("技能");
+        expect(slashSourceLabel("extension")).toBe("Extension");
+        expect(slashSourceLabel("prompt")).toBe("Template");
+        expect(slashSourceLabel("skill")).toBe("Skill");
         expect(slashSourceLabel("gui")).toBe("");
         expect(slashSourceLabel(undefined)).toBe("");
     });

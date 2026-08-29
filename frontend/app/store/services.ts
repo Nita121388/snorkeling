@@ -121,12 +121,6 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Title", Array.from(arguments))
     }
 
-    // load paged user messages for an AI session
-    // @returns AI session user lines
-    UserLines(request: AISessionsUserLinesRequest): Promise<UserLinesResult> {
-        return callBackendService(this?.waveEnv, "aisessions", "UserLines", Array.from(arguments))
-    }
-
     // load latest user messages for a local AI session outline
     // @returns AI session user outline
     UserOutline(request: AISessionsUserOutlineRequest): Promise<AISessionsUserOutlineResponse> {

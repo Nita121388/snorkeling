@@ -160,7 +160,7 @@ export function SessionMoreMenu({
             <button
                 type="button"
                 aria-label="Session actions"
-                title="更多操作"
+                title="More actions"
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
                     "flex h-6 w-6 cursor-pointer items-center justify-center rounded text-secondary transition-colors hover:bg-hover hover:text-primary",
@@ -173,9 +173,9 @@ export function SessionMoreMenu({
                 <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-modalbg p-1 shadow-2xl">
                     <MenuRow
                         icon="fa-pen"
-                        label="重命名聊天"
+                        label="Rename chat"
                         disabled={!onRename}
-                        disabledReason={onRename ? undefined : "即将支持（需后端标题覆盖）"}
+                        disabledReason={onRename ? undefined : "Coming soon (needs backend title override)"}
                         onClick={
                             onRename
                                 ? () => {
@@ -184,33 +184,33 @@ export function SessionMoreMenu({
                                 : undefined
                         }
                     />
-                    <MenuRow icon="fa-note-sticky" label="编辑 Note 和 Tags" onClick={() => closeAndRun(onEditNote)} />
+                    <MenuRow icon="fa-note-sticky" label="Edit note & tags" onClick={() => closeAndRun(onEditNote)} />
                     <MenuRow
                         icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
-                        label={restoring ? "正在 Resume..." : "Resume 到终端"}
+                        label={restoring ? "Resuming…" : "Resume to terminal"}
                         disabled={restoring}
-                        disabledReason="正在恢复会话"
+                        disabledReason="Restoring session"
                         onClick={() => closeAndRun(onResume)}
                     />
                     <MenuRow
                         icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
-                        label={refreshing ? "正在刷新..." : "刷新会话"}
+                        label={refreshing ? "Refreshing…" : "Refresh session"}
                         disabled={refreshing}
-                        disabledReason="正在刷新会话"
+                        disabledReason="Refreshing session"
                         onClick={() => closeAndRun(onRefresh)}
                     />
                     <MenuRow
                         icon="fa-folder-open"
-                        label="打开项目目录"
+                        label="Open project folder"
                         disabled={!projectDirectory}
-                        disabledReason="无项目目录"
+                        disabledReason="No project folder"
                         onClick={() => closeAndRun(onOpenProjectDirectory)}
                     />
                     <MenuRow
                         icon="fa-file-arrow-up"
-                        label="打开会话文件"
+                        label="Open session file"
                         disabled={!sessionFilePath}
-                        disabledReason="无会话文件"
+                        disabledReason="No session file"
                         onClick={() => closeAndRun(onOpenSessionFile)}
                     />
                     <div className="mx-2 my-1 h-px bg-border" />
@@ -224,7 +224,7 @@ export function SessionMoreMenu({
                     >
                         <MenuRow
                             icon="fa-copy"
-                            label={hasCopied ? copiedLabel : "复制"}
+                            label={hasCopied ? copiedLabel : "Copy"}
                             onClick={() => setSubOpen((current) => !current)}
                             trailing={
                                 <i
@@ -242,33 +242,33 @@ export function SessionMoreMenu({
                             >
                                 <MenuRow
                                     icon="fa-folder"
-                                    label={hasCopied === true && copiedLabel.includes("目录") ? "已复制 ✓" : "工作目录"}
+                                    label={hasCopied === true && copiedLabel.includes("directory") ? "Copied ✓" : "Working directory"}
                                     disabled={!projectDirectory}
-                                    disabledReason="无工作目录"
-                                    onClick={() => copyAndClose(projectDirectory, "已复制工作目录")}
+                                    disabledReason="No working directory"
+                                    onClick={() => copyAndClose(projectDirectory, "Copied working directory")}
                                 />
                                 <MenuRow
                                     icon="fa-file-lines"
-                                    label="会话文件路径"
+                                    label="Session file path"
                                     disabled={!sessionFilePath}
-                                    disabledReason="无会话文件"
-                                    onClick={() => copyAndClose(sessionFilePath, "已复制文件路径")}
+                                    disabledReason="No session file"
+                                    onClick={() => copyAndClose(sessionFilePath, "Copied session file path")}
                                 />
                                 <MenuRow
                                     icon="fa-fingerprint"
-                                    label="会话 ID"
-                                    onClick={() => copyAndClose(sessionId, "已复制会话 ID")}
+                                    label="Session ID"
+                                    onClick={() => copyAndClose(sessionId, "Copied session ID")}
                                 />
                                 <MenuRow
                                     icon="fa-terminal"
-                                    label="Resume 命令"
-                                    onClick={() => copyAndClose(restoreCommand, "已复制 Resume 命令")}
+                                    label="Resume command"
+                                    onClick={() => copyAndClose(restoreCommand, "Copied resume command")}
                                 />
                                 <div className="mx-2 my-1 h-px bg-border" />
                                 <MenuRow
                                     icon="fa-brackets-curly"
-                                    label="Markdown（全文）"
-                                    onClick={() => copyAndClose(buildMarkdown(), "已复制 Markdown 全文")}
+                                    label="Markdown (full)"
+                                    onClick={() => copyAndClose(buildMarkdown(), "Copied full Markdown")}
                                 />
                             </div>
                         ) : null}
@@ -276,9 +276,9 @@ export function SessionMoreMenu({
                     <div className="mx-2 my-1 h-px bg-border" />
                     <MenuRow
                         icon={deleting ? "fa-spinner animate-spin" : "fa-trash"}
-                        label={deleting ? "正在删除..." : "删除会话..."}
+                        label={deleting ? "Deleting…" : "Delete session…"}
                         disabled={deleting}
-                        disabledReason="正在删除会话"
+                        disabledReason="Deleting session"
                         danger
                         onClick={() => closeAndRun(onDelete)}
                     />
@@ -296,10 +296,10 @@ export function buildSessionMarkdown(
     messages: Message[],
     toolCalls?: ToolCall[]
 ): string {
-    const lines: string[] = [`# ${sessionTitle}`, "", `> 来源: ${source} · 会话 ID: \`${sessionId}\``, ""];
+    const lines: string[] = [`# ${sessionTitle}`, "", `> Source: ${source} · Session ID: \`${sessionId}\``, ""];
     for (const message of messages) {
         if (message.role === "user") {
-            lines.push("**🧑 你：**", "", message.text.trim(), "");
+            lines.push("**🧑 You:**", "", message.text.trim(), "");
         } else {
             lines.push(`**🤖 ${message.role ?? "assistant"}：**`, "", message.text.trim(), "");
         }

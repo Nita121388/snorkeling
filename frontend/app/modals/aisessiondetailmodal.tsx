@@ -188,17 +188,6 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                     setToolCallsLoading(false);
                 }
             },
-            loadUserLines: async (session, request = {}) => {
-                if (isBlank(session?.key)) {
-                    throw new Error("session id is required");
-                }
-                const result = await service.UserLines({
-                    ...request,
-                    id: session.key,
-                });
-                replaceSession(result.summary);
-                return result;
-            },
             updateNote: async (session, note, tags) => {
                 if (isBlank(session?.key)) {
                     return false;
