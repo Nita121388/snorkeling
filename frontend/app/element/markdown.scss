@@ -871,11 +871,18 @@
 }
 
 // Innermost hovered block only: without :has, nested blocks (li inside ul) would stack tints.
-.markdown.markdown-editable [data-source-line]:hover:not(:has([data-source-line]:hover)) {
+.markdown.markdown-editable [data-source-line]:not(.inline-edit-hidden):hover:not(:has([data-source-line]:hover)) {
     background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
 }
 
 .markdown.markdown-editable [data-source-line].inline-edit-active {
     box-shadow: inset 3px 0 0 0 var(--accent-color, #32afff);
     background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
+}
+
+// Loose lists (blank lines between items) — restore the visual spacing the blank lines
+// carried. remark-loose-list-spacing marks them with data-loose="true".
+.markdown ol[data-loose="true"] > li,
+.markdown ul[data-loose="true"] > li {
+    margin-block: 0.5em;
 }

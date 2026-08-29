@@ -10,6 +10,8 @@ import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import remarkSoftBreaks from "./soft-breaks";
 import remarkMarkdownFileReferences from "./markdown-file-refs";
 import remarkBlankLineSpacers from "./blank-line-spacers";
+import remarkLooseListSpacing from "./loose-list-spacing";
+import remarkSplitLooseLists from "./split-loose-lists";
 import type { BlankSpacerOptions } from "./types";
 
 export { linkifyMarkdownFileReferences } from "./markdown-file-refs";
@@ -60,6 +62,10 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         remarkMarkdownFileReferences,
         remarkSoftBreaks,
         remarkGfm,
+        // Split BEFORE loose-list spacing + blank-line spacers so split groups become tight
+        // lists and the blank rows between groups render as real spacer paragraphs.
+        remarkSplitLooseLists,
+        remarkLooseListSpacing,
         enableBlankSpacers && blankSpacerOpts !== null ? [remarkBlankLineSpacers, blankSpacerOpts] : null,
         [createContentBlockPlugin, { blocks: opts.contentBlocksMap }],
     ].filter(Boolean);

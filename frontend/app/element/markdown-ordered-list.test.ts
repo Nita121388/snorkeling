@@ -4,12 +4,15 @@
 import { describe, expect, it } from "vitest";
 import {
     cutOrderedListItem,
+    getPreviousOrderedListContinuation,
+    setOrderedListMarkerNumberAtLine,
     getMarkdownOrderedListFoldingRanges,
     getOrderedListMoveState,
     getOrderedListSwapPreview,
     insertOrderedListItem,
     isMarkdownOrderedListPath,
     moveOrderedListItem,
+    normalizeOrderedListNumbering,
     renumberOrderedListsInSelection,
 } from "./markdown-ordered-list";
 
@@ -258,5 +261,61 @@ describe("markdown ordered list helpers", () => {
 
         // Cursor on the tail paragraph must NOT resolve into item 2's insert flow.
         expect(getOrderedListMoveState(text, 4)).toBeNull();
+    });
+});
+
+describe("normalizeOrderedListNumbering (whole-document)", () => {
+
+    it("renumbers duplicate markers inside a tight list (no blank lines)", () => {
+        const text = "1. a\n1. b\n1. c";
+        expect(normalizeOrderedListNumbering(text)?.text).toBe("1. a\n2. b\n3. c");
+    });
+
+    it("preserves user-written starts of blank-separated groups", () => {
+        // Blank lines = group boundaries; each group's first number stays as authored.
+        const text = "1. a\n\n5. b\n\n5. c";
+        expect(normalizeOrderedListNumbering(text)).toBeNull();
+    });
+
+    it("keeps text untouched when already sequential", () => {
+        const text = "1. a\n2. b\n3. c";
+        expect(normalizeOrderedListNumbering(text)).toBeNull();
+    });
+
+    it("does not touch code fences containing digits-dot lines", () => {
+        const text = "1. a\n\n```\n1. not a list\n5. not either\n```";
+        expect(normalizeOrderedListNumbering(text)).toBeNull();
+    });
+
+    it("handles multiple independent lists", () => {
+        const text = "3. a\n3. b\n\n# heading\n\n7. x\n7. y";
+        const out = normalizeOrderedListNumbering(text)?.text;
+        expect(out).toContain("1. a\n2. b");
+        // Blank + heading separated group = new visual group: start preserved, run continues.
+        expect(out).toContain("7. x\n8. y");
+    });
+});
+
+describe("group-start chip helpers", () => {
+    it("setOrderedListMarkerNumberAtLine rewrites only the marker digit", () => {
+        expect(setOrderedListMarkerNumberAtLine("1. a\n\n5. b", 3, 8)?.text).toBe("1. a\n\n8. b");
+    });
+    it("setOrderedListMarkerNumberAtLine returns null on non-marker lines", () => {
+        expect(setOrderedListMarkerNumberAtLine("plain", 1, 2)).toBeNull();
+    });
+    it("continuation = previous sibling marker + 1 above the blank run", () => {
+        const text = "1. a\n2. b\n\n5. c";
+        expect(getPreviousOrderedListContinuation(text, 4)).toBe(3);
+    });
+    it("continuation returns null when the block above is a heading", () => {
+        const text = "# t\n\n2. item";
+        expect(getPreviousOrderedListContinuation(text, 3)).toBeNull();
+    });
+    it("continuation returns null inside code fences area", () => {
+        const text = "```\n1. fake\n```\n\n2. real";
+        expect(getPreviousOrderedListContinuation(text, 5)).toBeNull();
+    });
+    it("continuation handles first line", () => {
+        expect(getPreviousOrderedListContinuation("1. a", 1)).toBeNull();
     });
 });

@@ -54,7 +54,12 @@ import {
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
-import { renumberOrderedListBlockAtLine } from "@/app/element/markdown-ordered-list";
+import {
+    getPreviousOrderedListContinuation,
+    normalizeOrderedListNumbering,
+    renumberOrderedListBlockAtLine,
+    setOrderedListMarkerNumberAtLine,
+} from "@/app/element/markdown-ordered-list";
 import {
     replaceLinkInSource,
     wikiTargetFromHref,
@@ -1540,6 +1545,22 @@ const Markdown = ({
         };
     }, []);
 
+    // One-shot per mount (fires as soon as real content arrives): renumber every ordered list
+    // so the source digits match what CommonMark renders — the renderer always displays
+    // 1,2,3… silently even when the file says 5,5,5. Idempotent: after the first fix the text
+    // is canonical and remounts no-op. Gated on inline editing being enabled (edit contexts).
+    const didNormalizeListNumberingRef = useRef(false);
+    useEffect(() => {
+        if (didNormalizeListNumberingRef.current || onInlineEditCommit == null || text === "") {
+            return;
+        }
+        didNormalizeListNumberingRef.current = true;
+        const normalized = normalizeOrderedListNumbering(text);
+        if (normalized != null) {
+            handleInlineEditCommit(normalized.text);
+        }
+    }, [text, onInlineEditCommit, handleInlineEditCommit]);
+
     const inlineEdit = useInlineEdit({
         fullText: text,
         onCommit: handleInlineEditCommit,
@@ -1579,6 +1600,20 @@ const Markdown = ({
         },
         [text, handleInlineEditCommit, onInlineEditSave]
     );
+
+    // === Ordered-list group-start chip (split-lists) ========================================
+    // Chip "Keep / Continue / Restart" actions rewrite exactly one source line — render then
+    // re-derives from the new text, so source and display can never drift.
+    const handleGroupStartChange = useCallback(
+        (line: number, newNumber: number) => {
+            const next = setOrderedListMarkerNumberAtLine(text, line, newNumber);
+            if (next != null) {
+                handleInlineEditCommit(next.text);
+            }
+        },
+        [text, handleInlineEditCommit]
+    );
+    const resolveGroupContinuation = useCallback((line: number) => getPreviousOrderedListContinuation(text, line), [text]);
 
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
@@ -2677,6 +2712,41 @@ const Markdown = ({
                     buildCopyContextText(copyContextPath || "(unknown-path)", startLineRaw, blockSource)
                 );
             };
+            // Split-list group numbering: hose on blank-separated ordered groups the block-grip
+            // menu shows a strategy submenu; each pick rewrites exactly one source line.
+            const isSplitListGroup = el.tagName === "OL" && (el as HTMLElement).dataset.splitGroup === "true";
+            const currentGroupStart = Number(el.getAttribute("start") ?? "1") || 1;
+            const setGroupNumber = (n: number) => {
+                if (n === currentGroupStart) return;
+                handleGroupStartChange(startLineRaw, n);
+            };
+            const continuation = isSplitListGroup ? resolveGroupContinuation(startLineRaw) : null;
+            const numberingSubmenu: ContextMenuItem[] | null = isSplitListGroup
+                ? [
+                      ...(continuation != null
+                          ? [
+                                {
+                                    label: `Continue from previous (${continuation})`,
+                                    type: "checkbox" as const,
+                                    checked: currentGroupStart === continuation,
+                                    click: () => setGroupNumber(continuation),
+                                },
+                            ]
+                          : []),
+                      {
+                          label: `Keep ${currentGroupStart}`,
+                          type: "checkbox" as const,
+                          checked: true,
+                          click: () => {},
+                      },
+                      {
+                          label: "Restart from 1",
+                          type: "checkbox" as const,
+                          checked: currentGroupStart === 1,
+                          click: () => setGroupNumber(1),
+                      },
+                  ]
+                : null;
             // Per-item ops on a list change the sibling count — renumber the containing list
             // block so source numbering stays consistent with what renders.
             const isListItemBlock = el.tagName === "LI" || el.tagName === "OL" || el.tagName === "UL";
@@ -2695,6 +2765,12 @@ const Markdown = ({
                 { label: "复制", click: () => void copyBlock() },
                 { label: "Copy Context", click: () => void copyContext() },
                 { label: "复制为副本", click: duplicateBlock },
+                ...(numberingSubmenu != null
+                    ? ([
+                          { type: "separator" },
+                          { label: "List numbering", type: "submenu", submenu: numberingSubmenu },
+                      ] as ContextMenuItem[])
+                    : []),
                 { type: "separator" },
                 { label: "删除", click: deleteBlock },
             ];
@@ -2705,7 +2781,7 @@ const Markdown = ({
                 },
             });
         },
-        [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath, pointerOnGripActionsRef, cancelPendingAnchorSwitch]
+        [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath, pointerOnGripActionsRef, cancelPendingAnchorSwitch, handleGroupStartChange, resolveGroupContinuation]
     );
 
     // --- Block drag-and-drop handlers ---------------------------------------------------
@@ -2920,11 +2996,17 @@ const Markdown = ({
             ) {
                 return;
             }
-            // Don't fight the inline-edit overlay itself (portal is on body, but the
-            // mouseover can still bubble from the textarea's DOM if it renders inside root).
+            // During an inline edit: skip only when hovering the edited block itself (it's
+            // visibility:hidden under the overlay anyway) — all OTHER blocks keep tracking
+            // their hover anchor so the block grip / insert buttons stay usable mid-edit.
             if (inlineEdit.editSession != null) {
-                setInsertAnchor(null);
-                return;
+                const hovered = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
+                if (
+                    hovered != null &&
+                    (hovered.classList.contains("inline-edit-hidden") || hovered.closest(".inline-edit-overlay") != null)
+                ) {
+                    return;
+                }
             }
             const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
                 "[data-source-line]:not(img)"
@@ -3832,6 +3914,10 @@ const Markdown = ({
                             // ['className', 'hljs-number', 'hljs-title', 'hljs-variable']
                         ],
                         waveblock: [["blockkey"]],
+                        // remarkLooseListSpacing tags loose lists with data-loose so CSS can
+                        // restore the blank-line spacing between items.
+                        ol: [...(defaultSchema.attributes?.ol || []), "dataLoose", "start", "dataSplitGroup"],
+                        ul: [...(defaultSchema.attributes?.ul || []), "dataLoose"],
                     },
                     protocols: {
                         ...defaultSchema.protocols,
@@ -4025,7 +4111,7 @@ const Markdown = ({
                             />,
                             document.body
                         )}
-                    {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
+                    {onInlineEditCommit && insertPos != null &&
                         ReactDOM.createPortal(
                             <>
                                 {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu;

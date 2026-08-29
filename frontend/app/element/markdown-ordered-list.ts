@@ -228,7 +228,8 @@ export function renumberOrderedListBlockAtLine(text: string, lineNumber: number)
     if (item == null) return null;
     const block = findOrderedListBlock(textLines.lines, item, options);
     const lines = [...textLines.lines];
-    const changed = renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex, options);
+    // Passive path (after an inline edit): respect blank-line group starts.
+    const changed = renumberOrderedListsInLines(lines, block.startLineIndex, block.endLineIndex, options, true);
     if (!changed) return null;
     return { text: joinTextLines(lines, textLines.eol) };
 }
@@ -266,7 +267,8 @@ export function renumberOrderedListsInSelection(
     const startLineIndex = lineNumberToIndex(Math.min(startLineNumber, endLineNumber));
     const endLineIndex = lineNumberToIndex(Math.max(startLineNumber, endLineNumber));
     const lines = [...textLines.lines];
-    const changed = renumberOrderedListsInLines(lines, startLineIndex, endLineIndex, getParseOptions(lines));
+    // Passive path: respect blank-line group starts (their first number is user-authored).
+    const changed = renumberOrderedListsInLines(lines, startLineIndex, endLineIndex, getParseOptions(lines), true);
     if (!changed) return null;
     return { text: joinTextLines(lines, textLines.eol) };
 }
@@ -485,17 +487,28 @@ function renumberOrderedListsInLines(
     lines: string[],
     startLineIndex: number,
     endLineIndex: number,
-    options?: MarkdownParseOptions
+    options?: MarkdownParseOptions,
+    // preserveBlankGroupStarts: a marker whose gap to the previous marker contains >=1 blank
+    // line opens a NEW visual group — for passive passes (inline-edit commits, mount-time
+    // normalize) its user-written number is honored as the group start and only following
+    // items are resequenced. Active structure ops (move/cut/insert) keep the old flat
+    // renumber since the user is reshaping the list and expects a continuous run.
+    preserveBlankGroupStarts = false
 ): boolean {
     const counters = new Map<number, number>();
     let changed = false;
+    let blankBeforeNextMarker = false;
     const boundedStart = Math.max(0, Math.min(lines.length - 1, startLineIndex));
     const boundedEnd = Math.max(0, Math.min(lines.length - 1, endLineIndex));
     for (let idx = boundedStart; idx <= boundedEnd; idx++) {
         const marker = parseOrderedListMarker(lines[idx], idx, options);
         if (marker == null) {
+            if (lines[idx].trim() === "") {
+                blankBeforeNextMarker = true;
+            }
             if (isHardBoundaryLine(lines[idx], 0)) {
                 counters.clear();
+                blankBeforeNextMarker = false;
             }
             continue;
         }
@@ -504,12 +517,19 @@ function renumberOrderedListsInLines(
                 counters.delete(indent);
             }
         }
-        const nextNumber = (counters.get(marker.indent) ?? 0) + 1;
-        counters.set(marker.indent, nextNumber);
-        if (marker.number === nextNumber) {
+        let expected: number;
+        if (preserveBlankGroupStarts && blankBeforeNextMarker) {
+            // Group start — keep what the user wrote; render honors it via <ol start=N>.
+            expected = marker.number;
+        } else {
+            expected = (counters.get(marker.indent) ?? 0) + 1;
+        }
+        counters.set(marker.indent, expected);
+        blankBeforeNextMarker = false;
+        if (marker.number === expected) {
             continue;
         }
-        lines[idx] = replaceOrderedListMarkerNumber(lines[idx], marker, nextNumber);
+        lines[idx] = replaceOrderedListMarkerNumber(lines[idx], marker, expected);
         changed = true;
     }
     return changed;
@@ -561,4 +581,83 @@ function isFenceEnd(line: string, fence: MarkdownFence): boolean {
     const escapedMarker = fence.marker === "`" ? "`" : "~";
     const pattern = new RegExp(`^ {0,3}${escapedMarker}{${fence.length},}[ \\t]*$`);
     return pattern.test(line);
+}
+
+/**
+ * Whole-document renumbering pass: walks the ENTIRE file and normalizes every ordered
+ * list's source numbering to match what CommonMark renders (the renderer always displays
+ * 1,2,3… regardless of the source digits). Used to keep source and rendered view in sync
+ * when a markdown preview opens — the user sees the renumbered list and expects the file
+ * to say the same. Fence-aware (code blocks never touched) via the same parser options as
+ * the targeted helpers above. Returns null when nothing needs changing (idempotent).
+ */
+export function normalizeOrderedListNumbering(text: string): OrderedListEditResult | null {
+    const lineCount = text.split(/\r\n|\n/).length;
+    if (lineCount === 0) {
+        return null;
+    }
+    return renumberOrderedListsInSelection(text, 1, lineCount);
+}
+
+/**
+ * Rewrite ONLY the marker number of the ordered-list item at `lineNumber` (1-based).
+ * Used by the group-start chip's three actions — writes exactly one line, everything
+ * else untouched (the line-range contract of the note surface).
+ * Returns null when the line is not an ordered-list marker.
+ */
+export function setOrderedListMarkerNumberAtLine(
+    text: string,
+    lineNumber: number,
+    newNumber: number
+): OrderedListEditResult | null {
+    const textLines = splitTextLines(text);
+    const idx = lineNumberToIndex(lineNumber);
+    if (idx < 0 || idx >= textLines.lines.length) {
+        return null;
+    }
+    const options = getParseOptions(textLines.lines);
+    const marker = parseOrderedListMarker(textLines.lines[idx], idx, options);
+    if (marker == null) {
+        return null;
+    }
+    if (!Number.isFinite(newNumber) || newNumber < 0) {
+        return null;
+    }
+    const lines = [...textLines.lines];
+    lines[idx] = replaceOrderedListMarkerNumber(lines[idx], marker, Math.trunc(newNumber));
+    return { text: joinTextLines(lines, textLines.eol) };
+}
+
+/**
+ * The number a new group after a blank gap should continue from: the most recent
+ * same-or-shallower ordered marker ABOVE the blank run before `lineNumber`, + 1.
+ * Returns null when nothing sensible exists above (chip hides the "continue" action).
+ */
+export function getPreviousOrderedListContinuation(text: string, lineNumber: number): number | null {
+    const lines = splitTextLines(text).lines;
+    const idx = lineNumberToIndex(lineNumber);
+    if (idx <= 0) {
+        return null;
+    }
+    const options = getParseOptions(lines);
+    const anchor = parseOrderedListMarker(lines[idx], idx, options);
+    if (anchor == null) {
+        return null;
+    }
+    // Walk up past the blank run; the FIRST non-blank line decides:
+    // same/shallower-indent marker → continue from it; anything else (heading, paragraph,
+    // fence opening) → no continuation. Fence-internal marker-looking lines are already
+    // excluded by options.ignoredLineIndexes.
+    for (let i = idx - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.trim() === "") {
+            continue;
+        }
+        const marker = parseOrderedListMarker(line, i, options);
+        if (marker != null && marker.indent <= anchor.indent) {
+            return marker.number + 1;
+        }
+        return null;
+    }
+    return null;
 }
