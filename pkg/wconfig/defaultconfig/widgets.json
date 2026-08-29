@@ -52,6 +52,13 @@
         "description": "Search common text",
         "action": "commontext:search"
     },
+    "defwidget@note": {
+        "display:order": -1.4,
+        "icon": "note-sticky",
+        "label": "note",
+        "description": "Open a note block for your notes directory",
+        "action": "note"
+    },
     "defwidget@web": {
         "display:order": -1,
         "icon": "globe",

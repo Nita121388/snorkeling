@@ -336,6 +336,9 @@
         "note:dir": {
           "type": "string"
         },
+        "note:autosave": {
+          "type": "boolean"
+        },
         "preview:showhiddenfiles": {
           "type": "boolean"
         },

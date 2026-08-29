@@ -14,10 +14,9 @@ import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
-import { DefaultNoteDirectory, normalizeNoteDirectory, NoteDirectorySettingKey } from "@/app/modals/notedirectorymodal";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
 import { FocusManager } from "@/app/store/focusManager";
-import { atoms, createBlock, setActiveTab, WOS } from "@/app/store/global";
+import { atoms, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
@@ -30,15 +29,8 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
-import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/app/view/preview/preview-navigation";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
-import {
-    makeCurrentTabBlockKindOpenAtom,
-    SnorkelingBlockKindNote,
-    SnorkelingBlockKindMetaKey,
-    toggleCurrentTabBlockByKind,
-} from "@/app/workspace/toggle-block";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
 import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
@@ -64,19 +56,6 @@ import "./session-overview.scss";
 
 const agentStatusLog = debug("wave:agentstatus");
 const overviewLog = debug("wave:sessionoverview");
-const NoteBlockOpenAtom = makeCurrentTabBlockKindOpenAtom(SnorkelingBlockKindNote);
-
-function getCurrentNoteBlock(fallbackDir: string): { blockId: string | null; dir: string } {
-    const tabId = globalStore.get(atoms.staticTabId);
-    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
-    for (const blockId of tab?.blockids ?? []) {
-        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
-        if (block?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote) {
-            return { blockId, dir: normalizeNoteDirectory(block.meta?.file ?? fallbackDir) };
-        }
-    }
-    return { blockId: null, dir: fallbackDir };
-}
 
 type OverviewBlock = {
     tabId: string;
@@ -1197,92 +1176,6 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         </Tooltip>
     );
 }
-
-function NoteButtonBase({ vertical = false }: { vertical?: boolean }) {
-    const settings = jotai.useAtomValue(atoms.settingsAtom);
-    const open = jotai.useAtomValue(NoteBlockOpenAtom);
-    const noteDir = normalizeNoteDirectory(settings?.[NoteDirectorySettingKey] ?? DefaultNoteDirectory);
-
-    const makeNoteBlockDef = React.useCallback((dir = noteDir): BlockDef => {
-        const normalizedDir = normalizeNoteDirectory(dir);
-        const meta = {
-            view: "preview",
-            file: normalizedDir,
-            [PreviewExplorerRootMetaKey]: normalizedDir,
-            [PreviewDirectoryDisplayMetaKey]: "tree",
-            [SnorkelingBlockKindMetaKey]: SnorkelingBlockKindNote,
-            "frame:title": "Note",
-            icon: "note-sticky",
-        } as MetaType;
-        return { meta };
-    }, [noteDir]);
-
-    const openNoteFullscreen = React.useCallback(
-        (event: React.MouseEvent<HTMLDivElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const noteBlock = getCurrentNoteBlock(noteDir);
-            if (noteBlock.blockId != null) {
-                getLayoutModelForTabById(globalStore.get(atoms.staticTabId))?.newEphemeralNode(noteBlock.blockId, {
-                    deleteOnClose: false,
-                });
-                return;
-            }
-            void createBlock(makeNoteBlockDef(noteBlock.dir), false, true);
-        },
-        [makeNoteBlockDef, noteDir]
-    );
-
-    const toggleNoteBlock = React.useCallback(() => {
-        void toggleCurrentTabBlockByKind({
-            kind: SnorkelingBlockKindNote,
-            blockDef: makeNoteBlockDef(),
-        });
-    }, [makeNoteBlockDef]);
-
-    const icon = <i className={makeIconClass("note-sticky", false)} />;
-    if (vertical) {
-        return (
-            <Tooltip
-                content="Open Note / Right-click to open full screen"
-                placement="right"
-                hideOnClick
-                divClassName="flex"
-                divOnContextMenu={openNoteFullscreen}
-            >
-                <button
-                    type="button"
-                    className={cn("session-overview-vbutton", open && "is-open")}
-                    onClick={toggleNoteBlock}
-                    aria-label="Open Note"
-                >
-                    {icon}
-                    <span>Note</span>
-                </button>
-            </Tooltip>
-        );
-    }
-    return (
-        <Tooltip
-            content="Open Note / Right-click to open full screen"
-            placement="bottom"
-            hideOnClick
-            divClassName="flex"
-            divOnContextMenu={openNoteFullscreen}
-        >
-            <button
-                type="button"
-                className={cn("session-overview-tabbutton", open && "is-open")}
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                onClick={toggleNoteBlock}
-                aria-label="Open Note"
-            >
-                {icon}
-            </button>
-        </Tooltip>
-    );
-}
-
 function MessageDialog({
     message,
     block,
@@ -2688,4 +2581,4 @@ export class SessionOverviewViewModel implements ViewModel {
     }
 }
 
-export { NoteButtonBase as NoteButton, SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };
+export { SessionOverviewButtonBase as SessionOverviewButton, SessionOverviewPanel };

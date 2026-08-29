@@ -215,7 +215,8 @@
         "action": {
           "type": "string",
           "enum": [
-            "commontext:search"
+            "commontext:search",
+            "note"
           ]
         },
         "blockdef": {

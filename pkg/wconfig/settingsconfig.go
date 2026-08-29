@@ -104,12 +104,12 @@ type SettingsType struct {
 	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except
 	// blockedminintervalms (0 = no per-block rate limit). Pointer types so "false" is observable
 	// distinct from "unset" once defaults are applied by the resolver.
-	AgentStatusClear                  bool   `json:"agentstatus:*,omitempty"`
-	AgentStatusOsNotify               *bool  `json:"agentstatus:osnotify,omitempty"`
-	AgentStatusOsNotifyDone           *bool  `json:"agentstatus:osnotifydone,omitempty"`
-	AgentStatusOsNotifyBlocked        *bool  `json:"agentstatus:osnotifyblocked,omitempty"`
-	AgentStatusOsNotifyWhenFocused    *bool  `json:"agentstatus:osnotifywhenfocused,omitempty"`
-	AgentStatusOsNotifyBlockedMinMs   *int64 `json:"agentstatus:osnotifyblockedminms,omitempty"`
+	AgentStatusClear                bool   `json:"agentstatus:*,omitempty"`
+	AgentStatusOsNotify             *bool  `json:"agentstatus:osnotify,omitempty"`
+	AgentStatusOsNotifyDone         *bool  `json:"agentstatus:osnotifydone,omitempty"`
+	AgentStatusOsNotifyBlocked      *bool  `json:"agentstatus:osnotifyblocked,omitempty"`
+	AgentStatusOsNotifyWhenFocused  *bool  `json:"agentstatus:osnotifywhenfocused,omitempty"`
+	AgentStatusOsNotifyBlockedMinMs *int64 `json:"agentstatus:osnotifyblockedminms,omitempty"`
 
 	AiClear         bool    `json:"ai:*,omitempty"`
 	AiPreset        string  `json:"ai:preset,omitempty"`
@@ -173,6 +173,9 @@ type SettingsType struct {
 	MarkdownFixedFontSize float64 `json:"markdown:fixedfontsize,omitempty"`
 
 	NoteDir string `json:"note:dir,omitempty"`
+	// NoteAutoSave: when true (or unset), inline edits in a Markdown preview flush to disk
+	// automatically ~1.5s after the last commit. Set false to keep manual ⌘S semantics.
+	NoteAutoSave *bool `json:"note:autosave,omitempty"`
 
 	PreviewShowHiddenFiles         *bool  `json:"preview:showhiddenfiles,omitempty"`
 	PreviewDefaultSort             string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
@@ -356,15 +359,15 @@ type AIModeConfigUpdate struct {
 }
 
 type WidgetConfigType struct {
-	DisplayOrder  float64          `json:"display:order,omitempty"`
-	DisplayHidden bool             `json:"display:hidden,omitempty"`
-	Icon          string           `json:"icon,omitempty"`
-	Color         string           `json:"color,omitempty"`
-	Label         string           `json:"label,omitempty"`
-	Description   string           `json:"description,omitempty"`
-	Workspaces    []string         `json:"workspaces,omitempty"`
-	Magnified     bool             `json:"magnified,omitempty"`
-	Action        string           `json:"action,omitempty" jsonschema:"enum=commontext:search"`
+	DisplayOrder  float64           `json:"display:order,omitempty"`
+	DisplayHidden bool              `json:"display:hidden,omitempty"`
+	Icon          string            `json:"icon,omitempty"`
+	Color         string            `json:"color,omitempty"`
+	Label         string            `json:"label,omitempty"`
+	Description   string            `json:"description,omitempty"`
+	Workspaces    []string          `json:"workspaces,omitempty"`
+	Magnified     bool              `json:"magnified,omitempty"`
+	Action        string            `json:"action,omitempty" jsonschema:"enum=commontext:search,enum=note"`
 	BlockDef      *waveobj.BlockDef `json:"blockdef,omitempty"`
 }
 

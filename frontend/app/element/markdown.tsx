@@ -56,6 +56,12 @@ import {
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import { renumberOrderedListBlockAtLine } from "@/app/element/markdown-ordered-list";
 import {
+    replaceLinkInSource,
+    wikiTargetFromHref,
+    type LinkEditRequest,
+} from "@/app/element/markdown-link-edit";
+import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
+import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
     removeImageSyntaxInLine,
@@ -148,11 +154,23 @@ const Link = ({
     focusHeading,
     props,
     resolveOpts,
+    onHoverIn,
+    onHoverOut,
 }: {
     props: React.AnchorHTMLAttributes<HTMLAnchorElement>;
     focusHeading: (href: string) => void;
     resolveOpts?: MarkdownResolveOpts;
+    /** Hover-intent hooks for the link action tooltip (markup ⑥). Undefined = no tooltip. */
+    onHoverIn?: (el: HTMLAnchorElement, nodeOffsets?: { start?: number; end?: number }) => void;
+    onHoverOut?: () => void;
 }) => {
+    // Hast node position (offsets into the ORIGINAL source text) rides along with hover, so
+    // the link editor can splice this exact span even when the block holds duplicate links.
+    const nodePos = (props as any)?.node?.position;
+    const nodeOffsets =
+        nodePos?.start?.offset != null && nodePos?.end?.offset != null
+            ? { start: nodePos.start.offset, end: nodePos.end.offset }
+            : undefined;
     const onClick = (e: React.MouseEvent) => {
         const href = props.href ?? "";
         const forceNewBlock = shouldOpenMarkdownLinkInNewBlock(e);
@@ -194,7 +212,16 @@ const Link = ({
         }
     };
     return (
-        <a href={props.href} onClick={onClick} className="text-accent hover:underline">
+        <a
+            href={props.href}
+            title={typeof props.href === "string" ? props.href : undefined}
+            onClick={onClick}
+            className="text-accent hover:underline"
+            onMouseEnter={
+                onHoverIn != null ? (e) => onHoverIn(e.currentTarget, nodeOffsets) : undefined
+            }
+            onMouseLeave={onHoverOut}
+        >
             {props.children}
         </a>
     );
@@ -245,6 +272,15 @@ function normalizeScrollTargetText(text: string): string {
 
 function getElementTextForScrollMatch(elem: HTMLElement): string {
     return normalizeScrollTargetText(elem.textContent ?? "");
+}
+
+const InlineEditAutosaveDebounceMs = 1500;
+
+const LinkTooltipSafeZonePadPx = 8;
+
+/** True when (x, y) is inside `rect` expanded by `pad` px on every side. */
+function pointInExpandedRect(x: number, y: number, rect: DOMRect, pad: number): boolean {
+    return x >= rect.left - pad && x <= rect.right + pad && y >= rect.top - pad && y <= rect.bottom + pad;
 }
 
 function getSourceLine(props: any): number | undefined {
@@ -590,6 +626,194 @@ const CollapsibleOrderedListItem = ({
     );
 };
 
+// Dismiss-on-scroll link action tooltip. Measures its own width after mount, flips above the
+// anchor when the bottom would overflow. Rendered via portal — styling lives at top level in
+// markdown.scss (.markdown-link-tooltip).
+type MarkdownLinkTooltipProps = {
+    anchor: HTMLAnchorElement;
+    onOpen: () => void;
+    onEdit?: () => void;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+    /** Optional external ref — the host uses it to compute the hover safe-zone rect. */
+    rootRef?: React.RefObject<HTMLDivElement | null>;
+};
+
+function MarkdownLinkTooltip({ anchor, onOpen, onEdit, onMouseEnter, onMouseLeave, rootRef }: MarkdownLinkTooltipProps) {
+    const innerRef = useRef<HTMLDivElement>(null);
+    const wrapRef = rootRef ?? innerRef;
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const [copied, setCopied] = useState(false);
+    const href = anchor.getAttribute("href") ?? "";
+
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (el == null) {
+            return;
+        }
+        const rect = anchor.getBoundingClientRect();
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        let left = rect.left + rect.width / 2 - w / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+        let top = rect.bottom + 2;
+        if (top + h > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - h - 2); // flip above
+        }
+        setPos({ top, left });
+    }, [anchor]);
+
+    const copyHref = () => {
+        navigator.clipboard.writeText(href);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+    };
+
+    return (
+        <div
+            ref={wrapRef}
+            className="markdown-link-tooltip"
+            style={{
+                top: pos?.top ?? -9999,
+                left: pos?.left ?? -9999,
+                visibility: pos != null ? "visible" : "hidden",
+            }}
+            role="dialog"
+            aria-label="Link actions"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+        >
+            <button type="button" onClick={onOpen} title="Open link" aria-label="Open link">
+                <i className="fa-sharp fa-solid fa-arrow-up-right-from-square" />
+            </button>
+            {onEdit != null && (
+                <button type="button" onClick={onEdit} title="Edit link" aria-label="Edit link">
+                    <i className="fa-sharp fa-solid fa-pen" />
+                </button>
+            )}
+            <button
+                type="button"
+                onClick={copyHref}
+                title={copied ? "Copied" : "Copy link"}
+                aria-label={copied ? "Link copied" : "Copy link"}
+            >
+                <i className={`fa-sharp fa-solid ${copied ? "fa-check" : "fa-copy"}`} />
+            </button>
+        </div>
+    );
+}
+
+// Link edit form popover (feature ⑥ refinement). Two plain inputs — 显示文本 + 链接地址 — so
+// users never touch `[label](url)` syntax. Wiki links (`[[target]]`) show a single 目标 field.
+type MarkdownLinkEditorProps = {
+    anchor: HTMLAnchorElement;
+    mode: "markdown" | "wiki";
+    initialLabel: string;
+    initialUrl: string;
+    onSave: (label: string, url: string) => void;
+    onCancel: () => void;
+};
+
+function MarkdownLinkEditor({ anchor, mode, initialLabel, initialUrl, onSave, onCancel }: MarkdownLinkEditorProps) {
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const firstInputRef = useRef<HTMLInputElement>(null);
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const [label, setLabel] = useState(initialLabel);
+    const [url, setUrl] = useState(initialUrl);
+    const isWiki = mode === "wiki";
+
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (el == null) {
+            return;
+        }
+        const rect = anchor.getBoundingClientRect();
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        let left = rect.left + rect.width / 2 - w / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+        let top = rect.bottom + 2;
+        if (top + h > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - h - 2); // flip above
+        }
+        setPos({ top, left });
+    }, [anchor]);
+
+    useEffect(() => {
+        firstInputRef.current?.focus();
+        firstInputRef.current?.select();
+    }, []);
+
+    const submit = () => {
+        const nextUrl = url.trim();
+        const nextLabel = label.trim();
+        if (nextUrl === "" || (!isWiki && nextLabel === "")) {
+            return; // empty form = treated as cancel, never write a broken link
+        }
+        onSave(nextLabel, nextUrl);
+    };
+
+    return (
+        <div
+            ref={wrapRef}
+            className="markdown-link-editor"
+            style={{
+                top: pos?.top ?? -9999,
+                left: pos?.left ?? -9999,
+                visibility: pos != null ? "visible" : "hidden",
+            }}
+            role="dialog"
+            aria-label="Edit link"
+            // Keep the markdown root's click/dblclick handlers from firing while the form is up.
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                    e.stopPropagation();
+                    onCancel();
+                } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    submit();
+                }
+            }}
+        >
+            <div className="markdown-link-editor-header">
+                <span>Edit link</span>
+                <button type="button" className="markdown-link-editor-close" onClick={onCancel} aria-label="Close">
+                    <i className="fa-sharp fa-solid fa-xmark" />
+                </button>
+            </div>
+            {isWiki ? (
+                <label className="markdown-link-editor-field">
+                    <span>Target</span>
+                    <input ref={firstInputRef} value={url} onChange={(e) => setUrl(e.target.value)} />
+                </label>
+            ) : (
+                <>
+                    <label className="markdown-link-editor-field">
+                        <span>Text</span>
+                        <input ref={firstInputRef} value={label} onChange={(e) => setLabel(e.target.value)} />
+                    </label>
+                    <label className="markdown-link-editor-field">
+                        <span>URL</span>
+                        <input value={url} onChange={(e) => setUrl(e.target.value)} />
+                    </label>
+                </>
+            )}
+            <div className="markdown-link-editor-actions">
+                <button type="button" className="markdown-link-editor-save" onClick={submit}>
+                    Save
+                </button>
+                <button type="button" className="markdown-link-editor-cancel" onClick={onCancel}>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
 const MarkdownListItem = ({
     props,
     collapsed,
@@ -604,6 +828,38 @@ const MarkdownListItem = ({
         return <CollapsibleOrderedListItem props={props} collapsed={collapsed} onToggle={onToggle} />;
     }
     return <li {...props} {...srcLineAttrs(props)} />;
+};
+
+// Clickable task-list checkbox (Note surface). The parent <li> carries data-source-line;
+// the click flips `[ ]` ⇄ `[x]` on exactly that source line via the caller's commit path —
+// no editor session, no full-document re-serialization. Only mounted when the Markdown
+// instance got onInlineEditCommit, so read-only contexts (vdom, AI panels) keep the default
+// disabled checkbox.
+const MarkdownTaskCheckbox = ({
+    props,
+    onToggle,
+}: {
+    props: React.InputHTMLAttributes<HTMLInputElement>;
+    onToggle: (line: number) => void;
+}) => {
+    return (
+        <input
+            type="checkbox"
+            checked={Boolean(props.checked)}
+            readOnly
+            className="markdown-task-checkbox"
+            aria-label="Toggle task"
+            onClick={(e) => {
+                e.preventDefault(); // checkbox state derives from source text, not the DOM
+                e.stopPropagation(); // don't bubble into the click-to-edit handler
+                const li = (e.target as HTMLElement).closest("li[data-source-line]");
+                const line = Number((li as HTMLElement | null)?.dataset?.sourceLine);
+                if (Number.isFinite(line) && line > 0) {
+                    onToggle(line);
+                }
+            }}
+        />
+    );
 };
 
 const CollapsibleTable = ({
@@ -1078,6 +1334,12 @@ type MarkdownProps = {
      */
     onInlineEditSave?: () => void;
     /**
+     * When true, every successful inline-edit commit schedules a debounced flush-to-disk
+     * (~1.5s trailing edge) through onInlineEditSave. Requires onInlineEditSave; without
+     * it this flag is a no-op. Checkbox toggles always flush immediately themselves.
+     */
+    inlineEditAutosave?: boolean;
+    /**
      * Optional: replace the frontmatter region [startLine..endLine] (1-based, inclusive) at the
      * mdast level with a waveblock node keyed by `blockKey`, and register that key in the content
      * block map with the given YAML text. The raw text and its line numbers are untouched, so
@@ -1126,6 +1388,7 @@ const Markdown = ({
     collapsibleOrderedLists = false,
     copyContextPath,
     onInlineEditCommit,
+    inlineEditAutosave,
     onInlineEditSave,
     scrollable = true,
     rehype = true,
@@ -1242,6 +1505,41 @@ const Markdown = ({
         []
     );
 
+    // === Autosave (feature ②) ===============================================================
+    // Trailing-edge debounce: each block commit (⌘Enter / blur) re-arms a 1.5s timer that
+    // flushes the staged draft to disk via onInlineEditSave. Refs keep the latest flag/save fn
+    // so the teardown flush can run without re-subscribing anything.
+    const inlineEditAutosaveTimerRef = useRef<number | null>(null);
+    const inlineEditAutosaveRef = useRef(inlineEditAutosave);
+    inlineEditAutosaveRef.current = inlineEditAutosave;
+    const onInlineEditSaveRef = useRef(onInlineEditSave);
+    onInlineEditSaveRef.current = onInlineEditSave;
+
+    const scheduleInlineEditAutosave = useCallback(() => {
+        if (!inlineEditAutosaveRef.current || onInlineEditSaveRef.current == null) {
+            return;
+        }
+        if (inlineEditAutosaveTimerRef.current != null) {
+            window.clearTimeout(inlineEditAutosaveTimerRef.current);
+        }
+        inlineEditAutosaveTimerRef.current = window.setTimeout(() => {
+            inlineEditAutosaveTimerRef.current = null;
+            onInlineEditSaveRef.current?.();
+        }, InlineEditAutosaveDebounceMs);
+    }, []);
+
+    // Unmount flush: a pending autosave must not silently drop the user's last commit when the
+    // block/tab unmounts inside the 1.5s window.
+    useEffect(() => {
+        return () => {
+            if (inlineEditAutosaveTimerRef.current != null) {
+                window.clearTimeout(inlineEditAutosaveTimerRef.current);
+                inlineEditAutosaveTimerRef.current = null;
+                onInlineEditSaveRef.current?.();
+            }
+        };
+    }, []);
+
     const inlineEdit = useInlineEdit({
         fullText: text,
         onCommit: handleInlineEditCommit,
@@ -1264,7 +1562,23 @@ const Markdown = ({
             nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
         }
         onInlineEditCommit(nextText);
+        scheduleInlineEditAutosave();
     };
+
+    // Task-list checkbox click: flip `[ ]` <=> `[x]` on the one source line via the same
+    // commit funnel (renumber-safe), then flush to disk immediately — a toggle is a single
+    // atomic gesture, waiting for ⌘S/autosave would make "click to check" feel broken.
+    const handleTaskCheckboxToggle = useCallback(
+        (line: number) => {
+            const next = toggleTaskCheckboxAtLine(text, line);
+            if (next == null) {
+                return;
+            }
+            handleInlineEditCommit(next);
+            onInlineEditSave?.();
+        },
+        [text, handleInlineEditCommit, onInlineEditSave]
+    );
 
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
@@ -1277,15 +1591,15 @@ const Markdown = ({
     // native behavior (selection, link navigation, heading toggle) takes over. Also returns null
     // for a heading currently in the `collapsed` state: a folded heading should expand on click
     // rather than open the editor, mirroring the dblclick path's long-standing guard.
-    const resolveEditTargetFromEvent = useCallback(
-        (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
+    const resolveEditTargetFromEl = useCallback(
+        (el: HTMLElement | null): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
             // Images are read-only in the preview: clicking zooms, right-click opens the
             // image menu. Never let a click/dblclick on an <img> fall through to paragraph
             // inline editing — that used to pop the editor over the whole paragraph.
-            if ((e.target as HTMLElement | null)?.closest("img") != null) {
+            if (el?.closest("img") != null) {
                 return null;
             }
-            let target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
+            let target = el?.closest<HTMLElement>("[data-source-line]");
             if (target == null) {
                 return null;
             }
@@ -1353,6 +1667,153 @@ const Markdown = ({
             return { target, line, blockKind };
         },
         []
+    );
+
+    // Event-shaped wrapper so the click/dblclick handlers keep their signature.
+    const resolveEditTargetFromEvent = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null =>
+            resolveEditTargetFromEl(e.target as HTMLElement | null),
+        [resolveEditTargetFromEl]
+    );
+
+    // === Link hover tooltip (feature ⑥) =====================================================
+    // 300ms hover intent before showing. Dismissal is NOT a race-the-gap timer anymore: once
+    // visible we watch pointermove and only close when the cursor leaves a padded safe zone =
+    // (anchor rect ∪ tooltip rect) + LinkTooltipSafeZonePadPx on every side. The pointer can
+    // cross the anchor↔tooltip gap as slowly as it likes — inside the zone nothing closes.
+    // Opted into only when inline editing is enabled so read-only panels (vdom) keep plain links.
+    const [linkTooltipAnchor, setLinkTooltipAnchor] = useState<HTMLAnchorElement | null>(null);
+    const linkTooltipAnchorRef = useRef<HTMLAnchorElement | null>(null);
+    const linkTooltipShowTimerRef = useRef<number | null>(null);
+    const linkTooltipElRef = useRef<HTMLDivElement | null>(null);
+    const linkTooltipWatchHandlerRef = useRef<((e: PointerEvent) => void) | null>(null);
+    // Hast node offsets per hovered anchor, so the link editor can splice the exact span.
+    const linkNodeOffsetsRef = useRef(new WeakMap<HTMLAnchorElement, { start?: number; end?: number }>());
+
+    const stopLinkTooltipSafeZoneWatch = useCallback(() => {
+        if (linkTooltipWatchHandlerRef.current != null) {
+            window.removeEventListener("pointermove", linkTooltipWatchHandlerRef.current);
+            linkTooltipWatchHandlerRef.current = null;
+        }
+    }, []);
+
+    const closeLinkTooltip = useCallback(() => {
+        if (linkTooltipShowTimerRef.current != null) {
+            window.clearTimeout(linkTooltipShowTimerRef.current);
+            linkTooltipShowTimerRef.current = null;
+        }
+        stopLinkTooltipSafeZoneWatch();
+        setLinkTooltipAnchor(null);
+    }, [stopLinkTooltipSafeZoneWatch]);
+
+    const startLinkTooltipSafeZoneWatch = useCallback(() => {
+        stopLinkTooltipSafeZoneWatch();
+        const onMove = (e: PointerEvent) => {
+            const anchor = linkTooltipAnchorRef.current;
+            if (anchor == null) {
+                stopLinkTooltipSafeZoneWatch();
+                return;
+            }
+            if (pointInExpandedRect(e.clientX, e.clientY, anchor.getBoundingClientRect(), LinkTooltipSafeZonePadPx)) {
+                return; // still on/near the link itself
+            }
+            const tooltipEl = linkTooltipElRef.current;
+            if (
+                tooltipEl != null &&
+                pointInExpandedRect(e.clientX, e.clientY, tooltipEl.getBoundingClientRect(), LinkTooltipSafeZonePadPx)
+            ) {
+                return; // on/near the tooltip
+            }
+            stopLinkTooltipSafeZoneWatch();
+            setLinkTooltipAnchor(null);
+        };
+        linkTooltipWatchHandlerRef.current = onMove;
+        window.addEventListener("pointermove", onMove, { passive: true });
+    }, [stopLinkTooltipSafeZoneWatch]);
+
+    const handleLinkHoverIn = useCallback(
+        (el: HTMLAnchorElement, nodeOffsets?: { start?: number; end?: number }) => {
+            if (nodeOffsets != null) {
+                linkNodeOffsetsRef.current.set(el, nodeOffsets);
+            }
+            stopLinkTooltipSafeZoneWatch();
+            if (linkTooltipShowTimerRef.current == null) {
+                linkTooltipShowTimerRef.current = window.setTimeout(() => {
+                    linkTooltipShowTimerRef.current = null;
+                    setLinkTooltipAnchor(el);
+                }, 300);
+            }
+            // Tooltip already floating over another link → swap anchors immediately, no delay.
+            setLinkTooltipAnchor((prev) => (prev != null && prev !== el ? el : prev));
+        },
+        [stopLinkTooltipSafeZoneWatch]
+    );
+
+    const handleLinkHoverOut = useCallback(() => {
+        // Hover intent not yet satisfied → nothing to hide, just cancel the pending show.
+        if (linkTooltipShowTimerRef.current != null) {
+            window.clearTimeout(linkTooltipShowTimerRef.current);
+            linkTooltipShowTimerRef.current = null;
+        }
+        if (linkTooltipAnchorRef.current != null) {
+            startLinkTooltipSafeZoneWatch();
+        }
+    }, [startLinkTooltipSafeZoneWatch]);
+
+    // Mirror the anchor state into a ref so pointermove handlers read the live value.
+    useEffect(() => {
+        linkTooltipAnchorRef.current = linkTooltipAnchor;
+    }, [linkTooltipAnchor]);
+
+    // Scrolling collapses the tooltip (anchor's rect becomes stale).
+    useEffect(() => {
+        if (linkTooltipAnchor == null) {
+            return;
+        }
+        const onAnyScroll = () => closeLinkTooltip();
+        window.addEventListener("scroll", onAnyScroll, { capture: true, passive: true });
+        return () => window.removeEventListener("scroll", onAnyScroll, { capture: true });
+    }, [linkTooltipAnchor, closeLinkTooltip]);
+
+    // === Link edit form (feature ⑥ refinement) ==============================================
+    // Instead of dropping the user into a source textarea, the tooltip's 编辑 opens a small
+    // form with 显示名 + 链接地址 (or a single 目标 field for [[wiki]] links). The rewrite is
+    // an exact-span splice of `[label](url)` / `[[target]]` — the user never sees markdown.
+    const [linkEditTarget, setLinkEditTarget] = useState<(LinkEditRequest & { anchor: HTMLAnchorElement }) | null>(null);
+
+    const openLinkEditor = useCallback(
+        (el: HTMLAnchorElement) => {
+            const href = el.getAttribute("href") ?? "";
+            const isWiki = href.startsWith("wave-wiki:");
+            const offsets = linkNodeOffsetsRef.current.get(el);
+            const blockEl = el.closest<HTMLElement>("[data-source-line]");
+            const blockStartLine = Number(blockEl?.dataset?.sourceLine);
+            const blockEndLine = Number(blockEl?.dataset?.sourceLineEnd);
+            setLinkEditTarget({
+                anchor: el,
+                mode: isWiki ? "wiki" : "markdown",
+                href: isWiki ? wikiTargetFromHref(href, href) : href,
+                label: el.textContent ?? "",
+                startOffset: offsets?.start,
+                endOffset: offsets?.end,
+                blockStartLine: Number.isFinite(blockStartLine) && blockStartLine > 0 ? blockStartLine : undefined,
+                blockEndLine:
+                    Number.isFinite(blockEndLine) && blockEndLine >= blockStartLine ? blockEndLine : undefined,
+            });
+        },
+        [ ]
+    );
+
+    const applyLinkEdit = useCallback(
+        (target: LinkEditRequest, newLabel: string, newUrl: string) => {
+            const next = replaceLinkInSource(text, target, newLabel, newUrl);
+            if (next == null) {
+                return;
+            }
+            // The generic commit funnel handles renumbering + autosave scheduling.
+            handleInlineEditCommit(next);
+        },
+        [text, handleInlineEditCommit]
     );
 
     const handleInlineEditDblClick = useCallback(
@@ -2411,20 +2872,13 @@ const Markdown = ({
             return;
         }
         const rect = el.getBoundingClientRect();
-        // Grip sits in the gutter left of the block, anchored to the block's TOP-LEFT (like
-        // Notion's handle): insertPos.top is the anchor center for translate(-50%, -50%), so
-        // rect.top + 8 centers the 16px grip on the block's top edge (half above, half beside
-        // the first line). NOT the vertical middle — centering on tall blocks (lists, code,
-        // multi-line paragraphs) floated the grip mid-block, looking detached from the hovered
-        // row. The insert actions (A/B) are placed relative to the same anchor in the JSX.
-        // Clamp to viewport for far-left blocks (content has ~15px padding).
-        //
-        // X axis: for a list item (<li>) we must NOT anchor to the item's own box — the bullet
-        // marker is rendered OUTSIDE it (list-style-position: outside), so a fixed 26px offset
-        // landed the grip's right edge right on the bullet, and it overlapped the marker as
-        // soon as the font size grew (the marker zone scales with em, our offset didn't).
-        // Anchor X to the parent <ul>/<ol> instead: the whole list then shares one grip column
-        // a fixed distance left of the bullet column, at any font size. Y stays with the item.
+        // X axis: for a list item (<li>) the bullet marker is rendered OUTSIDE the item's box
+        // (list-style-position: outside), so anchoring off the <li> puts the grip's right edge
+        // right on the bullet — worse when the markdown font size is enlarged (the 26px offset
+        // is fixed while the marker widens). Anchor X to the parent <ul>/<ol> instead: the whole
+        // list shares one grip column a fixed distance left of the bullet column, so it never
+        // overlaps the marker regardless of font size. (Vertical anchor still uses the <li>'s
+        // first line via rect.top.)
         let xAnchorLeft = rect.left;
         if (el.tagName === "LI") {
             const listEl = el.parentElement?.closest<HTMLElement>("ol, ul");
@@ -2432,6 +2886,15 @@ const Markdown = ({
                 xAnchorLeft = listEl.getBoundingClientRect().left;
             }
         }
+        // Grip sits in the gutter left of the block, anchored to the block's TOP-LEFT (like
+        // Notion's handle): insertPos.top is the anchor center for translate(-50%, -50%), so
+        // rect.top + 8 centers the 16px grip on the block's top edge (half above, half beside
+        // the first line). NOT the vertical middle — centering on tall blocks (lists, code,
+        // multi-line paragraphs) floated the grip mid-block, looking detached from the hovered
+        // row. The insert actions (A/B) are placed relative to the same anchor in the JSX.
+        // Clamp to viewport for far-left blocks (content has ~15px padding).
+        // ponytail: the block's hovered row can be deep in a list (LI) while data-source-line
+        // resolves to the UL — the grip then anchors to the list's top-left, acceptable.
         setInsertPos({ top: rect.top + 8, left: Math.max(xAnchorLeft - 26, 8) });
     }, [resolveInsertAnchorEl]);
     const insertAnchorRef = useRef<{ line: number } | null>(null);
@@ -3170,7 +3633,13 @@ const Markdown = ({
         };
         const components: Partial<Components> = {
             a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
-                <Link props={props} focusHeading={focusHeading} resolveOpts={resolveOpts} />
+                <Link
+                    props={props}
+                    focusHeading={focusHeading}
+                    resolveOpts={resolveOpts}
+                    onHoverIn={onInlineEditCommit != null ? handleLinkHoverIn : undefined}
+                    onHoverOut={onInlineEditCommit != null ? handleLinkHoverOut : undefined}
+                />
             ),
             p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
                 <div className="paragraph" {...props} {...srcLineAttrs(props)} />
@@ -3275,6 +3744,13 @@ const Markdown = ({
             const chartText = getTextContent(props.children);
             return <Mermaid chart={chartText} />;
         };
+        // Clickable task checkboxes only exist when the caller opted into inline editing;
+        // otherwise keep react-markdown's default disabled <input>.
+        if (onInlineEditCommit != null) {
+            components["input"] = (props: any) => (
+                <MarkdownTaskCheckbox props={props} onToggle={handleTaskCheckboxToggle} />
+            );
+        }
         return components;
     }, [
         focusHeading,
@@ -3289,6 +3765,10 @@ const Markdown = ({
         onClickExecute,
         text,
         handleInlineEditCommit,
+        onInlineEditCommit,
+        handleTaskCheckboxToggle,
+        handleLinkHoverIn,
+        handleLinkHoverOut,
         contentBlocksMap,
         waveBlockRenderers,
     ]);
@@ -3310,12 +3790,18 @@ const Markdown = ({
         }
     };
 
-    let rehypePlugins = null;
-    if (rehype) {
-        rehypePlugins = [
+    // Memoized plugin stacks: a new array every render defeats the memoized render tree below
+    // (unified treats new plugin identities as a fresh pipeline → full re-parse per render).
+    // Both stacks only depend on parse-affecting inputs; the inline-edit textarea typing never
+    // touches them, so editing a block re-renders Markdown without re-parsing the document.
+    const rehypePlugins = useMemo(() => {
+        if (!rehype) {
+            return null;
+        }
+        return [
             rehypeRaw,
             rehypeHighlight,
-            () =>
+            (): any =>
                 rehypeSanitize({
                     ...defaultSchema,
                     attributes: {
@@ -3360,25 +3846,60 @@ const Markdown = ({
                         "mermaidblock",
                     ],
                 }),
-            () => rehypeSlug({ prefix: idPrefix }),
+            (): any => rehypeSlug({ prefix: idPrefix }),
         ];
-    }
-    const remarkPlugins: any = makeRemarkPlugins({
-        contentBlocksMap,
-    });
-    if (frontmatterBlock) {
-        // 必须 push 插件+参数元组（ReactMarkdown 的 PluggableList 约定），
-        // 不能 push 调用结果：unified 会把函数当插件以无参调用，transformer 的
-        // tree 参数会变成 undefined → 运行时崩溃。
-        remarkPlugins.push([
-            remarkFrontmatterToWaveBlock,
-            {
-                startLine: frontmatterBlock.startLine,
-                endLine: frontmatterBlock.endLine,
-                blockKey: frontmatterBlock.blockKey,
-            },
-        ]);
-    }
+    }, [rehype, idPrefix]);
+    const remarkPlugins: any = useMemo(() => {
+        const plugins = makeRemarkPlugins({
+            contentBlocksMap,
+        });
+        if (frontmatterBlock) {
+            // 必须 push 插件+参数元组（ReactMarkdown 的 PluggableList 约定），
+            // 不能 push 调用结果：unified 会把函数当插件以无参调用，transformer 的
+            // tree 参数会变成 undefined → 运行时崩溃。
+            plugins.push([
+                remarkFrontmatterToWaveBlock,
+                {
+                    startLine: frontmatterBlock.startLine,
+                    endLine: frontmatterBlock.endLine,
+                    blockKey: frontmatterBlock.blockKey,
+                },
+            ]);
+        }
+        return plugins;
+    }, [contentBlocksMap, frontmatterBlock]);
+
+    // Memoized render tree: as long as the source text and every parse-affecting input stayed
+    // stable, re-render is skipped entirely — React sees the same element object and bails out
+    // of reconciling the subtree. This is what keeps hover strokes (insert anchor state),
+    // scroll sync, and in-textarea typing from re-parsing N-thousand lines on every frame.
+    const scrollableMarkdownTree = useMemo(
+        () => (
+            <ReactMarkdown
+                remarkPlugins={remarkPlugins}
+                rehypePlugins={rehypePlugins}
+                components={markdownComponents}
+                urlTransform={markdownUrlTransform}
+                className="markdown-render-root"
+            >
+                {transformedText}
+            </ReactMarkdown>
+        ),
+        [remarkPlugins, rehypePlugins, markdownComponents, transformedText]
+    );
+    const nonScrollableMarkdownTree = useMemo(
+        () => (
+            <ReactMarkdown
+                remarkPlugins={remarkPlugins}
+                rehypePlugins={rehypePlugins}
+                components={markdownComponents}
+                urlTransform={markdownUrlTransform}
+            >
+                {transformedText}
+            </ReactMarkdown>
+        ),
+        [remarkPlugins, rehypePlugins, markdownComponents, transformedText]
+    );
 
     const mergedStyle = { ...style };
     if (fontSizeOverride != null) {
@@ -3389,7 +3910,7 @@ const Markdown = ({
     }
     return (
         <div
-            className={clsx("markdown", className)}
+            className={clsx("markdown", className, onInlineEditCommit != null && "markdown-editable")}
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
         >
@@ -3425,19 +3946,51 @@ const Markdown = ({
                     onDragLeave={handleBlockDragLeave}
                     onDrop={handleBlockDrop}
                 >
-                    <ReactMarkdown
-                        remarkPlugins={remarkPlugins}
-                        rehypePlugins={rehypePlugins}
-                        components={markdownComponents}
-                        urlTransform={markdownUrlTransform}
-                        className="markdown-render-root"
-                    >
-                        {transformedText}
-                    </ReactMarkdown>
+                    {scrollableMarkdownTree}
+                    {onInlineEditCommit != null && linkTooltipAnchor != null &&
+                        ReactDOM.createPortal(
+                            <MarkdownLinkTooltip
+                                anchor={linkTooltipAnchor}
+                                onOpen={() => {
+                                    const el = linkTooltipAnchor;
+                                    closeLinkTooltip();
+                                    // Reuse the anchor's own click path → identical behavior to a
+                                    // plain user click (in-preview navigation for internal links,
+                                    // browser open for externals).
+                                    el.click();
+                                }}
+                                onEdit={() => {
+                                    const el = linkTooltipAnchor;
+                                    closeLinkTooltip();
+                                    openLinkEditor(el);
+                                }}
+                                rootRef={linkTooltipElRef}
+                                onMouseEnter={stopLinkTooltipSafeZoneWatch}
+                                onMouseLeave={startLinkTooltipSafeZoneWatch}
+                            />,
+                            document.body
+                        )}
+                    {onInlineEditCommit != null && linkEditTarget != null &&
+                        ReactDOM.createPortal(
+                            <MarkdownLinkEditor
+                                anchor={linkEditTarget.anchor}
+                                mode={linkEditTarget.mode}
+                                initialLabel={linkEditTarget.label}
+                                initialUrl={linkEditTarget.href}
+                                onSave={(label, url) => {
+                                    const target = linkEditTarget;
+                                    setLinkEditTarget(null);
+                                    applyLinkEdit(target, label, url);
+                                }}
+                                onCancel={() => setLinkEditTarget(null)}
+                            />,
+                            document.body
+                        )}
                     {onInlineEditCommit && (
                         <InlineEditOverlay
                             overlayRect={inlineEdit.overlayRect}
                             blockKind={inlineEdit.editSession?.blockKind ?? null}
+                            typography={inlineEdit.editSession?.typography}
                             draftText={inlineEdit.draftText}
                             textareaRef={inlineEdit.textareaRef}
                             onTextChange={inlineEdit.setDraftText}
@@ -3539,14 +4092,7 @@ const Markdown = ({
                 </OverlayScrollbarsComponent>
             ) : (
                 <div className={cn("content non-scrollable", contentClassName)}>
-                    <ReactMarkdown
-                        remarkPlugins={remarkPlugins}
-                        rehypePlugins={rehypePlugins}
-                        components={markdownComponents}
-                        urlTransform={markdownUrlTransform}
-                    >
-                        {transformedText}
-                    </ReactMarkdown>
+                    {nonScrollableMarkdownTree}
                 </div>
             )}
             {showToc && (
