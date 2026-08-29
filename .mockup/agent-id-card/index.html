@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 开篇 · Agent ID Card 原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <h1>Agent 开篇 · Agent ID Card</h1>
+  <p class="subtitle">
+    新建 / resume 一个 Agent 时，终端 block 先亮出一张「身份证」开篇卡；跑起来后自动折叠成 header 小徽标，随时可展开。
+    只借证件的<b>视觉语法</b>（横版比例、左照片区+右信息行、抬头条、底部编号行、印章），不借证件字段。
+    状态文案逐字对齐真实 <code>agent-status-derive.ts</code> 的 <code>agentStatusPresentation()</code>；
+    结构镜像真实 <code>blockframe-header.tsx</code> + <code>term.tsx</code>。应用内文案英文，中文仅为评审注释。
+  </p>
+
+  <!-- 评审控件（非应用 UI） -->
+  <div class="scenario-bar" id="scenario-bar"></div>
+
+  <!-- ============ 结构镜像区：Agent Terminal Block ============ -->
+  <div class="desk is-light" id="desk">
+    <div class="mock-block">
+      <div class="block-frame-header">
+        <div class="block-frame-textelems-wrapper">
+          <!-- 真实来源：term block header 的 provider logo + 标题文本 -->
+          <span class="term-provider-logo" id="hdr-logo"></span>
+          <div class="block-frame-text" id="hdr-title">codex · refactor-auth-module</div>
+
+          <!-- ★ 新增点①：折叠态徽标（开篇卡收起后的常驻形态）＝ 状态灯 + 会话标题 -->
+          <button class="agent-id-chip" id="agent-chip" title="Show Agent ID Card" aria-expanded="true">
+            <span class="chip-dot" id="chip-dot"></span>
+            <span class="chip-title" id="chip-title">refactor-auth-module</span>
+          </button>
+        </div>
+        <div class="block-frame-end-icons">
+          <!-- 已有占位（对照用） -->
+          <button class="wave-iconbutton block-frame-header-iconbutton" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+          <!-- ★ 新增点②：展开/收起开篇卡按钮 -->
+          <button class="wave-iconbutton block-frame-header-iconbutton" id="toggle-card-btn"
+                  title="Toggle Agent ID Card" aria-pressed="true">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="mock-block-body">
+        <!-- ★ 新增点③：开篇卡本体（Agent 启动瞬间展示；有输出后自动折叠为①） -->
+        <article class="agent-id-card" id="agent-card" data-state="working">
+          <header class="card-head">
+            <span class="card-brand" title="Snorkeling">🤿 <span>Snorkeling</span></span>
+          </header>
+
+          <div class="card-body">
+            <figure class="card-photo">
+              <!-- 真实来源：getAgentLogoByProvider() 的 provider logo；外圈为状态环 -->
+              <span class="photo-ring" id="photo-ring"><span class="photo-inner" id="photo-inner"></span></span>
+              <figcaption id="photo-caption">codex</figcaption>
+            </figure>
+
+            <dl class="card-fields">
+              <div class="field field-title">
+                <dt>Title</dt>
+                <dd id="f-title">refactor-auth-module</dd>
+              </div>
+              <div class="field">
+                <dt>Status</dt>
+                <dd class="dd-status">
+                  <span class="status-dot" id="status-dot"></span>
+                  <span id="f-status">Working · Tool: go test</span>
+                </dd>
+              </div>
+              <div class="field field-output">
+                <dt>Output</dt>
+                <dd><span class="mono-dim" id="f-output">✔ 12 tests passed</span></dd>
+              </div>
+              <div class="field field-note">
+                <dt>Note</dt>
+                <dd id="f-note" class="dd-note" role="button" tabindex="0" title="Edit note">排查 auth 中间件 401 问题 <span class="tag">#backend</span> <span class="tag">#p1</span></dd>
+              </div>
+              <div class="field">
+                <dt>Sessions</dt>
+                <dd><a href="#" id="f-sessions" class="sessions-link">3 sessions · last active 2h ago<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></dd>
+              </div>
+            </dl>
+
+            <!-- ★ 可选装饰：状态印章（设置可关） -->
+            <span class="stamp" id="stamp" aria-hidden="true">WORKING</span>
+          </div>
+
+          <footer class="card-number">
+            <code class="sid" id="f-sid">0f3a9c2e-77b1-4d2a-9f31-a8c4e2b6d9f0</code>
+            <button class="copy-btn" id="copy-btn" title="Copy session id">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg>
+            </button>
+          </footer>
+        </article>
+      </div>
+    </div>
+
+    <div class="log" id="log">Pick a scenario above. The card stays light even on a dark desk.</div>
+  </div>
+
+  <!-- ============ 设计说明（评审注释，非应用 UI） ============ -->
+  <div class="notes">
+    <h2>字段 → 数据来源（全部现成，零新后端）</h2>
+    <table>
+      <tr><th>卡面元素</th><th>数据来源（真实代码）</th></tr>
+      <tr><td>照片位 logo</td><td><code>getAgentLogoByProvider(provider)</code>（agent-logo.tsx），外圈颜色 = 状态色</td></tr>
+      <tr><td>Title</td><td><code>SessionSummary.title</code>（getCachedSessionSummary）</td></tr>
+      <tr><td>Status</td><td><code>presentAgentStatus()</code> 的 label/icon/state —— 文案逐字复用（Working · Tool: x / Thinking / Blocked / Done / Idle / Stale / Rate limited / No data）</td></tr>
+      <tr><td>Output 最新输出</td><td>P0：终端 scrollback 尾部一行；P1：SessionDetail 最后一条 message snippet</td></tr>
+      <tr><td>Note 备注</td><td><code>SessionSummary.note + tags</code>，点击进现有 note 编辑入口</td></tr>
+      <tr><td>Sessions 行</td><td>aisessions 列表按 <code>projectPath + source</code> 过滤的计数与最近活跃时间，点击跳 Sessions 视图带过滤</td></tr>
+      <tr><td>底部编号行</td><td><code>resolveAgentSessionId(meta)</code> 的 sessionId，等宽字体 + 复制</td></tr>
+      <tr><td>印章（可关）</td><td>state → 章：working=蓝「WORKING」、blocked/error/rate-limited=红、done=绿「DONE」、stale/idle=灰；状态跳变时盖章动画</td></tr>
+    </table>
+
+    <h2>场景清单（scenario bar 可切换）</h2>
+    <table>
+      <tr><th>场景</th><th>卡面表现</th></tr>
+      <tr><td>working · tool</td><td>蓝环脉冲，「Working · Tool: go test」</td></tr>
+      <tr><td>working · thinking</td><td>蓝环快脉冲，「Thinking」</td></tr>
+      <tr><td>blocked</td><td>红环，「Blocked」，红章 APPROVAL NEEDED</td></tr>
+      <tr><td>error / rate-limited</td><td>红/橙环，对应 derive.ts label</td></tr>
+      <tr><td>done</td><td>绿环静止，绿章 DONE</td></tr>
+      <tr><td>idle / stale</td><td>灰/土黄环，灰章</td></tr>
+      <tr><td>unbound（待落户）</td><td>新建 codex 未绑定 session（对应 <code>new-codex-session-unbound</code>）：照片位「?」，Title 占位 untitled，Note 显示引导语，虚线章 PENDING</td></tr>
+      <tr><td>missing（户籍注销）</td><td><code>missing:true</code>：全卡置灰，章 MISSING，交互禁用</td></tr>
+    </table>
+
+    <h2>生命周期（“出生即开篇”）</h2>
+    <ul>
+      <li>launch/resume Agent → block body 先渲染开篇卡（此时终端还没有内容，不浪费空间）</li>
+      <li>检测到首屏输出 / 用户点击终端 → 卡片自动折叠为 header 徽标①（状态灯 + 标题），终端接管空间</li>
+      <li>随时点②或徽标重新展开；徽标本体点击 = 展开，行为不丢</li>
+      <li>原型里用右上角「Toggle Agent ID Card」按钮模拟这个折叠/展开</li>
+    </ul>
+
+    <h2>分期</h2>
+    <ul>
+      <li><b>P0</b>：静态正面卡 + 状态环/章 + 复制 sessionId（数据全现成，纯前端拼装）</li>
+      <li><b>P1</b>：Output 接 scrollback 尾行；Note/Sessions 点击接现有入口；unbound/missing 两场景兜底</li>
+      <li><b>P2（可选）</b>：盖章动画打磨、导出 PNG 分享卡</li>
+    </ul>
+
+    <h2>已明确砍掉（brainstorm 结论）</h2>
+    <ul>
+      <li>性别/民族/出生/住址等证件字段硬隐喻 ❌</li>
+      <li>双面翻面卡 ❌（单面放得下）；QR 码 ❌（复制按钮够用）</li>
+      <li>风格致敬而非复刻真实居民身份证：版式自创、波纹底纹扣潜水主题，避免观感像证件伪造</li>
+    </ul>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="script.js"></script>
+</body>
+</html>

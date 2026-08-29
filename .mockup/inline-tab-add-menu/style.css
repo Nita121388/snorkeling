@@ -1,0 +1,289 @@
+/* Inline Tab Add Menu 原型样式
+ * token 全部直译 frontend/app/theme.scss :root（dark）
+ * inline-tab 结构样式直译 frontend/app/block/block.scss .inline-tab-block-*
+ */
+
+:root,
+[data-theme="dark"] {
+    color: var(--main-text-color);
+    --base-font: normal 14px / normal "Inter", sans-serif;
+    --fixed-font: normal 12px / normal "Hack", monospace;
+    --header-font: 700 11px / normal "Inter", sans-serif;
+    --block-border-radius: 8px;
+
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --agent-working-color: #3b82f6;
+    --hover-bg-color: rgba(255, 255, 255, 0.1);
+    --block-bg-color: rgba(0, 0, 0, 0.5);
+    --modal-bg-color: #232323;
+    --modal-border-color: rgba(255, 255, 255, 0.12);
+    --error-color: rgb(229, 77, 46);
+    --warning-color: rgb(224, 185, 86);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background:
+        radial-gradient(1200px 500px at 70% -10%, rgba(88, 193, 66, 0.05), transparent),
+        var(--main-bg-color);
+    color: var(--main-text-color);
+    font: var(--base-font);
+}
+
+/* ---------- page head（镜像 env-launch-entry 版式） ---------- */
+.page-head { max-width: 1280px; margin: 0 auto; padding: 28px 24px 10px; }
+.page-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 10px; }
+.page-head p { margin: 0 0 6px; font-size: 13px; line-height: 1.65; color: var(--secondary-text-color); }
+.page-head .sub2 { color: var(--grey-text-color); font-size: 12.5px; }
+.page-head code, .explain code, .scene-note code, .log code {
+    font-family: "Hack", ui-monospace, monospace; font-size: 11px;
+    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--border-color);
+    border-radius: 4px; padding: 0 4px;
+}
+.page-head b { color: var(--main-text-color); }
+
+/* ---------- stage：两个场景并排 ---------- */
+.stage {
+    max-width: 1280px; margin: 18px auto 0; padding: 0 24px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 22px;
+}
+.scene-title { font-size: 12.5px; font-weight: 600; color: var(--secondary-text-color); margin-bottom: 8px; }
+.scene-note { margin-top: 8px; font-size: 11.5px; color: var(--grey-text-color); line-height: 1.6; }
+
+.tile-node {
+    height: 360px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--block-border-radius);
+    background: var(--block-bg-color);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.tile-node.narrow { max-width: 430px; }
+
+/* ============================================================
+ * 以下 .inline-tab-block-* 全部直译 block.scss（仅 tabsrow/addzone 为新增）
+ * ============================================================ */
+.inline-tab-block {
+    display: flex; flex-direction: column;
+    width: 100%; height: 100%;
+    min-width: 0; min-height: 0; overflow: hidden;
+}
+
+/* 新增 wrapper：接管原 .inline-tab-block-tabs 的 border-bottom + 背景，
+   内部拆 [滚动区 flex:1] + [固定区 flex:none] */
+.inline-tab-block-tabsrow {
+    display: flex; align-items: stretch;
+    min-height: 26px; max-height: 26px;
+    background: rgb(from var(--block-bg-color) r g b / 0.92);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.inline-tab-block-tabs {
+    /* 原：display:flex / justify-content:flex-start / gap:2px / overflow-x:auto —— 不变 */
+    display: flex; align-items: center; justify-content: flex-start;
+    gap: 2px; min-width: 0; flex: 1 1 auto;
+    padding: 2px 2px 0 5px;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent;
+    cursor: grab;
+}
+.inline-tab-block-tabs::-webkit-scrollbar { height: 5px; }
+.inline-tab-block-tabs::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+
+.inline-tab-block-group-handle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 22px; flex: 0 0 18px; padding: 0;
+    border: 0; background: transparent; color: var(--main-text-color);
+    cursor: grab; opacity: 0.45;
+}
+.inline-tab-block-group-handle:hover { opacity: 0.85; }
+.inline-tab-block-group-handle i { font-size: 11px; }
+
+/* ===== 新增①：「＋」固定区 + 按钮（钉死右上角，不随 tabs 滚动） ===== */
+.inline-tab-block-addzone {
+    display: flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; padding: 2px 4px 0 2px;
+    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+.inline-tab-block-addbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 20px; padding: 0;
+    border: 0; border-radius: 4px; background: transparent;
+    color: var(--main-text-color); cursor: pointer; opacity: 0.45;
+    transition: opacity 100ms ease, background 100ms ease, color 100ms ease;
+}
+.inline-tab-block-addbtn i { font-size: 11px; }
+.inline-tab-block-addbtn:hover {
+    opacity: 1; color: var(--accent-color);
+    background: rgb(from var(--main-text-color) r g b / 0.08);
+}
+.inline-tab-block-addbtn.open {
+    opacity: 1; color: var(--accent-color);
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+}
+
+/* tab 标签（直译） */
+.inline-tab-block-tab {
+    display: inline-flex; align-items: center;
+    height: 22px; max-width: 320px; min-width: 0;
+    padding: 0 4px;
+    border: 1px solid transparent; border-radius: 6px 6px 0 0;
+    background: transparent; color: var(--main-text-color);
+    font: var(--header-font);
+    opacity: 0.65; flex: 0 1 auto; width: auto;
+    transition: max-width 140ms ease;
+}
+.inline-tab-block-tab:hover:not(.dragging) { opacity: 0.9; background: rgb(from var(--main-text-color) r g b / 0.08); }
+.inline-tab-block-tab.active {
+    opacity: 1; background: rgb(from var(--main-text-color) r g b / 0.12);
+    color: var(--accent-color);
+}
+.inline-tab-block-tab-main-wrapper {
+    display: flex; align-items: center; justify-content: center;
+    min-width: 0; flex: 0 1 auto; overflow: hidden;
+}
+.inline-tab-block-tab-main {
+    display: inline-flex; align-items: center; gap: 2px;
+    min-width: 0; cursor: pointer; white-space: nowrap;
+}
+.inline-tab-block-tab-main i { flex: 0 0 auto; font-size: 11px; opacity: 0.7; }
+.inline-tab-block-tab-main span {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inline-tab-block-tab.active .inline-tab-block-tab-main span { font-weight: 600; }
+.inline-tab-block-tab.active .inline-tab-block-tab-main i { opacity: 1; }
+.tab-agentlogo { color: #74a7cb; }   /* AgentProfileColors.codex */
+
+/* agent 状态点（working 蓝呼吸，直译语义） */
+.inline-tab-block-tab-statusdot {
+    flex: 0 0 auto; width: 6px; height: 6px; margin-left: 1px;
+    border-radius: 50%; background: var(--secondary-text-color); opacity: 0.85;
+}
+.inline-tab-block-tab-statusdot.is-working {
+    background: var(--agent-working-color);
+    animation: status-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes status-shimmer { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* close ×（默认折叠，hover/active 展开——直译） */
+.inline-tab-block-tab-close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 0; height: 16px; margin-left: 0; flex: 0 0 auto;
+    border: 0; border-radius: 3px; cursor: pointer; opacity: 0; overflow: hidden;
+    background: transparent; color: var(--main-text-color);
+    transition: width 100ms ease, margin-left 100ms ease, opacity 100ms ease;
+}
+.inline-tab-block-tab-close i { font-size: 10px; }
+.inline-tab-block-tab:hover .inline-tab-block-tab-close,
+.inline-tab-block-tab.active .inline-tab-block-tab-close {
+    width: 16px; margin-left: 3px; opacity: 0.7;
+}
+.inline-tab-block-tab-close:hover { opacity: 1 !important; background: rgb(from var(--main-text-color) r g b / 0.12); }
+
+.inline-tab-block-active { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+
+/* ---------- 激活块 header（镜像 BlockFrame_Header 简化形） ---------- */
+.block-frame-default-header {
+    display: flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 8px; flex: 0 0 auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    font: var(--header-font);
+}
+.block-frame-default-header-iconview { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.block-frame-default-header-iconview i { font-size: 12px; opacity: 0.85; }
+.block-frame-view-type { font-size: 11px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block-frame-end-icons { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.iconbutton {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border: 0; border-radius: 4px;
+    background: transparent; color: var(--secondary-text-color); cursor: pointer;
+}
+.iconbutton:hover { background: rgb(from var(--main-text-color) r g b / 0.08); color: var(--main-text-color); }
+.iconbutton i { font-size: 11px; }
+
+/* ---------- 激活块内容（假 terminal） ---------- */
+.block-content {
+    flex: 1; min-height: 0; overflow: hidden;
+    padding: 10px 12px;
+    font: var(--fixed-font); font-size: 11.5px; line-height: 1.75;
+    color: var(--secondary-text-color);
+    background:
+        repeating-linear-gradient(transparent 0 21px, rgba(255,255,255,0.015) 21px 22px),
+        rgba(0, 0, 0, 0.28);
+}
+.block-content .dim { color: var(--grey-text-color); }
+.block-content .ok { color: var(--accent-color); }
+.block-content .cursor { display: inline-block; width: 7px; height: 13px; background: var(--secondary-text-color); vertical-align: -2px; animation: status-shimmer 1.1s steps(2) infinite; }
+
+/* ============================================================
+ * 新增②：widget 驱动的「＋」菜单（视觉对齐 modal 语言：
+ * modal-bg #232323 / border rgba(255,255,255,.12) / radius 8 / shadow）
+ * ============================================================ */
+.ctxmenu {
+    position: absolute; z-index: 50;
+    min-width: 264px; padding: 4px;
+    background: rgb(from var(--modal-bg-color) r g b / 0.97);
+    border: 1px solid var(--modal-border-color);
+    border-radius: var(--block-border-radius);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(14px);
+}
+.ctxmenu-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 10px; border-radius: 5px;
+    font-size: 12.5px; cursor: pointer; user-select: none;
+}
+.ctxmenu-item:hover { background: rgb(from var(--main-text-color) r g b / 0.08); }
+.ctxmenu-item i { width: 16px; text-align: center; font-size: 12px; opacity: 0.75; }
+.ctxmenu-item:hover i { opacity: 1; }
+.ctxmenu-item .lbl { flex: 0 0 auto; }
+.ctxmenu-item .hint {
+    margin-left: auto; padding-left: 14px;
+    font-family: "Hack", ui-monospace, monospace; font-size: 10px;
+    color: var(--grey-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ctxmenu-item.disabled { opacity: 0.38; cursor: not-allowed; }
+.ctxmenu-item.disabled:hover { background: transparent; }
+.ctxmenu-item .skipbadge {
+    margin-left: auto; padding-left: 10px;
+    font-size: 10px; color: var(--grey-text-color); white-space: nowrap;
+}
+.ctxmenu-sep { height: 1px; margin: 4px 6px; background: var(--modal-border-color); }
+.ctxmenu-group-label {
+    padding: 5px 10px 3px; font-size: 10px; letter-spacing: 0.04em;
+    color: var(--grey-text-color); text-transform: uppercase;
+}
+
+/* ---------- bottom：设计要点 + 日志 ---------- */
+.bottom {
+    max-width: 1280px; margin: 22px auto 40px; padding: 0 24px;
+    display: grid; grid-template-columns: minmax(320px, 5fr) minmax(380px, 7fr); gap: 22px;
+}
+@media (max-width: 900px) { .bottom { grid-template-columns: 1fr; } }
+.panel-title { font-size: 12.5px; font-weight: 700; margin-bottom: 8px; color: var(--secondary-text-color); }
+.panel-title .muted { font-weight: 400; color: var(--grey-text-color); font-size: 11px; }
+.explain ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.85; color: var(--secondary-text-color); }
+.explain li::marker { color: var(--accent-color); }
+.logwrap {
+    border: 1px solid var(--border-color); border-radius: var(--block-border-radius);
+    background: rgba(0, 0, 0, 0.3); padding: 10px 12px;
+}
+.log {
+    font-family: "Hack", ui-monospace, monospace; font-size: 11px; line-height: 1.7;
+    max-height: 240px; overflow-y: auto; color: var(--secondary-text-color);
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent;
+}
+.log .t { color: var(--grey-text-color); }
+.log .act { color: var(--accent-color); }
+.log .warn { color: var(--warning-color); }
+.log .api { color: rgb(140, 190, 255); }

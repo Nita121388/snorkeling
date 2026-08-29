@@ -103,6 +103,7 @@ export class VcsCommitsViewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
                     title: "Refresh",
+                    zone: "pinned",
                     click: () => {
                         globalStore.set(this.refreshNonce, (prev) => prev + 1);
                     },

@@ -262,9 +262,9 @@ export function makeMagnifyButtonDecl({
 }
 
 export const OptMagnifyButton = React.memo(
-    ({ magnified, toggleMagnify, disabled, title }: MagnifyButtonDeclOptions) => {
+    ({ magnified, toggleMagnify, disabled, title, className }: MagnifyButtonDeclOptions & { className?: string }) => {
         const magnifyDecl = makeMagnifyButtonDecl({ magnified, toggleMagnify, disabled, title });
-        return <IconButton key="magnify" decl={magnifyDecl} className="block-frame-magnify" />;
+        return <IconButton key="magnify" decl={magnifyDecl} className={cn("block-frame-magnify", className)} />;
     }
 );
 

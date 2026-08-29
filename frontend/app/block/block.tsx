@@ -57,6 +57,7 @@ import {
 } from "./block-recovery";
 import "./block.scss";
 import { BlockEnv } from "./blockenv";
+import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
@@ -729,48 +730,53 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
             {!preview && (
                 <div
                     ref={tabStripRef}
-                    className="inline-tab-block-tabs"
+                    className="inline-tab-block-tabsrow"
                     role="tablist"
                     aria-orientation="horizontal"
                     onKeyDown={handleTabStripKeyDown}
                 >
-                    <button
-                        type="button"
-                        className="inline-tab-block-group-handle"
-                        title="Move Tab Group"
-                        aria-label="Move Tab Group"
-                    >
-                        <i className={makeIconClass("grip-lines", true)} />
-                    </button>
-                    {blockIds.map((blockId, index) => (
-                        <InlineTabLabel
-                            key={blockId}
-                            nodeId={nodeModel.nodeId}
-                            blockId={blockId}
-                            allBlockIds={blockIds}
-                            layoutData={layoutData}
-                            isActive={blockId === activeBlockId}
-                            duplicateIndex={duplicateIndexes.get(blockId)}
-                            lockedBlockIds={lockedBlockIds}
-                            onActivate={() => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
-                            onClose={() => uxCloseBlock(blockId)}
-                            onCloseOthers={() => layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId)}
-                            onCloseOthersExceptLocked={() =>
-                                layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId, lockedBlockIds)
-                            }
-                            onCloseAll={() => layoutModel?.closeAllInlineTabBlocks(nodeModel.nodeId)}
-                            onCloseAllExceptLocked={() =>
-                                layoutModel?.closeAllInlineTabBlocksExceptLocked(nodeModel.nodeId, lockedBlockIds)
-                            }
-                            index={index}
-                            onReorder={(dragBlockId, hoverIndex) =>
-                                layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)
-                            }
-                            onDragEnd={() => layoutModel?.clearPendingInlineTabDrop()}
-                            sourceStripRef={tabStripRef}
-                            onRename={(title) => layoutModel?.setInlineTabTitle(nodeModel.nodeId, blockId, title)}
-                        />
-                    ))}
+                    <div className="inline-tab-block-tabs">
+                        <button
+                            type="button"
+                            className="inline-tab-block-group-handle"
+                            title="Move Tab Group"
+                            aria-label="Move Tab Group"
+                        >
+                            <i className={makeIconClass("grip-lines", true)} />
+                        </button>
+                        {blockIds.map((blockId, index) => (
+                            <InlineTabLabel
+                                key={blockId}
+                                nodeId={nodeModel.nodeId}
+                                blockId={blockId}
+                                allBlockIds={blockIds}
+                                layoutData={layoutData}
+                                isActive={blockId === activeBlockId}
+                                duplicateIndex={duplicateIndexes.get(blockId)}
+                                lockedBlockIds={lockedBlockIds}
+                                onActivate={() => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
+                                onClose={() => uxCloseBlock(blockId)}
+                                onCloseOthers={() => layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId)}
+                                onCloseOthersExceptLocked={() =>
+                                    layoutModel?.closeOtherInlineTabBlocks(nodeModel.nodeId, blockId, lockedBlockIds)
+                                }
+                                onCloseAll={() => layoutModel?.closeAllInlineTabBlocks(nodeModel.nodeId)}
+                                onCloseAllExceptLocked={() =>
+                                    layoutModel?.closeAllInlineTabBlocksExceptLocked(nodeModel.nodeId, lockedBlockIds)
+                                }
+                                index={index}
+                                onReorder={(dragBlockId, hoverIndex) =>
+                                    layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)
+                                }
+                                onDragEnd={() => layoutModel?.clearPendingInlineTabDrop()}
+                                sourceStripRef={tabStripRef}
+                                onRename={(title) => layoutModel?.setInlineTabTitle(nodeModel.nodeId, blockId, title)}
+                            />
+                        ))}
+                    </div>
+                    <div className="inline-tab-block-addzone">
+                        <InlineTabGroupAddButton nodeId={nodeModel.nodeId} tabId={tabModel.tabId} activeBlockId={activeBlockId} />
+                    </div>
                 </div>
             )}
             <div className="inline-tab-block-active">

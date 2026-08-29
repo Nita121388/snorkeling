@@ -657,13 +657,9 @@ export class PreviewModel implements ViewModel {
             }
             const displayName = isWindowsDrivesPath(headerPath) ? "This PC" : basename(headerPath);
             const tooltipText = headerPath == "~" ? "~ (C:/Users/chemclin)" : headerPath;
-            // Shared across code-edit AND preview inline-edit dirty signals so the preview branch
-            // can render a Save button with the same accent color the editor branch does — without
-            // this, a para dblclick→blur commit shows up as "nothing changed in the header".
-            let saveClassName = "grey";
-            if (get(this.newFileContent) !== null) {
-                saveClassName = "green";
-            }
+            // 文件是否有未落盘的草稿(脏). 信号驱动地址栏文件名样式(accent+italic)与 Tab 脏点.
+            // 保存入口: Ctrl/Cmd+S 全局落盘 + 右键菜单 Save File, 头部不再保留 Save 按钮.
+            const isDirty = get(this.newFileContent) !== null;
             const viewTextChildren: HeaderElem[] = [
                 {
                     elemtype: "div",
@@ -675,7 +671,17 @@ export class PreviewModel implements ViewModel {
                             displayText: displayName,
                             tooltipText: tooltipText,
                             title: "Click to copy full path",
-                            className: "preview-filename cursor-pointer",
+                            // 脏标记挂到文件名上: 编辑未保存时文件名变强调色+斜体(单文件与 tab 组统一).
+                            className: clsx("preview-filename cursor-pointer", { "is-dirty": isDirty }),
+                        },
+                        // 悬浮文件夹名时浮现的路径跳转入口；hover-reveal 样式复用 block.scss
+                        // 里 .preview-filename-copy-button 那套 opacity 过渡。
+                        {
+                            elemtype: "iconbutton",
+                            icon: "magnifying-glass",
+                            title: "Go to Path",
+                            click: () => this.toggleOpenFileModal(),
+                            className: "preview-filename-copy-button",
                         },
                     ],
                 },
@@ -718,14 +724,6 @@ export class PreviewModel implements ViewModel {
                         className: clsx(`yellow rounded-[4px] !py-[2px] !px-[10px] text-[11px] font-[500]`),
                         onClick: () => {},
                     });
-                } else {
-                    viewTextChildren.push({
-                        elemtype: "iconbutton",
-                        icon: "floppy-disk",
-                        title: "Save",
-                        iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
-                        click: () => fireAndForget(this.handleFileSave.bind(this)),
-                    });
                 }
                 if (get(this.canPreview)) {
                     const previewMenuItems: MenuItem[] = [
@@ -760,25 +758,7 @@ export class PreviewModel implements ViewModel {
                     });
                 }
             } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
-                viewTextChildren.push({
-                    elemtype: "iconbutton",
-                    icon: "pen-to-square",
-                    title: "Edit",
-                    className: "grey",
-                    click: () => fireAndForget(() => this.setEditMode(true)),
-                });
-                // Preview-only inline edit (dblclick a paragraph) commits the draft atom on blur
-                // but never lands on disk without this — surface the same green Save affordance the
-                // code-edit branch shows, so the user sees that their dblclick edit is staged-and-unsaved
-                // and can flush it via one click. Revert / undo stays on the context-menu (line 2080),
-                // same as the editor view.
-                viewTextChildren.push({
-                    elemtype: "iconbutton",
-                    icon: "floppy-disk",
-                    title: "Save",
-                    iconColor: saveClassName === "green" ? "var(--accent-color)" : undefined,
-                    click: () => fireAndForget(this.handleFileSave.bind(this)),
-                });
+                // Edit 按钮已移到 endIconButtons(紧贴 X 按钮). 保存交由 Ctrl/Cmd+S + 右键菜单 Save File.
             }
             return [
                 {
@@ -818,8 +798,13 @@ export class PreviewModel implements ViewModel {
                 elemtype: "iconbutton",
                 icon: "code-branch",
                 title: "Version Control",
+                zone: "reveal",
                 click: () => fireAndForget(() => this.openVersionControlBlock()),
             };
+            const isLivePreviewView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
+            const canPreview = get(this.canPreview);
+            const loadableFileInfo = get(this.loadableFileInfo);
+            const isKnownDirectory = loadableFileInfo.state == "hasData" && (!!loadableFileInfo.data?.isdir || loadableFileInfo.data?.mimetype === "directory");
             if (!explorerActive && !mimeType) {
                 return null;
             }
@@ -830,6 +815,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: showHiddenFiles ? "eye" : "eye-slash",
                     title: showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
+                    zone: "reveal",
                     click: () => {
                         globalStore.set(this.showHiddenFiles, (prev) => !prev);
                     },
@@ -840,6 +826,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "book",
                     title: "Table of Contents",
+                    zone: "reveal",
                     click: () => this.markdownShowTocToggle(),
                 });
             }
@@ -849,6 +836,7 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "book-open",
                     title: "Open in Obsidian",
+                    zone: "reveal",
                     click: () => {
                         fireAndForget(async () => {
                             await loadObsidianVaults();
@@ -862,7 +850,18 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
                     title: "Refresh",
+                    zone: "pinned",
                     click: () => this.refresh(),
+                });
+            }
+            // Edit 按钮: 始终可见, 紧贴 close (X) 按钮, 不参与 hover-reveal.
+            if (!isCeView && canPreview && !isKnownDirectory && !isLivePreviewView && mimeType !== "directory") {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "pen-to-square",
+                    title: "Edit",
+                    zone: "pinned",
+                    click: () => fireAndForget(() => this.setEditMode(true)),
                 });
             }
             if (buttons.length > 0) {
@@ -2202,6 +2201,10 @@ export class PreviewModel implements ViewModel {
         const overrideFontSize = blockData?.meta?.["editor:fontsize"];
         const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const menuItems: ContextMenuItem[] = [];
+        menuItems.push({
+            label: "Go to Path...",
+            click: () => this.toggleOpenFileModal(),
+        });
         menuItems.push({
             label: "Copy Full Path",
             click: () => fireAndForget(() => this.copyCurrentPathToClipboard()),

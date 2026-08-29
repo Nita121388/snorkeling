@@ -137,6 +137,7 @@ export class AiSessionsViewModel implements ViewModel {
                     iconSpin: loading,
                     title: "Refresh sessions",
                     disabled: loading,
+                    zone: "pinned",
                     click: () => {
                         void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
                     },

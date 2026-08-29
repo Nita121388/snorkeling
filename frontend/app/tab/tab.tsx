@@ -19,6 +19,9 @@ import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-s
 import "./tab.scss";
 import { TabBadges } from "./tabbadges";
 import { buildTabContextMenu } from "./tabcontextmenu";
+import { TabGroupMenu } from "./tabgroup-menu";
+import { getGroupOfTab } from "./tabgroup";
+import { useTabGroups } from "./tabgroup-store";
 
 export type TabEnv = WaveEnvSubset<{
     electron: {
@@ -33,6 +36,7 @@ export type TabEnv = WaveEnvSubset<{
     };
     atoms: {
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
+        workspaceId: WaveEnv["atoms"]["workspaceId"];
     };
     wos: WaveEnv["wos"];
     getSettingsKeyAtom: WaveEnv["getSettingsKeyAtom"];
@@ -59,6 +63,10 @@ interface TabVProps {
     onRename: (newName: string) => void;
     /** Optional ref that TabV populates with a startRename() function for external callers */
     renameRef?: React.RefObject<(() => void) | null>;
+    /** Group color accent (left bar) when this tab belongs to a group. */
+    groupColor?: string | null;
+    /** Hover trigger affordance for the "Tab to Group" menu. */
+    groupTrigger?: React.ReactNode;
 }
 
 const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
@@ -81,6 +89,8 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         onContextMenu,
         onRename,
         renameRef,
+        groupColor = null,
+        groupTrigger = null,
     } = props;
     const MaxTabNameLength = 14;
     const truncateTabName = (name: string) => [...(name ?? "")].slice(0, MaxTabNameLength).join("");
@@ -200,7 +210,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 "new-tab": isNew,
                 "unopened-this-launch": unopenedThisLaunch,
                 hidden: isHidden,
+                "in-group": groupColor != null,
             })}
+            style={groupColor != null ? ({ ["--group-color" as string]: groupColor } as React.CSSProperties) : undefined}
             onMouseDown={onDragStart}
             onClick={onClick}
             onContextMenu={onContextMenu}
@@ -208,6 +220,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         >
             {showDivider && <div className="tab-divider" />}
             <div className="tab-inner">
+                {groupTrigger}
                 <div
                     ref={editableRef}
                     className={clsx("name", { focused: isEditable })}
@@ -257,6 +270,24 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     // C 层 agent-status 聚合点 (22 号方案决策 6B): D 走自有通道, 仅借 TabBadges 槽位渲染.
     const agentDots = useAtomValue(getTabAgentStatusDotsAtom(id));
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+
+    const workspaceId = useAtomValue(env.atoms.workspaceId);
+    const groups = useTabGroups(workspaceId);
+    const groupColor = getGroupOfTab(groups, id)?.color ?? null;
+    const groupTrigger = (
+        <TabGroupMenu env={env} workspaceId={workspaceId} tabId={id}>
+            <button
+                type="button"
+                className="tab-group-trigger"
+                title="Tab to Group"
+                aria-label="Tab to Group"
+                aria-haspopup="menu"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <i className="fa fa-solid fa-layer-group" />
+            </button>
+        </TabGroupMenu>
+    );
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
     const unopenedThisLaunch = !wasTabOpenedThisLaunch(openedThisLaunchTabIds, id);
@@ -327,6 +358,8 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             badges={badges}
             agentDots={agentDots}
             flagColor={flagColor}
+            groupColor={groupColor}
+            groupTrigger={groupTrigger}
             onClick={handleTabClick}
             onClose={onClose}
             onDragStart={onDragStart}

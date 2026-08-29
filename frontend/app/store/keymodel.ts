@@ -3,6 +3,7 @@
 
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { openCommonTextSearch } from "@/app/commontext/commontext-events";
+import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { FocusManager } from "@/app/store/focusManager";
 import {
@@ -788,6 +789,17 @@ function registerGlobalKeys() {
         void SessionOverviewModel.getInstance().open();
         return true;
     });
+    if (isMacOS()) {
+        globalKeyMap.set("Cmd:Shift:p", () => {
+            openWidgetQuickLaunch();
+            return true;
+        });
+    } else {
+        globalKeyMap.set("Ctrl:Shift:p", () => {
+            openWidgetQuickLaunch();
+            return true;
+        });
+    }
     // macOS: Ctrl+Shift+Space 被系统 IME 抢占 → 用 Cmd 系(Cmd=Meta),系统不抢。
     // win/linux: Ctrl+Shift+Space 在 Windows 中文 IME(微软拼音切候选/翻页)和 Linux
     //            桌面输入法(Fcitx/IBus)下也常被抢占 → 按键根本到不了 React keydown。

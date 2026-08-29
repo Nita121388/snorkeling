@@ -22,6 +22,21 @@ vi.mock("@/layout/index", () => ({
     }),
 }));
 
+// 测试环境不跑 initGlobalAtoms，补最小 atoms stub 供 getSettingsMenuItems 的
+// override 配置链（fullConfig/settings）读取。
+vi.mock("@/app/store/global-atoms", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@/app/store/global-atoms")>();
+    return {
+        ...actual,
+        atoms: {
+            ...(actual.atoms ?? {}),
+            // fullConfig 需要是对象而非 null：getConnConfigKeyAtom 会读 .connections
+            fullConfigAtom: atom({}),
+            settingsAtom: atom({}),
+        },
+    };
+});
+
 import { PreviewModel } from "./preview-model";
 
 function flattenHeaderTitles(elems: HeaderElem[]): string[] {
@@ -123,5 +138,18 @@ describe("PreviewModel path-jump modal", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it("exposes path-jump entries: header hover icon + settings menu item", () => {
+        const model = makePreviewModel("local");
+
+        const viewText = globalStore.get(model.viewText) as HeaderElem[];
+        // hover 放大镜按钮嵌在 preview-filename-shell div 内层，递归按 title 找
+        expect(flattenHeaderTitles(viewText)).toContain("Go to Path");
+
+        const menuItems = model.getSettingsMenuItems();
+        expect(menuItems.some((item) => item.label === "Go to Path...")).toBe(true);
+        // 复制入口保留，与跳转共存
+        expect(menuItems.some((item) => item.label === "Copy Full Path")).toBe(true);
     });
 });

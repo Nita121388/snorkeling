@@ -32,16 +32,27 @@ import {
     withLaunchEnv,
 } from "@/app/workspace/agent-launch";
 import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
+import { subscribeLaunchPopup } from "@/app/workspace/launch-popup-bus";
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
+import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import {
+    getLayoutModelForStaticTab,
+    LayoutTreeActionType,
+    newLayoutNode,
+} from "@/layout/index";
+import type { LayoutTreeInsertNodeAction } from "@/layout/index";
 import { modalsModel } from "@/store/modalmodel";
 import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
     autoUpdate,
+    flip,
     FloatingPortal,
+    limitShift,
     offset,
     shift,
+    size,
     useDismiss,
     useFloating,
     useInteractions,
@@ -333,6 +344,8 @@ type AgentTargetFloatingWindowProps = {
     canCreateToExistingTab: boolean;
     prepareAgentBlockDef: (blockDef: BlockDef) => Promise<BlockDef>;
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
+    // footer 主按钮文案；Blocks 组「＋」菜单来源时传 "Add to Group"（行为经 createToCurrentTab 改道进组）
+    currentTabLabel?: string;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -378,6 +391,8 @@ type TerminalTargetFloatingWindowProps = {
     defaultTargetKey?: string;
     canCreateToExistingTab: boolean;
     createToCurrentTab: (blockDef: BlockDef, magnified: boolean) => Promise<string>;
+    // footer 主按钮文案；同 AgentTargetFloatingWindow.currentTabLabel
+    currentTabLabel?: string;
     onCreateToNewTab: (blockDef: BlockDef, magnified: boolean) => Promise<void>;
     onCreateToExistingTab: (request: CreateToExistingTabRequest) => void;
     onSetDefaultTarget: (target: AgentLaunchTarget) => void;
@@ -413,6 +428,25 @@ function saveVendorModelPreferences(preferences: Record<string, string>) {
         localStorage.setItem(VendorModelPreferencesStorageKey, JSON.stringify(preferences));
     } catch {
         // Local persistence is optional; the current launch still uses the entered model.
+    }
+}
+
+const WidgetsBarPinnedStorageKey = "snorkeling:widgetsBarPinned";
+// ponytail: pin 是纯前端 UI 偏好，与 vendor model 一样走 localStorage（全局，不写 widgets.json）。
+// 若以后要“按 workspace 固定”，把 key 改成 `snorkeling:widgetsBarPinned:${workspaceId}` 即可。
+function loadWidgetsBarPinned(): boolean {
+    try {
+        return localStorage.getItem(WidgetsBarPinnedStorageKey) === "true";
+    } catch {
+        return false;
+    }
+}
+
+function saveWidgetsBarPinned(pinned: boolean) {
+    try {
+        localStorage.setItem(WidgetsBarPinnedStorageKey, pinned ? "true" : "false");
+    } catch {
+        // 本地持久化可选；即使写失败，本次会话内 pin 状态仍有效。
     }
 }
 
@@ -588,12 +622,28 @@ const AgentTargetFloatingWindow = memo(
         onPiRefreshVendors,
         launchEnv,
         onLaunchEnvChange,
+        currentTabLabel,
     }: AgentTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(8), shift({ padding: 12 })],
+            // flip: 锚点靠左时翻到右侧；shift+limitShift: 视口内夹紧且防抖；size: 超高时压回视口内
+            // 配合 overflowY 内部滚动 —— 保证任何锚点位置/窗口尺寸下浮窗完整可见。
+            middleware: [
+                offset(8),
+                flip(),
+                shift({ padding: 12, limiter: limitShift() }),
+                size({
+                    padding: 12,
+                    // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
+                    // it must stay well below real content height so the clamp actually wins.
+                    apply({ availableHeight, elements }) {
+                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.overflowY = "auto";
+                    },
+                }),
+            ],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -1188,7 +1238,7 @@ const AgentTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                Current Tab
+                                {currentTabLabel ?? "Current Tab"}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1290,12 +1340,27 @@ const TerminalTargetFloatingWindow = memo(
         onSetDefaultTarget,
         launchEnv,
         onLaunchEnvChange,
+        currentTabLabel,
     }: TerminalTargetFloatingWindowProps) => {
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
             placement: "left-start",
-            middleware: [offset(8), shift({ padding: 12 })],
+            // flip/shift/size 同 AgentTargetFloatingWindow —— 保证浮窗完整显示（边界加固）。
+            middleware: [
+                offset(8),
+                flip(),
+                shift({ padding: 12, limiter: limitShift() }),
+                size({
+                    padding: 12,
+                    // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
+                    // it must stay well below real content height so the clamp actually wins.
+                    apply({ availableHeight, elements }) {
+                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.overflowY = "auto";
+                    },
+                }),
+            ],
             whileElementsMounted: autoUpdate,
             elements: {
                 reference: referenceElement,
@@ -1476,7 +1541,7 @@ const TerminalTargetFloatingWindow = memo(
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                Current Tab
+                                {currentTabLabel ?? "Current Tab"}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1660,6 +1725,8 @@ const Widgets = memo(() => {
     );
     const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
     const [hovered, setHovered] = useState(false);
+    // 固定态：为 true 时按钮条常驻（占用 w-12 布局、把内容挤左），不受 hover/离开影响。
+    const [pinned, setPinned] = useState<boolean>(() => loadWidgetsBarPinned());
     const collapseTimerRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     // 本次启动自定义变量（agent / terminal 各一份，浮窗关闭不清空——避免误关丢失）
@@ -1683,10 +1750,13 @@ const Widgets = memo(() => {
     const [agentWidgetMagnified, setAgentWidgetMagnified] = useState<boolean>(false);
     const [agentReferenceElement, setAgentReferenceElement] = useState<HTMLElement | null>(null);
     const [isTerminalTargetOpen, setIsTerminalTargetOpen] = useState(false);
+    // 非 null 时，浮窗的入 tab 创建（createToCurrentTab 漏斗）改道进该 inline-tab 组 ——
+    // 由 Blocks 组「＋」菜单经 launch-popup-bus 发起打开时设置，浮窗关闭时清空。
     const [terminalTargets, setTerminalTargets] = useState<AgentLaunchTarget[]>([]);
     const [terminalWidgetMagnified, setTerminalWidgetMagnified] = useState<boolean>(false);
     const [terminalReferenceElement, setTerminalReferenceElement] = useState<HTMLElement | null>(null);
     const [terminalBaseBlockDef, setTerminalBaseBlockDef] = useState<BlockDef | undefined>(undefined);
+    const [groupSinkNodeId, setGroupSinkNodeId] = useState<string | null>(null);
     const agentHoverTimerRef = useRef<number | null>(null);
     const terminalHoverTimerRef = useRef<number | null>(null);
     const [agentCommandPaths, setAgentCommandPaths] = useState<Record<string, string | null>>({});
@@ -1822,6 +1892,7 @@ const Widgets = memo(() => {
         setCcCodexSelectedVendorId(undefined);
         setCcOpencodeSelectedVendorId(undefined);
         setCcPiSelectedVendorId(undefined);
+        setGroupSinkNodeId(null);
     }, []);
 
     const closeTerminalTargetSelector = useCallback(() => {
@@ -1829,12 +1900,40 @@ const Widgets = memo(() => {
         setTerminalReferenceElement(null);
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
+        setGroupSinkNodeId(null);
     }, []);
 
     const createBlockInCurrentTab = useCallback(
         (blockDef: BlockDef, magnified: boolean) => env.createBlock(blockDef, magnified),
         [env]
     );
+
+    // 组 sink 模式：创建后追加进发起「＋」菜单的 inline-tab 组并激活。
+    // 组已被关（addBlockToInlineTab 失败）则回退为普通入 tab 插入 —— 不丢用户在浮窗里选好的目标/Env。
+    const createBlockInGroupSink = useCallback(
+        async (blockDef: BlockDef, magnified: boolean): Promise<string> => {
+            const sinkNodeId = groupSinkNodeId;
+            const layoutModel = getLayoutModelForStaticTab();
+            const newBlockId = await env.services.object.CreateBlock(blockDef, DefaultCreateBlockRuntimeOpts);
+            if (sinkNodeId != null && layoutModel?.addBlockToInlineTab(sinkNodeId, newBlockId)) {
+                return newBlockId;
+            }
+            if (layoutModel != null) {
+                const insertNodeAction: LayoutTreeInsertNodeAction = {
+                    type: LayoutTreeActionType.InsertNode,
+                    node: newLayoutNode(undefined, undefined, undefined, { blockId: newBlockId }),
+                    magnified,
+                    focused: true,
+                };
+                layoutModel.treeReducer(insertNodeAction);
+            }
+            return newBlockId;
+        },
+        [env, groupSinkNodeId]
+    );
+
+    // 浮窗的入 tab 创建漏斗：无 sink 时行为与原来完全一致（env.createBlock）。
+    const createToCurrentTabForWindows = groupSinkNodeId == null ? createBlockInCurrentTab : createBlockInGroupSink;
 
     const createBlockInNewTab = useCallback(
         async (blockDef: BlockDef, magnified: boolean) => {
@@ -1981,36 +2080,66 @@ const Widgets = memo(() => {
         [env]
     );
 
-    const openAgentTargetPopup = useCallback(
-        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+    // Shared open path: the widget-bar buttons and the Blocks-group "+" menu (via
+    // launch-popup-bus) both land here. sinkNodeId != null redirects in-tab creation into that
+    // inline-tab group (see createBlockInGroupSink).
+    const openAgentTargetsAt = useCallback(
+        (referenceElement: HTMLElement, magnified: boolean, sinkNodeId: string | null) => {
             closeTerminalTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets()),
                 agentDefaultTargetKey
             );
             setAgentTargets(launchTargets);
-            setAgentWidgetMagnified(Boolean(widget.magnified));
+            setAgentWidgetMagnified(magnified);
             setAgentReferenceElement(referenceElement);
+            setGroupSinkNodeId(sinkNodeId);
             setIsAgentTargetOpen(true);
         },
         [closeTerminalTargetSelector, agentDefaultTargetKey]
     );
 
-    const openTerminalTargetPopup = useCallback(
+    const openAgentTargetPopup = useCallback(
         (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            openAgentTargetsAt(referenceElement, Boolean(widget.magnified), null);
+        },
+        [openAgentTargetsAt]
+    );
+
+    const openTerminalTargetsAt = useCallback(
+        (referenceElement: HTMLElement, magnified: boolean, baseBlockDef: BlockDef | undefined, sinkNodeId: string | null) => {
             closeAgentTargetSelector();
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets()),
                 terminalDefaultTargetKey
             );
             setTerminalTargets(launchTargets);
-            setTerminalWidgetMagnified(Boolean(widget.magnified));
+            setTerminalWidgetMagnified(magnified);
             setTerminalReferenceElement(referenceElement);
-            setTerminalBaseBlockDef(widget.blockdef);
+            setTerminalBaseBlockDef(baseBlockDef);
+            setGroupSinkNodeId(sinkNodeId);
             setIsTerminalTargetOpen(true);
         },
         [closeAgentTargetSelector, terminalDefaultTargetKey]
     );
+
+    const openTerminalTargetPopup = useCallback(
+        (widget: WidgetConfigType, referenceElement: HTMLElement) => {
+            openTerminalTargetsAt(referenceElement, Boolean(widget.magnified), widget.blockdef, null);
+        },
+        [openTerminalTargetsAt]
+    );
+
+    // Blocks 组「＋」菜单 → 打开同款浮窗，创建漏斗改道进组（sink）。
+    useEffect(() => {
+        return subscribeLaunchPopup((req) => {
+            if (req.mode === "agent") {
+                openAgentTargetsAt(req.anchorEl, false, req.nodeId);
+            } else {
+                openTerminalTargetsAt(req.anchorEl, false, undefined, req.nodeId);
+            }
+        });
+    }, [openAgentTargetsAt, openTerminalTargetsAt]);
 
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
@@ -2212,6 +2341,16 @@ const Widgets = memo(() => {
         e.preventDefault();
         const menu: ContextMenuItem[] = [
             {
+                label: pinned ? "Unpin widgets bar" : "Pin widgets bar",
+                click: () => {
+                    setPinned((prev) => {
+                        const next = !prev;
+                        saveWidgetsBarPinned(next);
+                        return next;
+                    });
+                },
+            },
+            {
                 label: "Edit widgets.json",
                 click: () => {
                     fireAndForget(async () => {
@@ -2225,13 +2364,19 @@ const Widgets = memo(() => {
                     });
                 },
             },
+            {
+                label: "Quick Launch Widgets",
+                click: () => {
+                    openWidgetQuickLaunch();
+                },
+            },
         ];
         env.showContextMenu(menu, e);
     };
 
     const anyFloatingOpen =
-        isAppsOpen || isSettingsOpen || isAgentTargetOpen || isTerminalTargetOpen;
-    const expanded = hovered || anyFloatingOpen;
+        isAppsOpen || isSettingsOpen || (isAgentTargetOpen && groupSinkNodeId == null) || (isTerminalTargetOpen && groupSinkNodeId == null);
+    const expanded = pinned || hovered || anyFloatingOpen;
 
     const clearCollapseTimer = useCallback(() => {
         if (collapseTimerRef.current != null) {
@@ -2246,6 +2391,10 @@ const Widgets = memo(() => {
     }, [clearCollapseTimer]);
 
     const handleWidgetsBarMouseLeave = useCallback(() => {
+        // 固定态：展开由 pinned 维持，鼠标离开不收起、也不清 hovered（避免取消固定瞬间误判为“未 hover”而闪收）。
+        if (pinned) {
+            return;
+        }
         // 浮窗打开时保持展开（由 anyFloatingOpen 维持），并置 hovered=false 以便浮窗关闭后自动收起。
         if (anyFloatingOpen) {
             setHovered(false);
@@ -2257,7 +2406,7 @@ const Widgets = memo(() => {
             collapseTimerRef.current = null;
             setHovered(false);
         }, WidgetBarAutoCollapseMs);
-    }, [anyFloatingOpen, clearCollapseTimer]);
+    }, [pinned, anyFloatingOpen, clearCollapseTimer]);
 
     // 卸载时清理待收起计时器。
     useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
@@ -2269,14 +2418,55 @@ const Widgets = memo(() => {
                 onMouseEnter={handleWidgetsBarMouseEnter}
                 onMouseLeave={handleWidgetsBarMouseLeave}
                 onContextMenu={handleWidgetsBarContextMenu}
-                className={clsx(
-                    "relative shrink-0 select-none transition-[width] duration-200 ease-out",
-                    expanded ? "-ml-1 w-12 overflow-hidden py-1" : "w-0"
-                )}
+                className={clsx("relative shrink-0 select-none", pinned ? "w-12" : "w-0")}
             >
-                {expanded ? (
-                    <>
+                {/* 悬浮层：absolute 覆盖在内容上方；收起态不占布局空间（w-0 外层），固定态外层改为 w-12 占布局、把内容挤左。
+                    展开/收起只做 transform+opacity
+                    合成器过渡，TabContent 尺寸零变化（不再挤压触发整行 relayout / 终端 refit）。
+                    ponytail: 常驻挂载 + 收起态 pointer-events-none，换取滑入滑出动画。
+                    内联 transform 而非 Tailwind translate 类：TW v4 的 translate 走独立 CSS 属性，
+                    transition-transform 不会对其生效。 */}
+                <div
+                    className={clsx(
+                        // 毛玻璃浮层：与 Agent/Terminal 启动弹窗同一套视觉语言（modalbg token，亮暗主题自适应）
+                        "absolute right-0 top-0 z-50 h-full w-12 overflow-hidden py-1 bg-modalbg/85 backdrop-blur-xl border-l border-border/60 shadow-2xl rounded-l-xl",
+                        !expanded && "pointer-events-none"
+                    )}
+                    style={{
+                        transform: expanded ? "translateX(0)" : "translateX(100%)",
+                        opacity: expanded ? 1 : 0,
+                        transition: "transform 200ms ease-out, opacity 200ms ease-out",
+                    }}
+                >
                         <div className="flex flex-col w-12 overflow-hidden h-full">
+                            {/* 固定/取消固定按钮：固定后按钮条常驻（占用 w-12 布局、把内容挤左），不随 hover 收起。
+                                ponytail: 固定 = docked（占布局），与默认 hover-peek 的 overlay 零挤压不冲突；
+                                仅用户主动点固定时触发一次 relayout。若要“常驻但不占布局”的覆盖式固定，改外层容器恒为 w-0 让浮层常显即可。 */}
+                            <button
+                                type="button"
+                                className={clsx(
+                                    "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-lg overflow-hidden rounded-sm cursor-pointer transition-colors",
+                                    pinned
+                                        ? "text-accent hover:bg-hoverbg hover:text-accenthover"
+                                        : "text-secondary hover:bg-hoverbg hover:text-white"
+                                )}
+                                aria-label={pinned ? "Unpin widgets bar" : "Pin widgets bar"}
+                                title={pinned ? "Unpin widgets bar" : "Pin widgets bar"}
+                                onClick={() => {
+                                    setPinned((prev) => {
+                                        const next = !prev;
+                                        saveWidgetsBarPinned(next);
+                                        return next;
+                                    });
+                                }}
+                            >
+                                <i className={makeIconClass(pinned ? "thumbtack" : "regular@thumbtack", true)} />
+                                {mode === "normal" && (
+                                    <div className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                                        {pinned ? "unpin" : "pin"}
+                                    </div>
+                                )}
+                            </button>
                             {mode === "supercompact" ? (
                                 <>
                                     <div className="grid grid-cols-2 gap-0 w-full">
@@ -2394,12 +2584,12 @@ const Widgets = memo(() => {
                 )}
                 {devRuntimeInfo != null ? <DevRuntimeButton runtime={devRuntimeInfo} mode={mode} /> : null}
                     </div>
-                </>
-            ) : (
-                /* 隐形热区：贴窗口右缘约 8px 即滑出按钮条；仅收起态存在，展开后移除。 */
-                <div className="absolute right-0 top-0 h-full w-2" aria-hidden="true" />
-            )}
-        </div>
+                </div>
+                {!expanded && (
+                    /* 隐形热区：贴窗口右缘约 8px 即滑出按钮条；仅收起态存在，展开后移除。 */
+                    <div className="absolute right-0 top-0 h-full w-2" aria-hidden="true" />
+                )}
+            </div>
         {(env.isDev() || featureWaveAppBuilder) && appsButtonRef.current && (
                 <AppsFloatingWindow
                     isOpen={isAppsOpen}
@@ -2428,7 +2618,8 @@ const Widgets = memo(() => {
                     defaultProfileName={agentDefaultProfileName}
                     canCreateToExistingTab={canCreateToExistingTab}
                     prepareAgentBlockDef={prepareAgentBlockDef}
-                    createToCurrentTab={createBlockInCurrentTab}
+                    createToCurrentTab={createToCurrentTabForWindows}
+                    currentTabLabel={groupSinkNodeId != null ? "Add to Group" : undefined}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultAgentTarget}
@@ -2468,7 +2659,8 @@ const Widgets = memo(() => {
                     baseBlockDef={terminalBaseBlockDef}
                     defaultTargetKey={terminalDefaultTargetKey}
                     canCreateToExistingTab={canCreateToExistingTab}
-                    createToCurrentTab={createBlockInCurrentTab}
+                    createToCurrentTab={createToCurrentTabForWindows}
+                    currentTabLabel={groupSinkNodeId != null ? "Add to Group" : undefined}
                     onCreateToNewTab={createBlockInNewTab}
                     onCreateToExistingTab={openCreateToExistingTabModal}
                     onSetDefaultTarget={setDefaultTerminalTarget}

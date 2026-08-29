@@ -11,6 +11,7 @@ import { AboutModal } from "./about";
 import { CloseTabModal } from "./closetabmodal";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { EnvModalView } from "@/app/view/term/envmodal";
+import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
@@ -27,6 +28,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AgentHookSettingsModal.displayName || "AgentHookSettingsModal"]: AgentHookSettingsModal,
     [EnvModalView.displayName || "EnvModalView"]: EnvModalView,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
+    [WidgetQuickLaunchModal.displayName || "WidgetQuickLaunchModal"]: WidgetQuickLaunchModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
     [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,

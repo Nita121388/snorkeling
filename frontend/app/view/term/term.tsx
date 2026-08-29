@@ -1202,6 +1202,9 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const termFontSize = jotai.useAtomValue(model.fontSizeAtom);
     const fullConfig = globalStore.get(atoms.fullConfigAtom);
     const connFontFamily = fullConfig.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];
+    // Fully-resolved terminal font: block override > global setting > connection > default.
+    const resolvedFontFamily =
+        blockData?.meta?.["term:fontfamily"] ?? termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
     const isFocused = jotai.useAtomValue(model.nodeModel.isFocused);
     const isMI = jotai.useAtomValue(tabModel.isTermMultiInput);
     const isBasicTerm = termMode != "vdom" && blockData?.meta?.controller != "cmd"; // needs to match isBasicTerm
@@ -1300,7 +1303,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
         const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
-        const fontFamily = termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+        const fontFamily = blockData?.meta?.["term:fontfamily"] ?? termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
         // Light theme forces the Canvas renderer: xterm's WebGL renderer produces faint/thin
         // glyphs on a light background (poor sub-pixel coverage), so disable it under light.
         const useWebGl =
@@ -1399,6 +1402,16 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             setSelectionLogicalLineText(null);
         };
     }, [blockId, termSettings, termFontSize, connFontFamily]);
+
+    // Live-update the xterm font family when it changes, without recreating the
+    // terminal/PTY (which would drop the session). xterm applies fontFamily at runtime.
+    React.useEffect(() => {
+        if (termWrapInst == null) {
+            return;
+        }
+        termWrapInst.terminal.options.fontFamily = resolvedFontFamily;
+        termWrapInst.fitAddon?.fit();
+    }, [resolvedFontFamily, termWrapInst]);
 
     React.useEffect(() => {
         if (termModeRef.current == "vdom" && termMode == "term") {
