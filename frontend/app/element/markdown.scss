@@ -1213,3 +1213,55 @@
     font-size: 11px;
     padding: 0 6px;
 }
+
+// M5: document emoji badge (方案 05 §2-3) — absolute in the note's top-right corner so
+// it never shifts layout; the "add" affordance fades in on container hover.
+.markdown {
+    position: relative;
+}
+
+.markdown-doc-emoji-badge {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    z-index: 50;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover,
+    &.is-open {
+        background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+    }
+
+    &.is-empty {
+        opacity: 0;
+        font-size: 14px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 55%, transparent);
+    }
+}
+
+.markdown:hover .markdown-doc-emoji-badge.is-empty {
+    opacity: 1;
+}
+
+// Click-away backdrop for the document emoji picker (transparent, sits under it).
+.markdown-emoji-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10019;
+}
+
+// document-mode picker sits above the backdrop
+.markdown-emoji-picker.mode-document {
+    z-index: 10021;
+}

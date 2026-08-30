@@ -84,11 +84,13 @@ import {
     buildEmojiPickerItems,
     emojiPickerEntries,
     getLoadedEmojiCatalog,
+    getRecentEmojis,
     loadEmojiCatalog,
     recordRecentEmoji,
     type EmojiCatalog,
     type EmojiEntry,
 } from "@/app/element/markdown-transform/emoji";
+import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
 import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
 import {
     execSlashCommand,
@@ -109,6 +111,7 @@ import { SlashPalette } from "@/app/element/block-editor/components/slash-palett
 import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
+import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -3630,6 +3633,50 @@ const Markdown = ({
             ? getColumnAlign(inlineEdit.draftText, tableCaret.row + 1, tableCaret.col)
             : null;
 
+    // === Block editor M5: document emoji (方案 05 §2) — frontmatter `emoji:` read from
+    // the live text; writes go through the same single-commit funnel + autosave. =====
+    const [docEmojiOpen, setDocEmojiOpen] = useState(false);
+    const [docEmojiAnchor, setDocEmojiAnchor] = useState<{ top: number; left: number } | null>(null);
+    const [docEmojiQuery, setDocEmojiQuery] = useState("");
+    const [docEmojiActive, setDocEmojiActive] = useState(0);
+    const docEmojiBadgeRef = useRef<HTMLButtonElement | null>(null);
+    const docEmoji = useMemo(() => getFrontmatterEmoji(text), [text]);
+
+    const toggleDocEmojiPicker = useCallback(() => {
+        if (docEmojiOpen) {
+            setDocEmojiOpen(false);
+            return;
+        }
+        const rect = docEmojiBadgeRef.current?.getBoundingClientRect();
+        if (rect == null) {
+            return;
+        }
+        if (getLoadedEmojiCatalog() == null) {
+            void loadEmojiCatalog().then(setEmojiCatalog);
+        }
+        setDocEmojiQuery("");
+        setDocEmojiActive(0);
+        setDocEmojiAnchor({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
+        setDocEmojiOpen(true);
+    }, [docEmojiOpen]);
+
+    const docEmojiItems = useMemo(
+        () => (emojiCatalog == null || !docEmojiOpen ? [] : buildEmojiPickerItems(emojiCatalog, docEmojiQuery, getRecentEmojis())),
+        [emojiCatalog, docEmojiOpen, docEmojiQuery]
+    );
+    const docEmojiPickables = useMemo(() => emojiPickerEntries(docEmojiItems), [docEmojiItems]);
+
+    const applyDocEmoji = useCallback(
+        (emoji: string | null) => {
+            const next = setFrontmatterEmoji(text, emoji);
+            setDocEmojiOpen(false);
+            if (next !== text) {
+                handleInlineEditCommit(next);
+            }
+        },
+        [text, handleInlineEditCommit]
+    );
+
 
     const handleEditorKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -4629,6 +4676,39 @@ const Markdown = ({
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
         >
+            {onInlineEditCommit != null && (
+                <DocEmojiHeader
+                    emoji={docEmoji}
+                    buttonRef={docEmojiBadgeRef}
+                    open={docEmojiOpen}
+                    onToggle={toggleDocEmojiPicker}
+                />
+            )}
+            {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
+                <>
+                    <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
+                    <EmojiPicker
+                        anchor={docEmojiAnchor}
+                        placement="bottom"
+                        mode="document"
+                        catalog={emojiCatalog}
+                        query={docEmojiQuery}
+                        onQueryChange={(q) => {
+                            setDocEmojiQuery(q);
+                            setDocEmojiActive(0);
+                        }}
+                        activeIndex={Math.min(docEmojiActive, Math.max(0, docEmojiPickables.length - 1))}
+                        onActiveChange={setDocEmojiActive}
+                        onPick={(entry) => {
+                            recordRecentEmoji(entry.char);
+                            applyDocEmoji(entry.char);
+                        }}
+                        onClose={() => setDocEmojiOpen(false)}
+                        allowRemove={docEmoji != null}
+                        onRemove={() => applyDocEmoji(null)}
+                    />
+                </>
+            )}
             {scrollable ? (
                 <OverlayScrollbarsComponent
                     ref={contentsOsRef}
