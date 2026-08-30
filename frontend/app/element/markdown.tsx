@@ -112,6 +112,7 @@ import { FloatingToolbar } from "@/app/element/block-editor/components/floating-
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
 import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -2583,7 +2584,7 @@ const Markdown = ({
             // in the SAME commit so the block transforms on re-render; lineDelta keeps the
             // follow-up editor anchored to the true new row when lines were added (e.g. the
             // fence auto-close).
-            const typed = applyTypingPatternAtLine(newFull, session.startLine);
+            const typed = isBlockEditorFeatureEnabled("blockeditor") ? applyTypingPatternAtLine(newFull, session.startLine) : null;
             const finalText = typed?.text ?? newFull;
             const targetLine = newLine + (typed?.lineDelta ?? 0);
             const revert = () => {
@@ -2861,7 +2862,7 @@ const Markdown = ({
             const anchorLineText = lines[startLineRaw - 1] ?? "";
             const anchorBlockKind = detectBlockKind(lines, startLineRaw);
             let turnIntoMenuItem: ContextMenuItem | null = null;
-            if (anchorBlockKind != null) {
+            if (anchorBlockKind != null && isBlockEditorFeatureEnabled("turninto")) {
                 const ctx: BlockCtx = {
                     text,
                     line: startLineRaw,
@@ -3347,7 +3348,7 @@ const Markdown = ({
                 return;
             }
             const trig = detectInlineTrigger(draft, caret);
-            if (trig != null && trig.command === "slash") {
+            if (trig != null && trig.command === "slash" && isBlockEditorFeatureEnabled("slash")) {
                 setSlashState((prev) =>
                     prev != null && prev.triggerStart === trig.triggerStart
                         ? { ...prev, query: trig.query }
@@ -3356,7 +3357,7 @@ const Markdown = ({
                 setEmojiState(null);
                 return;
             }
-            if (trig != null && trig.command === "emoji") {
+            if (trig != null && trig.command === "emoji" && isBlockEditorFeatureEnabled("emoji")) {
                 // Lazy-load the ~500KB catalog exactly once per app run, on FIRST trigger.
                 if (getLoadedEmojiCatalog() == null) {
                     void loadEmojiCatalog().then(setEmojiCatalog);
@@ -3640,7 +3641,7 @@ const Markdown = ({
     const [docEmojiQuery, setDocEmojiQuery] = useState("");
     const [docEmojiActive, setDocEmojiActive] = useState(0);
     const docEmojiBadgeRef = useRef<HTMLButtonElement | null>(null);
-    const docEmoji = useMemo(() => getFrontmatterEmoji(text), [text]);
+    const docEmoji = useMemo(() => (isBlockEditorFeatureEnabled("docemoji") ? getFrontmatterEmoji(text) : null), [text]);
 
     const toggleDocEmojiPicker = useCallback(() => {
         if (docEmojiOpen) {
@@ -4479,7 +4480,7 @@ const Markdown = ({
                         sourceLineEnd={getSourceLineEnd(props)}
                         language={lang}
                         onApplyLanguage={
-                            onInlineEditCommit != null && srcLine != null
+                            onInlineEditCommit != null && srcLine != null && isBlockEditorFeatureEnabled("codelang")
                                 ? (nextLang) => {
                                       const next = setCodeBlockLanguage(text, srcLine, nextLang);
                                       if (next != null) {
@@ -4676,7 +4677,7 @@ const Markdown = ({
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
         >
-            {onInlineEditCommit != null && (
+            {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
                 <DocEmojiHeader
                     emoji={docEmoji}
                     buttonRef={docEmojiBadgeRef}
@@ -4828,7 +4829,7 @@ const Markdown = ({
                             onClose={() => setEmojiState(null)}
                         />
                     )}
-                    {editSessionKind === "table" && toolbarAnchor != null && (
+                    {editSessionKind === "table" && toolbarAnchor != null && isBlockEditorFeatureEnabled("table") && (
                         <TableToolbar
                             anchor={toolbarAnchor}
                             contextValid={tableCaret != null}
@@ -4839,6 +4840,7 @@ const Markdown = ({
                     {inlineSelection != null &&
                         inlineEdit.editSession != null &&
                         inlineEdit.editSession.blockKind !== "code" &&
+                        isBlockEditorFeatureEnabled("toolbar") &&
                         toolbarAnchor != null && (
                             <FloatingToolbar
                                 anchor={toolbarAnchor}

@@ -4,6 +4,7 @@
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
 import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -604,8 +605,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
         // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
         // markdown and the block transforms on re-render, all inside this one commit.
+        // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
         const committedDraft =
-            current.blockKind === "p" || current.blockKind === "blank"
+            (current.blockKind === "p" || current.blockKind === "blank") && isBlockEditorFeatureEnabled("blockeditor")
                 ? rewriteDraftFirstLine(draftText) ?? draftText
                 : draftText;
         if (current.placeholder) {
