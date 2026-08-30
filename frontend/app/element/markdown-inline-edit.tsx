@@ -3,6 +3,7 @@
 
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
+import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -596,6 +597,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         });
         setEditSession(null);
         setDraftText("");
+        // 方案 02 §2.1 typing transform: a paragraph/blank editor whose first draft line
+        // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
+        // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
+        // markdown and the block transforms on re-render, all inside this one commit.
+        const committedDraft =
+            current.blockKind === "p" || current.blockKind === "blank"
+                ? rewriteDraftFirstLine(draftText) ?? draftText
+                : draftText;
         if (current.placeholder) {
             // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
             // blank row for us to type into). Typed something → replace the row; block-level
@@ -615,8 +624,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             }
             onCommit(
                 current.placeholderInline
-                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText)
-                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, draftText)
+                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft)
+                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, committedDraft)
             );
             return;
         }
@@ -636,7 +645,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
             // with a blank line so it renders as its own paragraph.
             const lines = fullTextRef.current.split(/\r\n|\n/);
-            const draftLines = draftText.split(/\r\n|\n/);
+            const draftLines = committedDraft.split(/\r\n|\n/);
             newFull = spliceInsertBlock(
                 lines,
                 current.startLine,
@@ -645,7 +654,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 draftLines
             ).join("\n");
         } else {
-            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText);
+            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft);
         }
         onCommit(newFull);
     }, [editSession, draftText, onCommit]);

@@ -66,6 +66,14 @@ import {
     type LinkEditRequest,
 } from "@/app/element/markdown-link-edit";
 import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
+import { applyTypingPatternAtLine, detectBlockKind } from "@/app/element/markdown-transform/block-type";
+import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
+import {
+    isBlockActionEnabled,
+    listBlockActions,
+    runBlockAction,
+    type BlockCtx,
+} from "@/app/element/block-editor/registry";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -123,6 +131,10 @@ import {
 import { IconButton } from "./iconbutton";
 import { buildCopyContextText } from "./selection-copy-overlay";
 import "./markdown.scss";
+
+// Block-editor (方案 06): register built-in capabilities (M1 Turn-into ▸, later slash /
+// inline styles) into the L1.5 registry exactly once for this module instance.
+ensureBuiltinBlockEditorCommands();
 
 function isLiveScrollDebugEnabled(): boolean {
     return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingLiveScrollDebug") === "1";
@@ -2484,15 +2496,23 @@ const Markdown = ({
                 draft,
                 pos
             );
+            // 打字变换 (方案 02 §2.1): the committed FRONT half may be a typing pattern
+            // ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width variants). Rewrite it
+            // in the SAME commit so the block transforms on re-render; lineDelta keeps the
+            // follow-up editor anchored to the true new row when lines were added (e.g. the
+            // fence auto-close).
+            const typed = applyTypingPatternAtLine(newFull, session.startLine);
+            const finalText = typed?.text ?? newFull;
+            const targetLine = newLine + (typed?.lineDelta ?? 0);
             const revert = () => {
                 handleInlineEditCommit(text); // restore the document to what it was before the split
             };
-            handleInlineEditCommit(newFull);
+            handleInlineEditCommit(finalText);
             // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
             // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
             // before the split, or the next Save would persist the rollback and the typed line
             // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
-            focusEditedLine(newLine, revert, true, undefined, true);
+            focusEditedLine(targetLine, revert, true, undefined, true);
             return;
         }
 
@@ -2751,6 +2771,49 @@ const Markdown = ({
             // block so source numbering stays consistent with what renders.
             const isListItemBlock = el.tagName === "LI" || el.tagName === "OL" || el.tagName === "UL";
             const renumberOpts = isListItemBlock ? { renumberOrderedListFromLine: startLineRaw } : undefined;
+
+            // Block-editor M1 (方案 02 §2.2): "Turn into ▸" submenu from the block-action
+            // registry. The current kind is checked, code blocks disable the entire submenu,
+            // tables allow only row-level conversion back to text, and nested list items show
+            // same-family conversions only (方案 02 §2.4).
+            const anchorLineText = lines[startLineRaw - 1] ?? "";
+            const anchorBlockKind = detectBlockKind(lines, startLineRaw);
+            let turnIntoMenuItem: ContextMenuItem | null = null;
+            if (anchorBlockKind != null) {
+                const ctx: BlockCtx = {
+                    text,
+                    line: startLineRaw,
+                    endLine,
+                    kind: anchorBlockKind,
+                    nested: /^\s+(?:[-+*]|\d+[.)])\s/.test(anchorLineText),
+                };
+                const items: ContextMenuItem[] = listBlockActions().map((action) => {
+                    const checked = action.targetKind === anchorBlockKind;
+                    const enabled = !checked && isBlockActionEnabled(action, ctx);
+                    return {
+                        label: action.label,
+                        type: "checkbox" as const,
+                        checked,
+                        enabled,
+                        click: () => {
+                            const next = runBlockAction(action, ctx);
+                            if (next == null || next.text === text) {
+                                return;
+                            }
+                            handleInlineEditCommit(next.text, renumberOpts);
+                        },
+                    };
+                });
+                if (items.length > 0) {
+                    turnIntoMenuItem = {
+                        label: "Turn into",
+                        type: "submenu",
+                        submenu: items,
+                        enabled: anchorBlockKind !== "code",
+                    };
+                }
+            }
+
             const duplicateBlock = () => {
                 const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
                 handleInlineEditCommit(newFull, renumberOpts);
@@ -2765,6 +2828,7 @@ const Markdown = ({
                 { label: "复制", click: () => void copyBlock() },
                 { label: "Copy Context", click: () => void copyContext() },
                 { label: "复制为副本", click: duplicateBlock },
+                ...(turnIntoMenuItem != null ? ([{ type: "separator" }, turnIntoMenuItem] as ContextMenuItem[]) : []),
                 ...(numberingSubmenu != null
                     ? ([
                           { type: "separator" },
