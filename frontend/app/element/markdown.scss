@@ -886,3 +886,172 @@
 .markdown ul[data-loose="true"] > li {
     margin-block: 0.5em;
 }
+
+// --- Block editor (M2): slash palette + floating toolbar + textarea placeholder ------
+// Same flyout skin as the link tooltip: --overlay-bg-color panel, 4px radius, modal
+// shadow, accent hover on items. Both render to document.body via createPortal and use
+// fixed positioning, so their rules sit at the top level (not under .markdown).
+
+.inline-edit-overlay .inline-edit-textarea::placeholder {
+    color: color-mix(in srgb, var(--main-text-color, #999) 35%, transparent);
+}
+
+.markdown-slash-palette {
+    position: fixed;
+    z-index: 10010;
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+    border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+
+    &.placement-top {
+        transform: translateY(-100%);
+    }
+
+    .markdown-slash-empty {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+        user-select: none;
+    }
+
+    .markdown-slash-item {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        width: 100%;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+
+        &.is-active,
+        &:hover {
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+        }
+
+        .markdown-slash-item-label {
+            flex: 1 1 auto;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .markdown-slash-item-hint {
+            flex: 0 0 auto;
+            font-size: 11px;
+            opacity: 0.55;
+        }
+    }
+}
+
+.markdown-floating-toolbar {
+    position: fixed;
+    z-index: 10005;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+    border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    user-select: none;
+
+    .markdown-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 5px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 12px;
+        cursor: pointer;
+
+        &:hover {
+            background: color-mix(in srgb, var(--main-text-color, #888) 14%, transparent);
+        }
+
+        &.is-active {
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 26%, transparent);
+            color: var(--accent-color, #58c4ff);
+        }
+
+        .mono {
+            font-family: var(--mono-font, monospace);
+            font-size: 11px;
+        }
+    }
+
+    .markdown-toolbar-divider {
+        width: 1px;
+        height: 16px;
+        margin: 0 3px;
+        background: color-mix(in srgb, var(--main-text-color, #888) 20%, transparent);
+    }
+
+    .markdown-toolbar-blocktype {
+        position: relative;
+
+        .markdown-toolbar-blocktype-btn {
+            min-width: 0;
+            padding: 0 7px;
+            white-space: nowrap;
+        }
+
+        .markdown-toolbar-blocktype-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 150px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+            border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            padding: 4px;
+            z-index: 1;
+        }
+
+        .markdown-toolbar-blocktype-item {
+            display: block;
+            width: 100%;
+            padding: 5px 8px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--main-text-color, inherit);
+            font-size: 12px;
+            text-align: left;
+            white-space: nowrap;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+
+            &.is-active {
+                color: var(--accent-color, #58c4ff);
+            }
+        }
+    }
+}

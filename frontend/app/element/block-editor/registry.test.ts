@@ -4,13 +4,18 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { builtinTurnIntoActions, TURN_INTO_DEFS } from "./commands/turn-into";
 import {
+    filterSlashCommands,
     isBlockActionEnabled,
     listBlockActions,
+    listSlashCommands,
     registerBlockAction,
+    registerSlashCommand,
     resetBlockActionsForTests,
+    resetRegistriesForTests,
     runBlockAction,
     type BlockActionSpec,
     type BlockCtx,
+    type SlashCommandSpec,
 } from "./registry";
 
 const ctxFor = (over: Partial<BlockCtx>): BlockCtx => ({
@@ -60,5 +65,52 @@ describe("turn-into availability matrix (方案 02 §2.4)", () => {
     test("nested list item: only list-family kinds", () => {
         const ids = enabledIds(ctxFor({ kind: "bulleted", nested: true, text: "  - a" }));
         expect(ids.sort()).toEqual(["turn-into-bulleted", "turn-into-numbered", "turn-into-todo"]);
+    });
+});
+
+describe("slash command registry (M2)", () => {
+    afterEach(() => resetRegistriesForTests());
+
+    test("register, list with when-filtering, dispose", () => {
+        const cmd: SlashCommandSpec = {
+            id: "demo",
+            label: "Demo",
+            group: "text",
+            when: (ctx) => ctx.kind === "text",
+            run: (ctx) => ({ text: ctx.text }),
+        };
+        const dispose = registerSlashCommand(cmd);
+        expect(listSlashCommands(ctxFor({})).map((c) => c.id)).toEqual(["demo"]);
+        expect(listSlashCommands(ctxFor({ kind: "code" }))).toEqual([]);
+        dispose();
+        expect(listSlashCommands(ctxFor({}))).toEqual([]);
+    });
+
+    test("filterSlashCommands: prefix beats substring, stable order, case-insensitive", () => {
+        const cmds: SlashCommandSpec[] = [
+            { id: "code-block", label: "Code Block", group: "text", run: () => null },
+            { id: "callout-note", label: "Callout: Note", keywords: ["co"], group: "text", run: () => null },
+            { id: "table", label: "Table", keywords: ["code blocks? no"], group: "text", run: () => null },
+        ];
+        const got = filterSlashCommands(cmds, "co").map((c) => c.id);
+        expect(got[0]).toBe("code-block"); // label prefix
+        expect(got).toContain("callout-note"); // keyword prefix
+        expect(got).toContain("table"); // keyword substring
+    });
+
+    test("filterSlashCommands matches Chinese keywords verbatim", () => {
+        const cmds: SlashCommandSpec[] = [
+            { id: "quote", label: "Quote", keywords: ["引用", "yinyong"], group: "text", run: () => null },
+        ];
+        expect(filterSlashCommands(cmds, "引用").map((c) => c.id)).toEqual(["quote"]);
+    });
+
+    test("empty query returns everything, untrimmed query still filters", () => {
+        const cmds: SlashCommandSpec[] = [
+            { id: "a", label: "Alpha", group: "text", run: () => null },
+            { id: "b", label: "Beta", group: "text", run: () => null },
+        ];
+        expect(filterSlashCommands(cmds, "")).toHaveLength(2);
+        expect(filterSlashCommands(cmds, "  alp ").map((c) => c.id)).toEqual(["a"]);
     });
 });

@@ -42,6 +42,7 @@ import {
     isSelectingRange,
     makeInlineEditKeydown,
     deleteBlockRange,
+    placeholderForBlockKind,
     replaceSourceRange,
     spliceInsertBlock,
     splitBlockAtCaretText,
@@ -66,14 +67,27 @@ import {
     type LinkEditRequest,
 } from "@/app/element/markdown-link-edit";
 import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
-import { applyTypingPatternAtLine, detectBlockKind } from "@/app/element/markdown-transform/block-type";
+import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
+import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
+import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
 import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
 import {
+    execSlashCommand,
+    lineStartOffset,
+    transformSessionBlock,
+} from "@/app/element/block-editor/exec";
+import {
+    filterSlashCommands,
     isBlockActionEnabled,
     listBlockActions,
+    listInlineStyles,
+    listSlashCommands,
     runBlockAction,
     type BlockCtx,
+    type SlashCommandSpec,
 } from "@/app/element/block-editor/registry";
+import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
+import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -2384,7 +2398,7 @@ const Markdown = ({
     // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
     // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p") => {
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p", caretOffset?: number) => {
             let attempts = 0;
             // Safety net for exhausted retries: the caller committed an insert/split but we
             // could never open its follow-up editor (re-render landed too late, viewport gone,
@@ -2433,7 +2447,7 @@ const Markdown = ({
                     blockKind,
                     newLine,
                     el,
-                    prefill != null ? prefill.length : 0,
+                    caretOffset ?? (prefill != null ? prefill.length : 0),
                     revert,
                     placeholder,
                     keepOnEmpty
@@ -3236,6 +3250,312 @@ const Markdown = ({
             }),
         [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp]
     );
+
+    // === Block editor M2: slash palette + floating toolbar + inline-style shortcuts ===
+    // Detection is trigger-layer based (全/半角等价); every command executes through
+    // block-editor/exec.ts so ONE gesture = ONE handleInlineEditCommit diff.
+    const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
+    const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
+
+    // Any session teardown closes the transient block-editor UI with it.
+    useEffect(() => {
+        if (editSessionKind == null) {
+            setSlashState(null);
+            setInlineSelection(null);
+        }
+    }, [editSessionKind]);
+
+    const trackSlashTrigger = useCallback(
+        (draft: string, caret: number) => {
+            // / never triggers inside code or table cells (方案 02 §2.4).
+            if (editSessionKind === "code" || editSessionKind === "table") {
+                setSlashState(null);
+                return;
+            }
+            const trig = detectInlineTrigger(draft, caret);
+            if (trig != null && trig.command === "slash") {
+                setSlashState((prev) =>
+                    prev != null && prev.triggerStart === trig.triggerStart
+                        ? { ...prev, query: trig.query }
+                        : { query: trig.query, triggerStart: trig.triggerStart, activeIndex: 0 }
+                );
+            } else {
+                setSlashState(null);
+            }
+        },
+        [editSessionKind]
+    );
+
+    const slashCtx = useMemo<BlockCtx | null>(() => {
+        const session = inlineEdit.editSession;
+        if (slashState == null || session == null) {
+            return null;
+        }
+        const lines = text.split(/\r\n|\n/);
+        return {
+            text,
+            line: session.startLine,
+            endLine: session.endLine,
+            kind: detectBlockKind(lines, session.startLine) ?? "text",
+        };
+    }, [slashState, inlineEdit.editSession, text]);
+
+    const slashItems = useMemo(() => {
+        if (slashCtx == null || slashState == null) {
+            return [];
+        }
+        return filterSlashCommands(listSlashCommands(slashCtx), slashState.query);
+    }, [slashCtx, slashState]);
+
+    // Palette anchors on the trigger line inside the overlay textarea: approximate the row
+    // offset via the session typography (line-height from the rendered block snapshot).
+    const slashAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (slashState == null || rect == null) {
+            return null;
+        }
+        const typo = inlineEdit.editSession?.typography;
+        const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
+        const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
+        const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+        const triggerRow = inlineEdit.draftText.slice(0, slashState.triggerStart).split("\n").length - 1;
+        const approxHeight = Math.min(340, slashItems.length * 30 + 12);
+        let top = rect.top + (triggerRow + 1) * lineHeight + 4;
+        let placement: "top" | "bottom" = "bottom";
+        if (top + approxHeight > window.innerHeight && rect.top > approxHeight) {
+            top = rect.top + triggerRow * lineHeight - 4;
+            placement = "top";
+        }
+        return { anchor: { top, left: rect.left + 16 }, placement };
+    }, [slashState, inlineEdit.overlayRect, inlineEdit.draftText, inlineEdit.editSession, slashItems.length]);
+
+    const blockKindForFocus = useCallback((kind: BlockKind): InlineEditBlockKind => {
+        if (kind.startsWith("heading")) {
+            return "h";
+        }
+        if (kind === "code") {
+            return "code";
+        }
+        if (kind === "bulleted" || kind === "numbered" || kind === "todo") {
+            return "list";
+        }
+        if (kind === "table") {
+            return "table";
+        }
+        return "p";
+    }, []);
+
+    // Re-open the inline editor on a block after a command committed its transform, caret
+    // landing where the command asked (absolute offset → relative to the block line).
+    const refocusCommittedBlock = useCallback(
+        (nextText: string, focusLine: number, caret?: number) => {
+            const lines = nextText.split(/\r\n|\n/);
+            const kind = detectBlockKind(lines, focusLine);
+            if (kind == null) {
+                return;
+            }
+            const relCaret = caret != null ? Math.max(0, caret - lineStartOffset(nextText, focusLine)) : undefined;
+            focusEditedLine(focusLine, undefined, false, undefined, undefined, blockKindForFocus(kind), relCaret);
+        },
+        [focusEditedLine, blockKindForFocus]
+    );
+
+    const handleSlashPick = useCallback(
+        (cmd: SlashCommandSpec) => {
+            const session = inlineEdit.editSession;
+            if (session == null || slashState == null) {
+                return;
+            }
+            const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
+            const result = execSlashCommand(
+                text,
+                { session, draftText: inlineEdit.draftText, triggerStart: slashState.triggerStart, caret },
+                cmd
+            );
+            setSlashState(null);
+            if (result == null) {
+                return;
+            }
+            handleInlineEditCommit(
+                result.text,
+                session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+            );
+            inlineEdit.dismiss();
+            if (result.focusLine != null) {
+                refocusCommittedBlock(result.text, result.focusLine, result.caret);
+            }
+        },
+        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock]
+    );
+
+    const handleSessionBlockTransform = useCallback(
+        (to: BlockKind) => {
+            const session = inlineEdit.editSession;
+            if (session == null) {
+                return;
+            }
+            const result = transformSessionBlock(text, session, inlineEdit.draftText, to);
+            if (result == null) {
+                return;
+            }
+            handleInlineEditCommit(
+                result.text,
+                session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+            );
+            inlineEdit.dismiss();
+            if (result.focusLine != null) {
+                refocusCommittedBlock(result.text, result.focusLine, result.caret);
+            }
+        },
+        [inlineEdit, text, handleInlineEditCommit, refocusCommittedBlock]
+    );
+
+    const handleInlineStyle = useCallback(
+        (style: InlineStyleId) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (ta == null || inlineEdit.editSession == null) {
+                return;
+            }
+            const next = applyInlineStyle(inlineEdit.draftText, ta.selectionStart, ta.selectionEnd, style);
+            if (next == null) {
+                return;
+            }
+            inlineEdit.setDraftText(next.text);
+            setInlineSelection({ start: next.start, end: next.end });
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                    el.setSelectionRange(next.start, next.end);
+                }
+            });
+        },
+        [inlineEdit]
+    );
+
+    const handleEditorKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            // Palette navigation swallows the keys before the edit keymap sees them.
+            if (slashState != null && slashItems.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashState((s) =>
+                        s == null
+                            ? s
+                            : {
+                                  ...s,
+                                  activeIndex:
+                                      (s.activeIndex + (e.key === "ArrowDown" ? 1 : -1) + slashItems.length) %
+                                      slashItems.length,
+                              }
+                    );
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    const item = slashItems[slashState.activeIndex] ?? slashItems[0];
+                    if (item != null) {
+                        handleSlashPick(item);
+                    }
+                    return;
+                }
+            }
+            if (slashState != null && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setSlashState(null);
+                return;
+            }
+            const isMod = e.metaKey || e.ctrlKey;
+            if (isMod && !e.altKey) {
+                const sessKind = inlineEdit.editSession?.blockKind;
+                const key = e.key.toLowerCase();
+                // Inline styles (not inside code sessions — a code fork isn't prose).
+                if (sessKind !== "code") {
+                    if (!e.shiftKey && (key === "b" || key === "i" || key === "k")) {
+                        e.preventDefault();
+                        handleInlineStyle(key === "b" ? "bold" : key === "i" ? "italic" : "link");
+                        return;
+                    }
+                    if (e.shiftKey && key === "x") {
+                        e.preventDefault();
+                        handleInlineStyle("strike");
+                        return;
+                    }
+                    if (!e.shiftKey && e.key === "`") {
+                        e.preventDefault();
+                        handleInlineStyle("code");
+                        return;
+                    }
+                }
+                // Block-type transforms: ⌘0 text, ⌘1..6 headings, ⌘⇧7/8/9 numbered/bulleted/todo.
+                if (sessKind != null && sessKind !== "code" && sessKind !== "table") {
+                    const digitMap: Record<string, BlockKind> =
+                        e.shiftKey
+                            ? { Digit7: "numbered", Digit8: "bulleted", Digit9: "todo" }
+                            : {
+                                  Digit0: "text",
+                                  Digit1: "heading1",
+                                  Digit2: "heading2",
+                                  Digit3: "heading3",
+                                  Digit4: "heading4",
+                                  Digit5: "heading5",
+                                  Digit6: "heading6",
+                              };
+                    const to = digitMap[e.code];
+                    if (to != null) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSessionBlockTransform(to);
+                        return;
+                    }
+                }
+            }
+            inlineEditKeyDown(e);
+        },
+        [slashState, slashItems, handleSlashPick, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
+    );
+
+    const toolbarAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (rect == null) {
+            return null;
+        }
+        let top = rect.top - 38;
+        if (top < 8) {
+            top = rect.top + rect.height + 6;
+        }
+        const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
+        return { top, left };
+    }, [inlineEdit.overlayRect]);
+
+    const toolbarBlockItems = useMemo(() => {
+        const session = inlineEdit.editSession;
+        if (session == null) {
+            return [];
+        }
+        const lines = text.split(/\r\n|\n/);
+        const kind = detectBlockKind(lines, session.startLine);
+        const ctx: BlockCtx = {
+            text,
+            line: session.startLine,
+            endLine: session.endLine,
+            kind: kind ?? "text",
+            nested: /^\s+(?:[-+*]|\d+[.)])\s/.test(lines[session.startLine - 1] ?? ""),
+        };
+        return listBlockActions().map((a) => ({
+            id: a.id,
+            label: a.label,
+            active: a.targetKind === ctx.kind,
+            enabled: a.targetKind !== ctx.kind && isBlockActionEnabled(a, ctx),
+        }));
+    }, [inlineEdit.editSession, text]);
+
+    const currentBlockLabel = useMemo(() => {
+        const active = toolbarBlockItems.find((i) => i.active);
+        return active?.label ?? "Text";
+    }, [toolbarBlockItems]);
 
     const normalizedScrollTargetText = useMemo(
         () => normalizeScrollTargetText(scrollTargetText ?? ""),
@@ -4143,12 +4463,58 @@ const Markdown = ({
                             typography={inlineEdit.editSession?.typography}
                             draftText={inlineEdit.draftText}
                             textareaRef={inlineEdit.textareaRef}
-                            onTextChange={inlineEdit.setDraftText}
-                            onKeyDown={inlineEditKeyDown}
+                            onTextChange={(v, caret) => {
+                                inlineEdit.setDraftText(v);
+                                trackSlashTrigger(v, caret);
+                            }}
+                            onKeyDown={handleEditorKeyDown}
                             onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
+                            placeholder={placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
+                            onCaretChange={(caret, selEnd) => {
+                                trackSlashTrigger(inlineEdit.draftText, caret);
+                                setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
+                            }}
                         />
                     )}
+                    {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (
+                        <SlashPalette
+                            anchor={slashAnchor.anchor}
+                            placement={slashAnchor.placement}
+                            items={slashItems}
+                            activeIndex={Math.min(slashState.activeIndex, Math.max(0, slashItems.length - 1))}
+                            onHover={(i) => setSlashState((s) => (s == null ? s : { ...s, activeIndex: i }))}
+                            onPick={handleSlashPick}
+                        />
+                    )}
+                    {inlineSelection != null &&
+                        inlineEdit.editSession != null &&
+                        inlineEdit.editSession.blockKind !== "code" &&
+                        toolbarAnchor != null && (
+                            <FloatingToolbar
+                                anchor={toolbarAnchor}
+                                blockLabel={currentBlockLabel}
+                                blockItems={toolbarBlockItems}
+                                styles={listInlineStyles().map((s) => ({
+                                    id: s.id as InlineStyleId,
+                                    label: s.label,
+                                    hint: s.hint,
+                                    active: hasInlineStyle(
+                                        inlineEdit.draftText,
+                                        inlineSelection.start,
+                                        inlineSelection.end,
+                                        s.id as InlineStyleId
+                                    ),
+                                }))}
+                                onBlockType={(id) => {
+                                    const action = listBlockActions().find((a) => a.id === id);
+                                    if (action?.targetKind != null) {
+                                        handleSessionBlockTransform(action.targetKind);
+                                    }
+                                }}
+                                onStyle={handleInlineStyle}
+                            />
+                        )}
                     {onInlineEditCommit && selectedBlock != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <div

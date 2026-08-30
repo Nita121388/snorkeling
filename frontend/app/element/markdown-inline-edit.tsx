@@ -249,6 +249,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     beginInsertEdit: (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => void;
     commit: () => void;
     cancel: () => void;
+    /** Close the session WITHOUT committing or reverting: used by slash / toolbar command
+     *  paths that already composed and committed their final text themselves. */
+    dismiss: () => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     overlayRect: { top: number; left: number; width: number; height: number } | null;
 } {
@@ -669,6 +672,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         setDraftText("");
     }, [editSession]);
 
+    // Silent close: no commit, no insertRevert. Command flows (slash palette, toolbar
+    // block switch) compute their final text themselves and commit once — afterwards the
+    // session must simply go away.
+    const dismiss = useCallback(() => {
+        inlineEditDebug("dismiss", { kind: editSession?.blockKind, startLine: editSession?.startLine });
+        setEditSession(null);
+        setDraftText("");
+    }, [editSession]);
+
     return {
         editSession,
         draftText,
@@ -677,6 +689,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         beginInsertEdit,
         commit,
         cancel,
+        dismiss,
         textareaRef,
         overlayRect,
     };
@@ -688,10 +701,14 @@ type InlineEditOverlayProps = {
     typography?: React.CSSProperties;
     draftText: string;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    onTextChange: (v: string) => void;
+    onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
     onBlur: () => void;
+    /** Block-appropriate placeholder (方案 03 §2) — shown only while the draft is empty. */
+    placeholder?: string;
+    /** Caret activity (click/keyup/select) — drives slash-palette / toolbar tracking. */
+    onCaretChange?: (caret: number, selEnd: number) => void;
 };
 
 export function InlineEditOverlay({
@@ -704,6 +721,8 @@ export function InlineEditOverlay({
     onKeyDown,
     onPaste,
     onBlur,
+    placeholder,
+    onCaretChange,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -739,10 +758,23 @@ export function InlineEditOverlay({
                 style={typography}
                 value={draftText}
                 rows={1}
-                onChange={(e) => onTextChange(e.target.value)}
+                placeholder={placeholder}
+                onChange={(e) => onTextChange(e.target.value, e.target.selectionStart)}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
                 onBlur={onBlur}
+                onSelect={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
+                onKeyUp={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
+                onClick={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
@@ -1140,4 +1172,25 @@ export function deleteBlockRange(fullText: string, startLine: number, endLine: n
         merged.pop();
     }
     return merged.join("\n");
+}
+
+/**
+ * Placeholder text for the inline-edit textarea (方案 03 §2). English-only per project
+ * rule; keyed on the SESSION's block kind. Rendered natively by the textarea (shows only
+ * while the draft is empty).
+ */
+export function placeholderForBlockKind(kind: InlineEditBlockKind | null | undefined): string {
+    switch (kind) {
+        case "p":
+        case "blank":
+            return "Type '/' for commands";
+        case "list":
+            return "List item";
+        case "h":
+            return "Heading";
+        case "code":
+            return "Code";
+        default:
+            return "";
+    }
 }

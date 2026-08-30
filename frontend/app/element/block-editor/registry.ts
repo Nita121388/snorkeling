@@ -84,3 +84,119 @@ export function runBlockAction(action: BlockActionSpec, ctx: BlockCtx): { text: 
 export function resetBlockActionsForTests(): void {
     blockActions.length = 0;
 }
+
+// ---------------------------------------------------------------------------
+// Slash commands (M2 — 方案 02 §2.3)
+// ---------------------------------------------------------------------------
+
+export type SlashGroup = "text" | "structure" | "insert" | "custom";
+
+export interface SlashCommandSpec {
+    id: string;
+    label: string;
+    /** Grey hint shown right-aligned (e.g. a shortcut or "#"). */
+    hint?: string;
+    /** Lucide-ish icon name resolved by the palette component. */
+    icon?: string;
+    /** Extra search terms (pinyin, English aliases, …). */
+    keywords?: string[];
+    group: SlashGroup;
+    /** Availability filter — same semantics as block actions (false ⇒ greyed/hidden). */
+    when?: (ctx: BlockCtx) => boolean;
+    /**
+     * Produce the post-command document. `ctx` describes the block the slash trigger
+     * sits in, with the trigger query ALREADY stripped (see exec.ts). Return value:
+     * next full text + optional caret offset + optional line to refocus editing on.
+     */
+    run: (ctx: BlockCtx) => { text: string; caret?: number; focusLine?: number } | null;
+}
+
+const slashCommands: SlashCommandSpec[] = [];
+
+export function registerSlashCommand(spec: SlashCommandSpec): () => void {
+    slashCommands.push(spec);
+    return () => {
+        const i = slashCommands.indexOf(spec);
+        if (i >= 0) {
+            slashCommands.splice(i, 1);
+        }
+    };
+}
+
+export function listSlashCommands(ctx: BlockCtx): SlashCommandSpec[] {
+    return slashCommands.filter((c) => c.when == null || c.when(ctx));
+}
+
+/**
+ * Query-filter slash commands: prefix > substring across label + keywords (both query
+ * and keywords are matched case-insensitively; Chinese / pinyin keywords ride the same
+ * comparison since they're plain strings). Ordering inside the filtered set is stable.
+ */
+export function filterSlashCommands(cmds: SlashCommandSpec[], query: string): SlashCommandSpec[] {
+    const q = query.trim().toLowerCase();
+    if (q === "") {
+        return cmds;
+    }
+    const score = (c: SlashCommandSpec): number | null => {
+        const hay = [c.label, c.id, ...(c.keywords ?? [])].map((s) => s.toLowerCase());
+        for (const h of hay) {
+            if (h.startsWith(q)) {
+                return 0; // prefix beats substring
+            }
+        }
+        for (const h of hay) {
+            if (h.includes(q)) {
+                return 1;
+            }
+        }
+        return null;
+    };
+    const scored: Array<{ c: SlashCommandSpec; s: number; i: number }> = [];
+    cmds.forEach((c, i) => {
+        const s = score(c);
+        if (s != null) {
+            scored.push({ c, s, i });
+        }
+    });
+    return scored.sort((a, b) => a.s - b.s || a.i - b.i).map((x) => x.c);
+}
+
+// ---------------------------------------------------------------------------
+// Inline styles (M2 — 方案 03 §1): data-driven toolbar + shared shortcuts.
+// ---------------------------------------------------------------------------
+
+export interface InlineStyleSpec {
+    id: string;
+    label: string;
+    /** Display hint, e.g. "⌘B". */
+    hint?: string;
+}
+
+export interface SlashCommandRunResult {
+    text: string;
+    caret?: number;
+    focusLine?: number;
+}
+
+const inlineStyles: InlineStyleSpec[] = [];
+
+export function registerInlineStyle(spec: InlineStyleSpec): () => void {
+    inlineStyles.push(spec);
+    return () => {
+        const i = inlineStyles.indexOf(spec);
+        if (i >= 0) {
+            inlineStyles.splice(i, 1);
+        }
+    };
+}
+
+export function listInlineStyles(): InlineStyleSpec[] {
+    return inlineStyles.slice();
+}
+
+/** Test helper: drop ALL registries (block actions + slash + inline styles). */
+export function resetRegistriesForTests(): void {
+    resetBlockActionsForTests();
+    slashCommands.length = 0;
+    inlineStyles.length = 0;
+}
