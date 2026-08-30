@@ -70,6 +70,15 @@ import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
 import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
 import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
+import {
+    buildEmojiPickerItems,
+    emojiPickerEntries,
+    getLoadedEmojiCatalog,
+    loadEmojiCatalog,
+    recordRecentEmoji,
+    type EmojiCatalog,
+    type EmojiEntry,
+} from "@/app/element/markdown-transform/emoji";
 import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
 import {
     execSlashCommand,
@@ -88,6 +97,7 @@ import {
 } from "@/app/element/block-editor/registry";
 import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
 import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
+import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -3252,9 +3262,12 @@ const Markdown = ({
     );
 
     // === Block editor M2: slash palette + floating toolbar + inline-style shortcuts ===
+    // === Block editor M3: emoji picker (":" trigger, lazy emojibase catalog) ==========
     // Detection is trigger-layer based (全/半角等价); every command executes through
     // block-editor/exec.ts so ONE gesture = ONE handleInlineEditCommit diff.
     const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [emojiCatalog, setEmojiCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
@@ -3262,15 +3275,17 @@ const Markdown = ({
     useEffect(() => {
         if (editSessionKind == null) {
             setSlashState(null);
+            setEmojiState(null);
             setInlineSelection(null);
         }
     }, [editSessionKind]);
 
-    const trackSlashTrigger = useCallback(
+    const trackEditorTriggers = useCallback(
         (draft: string, caret: number) => {
-            // / never triggers inside code or table cells (方案 02 §2.4).
+            // Neither ":" nor "/" triggers inside code or table cells (方案 02 §2.4 / 05 §0).
             if (editSessionKind === "code" || editSessionKind === "table") {
                 setSlashState(null);
+                setEmojiState(null);
                 return;
             }
             const trig = detectInlineTrigger(draft, caret);
@@ -3280,9 +3295,24 @@ const Markdown = ({
                         ? { ...prev, query: trig.query }
                         : { query: trig.query, triggerStart: trig.triggerStart, activeIndex: 0 }
                 );
-            } else {
-                setSlashState(null);
+                setEmojiState(null);
+                return;
             }
+            if (trig != null && trig.command === "emoji") {
+                // Lazy-load the ~500KB catalog exactly once per app run, on FIRST trigger.
+                if (getLoadedEmojiCatalog() == null) {
+                    void loadEmojiCatalog().then(setEmojiCatalog);
+                }
+                setEmojiState((prev) =>
+                    prev != null && prev.triggerStart === trig.triggerStart
+                        ? { ...prev, query: trig.query }
+                        : { query: trig.query, triggerStart: trig.triggerStart, activeIndex: 0 }
+                );
+                setSlashState(null);
+                return;
+            }
+            setSlashState(null);
+            setEmojiState(null);
         },
         [editSessionKind]
     );
@@ -3434,6 +3464,63 @@ const Markdown = ({
         [inlineEdit]
     );
 
+    // === Emoji picker (M3): ":" trigger in the same textarea. Shares the slash
+    // positioning math; Enter/Arrows/Esc handled in handleEditorKeyDown. ==============
+    const emojiItems = useMemo(() => {
+        if (emojiState == null || emojiCatalog == null) {
+            return [];
+        }
+        return buildEmojiPickerItems(emojiCatalog, emojiState.query, []);
+    }, [emojiState, emojiCatalog]);
+
+    const emojiPickables = useMemo(() => emojiPickerEntries(emojiItems), [emojiItems]);
+
+    const emojiAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (emojiState == null || rect == null) {
+            return null;
+        }
+        const typo = inlineEdit.editSession?.typography;
+        const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
+        const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
+        const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+        const triggerRow = inlineEdit.draftText.slice(0, emojiState.triggerStart).split("\n").length - 1;
+        const approxHeight = 300;
+        let top = rect.top + (triggerRow + 1) * lineHeight + 4;
+        let placement: "top" | "bottom" = "bottom";
+        if (top + approxHeight > window.innerHeight && rect.top > approxHeight) {
+            top = rect.top + triggerRow * lineHeight - 4;
+            placement = "top";
+        }
+        return { anchor: { top, left: rect.left + 16 }, placement };
+    }, [emojiState, inlineEdit.overlayRect, inlineEdit.draftText, inlineEdit.editSession]);
+
+    const handleEmojiPick = useCallback(
+        (entry: EmojiEntry) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (emojiState == null) {
+                return;
+            }
+            // Replace ":query" (trigger char .. caret) with the emoji, caret after it.
+            const draft = inlineEdit.draftText;
+            const caret = ta?.selectionStart ?? emojiState.triggerStart + 1 + emojiState.query.length;
+            const next = draft.slice(0, emojiState.triggerStart) + entry.char + draft.slice(caret);
+            const nextCaret = emojiState.triggerStart + entry.char.length;
+            inlineEdit.setDraftText(next);
+            recordRecentEmoji(entry.char);
+            setEmojiState(null);
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                    el.setSelectionRange(nextCaret, nextCaret);
+                }
+            });
+        },
+        [emojiState, inlineEdit]
+    );
+
+
     const handleEditorKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
             // Palette navigation swallows the keys before the edit keymap sees them.
@@ -3465,6 +3552,37 @@ const Markdown = ({
                 e.preventDefault();
                 e.stopPropagation();
                 setSlashState(null);
+                return;
+            }
+            // Emoji picker nav — same shape as the slash palette.
+            if (emojiState != null && emojiPickables.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setEmojiState((s) =>
+                        s == null
+                            ? s
+                            : {
+                                  ...s,
+                                  activeIndex:
+                                      (s.activeIndex + (e.key === "ArrowDown" ? 1 : -1) + emojiPickables.length) %
+                                      emojiPickables.length,
+                              }
+                    );
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    const entry = emojiPickables[Math.min(emojiState.activeIndex, emojiPickables.length - 1)];
+                    if (entry != null) {
+                        handleEmojiPick(entry);
+                    }
+                    return;
+                }
+            }
+            if (emojiState != null && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setEmojiState(null);
                 return;
             }
             const isMod = e.metaKey || e.ctrlKey;
@@ -3514,7 +3632,7 @@ const Markdown = ({
             }
             inlineEditKeyDown(e);
         },
-        [slashState, slashItems, handleSlashPick, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
+        [slashState, slashItems, handleSlashPick, emojiState, emojiPickables, handleEmojiPick, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
     );
 
     const toolbarAnchor = useMemo(() => {
@@ -3529,6 +3647,7 @@ const Markdown = ({
         const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
         return { top, left };
     }, [inlineEdit.overlayRect]);
+
 
     const toolbarBlockItems = useMemo(() => {
         const session = inlineEdit.editSession;
@@ -4465,14 +4584,14 @@ const Markdown = ({
                             textareaRef={inlineEdit.textareaRef}
                             onTextChange={(v, caret) => {
                                 inlineEdit.setDraftText(v);
-                                trackSlashTrigger(v, caret);
+                                trackEditorTriggers(v, caret);
                             }}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
                             placeholder={placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
                             onCaretChange={(caret, selEnd) => {
-                                trackSlashTrigger(inlineEdit.draftText, caret);
+                                trackEditorTriggers(inlineEdit.draftText, caret);
                                 setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
                             }}
                         />
@@ -4485,6 +4604,19 @@ const Markdown = ({
                             activeIndex={Math.min(slashState.activeIndex, Math.max(0, slashItems.length - 1))}
                             onHover={(i) => setSlashState((s) => (s == null ? s : { ...s, activeIndex: i }))}
                             onPick={handleSlashPick}
+                        />
+                    )}
+                    {emojiState != null && emojiAnchor != null && emojiCatalog != null && inlineEdit.editSession != null && (
+                        <EmojiPicker
+                            anchor={emojiAnchor.anchor}
+                            placement={emojiAnchor.placement}
+                            mode="inline"
+                            catalog={emojiCatalog}
+                            query={emojiState.query}
+                            activeIndex={Math.min(emojiState.activeIndex, Math.max(0, emojiPickables.length - 1))}
+                            onActiveChange={(i) => setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))}
+                            onPick={handleEmojiPick}
+                            onClose={() => setEmojiState(null)}
                         />
                     )}
                     {inlineSelection != null &&
