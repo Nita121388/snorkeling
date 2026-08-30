@@ -1153,3 +1153,63 @@
         color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
     }
 }
+
+// M4: code-block language badge + table polish (方案 04 §1-2)
+.codeblock {
+    .codeblock-lang-badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 6px;
+        border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+        border-radius: 4px;
+        background: transparent;
+        color: color-mix(in srgb, var(--main-text-color, #888) 72%, transparent);
+        font-size: 10px;
+        font-family: var(--mono-font, monospace);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+
+        &:hover {
+            color: var(--accent-color, #58c4ff);
+            border-color: var(--accent-color, #58c4ff);
+        }
+
+        &.is-static {
+            cursor: default;
+        }
+    }
+
+    .codeblock-lang-input {
+        width: 84px;
+        height: 20px;
+        padding: 0 6px;
+        border: 1px solid var(--accent-color, #58c4ff);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 11px;
+        font-family: var(--mono-font, monospace);
+        outline: none;
+    }
+}
+
+// Table typography: fixed layout + word-break keep edited cells from blowing the column
+// layout wide open mid-type (方案 04 §1 render enhancement).
+.markdown table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.markdown th,
+.markdown td {
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+// Table toolbar inherits .markdown-floating-toolbar's skin; small label tweak only.
+.markdown-table-toolbar .markdown-toolbar-btn {
+    font-size: 11px;
+    padding: 0 6px;
+}

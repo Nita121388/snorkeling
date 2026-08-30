@@ -70,6 +70,16 @@ import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
 import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
 import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
+import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
+import {
+    caretToTableCoord,
+    deleteTableColumn,
+    deleteTableRow,
+    getColumnAlign,
+    insertTableColumn,
+    insertTableRow,
+    setColumnAlign,
+} from "@/app/element/markdown-transform/table";
 import {
     buildEmojiPickerItems,
     emojiPickerEntries,
@@ -98,6 +108,7 @@ import {
 import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
 import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
+import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -999,9 +1010,15 @@ type CodeBlockProps = {
     onClickExecute?: (cmd: string) => void;
     sourceLine?: number;
     sourceLineEnd?: number;
+    /** Detected fence language (from the <code> child's className); null when unset. */
+    language?: string | null;
+    /** When provided the language badge becomes an editable affordance (方案 04 §2). */
+    onApplyLanguage?: (lang: string | null) => void;
 };
 
-const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: CodeBlockProps) => {
+const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, language, onApplyLanguage }: CodeBlockProps) => {
+    const [editingLang, setEditingLang] = useState(false);
+    const [langDraft, setLangDraft] = useState("");
     const getTextContent = (children: any): string => {
         if (typeof children === "string") {
             return children;
@@ -1032,6 +1049,44 @@ const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: Code
         <pre className="codeblock" {...sourceLineAttrs(sourceLine, sourceLineEnd)}>
             {children}
             <div className="codeblock-actions">
+                {/* Language badge (方案 04 §2): click → inline input → Enter applies via a
+                    one-line fence rewrite (setCodeBlockLanguage), Esc/blur cancels. */}
+                {editingLang ? (
+                    <input
+                        className="codeblock-lang-input"
+                        autoFocus
+                        value={langDraft}
+                        placeholder="language"
+                        onChange={(e) => setLangDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                e.preventDefault();
+                                onApplyLanguage?.(langDraft.trim() || null);
+                                setEditingLang(false);
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditingLang(false);
+                            }
+                        }}
+                        onBlur={() => setEditingLang(false)}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                ) : onApplyLanguage != null ? (
+                    <button
+                        type="button"
+                        className="codeblock-lang-badge"
+                        title="Set language"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setLangDraft(language ?? "");
+                            setEditingLang(true);
+                        }}
+                    >
+                        {language ?? "text"}
+                    </button>
+                ) : (
+                    language != null && <span className="codeblock-lang-badge is-static">{language}</span>
+                )}
                 <CopyButton onClick={handleCopy} title="Copy" />
                 {onClickExecute && (
                     <IconButton
@@ -3520,6 +3575,61 @@ const Markdown = ({
         [emojiState, inlineEdit]
     );
 
+    // === Block editor M4: table toolbar (方案 04 §1). Caret→(row,col) mapping drives
+    // which row/column the ops touch; ops rewrite the DRAFT and commit on blur like any
+    // other table edit (single commit channel, undo-friendly).
+    const [tableCaret, setTableCaret] = useState<{ row: number; col: number } | null>(null);
+    useEffect(() => {
+        if (editSessionKind !== "table") {
+            setTableCaret(null);
+        }
+    }, [editSessionKind]);
+
+    const handleTableOp = useCallback(
+        (op: TableOp) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (ta == null || tableCaret == null) {
+                return;
+            }
+            const draft = inlineEdit.draftText;
+            const rowLine = tableCaret.row + 1;
+            let next: string | null = null;
+            switch (op.type) {
+                case "insert-row":
+                    next = insertTableRow(draft, rowLine);
+                    break;
+                case "delete-row":
+                    next = deleteTableRow(draft, rowLine);
+                    break;
+                case "insert-col":
+                    next = insertTableColumn(draft, rowLine, tableCaret.col, op.side);
+                    break;
+                case "delete-col":
+                    next = deleteTableColumn(draft, rowLine, tableCaret.col);
+                    break;
+                case "align":
+                    next = setColumnAlign(draft, rowLine, tableCaret.col, op.align);
+                    break;
+            }
+            if (next == null || next === draft) {
+                return;
+            }
+            inlineEdit.setDraftText(next);
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                }
+            });
+        },
+        [inlineEdit, tableCaret]
+    );
+
+    const tableCaretAlign =
+        tableCaret != null && editSessionKind === "table"
+            ? getColumnAlign(inlineEdit.draftText, tableCaret.row + 1, tableCaret.col)
+            : null;
+
 
     const handleEditorKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -4310,14 +4420,30 @@ const Markdown = ({
                 <MarkdownSource props={props} resolveOpts={resolveOpts} />
             ),
             code: Code,
-            pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-                <CodeBlock
-                    children={props.children}
-                    onClickExecute={onClickExecute}
-                    sourceLine={getSourceLine(props)}
-                    sourceLineEnd={getSourceLineEnd(props)}
-                />
-            ),
+            pre: (props: React.HTMLAttributes<HTMLPreElement>) => {
+                const langMatch = (props.children as any)?.props?.className?.match(/language-([\w+#.-]+)/);
+                const lang: string | null = langMatch?.[1] ?? null;
+                const srcLine = getSourceLine(props);
+                return (
+                    <CodeBlock
+                        children={props.children}
+                        onClickExecute={onClickExecute}
+                        sourceLine={srcLine}
+                        sourceLineEnd={getSourceLineEnd(props)}
+                        language={lang}
+                        onApplyLanguage={
+                            onInlineEditCommit != null && srcLine != null
+                                ? (nextLang) => {
+                                      const next = setCodeBlockLanguage(text, srcLine, nextLang);
+                                      if (next != null) {
+                                          handleInlineEditCommit(next);
+                                      }
+                                  }
+                                : undefined
+                        }
+                    />
+                );
+            },
         };
         // Non-standard tags (waveblock, mermaidblock) are bracket-assigned to avoid TS
         // excess-property checks on the literal — the original code used this exact pattern
@@ -4593,6 +4719,9 @@ const Markdown = ({
                             onCaretChange={(caret, selEnd) => {
                                 trackEditorTriggers(inlineEdit.draftText, caret);
                                 setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
+                                if (editSessionKind === "table") {
+                                    setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
+                                }
                             }}
                         />
                     )}
@@ -4617,6 +4746,14 @@ const Markdown = ({
                             onActiveChange={(i) => setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))}
                             onPick={handleEmojiPick}
                             onClose={() => setEmojiState(null)}
+                        />
+                    )}
+                    {editSessionKind === "table" && toolbarAnchor != null && (
+                        <TableToolbar
+                            anchor={toolbarAnchor}
+                            contextValid={tableCaret != null}
+                            currentAlign={tableCaretAlign}
+                            onOp={handleTableOp}
                         />
                     )}
                     {inlineSelection != null &&

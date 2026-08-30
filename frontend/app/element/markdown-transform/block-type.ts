@@ -309,7 +309,8 @@ function isListFamily(kind: BlockKind): boolean {
     return kind === "bulleted" || kind === "numbered" || kind === "todo";
 }
 
-function splitTableCells(line: string): string[] {
+/** Parse a `| a | b |` table row into trimmed cell texts (outer pipes dropped). */
+export function splitTableCells(line: string): string[] {
     let core = line.trim();
     if (core.startsWith("|")) {
         core = core.slice(1);
