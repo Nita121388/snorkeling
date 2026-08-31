@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Sessions · 列表 + 过滤器 原型</title>
+<style>
+  :root{
+    --bg:#0b0d0e; --panel:#141618; --panel-2:#1b1e21; --border:#272b2f;
+    --text:#e8eaec; --text-2:#9aa1a8; --text-3:#6b7178;
+    --accent:#57d9a3; --accent-soft:rgba(87,217,163,.10); --accent-line:rgba(87,217,163,.45);
+    --hover:rgba(255,255,255,.05); --selected:rgba(87,217,163,.10);
+    --orange:#e8a87c; --blue:#6fb3e0; --emerald:#57d9a3;
+    --warn:#e8c87c; --err:#e87c7c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; height:100vh;
+  }
+  .list{
+    width:340px; min-width:340px; height:100%; background:var(--panel);
+    border-right:1px solid var(--border); display:flex; flex-direction:column;
+  }
+  .toolbar{padding:10px 12px; border-bottom:1px solid var(--border);
+    display:flex; flex-direction:column; gap:8px}
+  .modes{display:flex; gap:6px}
+  .modes button{
+    flex:1; font:inherit; color:var(--text-2); background:var(--panel-2);
+    border:1px solid var(--border); border-radius:7px; padding:5px 0; cursor:pointer; white-space:nowrap;
+  }
+  .modes button.active{color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft)}
+
+  .toprow{display:flex; gap:8px; align-items:center}
+  .search{flex:1; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+    border-radius:7px; padding:6px 9px; outline:none}
+  .search::placeholder{color:var(--text-3)}
+  .search.active{border-color:var(--accent-line); background:var(--accent-soft)}
+  .sort{background:var(--panel-2); border:1px solid var(--border); color:var(--text-2);
+    border-radius:7px; padding:6px 9px; cursor:pointer; white-space:nowrap}
+  .filterbtn{display:flex; align-items:center; gap:5px; background:var(--panel-2);
+    border:1px solid var(--border); color:var(--text-2); border-radius:7px; padding:6px 9px; cursor:pointer; white-space:nowrap}
+  .filterbtn.open{color:var(--text); border-color:var(--accent-line); background:var(--accent-soft)}
+  .badge{display:inline-flex; min-width:16px; height:16px; padding:0 4px; align-items:center; justify-content:center;
+    border-radius:999px; background:var(--accent); color:#000; font-size:10px; font-weight:700}
+
+  /* source segmented */
+  .srcbar{display:flex; gap:4px}
+  .seg{display:inline-flex; background:var(--panel-2); border:1px solid var(--border);
+    border-radius:7px; padding:2px; gap:2px}
+  .seg button{flex:1; font:inherit; color:var(--text-2); background:transparent; border:0;
+    border-radius:5px; padding:4px 8px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:5px; justify-content:center}
+  .seg button.active{color:var(--text); background:var(--panel); box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .sdot{width:8px;height:8px;border-radius:50%}
+  .sdot.pi{background:var(--emerald)} .sdot.claude{background:var(--orange)} .sdot.codex{background:var(--blue)}
+
+  /* filter panel */
+  .panel{margin:0 10px 6px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--panel-2)}
+  .panel .phead{display:flex; justify-content:flex-end; padding:4px 6px 0}
+  .phead .clear{width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+    border:0;background:transparent;color:var(--text-2);cursor:pointer;border-radius:6px}
+  .phead .clear:hover{color:var(--accent)}
+  .prow{display:flex; align-items:flex-start; gap:8px; padding:7px 10px; border-top:1px solid rgba(255,255,255,.05)}
+  .prow .ico{width:16px; text-align:center; color:var(--text-2); font-size:12px; flex:none; padding-top:4px}
+  .prow .body{flex:1; min-width:0}
+  .seg.mini button{padding:3px 7px; font-size:12px}
+  .mini-label{font-size:11px; color:var(--text-2); margin-left:6px}
+  .dateinputs{display:flex; align-items:center; gap:6px; margin-top:6px}
+  .dateinputs input{flex:1; background:var(--panel); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:5px 7px; font:inherit; outline:none}
+  .dateinputs span{color:var(--text-2); font-size:11px}
+
+  /* path drill */
+  .crumbs{display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:6px}
+  .crumb{display:inline-flex; align-items:center; gap:3px; max-width:160px; height:24px; padding:0 8px;
+    border-radius:6px; background:transparent; border:0; color:var(--text-2); cursor:pointer; font:inherit}
+  .crumb.cur{background:var(--accent-soft); color:var(--accent)}
+  .crumb:hover{background:var(--hover); color:var(--text)}
+  .crumb .sep{color:var(--text-3); margin-left:2px}
+  .childwrap{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; max-height:132px; overflow:auto}
+  .childchip{display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px; border-radius:6px;
+    background:rgba(255,255,255,.04); border:0; color:var(--text-2); cursor:pointer; font:inherit; font-size:12px}
+  .childchip:hover{background:var(--hover); color:var(--text)}
+  .childchip .cnt{background:rgba(255,255,255,.08); border-radius:999px; padding:0 5px; font-size:9px}
+
+  /* tag chips */
+  .tagwrap{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; max-height:160px; overflow:auto; padding-left:24px}
+  .tagchip{display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px; border-radius:6px;
+    background:rgba(255,255,255,.04); border:0; color:var(--text-2); cursor:pointer; font:inherit; font-size:12px}
+  .tagchip:hover{background:var(--hover); color:var(--text)}
+  .tagchip.on{background:var(--accent-soft); color:var(--accent)}
+  .tagchip .cnt{background:rgba(255,255,255,.08); border-radius:999px; padding:0 5px; font-size:9px}
+  .tagwrap.dim{opacity:.4; pointer-events:none}
+  .tagrow.dim{opacity:.4; pointer-events:none}
+
+  /* active filter chips */
+  .chips{display:flex; flex-wrap:wrap; gap:5px; padding:0 12px 8px}
+  .fchip{display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 6px 0 10px; border-radius:999px;
+    background:var(--accent-soft); color:var(--accent); font-size:11px}
+  .fchip button{border:0; background:transparent; color:inherit; cursor:pointer; width:16px;height:16px;
+    border-radius:50%; display:flex;align-items:center;justify-content:center; opacity:.7}
+  .fchip button:hover{opacity:1; background:rgba(255,255,255,.1)}
+
+  .countrow{display:flex; justify-content:space-between; align-items:center; gap:8px;
+    padding:6px 12px; font-size:11px; color:var(--text-2); border-top:1px solid var(--border)}
+  .countrow .filt{color:var(--accent)}
+
+  .newchat{margin:10px 12px; padding:8px; border-radius:8px; cursor:pointer; text-align:center;
+    color:var(--accent); border:1px dashed var(--accent-line); background:var(--accent-soft); font-size:12px}
+  .scroll{flex:1; overflow:auto; padding-bottom:20px}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:#26292d; border-radius:6px}
+
+  /* session row */
+  .row{display:flex; gap:9px; padding:9px 12px; cursor:pointer; border-left:2px solid transparent; border-bottom:1px solid var(--border)}
+  .row:hover{background:var(--hover)}
+  .row.sel{background:var(--selected); border-left-color:var(--accent)}
+  .dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none}
+  .dot.pi{background:var(--emerald)} .dot.claude{background:var(--orange)} .dot.codex{background:var(--blue)}
+  .rbody{flex:1; min-width:0}
+  .rtitle{color:var(--text); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:6px}
+  .star{color:var(--accent)}
+  .rsnip{color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rmeta{color:var(--text-3); font-size:11px; margin-top:2px; display:flex; gap:8px; flex-wrap:wrap}
+  .rtags{margin-top:4px; display:flex; gap:4px; flex-wrap:wrap}
+  .rtag{font-size:10px; color:var(--accent); background:var(--accent-soft); border-radius:5px; padding:1px 6px}
+  .src{color:var(--text-2)}
+
+  /* group / band headers */
+  .group{position:sticky; top:0; background:var(--panel); z-index:2;
+    border-bottom:1px solid var(--border); border-top:1px solid var(--border)}
+  .group:first-child{border-top:none}
+  .ghead{display:flex; align-items:center; gap:7px; padding:8px 12px; cursor:pointer; user-select:none}
+  .ghead:hover{background:var(--hover)}
+  .chev{transition:transform .15s; color:var(--text-2); font-size:10px}
+  .collapsed .chev{transform:rotate(-90deg)}
+  .gname{font-weight:700; color:var(--text)}
+  .gcount{color:var(--text-3); font-size:11px}
+  .gfolder{color:var(--text-3); margin-left:auto; cursor:pointer}
+  .band{padding:8px 12px; color:var(--text-2); font-weight:700; font-size:11px;
+    text-transform:uppercase; letter-spacing:.04em; position:sticky; top:0; background:var(--panel);
+    border-bottom:1px solid var(--border)}
+
+  .detail{flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-3)}
+  .hint{max-width:360px; text-align:center; line-height:1.7}
+  kbd{background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:1px 6px; color:var(--text-2)}
+  .legend{position:fixed; right:14px; bottom:14px; max-width:280px; background:var(--panel);
+    border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:11px; color:var(--text-2); line-height:1.6}
+  .legend b{color:var(--text)}
+</style>
+</head>
+<body>
+  <aside class="list">
+    <div class="toolbar">
+      <!-- A/B/C 三种视图模式（来自原 mockup） -->
+      <div class="modes">
+        <button data-mode="projects" class="active">📁 项目分组</button>
+        <button data-mode="recency">🕐 时间带</button>
+        <button data-mode="flat">📋 平铺</button>
+      </div>
+      <!-- 搜索 + Filters + 排序（Filters 来自现有实现） -->
+      <div class="toprow">
+        <input class="search" id="search" placeholder="搜索标题 / 笔记 / 路径 / 标签" />
+        <button class="filterbtn" id="filterbtn" title="Filters">
+          ⚙ Filters <span class="badge" id="filterbadge" style="display:none">0</span>
+        </button>
+        <button class="sort" id="sort" title="切换排序方向">↓ 新→旧</button>
+      </div>
+    </div>
+
+    <!-- 过滤器面板（来自现有 FilterPanel，可折叠） -->
+    <div class="panel" id="panel" style="display:none"></div>
+
+    <!-- 活跃过滤器 chips -->
+    <div class="chips" id="chips"></div>
+
+    <div class="countrow">
+      <span id="count">0 sessions</span>
+      <span id="filtlabel"></span>
+    </div>
+    <div class="newchat">＋ 新对话</div>
+    <div class="scroll" id="scroll"></div>
+  </aside>
+  <main class="detail">
+    <div class="hint">
+      原型：在 <b>原 mockup 的三种视图模式</b> 之上，叠加了 <b>现有实现的完整过滤器</b>。<br/>
+      顶部 <kbd>项目分组 / 时间带 / 平铺</kbd> 决定「怎么展示」；<br/>
+      下方 <kbd>Filters 面板</kbd>（含 agent 类型 Source + Vendor 二级）决定「显示哪些」。<br/>
+      两者正交组合：先过滤，再分组。<br/>
+      点击组头可折叠（状态自动记住）。
+    </div>
+  </main>
+
+  <div class="legend">
+    <b>组合逻辑</b><br/>
+    filter 过滤数据源 → mode 组织展示。<br/>
+    例如：Source=Pi + 7天，再切「项目分组」→ 每个组里只剩符合的 Pi 会话。<br/>
+    ★ 星标 / 标签 / 时间带 / 路径钻取 均来自当前代码。<br/>
+    🤖 agent 类型 = Source（Pi/Codex/Claude），选 Claude 后展开 Vendor 二级（anthropic / openrouter）。
+  </div>
+
+<script>
+// ---- fake data（字段镜像真实 SessionSummary，并补齐 marked/tags/note）----
+const BASE = "/Users/nita/Primary/projects";
+const now = Date.now();
+const m = (n)=> now - n*60*1000;
+const h = (n)=> now - n*3600*1000;
+const d = (n)=> now - n*86400*1000;
+
+const raw = [
+  {id:1, projectPath:BASE+"/snorkeling-gui-chat/frontend", source:"pi",
+   title:"调用两个工具做个简单测试", snippet:"好的，我来调用两个工具…", updatedAt:m(6), msgCount:11, size:48213, marked:false, tags:["test","pi"], note:""},
+  {id:2, projectPath:BASE+"/snorkeling-gui-chat/frontend", source:"claude",
+   title:"重构 session 列表分组", snippet:"把平铺列表改成按项目分组…", updatedAt:h(1), msgCount:42, size:120455, vendorid:"anthropic-a1b2", marked:true, tags:["refactor"], note:"注意 mixed entry 没有锚点"},
+  {id:3, projectPath:BASE+"/snorkeling-gui-chat", source:"codex",
+   title:"加 thinking 预览折叠", snippet:"参考 Paseo 的 ExpandableBadge…", updatedAt:d(0.4), msgCount:7, size:9120, marked:false, tags:["ui","thinking"], note:""},
+  {id:4, projectPath:BASE+"/snorkeling-gui-chat", source:"pi",
+   title:"排查工具调用不显示", snippet:"mixed entry 没有锚点…", updatedAt:d(1.1), msgCount:23, size:60115, marked:false, tags:["bug"], note:""},
+  {id:5, projectPath:BASE+"/snorkeling-gui-chat", source:"claude",
+   title:"上午的对齐讨论", snippet:"shrinking panel 到 320px…", updatedAt:d(2), msgCount:15, size:33210, vendorid:"anthropic-a1b2", marked:false, tags:["meeting"], note:""},
+  {id:6, projectPath:BASE+"/snorkeling-gui-chat/pkg", source:"pi",
+   title:"sqlite 缓存 schema 升级", snippet:"indexVersion 1→2…", updatedAt:d(3), msgCount:9, size:14020, marked:false, tags:["schema","cache"], note:"升级 indexVersion，注意迁移"},
+  {id:7, projectPath:BASE+"/snorkeling-gui-chat/pkg", source:"codex",
+   title:"写 use-live-turn 测试", snippet:"6 个用例全绿…", updatedAt:d(5), msgCount:5, size:7210, marked:false, tags:["test"], note:""},
+
+  {id:8, projectPath:BASE+"/snorkeling", source:"pi",
+   title:"Go 后端索引分析", snippet:"gitnexus impact 检查…", updatedAt:h(3), msgCount:31, size:88300, marked:true, tags:["go","index"], note:""},
+  {id:9, projectPath:BASE+"/snorkeling/cmd", source:"claude",
+   title:"调试 electron CDP", snippet:"use-local-env.ps1 …", updatedAt:d(1.6), msgCount:18, size:40210, vendorid:"openrouter-c3d4", marked:false, tags:["debug","electron"], note:""},
+  {id:10, projectPath:BASE+"/snorkeling/cmd", source:"pi",
+   title:"周会纪要", snippet:"待办：缓存失效…", updatedAt:d(8), msgCount:6, size:5500, marked:false, tags:["meeting"], note:""},
+
+  {id:11, projectPath:BASE+"/vibecoding", source:"codex",
+   title:"做一个 landing page", snippet:"用 remotion 生成片头…", updatedAt:h(20), msgCount:12, size:22010, marked:false, tags:["landing","video"], note:""},
+  {id:12, projectPath:BASE+"/vibecoding", source:"pi",
+   title:"选色板", snippet:"accent 用 #57d9a3…", updatedAt:d(4), msgCount:4, size:4100, marked:false, tags:["design"], note:""},
+
+  {id:13, projectPath:"", source:"pi",
+   title:"随手问：mac 怎么看端口占用", snippet:"lsof -i :9222 …", updatedAt:m(40), msgCount:3, size:1800, marked:false, tags:[], note:""},
+  {id:14, projectPath:"", source:"claude",
+   title:"翻译一段英文", snippet:"appendix → 附录…", updatedAt:d(6), msgCount:2, size:900, vendorid:"openrouter-c3d4", marked:false, tags:["translation"], note:""},
+];
+
+// 预计算 root / sub（用于路径钻取）
+function splitPath(p){
+  if(!p) return {root:"其他", sub:""};
+  const rel = p.startsWith(BASE) ? p.slice(BASE.length+1) : p;
+  const segs = rel.split("/").filter(Boolean);
+  return { root: segs[0] || "其他", sub: segs.slice(1).join("/") };
+}
+const sessions = raw.map(s => ({ ...s, ...splitPath(s.projectPath) }));
+
+// ---- helpers ----
+const relTime = t => {
+  const diff = (now - t)/1000;
+  if (diff < 3600) return Math.max(1,Math.round(diff/60))+" 分钟前";
+  if (diff < 86400) return Math.round(diff/3600)+" 小时前";
+  const dd = Math.round(diff/86400);
+  return dd <= 1 ? "昨天" : dd+" 天前";
+};
+const fmtSize = b => b>=1024 ? (b/1024).toFixed(0)+" KB" : b+" B";
+const srcLabel = {pi:"Pi", claude:"Claude", codex:"Codex"};
+
+// ---- 过滤 state ----
+let mode = "projects";
+let desc = true;
+let query = "";
+let source = "";                       // ""|pi|codex|claude
+let vendor = "";                       // vendorid，source 选定后的二级维度
+let marked = "all";                    // all|starred|unstarred
+let datePreset = "all";                // all|today|7d|30d|custom
+let dateFrom = 0, dateTo = 0;
+let pathRoot = "";                     // ""|其他|<rootName>
+let pathSub = "";
+let tagPresence = "any";               // any|untagged
+let tagFilters = [];                   // 包含的标签
+let filtersOpen = false;
+const collapsed = JSON.parse(localStorage.getItem("mockup.collapsed") || "{}");
+const persistCollapsed = ()=> localStorage.setItem("mockup.collapsed", JSON.stringify(collapsed));
+
+// ---- 派生：可用标签 + 路径根 ----
+const tagCounts = {};
+sessions.forEach(s => s.tags.forEach(t => tagCounts[t] = (tagCounts[t]||0)+1));
+const availableTags = Object.entries(tagCounts).map(([tag,count])=>({tag,count})).sort((a,b)=>b.count-a.count);
+
+const rootCounts = {};
+sessions.forEach(s => rootCounts[s.root] = (rootCounts[s.root]||0)+1);
+const availableRoots = Object.entries(rootCounts)
+  .map(([root,count])=>({root,count}))
+  .sort((a,b)=>{
+    if (a.root==="其他") return 1; if (b.root==="其他") return -1;
+    return b.count-a.count;
+  });
+
+function childSegments(root, sub){
+  const out = {};
+  for (const s of sessions){
+    if (s.root !== root) continue;
+    if (sub && s.sub !== sub && !s.sub.startsWith(sub+"/")) continue;
+    const rest = sub ? s.sub.slice(sub.length+1) : s.sub;
+    if (!rest) continue;
+    const child = rest.split("/")[0];
+    out[child] = (out[child]||0)+1;
+  }
+  return Object.entries(out).map(([name,count])=>({name,count}));
+}
+function ancestors(sub){
+  if (!sub) return [];
+  const parts = sub.split("/"); const acc=[]; let cur="";
+  for (const p of parts){ cur = cur ? cur+"/"+p : p; acc.push({name:p, full:cur}); }
+  return acc;
+}
+function vendorsFor(src){
+  if (!src) return [];
+  const map = {};
+  sessions.forEach(s=>{ if (s.source===src && s.vendorid) map[s.vendorid]=(map[s.vendorid]||0)+1; });
+  return Object.entries(map).map(([v,c])=>({v,c}));
+}
+function dateSinceBefore(){
+  if (datePreset === "all") return {since:0, before:0};
+  if (datePreset === "custom") return {since:dateFrom, before:dateTo};
+  const startOfDay = new Date(now); startOfDay.setHours(0,0,0,0);
+  if (datePreset === "today") return {since:startOfDay.getTime(), before:0};
+  const days = datePreset === "7d" ? 7 : 30;
+  return {since: now - days*86400000, before:0};
+}
+
+// ---- 过滤逻辑（先过滤，后分组）----
+function applyFilters(){
+  const q = query.trim().toLowerCase();
+  const {since, before} = dateSinceBefore();
+  return sessions.filter(s=>{
+    if (source && s.source !== source) return false;
+    if (vendor && s.vendorid !== vendor) return false;
+    if (marked === "starred" && !s.marked) return false;
+    if (marked === "unstarred" && s.marked) return false;
+    if (since && s.updatedAt < since) return false;
+    if (before && s.updatedAt > before) return false;
+    if (pathRoot){
+      if (pathRoot === "其他"){ if (s.root !== "其他") return false; }
+      else {
+        if (s.root !== pathRoot) return false;
+        if (pathSub && s.sub !== pathSub && !s.sub.startsWith(pathSub+"/")) return false;
+      }
+    }
+    if (tagPresence === "untagged" && s.tags.length) return false;
+    if (tagFilters.length){
+      // 需包含所有选中标签（AND）
+      if (!tagFilters.every(t => s.tags.includes(t))) return false;
+    }
+    if (q){
+      const hay = (s.title+" "+s.snippet+" "+(s.note||"")+" "+s.tags.join(" ")+" "+(s.projectPath||"")).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function rowHTML(s){
+  const tags = s.tags.slice(0,3).map(t=>`<span class="rtag">#${t}</span>`).join("");
+  return `<div class="row" data-id="${s.id}">
+    <span class="dot ${s.source}"></span>
+    <div class="rbody">
+      <div class="rtitle">${s.marked?'<span class="star">★</span>':''}${s.title}</div>
+      <div class="rsnip">${s.snippet}</div>
+      <div class="rmeta"><span class="src">${srcLabel[s.source]}</span><span>${relTime(s.updatedAt)}</span><span>${s.msgCount} 条</span><span>${fmtSize(s.size)}</span></div>
+      ${tags?`<div class="rtags">${tags}</div>`:''}
+    </div>
+  </div>`;
+}
+
+// ---- 渲染分组 ----
+function render(){
+  const all = applyFilters();
+  const cmp = desc ? (a,b)=>b.updatedAt-a.updatedAt : (a,b)=>a.updatedAt-b.updatedAt;
+  const el = document.getElementById("scroll");
+  let html = "";
+
+  if (mode === "flat"){
+    html = all.sort(cmp).map(rowHTML).join("");
+  }
+  else if (mode === "recency"){
+    const bands = [
+      {label:"今天",   test:t=> (now-t) < 86400000},
+      {label:"昨天",   test:t=> (now-t) >= 86400000 && (now-t) < 2*86400000},
+      {label:"过去 7 天", test:t=> (now-t) >= 2*86400000 && (now-t) < 7*86400000},
+      {label:"过去 30 天",test:t=> (now-t) >= 7*86400000 && (now-t) < 30*86400000},
+      {label:"更早",    test:t=> (now-t) >= 30*86400000},
+    ];
+    for (const b of bands){
+      const items = all.filter(s=>b.test(s.updatedAt)).sort(cmp);
+      if (!items.length) continue;
+      html += `<div class="band">${b.label} · ${items.length}</div>` + items.map(rowHTML).join("");
+    }
+  }
+  else { // projects
+    const groups = new Map();
+    for (const s of all){ if(!groups.has(s.root)) groups.set(s.root,[]); groups.get(s.root).push(s); }
+    const order = [...groups.entries()].sort((a,b)=>{
+      if (a[0]==="其他") return 1; if (b[0]==="其他") return -1;
+      return desc
+        ? Math.max(...b[1].map(s=>s.updatedAt)) - Math.max(...a[1].map(s=>s.updatedAt))
+        : Math.max(...a[1].map(s=>s.updatedAt)) - Math.max(...b[1].map(s=>s.updatedAt));
+    });
+    for (const [name, list] of order){
+      const isC = !!collapsed[name];
+      const shown = isC ? [] : list.sort(cmp);
+      html += `<div class="group ${isC?'collapsed':''}" data-group="${name}">
+        <div class="ghead" data-toggle="${name}">
+          <span class="chev">▼</span>
+          <span class="gname">${name}</span>
+          <span class="gcount">${list.length}</span>
+          <span class="gfolder" data-folder="${name}" title="打开项目目录">📁</span>
+        </div>`;
+      if (!isC) html += shown.map(rowHTML).join("");
+      html += `</div>`;
+    }
+  }
+  el.innerHTML = html || `<div class="band" style="position:static">无匹配会话</div>`;
+
+  // count + filter label
+  document.getElementById("count").textContent = `${all.length} sessions`;
+  const fcount = activeFilterCount();
+  document.getElementById("filtlabel").innerHTML = fcount ? `<span class="filt">${fcount} 个过滤生效</span>` : "";
+  renderChips();
+  renderBadge();
+  renderPanel();
+}
+
+function activeFilterCount(){
+  return (source!==""?1:0) + (vendor!==""?1:0)
+       + (marked!=="all"?1:0) + (datePreset!=="all"?1:0) + (pathRoot!==""?1:0)
+       + (tagPresence!=="any"?1:0) + tagFilters.length;
+}
+
+// ---- 过滤器面板 ----
+function renderPanel(){
+  const panel = document.getElementById("panel");
+  if (!filtersOpen){ panel.style.display="none"; return; }
+  panel.style.display="block";
+
+  const markedActive = marked!=="all";
+  const dateActive = datePreset!=="all";
+  const pathActive = pathRoot!=="";
+  const tagPresenceActive = tagPresence!=="any";
+  const hasActive = markedActive||dateActive||pathActive||tagPresenceActive||tagFilters.length;
+  const srcVendors = source ? vendorsFor(source) : [];
+
+  const children = pathActive && pathRoot!=="其他" ? childSegments(pathRoot, pathSub) : [];
+  const crumbs = pathActive && pathRoot!=="其他" ? ancestors(pathSub) : [];
+
+  panel.innerHTML = `
+    <div class="phead">
+      <button class="clear" id="clearall" title="清空所有过滤">🧹</button>
+    </div>
+    <div class="prow">
+      <div class="ico">🤖</div>
+      <div class="body">
+        <div class="seg mini" id="srcseg">
+          <button data-v="" class="${source===''?'active':''}">All</button>
+          <button data-v="pi" class="${source==='pi'?'active':''}"><span class="sdot pi"></span>Pi</button>
+          <button data-v="codex" class="${source==='codex'?'active':''}"><span class="sdot codex"></span>Codex</button>
+          <button data-v="claude" class="${source==='claude'?'active':''}"><span class="sdot claude"></span>Claude</button>
+        </div>
+        ${srcVendors.length?`<div class="tagwrap" id="vendorwrap" style="padding-left:0">
+          ${srcVendors.map(v=>`<button class="tagchip ${vendor===v.v?'on':''}" data-vendor="${v.v}">${v.v} <span class="cnt">${v.c}</span></button>`).join("")}
+        </div>`:''}
+      </div>
+    </div>
+    <div class="prow">
+      <div class="ico">★</div>
+      <div class="body">
+        <div class="seg mini" id="markedseg">
+          <button data-v="all" class="${marked==='all'?'active':''}">All</button>
+          <button data-v="starred" class="${marked==='starred'?'active':''}">★ Starred</button>
+          <button data-v="unstarred" class="${marked==='unstarred'?'active':''}">☆ Unstarred</button>
+        </div>
+        ${markedActive?`<span class="mini-label">${marked==='starred'?'仅星标':'仅未星标'}</span>`:''}
+      </div>
+    </div>
+    <div class="prow">
+      <div class="ico">📅</div>
+      <div class="body">
+        <div class="seg mini" id="dateseg">
+          <button data-v="all" class="${datePreset==='all'?'active':''}">All</button>
+          <button data-v="today" class="${datePreset==='today'?'active':''}">Today</button>
+          <button data-v="7d" class="${datePreset==='7d'?'active':''}">7d</button>
+          <button data-v="30d" class="${datePreset==='30d'?'active':''}">30d</button>
+          <button data-v="custom" class="${datePreset==='custom'?'active':''}">Custom</button>
+        </div>
+        ${datePreset==='custom'?`<div class="dateinputs">
+          <input type="date" id="dfrom" value="${msToDate(dateFrom)}"/>
+          <span>→</span>
+          <input type="date" id="dto" value="${msToDate(dateTo)}"/>
+        </div>`:''}
+      </div>
+    </div>
+    <div class="prow">
+      <div class="ico">📁</div>
+      <div class="body">
+        <div class="seg mini" id="pathseg">
+          <button data-v="" class="${pathRoot===''?'active':''}">All</button>
+          ${availableRoots.map(r=>`<button data-v="${r.root}" class="${pathRoot===r.root?'active':''}">${r.root} <span class="cnt">${r.count}</span></button>`).join("")}
+        </div>
+        ${pathActive && pathRoot!=="其他"?`
+          <div class="crumbs">
+            <button class="crumb ${crumbs.length===0?'cur':''}" data-path="">${pathRoot}</button>
+            ${crumbs.map((c,i)=>`<span class="sep">›</span><button class="crumb ${i===crumbs.length-1?'cur':''}" data-path="${c.full}">${c.name}</button>`).join("")}
+          </div>
+          ${children.length?`<div class="childwrap">${children.map(ch=>`<button class="childchip" data-child="${ch.name}">${ch.name} <span class="cnt">${ch.count}</span></button>`).join("")}</div>`:`<span class="mini-label">无更深子目录</span>`}
+        `:''}
+      </div>
+    </div>
+    <div class="prow" style="flex-direction:column; gap:2px">
+      <div class="ico">#</div>
+      <div class="body">
+        <div class="seg mini" id="tagpseg">
+          <button data-v="any" class="${tagPresence==='any'?'active':''}">Any tags</button>
+          <button data-v="untagged" class="${tagPresence==='untagged'?'active':''}">Untagged</button>
+        </div>
+        <div class="tagwrap ${tagPresence==='untagged'?'dim':''}" id="tagwrap">
+          ${availableTags.map(t=>`<button class="tagchip ${tagFilters.includes(t.tag)?'on':''}" data-tag="${t.tag}">#${t.tag} <span class="cnt">${t.count}</span></button>`).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 面板内交互
+  panel.querySelector("#clearall").onclick = ()=>{
+    marked="all"; datePreset="all"; dateFrom=0; dateTo=0; pathRoot=""; pathSub="";
+    tagPresence="any"; tagFilters=[]; source=""; vendor=""; render();
+  };
+  panel.querySelector("#markedseg").querySelectorAll("button").forEach(b=> b.onclick=()=>{ marked=b.dataset.v; render(); });
+  panel.querySelector("#dateseg").querySelectorAll("button").forEach(b=> b.onclick=()=>{
+    datePreset=b.dataset.v;
+    if (datePreset==="custom"){
+      const startOfDay = new Date(now); startOfDay.setHours(0,0,0,0);
+      dateFrom = startOfDay.getTime(); dateTo = now;
+    }
+    render();
+  });
+  panel.querySelector("#pathseg").querySelectorAll("button").forEach(b=> b.onclick=()=>{
+    pathRoot=b.dataset.v; pathSub=""; render();
+  });
+  panel.querySelectorAll(".crumb").forEach(b=> b.onclick=()=>{ pathSub=b.dataset.path; render(); });
+  panel.querySelectorAll(".childchip").forEach(b=> b.onclick=()=>{
+    pathSub = pathSub ? pathSub+"/"+b.dataset.child : b.dataset.child; render();
+  });
+  panel.querySelector("#srcseg").querySelectorAll("button").forEach(b=> b.onclick=()=>{ source=b.dataset.v; vendor=""; render(); });
+  if (srcVendors.length){
+    panel.querySelectorAll("#vendorwrap .tagchip").forEach(b=> b.onclick=()=>{ vendor = vendor===b.dataset.vendor ? "" : b.dataset.vendor; render(); });
+  }
+  panel.querySelector("#tagpseg").querySelectorAll("button").forEach(b=> b.onclick=()=>{
+    tagPresence=b.dataset.v;
+    if (tagPresence==="untagged") tagFilters=[];   // 与现有实现一致：Untagged 清空标签
+    render();
+  });
+  panel.querySelectorAll(".tagchip").forEach(b=> b.onclick=()=>{
+    const t=b.dataset.tag;
+    tagFilters = tagFilters.includes(t) ? tagFilters.filter(x=>x!==t) : [...tagFilters,t];
+    if (tagFilters.length) tagPresence="any";
+    render();
+  });
+  if (datePreset==="custom"){
+    panel.querySelector("#dfrom").onchange = e=>{ dateFrom = dayStart(e.target.value); render(); };
+    panel.querySelector("#dto").onchange   = e=>{ dateTo   = dayEnd(e.target.value); render(); };
+  }
+}
+
+// ---- active chips ----
+function renderChips(){
+  const box = document.getElementById("chips");
+  const chips = [];
+  if (source) chips.push({label: srcLabel[source]||source, rm:()=>{source=""; vendor="";}});
+  if (vendor) chips.push({label:"Vendor: "+vendor, rm:()=>{vendor="";}});
+  if (tagPresence==="untagged") chips.push({label:"Untagged", rm:()=>{tagPresence="any";}});
+  if (marked==="starred") chips.push({label:"★ Starred", rm:()=>{marked="all";}});
+  if (marked==="unstarred") chips.push({label:"☆ Unstarred", rm:()=>{marked="all";}});
+  if (datePreset!=="all") chips.push({label: datePreset==="custom"?"Custom":datePreset.toUpperCase(), rm:()=>{datePreset="all";}});
+  if (pathRoot) chips.push({label:"📁 "+(pathRoot==="其他"?"其他":pathRoot+(pathSub?"/"+pathSub:"")), rm:()=>{pathRoot=""; pathSub="";}});
+  tagFilters.forEach(t=> chips.push({label:"#"+t, rm:()=>{ tagFilters=tagFilters.filter(x=>x!==t); }}));
+
+  box.innerHTML = chips.map((c,i)=>`<span class="fchip">${c.label}<button data-i="${i}">✕</button></span>`).join("");
+  box.querySelectorAll("button").forEach(b=> b.onclick=()=> chips[+b.dataset.i].rm());
+}
+
+function renderBadge(){
+  const n = activeFilterCount();
+  const badge = document.getElementById("filterbadge");
+  badge.style.display = n? "inline-flex":"none";
+  badge.textContent = n;
+  document.getElementById("filterbtn").classList.toggle("open", filtersOpen);
+}
+
+// ---- date helpers ----
+function msToDate(ms){ if(!ms) return ""; const d=new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,10); }
+function dayStart(v){ if(!v) return 0; const t=new Date(v+"T00:00:00").getTime(); return Number.isFinite(t)?t:0; }
+function dayEnd(v){ if(!v) return 0; const t=new Date(v+"T23:59:59.999").getTime(); return Number.isFinite(t)?t:0; }
+
+// ---- 顶部交互 ----
+document.querySelectorAll(".modes button").forEach(b=> b.onclick=()=>{
+  document.querySelectorAll(".modes button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); mode=b.dataset.mode; render();
+});
+document.getElementById("sort").onclick = function(){
+  desc=!desc; this.textContent = desc?"↓ 新→旧":"↑ 旧→新"; render();
+};
+const searchEl = document.getElementById("search");
+searchEl.oninput = function(){ query=this.value; this.classList.toggle("active", query.trim().length>0); render(); };
+document.getElementById("filterbtn").onclick = ()=>{ filtersOpen=!filtersOpen; renderPanel(); renderBadge(); };
+
+// ---- 列表交互 ----
+document.getElementById("scroll").addEventListener("click", e=>{
+  const tg = e.target.closest("[data-toggle]");
+  if (tg){ const n=tg.dataset.toggle; collapsed[n]=!collapsed[n]; persistCollapsed(); render(); return; }
+  const fo = e.target.closest("[data-folder]");
+  if (fo){ alert("打开项目目录：" + fo.dataset.folder); return; }
+  const row = e.target.closest(".row");
+  if (row){ document.querySelectorAll(".row.sel").forEach(r=>r.classList.remove("sel")); row.classList.add("sel"); }
+});
+
+render();
+renderPanel();
+</script>
+</body>
+</html>
