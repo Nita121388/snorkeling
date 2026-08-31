@@ -21,6 +21,73 @@ import { useDomTextHighlight } from "./use-dom-highlight";
 // 思考块（Paseo 风格：与工具调用同式的可展开徽章行）。
 // streaming=true 时默认展开看实时内容，行头用脉冲点+脉冲标签表示“正在思考”；
 // 状态收尾/历史消息默认折叠为单行（chevron + 首行预览），点击展开全文。
+// 工具调用行（流式 live 与落盘历史共用同一外观，保证 turn_end 交接时视觉不断裂）：
+// chevron + 状态点/旋转圈 + 等宽工具名 + 单行预览，点击展开详情。
+// running = spinner + ly-shimmer 扫光；完成后换静态状态点。
+// animateStatus 仅在 live 完成瞬间播 ly-pop；历史回填不闪。
+export function ToolCallRow({
+  name,
+  preview,
+  status,
+  exitCode,
+  expanded,
+  onToggle,
+  animateStatus = false,
+  children,
+}: {
+  name: string;
+  preview: string;
+  status?: "running" | "completed" | "failed";
+  exitCode?: number;
+  expanded: boolean;
+  onToggle: () => void;
+  animateStatus?: boolean;
+  children?: ReactNode;
+}) {
+  const hasError = status === "failed" || Boolean(exitCode);
+  const running = status === "running";
+  return (
+    <div className="relative my-1 min-w-0 overflow-hidden rounded-lg text-xs">
+      <button
+        type="button"
+        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
+        onClick={onToggle}
+      >
+        <i
+          className={cn(
+            "fa-sharp fa-solid shrink-0 text-[9px] text-secondary transition-transform duration-200",
+            expanded ? "fa-chevron-down" : "fa-chevron-right"
+          )}
+        />
+        {running ? (
+          <i className="fa-sharp fa-solid fa-spinner inline-flex h-1.5 w-1.5 shrink-0 animate-spin items-center justify-center text-[10px] text-accent" />
+        ) : (
+          <span
+            className={cn(
+              "inline-flex h-1.5 w-1.5 shrink-0 items-center justify-center rounded-full",
+              hasError ? "bg-error shadow-[0_0_4px_var(--color-error)]" : "bg-accent/70",
+              animateStatus && "ly-pop"
+            )}
+          />
+        )}
+        <span className="shrink-0 font-mono text-[11px] text-primary">{name || "tool"}</span>
+        {exitCode != null && exitCode !== 0 ? (
+          <span className="shrink-0 rounded bg-error/15 px-1 py-px text-[9px] font-medium text-error">
+            exit {exitCode}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{preview}</span>
+      </button>
+      {expanded ? (
+        <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
+          {children}
+        </div>
+      ) : null}
+      {running ? <span className="ly-shimmer" /> : null}
+    </div>
+  );
+}
+
 export function ThinkingDisclosure({
   text,
   streaming = false,
@@ -62,7 +129,7 @@ export function ThinkingDisclosure({
         <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
           <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary">
             {trimmed}
-            {streaming ? " ▌" : null}
+            {streaming ? <span className="ly-cursor" /> : null}
           </pre>
         </div>
       ) : null}
@@ -145,7 +212,7 @@ export const MessageCard = memo(function MessageCard({
     <div
       ref={registerRef}
       id={`aisession-message-${message.seq}`}
-      className={cn("group scroll-mt-3", isUser ? "flex flex-col items-end" : "", groupStart ? "mt-4" : "mt-1")}
+      className={cn("group scroll-mt-3 ly-enter", isUser ? "flex flex-col items-end" : "", groupStart ? "mt-4" : "mt-1")}
     >
       <div
         className={cn(
@@ -169,7 +236,7 @@ export const MessageCard = memo(function MessageCard({
           <div ref={mdContentRef} className="min-w-0 text-sm">
             {/* 思考过程：从会话历史还原，以 Paseo 风格徽章行折叠展示（点击展开全文） */}
             {message.thinking ? <ThinkingDisclosure text={message.thinking} /> : null}
-            <WaveStreamdown text={shownText} />
+            <WaveStreamdown text={shownText} parseIncompleteMarkdown />
           </div>
         )}
       </div>

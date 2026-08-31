@@ -162,3 +162,80 @@ svg [aria-label="tip"] g path {
         transform: scale(1) translateY(0);
     }
 }
+
+/* ── Lyra-style streaming/loading indicators ──────────────────────────
+   Ref: github.com/kittors/Lyra  packages/desktop/loading-gallery.html
+        github.com/kittors/Lyra  packages/desktop/src/styles.css
+   Principle: sine easing (cubic-bezier .455 .03 .515 .955) + mismatched
+   periods hide the loop. No linear except pure rotation.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* A. 三点流动 — TTFT 等待占位
+   Three dots scale (not fade), sine easing, 1.4s, staggered delays.
+   Reads as a wave passing through, not a mechanical relay. */
+@keyframes ly-flow {
+    0%, 80%, 100% { transform: scale(0.3); opacity: 0.35; }
+    40%           { transform: scale(1);   opacity: 1; }
+}
+.ly-flow-dot {
+    display: block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--color-secondary);
+    animation: ly-flow 1.4s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite both;
+}
+.ly-flow-dot:nth-child(1) { animation-delay: -0.30s; }
+.ly-flow-dot:nth-child(2) { animation-delay: -0.15s; }
+
+/* B. 流式文字光标 — 呼吸细条（替代静止 ▌）
+   A thin bar breathing with sine easing, not a hard blink.
+   Positioned outside the markdown container so it is never parsed. */
+@keyframes ly-cursor {
+    0%, 100% { opacity: 0.3; }
+    50%      { opacity: 1; }
+}
+.ly-cursor {
+    display: inline-block; width: 2px; height: 1em;
+    background: var(--color-accent); border-radius: 1px;
+    vertical-align: text-bottom;
+    animation: ly-cursor 1s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+}
+
+/* C. 运行中工具卡扫光 — ly-shimmer
+   A band of light crossing at constant speed, both ends off-card
+   so the loop has no visible seam. Linear is correct here because
+   a thing moving past you does not slow at the window edges. */
+@keyframes ly-shimmer {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+.ly-shimmer {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    animation: ly-shimmer 1.8s ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* D. 工具完成落定 — ly-pop
+   Icon settling in once a tool finishes. Overshoot then settle. */
+@keyframes ly-pop {
+    0%   { opacity: 0; transform: scale(0.5); }
+    60%  { opacity: 1; transform: scale(1.15); }
+    100% { opacity: 1; transform: scale(1); }
+}
+.ly-pop {
+    animation: ly-pop 0.3s ease-out forwards;
+}
+
+/* E. 详情落盘过渡 — ly-fade-up / ly-enter
+   落盘消息淡入上浮，掩盖与流式的外观突变。
+   Ref: Lyra styles.css ly-fade-up。对应 MessageCard 的 ly-enter。 */
+@keyframes ly-fade-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+}
+.ly-enter {
+    animation: ly-fade-up 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ly-enter { animation: none; }
+}
+

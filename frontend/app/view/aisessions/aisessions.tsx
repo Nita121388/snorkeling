@@ -113,6 +113,8 @@ export class AiSessionsViewModel implements ViewModel {
     newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
         SessionSummary | null
     >;
+    // 每次 startNewSession 自增：详情面板按世代作废上一轮 New Chat 的绑定与残留
+    newChatEpochAtom = jotai.atom(0);
     deletingAtom = jotai.atom<boolean>(false);
     lastSessionsRefreshAtAtom = jotai.atom<number>(0);
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
@@ -189,6 +191,8 @@ export class AiSessionsViewModel implements ViewModel {
     // assigned by pi after the first message; bindNewSession promotes it then.
     startNewSession(): void {
         const existing = globalStore.get(this.newSessionAtom);
+        // 无论是否已有占位，每次点击都视为新一轮：epoch 自增触发面板重置
+        globalStore.set(this.newChatEpochAtom, globalStore.get(this.newChatEpochAtom) + 1);
         if (existing != null) {
             globalStore.set(this.selectedKeyAtom, NewSessionKey);
             globalStore.set(this.detailAtom, null);
@@ -927,6 +931,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const blockData = jotai.useAtomValue(model.blockAtom);
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
+    const newChatEpoch = jotai.useAtomValue(model.newChatEpochAtom);
     const newSession = jotai.useAtomValue(model.newSessionAtom);
     const projectPaths = jotai.useAtomValue(model.projectPathsAtom);
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
@@ -1413,6 +1418,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     model={model}
                     detail={detail}
                     isNewChat={activeSession?.key === NewSessionKey}
+                    newChatEpoch={newChatEpoch}
                     loading={
                         error === "" &&
                         (loading ||

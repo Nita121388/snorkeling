@@ -8,7 +8,7 @@ import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, u
 import { flushSync } from "react-dom";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
-import { MessageCard } from "./session-message";
+import { MessageCard, ToolCallRow } from "./session-message";
 import { SessionTagChips } from "./session-tag-chips";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import {
@@ -111,57 +111,28 @@ function ToolCallCard({
     const detailText = toolCallDetailText(toolCall);
     const hasError = Boolean(toolCall.exitCode);
     return (
-        <div className="my-1 min-w-0 text-xs">
-            {/* 原型规范：工具调用一行折叠——状态点 + 工具名 + 预览，点击展开 */}
-            <button
-                type="button"
-                className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
-                onClick={onToggle}
-            >
-                <i
-                    className={cn(
-                        "fa-sharp fa-solid shrink-0 text-[9px] text-secondary transition-transform duration-200",
-                        expanded ? "fa-chevron-down" : "fa-chevron-right"
-                    )}
-                />
-                <span
-                    className={cn(
-                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                        hasError ? "bg-error shadow-[0_0_4px_var(--color-error)]" : "bg-accent/70"
-                    )}
-                />
-                <span className="shrink-0 font-mono text-[11px] text-primary">{toolCall.name || "tool"}</span>
-                {hasError ? (
-                    <span className="shrink-0 rounded bg-error/15 px-1 py-px text-[9px] font-medium text-error">
-                        exit {toolCall.exitCode}
-                    </span>
-                ) : null}
-                <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">
-                    {formatToolCallPreview(toolCall)}
-                </span>
-            </button>
-            {expanded ? (
-                <div
-                    className="border-t border-border px-3 py-2"
-                    style={{
-                        animation: "slideDown 0.2s ease-out",
-                    }}
-                >
-                    {detailText ? (
-                        <>
-                            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
-                                {trimToolCallText(detailText)}
-                            </pre>
-                            <div className="mt-2 flex items-center gap-2">
-                                <CopyIconButton text={detailText} label="Copy" size="xs" />
-                            </div>
-                        </>
-                    ) : (
-                        <div className="text-secondary">No tool detail.</div>
-                    )}
-                </div>
-            ) : null}
-        </div>
+        // 与流式 live 工具行共用 ToolCallRow，保证 turn_end 交接时外观/交互一致
+        <ToolCallRow
+            name={toolCall.name || "tool"}
+            preview={formatToolCallPreview(toolCall)}
+            status={hasError ? "failed" : "completed"}
+            exitCode={toolCall.exitCode ?? undefined}
+            expanded={expanded}
+            onToggle={onToggle}
+        >
+            {detailText ? (
+                <>
+                    <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
+                        {trimToolCallText(detailText)}
+                    </pre>
+                    <div className="mt-2 flex items-center gap-2">
+                        <CopyIconButton text={detailText} label="Copy" size="xs" />
+                    </div>
+                </>
+            ) : (
+                <div className="text-secondary">No tool detail.</div>
+            )}
+        </ToolCallRow>
     );
 }
 
@@ -178,6 +149,7 @@ export function SessionDetailPane({
     onBound,
     onRunningSessionIdsChange,
     isNewChat = false,
+    newChatEpoch = 0,
 }: {
     model: SessionDetailController;
     detail: SessionDetail | null;
@@ -193,6 +165,8 @@ export function SessionDetailPane({
     /** 新会话收到真实 session id 后据此绑定占位 session（由 aisessions.tsx 传入） */
     onBound?: (sessionId: string) => void;
     onRunningSessionIdsChange?: (sessionIds: ReadonlySet<string>) => void;
+    /** 每开启一轮新 New Chat 自增：作废上一轮的绑定/草稿/迟到流 */
+    newChatEpoch?: number;
 }) {
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
@@ -207,6 +181,8 @@ export function SessionDetailPane({
     const [composeSource, setComposeSource] = useState<string>(() => defaultChatSource().id);
     // 新会话首条消息流式期间暂存后端回派的 sessionId。
     const boundRef = useRef("");
+    // 绑定发生时所处的 New Chat 世代：新一轮 New Chat 会作废旧绑定（防跨轮残留）
+    const boundEpochRef = useRef(-1);
     const newChatTurnRef = useRef(false);
     const [newChatTurnFinished, setNewChatTurnFinished] = useState(false);
     const wasNewChatRef = useRef(false);
@@ -229,7 +205,14 @@ export function SessionDetailPane({
     const latestNoteDraftRef = useRef("");
     const summaryKeyRef = useRef<string | null>(null);
     const summaryNoteRef = useRef("");
-    const summary = detail?.summary ?? null;
+    // 新建会话时屏蔽旧 detail 的竞态残留：未绑定、或绑定属上一轮 epoch 时一律隐藏；
+    // 透传条件缩严为「detail 的 sessionId 恰是本轮绑定的 id」
+    const effectiveDetail = (() => {
+        if (!isNewChat) return detail;
+        if (boundRef.current === "" || boundEpochRef.current !== newChatEpoch) return null;
+        return detail?.summary?.id === boundRef.current ? detail : null;
+    })();
+    const summary = effectiveDetail?.summary ?? null;
     const summaryKey = summary?.key ?? "";
     const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
     const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
@@ -237,15 +220,6 @@ export function SessionDetailPane({
     const noteSaving = noteSaveStatus === "saving";
     const trimmedNoteDraft = noteDraft.trim();
     const refreshing = loading || deltaLoading || toolCallsLoading;
-
-    useEffect(() => {
-        if (isNewChat && !wasNewChatRef.current) {
-            boundRef.current = "";
-            newChatTurnRef.current = false;
-            setNewChatTurnFinished(false);
-        }
-        wasNewChatRef.current = isNewChat;
-    }, [isNewChat]);
 
     // 切换会话时退出改名态，避免把草稿写进别的会话
     useEffect(() => {
@@ -273,8 +247,8 @@ export function SessionDetailPane({
     }, [model, summary, titleDraft]);
 
     useEffect(() => {
-        const nextKey = detail?.summary?.key ?? null;
-        const nextNote = detail?.summary?.note ?? "";
+        const nextKey = effectiveDetail?.summary?.key ?? null;
+        const nextNote = effectiveDetail?.summary?.note ?? "";
         const previousKey = summaryKeyRef.current;
         const previousNote = summaryNoteRef.current;
         summaryKeyRef.current = nextKey;
@@ -283,7 +257,7 @@ export function SessionDetailPane({
             latestNoteDraftRef.current = nextNote;
             setNoteDraft(nextNote);
         }
-    }, [detail?.summary?.key, detail?.summary?.note, detail?.summary?.tags]);
+    }, [effectiveDetail?.summary?.key, effectiveDetail?.summary?.note, effectiveDetail?.summary?.tags]);
 
     useEffect(() => {
         messageRefs.current = {};
@@ -302,33 +276,33 @@ export function SessionDetailPane({
         setActiveSearchSeq(null);
         // 切 session 时重置「自动滚到底已执行」标志，让新 session 重新滚到底
         autoScrolledToBottomRef.current = false;
-    }, [detail?.summary?.key]);
+    }, [effectiveDetail?.summary?.key]);
 
     useEffect(() => {
         bottomDeltaRequestedRef.current = false;
-    }, [detail?.messages?.length, deltaLoading]);
+    }, [effectiveDetail?.messages?.length, deltaLoading]);
 
     const readableMessages = useMemo(
-        () => (detail?.messages ?? []).filter((message) => isReadableMessage(message)),
-        [detail?.messages]
+        () => (effectiveDetail?.messages ?? []).filter((message) => isReadableMessage(message)),
+        [effectiveDetail?.messages]
     );
     const actualModels = useMemo(() => {
         const models: string[] = [];
-        for (const message of detail?.messages ?? []) {
+        for (const message of effectiveDetail?.messages ?? []) {
             const modelName = message.model?.trim();
             if (!modelName || modelName === "<synthetic>" || models.includes(modelName)) continue;
             models.push(modelName);
         }
         return models;
-    }, [detail?.messages]);
+    }, [effectiveDetail?.messages]);
     const actualModel = actualModels.at(-1) ?? "";
     const detailMessages = useMemo(
         () => readableMessages.slice(-visibleMessageCount),
         [readableMessages, visibleMessageCount]
     );
     const timelineItems = useMemo(
-        () => buildSessionDetailTimeline(detail?.messages ?? [], detailMessages, detail?.toolCalls, true),
-        [detail?.messages, detailMessages, detail?.toolCalls]
+        () => buildSessionDetailTimeline(effectiveDetail?.messages ?? [], detailMessages, effectiveDetail?.toolCalls, true),
+        [effectiveDetail?.messages, detailMessages, effectiveDetail?.toolCalls]
     );
     const outlineMessages = useMemo(
         () => readableMessages.filter((message) => message.role === "user"),
@@ -349,7 +323,7 @@ export function SessionDetailPane({
         [activeSearchSeq, detailSearchMatches]
     );
     const normalizedDetailSearchQuery = normalizedSearchQuery(detailSearchQuery);
-    const toolCalls = detail?.toolCalls ?? [];
+    const toolCalls = effectiveDetail?.toolCalls ?? [];
     const hasPreviousMessages = visibleMessageCount < readableMessages.length;
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
@@ -401,7 +375,14 @@ export function SessionDetailPane({
     const detailRef = useRef<SessionDetail | null>(detail);
     detailRef.current = detail;
     const chatEndpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
-    const activeLiveTurnKey = summary?.id || (isNewChat ? boundRef.current || NewChatLiveTurnKey : "");
+    // New Chat 世代镜像与每条流的发送世代：区分并丢弃上一轮 New Chat 的迟到事件
+    const epochRef = useRef(newChatEpoch);
+    epochRef.current = newChatEpoch;
+    const prevEpochRef = useRef(newChatEpoch);
+    const streamEpochRef = useRef(new Map<string, number>());
+    // 本轮绑定（可能为空）：渲染期即时遮蔽旧绑定，不依赖 effect 时序
+    const boundSessionId = isNewChat && boundEpochRef.current === newChatEpoch ? boundRef.current : "";
+    const activeLiveTurnKey = summary?.id || (isNewChat ? boundSessionId || NewChatLiveTurnKey : "");
     const liveTurn = liveTurns[activeLiveTurnKey] ?? null;
     const liveUserMessagePersisted =
         liveTurn != null &&
@@ -411,6 +392,30 @@ export function SessionDetailPane({
     const activeSessionIdRef = useRef("");
     const nearBottomRef = useRef(true);
     activeSessionIdRef.current = summary?.id ?? "";
+
+    // New Chat 重置：进入占位页 或 在同占位上再点 New Chat（epoch 变化）时触发。
+    // 已绑定的旧流已搬到真实 session key 下（属于真实会话，继续滚不受影响）；
+    // 未绑定的旧流还在占位 key 上 —— 会进本轮渲染，立即断开并清掉残留 live turn。
+    useEffect(() => {
+        const prevEpoch = prevEpochRef.current;
+        const epochChanged = prevEpoch !== newChatEpoch;
+        prevEpochRef.current = newChatEpoch;
+        if (isNewChat && (!wasNewChatRef.current || epochChanged)) {
+            const previouslyBound = epochChanged && boundRef.current !== "" && boundEpochRef.current === prevEpoch;
+            boundRef.current = "";
+            boundEpochRef.current = -1;
+            newChatTurnRef.current = false;
+            setNewChatTurnFinished(false);
+            setComposeSource(defaultChatSource().id);
+            if (epochChanged && !previouslyBound) {
+                clearLiveTurn(NewChatLiveTurnKey);
+                abortChatStream(NewChatLiveTurnKey);
+                // 同步抹掉占位流的世代记录：后续迟到事件必然与本轮 epoch 不符而被丢弃
+                streamEpochRef.current.delete(NewChatLiveTurnKey);
+            }
+        }
+        wasNewChatRef.current = isNewChat;
+    }, [isNewChat, newChatEpoch, clearLiveTurn, abortChatStream]);
 
     useEffect(() => {
         const sessionIds = new Set(Object.keys(liveTurns).filter((key) => key !== NewChatLiveTurnKey));
@@ -497,6 +502,14 @@ export function SessionDetailPane({
     const handleChatEvent = useCallback(
         (evt: ChatEvent, streamSessionId: string) => {
             let key = streamSessionId || boundRef.current || NewChatLiveTurnKey;
+            // 上一轮 New Chat 已作废：该轮的占位流事件（含迟到的 sessionId 回派）一律丢弃
+            if (
+                isNewChat &&
+                streamSessionId === NewChatLiveTurnKey &&
+                streamEpochRef.current.get(NewChatLiveTurnKey) !== epochRef.current
+            ) {
+                return;
+            }
             if (evt.type === "session_state") {
                 if (evt.state?.model) {
                     const m = evt.state.model;
@@ -505,6 +518,7 @@ export function SessionDetailPane({
                 // 新会话：后端在首条消息后回派真实 sessionId，暂存待 turn_end 绑定。
                 if (isNewChat && evt.state?.sessionId && boundRef.current === "") {
                     boundRef.current = String(evt.state.sessionId);
+                    boundEpochRef.current = epochRef.current;
                     key = boundRef.current;
                     moveLiveTurn(NewChatLiveTurnKey, key);
                     moveChatStream(NewChatLiveTurnKey, key);
@@ -548,8 +562,9 @@ export function SessionDetailPane({
 
     const handleChatSend = useCallback(
         (body: ChatRequestBody) => {
-            const key = summary?.id || boundRef.current || NewChatLiveTurnKey;
-            const messageSeqFloor = (detail?.messages ?? []).reduce(
+            const key = summary?.id || boundSessionId || NewChatLiveTurnKey;
+            streamEpochRef.current.set(key, epochRef.current);
+            const messageSeqFloor = (effectiveDetail?.messages ?? []).reduce(
                 (maxSeq, message) => Math.max(maxSeq, message.seq),
                 0
             );
@@ -557,7 +572,7 @@ export function SessionDetailPane({
             flushSync(() => startLiveTurn(key, body.message ?? "", messageSeqFloor));
             sendChatStream(key, chatEndpoint, body, handleChatEvent);
         },
-        [chatEndpoint, detail?.messages, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
+        [chatEndpoint, effectiveDetail?.messages, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
     );
 
     const handleChatSteer = useCallback(
@@ -963,7 +978,7 @@ export function SessionDetailPane({
                                 ) : (
                                     <div>
                                         <div className="flex items-center justify-end gap-2 text-xs text-secondary">
-                                            {detail != null && hasPreviousMessages ? (
+                                            {effectiveDetail != null && hasPreviousMessages ? (
                                                 <button
                                                     className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
                                                     onClick={loadPreviousMessages}
@@ -1025,6 +1040,7 @@ export function SessionDetailPane({
                         </div>
                         {summary != null && summary.id != null && isSourceAvailable(summary.source, availableChatSources) ? (
                             <ChatComposer
+                                key={`composer-${summary.id}`}
                                 source={summary.source}
                                 sessionId={summary.id}
                                 availableSources={availableChatSources}
@@ -1036,6 +1052,7 @@ export function SessionDetailPane({
                             />
                         ) : isNewChat ? (
                             <ChatComposer
+                                key={`composer-new-${newChatEpoch}`}
                                 source={composeSource}
                                 sessionId=""
                                 availableSources={availableChatSources}
