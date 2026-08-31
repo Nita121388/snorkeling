@@ -28,6 +28,7 @@ declare global {
         prefersReducedMotionAtom: jotai.Atom<boolean>;
         documentHasFocus: jotai.PrimitiveAtom<boolean>;
         updaterStatusAtom: jotai.PrimitiveAtom<UpdaterStatus>;
+        updaterManualProgressAtom: jotai.PrimitiveAtom<UpdaterManualProgress | null>;
         modalOpen: jotai.PrimitiveAtom<boolean>;
         allConnStatus: jotai.Atom<ConnStatus[]>;
         reinitVersion: jotai.PrimitiveAtom<number>;
@@ -110,9 +111,13 @@ declare global {
         onFullScreenChange: (callback: (isFullScreen: boolean) => void) => void; // fullscreen-change
         onZoomFactorChange: (callback: (zoomFactor: number) => void) => void; // zoom-factor-change
         onUpdaterStatusChange: (callback: (status: UpdaterStatus) => void) => void; // app-update-status
+        onUpdaterManualProgress: (callback: (progress: UpdaterManualProgress) => void) => void; // app-update-manual-progress
         getUpdaterStatus: () => UpdaterStatus; // get-app-update-status
+        getUpdaterManualProgress: () => UpdaterManualProgress | null; // get-app-update-manual-progress
         getUpdaterChannel: () => string; // get-updater-channel
         installAppUpdate: () => void; // install-app-update
+        cancelAppUpdateDownload: () => void; // cancel-app-update-download
+        retryAppUpdateDownload: () => void; // retry-app-update-download
         onMenuItemAbout: (callback: () => void) => void; // menu-item-about
         updateWindowControlsOverlay: (rect: Dimensions) => void; // update-window-controls-overlay
         onReinjectKey: (callback: (waveEvent: WaveKeyboardEvent) => void) => void; // reinject-key
@@ -414,6 +419,16 @@ declare global {
     }
 
     type UpdaterStatus = "up-to-date" | "checking" | "downloading" | "ready" | "manual-update" | "error" | "installing";
+    type UpdaterManualProgress = {
+        phase: "idle" | "downloading" | "ready" | "installing" | "failed";
+        version?: string;
+        file?: string;
+        stagedAppPath?: string;
+        targetBundle?: string;
+        received?: number;
+        total?: number;
+        error?: string;
+    };
 
     // jotai doesn't export this type :/
     type Loadable<T> = { state: "loading" } | { state: "hasData"; data: T } | { state: "hasError"; error: unknown };

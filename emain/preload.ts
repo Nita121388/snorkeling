@@ -39,9 +39,14 @@ contextBridge.exposeInMainWorld("api", {
     onZoomFactorChange: (callback) =>
         ipcRenderer.on("zoom-factor-change", (_event, zoomFactor) => callback(zoomFactor)),
     onUpdaterStatusChange: (callback) => ipcRenderer.on("app-update-status", (_event, status) => callback(status)),
+    onUpdaterManualProgress: (callback) =>
+        ipcRenderer.on("app-update-manual-progress", (_event, progress) => callback(progress)),
     getUpdaterStatus: () => ipcRenderer.sendSync("get-app-update-status"),
+    getUpdaterManualProgress: () => ipcRenderer.sendSync("get-app-update-manual-progress"),
     getUpdaterChannel: () => ipcRenderer.sendSync("get-updater-channel"),
     installAppUpdate: () => ipcRenderer.send("install-app-update"),
+    cancelAppUpdateDownload: () => ipcRenderer.send("cancel-app-update-download"),
+    retryAppUpdateDownload: () => ipcRenderer.send("retry-app-update-download"),
     onMenuItemAbout: (callback) => ipcRenderer.on("menu-item-about", callback),
     updateWindowControlsOverlay: (rect) => ipcRenderer.send("update-window-controls-overlay", rect),
     onReinjectKey: (callback) => ipcRenderer.on("reinject-key", (_event, waveEvent) => callback(waveEvent)),
