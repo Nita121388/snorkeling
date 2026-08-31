@@ -91,10 +91,15 @@ function detectUpdateSupportState(): UpdateSupportState {
 }
 
 function getUpdateChannel(settings: SettingsType): string {
-    const updaterConfigPath = path.join(process.resourcesPath!, "app-update.yml");
-    const updaterConfig = YAML.parse(readFileSync(updaterConfigPath, { encoding: "utf8" }).toString());
-    console.log("Updater config from binary:", updaterConfig);
-    const updaterChannel: string = updaterConfig.channel ?? "latest";
+    let updaterChannel = "latest";
+    try {
+        const updaterConfigPath = path.join(process.resourcesPath!, "app-update.yml");
+        const updaterConfig = YAML.parse(readFileSync(updaterConfigPath, { encoding: "utf8" }).toString());
+        console.log("Updater config from binary:", updaterConfig);
+        updaterChannel = updaterConfig?.channel ?? "latest";
+    } catch (e) {
+        console.warn("could not read app-update.yml, defaulting to latest channel", e);
+    }
     const settingsChannel = settings["autoupdate:channel"];
     let retVal = settingsChannel;
 
