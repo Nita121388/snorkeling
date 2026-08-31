@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Quick Launch — Mockup Comparison</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{
+    --bg: #1b1d23;
+    --surface: #23262e;
+    --surface-soft: #2b2f39;
+    --border: #343945;
+    --fg: #e6e8ee;
+    --secondary: #b5bac6;
+    --muted: #7d8290;
+    --accent: #58c4dc;
+    --hoverbg: #2e3340;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{
+    background: #14151a;
+    color: var(--fg);
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 13px;
+    padding: 32px 24px 64px;
+  }
+  h1{ font-size:16px; font-weight:600; margin-bottom:4px; }
+  .sub{ color:var(--muted); font-size:12px; margin-bottom:28px; }
+  .row{ display:flex; gap:48px; flex-wrap:wrap; align-items:flex-start; }
+  .panel-label{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+  .notes{ margin-top:14px; font-size:12px; color:var(--secondary); line-height:1.7; max-width:420px; }
+  .notes li{ margin-left:16px; margin-bottom:3px; }
+
+  .modal{ background:var(--surface); border:1px solid var(--border); border-radius:10px;
+          box-shadow:0 12px 40px rgba(0,0,0,.5); overflow:hidden; }
+  .muted{ color:var(--muted); } .accent{ color:var(--accent); }
+
+  /* ---------- BEFORE ---------- */
+  .before{ width:420px; }
+  .before .hdr{ padding:12px 16px 4px; }
+  .before .title{ font-size:14px; font-weight:500; display:flex; gap:8px; align-items:center; }
+  .before .caption{ font-size:10px; color:var(--muted); margin-top:2px; }
+  .before .list{ padding:4px 8px; max-height:320px; }
+  .wi{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:6px;
+       color:var(--secondary); cursor:pointer; }
+  .wi i{ width:14px; text-align:center; }
+  .wi .lbl{ font-size:12px; white-space:nowrap; }
+  .wi:hover{ background:var(--hoverbg); }
+  .wi.sel{ background:rgba(88,196,220,.12); color:var(--fg); }
+  .before .footer{ border-top:1px solid var(--border); padding:8px 12px; display:flex; align-items:center; gap:12px; }
+  .before .footer .tip{ font-size:10px; color:var(--muted); }
+  .btn{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:500; height:24px;
+        padding:0 8px; border-radius:6px; background:transparent; border:none; cursor:pointer; color:var(--secondary); }
+  .btn:hover{ background:var(--surface-soft); color:var(--fg); }
+  .btn.acc{ color:var(--accent); }
+
+  /* ---------- AFTER: compact quick-launcher ---------- */
+  .after{ width:320px; }
+  .after .bar{ display:flex; align-items:center; gap:8px; padding:10px 12px 6px; }
+  .after .bar .t{ font-size:12px; font-weight:600; }
+  .after .bar kbd{ font-size:10px; color:var(--muted); background:var(--surface-soft);
+                   border:1px solid var(--border); border-radius:4px; padding:1px 5px; margin-left:auto; }
+  .after .list{ padding:2px 6px 8px; max-height:280px; overflow-y:auto; }
+  .after .wi{ padding:6px 8px; position:relative; }
+  .after .wi .place{ margin-left:auto; display:none; gap:2px; }
+  .after .wi:hover .place, .after .wi.hl .place{ display:flex; }
+  .chip{ font-size:10px; padding:2px 7px; border-radius:5px; border:1px solid var(--border);
+         color:var(--muted); cursor:pointer; background:transparent; }
+  .chip:hover{ border-color:var(--accent); color:var(--accent); }
+  .wi.hl{ background:var(--surface-soft); }
+  .kbd-hints{ display:flex; gap:14px; padding:7px 12px; border-top:1px solid var(--border);
+              font-size:10px; color:var(--muted); }
+  .kbd-hints kbd{ background:var(--surface-soft); border:1px solid var(--border); border-radius:3px; padding:0 4px; }
+</style>
+</head>
+<body>
+
+<h1>Quick Launch Widgets — 优化原型对比</h1>
+<div class="sub">左：当前实现 · 右：推荐方案（一步启动 + 内联放置选择）。鼠标悬停列表项可看到放置切换。</div>
+
+<div class="row">
+
+  <!-- BEFORE -->
+  <div>
+    <div class="panel-label">Before · 当前</div>
+    <div class="modal before">
+      <div class="hdr">
+        <div class="title"><i class="fa-sharp fa-regular fa-bolt accent"></i> Quick Launch Widgets</div>
+        <div class="caption">支持的 widget · 无过滤</div>
+      </div>
+      <div class="list">
+        <div class="wi"><i class="fa-solid fa-terminal" style="color:#58c4dc"></i><span class="lbl">Terminal</span><span class="muted" style="margin-left:auto;font-size:10px">→ 目标选择</span></div>
+        <div class="wi sel"><i class="fa-solid fa-robot" style="color:#a78bfa"></i><span class="lbl">Agent</span><span class="muted" style="margin-left:auto;font-size:10px">→ 目标选择</span></div>
+        <div class="wi"><i class="fa-solid fa-globe" style="color:#f59e0b"></i><span class="lbl">Browser</span></div>
+        <div class="wi"><i class="fa-solid fa-file-lines" style="color:#34d399"></i><span class="lbl">Markdown Preview</span></div>
+        <div class="wi"><i class="fa-solid fa-chart-line" style="color:#f472b6"></i><span class="lbl">Sysmon</span></div>
+        <div class="wi"><i class="fa-solid fa-folder-open" style="color:#60a5fa"></i><span class="lbl">Files</span></div>
+      </div>
+      <div class="footer">
+        <span class="tip">放置「Agent」到</span>
+        <button class="btn"><i class="fa-sharp fa-solid fa-square-plus" style="font-size:9px"></i> New Block</button>
+        <button class="btn acc"><i class="fa-sharp fa-solid fa-table-columns" style="font-size:9px"></i> Current Group</button>
+        <button class="btn" style="margin-left:auto"><i class="fa-sharp fa-solid fa-arrow-rotate-left" style="font-size:10px"></i> 重选</button>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>标题 + 副标题占两行，副标题无信息量</li>
+      <li>两段式操作：先选中 → 底部出现 3 按钮再选放置方式</li>
+      <li>中英混杂（重选 / → 目标选择 / New Block）</li>
+      <li>420px 宽，对 12px 列表文字偏宽</li>
+    </ul>
+  </div>
+
+  <!-- AFTER -->
+  <div>
+    <div class="panel-label">After · 推荐方案</div>
+    <div class="modal after">
+      <div class="bar">
+        <i class="fa-sharp fa-regular fa-bolt accent" style="font-size:11px"></i>
+        <span class="t">Quick Launch</span>
+        <kbd>esc</kbd>
+      </div>
+      <div class="list">
+        <div class="wi hl"><i class="fa-solid fa-terminal" style="color:#58c4dc"></i><span class="lbl">Terminal</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+        <div class="wi"><i class="fa-solid fa-solid fa-robot" style="color:#a78bfa"></i><span class="lbl">Agent</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+        <div class="wi"><i class="fa-solid fa-globe" style="color:#f59e0b"></i><span class="lbl">Browser</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+        <div class="wi"><i class="fa-solid fa-file-lines" style="color:#34d399"></i><span class="lbl">Markdown Preview</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+        <div class="wi"><i class="fa-solid fa-chart-line" style="color:#f472b6"></i><span class="lbl">Sysmon</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+        <div class="wi"><i class="fa-solid fa-folder-open" style="color:#60a5fa"></i><span class="lbl">Files</span>
+          <span class="place"><button class="chip">block</button><button class="chip">group</button></span></div>
+      </div>
+      <div class="kbd-hints">
+        <span><kbd>↑↓</kbd> select</span>
+        <span><kbd>↵</kbd> new block</span>
+        <span><kbd>⇥</kbd> into group</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>删副标题；标题缩成单行 "Quick Launch" + esc 提示</li>
+      <li>点击/Enter 直接启动（默认 New Block）</li>
+      <li>悬停行尾 chip 可一键改为 group，无 footer</li>
+      <li>键盘：↵ = block，⇥ = group（底部常驻提示）</li>
+      <li>全英文文案；宽度 420 → 320px，行高压紧</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>
