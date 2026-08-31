@@ -200,3 +200,154 @@ export function getColumnAlign(text: string, line: number, colIdx: number): Tabl
     }
     return "default";
 }
+
+// ---------------------------------------------------------------------------
+// Rendered-coordinate addressing (M7: milkdown-style table chrome).
+// Rendered row indices: 0 = header row, 1..n = data rows (the separator line is
+// NOT rendered). Boundary indices point at the GAP before a rendered row/column:
+// column boundary 0 = left of the first column, boundary cols = right of last.
+// ---------------------------------------------------------------------------
+
+/** Rendered row count (header + data rows; separator line excluded). 0 when not a table. */
+export function tableRenderedRowCount(text: string, line: number): number {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null) {
+        return 0;
+    }
+    return bounds.end - bounds.start;
+}
+
+/** Raw source text of one cell, or null when the coordinate is out of range. */
+export function getTableCellText(text: string, line: number, row: number, col: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || row < 0 || col < 0 || row >= bounds.end - bounds.start) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    const idx = row === 0 ? bounds.start : bounds.start + 1 + row;
+    const cells = splitTableCells(lines[idx]);
+    return col < cells.length ? cells[col] : null;
+}
+
+/** Rewrite exactly one cell's text. The row is re-emitted in canonical `| a | b |` form;
+ *  every other line is untouched. Returns null when out of range or unchanged. */
+export function setTableCellText(text: string, line: number, row: number, col: number, value: string): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || row < 0 || col < 0 || row >= bounds.end - bounds.start) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    const idx = row === 0 ? bounds.start : bounds.start + 1 + row;
+    const cells = splitTableCells(lines[idx]);
+    if (col >= cells.length || cells[col] === value) {
+        return null;
+    }
+    cells[col] = value;
+    lines[idx] = `| ${cells.join(" | ")} |`;
+    return lines.join("\n");
+}
+
+/** Insert a row at the GAP before rendered row `boundary` (milkdown line-handle semantics).
+ *  boundary ∈ [1, renderedRowCount]: 1 = first data row (never above the header),
+ *  renderedRowCount = append as the last row. */
+export function insertTableRowAtBoundary(text: string, line: number, boundary: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || !Number.isInteger(boundary)) {
+        return null;
+    }
+    const rows = bounds.end - bounds.start;
+    if (boundary < 1 || boundary > rows) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    const cols = columnCountOf(lines[bounds.start + 1]);
+    lines.splice(bounds.start + 1 + boundary, 0, makeEmptyRow(cols));
+    return lines.join("\n");
+}
+
+/** Insert a column at the GAP before column `boundary` ∈ [0, cols]. */
+export function insertTableColumnAtBoundary(text: string, line: number, boundary: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || !Number.isInteger(boundary)) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    const cols = columnCountOf(lines[bounds.start + 1]);
+    if (boundary < 0 || boundary > cols) {
+        return null;
+    }
+    for (let i = bounds.start; i <= bounds.end; i++) {
+        const cells = splitTableCells(lines[i]);
+        while (cells.length < cols) {
+            cells.push("");
+        }
+        cells.splice(boundary, 0, i === bounds.start + 1 ? "---" : "");
+        lines[i] = `| ${cells.join(" | ")} |`;
+    }
+    return lines.join("\n");
+}
+
+/**
+ * Move rendered row `from` into the GAP `boundary` (drop-indicator position).
+ * No-op (null) when boundary === from or from+1. The separator line always stays second,
+ * so whatever row lands first becomes the header — identical to milkdown's visual move,
+ * expressed in GFM.
+ */
+export function moveTableRow(text: string, line: number, from: number, boundary: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || !Number.isInteger(from) || !Number.isInteger(boundary)) {
+        return null;
+    }
+    const rows = bounds.end - bounds.start;
+    if (from < 0 || from >= rows || boundary < 0 || boundary > rows || boundary === from || boundary === from + 1) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    // Source idx per rendered row: header → start, data r → start + 1 + r. Separator pinned.
+    const rowIdxs: number[] = [bounds.start];
+    for (let r = 1; r < rows; r++) {
+        rowIdxs.push(bounds.start + 1 + r);
+    }
+    const entries = rowIdxs.map((i) => lines[i]);
+    const [moved] = entries.splice(from, 1);
+    const insertAt = boundary > from ? boundary - 1 : boundary;
+    entries.splice(insertAt, 0, moved);
+    for (let r = 0; r < rows; r++) {
+        lines[rowIdxs[r]] = entries[r];
+    }
+    return lines.join("\n");
+}
+
+/** Move column `from` into the GAP `boundary` (header, separator and data cells move together). */
+export function moveTableColumn(text: string, line: number, from: number, boundary: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || !Number.isInteger(from) || !Number.isInteger(boundary)) {
+        return null;
+    }
+    const lines = text.split(/\r\n|\n/);
+    const cols = columnCountOf(lines[bounds.start + 1]);
+    if (from < 0 || from >= cols || boundary < 0 || boundary > cols || boundary === from || boundary === from + 1) {
+        return null;
+    }
+    for (let i = bounds.start; i <= bounds.end; i++) {
+        const cells = splitTableCells(lines[i]);
+        while (cells.length < cols) {
+            cells.push("");
+        }
+        const [moved] = cells.splice(from, 1);
+        const insertAt = boundary > from ? boundary - 1 : boundary;
+        cells.splice(insertAt, 0, moved);
+        lines[i] = `| ${cells.join(" | ")} |`;
+    }
+    return lines.join("\n");
+}
+
+/** Delete rendered row `row` (0 = header, which promotes the first data row, per deleteTableRow). */
+export function deleteTableRenderedRow(text: string, line: number, row: number): string | null {
+    const bounds = findTableBounds(text, line);
+    if (bounds == null || row < 0 || row >= bounds.end - bounds.start) {
+        return null;
+    }
+    const srcLine = (row === 0 ? bounds.start : bounds.start + 1 + row) + 1;
+    return deleteTableRow(text, srcLine);
+}

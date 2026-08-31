@@ -8,9 +8,16 @@ import {
     deleteTableRow,
     findTableBounds,
     getColumnAlign,
+    getTableCellText,
     insertTableColumn,
+    insertTableColumnAtBoundary,
     insertTableRow,
+    insertTableRowAtBoundary,
+    moveTableColumn,
+    moveTableRow,
     setColumnAlign,
+    setTableCellText,
+    tableRenderedRowCount,
 } from "./table";
 
 const TABLE = "| name | age |\n| --- | --- |\n| amy | 3 |\n| bob | 5 |";
@@ -126,5 +133,105 @@ describe("caretToTableCoord", () => {
 
     test("out-of-range caret → null", () => {
         expect(caretToTableCoord("| a |", 99)).toBeNull();
+    });
+});
+
+describe("rendered-row coordinates (M7)", () => {
+    const T3 = "| h1 | h2 |\n| --- | --- |\n| a | b |\n| c | d |";
+
+    test("tableRenderedRowCount counts header + data rows, not the separator", () => {
+        expect(tableRenderedRowCount(T3, 1)).toBe(3);
+        expect(tableRenderedRowCount("not a table", 1)).toBe(0);
+    });
+
+    test("getTableCellText reads header and data cells", () => {
+        expect(getTableCellText(T3, 1, 0, 1)).toBe("h2");
+        expect(getTableCellText(T3, 1, 2, 0)).toBe("c");
+        expect(getTableCellText(T3, 1, 3, 0)).toBeNull();
+        expect(getTableCellText(T3, 1, 0, 5)).toBeNull();
+    });
+
+    test("setTableCellText rewrites exactly one cell, canonically", () => {
+        expect(setTableCellText(T3, 1, 1, 1, "B **x**")).toBe(
+            "| h1 | h2 |\n| --- | --- |\n| a | B **x** |\n| c | d |"
+        );
+    });
+
+    test("setTableCellText can rewrite the header cell", () => {
+        expect(setTableCellText(T3, 1, 0, 0, "H1")).toBe(
+            "| H1 | h2 |\n| --- | --- |\n| a | b |\n| c | d |"
+        );
+    });
+
+    test("setTableCellText no-ops on identical / out-of-range input", () => {
+        expect(setTableCellText(T3, 1, 1, 0, "a")).toBeNull();
+        expect(setTableCellText(T3, 1, 9, 0, "x")).toBeNull();
+        expect(setTableCellText(T3, 1, 0, 4, "x")).toBeNull();
+    });
+
+    test("setTableCellText keeps escaped pipes intact in sibling cells", () => {
+        const t = "| a \\| x | b |\n| --- | --- |\n| 1 | 2 |";
+        expect(setTableCellText(t, 1, 1, 1, "y")).toBe("| a \\| x | b |\n| --- | --- |\n| 1 | y |");
+        expect(getTableCellText(t, 1, 0, 0)).toBe("a \\| x");
+    });
+});
+
+describe("insertTableRowAtBoundary / insertTableColumnAtBoundary", () => {
+    const T2 = "| h1 | h2 |\n| --- | --- |\n| a | b |";
+
+    test("boundary 1 = first data row (never above the header)", () => {
+        expect(insertTableRowAtBoundary(T2, 1, 1)).toBe("| h1 | h2 |\n| --- | --- |\n|  |  |\n| a | b |");
+        expect(insertTableRowAtBoundary(T2, 1, 0)).toBeNull();
+    });
+
+    test("boundary rowCount = append last", () => {
+        expect(insertTableRowAtBoundary(T2, 1, 2)).toBe("| h1 | h2 |\n| --- | --- |\n| a | b |\n|  |  |");
+    });
+
+    test("column boundary 0 = leftmost, cols = rightmost, separator gets ---", () => {
+        expect(insertTableColumnAtBoundary(T2, 1, 0)).toBe(
+            "|  | h1 | h2 |\n| --- | --- | --- |\n|  | a | b |"
+        );
+        expect(insertTableColumnAtBoundary(T2, 1, 2)).toBe(
+            "| h1 | h2 |  |\n| --- | --- | --- |\n| a | b |  |"
+        );
+        expect(insertTableColumnAtBoundary(T2, 1, 3)).toBeNull();
+        expect(insertTableColumnAtBoundary(T2, 1, -1)).toBeNull();
+    });
+});
+
+describe("moveTableRow / moveTableColumn", () => {
+    const T3 = "| h1 | h2 |\n| --- | --- |\n| a | b |\n| c | d |\n| e | f |";
+
+    test("moving a row down lands after the hovered row", () => {
+        expect(moveTableRow(T3, 1, 1, 3)).toBe("| h1 | h2 |\n| --- | --- |\n| c | d |\n| a | b |\n| e | f |");
+    });
+
+    test("moving a row up lands before the hovered row", () => {
+        expect(moveTableRow(T3, 1, 3, 1)).toBe("| h1 | h2 |\n| --- | --- |\n| e | f |\n| a | b |\n| c | d |");
+    });
+
+    test("a data row dropped on the header gap becomes the new header (GFM reality)", () => {
+        expect(moveTableRow(T3, 1, 2, 0)).toBe("| c | d |\n| --- | --- |\n| h1 | h2 |\n| a | b |\n| e | f |");
+    });
+
+    test("no-op boundaries return null", () => {
+        expect(moveTableRow(T3, 1, 1, 1)).toBeNull();
+        expect(moveTableRow(T3, 1, 1, 2)).toBeNull();
+        expect(moveTableRow(T3, 1, 9, 1)).toBeNull();
+        expect(moveTableRow(T3, 1, 1, 99)).toBeNull();
+    });
+
+    test("moving a column right moves header, separator and data together", () => {
+        expect(moveTableColumn(T3, 1, 0, 2)).toBe(
+            "| h2 | h1 |\n| --- | --- |\n| b | a |\n| d | c |\n| f | e |"
+        );
+    });
+
+    test("moving a column left", () => {
+        expect(moveTableColumn(T3, 1, 2, 0)).toBeNull(); // only 2 cols → out of range
+        expect(moveTableColumn("| a | b | c |\n| - | - | - |\n| 1 | 2 | 3 |", 1, 2, 0)).toBe(
+            "| c | a | b |\n| - | - | - |\n| 3 | 1 | 2 |"
+        );
     });
 });

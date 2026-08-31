@@ -22,6 +22,7 @@ export type BlockEditorFeature =
     | "emoji" // `:` emoji trigger
     | "docemoji" // document emoji badge (frontmatter)
     | "table" // table toolbar
+    | "tablecell" // milkdown-style table WYSIWYG: in-cell editing + hover handles (off → M4 raw editor)
     | "codelang"; // code block language badge
 
 const LS_PREFIX = "snorkeling:block-editor:";
@@ -34,6 +35,7 @@ const ALL_FEATURES: BlockEditorFeature[] = [
     "emoji",
     "docemoji",
     "table",
+    "tablecell",
     "codelang",
 ];
 

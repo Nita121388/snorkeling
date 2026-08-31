@@ -7,6 +7,7 @@ import {
     detectBlockKind,
     matchTypingPattern,
     rewriteDraftFirstLine,
+    splitTableCells,
     transformBlockType,
 } from "./block-type";
 
@@ -277,5 +278,26 @@ describe("applyTypingPatternAtLine", () => {
     test("blank / out-of-range lines are safe no-ops", () => {
         expect(applyTypingPatternAtLine("a\n\nb", 2)).toBeNull();
         expect(applyTypingPatternAtLine("a", 7)).toBeNull();
+    });
+});
+
+describe("splitTableCells (pipe-escape aware)", () => {
+    test("splits on plain pipes and trims", () => {
+        expect(splitTableCells("| a | b |")).toEqual(["a", "b"]);
+        expect(splitTableCells("a | b")).toEqual(["a", "b"]);
+    });
+
+    test("escaped pipe stays inside its cell", () => {
+        expect(splitTableCells("| a \\| b | c |")).toEqual(["a \\| b", "c"]);
+    });
+
+    test("trailing escaped pipe is not the row terminator", () => {
+        expect(splitTableCells("| a \\|")).toEqual(["a \\|"]);
+        expect(splitTableCells("| a | b \\|")).toEqual(["a", "b \\|"]);
+    });
+
+    test("double backslash before a pipe does NOT escape it", () => {
+        // `a\\|b` = literal backslash followed by a real delimiter.
+        expect(splitTableCells("| a \\\\ | b |")).toEqual(["a \\\\", "b"]);
     });
 });

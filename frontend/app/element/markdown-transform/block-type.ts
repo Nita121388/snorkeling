@@ -309,16 +309,39 @@ function isListFamily(kind: BlockKind): boolean {
     return kind === "bulleted" || kind === "numbered" || kind === "todo";
 }
 
-/** Parse a `| a | b |` table row into trimmed cell texts (outer pipes dropped). */
+/** Is the "|" at s[idx] escaped? Escaped = preceded by an odd run of backslashes (GFM). */
+function isEscapedPipe(s: string, idx: number): boolean {
+    let backslashes = 0;
+    let i = idx - 1;
+    while (i >= 0 && s[i] === "\\") {
+        backslashes++;
+        i--;
+    }
+    return backslashes % 2 === 1;
+}
+
+/** Parse a `| a | b |` table row into trimmed cell texts (outer pipes dropped).
+ *  Pipe-escape aware: `\|` stays INSIDE its cell instead of splitting it. */
 export function splitTableCells(line: string): string[] {
     let core = line.trim();
     if (core.startsWith("|")) {
         core = core.slice(1);
     }
-    if (core.endsWith("|")) {
+    if (core.endsWith("|") && !isEscapedPipe(core, core.length - 1)) {
         core = core.slice(0, -1);
     }
-    return core.split("|").map((c) => c.trim());
+    const cells: string[] = [];
+    let current = "";
+    for (let i = 0; i < core.length; i++) {
+        if (core[i] === "|" && !isEscapedPipe(core, i)) {
+            cells.push(current.trim());
+            current = "";
+            continue;
+        }
+        current += core[i];
+    }
+    cells.push(current.trim());
+    return cells;
 }
 
 /** Strip a block's formatting wrapper down to plain content lines (indent preserved). */
