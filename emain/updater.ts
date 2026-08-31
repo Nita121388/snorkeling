@@ -14,10 +14,14 @@ import { setGlobalIsQuitting, setUserConfirmedQuit } from "./emain-activity";
 import { delay } from "./emain-util";
 import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
+import { isOfflineError } from "./updater-shared";
 
 export let updater: Updater;
 const SnorkelingLatestReleaseUrl = "https://github.com/Nita121388/snorkeling/releases/latest";
 let quittingForUpdate = false;
+
+// re-export so older imports keep working
+export { isOfflineError };
 
 type UpdateSupportState = {
     supported: boolean;
@@ -123,6 +127,16 @@ export class Updater {
     updateSupport: UpdateSupportState;
     lastUpdateErrorMessage: string | null;
     private _status: UpdaterStatus;
+    /**
+     * The last time we actually got an answer from the update server — whether the answer
+     * was "there is an update" or "you are current". `null` means we have never successfully
+     * checked.
+     *
+     * Kept separate from `lastUpdateCheck` (schedule bookkeeping) on purpose: a failed check
+     * is not a check. Conflating them is how "offline" gets reported as "you are on the
+     * latest version".
+     */
+    lastChecked: Date | null;
     lastUpdateCheck: Date;
 
     constructor(settings: SettingsType) {
@@ -133,6 +147,7 @@ export class Updater {
         console.log("Update check enabled:", this.autoCheckEnabled);
 
         this._status = "up-to-date";
+        this.lastChecked = null;
         this.lastUpdateCheck = new Date(0);
         this.autoCheckInterval = null;
         this.availableUpdateReleaseName = null;
@@ -156,11 +171,17 @@ export class Updater {
         autoUpdater.on("error", (err) => {
             console.log("updater error");
             console.log(err);
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            if (!errorMessage.includes("net::ERR_INTERNET_DISCONNECTED")) {
-                this.lastUpdateErrorMessage = errorMessage;
-                this.status = "error";
+            this.lastChecked = new Date();
+            if (isOfflineError(err)) {
+                // Offline or transient network failure while checking for updates in the background.
+                // This is not an app problem and not a "known up-to-date" answer: leave the status
+                // untouched so the UI doesn't claim we successfully checked, and so the next
+                // interval retry isn't treated as a fresh error.
+                return;
             }
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            this.lastUpdateErrorMessage = errorMessage;
+            this.status = "error";
         });
 
         autoUpdater.on("checking-for-update", () => {
@@ -192,6 +213,7 @@ export class Updater {
         autoUpdater.on("update-not-available", () => {
             console.log("update-not-available");
             this.lastUpdateErrorMessage = null;
+            this.lastChecked = new Date();
             this.status = "up-to-date";
         });
 
@@ -303,6 +325,7 @@ export class Updater {
         ) {
             try {
                 const result = await autoUpdater.checkForUpdates();
+                this.lastChecked = now;
 
                 // If the user requested this check and we do not have an available update, let them know with a popup dialog. No need to tell them if there is an update, because we show a banner once the update is ready to install.
                 if (userInput && !result.downloadPromise && this.status !== "manual-update") {
@@ -320,6 +343,13 @@ export class Updater {
                 // Only update the last check time if this is an automatic check. This ensures the interval remains consistent.
                 if (!userInput) this.lastUpdateCheck = now;
             } catch (err) {
+                if (isOfflineError(err)) {
+                    // Background/periodic check while offline: keep quiet. User-initiated checks
+                    // also stay silent here, matching the behaviour of the app's other network
+                    // errors — there is no reachable update we could have told them about.
+                    if (!userInput) this.lastUpdateCheck = now;
+                    return;
+                }
                 if (userInput) {
                     const code = (err as any)?.code ?? "";
                     const detail =
@@ -342,6 +372,11 @@ export class Updater {
                 throw err;
             }
         }
+    }
+
+    /** True if we have never successfully completed an update check. */
+    get hasEverChecked(): boolean {
+        return this.lastChecked != null;
     }
 
     /**
@@ -458,6 +493,9 @@ export function getResolvedUpdateChannel(): string {
 ipcMain.on("install-app-update", () => fireAndForget(updater?.promptToInstallUpdate.bind(updater)));
 ipcMain.on("get-app-update-status", (event) => {
     event.returnValue = updater?.status;
+});
+ipcMain.on("get-app-update-last-checked", (event) => {
+    event.returnValue = updater?.lastChecked?.toISOString() ?? null;
 });
 ipcMain.on("get-updater-channel", (event) => {
     event.returnValue = getResolvedUpdateChannel();
