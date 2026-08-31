@@ -35,6 +35,7 @@ import {
     getBestUnit,
     getLastModifiedTime,
     getSortIcon,
+    handleFileDeletes,
     handleMoveTo,
     handleRename,
     isIconValid,
@@ -725,6 +726,14 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                     return true;
                 }
                 copyPreviewFileItems(selectedFileInfos, conn);
+                return true;
+            }
+            if (checkKeyPressed(waveEvent, "Delete") || checkKeyPressed(waveEvent, "Cmd:Backspace")) {
+                const selectedFileInfos = filteredData.filter((fileInfo) => selectedPaths.has(fileInfo.path));
+                if (selectedFileInfos.length === 0) {
+                    return true;
+                }
+                handleFileDeletes(model, selectedFileInfos, setErrorMsg);
                 return true;
             }
             if (checkKeyPressed(waveEvent, "Cmd:v") || checkKeyPressed(waveEvent, "Ctrl:v")) {

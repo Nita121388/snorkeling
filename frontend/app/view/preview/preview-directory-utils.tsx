@@ -168,7 +168,7 @@ export function handleMoveTo(
     });
 }
 
-export function handleFileDelete(
+function deleteFileWithConfirm(
     model: PreviewModel,
     path: string,
     recursive: boolean,
@@ -184,28 +184,127 @@ export function handleFileDelete(
         } catch (e) {
             const errorText = `${e}`;
             console.warn(`Delete failed: ${errorText}`);
-            let errorMsg: ErrorMsg;
             if (errorText.includes(recursiveError) && !recursive) {
-                errorMsg = {
+                setErrorMsg({
                     status: "Confirm Delete Directory",
-                    text: "Deleting a directory requires the recursive flag. Proceed?",
+                    text: `Are you sure you want to recursively delete the folder \n${path}?`,
                     level: "warning",
                     buttons: [
                         {
                             text: "Delete Recursively",
-                            onClick: () => handleFileDelete(model, path, true, setErrorMsg),
+                            onClick: () => deleteFileWithConfirm(model, path, true, setErrorMsg),
                         },
                     ],
-                };
-            } else {
-                errorMsg = {
-                    status: "Delete Failed",
-                    text: `${e}`,
-                };
+                });
+                return;
             }
-            setErrorMsg(errorMsg);
+            setErrorMsg({
+                status: "Delete Failed",
+                text: `${e}`,
+            });
         }
         model.refresh();
+    });
+}
+
+export function handleFileDelete(
+    model: PreviewModel,
+    path: string,
+    isDir: boolean,
+    setErrorMsg: (msg: ErrorMsg) => void
+) {
+    const fileName = path.split("/").pop() ?? path;
+    if (isDir) {
+        // Folder: skip non-recursive attempt, go straight to recursive confirm
+        setErrorMsg({
+            status: "Confirm Delete Folder",
+            text: `Are you sure you want to delete this folder?\n${fileName}`,
+            level: "warning",
+            buttons: [
+                {
+                    text: "Delete",
+                    onClick: () => deleteFileWithConfirm(model, path, true, setErrorMsg),
+                },
+            ],
+        });
+        return;
+    }
+    // File: confirm then delete
+    setErrorMsg({
+        status: "Confirm Delete",
+        text: `Are you sure you want to delete this file?\n${fileName}`,
+        level: "warning",
+        buttons: [
+            {
+                text: "Delete",
+                onClick: () => deleteFileWithConfirm(model, path, false, setErrorMsg),
+            },
+        ],
+    });
+}
+
+export function handleFileDeletes(
+    model: PreviewModel,
+    fileInfos: FileInfo[],
+    setErrorMsg: (msg: ErrorMsg) => void
+) {
+    if (fileInfos.length === 0) {
+        return;
+    }
+    if (fileInfos.length === 1) {
+        const fi = fileInfos[0];
+        handleFileDelete(model, fi.path, fi.isdir, setErrorMsg);
+        return;
+    }
+    const count = fileInfos.length;
+    const dirCount = fileInfos.filter((fi) => fi.isdir).length;
+    const fileList = fileInfos.map((fi) => fi.name ?? fi.path).join("\n");
+    setErrorMsg({
+        status: "Confirm Delete",
+        text: `Are you sure you want to delete ${count} items${dirCount > 0 ? ` (including ${dirCount} folder${dirCount > 1 ? "s" : ""})` : ""}?\n${fileList}`,
+        level: "warning",
+        buttons: [
+            {
+                text: "Delete",
+                onClick: () => {
+                    fireAndForget(async () => {
+                        for (const fi of fileInfos) {
+                            try {
+                                const formattedPath = await model.formatRemoteUri(fi.path, globalStore.get);
+                                await model.env.rpc.FileDeleteCommand(TabRpcClient, {
+                                    path: formattedPath,
+                                    recursive: fi.isdir,
+                                });
+                            } catch (e) {
+                                const errorText = `${e}`;
+                                console.warn(`Delete failed for ${fi.path}: ${errorText}`);
+                                if (errorText.includes(recursiveError)) {
+                                    // retry with recursive flag
+                                    try {
+                                        const formattedPath = await model.formatRemoteUri(fi.path, globalStore.get);
+                                        await model.env.rpc.FileDeleteCommand(TabRpcClient, {
+                                            path: formattedPath,
+                                            recursive: true,
+                                        });
+                                    } catch (e2) {
+                                        setErrorMsg({
+                                            status: "Delete Failed",
+                                            text: `Failed to delete ${fi.path}: ${e2}`,
+                                        });
+                                    }
+                                } else {
+                                    setErrorMsg({
+                                        status: "Delete Failed",
+                                        text: `Failed to delete ${fi.path}: ${e}`,
+                                    });
+                                }
+                            }
+                        }
+                        model.refresh();
+                    });
+                },
+            },
+        ],
     });
 }
 
@@ -751,8 +850,8 @@ export async function makeDirectoryEntryMenuItems(
                       type: "separator",
                   } satisfies ContextMenuItem,
                   {
-                      label: "Delete",
-                      click: () => handleFileDelete(model, finfo.path, false, setErrorMsg),
+                      label: isMultiCopy ? `Delete (${copyFileInfos.length} Items)` : "Delete",
+                      click: () => handleFileDeletes(model, copyFileInfos, setErrorMsg),
                   } satisfies ContextMenuItem,
               ])
     );

@@ -16,6 +16,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState, typ
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import { openPathInPreview } from "./file-link-navigation";
 import {
+    handleFileDeletes,
     handleMoveTo,
     handleRename,
     makeDirectoryBackgroundMenuItems,
@@ -255,6 +256,15 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
 
     useEffect(() => {
         model.directoryKeyDownHandler = (waveEvent: WaveKeyboardEvent): boolean => {
+            if (checkKeyPressed(waveEvent, "Delete") || checkKeyPressed(waveEvent, "Cmd:Backspace")) {
+                const targetNodes = selectedTreeNodes.length > 0 ? selectedTreeNodes : (selectedTreeNode ? [selectedTreeNode] : []);
+                if (targetNodes.length === 0) {
+                    return false;
+                }
+                const fileInfos = targetNodes.map(treeNodeToFileInfo);
+                handleFileDeletes(model, fileInfos, setErrorMsg);
+                return true;
+            }
             if (checkKeyPressed(waveEvent, "Cmd:f")) {
                 setSearchActive(true);
                 return true;
@@ -275,7 +285,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         return () => {
             model.directoryKeyDownHandler = null;
         };
-    }, [closeSearch, model, searchActive, searchInput, searchQuery, setSearchActive, startDirectNameSearch]);
+    }, [closeSearch, model, searchActive, searchInput, searchQuery, selectedTreeNode, selectedTreeNodes, setErrorMsg, setSearchActive, startDirectNameSearch]);
 
     useEffect(() => {
         const revealPath = blockData?.meta?.[PreviewRevealPathMetaKey];
