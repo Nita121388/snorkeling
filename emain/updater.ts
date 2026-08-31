@@ -4,6 +4,13 @@
 import { spawnSync } from "child_process";
 import { app, dialog, autoUpdater as electronAutoUpdater, ipcMain, Notification, shell } from "electron";
 import { autoUpdater } from "electron-updater";
+import { execFile } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { chmod, mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
 import YAML from "yaml";
@@ -15,12 +22,62 @@ import { delay } from "./emain-util";
 import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 import { isOfflineError } from "./updater-shared";
+import { installedAppBundle, scheduleSwap } from "./updater-installer";
+import { pickAsset, type UpdaterAsset } from "./updater-asset";
 
 export let updater: Updater;
 const SnorkelingLatestReleaseUrl = "https://github.com/Nita121388/snorkeling/releases/latest";
 let quittingForUpdate = false;
 
-// re-export so older imports keep working
+const execFileAsync = promisify(execFile);
+const unzipZip = (archive: string, into: string) => execFileAsync("ditto", ["-x", "-k", archive, into]);
+
+interface GitHubRelease {
+    tag_name?: string;
+    name?: string;
+    body?: string;
+    draft?: boolean;
+    prerelease?: boolean;
+    assets?: UpdaterAsset[];
+}
+
+async function fetchLatestRelease(): Promise<{
+    version: string;
+    name: string;
+    body: string;
+    assets: UpdaterAsset[];
+}> {
+    const res = await fetch("https://api.github.com/repos/Nita121388/snorkeling/releases/latest", {
+        headers: { Accept: "application/vnd.github+json", "User-Agent": `Snorkeling/${app.getVersion()}` },
+    });
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    const release = (await res.json()) as GitHubRelease;
+    if (release.draft || release.prerelease) {
+        throw new Error("Latest release is not a stable published release.");
+    }
+    const version = (release.tag_name ?? release.name ?? "").replace(/^v/i, "");
+    if (!version) throw new Error("Release payload carried no version.");
+    return { version, name: release.name ?? version, body: release.body ?? "", assets: release.assets ?? [] };
+}
+
+/** Prefix for per-version directories we stage downloads under inside os.tmpdir(). */
+const STAGED_UPDATE_PREFIX = "snorkeling-update-";
+
+/**
+ * Delete prior-version download dirs under tmpdir. Best-effort: a stuck delete is a
+ * signal for the OS to keep what it's holding, not a reason for the updater to throw.
+ * We deliberately skip the version currently being downloaded/installed.
+ */
+export async function sweepStaleDownloadDirs(keepVersion?: string): Promise<void> {
+    const base = tmpdir();
+    const entries = await readdir(base).catch(() => [] as string[]);
+    const currentPrefix = keepVersion ? `${STAGED_UPDATE_PREFIX}${keepVersion}-` : null;
+    const stale = entries.filter(
+        (name) => name.startsWith(STAGED_UPDATE_PREFIX) && (!currentPrefix || !name.startsWith(currentPrefix))
+    );
+    await Promise.all(stale.map((name) => rm(path.join(base, name), { recursive: true, force: true }).catch(() => {})));
+}
+
 export { isOfflineError };
 
 type UpdateSupportState = {
@@ -124,6 +181,24 @@ export class Updater {
     autoCheckEnabled: boolean;
     availableUpdateReleaseName: string | null;
     availableUpdateReleaseNotes: string | null;
+    /**
+     * Where a manual-install download is, if one is underway.
+     *
+     * Used to keep exactly one in flight at a time, to know whether to offer
+     * "Restart into update" versus "Open downloaded file", and to carry the
+     * staged `.app` path if we've already unpacked it and are just waiting
+     * for the user to say go.
+     */
+    private manualInstall: {
+        phase: "idle" | "downloading" | "ready" | "installing" | "failed";
+        version?: string;
+        file?: string;
+        stagedAppPath?: string;
+        targetBundle?: string;
+        received?: number;
+        total?: number;
+        error?: string;
+    } | null = null;
     updateSupport: UpdateSupportState;
     lastUpdateErrorMessage: string | null;
     private _status: UpdaterStatus;
@@ -191,6 +266,7 @@ export class Updater {
 
         autoUpdater.on("update-available", (info) => {
             console.log("update-available; downloading...");
+            this.lastChecked = new Date();
             if (this.updateSupport.manualInstallOnly) {
                 this.availableUpdateReleaseName = info.releaseName ?? info.version ?? null;
                 this.availableUpdateReleaseNotes = typeof info.releaseNotes === "string" ? info.releaseNotes : null;
@@ -219,6 +295,7 @@ export class Updater {
 
         autoUpdater.on("update-downloaded", (event) => {
             console.log("update-downloaded", [event]);
+            this.lastChecked = new Date();
             this.availableUpdateReleaseName = event.releaseName;
             this.availableUpdateReleaseNotes = event.releaseNotes as string | null;
             this.lastUpdateErrorMessage = null;
@@ -384,7 +461,10 @@ export class Updater {
      */
     async promptToInstallUpdate() {
         if (this.updateSupport.manualInstallOnly && this.status === "manual-update") {
-            await this.showManualInstallDialog();
+            // For ad-hoc/Mac-zip builds we own the download+swap rather than punting
+            // to a browser: the user clicked because they want the new build, not a
+            // search box on a web page that doesn't know what arch they're on.
+            await this.startManualInstallFlow();
             return;
         }
 
@@ -463,24 +543,176 @@ export class Updater {
         }
     }
 
+    private setManualInstallPhase(next: NonNullable<Updater["manualInstall"]>, alsoStatus?: UpdaterStatus) {
+        this.manualInstall = next;
+        if (alsoStatus) this.status = alsoStatus;
+    }
+
+    /**
+     * In-app manual-install flow for `manualInstallOnly` builds (ad-hoc macOS).
+     *
+     * Picks the right asset by platform+arch, downloads it to a per-version
+     * temp dir with a `.part` partial survive-crash convention, unpacks with
+     * `ditto` (preserves xattrs and symlinks that generic zip libs quietly
+     * drop), verifies the bundle, and waits for the user to say restart.
+     *
+     * Deliberately not part of `checkForUpdates`: we don't want a scheduled
+     * check to start a multi-hundred-MB download in the background when the
+     * user hasn't said they want to move yet.
+     */
+    async startManualInstallFlow() {
+        if (this.manualInstall && (this.manualInstall.phase === "downloading" || this.manualInstall.phase === "installing")) {
+            return;
+        }
+        if (process.platform !== "darwin") {
+            await shell.openExternal(SnorkelingLatestReleaseUrl);
+            return;
+        }
+
+        const doDownload = async () => {
+            this.setManualInstallPhase({ phase: "downloading", received: 0, total: 0 }, "downloading");
+            // Best-effort tidy of fetch leftovers from earlier runs; never block the download on it.
+            void sweepStaleDownloadDirs(this.manualInstall?.version).catch(() => {});
+            try {
+                const release = await fetchLatestRelease();
+                const asset = pickAsset(release.assets);
+                if (!asset) {
+                    throw new Error("No downloadable asset matches this machine (macOS / this CPU).");
+                }
+
+                const versionedDir = await mkdtemp(path.join(tmpdir(), `snorkeling-update-${release.version}-`));
+                const file = path.join(versionedDir, asset.name);
+                await this.downloadToFile(asset.url, asset.size, file);
+
+                const stagedDir = path.join(versionedDir, "unpacked");
+                await mkdir(stagedDir, { recursive: true });
+                await unzipZip(file, stagedDir);
+
+                const bundleName = `${app.getName()}.app`;
+                const stagedApp = path.join(stagedDir, bundleName);
+                if (!(await stat(stagedApp).catch(() => null))?.isDirectory()) {
+                    throw new Error(`Downloaded archive did not contain ${bundleName}`);
+                }
+
+                const target = installedAppBundle(app.getPath("exe"));
+                if (!target) {
+                    throw new Error("This copy is not running from an installed .app bundle.");
+                }
+
+                this.setManualInstallPhase(
+                    {
+                        phase: "ready",
+                        version: release.version,
+                        file,
+                        stagedAppPath: stagedApp,
+                        targetBundle: target,
+                    },
+                    "ready"
+                );
+                this.availableUpdateReleaseName = release.name;
+                this.availableUpdateReleaseNotes = release.body;
+
+                const restart = await dialog.showMessageBox({
+                    type: "info",
+                    buttons: ["Restart & Install", "Later"],
+                    defaultId: 0,
+                    cancelId: 1,
+                    message: `Snorkeling ${release.version} is ready.`,
+                    detail: "The update has been downloaded and unpacked. Restart now to swap it in.",
+                });
+                if (restart.response === 0) {
+                    await this.finishManualInstall();
+                }
+            } catch (e) {
+                this.setManualInstallPhase(
+                    { phase: "failed", error: e instanceof Error ? e.message : String(e) },
+                    "error"
+                );
+                this.lastUpdateErrorMessage = e instanceof Error ? e.message : String(e);
+            }
+        };
+
+        void doDownload();
+    }
+
+    private async finishManualInstall() {
+        const cur = this.manualInstall;
+        if (!cur || cur.phase !== "ready" || !cur.stagedAppPath || !cur.targetBundle) {
+            return;
+        }
+        this.setManualInstallPhase({ ...cur, phase: "installing" }, "installing");
+        try {
+            await scheduleSwap({ staged: cur.stagedAppPath, target: cur.targetBundle });
+        } catch (e) {
+            this.setManualInstallPhase(
+                { ...cur, phase: "failed", error: e instanceof Error ? e.message : String(e) },
+                "error"
+            );
+            return;
+        }
+        quittingForUpdate = true;
+        setGlobalIsQuitting(true);
+        setUserConfirmedQuit(true);
+        // exit, not quit: quitting runs window-close handlers that keep the app resident
+        // in the tray, which would leave the swap script waiting on a pid that never dies.
+        setTimeout(() => app.exit(0), 50);
+    }
+
+    private async downloadToFile(url: string, expectedSize: number, filePath: string) {
+        const partPath = `${filePath}.part`;
+        const have = await stat(partPath).then((s) => s.size).catch(() => 0);
+        const headers: Record<string, string> = { "User-Agent": `Snorkeling/${app.getVersion()}` };
+        if (have > 0) headers.Range = `bytes=${have}-`;
+        const res = await fetch(url, { headers, redirect: "follow" });
+        if (!(res.status >= 200 && res.status < 300)) {
+            throw new Error(`Download failed: HTTP ${res.status}`);
+        }
+        const append = res.status === 206;
+        const out = createWriteStream(partPath, { flags: append ? "a" : "w" });
+        let received = have;
+        await pipeline(
+            Readable.fromWeb(res.body as any),
+            async function* (source: AsyncIterable<Buffer>) {
+                for await (const chunk of source) {
+                    received += chunk.length;
+                    yield chunk;
+                }
+            },
+            out
+        );
+        const finalSize = await stat(partPath).then((s) => s.size);
+        if (expectedSize > 0 && finalSize !== expectedSize) {
+            // Don't trust the partial; a size mismatch at the end means the file we
+            // have is not the file the release said it would be.
+            throw new Error(`Download size mismatch: got ${finalSize}, expected ${expectedSize}`);
+        }
+        await rename(partPath, filePath);
+    }
+
     private async showManualInstallDialog() {
         const releaseText = this.availableUpdateReleaseName
             ? `A new Snorkeling release is available: ${this.availableUpdateReleaseName}.`
             : "A new Snorkeling release is available.";
+        const detail = this.updateSupport.reason ?? "Automatic installation is unavailable for this copy.";
+        const offerDownload = process.platform === "darwin" && Boolean(this.updateSupport.manualInstallOnly);
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "info",
-            buttons: ["Open Latest Release", "Later"],
+            buttons: offerDownload ? ["Download & Install", "Open Release Page", "Later"] : ["Open Latest Release", "Later"],
             defaultId: 0,
-            cancelId: 1,
+            cancelId: offerDownload ? 2 : 1,
             message: "Manual update required.",
-            detail: `${releaseText}\n\n${this.updateSupport.reason ?? "Automatic installation is unavailable for this copy."}`,
+            detail: `${releaseText}\n\n${detail}`,
         };
         const allWindows = getAllWaveWindows();
         const dialogResult =
             allWindows.length > 0
                 ? await dialog.showMessageBox(focusedWaveWindow ?? allWindows[0], dialogOpts)
                 : await dialog.showMessageBox(dialogOpts);
-        if (dialogResult.response === 0) {
+        if (offerDownload && dialogResult.response === 0) {
+            await this.startManualInstallFlow();
+            return;
+        }
+        if (dialogResult.response === (offerDownload ? 1 : 0)) {
             await shell.openExternal(SnorkelingLatestReleaseUrl);
         }
     }
