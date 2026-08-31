@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { moveLiveTurn, reduceLiveTurn, reduceLiveTurns, type LiveTurn, type LiveTurns } from "./use-live-turn";
 
-const initial: LiveTurn = { userText: "", userMessageSeqFloor: 0, text: "", thinkingText: "", tools: [] };
+const initial: LiveTurn = { userText: "", userMessageSeqFloor: 0, items: [] };
 
 describe("reduceLiveTurn", () => {
     it("keeps ordered text and tool lifecycle updates", () => {
@@ -25,10 +25,46 @@ describe("reduceLiveTurn", () => {
         expect(turn).toEqual({
             userText: "hello",
             userMessageSeqFloor: 0,
-            text: "first second",
-            thinkingText: "",
-            tools: [{ id: "s1", name: "search", status: "completed", detail: "done" }],
+            items: [
+                { kind: "text", text: "first second" },
+                { kind: "tool", tool: { id: "s1", name: "search", status: "completed", result: "done" } },
+            ],
         });
+    });
+
+    it("preserves real arrival order when tools interleave with text", () => {
+        let turn = reduceLiveTurn(initial, { type: "assistant_delta", text: "before" });
+        turn = reduceLiveTurn(turn, { type: "tool_call_start", toolName: "bash", toolCallId: "b1" });
+        turn = reduceLiveTurn(turn, {
+            type: "tool_call_end",
+            toolName: "bash",
+            toolCallId: "b1",
+            toolStatus: "completed",
+        });
+        turn = reduceLiveTurn(turn, { type: "assistant_delta", text: "after" });
+
+        expect(turn.items.map((item) => item.kind)).toEqual(["text", "tool", "text"]);
+    });
+
+    it("captures tool args from start and result from end separately", () => {
+        let turn = reduceLiveTurn(initial, {
+            type: "tool_call_start",
+            toolName: "bash",
+            detail: 'args {"command":"sleep 2"}',
+        });
+        turn = reduceLiveTurn(turn, {
+            type: "tool_call_end",
+            toolName: "bash",
+            toolStatus: "completed",
+            detail: '{"content":[]}',
+        });
+
+        expect(turn.items).toEqual([
+            {
+                kind: "tool",
+                tool: { name: "bash", args: '{"command":"sleep 2"}', status: "completed", result: '{"content":[]}' },
+            },
+        ]);
     });
 
     it("updates the most recent matching tool", () => {
@@ -36,19 +72,31 @@ describe("reduceLiveTurn", () => {
         turn = reduceLiveTurn(turn, { type: "tool_call_start", toolName: "search" });
         turn = reduceLiveTurn(turn, { type: "tool_call_end", toolName: "search", toolStatus: "failed" });
 
-        expect(turn.tools).toEqual([{ name: "search" }, { name: "search", status: "failed", detail: undefined }]);
+        expect(turn.items).toEqual([
+            { kind: "tool", tool: { name: "search" } },
+            { kind: "tool", tool: { name: "search", status: "failed" } },
+        ]);
     });
 
-    it("keeps thinking visible after tool calls and assistant text start", () => {
+    it("keeps thinking segments stable after tool calls and assistant text start", () => {
         let turn = reduceLiveTurn(initial, { type: "thinking_delta", text: "checking " });
         turn = reduceLiveTurn(turn, { type: "thinking_delta", text: "files" });
-        expect(turn.thinkingText).toBe("checking files");
+        expect(turn.items).toEqual([{ kind: "thinking", text: "checking files" }]);
 
         turn = reduceLiveTurn(turn, { type: "tool_call_start", toolName: "read" });
-        expect(turn.thinkingText).toBe("checking files");
+        expect(turn.items[0]).toEqual({ kind: "thinking", text: "checking files" });
 
         turn = reduceLiveTurn(turn, { type: "assistant_delta", text: "answer" });
-        expect(turn.thinkingText).toBe("checking files");
+        expect(turn.items[0]).toEqual({ kind: "thinking", text: "checking files" });
+        expect(turn.items.map((item) => item.kind)).toEqual(["thinking", "tool", "text"]);
+    });
+
+    it("splits thinking into separate segments across tool boundaries", () => {
+        let turn = reduceLiveTurn(initial, { type: "thinking_delta", text: "plan" });
+        turn = reduceLiveTurn(turn, { type: "tool_call_start", toolName: "read" });
+        turn = reduceLiveTurn(turn, { type: "thinking_delta", text: "reflect" });
+
+        expect(turn.items.map((item) => item.kind)).toEqual(["thinking", "tool", "thinking"]);
     });
 
     it("uses tool ids when same-named tools overlap", () => {
@@ -60,9 +108,9 @@ describe("reduceLiveTurn", () => {
             toolCallId: "a",
             toolStatus: "completed",
         });
-        expect(turn.tools).toEqual([
-            { id: "a", name: "search", status: "completed", detail: undefined },
-            { id: "b", name: "search" },
+        expect(turn.items).toEqual([
+            { kind: "tool", tool: { id: "a", name: "search", status: "completed" } },
+            { kind: "tool", tool: { id: "b", name: "search" } },
         ]);
     });
 
@@ -73,8 +121,8 @@ describe("reduceLiveTurn", () => {
         turns = reduceLiveTurns(turns, "session-a", { type: "assistant_delta", text: "1" });
 
         expect(turns).toEqual({
-            "session-a": { userText: "", userMessageSeqFloor: 0, text: "A1", thinkingText: "", tools: [] },
-            "session-b": { userText: "", userMessageSeqFloor: 0, text: "B", thinkingText: "", tools: [] },
+            "session-a": { userText: "", userMessageSeqFloor: 0, items: [{ kind: "text", text: "A1" }] },
+            "session-b": { userText: "", userMessageSeqFloor: 0, items: [{ kind: "text", text: "B" }] },
         });
     });
 
@@ -83,9 +131,7 @@ describe("reduceLiveTurn", () => {
             "__new-chat-live-turn__": {
                 userText: "hello",
                 userMessageSeqFloor: 0,
-                text: "partial",
-                thinkingText: "",
-                tools: [],
+                items: [{ kind: "text", text: "partial" }],
             },
         };
 
@@ -93,9 +139,7 @@ describe("reduceLiveTurn", () => {
             "session-a": {
                 userText: "hello",
                 userMessageSeqFloor: 0,
-                text: "partial",
-                thinkingText: "",
-                tools: [],
+                items: [{ kind: "text", text: "partial" }],
             },
         });
     });
