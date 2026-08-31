@@ -1265,3 +1265,168 @@
 .markdown-emoji-picker.mode-document {
     z-index: 10021;
 }
+
+// ===========================================================================
+// TableBlock (方案 07) — milkdown-style WYSIWYG table chrome
+// ===========================================================================
+
+// --- In-tree: wrapper + cell highlight ---------------------------------------
+
+.table-wrapper.tb-wrapper {
+    position: relative;
+    user-select: none;
+
+    &.tb-editing {
+        user-select: text;
+    }
+}
+
+// Column highlight via CSS (data-selected-col is 1-based column index)
+.table-wrapper[data-selected-col] th,
+.table-wrapper[data-selected-col] td {
+    background-color: transparent;
+    transition: background-color 0.1s;
+}
+.table-wrapper[data-selected-col="1"] th:nth-child(1),
+.table-wrapper[data-selected-col="1"] td:nth-child(1),
+.table-wrapper[data-selected-col="2"] th:nth-child(2),
+.table-wrapper[data-selected-col="2"] td:nth-child(2),
+.table-wrapper[data-selected-col="3"] th:nth-child(3),
+.table-wrapper[data-selected-col="3"] td:nth-child(3),
+.table-wrapper[data-selected-col="4"] th:nth-child(4),
+.table-wrapper[data-selected-col="4"] td:nth-child(4),
+.table-wrapper[data-selected-col="5"] th:nth-child(5),
+.table-wrapper[data-selected-col="5"] td:nth-child(5),
+.table-wrapper[data-selected-col="6"] th:nth-child(6),
+.table-wrapper[data-selected-col="6"] td:nth-child(6),
+.table-wrapper[data-selected-col="7"] th:nth-child(7),
+.table-wrapper[data-selected-col="7"] td:nth-child(7),
+.table-wrapper[data-selected-col="8"] th:nth-child(8),
+.table-wrapper[data-selected-col="8"] td:nth-child(8),
+.table-wrapper[data-selected-col="9"] th:nth-child(9),
+.table-wrapper[data-selected-col="9"] td:nth-child(9),
+.table-wrapper[data-selected-col="10"] th:nth-child(10),
+.table-wrapper[data-selected-col="10"] td:nth-child(10) {
+    background-color: color-mix(in srgb, var(--accent-color, #5a8080) 15%, transparent);
+}
+
+// Row highlight (imperative class applied via JS)
+.tb-cell-selected {
+    background-color: color-mix(in srgb, var(--accent-color, #5a8080) 15%, transparent) !important;
+}
+
+// --- Portaled chrome (position: fixed, appended to body) ---------------------
+
+// Col pill handle — 28×16 rounded capsule above hovered column
+.tb-pill {
+    border-radius: 4px;
+    background: var(--accent-color, #5a8080);
+    opacity: 0.85;
+    cursor: pointer;
+    z-index: 10000;
+    touch-action: none;
+    transition: opacity 0.1s;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+// Vertical line handle (column boundary)
+.tb-line-v {
+    background: var(--accent-color, #5a8080);
+    opacity: 0.5;
+    z-index: 10000;
+    pointer-events: none;
+
+    .tb-line-plus {
+        pointer-events: all;
+    }
+}
+
+// Horizontal line handle (row boundary)
+.tb-line-h {
+    background: var(--accent-color, #5a8080);
+    opacity: 0.5;
+    z-index: 10000;
+    pointer-events: none;
+
+    .tb-line-plus {
+        pointer-events: all;
+    }
+}
+
+// + button on line handles
+.tb-line-plus {
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-color, #5a8080);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    z-index: 10001;
+    transition: background 0.1s;
+
+    &:hover {
+        background: color-mix(in srgb, var(--accent-color, #5a8080) 80%, #000);
+    }
+}
+
+// Action button groups (col align/delete, row delete)
+.tb-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: var(--panel-bg-color, #fff);
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+}
+
+.tb-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--main-text-color, #1f2328);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    transition: background 0.1s;
+
+    &:hover {
+        background: var(--highlight-bg-color, #e0e0e0);
+    }
+
+    &.tb-action-delete {
+        color: var(--error-color, #aa5555);
+
+        &:hover {
+            background: color-mix(in srgb, var(--error-color, #aa5555) 12%, transparent);
+        }
+    }
+}
+
+// Drag preview pill
+.tb-drag-preview {
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    user-select: none;
+    z-index: 10000;
+}
+
+// Drop position indicator line
+.tb-drop-indicator {
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 9999;
+}

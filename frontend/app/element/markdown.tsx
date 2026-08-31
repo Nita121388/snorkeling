@@ -111,6 +111,7 @@ import { SlashPalette } from "@/app/element/block-editor/components/slash-palett
 import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
+import { TableBlock, TableEditContext, type TableEditContextValue, type TableCellFocus } from "@/app/element/block-editor/components/table-block";
 import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
 import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import {
@@ -1710,6 +1711,17 @@ const Markdown = ({
     );
     const resolveGroupContinuation = useCallback((line: number) => getPreviousOrderedListContinuation(text, line), [text]);
 
+    // === TableBlock context: stable commit channel for WYSIWYG cell editing ==========
+    // getFullText reads from a ref so it's always fresh even across remounts.
+    const textRef = useRef(text);
+    textRef.current = text;
+    const pendingCellFocusRef = useRef<TableCellFocus | null>(null);
+    const tableEditContext = useMemo<TableEditContextValue>(() => ({
+        getFullText: () => textRef.current,
+        commitFullText: handleInlineEditCommit,
+        pendingFocusRef: pendingCellFocusRef,
+    }), [handleInlineEditCommit]);
+
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
     // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
@@ -1778,6 +1790,11 @@ const Markdown = ({
             } else if (tag === "OL" || tag === "UL" || tag === "LI") {
                 blockKind = "list";
             } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
+                // When tablecell flag is ON, cell clicks are handled by TableBlock's own
+                // mousedown→contentEditable path. Returning here would open the raw textarea.
+                if (isBlockEditorFeatureEnabled("tablecell")) {
+                    return null;
+                }
                 blockKind = "table";
             } else if (tag === "PRE" || target.classList.contains("codeblock")) {
                 blockKind = "code";
@@ -3155,6 +3172,11 @@ const Markdown = ({
                     return;
                 }
             }
+            // tablecell ON: suppress block grip on tables (handled by TableBlock's own handles).
+            if (isBlockEditorFeatureEnabled("tablecell") && (e.target as HTMLElement)?.closest(".table-wrapper") != null) {
+                setInsertAnchor(null);
+                return;
+            }
             const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
                 "[data-source-line]:not(img)"
             );
@@ -4439,11 +4461,19 @@ const Markdown = ({
                 <hr {...props} {...srcLineAttrs(props)} />
             ),
             table: (props: React.HTMLAttributes<HTMLTableElement>) => (
-                <CollapsibleTable
-                    props={props}
-                    collapsed={collapsedTables.has(String(getSourceLine(props)))}
-                    onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
-                />
+                isBlockEditorFeatureEnabled("tablecell") ? (
+                    <TableBlock
+                        props={props}
+                        collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                        onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+                    />
+                ) : (
+                    <CollapsibleTable
+                        props={props}
+                        collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                        onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+                    />
+                )
             ),
             ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
                 <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
@@ -4672,6 +4702,7 @@ const Markdown = ({
         mergedStyle["--markdown-fixed-font-size"] = `${boundNumber(fixedFontSizeOverride, 6, 64)}px`;
     }
     return (
+        <TableEditContext.Provider value={tableEditContext}>
         <div
             className={clsx("markdown", className, onInlineEditCommit != null && "markdown-editable")}
             style={mergedStyle}
@@ -4974,6 +5005,7 @@ const Markdown = ({
                 </div>
             )}
         </div>
+        </TableEditContext.Provider>
     );
 };
 
