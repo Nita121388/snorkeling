@@ -87,12 +87,20 @@
 
 ## `widget-quick-launch/` — 1 项（自建目录）
 
+## `block-sidebar/` — 1 项（自建目录）
+
+- `block-sidebar/` — **▲ 设计活跃**（2026-08-31）;暂存 Block 的常驻 Icon 侧栏:替换现有 `MinimizedBlocksFloat`（浮动按钮+Popover）为左侧常驻 Icon 列（类似 PS 工具条），支持三种模式（固定态占布局常驻 / Hover态 overlay 浮出 / 隐藏态完全不显示），支持收纳整个 Blocks 组（文件夹式 icon 可展开/折叠），底部 ⚙ 固定/隐藏切换。镜像 `minimized-blocks-float.tsx` + `block-minimize.ts` + `widgets.tsx`（pinned/hover 模式参考），真实组件尚未实现。原型含可交互 HTML（模式切换/组展开/Tooltip）。
+
 - `widget-quick-launch/` — **● 已落地**（2026-08-28；居中浮层 `widget-quick-launch.tsx` + `keymodel.ts` 加 `Cmd:Shift:p` + `widgets.tsx` 右键菜单；Terminal/Agent 经 `requestLaunchPopup` 复用右栏目标浮窗，sink 改道进组）键盘快捷启动面板:按 `Cmd/Ctrl+Shift+p` 弹居中浮层,列出全部 supported widget(无搜索框,widget 数量少),选一个后底部出现两按钮 `[New Block]` / `[Current Group]`——New Block=当前 Tab 新建兄弟 Block;Current Group=加入当前 focused Block 所在组成为新 Tab(单 Block 节点被 `addBlockToInlineTab` 自动升级为组)。Terminal/Agent 同样两选放置,经 `requestLaunchPopup({mode, anchorEl, sinkNodeId?})` 复用右栏目标浮窗(sink 改道进组)。镜像 `widgets.tsx`(WidgetsBar 点击=createBlock) + `inlinetab-addmenu.tsx`(widget 注册表菜单) + `keymodel.ts`(全局快捷键) + `inlineTabs.ts`/`layoutModel.addBlockToInlineTab`(Blocks 组);计划新增 `widget-quick-launch.tsx`,真实组件尚未实现。
 
 > **2026-08-04 对账补充**：`_to-keep/` 实际还有 3 项在本指南生成后被放入（此前 42 项清单之外），暂保留待拍板是否入目录：
 > - `aisessions-no-tag-filter.html` / `aisessions-path-filter/` — session 列表筛选方向
 > - `commontext-pinned-detail-insert.html` — pinned 详情插入方向
 > - **2026-08-16**：`aisessions-path-filter/` 已按 PROCESS 目录化（v1 裸 html → `index.html` + `README.md`，位于 `_to-keep/aisessions-path-filter/`），并重做为 **v2 目录导航设计**（▲ 设计活跃）：父级面包屑回退 + 直接子目录 chips 下钻，匹配语义改为组件边界前缀，计数改用后端全量 projectPath 分布。v1 两处根因（公共前缀面包屑天花板、子串/无边界前缀泄漏兄弟目录）与落地计划见其 README。
+
+## `vcs-block-redesign/` — 1 项（自建目录）
+
+- `vcs-block-redesign/` — **▲ 设计活跃**;VCS Block（Version Control）Quiet List 重设计：去掉深色半透明→纯浅色背景，Badge 简化（C:2 U:1→3 changed + ↓4 ↑1），次要操作 hover 浮现，tabular-nums 数字对齐，accent 仅用于主按钮+链接。覆盖 4 视图（vcs/vcscommits/vcshistory/vcsdiff）+ 6 场景（Clean/Dirty/Behind-Ahead/SVN/Multi-repo/Detached HEAD）可交互切换。镜像源：`frontend/app/view/vcs/vcs.tsx`, `frontend/app/view/vcs/vcs-filter.ts`, `frontend/app/view/vcscommits/vcscommits.tsx`, `frontend/app/view/vcshistory/vcshistory.tsx`, `frontend/app/view/vcsdiff/vcsdiff.tsx`。落地计划见 `PLAN.md`（8 Phase，P0 视觉重构 1-2 天 → P2 Commit Graph 3 天）。
 
 ## `_review-boundary/` — 3 项
 
@@ -115,7 +123,7 @@
 
 ### 顶层文件（不在 42 项清单内）
 
-- `vcs-block-redesign.html` — VCS block 重设计（顶层），待登记。
+- `vcs-block-redesign.html` — VCS block 重设计（顶层），已被 `vcs-block-redesign/` 目录版取代，建议移入 `_to-delete/`。
 
 ### 原型管理已制度化
 

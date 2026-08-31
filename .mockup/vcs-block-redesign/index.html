@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS Block Redesign · Quiet List</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <h1>VCS Block Redesign · Quiet List + 聚合仪表盘</h1>
+  <p class="intro">
+    基于项目实际 token（theme.scss light 主题）重设计 Version Control Block。
+    亮点：<b>全景聚合 Dashboard</b>把分散的 4 个 Block 收拢为一屏——顶部常驻<b>对比/Merge/Rebase</b>条 + 仓库头，主体<b>内嵌 4 子 Tab 分组</b>（<b>总览</b>·<b>历史</b>·<b>分支</b>·<b>文件</b>），每次只看 2 个重点区：总览（流水线+统计）、工作区（变动+文件级）、历史（提交+图谱）、分支（分支+贮藏/标签）避免拥挤，下钻到单视图。
+    去深色半透明 → 纯浅色；<code>3 changed</code> + <code>↓4 ↑1</code>；hover 浮现；<code>tabular-nums</code>。
+  </p>
+
+  <!-- 场景切换 -->
+  <div id="scenario-bar" class="scenario-bar"></div>
+
+  <!-- 视图 Tab -->
+  <div id="view-tabs" class="view-tabs"></div>
+
+  <!-- 5 视图面板：Dashboard 聚合 + 4 单视图下钻 -->
+  <div id="view-panels">
+    <div class="view-panel active" data-view="dashboard" id="view-dashboard"></div>
+    <div class="view-panel" data-view="vcs" id="view-vcs"></div>
+    <div class="view-panel" data-view="vcscommits" id="view-vcscommits"></div>
+    <div class="view-panel" data-view="vcshistory" id="view-vcshistory"></div>
+    <div class="view-panel" data-view="vcsdiff" id="view-vcsdiff"></div>
+  </div>
+
+  <!-- 设计说明 -->
+  <div style="margin-top:40px;border-top:1px solid var(--border);padding-top:20px">
+    <h2 style="font-size:15px;margin:0 0 8px">设计说明</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="text-align:left;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+          <th style="padding:8px 12px;border-bottom:1px solid var(--border)">维度</th>
+          <th style="padding:8px 12px;border-bottom:1px solid var(--border)">当前</th>
+          <th style="padding:8px 12px;border-bottom:1px solid var(--border)">重设计</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">背景色</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)"><code>bg-black/15</code> <code>bg-black/25</code></td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)"><code>var(--block-bg-color)</code> 纯浅色</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">状态数字</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)"><code>C:2 U:1 R:1</code> pill</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)"><code>3 changed</code> + <code>↓4 ↑1</code></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">次要操作</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">常驻下划线</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">hover 浮现（opacity 120ms）</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">accent 用量</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">多（hover/soft bg/badges）</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">少（链接 + 主按钮）</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">数字对齐</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">硬拍 min-width</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)"><code>tabular-nums</code></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary)">"AI 味"</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">强（pill + accent 软背景）</td>
+          <td style="padding:6px 12px;border-bottom:1px solid var(--border)">无（克制）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:13px;margin:16px 0 6px;color:var(--text-secondary)">全场景状态</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="text-align:left;color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+          <th style="padding:6px 12px;border-bottom:1px solid var(--border)">场景</th>
+          <th style="padding:6px 12px;border-bottom:1px solid var(--border)">behind/ahead</th>
+          <th style="padding:6px 12px;border-bottom:1px solid var(--border)">changed</th>
+          <th style="padding:6px 12px;border-bottom:1px solid var(--border)">untracked</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">Clean</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0 / 0</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0</td></tr>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">Dirty</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0 / 0</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">3</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">1</td></tr>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">Behind/Ahead</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">4 / 1</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">2</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0</td></tr>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">SVN</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">— / —</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">2</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0</td></tr>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">Multi-repo</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0 / 0</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">1</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">1</td></tr>
+        <tr><td style="padding:5px 12px;border-bottom:1px solid var(--border)">Detached HEAD</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0 / 0</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">1</td><td style="padding:5px 12px;border-bottom:1px solid var(--border)">0</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:13px;margin:16px 0 6px;color:var(--text-secondary)">全景仪表盘说明</h3>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 8px">
+      <b>Dashboard</b> 为默认视图：顶部常驻<b>对比条</b>（`main … feature/xxx` vs `origin/main` → 查看差异/建 PR，Merge/Rebase/Cherry-pick）+ 仓库头（分支/KPI/Fetch-Pull-Push），主体<b>内嵌 4 子 Tab</b>：<b>总览</b>（变动+流水线）·<b>历史</b>（时间线+图谱+统计）·<b>分支</b>（分支+贮藏/标签）·<b>文件</b>（变动+文件级 Blame/行级暂存）。每次只看 2 个重点区；场景 chip 全局联动；每区 <code>→ 详情</code> 下钻到单视图。
+    </p>
+    <h3 style="font-size:13px;margin:16px 0 6px;color:var(--text-secondary)">落地计划</h3>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 8px">详见同目录 <code>PLAN.md</code>，分 9 个 Phase（新增 **Phase 0 全景仪表盘 2 天**已原型落地），从 P0 视觉重构到 P2 Blame/键盘。</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="script.js"></script>
+</body>
+</html>

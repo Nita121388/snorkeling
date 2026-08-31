@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Block Sidebar — 交互原型</title>
+<style>
+  :root {
+    --sidebar-width: 42px;
+    --bg-main: #1a1a2e;
+    --bg-sidebar: rgba(30, 30, 50, 0.92);
+    --bg-block: #252540;
+    --bg-hover: rgba(255,255,255,0.08);
+    --bg-surface: #2a2a45;
+    --text-primary: #e0e0e0;
+    --text-secondary: #888;
+    --text-muted: #666;
+    --accent: #7c49a1;
+    --accent-dim: rgba(124,73,161,0.15);
+    --danger: #ff453a;
+    --danger-dim: rgba(255,69,58,0.15);
+    --border: rgba(255,255,255,0.1);
+    --transition: 200ms ease-out;
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  .app { display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .block-sidebar {
+    width: 0; flex-shrink: 0; position: relative; z-index: 50;
+    transition: width var(--transition);
+  }
+  .block-sidebar.pinned { width: var(--sidebar-width); }
+  .sidebar-overlay {
+    position: absolute; left: 0; top: 0;
+    width: var(--sidebar-width); height: 100%;
+    background: var(--bg-sidebar); backdrop-filter: blur(20px);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    transform: translateX(-100%); opacity: 0;
+    transition: transform var(--transition), opacity var(--transition);
+    pointer-events: none; overflow: visible;
+  }
+  .block-sidebar.pinned .sidebar-overlay,
+  .block-sidebar.hovered .sidebar-overlay {
+    transform: translateX(0); opacity: 1; pointer-events: auto;
+  }
+
+  /* ── Items ── */
+  .sidebar-items {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; padding: 8px 0; gap: 2px; overflow-y: auto;
+  }
+  .sidebar-item {
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; cursor: pointer; position: relative;
+    font-size: 16px; color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .sidebar-item.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sidebar-item.confirm-delete { background: var(--danger-dim); color: var(--danger); }
+
+  /* ── Hover Action Bar ── */
+  .hover-actions {
+    position: absolute; left: 40px; top: 50%; transform: translateY(-50%);
+    display: none; gap: 2px; padding: 4px;
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: var(--shadow); z-index: 100;
+    white-space: nowrap;
+  }
+  .sidebar-item:hover .hover-actions,
+  .sidebar-group:hover > .hover-actions {
+    display: flex;
+  }
+  .hover-action-btn {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-secondary);
+    border: none; background: none; transition: background 0.12s, color 0.12s;
+  }
+  .hover-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .hover-action-btn.danger:hover { background: var(--danger-dim); color: var(--danger); }
+
+  /* ── Preview Float ── */
+  .preview-float {
+    display: none; position: fixed; left: 52px; top: 0;
+    width: 320px; max-height: 320px; background: var(--bg-surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow); z-index: 200; overflow: hidden;
+  }
+  .preview-float.visible { display: block; }
+  .preview-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .preview-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .preview-header-left i { color: var(--accent); }
+  .preview-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .preview-path { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .preview-body {
+    padding: 12px; font-size: 12px; line-height: 1.6; color: var(--text-secondary);
+    max-height: 180px; overflow-y: auto; font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .preview-body .line { white-space: pre; }
+  .preview-body .line-num { color: var(--text-muted); user-select: none; margin-right: 8px; font-size: 10px; }
+  .preview-truncated {
+    padding: 8px 12px; font-size: 10px; color: var(--text-muted);
+    border-top: 1px solid var(--border); text-align: center;
+  }
+  .preview-footer {
+    display: flex; padding: 8px 12px; gap: 8px; border-top: 1px solid var(--border);
+  }
+  .preview-footer button {
+    flex: 1; padding: 6px 0; border-radius: 6px; border: 1px solid var(--border);
+    background: none; color: var(--text-secondary); font-size: 11px; cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .preview-footer button:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .preview-footer button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .preview-footer button.primary:hover { opacity: 0.9; }
+
+  /* ── Group ── */
+  .sidebar-group {
+    width: 34px; display: flex; flex-direction: column; align-items: center;
+    border-radius: 8px; cursor: pointer; transition: background 0.15s; position: relative;
+  }
+  .sidebar-group:hover { background: var(--bg-hover); }
+  .sidebar-group-header {
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: var(--accent); position: relative;
+  }
+  .group-count {
+    position: absolute; right: -2px; top: -2px;
+    min-width: 14px; height: 14px; background: var(--accent);
+    color: white; font-size: 9px; font-weight: 700; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center; padding: 0 3px;
+  }
+  .sidebar-group-items { display: none; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0; }
+  .sidebar-group.expanded .sidebar-group-items { display: flex; }
+  .group-item {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 13px; color: var(--text-secondary); transition: background 0.15s;
+  }
+  .group-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* ── Divider / Bottom ── */
+  .sidebar-divider { width: 24px; height: 1px; background: var(--border); margin: 4px 0; }
+  .sidebar-bottom { display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 2px; }
+  .sidebar-action {
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; cursor: pointer; transition: background 0.15s;
+    font-size: 14px; color: var(--text-secondary);
+  }
+  .sidebar-action:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .sidebar-action.active { color: var(--accent); }
+
+  /* ── Context Menu ── */
+  .context-menu {
+    display: none; position: fixed; min-width: 180px;
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow); z-index: 300;
+    padding: 4px; overflow: hidden;
+  }
+  .context-menu.visible { display: block; }
+  .ctx-item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+    border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text-secondary);
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .ctx-item i { width: 16px; text-align: center; font-size: 12px; }
+  .ctx-item .shortcut { margin-left: auto; font-size: 10px; color: var(--text-muted); }
+  .ctx-item.danger { color: var(--danger); }
+  .ctx-item.danger:hover { background: var(--danger-dim); }
+  .ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow); z-index: 400;
+    padding: 10px 16px; display: none; gap: 12px; align-items: center;
+    font-size: 12px;
+  }
+  .toast.visible { display: flex; }
+  .toast button {
+    padding: 4px 12px; border-radius: 6px; border: none; font-size: 11px;
+    cursor: pointer; transition: background 0.12s;
+  }
+  .toast .btn-cancel { background: none; color: var(--text-secondary); }
+  .toast .btn-cancel:hover { background: var(--bg-hover); }
+  .toast .btn-delete { background: var(--danger); color: white; }
+  .toast .btn-delete:hover { opacity: 0.9; }
+
+  /* ── Main ── */
+  .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tab-bar {
+    height: 36px; display: flex; align-items: center; padding: 0 8px; gap: 4px;
+    background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    height: 28px; padding: 0 12px; display: flex; align-items: center;
+    border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer;
+    color: var(--text-secondary); transition: background 0.15s;
+  }
+  .tab.active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+  .tab:hover { background: rgba(255,255,255,0.05); }
+  .block-area { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; overflow: auto; }
+  .block {
+    background: var(--bg-block); border-radius: 10px; border: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .block-header {
+    height: 32px; display: flex; align-items: center; padding: 0 10px; gap: 8px;
+    border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;
+  }
+  .block-header i { color: var(--text-secondary); }
+  .block-body { flex: 1; padding: 12px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+
+  /* ── Controls ── */
+  .controls {
+    position: fixed; bottom: 20px; right: 20px; display: flex; gap: 8px; z-index: 100;
+  }
+  .ctrl-btn {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-sidebar); color: var(--text-primary); font-size: 12px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .ctrl-btn:hover { background: var(--bg-hover); }
+  .ctrl-btn.active { border-color: var(--accent); color: var(--accent); }
+  .mode-label {
+    position: fixed; bottom: 60px; right: 20px; font-size: 11px;
+    color: var(--text-secondary); z-index: 100; text-align: right;
+  }
+  .help-hint {
+    position: fixed; top: 12px; right: 20px; font-size: 11px;
+    color: var(--text-muted); z-index: 100; text-align: right; line-height: 1.8;
+  }
+  .help-hint kbd {
+    display: inline-block; padding: 1px 5px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg-surface); font-size: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <div class="block-sidebar pinned" id="sidebar">
+    <div class="sidebar-overlay">
+      <div class="sidebar-items" id="sidebarItems">
+        <div class="sidebar-item" data-id="term1" data-icon="fa-terminal" data-title="Terminal" data-sub="terminal · /code/snorkeling">
+          <i class="fa-solid fa-terminal"></i>
+          <div class="hover-actions">
+            <button class="hover-action-btn" data-action="preview" title="Preview (Space)"><i class="fa-solid fa-eye"></i></button>
+            <button class="hover-action-btn" data-action="restore" title="Restore to Layout (Enter)"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="hover-action-btn danger" data-action="delete" title="Delete (Del)"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+        <div class="sidebar-item" data-id="chat1" data-icon="fa-comments" data-title="AI Chat" data-sub="aisessions · pi">
+          <i class="fa-solid fa-comments"></i>
+          <div class="hover-actions">
+            <button class="hover-action-btn" data-action="preview" title="Preview"><i class="fa-solid fa-eye"></i></button>
+            <button class="hover-action-btn" data-action="restore" title="Restore"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="hover-action-btn danger" data-action="delete" title="Delete"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+        <div class="sidebar-item" data-id="readme" data-icon="fa-file-lines" data-title="README.md" data-sub="preview · /code/snorkeling/README.md">
+          <i class="fa-solid fa-file-lines"></i>
+          <div class="hover-actions">
+            <button class="hover-action-btn" data-action="preview" title="Preview"><i class="fa-solid fa-eye"></i></button>
+            <button class="hover-action-btn" data-action="restore" title="Restore"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="hover-action-btn danger" data-action="delete" title="Delete"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <!-- Blocks Group -->
+        <div class="sidebar-group" id="group1">
+          <div class="sidebar-group-header" data-id="grp-dev" data-title="Dev Group" data-sub="3 blocks">
+            <i class="fa-solid fa-layer-group"></i>
+            <span class="group-count">3</span>
+          </div>
+          <div class="hover-actions" style="left: 40px; top: 17px; transform: none;">
+            <button class="hover-action-btn" data-action="restore-group" title="Restore Group"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="hover-action-btn danger" data-action="delete-group" title="Delete Group"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="sidebar-group-items">
+            <div class="group-item" data-id="g1-term" data-title="Terminal" data-sub="terminal · /src"><i class="fa-solid fa-terminal"></i></div>
+            <div class="group-item" data-id="g1-chat" data-title="Agent Chat" data-sub="aisessions"><i class="fa-solid fa-comments"></i></div>
+            <div class="group-item" data-id="g1-note" data-title="Notes" data-sub="note · /docs"><i class="fa-solid fa-note-sticky"></i></div>
+          </div>
+        </div>
+
+        <div class="sidebar-item" data-id="design" data-icon="fa-file-code" data-title="design-plans.md" data-sub="preview · /design-plans">
+          <i class="fa-solid fa-file-code"></i>
+          <div class="hover-actions">
+            <button class="hover-action-btn" data-action="preview" title="Preview"><i class="fa-solid fa-eye"></i></button>
+            <button class="hover-action-btn" data-action="restore" title="Restore"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            <button class="hover-action-btn danger" data-action="delete" title="Delete"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-bottom">
+        <div class="sidebar-action" id="btnPin" title="Pin / Unpin"><i class="fa-solid fa-thumbtack"></i></div>
+        <div class="sidebar-action" id="btnHide" title="Hide sidebar"><i class="fa-solid fa-eye-slash"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="tab-bar">
+      <div class="tab active">Tab 1</div>
+      <div class="tab">Tab 2</div>
+      <div class="tab">Tab 3</div>
+    </div>
+    <div class="block-area">
+      <div class="block"><div class="block-header"><i class="fa-solid fa-terminal"></i> Terminal</div><div class="block-body">$ npm run dev<br>Server running on http://localhost:3000</div></div>
+      <div class="block"><div class="block-header"><i class="fa-solid fa-comments"></i> AI Chat</div><div class="block-body">User: How does auth work?<br>AI: Let me trace the path...</div></div>
+      <div class="block"><div class="block-header"><i class="fa-solid fa-file-lines"></i> README.md</div><div class="block-body"># Snorkeling<br>A terminal-based AI coding assistant</div></div>
+      <div class="block"><div class="block-header"><i class="fa-solid fa-note-sticky"></i> Notes</div><div class="block-body">## TODO<br>- Implement Block Sidebar</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Preview Float -->
+<div class="preview-float" id="previewFloat">
+  <div class="preview-header">
+    <div class="preview-header-left">
+      <i class="fa-solid fa-file-lines" id="previewIcon"></i>
+      <div>
+        <div class="preview-title" id="previewTitle">README.md</div>
+        <div class="preview-path" id="previewPath">/code/snorkeling/README.md</div>
+      </div>
+    </div>
+    <button class="hover-action-btn" data-action="restore" title="Restore"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+  </div>
+  <div class="preview-body" id="previewBody"></div>
+  <div class="preview-truncated" id="previewTruncated">显示前 8 行（共 42 行）</div>
+  <div class="preview-footer">
+    <button class="primary" data-action="restore">恢复到布局</button>
+    <button data-action="preview-full">完整预览</button>
+    <button class="danger" data-action="delete">删除</button>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu">
+  <div class="ctx-item" data-action="restore"><i class="fa-solid fa-arrow-up-right-from-square"></i> 恢复到布局 <span class="shortcut">Enter</span></div>
+  <div class="ctx-item" data-action="preview"><i class="fa-solid fa-eye"></i> 预览 <span class="shortcut">Space</span></div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item" data-action="copy-id"><i class="fa-regular fa-copy"></i> 复制 Block ID</div>
+  <div class="ctx-item" data-action="rename"><i class="fa-solid fa-pen"></i> 重命名</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item danger" data-action="delete"><i class="fa-solid fa-trash"></i> 删除 <span class="shortcut">Del</span></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <span id="toastMsg">删除「README.md」？</span>
+  <button class="btn-cancel" onclick="hideToast()">取消</button>
+  <button class="btn-delete" onclick="confirmDelete()">删除</button>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- Controls -->
+<div class="mode-label" id="modeLabel">Mode: Pinned</div>
+<div class="controls">
+  <button class="ctrl-btn active" onclick="setMode('pinned',this)">📌 Pinned</button>
+  <button class="ctrl-btn" onclick="setMode('hover',this)">👆 Hover</button>
+  <button class="ctrl-btn" onclick="setMode('hidden',this)">🚫 Hidden</button>
+</div>
+<div class="help-hint">
+  <kbd>Space</kbd> 预览 &nbsp; <kbd>Enter</kbd> 恢复 &nbsp; <kbd>Del</kbd> 删除<br>
+  <kbd>↑</kbd><kbd>↓</kbd> 导航 &nbsp; 右键菜单 &nbsp; <kbd>Ctrl</kbd>+点击 多选
+</div>
+
+<style>
+  .tooltip {
+    position: fixed; background: #333; color: white; padding: 6px 10px;
+    border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 1000;
+    white-space: nowrap; opacity: 0; transition: opacity 0.12s;
+  }
+  .tooltip.visible { opacity: 1; }
+</style>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const previewFloat = document.getElementById('previewFloat');
+  const contextMenu = document.getElementById('contextMenu');
+  const toast = document.getElementById('toast');
+  const tooltip = document.getElementById('tooltip');
+
+  let currentMode = 'pinned';
+  let selectedItems = new Set();
+  let deleteTarget = null;
+  let previewTimer = null;
+  let toastTimer = null;
+
+  // ── Mode ──
+  function setMode(mode, btn) {
+    currentMode = mode;
+    sidebar.classList.remove('pinned', 'hovered');
+    document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (mode === 'pinned') { sidebar.classList.add('pinned'); document.getElementById('modeLabel').textContent = 'Mode: Pinned'; }
+    else if (mode === 'hover') { document.getElementById('modeLabel').textContent = 'Mode: Hover (→ left edge)'; }
+    else { document.getElementById('modeLabel').textContent = 'Mode: Hidden'; }
+  }
+
+  // ── Hover edge trigger ──
+  document.addEventListener('mousemove', (e) => {
+    if (currentMode !== 'hover') return;
+    if (e.clientX < 4) sidebar.classList.add('hovered');
+  });
+  sidebar.addEventListener('mouseleave', () => {
+    if (currentMode !== 'hover') return;
+    setTimeout(() => { if (!sidebar.matches(':hover')) sidebar.classList.remove('hovered'); }, 800);
+  });
+
+  // ── Group expand ──
+  document.querySelectorAll('.sidebar-group-header').forEach(h => {
+    h.addEventListener('click', (e) => { e.stopPropagation(); h.parentElement.classList.toggle('expanded'); });
+  });
+
+  // ── Hover actions: preview on eye button ──
+  document.querySelectorAll('.hover-action-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const item = btn.closest('.sidebar-item') || btn.closest('.sidebar-group');
+      if (!item) return;
+      if (action === 'preview') showPreview(item, e);
+      else if (action === 'restore') showToast(`恢复「${item.dataset.title}」到布局？`, 'restore');
+      else if (action === 'delete') showDeleteConfirm(item);
+      else if (action === 'restore-group') showToast(`恢复整个组「${item.dataset.title}」？`, 'restore');
+      else if (action === 'delete-group') showDeleteConfirm(item, true);
+      else if (action === 'preview-full') { hidePreview(); showToast(`完整预览「${document.getElementById('previewTitle').textContent}」`, 'preview'); }
+    });
+  });
+
+  // ── Preview float ──
+  const previewContents = {
+    term1: ['$ npm run dev', 'Server running on http://localhost:3000', 'Ready.', '', '> Waiting for connections...'],
+    chat1: ['User: How does the auth flow work?', '', 'AI: Let me trace the execution path...', '  1. middleware/auth.ts → validateToken()', '  2. store/session.ts → refreshSession()', '  3. Return 200 with new JWT', '', 'Would you like me to show the code?'],
+    readme: ['# Snorkeling', '', 'A terminal-based AI coding assistant', 'that integrates with multiple AI providers.', '', '## Features', '- Multi-provider support', '- Block-based layout', '- Inline tab groups'],
+    design: ['# Block Sidebar', '', '## Background', 'Replace MinimizedBlocksFloat with', 'a persistent icon sidebar.', '', '## Goals', '1. Pinned/Hover/Hidden modes', '2. Group support'],
+    g1term: ['$ git status', 'On branch feat/block-sidebar', 'nothing to commit, working tree clean'],
+    g1chat: ['Agent: I\'ve analyzed the codebase.', 'The sidebar pattern mirrors WidgetsBar.'],
+    g1note: ['## TODO', '- Phase 1: Icon column', '- Phase 2: Pin/Hide', '- Phase 3: Hidden mode'],
+  };
+
+  function showPreview(item, e) {
+    clearTimeout(previewTimer);
+    const id = item.dataset.id;
+    const title = item.dataset.title || '';
+    const sub = item.dataset.sub || '';
+    const icon = item.dataset.icon || item.querySelector('i')?.className || 'fa-solid fa-cube';
+
+    document.getElementById('previewTitle').textContent = title;
+    document.getElementById('previewPath').textContent = sub;
+    document.getElementById('previewIcon').className = icon;
+
+    const lines = (previewContents[id] || ['(no content)']).map((l, i) =>
+      `<div class="line"><span class="line-num">${i+1}</span>${escapeHtml(l)}</div>`
+    ).join('');
+    document.getElementById('previewBody').innerHTML = lines;
+
+    const rect = item.getBoundingClientRect();
+    previewFloat.style.top = Math.max(8, rect.top - 40) + 'px';
+    previewFloat.style.left = '52px';
+    previewFloat.classList.add('visible');
+  }
+
+  function hidePreview() { previewFloat.classList.remove('visible'); }
+
+  previewFloat.addEventListener('mouseleave', () => { setTimeout(hidePreview, 400); });
+  previewFloat.addEventListener('mouseenter', () => { clearTimeout(previewTimer); });
+
+  // ── Context menu ──
+  document.querySelectorAll('.sidebar-item, .sidebar-group-header').forEach(el => {
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const title = el.dataset.title || '';
+      contextMenu.querySelector('[data-action="restore"]').style.display = el.closest('.sidebar-group') ? 'none' : '';
+      contextMenu.style.left = e.clientX + 'px';
+      contextMenu.style.top = e.clientY + 'px';
+      contextMenu.classList.add('visible');
+      contextMenu._target = el;
+    });
+  });
+
+  document.addEventListener('click', () => { contextMenu.classList.remove('visible'); });
+
+  contextMenu.querySelectorAll('.ctx-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const action = item.dataset.action;
+      const target = contextMenu._target;
+      if (!target) return;
+      if (action === 'restore') showToast(`恢复「${target.dataset.title}」到布局？`, 'restore');
+      else if (action === 'preview') showPreview(target, {});
+      else if (action === 'copy-id') { navigator.clipboard?.writeText(target.dataset.id || ''); showToast('已复制 Block ID'); }
+      else if (action === 'rename') showToast(`重命名「${target.dataset.title}」`);
+      else if (action === 'delete') showDeleteConfirm(target);
+      contextMenu.classList.remove('visible');
+    });
+  });
+
+  // ── Delete confirm ──
+  function showDeleteConfirm(item, isGroup = false) {
+    const title = item.dataset.title || '';
+    deleteTarget = item;
+    const msg = isGroup ? `删除整个组「${title}」及其中所有 Block？` : `删除「${title}」？此操作不可撤销。`;
+    document.getElementById('toastMsg').textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 5000);
+  }
+
+  function hideToast() { toast.classList.remove('visible'); deleteTarget = null; clearTimeout(toastTimer); }
+
+  function confirmDelete() {
+    if (deleteTarget) {
+      const title = deleteTarget.dataset.title;
+      if (deleteTarget.classList.contains('sidebar-group')) {
+        deleteTarget.remove();
+      } else {
+        deleteTarget.remove();
+      }
+      showToast(`已删除「${title}」`);
+    }
+    hideToast();
+    hidePreview();
+  }
+
+  // ── Toast ──
+  function showToast(msg, type) {
+    document.getElementById('toastMsg').textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    if (type === 'restore') {
+      toastTimer = setTimeout(() => { hideToast(); showToast('✓ 已恢复到布局'); }, 1500);
+    } else if (type === 'preview') {
+      toastTimer = setTimeout(hideToast, 2000);
+    } else {
+      toastTimer = setTimeout(hideToast, 3000);
+    }
+  }
+
+  // ── Tooltip ──
+  document.querySelectorAll('.sidebar-item, .group-item').forEach(el => {
+    el.addEventListener('mouseenter', (e) => {
+      const title = el.dataset.title;
+      if (!title) return;
+      tooltip.innerHTML = `${title}<br><span style="font-size:10px;color:#aaa">${el.dataset.sub || ''}</span>`;
+      tooltip.classList.add('visible');
+      positionTooltip(e);
+    });
+    el.addEventListener('mousemove', positionTooltip);
+    el.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+  });
+
+  function positionTooltip(e) {
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top = (e.clientY - 8) + 'px';
+  }
+
+  // ── Keyboard ──
+  let focusIdx = -1;
+  const allItems = () => Array.from(document.querySelectorAll('#sidebarItems > .sidebar-item, #sidebarItems > .sidebar-group'));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const items = allItems();
+    if (e.key === 'ArrowDown') { e.preventDefault(); focusIdx = Math.min(focusIdx + 1, items.length - 1); highlightItem(items[focusIdx]); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); focusIdx = Math.max(focusIdx - 1, 0); highlightItem(items[focusIdx]); }
+    else if (e.key === 'Enter' && focusIdx >= 0) { showToast(`恢复「${items[focusIdx].dataset.title}」到布局？`, 'restore'); }
+    else if (e.key === ' ' && focusIdx >= 0) { e.preventDefault(); showPreview(items[focusIdx], {}); }
+    else if (e.key === 'Delete' && focusIdx >= 0) { showDeleteConfirm(items[focusIdx]); }
+    else if (e.key === 'Escape') { hidePreview(); contextMenu.classList.remove('visible'); hideToast(); }
+  });
+
+  function highlightItem(item) {
+    allItems().forEach(i => i.style.outline = 'none');
+    if (item) { item.style.outline = '2px solid var(--accent)'; item.style.outlineOffset = '-2px'; }
+  }
+
+  // ── Select (Ctrl+click) ──
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.stopPropagation();
+        el.classList.toggle('selected');
+        if (el.classList.contains('selected')) selectedItems.add(el.dataset.id);
+        else selectedItems.delete(el.dataset.id);
+      }
+    });
+  });
+
+  // ── Pin ──
+  document.getElementById('btnPin').addEventListener('click', () => {
+    setMode(currentMode === 'pinned' ? 'hover' : 'pinned',
+      document.querySelector(currentMode === 'pinned' ? '.ctrl-btn:nth-child(2)' : '.ctrl-btn:nth-child(1)'));
+  });
+  document.getElementById('btnHide').addEventListener('click', () => {
+    setMode('hidden', document.querySelector('.ctrl-btn:nth-child(3)'));
+  });
+
+  function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+
+</body>
+</html>

@@ -841,6 +841,7 @@ var StaticMimeTypeMap = map[string]string{
 	".xsl":                       "application/xslt+xml",
 	".xspf":                      "application/xspf+xml",
 	".mxml":                      "application/xv+xml",
+	".base":                      "application/x-yaml", // Obsidian .base (YAML) so preview dispatch treats it as previewable; base-view plugin takes over in preview block
 	".yaml":                      "application/x-yaml",
 	".yml":                       "application/x-yaml",
 	".yang":                      "application/yang",
