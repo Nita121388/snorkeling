@@ -41,23 +41,33 @@ interface GitHubRelease {
     assets?: UpdaterAsset[];
 }
 
-async function fetchLatestRelease(): Promise<{
+async function fetchLatestRelease(opts?: { signal?: AbortSignal }): Promise<{
     version: string;
     name: string;
     body: string;
     assets: UpdaterAsset[];
 }> {
-    const res = await fetch("https://api.github.com/repos/Nita121388/snorkeling/releases/latest", {
-        headers: { Accept: "application/vnd.github+json", "User-Agent": `Snorkeling/${app.getVersion()}` },
-    });
-    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
-    const release = (await res.json()) as GitHubRelease;
-    if (release.draft || release.prerelease) {
-        throw new Error("Latest release is not a stable published release.");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+        if (opts?.signal) {
+            opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
+        }
+        const res = await fetch("https://api.github.com/repos/Nita121388/snorkeling/releases/latest", {
+            headers: { Accept: "application/vnd.github+json", "User-Agent": `Snorkeling/${app.getVersion()}` },
+            signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+        const release = (await res.json()) as GitHubRelease;
+        if (release.draft || release.prerelease) {
+            throw new Error("Latest release is not a stable published release.");
+        }
+        const version = (release.tag_name ?? release.name ?? "").replace(/^v/i, "");
+        if (!version) throw new Error("Release payload carried no version.");
+        return { version, name: release.name ?? version, body: release.body ?? "", assets: release.assets ?? [] };
+    } finally {
+        clearTimeout(timer);
     }
-    const version = (release.tag_name ?? release.name ?? "").replace(/^v/i, "");
-    if (!version) throw new Error("Release payload carried no version.");
-    return { version, name: release.name ?? version, body: release.body ?? "", assets: release.assets ?? [] };
 }
 
 /** Prefix for per-version directories we stage downloads under inside os.tmpdir(). */
@@ -199,6 +209,8 @@ export class Updater {
         total?: number;
         error?: string;
     } | null = null;
+    /** Abort controller for the currently running manual download (if any). */
+    private currentAborter: AbortController | null = null;
     updateSupport: UpdateSupportState;
     lastUpdateErrorMessage: string | null;
     private _status: UpdaterStatus;
@@ -460,12 +472,19 @@ export class Updater {
      * Prompts the user to install the downloaded application update and restarts the application
      */
     async promptToInstallUpdate() {
-        if (this.updateSupport.manualInstallOnly && this.status === "manual-update") {
-            // For ad-hoc/Mac-zip builds we own the download+swap rather than punting
-            // to a browser: the user clicked because they want the new build, not a
-            // search box on a web page that doesn't know what arch they're on.
-            await this.startManualInstallFlow();
-            return;
+        if (this.updateSupport.manualInstallOnly) {
+            if (this.status === "manual-update") {
+                // For ad-hoc/Mac-zip builds we own the download+swap rather than punting
+                // to a browser: the user clicked because they want the new build, not a
+                // search box on a web page that doesn't know what arch they're on.
+                await this.startManualInstallFlow();
+                return;
+            }
+            if (this.status === "error" && this.manualInstall?.phase === "failed") {
+                // After a cancel or a network failure, offer retry via the same dialog.
+                await this.showManualInstallDialog();
+                return;
+            }
         }
 
         if (this.status !== "ready") {
@@ -543,9 +562,29 @@ export class Updater {
         }
     }
 
-    private setManualInstallPhase(next: NonNullable<Updater["manualInstall"]>, alsoStatus?: UpdaterStatus) {
+    private setManualInstallPhase(
+        next: NonNullable<Updater["manualInstall"]>,
+        alsoStatus?: UpdaterStatus
+    ) {
         this.manualInstall = next;
         if (alsoStatus) this.status = alsoStatus;
+        // Broadcast the progress snapshot (received/total) even when the headline
+        // status string hasn't changed — a "downloading" at 0 MB and at 180 MB
+        // need to look different.
+        const payload = {
+            phase: next.phase,
+            received: next.received,
+            total: next.total,
+            error: next.error,
+            version: next.version,
+        };
+        getAllWaveWindows().forEach((window) => {
+            for (const tabView of window.allLoadedTabViews.values()) {
+                if (!tabView.webContents.isDestroyed()) {
+                    tabView.webContents.send("app-update-manual-progress", payload);
+                }
+            }
+        });
     }
 
     /**
@@ -570,11 +609,22 @@ export class Updater {
         }
 
         const doDownload = async () => {
+            const aborter = new AbortController();
+            this.currentAborter = aborter;
             this.setManualInstallPhase({ phase: "downloading", received: 0, total: 0 }, "downloading");
-            // Best-effort tidy of fetch leftovers from earlier runs; never block the download on it.
             void sweepStaleDownloadDirs(this.manualInstall?.version).catch(() => {});
+            // If this download got cancelled before we finished, silently replace
+            // the error path with a no-op so a stale pipeline doesn't mark itself failed.
+            const throwIfAborted = () => {
+                if (aborter.signal.aborted) {
+                    const e: any = new Error("cancelled");
+                    e.name = "AbortError";
+                    throw e;
+                }
+            };
             try {
-                const release = await fetchLatestRelease();
+                const release = await fetchLatestRelease({ signal: aborter.signal });
+                throwIfAborted();
                 const asset = pickAsset(release.assets);
                 if (!asset) {
                     throw new Error("No downloadable asset matches this machine (macOS / this CPU).");
@@ -582,7 +632,8 @@ export class Updater {
 
                 const versionedDir = await mkdtemp(path.join(tmpdir(), `snorkeling-update-${release.version}-`));
                 const file = path.join(versionedDir, asset.name);
-                await this.downloadToFile(asset.url, asset.size, file);
+                await this.downloadToFile(asset.url, asset.size, file, aborter);
+                throwIfAborted();
 
                 const stagedDir = path.join(versionedDir, "unpacked");
                 await mkdir(stagedDir, { recursive: true });
@@ -624,15 +675,49 @@ export class Updater {
                     await this.finishManualInstall();
                 }
             } catch (e) {
+                const isCancel = (e as any)?.name === "AbortError";
+                const message = isCancel ? "cancelled" : e instanceof Error ? e.message : String(e);
                 this.setManualInstallPhase(
-                    { phase: "failed", error: e instanceof Error ? e.message : String(e) },
-                    "error"
+                    { phase: "failed", error: message },
+                    isCancel ? "manual-update" : "error"
                 );
-                this.lastUpdateErrorMessage = e instanceof Error ? e.message : String(e);
+                if (!isCancel) {
+                    this.lastUpdateErrorMessage = message;
+                }
+            } finally {
+                if (this.currentAborter === aborter) this.currentAborter = null;
             }
         };
 
         void doDownload();
+    }
+
+    /**
+     * Abort any in-flight manual download and roll its state back to a "you can
+     * press download again" posture. The `.part` file is left on disk so the
+     * retry can resume with Range.
+     *
+     * NOTE: we deliberately overwrite the in-flight phase via setManualInstallPhase
+     * rather than letting the aborted pipeline write "failed" itself — the pipeline
+     * still unwinds, but by the time its catch runs `this.manualInstall` has been
+     * replaced and this record wins. Crucial for status to settle on manual-update.
+     */
+    cancelManualDownload() {
+        if (this.manualInstall?.phase === "downloading" || this.manualInstall?.phase === "installing") {
+            this.currentAborter?.abort();
+            this.currentAborter = null;
+            this.setManualInstallPhase({ phase: "failed", error: "cancelled" }, "manual-update");
+        }
+    }
+
+    /**
+     * Retry after a failed or cancelled manual download. Just calls startManualInstallFlow
+     * again, which will pick up the `.part` partial via Range resume.
+     */
+    retryManualDownload() {
+        if (this.manualInstall?.phase !== "failed") return;
+        this.manualInstall = null;
+        void this.startManualInstallFlow();
     }
 
     private async finishManualInstall() {
@@ -658,23 +743,36 @@ export class Updater {
         setTimeout(() => app.exit(0), 50);
     }
 
-    private async downloadToFile(url: string, expectedSize: number, filePath: string) {
+    private async downloadToFile(url: string, expectedSize: number, filePath: string, aborter: AbortController) {
         const partPath = `${filePath}.part`;
         const have = await stat(partPath).then((s) => s.size).catch(() => 0);
         const headers: Record<string, string> = { "User-Agent": `Snorkeling/${app.getVersion()}` };
         if (have > 0) headers.Range = `bytes=${have}-`;
-        const res = await fetch(url, { headers, redirect: "follow" });
+        const res = await fetch(url, { headers, redirect: "follow", signal: aborter.signal });
         if (!(res.status >= 200 && res.status < 300)) {
             throw new Error(`Download failed: HTTP ${res.status}`);
         }
         const append = res.status === 206;
         const out = createWriteStream(partPath, { flags: append ? "a" : "w" });
         let received = have;
+        const markProgress = () => {
+            const cur = this.manualInstall;
+            if (cur?.phase === "downloading") {
+                this.setManualInstallPhase({ ...cur, received, total: expectedSize });
+            }
+        };
+        markProgress();
         await pipeline(
             Readable.fromWeb(res.body as any),
             async function* (source: AsyncIterable<Buffer>) {
                 for await (const chunk of source) {
+                    if (aborter.signal.aborted) {
+                        const e: any = new Error("cancelled");
+                        e.name = "AbortError";
+                        throw e;
+                    }
                     received += chunk.length;
+                    markProgress();
                     yield chunk;
                 }
             },
@@ -723,8 +821,14 @@ export function getResolvedUpdateChannel(): string {
 }
 
 ipcMain.on("install-app-update", () => fireAndForget(updater?.promptToInstallUpdate.bind(updater)));
+ipcMain.on("cancel-app-update-download", () => updater?.cancelManualDownload());
+ipcMain.on("retry-app-update-download", () => updater?.retryManualDownload());
 ipcMain.on("get-app-update-status", (event) => {
     event.returnValue = updater?.status;
+});
+ipcMain.on("get-app-update-manual-progress", (event) => {
+    const cur = updater?.["manualInstall"] ?? null;
+    event.returnValue = cur ? { ...cur } : null;
 });
 ipcMain.on("get-app-update-last-checked", (event) => {
     event.returnValue = updater?.lastChecked?.toISOString() ?? null;

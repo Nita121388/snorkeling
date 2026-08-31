@@ -100,10 +100,15 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
     const staticTabIdAtom: Atom<string> = atom(initOpts.tabId);
     const controlShiftDelayAtom = atom(false);
     const updaterStatusAtom = atom<UpdaterStatus>("up-to-date") as PrimitiveAtom<UpdaterStatus>;
+    const updaterManualProgressAtom = atom<UpdaterManualProgress | null>(null) as PrimitiveAtom<UpdaterManualProgress | null>;
     try {
         globalStore.set(updaterStatusAtom, getApi().getUpdaterStatus());
         getApi().onUpdaterStatusChange((status) => {
             globalStore.set(updaterStatusAtom, status);
+        });
+        globalStore.set(updaterManualProgressAtom, getApi().getUpdaterManualProgress());
+        getApi().onUpdaterManualProgress((progress) => {
+            globalStore.set(updaterManualProgressAtom, progress);
         });
     } catch (e) {
         console.log("failed to initialize updaterStatusAtom", e);
@@ -167,6 +172,7 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         zoomFactorAtom,
         controlShiftDelayAtom,
         updaterStatusAtom,
+        updaterManualProgressAtom,
         prefersReducedMotionAtom,
         documentHasFocus: documentHasFocusAtom,
         modalOpen,
