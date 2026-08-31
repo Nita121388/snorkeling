@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { SessionOverviewViewModel } from "@/app/session-overview/session-overview";
+import { AgentViewModel } from "@/app/view/aisessions/agent";
 import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
 import { HelpViewModel } from "@/app/view/helpview/helpview";
@@ -38,6 +39,7 @@ const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
     ["waveconfig", WaveConfigViewModel],
     ["processviewer", ProcessViewerViewModel],
     ["aisessions", AiSessionsViewModel],
+    ["agent", AgentViewModel],
     ["sessionoverview", SessionOverviewViewModel],
     ["vcs", VcsViewModel],
     ["vcscommits", VcsCommitsViewModel],
