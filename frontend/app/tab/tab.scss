@@ -61,18 +61,6 @@
         display: none;
     }
 
-    // Group membership accent: thin left bar in the group's color.
-    &.in-group::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 4px;
-        bottom: 4px;
-        width: 3px;
-        border-radius: 2px;
-        background-color: var(--group-color, transparent);
-    }
-
     .name {
         position: absolute;
         top: 50%;
@@ -114,37 +102,6 @@
 
     .close {
         visibility: hidden;
-    }
-
-    // Hover trigger affordance for "Tab to Group" flyout. Rendered inside .tab-inner;
-    // positioned left so it sits near the left edge without disturbing the centred .name.
-    .tab-group-trigger {
-        position: absolute;
-        left: 2px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 16px;
-        height: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 9px;
-        border-radius: 3px;
-        color: var(--secondary-text-color);
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.15s ease, background-color 0.15s ease;
-        z-index: 1;
-    }
-
-    &:hover .tab-group-trigger,
-    .tab-group-trigger:focus-visible {
-        opacity: 1;
-    }
-
-    .tab-group-trigger:hover {
-        background-color: var(--hover-bg-color);
-        color: var(--main-text-color);
     }
 }
 

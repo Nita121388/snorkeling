@@ -22,13 +22,11 @@ import { isMacOSTahoeOrLater } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
-import { createRef, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { partitionAndOrderTabs } from "./tab-pinned-order";
-import { buildRenderSegments, type RenderSegment, type TabGroup, type TabGroupId } from "./tabgroup";
-import { toggleGroupCollapsed, useTabGroups } from "./tabgroup-store";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
 
@@ -115,31 +113,6 @@ function strArrayIsEqual(a: string[], b: string[]) {
     }
     return true;
 }
-
-/** Collapsed-group pill rendered inline in the tab bar, occupying one slot. Click toggles collapse. */
-const TabGroupPill = memo(
-    forwardRef<HTMLDivElement, { group: TabGroup; onToggle: (groupId: TabGroupId) => void }>(
-        ({ group, onToggle }, ref) => (
-            <div
-                ref={ref}
-                className="tab-group-pill"
-                title={`${group.name} (${group.tabIds.length} tabs) — click to ${group.collapsed ? "expand" : "collapse"}`}
-                aria-label={`${group.collapsed ? "Expand" : "Collapse"} group ${group.name}`}
-                data-group-id={group.id}
-                style={{ ["--group-color" as string]: group.color } as React.CSSProperties}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onToggle(group.id);
-                }}
-            >
-                <span className="tab-group-pill-dot" />
-                <span className="tab-group-pill-name">{group.name || "Group"}</span>
-                <span className="tab-group-pill-count">{group.tabIds.length}</span>
-            </div>
-        )
-    )
-);
-TabGroupPill.displayName = "TabGroupPill";
 
 const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
@@ -254,15 +227,10 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         ]
     );
 
-    const groups = useTabGroups(workspace.oid);
-    const segments = useMemo(() => buildRenderSegments(visibleTabIds, groups), [visibleTabIds, groups]);
-    // Map group pills to positioned DOM refs for setSizeAndPosition.
-    const groupPillRefMap = useRef<Map<string, HTMLDivElement>>(new Map());
-
-    // RenderedTabIds: tab-only segment ids, used for drag/reorder which doesn't touch pills.
+    // RenderedTabIds: tab-only ids, used for drag/reorder.
     const renderedTabIds = useMemo(
-        () => segments.filter((s) => s.kind === "tab").map((s) => s.tabId),
-        [segments]
+        () => visibleTabIds,
+        [visibleTabIds]
     );
 
     // Update refs when tabIds change
@@ -332,7 +300,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             waveAIButtonWidth;
         const spaceForTabs = tabbarWrapperWidth - nonTabElementsWidth;
 
-        const numberOfTabs = segments.length;
+        const numberOfTabs = visibleTabIds.length;
         if (numberOfTabs === 0) {
             scrollableRef.current = false;
             osInstanceRef.current?.destroy();
@@ -345,30 +313,26 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         // to the left so that hover expansion appends newly-revealed tabs to their right instead of
         // shifting the already-shown ones. While dragging, keep the natural tabIds order so drag math
         // (which uses visibleTabIds positions) stays unchanged.
-        let layoutSegments: RenderSegment[];
+        let layoutTabIds: string[];
         let idealTabWidth: number;
         if (isDragging) {
-            layoutSegments = segments;
+            layoutTabIds = visibleTabIds;
             idealTabWidth = spaceForTabs / numberOfTabs;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         } else {
-            // Pinned segments: group pills are always pinned; tabs use the same recency logic.
-            const pinnedSegmentRendered = new Set<string>();
             const { pinnedTabIds } = partitionAndOrderTabs(visibleTabIds, activeTabId, openedThisLaunchTabIds);
             const pinnedTabIdSet = new Set(pinnedTabIds);
-            const pinnedSegments: RenderSegment[] = [];
-            const hoverRevealedSegments: RenderSegment[] = [];
-            for (const seg of segments) {
-                if (seg.kind === "group") {
-                    pinnedSegments.push(seg);
-                } else if (pinnedTabIdSet.has(seg.tabId)) {
-                    pinnedSegments.push(seg);
+            const pinnedTabs: string[] = [];
+            const hoverRevealedTabs: string[] = [];
+            for (const tabId of visibleTabIds) {
+                if (pinnedTabIdSet.has(tabId)) {
+                    pinnedTabs.push(tabId);
                 } else {
-                    hoverRevealedSegments.push(seg);
+                    hoverRevealedTabs.push(tabId);
                 }
             }
-            layoutSegments = [...pinnedSegments, ...hoverRevealedSegments];
-            const widthBasisCount = Math.max(1, pinnedSegments.length);
+            layoutTabIds = [...pinnedTabs, ...hoverRevealedTabs];
+            const widthBasisCount = Math.max(1, pinnedTabs.length);
             idealTabWidth = spaceForTabs / widthBasisCount;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         }
@@ -376,16 +340,11 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         // Determine if the tab bar needs to be scrollable
         const newScrollable = idealTabWidth * numberOfTabs > spaceForTabs;
 
-        // Apply the calculated width and position to all segments in layout order
-        layoutSegments.forEach((seg, index) => {
-            let el: HTMLDivElement | null = null;
-            if (seg.kind === "group") {
-                el = groupPillRefMap.current.get(seg.groupId) ?? null;
-            } else {
-                const tabIndex = tabIds.indexOf(seg.tabId);
-                const ref = tabRefs.current[tabIndex];
-                el = ref?.current ?? null;
-            }
+        // Apply the calculated width and position to all tabs in layout order
+        layoutTabIds.forEach((tabId, index) => {
+            const tabIndex = tabIds.indexOf(tabId);
+            const ref = tabRefs.current[tabIndex];
+            const el = ref?.current ?? null;
             if (el) {
                 if (animate) {
                     el.classList.add("animate");
@@ -426,7 +385,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const handleResizeTabs = useCallback(() => {
         setSizeAndPosition();
         saveTabsPositionDebounced();
-    }, [segments, tabIds, newTabId, isFullScreen]);
+    }, [visibleTabIds, tabIds, newTabId, isFullScreen]);
 
     // update layout on reinit version
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -499,7 +458,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 prevAllLoadedRef.current = true;
             }
         }
-    }, [segments, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
+    }, [visibleTabIds, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
 
     const getDragDirection = (currentX: number) => {
         let dragDirection: string;
@@ -801,7 +760,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         env.electron.showWorkspaceAppMenu(workspace.oid);
     }
 
-    const tabsWrapperWidth = segments.length * tabWidthRef.current;
+    const tabsWrapperWidth = visibleTabIds.length * tabWidthRef.current;
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
     const handleWindowDragMouseDown = (e: React.MouseEvent) => {
@@ -910,28 +869,10 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                     }}
                 >
                     {!noTabs &&
-                        segments.map((segment, segIndex) => {
-                            if (segment.kind === "group") {
-                                const group = groups.find((g) => g.id === segment.groupId);
-                                if (group == null) return null;
-                                return (
-                                    <TabGroupPill
-                                        key={`group:${segment.groupId}`}
-                                        ref={(el) => {
-                                            if (el != null) {
-                                                groupPillRefMap.current.set(segment.groupId, el);
-                                            }
-                                        }}
-                                        group={group}
-                                        onToggle={(gid) => toggleGroupCollapsed(env, workspace.oid, gid)}
-                                    />
-                                );
-                            }
-                            const tabId = segment.tabId;
+                        visibleTabIds.map((tabId, segIndex) => {
                             const tabIndex = tabIds.indexOf(tabId);
                             const isActive = activeTabId === tabId;
-                            // visibleIndex for divider logic = position in segments (not just tabs)
-                            const showDivider = segIndex !== 0 && !isActive && segIndex !== segments.findIndex((s) => s.kind === "tab" && s.tabId === activeTabId) - 1;
+                            const showDivider = segIndex !== 0 && !isActive && segIndex !== visibleTabIds.indexOf(activeTabId) - 1;
                             return (
                                 <TabComponent
                                     key={tabId}

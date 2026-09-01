@@ -119,7 +119,14 @@ type RailTickProps = {
     onJump: (seq: number) => void;
 };
 
-const RailTick = memo(function RailTick({ index, prompt, isActive, attentionIndex, onHover, onJump }: RailTickProps) {
+const RailTick = memo(function RailTick({
+    index,
+    prompt,
+    isActive,
+    attentionIndex,
+    onHover,
+    onJump,
+}: RailTickProps) {
     const hasAttention = index === attentionIndex;
     const magnification =
         attentionIndex === null ? 0 : prefersReducedMotionCached() ? 0 : tickMagnification(index - attentionIndex);
@@ -147,14 +154,6 @@ const RailTick = memo(function RailTick({ index, prompt, isActive, attentionInde
                     style={{ width: pillWidth, height: pillHeight }}
                 />
             </button>
-            {hasAttention ? (
-                <div
-                    className="pointer-events-none absolute right-full top-1/2 z-30 mr-1.5 -translate-y-1/2 rounded-lg border border-border bg-panel px-3 py-2 text-xs leading-4 text-primary shadow-xl"
-                    style={{ width: PREVIEW_WIDTH }}
-                >
-                    <span className="line-clamp-2">{prompt.preview}</span>
-                </div>
-            ) : null}
         </div>
     );
 });
@@ -182,6 +181,13 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
     onJump: (seq: number) => void;
 }) {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const [previewState, setPreviewState] = useState<{
+        rect: DOMRect;
+        preview: string;
+    } | null>(null);
+    const railRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
     const hoverIntent = useRef(
         createHoverIntent({
             activate: setHoveredIndex,
@@ -192,29 +198,81 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
     useEffect(() => () => hoverIntent.current.dispose(), []);
     const handleHover = useCallback((index: number) => hoverIntent.current.pointAt(index), []);
 
+    // 当 hoveredIndex 变化时，直接从 DOM 读取 pill 位置来设置预览
+    useEffect(() => {
+        if (hoveredIndex === null || !scrollRef.current) {
+            setPreviewState(null);
+            return;
+        }
+        const pill = scrollRef.current.children[hoveredIndex] as HTMLElement;
+        if (!pill) {
+            setPreviewState(null);
+            return;
+        }
+        const rect = pill.getBoundingClientRect();
+        setPreviewState({ rect, preview: prompts[hoveredIndex]?.preview ?? "" });
+    }, [hoveredIndex, prompts]);
+
+    // 滚动/resize 时刷新预览位置
+    useEffect(() => {
+        if (hoveredIndex === null) return;
+        const refresh = () => {
+            if (!scrollRef.current) return;
+            const pill = scrollRef.current.children[hoveredIndex!] as HTMLElement;
+            if (!pill) return;
+            const rect = pill.getBoundingClientRect();
+            setPreviewState((prev) => (prev ? { ...prev, rect } : prev));
+        };
+        const onFrame = () => requestAnimationFrame(refresh);
+        window.addEventListener("scroll", onFrame, true);
+        window.addEventListener("resize", onFrame);
+        return () => {
+            window.removeEventListener("scroll", onFrame, true);
+            window.removeEventListener("resize", onFrame);
+        };
+    }, [hoveredIndex]);
+
     if (prompts.length < 2) return null;
     const attentionIndex = hoveredIndex;
 
     return (
-        <div
-            className="pointer-events-none absolute bottom-[8%] right-0 top-[8%] z-20 flex flex-col justify-center overflow-visible py-1"
-            style={{ width: RAIL_WIDTH }}
-            onMouseEnter={(e) => hoverIntent.current.enter({ x: e.clientX, y: e.clientY })}
-            onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}
-            onMouseLeave={() => hoverIntent.current.leave()}
-        >
-            {prompts.map((prompt, index) => (
-                <RailTick
-                    key={prompt.seq}
-                    index={index}
-                    prompt={prompt}
-                    isActive={prompt.seq === activeSeq}
-                    attentionIndex={attentionIndex}
-                    onHover={handleHover}
-                    onJump={onJump}
-                />
-            ))}
-        </div>
+        <>
+            <div
+                ref={railRef}
+                className="pointer-events-none absolute right-0 top-1/2 z-20 -translate-y-1/2 flex flex-col justify-center py-1"
+                style={{ width: RAIL_WIDTH }}
+                onMouseEnter={(e) => hoverIntent.current.enter({ x: e.clientX, y: e.clientY })}
+                onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => hoverIntent.current.leave()}
+            >
+                <div ref={scrollRef} className="overflow-y-auto max-h-[300px] scrollbar-hide" style={{ width: RAIL_WIDTH }}>
+                    {prompts.map((prompt, index) => (
+                        <RailTick
+                            key={prompt.seq}
+                            index={index}
+                            prompt={prompt}
+                            isActive={prompt.seq === activeSeq}
+                            attentionIndex={attentionIndex}
+                            onHover={handleHover}
+                            onJump={onJump}
+                        />
+                    ))}
+                </div>
+            </div>
+            {previewState && (
+                <div
+                    className="pointer-events-none fixed z-50 rounded-lg border border-border bg-panel px-3 py-2 text-xs leading-4 text-primary shadow-xl"
+                    style={{
+                        width: PREVIEW_WIDTH,
+                        right: window.innerWidth - previewState.rect.left + 6,
+                        top: previewState.rect.top + previewState.rect.height / 2,
+                        transform: "translateY(-50%)",
+                    }}
+                >
+                    <span className="line-clamp-2">{previewState.preview}</span>
+                </div>
+            )}
+        </>
     );
 });
 

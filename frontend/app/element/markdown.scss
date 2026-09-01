@@ -30,6 +30,7 @@
 
         .heading:not(.heading ~ .heading) {
             margin-top: 0 !important;
+            padding-top: 0;
         }
 
         .heading {
@@ -343,6 +344,13 @@
             vertical-align: top;
             white-space: normal;
         }
+
+        // Empty cells (e.g. newly inserted rows) lack text content, so the browser
+        // never creates a line box and line-height is ignored — the row collapses to
+        // padding-only height (~16px vs ~33px for cells with text). Inject a
+        // zero-width space via ::after so the line-height applies and all rows
+        // render at a consistent height.
+        td:empty::after { content: "\200B"; }
 
         th {
             background-color: var(--panel-bg-color);
@@ -1214,38 +1222,44 @@
     padding: 0 6px;
 }
 
-// M5: document emoji badge (方案 05 §2-3) — absolute in the note's top-right corner so
-// it never shifts layout; the "add" affordance fades in on container hover.
+// M5: document emoji badge — 方案 D: emoji icon + divider + title
+// Emoji positioned above the first heading, with a thin divider line between them.
+// The badge is now part of the document header flow, not an absolute overlay.
 .markdown {
     position: relative;
 }
 
+// When emoji badge is present, switch to column layout so badge appears above content
+.content:has(.markdown-doc-emoji-badge) {
+    flex-direction: column;
+}
+
 .markdown-doc-emoji-badge {
-    position: absolute;
-    top: 6px;
-    right: 10px;
-    z-index: 50;
-    min-width: 30px;
-    height: 30px;
-    padding: 0 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    position: relative;
+    display: block;
+    width: fit-content;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 12px;
     background: transparent;
-    font-size: 22px;
+    font-size: 3em;
     line-height: 1;
     cursor: pointer;
+    transition: background 0.15s ease;
+    /* Prevent flex from stretching this element */
+    flex: 0 0 auto;
+    align-self: flex-start;
 
     &:hover,
     &.is-open {
-        background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+        background: color-mix(in srgb, var(--main-text-color, #888) 8%, transparent);
     }
 
     &.is-empty {
         opacity: 0;
-        font-size: 14px;
+        font-size: 1.2em;
         color: color-mix(in srgb, var(--main-text-color, #888) 55%, transparent);
     }
 }
@@ -1253,6 +1267,29 @@
 .markdown:hover .markdown-doc-emoji-badge.is-empty {
     opacity: 1;
 }
+
+// Divider line between emoji badge and first heading
+.markdown.markdown .content .markdown-render-root .heading:first-of-type::before {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 1px;
+    background: var(--border-color, #333);
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+// Remove border-bottom from first heading when emoji badge is present
+.markdown-doc-emoji-badge ~ .markdown-render-root .heading.is-1:first-of-type,
+.markdown-doc-emoji-badge ~ .markdown-render-root .heading.is-2:first-of-type,
+.markdown-doc-emoji-badge ~ .markdown-render-root > .heading.is-1:first-of-type,
+.markdown-doc-emoji-badge ~ .markdown-render-root > .heading.is-2:first-of-type,
+.markdown-doc-emoji-badge ~ .markdown-render-root > .heading.is-4:first-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+
 
 // Click-away backdrop for the document emoji picker (transparent, sits under it).
 .markdown-emoji-backdrop {
@@ -1317,18 +1354,31 @@
 
 // --- Portaled chrome (position: fixed, appended to body) ---------------------
 
-// Col pill handle — 28×16 rounded capsule above hovered column
+// Pill handle — grip-style drag handle for columns (horizontal lines) and rows (vertical lines)
 .tb-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 4px;
     background: var(--accent-color, #5a8080);
+    color: #fff;
     opacity: 0.85;
-    cursor: pointer;
+    cursor: grab;
     z-index: 10000;
     touch-action: none;
     transition: opacity 0.1s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 
     &:hover {
         opacity: 1;
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+
+    svg {
+        flex-shrink: 0;
     }
 }
 

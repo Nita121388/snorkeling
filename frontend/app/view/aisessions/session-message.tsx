@@ -127,7 +127,7 @@ export function ThinkingDisclosure({
       </button>
       {open ? (
         <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
-          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary">
+          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary font-sans">
             {trimmed}
             {streaming ? <span className="ly-cursor" /> : null}
           </pre>
@@ -223,7 +223,7 @@ export const MessageCard = memo(function MessageCard({
         )}
       >
         {isUser ? (
-          <div className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-primary">
+          <div className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-primary">
             {searchMatched && !searchActive ? (
               <span className="mr-1.5 inline-flex items-center gap-1 rounded border border-actionsoftborder bg-actionsoft px-1.5 py-0.5 align-middle text-[10px] text-actionsofttext">
                 <i className="fa-sharp fa-solid fa-magnifying-glass" />
@@ -233,7 +233,7 @@ export const MessageCard = memo(function MessageCard({
             <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
           </div>
         ) : (
-          <div ref={mdContentRef} className="min-w-0 text-sm">
+          <div ref={mdContentRef} className="min-w-0 text-[12px]">
             {/* 思考过程：从会话历史还原，以 Paseo 风格徽章行折叠展示（点击展开全文） */}
             {message.thinking ? <ThinkingDisclosure text={message.thinking} /> : null}
             <WaveStreamdown text={shownText} parseIncompleteMarkdown />

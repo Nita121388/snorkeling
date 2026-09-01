@@ -64,8 +64,8 @@ export const TableEditContext = createContext<TableEditContextValue | null>(null
 // ---------------------------------------------------------------------------
 
 const THRESHOLD_PX = 8;
-const PILL_W = 28;
-const PILL_H = 16;
+const PILL_W = 32;
+const PILL_H = 20;
 
 function getSourceLine(props: any): number | undefined {
     const line = props?.node?.position?.start?.line;
@@ -103,9 +103,11 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
     const tableRef = useRef<HTMLTableElement>(null);
     const editSnapshotRef = useRef<string>("");
     const activeCellRef = useRef<{ row: number; col: number; cell: HTMLElement } | null>(null);
+    const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // --- state ---
     const [hover, setHover] = useState<{ mode: "cell"; row: number; col: number } | { mode: "lineV"; boundary: number } | { mode: "lineH"; boundary: number } | null>(null);
+    const hoverRef = useRef<typeof hover>(null); // hysteresis: track last hover to prevent mode oscillation
     const [selectedCol, setSelectedCol] = useState<number | null>(null);
     const [selectedRow, setSelectedRow] = useState<number | null>(null);
     const [drag, setDrag] = useState<{ axis: "col" | "row"; from: number; boundary: number | null; px: number; py: number } | null>(null);
@@ -166,11 +168,11 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
         if (!editable) return;
         const table = tableRef.current;
         if (table == null) return;
-        setSelectedCol(null);
-        setSelectedRow(null);
+        // Pointer re-entered the wrapper — cancel any pending leave timeout
+        if (hoverLeaveTimerRef.current != null) { clearTimeout(hoverLeaveTimerRef.current); hoverLeaveTimerRef.current = null; }
 
         const coords = cellCoords(table, e.target as HTMLElement);
-        if (coords == null) { setHover(null); return; }
+        if (coords == null) { setHover(null); hoverRef.current = null; setSelectedCol(null); setSelectedRow(null); return; }
         const cell = (e.target as HTMLElement).closest("td,th") as HTMLElement;
         const cr = cell.getBoundingClientRect();
         const dxL = e.clientX - cr.left;
@@ -179,26 +181,85 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
         const dyB = cr.bottom - e.clientY;
         const maxRow = tableRenderedRowCount(getFullText(), tableLine) - 1;
         const maxCol = (table.querySelector("tr:last-child")?.children.length ?? 2) - 2;
-        // Line handle: close to vertical edge (column boundary)
+        const prevHover = hoverRef.current;
+
+        // Hysteresis: once locked into a line mode, keep it until the pointer moves
+        // well past the threshold (2× the entry threshold). This prevents rapid
+        // oscillation between lineV / lineH / cell when the pointer is near a corner
+        // or edge intersection.
+        const LOCKED_EXIT_PX = THRESHOLD_PX * 2;
+
+        // --- try to enter lineV (vertical column boundary) ---
         if (Math.min(dxL, dxR) <= THRESHOLD_PX) {
             const boundary = dxL < dxR ? coords.col : coords.col + 1;
-            if (boundary >= 0 && boundary <= maxCol + 1) { setHover({ mode: "lineV", boundary }); return; }
+            if (boundary >= 0 && boundary <= maxCol + 1) {
+                // Stay locked if already lineV with the same boundary
+                if (prevHover?.mode === "lineV" && prevHover.boundary === boundary) return;
+                // Hysteresis: only switch *away* from lineV if pointer is clearly past the lock zone
+                if (prevHover?.mode === "lineV" && Math.min(dxL, dxR) > LOCKED_EXIT_PX) {
+                    // fall through to other checks below
+                } else {
+                    if (prevHover?.mode !== "lineV" || prevHover.boundary !== boundary) {
+                        setSelectedCol(null); setSelectedRow(null);
+                    }
+                    setHover({ mode: "lineV", boundary }); hoverRef.current = { mode: "lineV", boundary };
+                    return;
+                }
+            }
         }
-        // Line handle: close to horizontal edge (row boundary), skip header top (boundary 0)
+
+        // --- try to enter lineH (horizontal row boundary) ---
+        // skip header top (boundary 0)
         if (Math.min(dyT, dyB) <= THRESHOLD_PX) {
             const boundary = dyT < dyB ? coords.row : coords.row + 1;
-            if (boundary > 0 && boundary <= maxRow + 1) { setHover({ mode: "lineH", boundary }); return; }
+            if (boundary > 0 && boundary <= maxRow + 1) {
+                if (prevHover?.mode === "lineH" && prevHover.boundary === boundary) return;
+                if (prevHover?.mode === "lineH" && Math.min(dyT, dyB) > LOCKED_EXIT_PX) {
+                    // fall through
+                } else {
+                    if (prevHover?.mode !== "lineH" || prevHover.boundary !== boundary) {
+                        setSelectedCol(null); setSelectedRow(null);
+                    }
+                    setHover({ mode: "lineH", boundary }); hoverRef.current = { mode: "lineH", boundary };
+                    return;
+                }
+            }
         }
+
+        // --- default: cell hover ---
+        if (prevHover?.mode === "cell" && prevHover.row === coords.row && prevHover.col === coords.col) return;
+        if (prevHover != null) { setSelectedCol(null); setSelectedRow(null); }
         setHover({ mode: "cell", row: coords.row, col: coords.col });
+        hoverRef.current = { mode: "cell", row: coords.row, col: coords.col };
     }, [editable, ctx, tableLine, getFullText]);
 
-    const handlePointerLeave = useCallback(() => { setHover(null); }, []);
+    const handlePointerLeave = useCallback(() => {
+        // Delay clearing hover so the pointer can reach portaled chrome elements
+        // (line handles, pills, action buttons) without the UI disappearing first.
+        hoverLeaveTimerRef.current = setTimeout(() => {
+            hoverLeaveTimerRef.current = null;
+            setHover(null);
+            hoverRef.current = null;
+        }, 80);
+    }, []);
+
+    const cancelHoverLeave = useCallback(() => {
+        if (hoverLeaveTimerRef.current != null) {
+            clearTimeout(hoverLeaveTimerRef.current);
+            hoverLeaveTimerRef.current = null;
+        }
+    }, []);
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => { if (hoverLeaveTimerRef.current != null) clearTimeout(hoverLeaveTimerRef.current); };
+    }, []);
 
     // --- scroll: hide chrome ---
     useEffect(() => {
         if (!editable) return;
         let raf: number | null = null;
-        const onScroll = () => { setHover(null); };
+        const onScroll = () => { setHover(null); hoverRef.current = null; };
         window.addEventListener("scroll", onScroll, { capture: true, passive: true });
         return () => { window.removeEventListener("scroll", onScroll); if (raf != null) cancelAnimationFrame(raf); };
     }, [editable]);
@@ -541,27 +602,31 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
             </div>
             {/* Chrome portals */}
             {colPillStyle && <div className="tb-pill" style={colPillStyle}
+                onPointerEnter={cancelHoverLeave}
                 onPointerDown={(e) => handlePillPointerDown(e, "col", hover!.mode === "cell" ? hover!.col : 0)}
                 onPointerMove={(e) => handlePillPointerMove(e, "col", hover!.mode === "cell" ? hover!.col : 0)}
                 onPointerUp={(e) => handlePillPointerUp(e, "col", hover!.mode === "cell" ? hover!.col : 0)}
                 onClick={(e) => hover!.mode === "cell" && handleColPillClick(e, hover!.col)}
-            />}
+            ><svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M4 1h6M4 5h6M4 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg></div>}
             {rowPillStyle && <div className="tb-pill" style={rowPillStyle}
+                onPointerEnter={cancelHoverLeave}
                 onPointerDown={(e) => handlePillPointerDown(e, "row", hover!.mode === "cell" ? hover!.row : 0)}
                 onPointerMove={(e) => handlePillPointerMove(e, "row", hover!.mode === "cell" ? hover!.row : 0)}
                 onPointerUp={(e) => handlePillPointerUp(e, "row", hover!.mode === "cell" ? hover!.row : 0)}
                 onClick={(e) => hover!.mode === "cell" && handleRowPillClick(e, hover!.row)}
-            />}
+            ><svg width="10" height="14" viewBox="0 0 10 14" fill="none"><path d="M1 4v6M5 4v6M9 4v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg></div>}
             {lineVStyle && createPortal(
-                <div className="tb-line-handle tb-line-v" style={lineVStyle}>
+                <div className="tb-line-handle tb-line-v" style={lineVStyle} onPointerEnter={cancelHoverLeave}>
                     <button className="tb-line-plus" style={{ position: "absolute", top: "50%", left: -11, width: 22, height: 22, marginTop: -11 }}
+                        onPointerEnter={cancelHoverLeave}
                         onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); handleInsertCol(hover!.mode === "lineV" ? hover!.boundary : 0); }}>+</button>
                 </div>,
                 document.body
             )}
             {lineHStyle && createPortal(
-                <div className="tb-line-handle tb-line-h" style={lineHStyle}>
+                <div className="tb-line-handle tb-line-h" style={lineHStyle} onPointerEnter={cancelHoverLeave}>
                     <button className="tb-line-plus" style={{ position: "absolute", left: "50%", top: -11, width: 22, height: 22, marginLeft: -11 }}
+                        onPointerEnter={cancelHoverLeave}
                         onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); handleInsertRow(hover!.mode === "lineH" ? hover!.boundary : 0); }}>+</button>
                 </div>,
                 document.body

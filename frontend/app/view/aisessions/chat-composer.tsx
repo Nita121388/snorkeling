@@ -731,7 +731,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                         <textarea
                             ref={inputRef}
                             style={{ maxHeight: `${maxH}px` }}
-                            className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70"
+                            className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70 overflow-y-auto"
                             placeholder={
                                 !sourceAvailable ? "Current agent doesn't support GUI chat yet" : isRunning ? "Agent running… press Enter to queue a message" : "Message the agent…"
                             }

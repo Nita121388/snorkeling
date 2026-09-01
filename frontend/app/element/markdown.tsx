@@ -4708,14 +4708,6 @@ const Markdown = ({
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
         >
-            {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
-                <DocEmojiHeader
-                    emoji={docEmoji}
-                    buttonRef={docEmojiBadgeRef}
-                    open={docEmojiOpen}
-                    onToggle={toggleDocEmojiPicker}
-                />
-            )}
             {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
                 <>
                     <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
@@ -4773,6 +4765,14 @@ const Markdown = ({
                     onDragLeave={handleBlockDragLeave}
                     onDrop={handleBlockDrop}
                 >
+                    {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
+                        <DocEmojiHeader
+                            emoji={docEmoji}
+                            buttonRef={docEmojiBadgeRef}
+                            open={docEmojiOpen}
+                            onToggle={toggleDocEmojiPicker}
+                        />
+                    )}
                     {scrollableMarkdownTree}
                     {onInlineEditCommit != null && linkTooltipAnchor != null &&
                         ReactDOM.createPortal(
@@ -4990,6 +4990,14 @@ const Markdown = ({
                 </OverlayScrollbarsComponent>
             ) : (
                 <div className={cn("content non-scrollable", contentClassName)}>
+                    {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
+                        <DocEmojiHeader
+                            emoji={docEmoji}
+                            buttonRef={docEmojiBadgeRef}
+                            open={docEmojiOpen}
+                            onToggle={toggleDocEmojiPicker}
+                        />
+                    )}
                     {nonScrollableMarkdownTree}
                 </div>
             )}

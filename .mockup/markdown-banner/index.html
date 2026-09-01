@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Banner - 原型</title>
+    <style>
+        /* ============================================
+           Design Tokens (from theme.scss)
+           ============================================ */
+        :root {
+            --color-bg: #1a1a1a;
+            --color-bg-rgb: 26, 26, 26;
+            --color-surface: #242424;
+            --color-surface-soft: #2a2a2a;
+            --color-panel: #1e1e1e;
+            --color-foreground: #e0e0e0;
+            --color-secondary: #a0a0a0;
+            --color-muted: #666666;
+            --color-border: #333333;
+            --color-border-rgb: 51, 51, 51;
+            --color-accent: #4a9eff;
+            --color-accent-hover: #6ab4ff;
+            --color-hoverbg: #2f2f2f;
+            --color-text-rgb: 224, 224, 224;
+            
+            /* Banner specific */
+            --banner-height: 200px;
+            --banner-y: 50%;
+            --banner-radius: 8px;
+        }
+
+        /* ============================================
+           Base Reset
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-foreground);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        /* ============================================
+           Markdown Container
+           ============================================ */
+        .markdown {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        /* ============================================
+           Banner Container
+           ============================================ */
+        .markdown-banner-container {
+            position: relative;
+            width: 100%;
+            height: var(--banner-height);
+            overflow: visible;  /* 改为 visible，让 emoji badge 可以突出 */
+            background: var(--color-panel);
+        }
+
+        /* Banner 圆角 - 仅底部 */
+        .markdown-banner-container:not(.locked) {
+            border-radius: 0 0 var(--banner-radius) var(--banner-radius);
+            margin-bottom: 24px;  /* 增加底部间距，为 emoji badge 留空间 */
+        }
+
+        /* ============================================
+           Banner Image (需要单独裁切圆角)
+           ============================================ */
+        .markdown-banner-image-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            border-radius: inherit;
+        }
+
+        .markdown-banner-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center var(--banner-y);
+            transition: opacity 0.3s ease, object-position 0.3s ease;
+            display: block;
+        }
+
+        .markdown-banner-image.loading {
+            opacity: 0;
+        }
+
+        .markdown-banner-image.loaded {
+            opacity: 1;
+        }
+
+        /* ============================================
+           Banner Overlay (渐变遮罩)
+           ============================================ */
+        .markdown-banner-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60%;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                rgba(var(--color-bg-rgb), 0.3) 100%
+            );
+            pointer-events: none;
+        }
+
+        /* ============================================
+           Banner Emoji Badge
+           ============================================ */
+        .markdown-banner-emoji {
+            position: absolute;
+            bottom: -24px;  /* 从 banner 底部向下偏移，与标题重叠 */
+            left: 32px;
+            z-index: 10;
+        }
+
+        .markdown-doc-emoji-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(var(--color-bg-rgb), 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(var(--color-border-rgb), 0.3);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .markdown-doc-emoji-badge:hover {
+            background: rgba(var(--color-bg-rgb), 0.95);
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .markdown-doc-emoji-badge:active {
+            transform: scale(0.98);
+        }
+
+        .markdown-doc-emoji-char {
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .markdown-doc-emoji-add {
+            font-size: 22px;
+            color: var(--color-muted);
+        }
+
+        /* ============================================
+           Note Title (在 emoji 下方，属性上方)
+           ============================================ */
+        .markdown-title-area {
+            position: relative;
+            padding: 32px 32px 0;
+            margin-top: -8px;  /* 与 banner 重叠 */
+        }
+
+        .markdown-title {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .markdown-title-emoji {
+            flex-shrink: 0;
+        }
+
+        .markdown-title-text {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-foreground);
+            line-height: 1.2;
+        }
+
+        /* ============================================
+           Locked Banner (sticky)
+           ============================================ */
+        .markdown-banner-container.locked {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-radius: 0;
+        }
+
+        .markdown-banner-container.locked.collapsed {
+            height: 60px;
+        }
+
+        /* ============================================
+           Content Area
+           ============================================ */
+        .markdown-content {
+            padding: 24px 32px 48px;
+        }
+
+        .markdown h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--color-foreground);
+        }
+
+        .markdown h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--color-foreground);
+        }
+
+        .markdown p {
+            margin-bottom: 16px;
+            color: var(--color-secondary);
+        }
+
+        /* ============================================
+           Properties Card (Wolai 风格)
+           ============================================ */
+        .properties-card {
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            padding: 0 0 16px;
+            margin-bottom: 24px;
+        }
+
+        .property-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .property-row:last-child {
+            border-bottom: none;
+        }
+
+        .property-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 120px;
+            color: var(--color-muted);
+            font-size: 14px;
+        }
+
+        .property-label svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        .property-value {
+            flex: 1;
+            font-size: 14px;
+            color: var(--color-foreground);
+        }
+
+        .property-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: rgba(74, 158, 255, 0.15);
+            color: var(--color-accent);
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        /* ============================================
+           Controls Panel
+           ============================================ */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: 16px;
+            min-width: 240px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+        }
+
+        .controls h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--color-foreground);
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--color-muted);
+            margin-bottom: 4px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            accent-color: var(--color-accent);
+        }
+
+        .control-group input[type="checkbox"] {
+            accent-color: var(--color-accent);
+        }
+
+        .control-group select {
+            width: 100%;
+            background: var(--color-panel);
+            color: var(--color-foreground);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 13px;
+        }
+
+        .control-value {
+            font-size: 12px;
+            color: var(--color-accent);
+            text-align: right;
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           Responsive
+           ============================================ */
+        @media (max-width: 768px) {
+            .markdown-banner-container {
+                --banner-height: 150px;
+            }
+
+            .markdown-banner-emoji {
+                left: 20px;
+                bottom: -20px;
+            }
+
+            .markdown-doc-emoji-badge {
+                width: 48px;
+                height: 48px;
+            }
+
+            .markdown-doc-emoji-char {
+                font-size: 28px;
+            }
+
+            .markdown-title-area {
+                padding: 24px 20px 0;
+            }
+
+            .markdown-title-text {
+                font-size: 26px;
+            }
+
+            .markdown-content {
+                padding: 16px 20px 32px;
+            }
+
+            .controls {
+                left: 20px;
+                right: 20px;
+                bottom: 20px;
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="markdown" id="markdown">
+        <!-- Banner -->
+        <div class="markdown-banner-container" id="bannerContainer">
+            <div class="markdown-banner-image-wrapper">
+                <img 
+                    class="markdown-banner-image loaded" 
+                    id="bannerImage"
+                    src="https://picsum.photos/1200/400?random=1"
+                    alt="Banner"
+                    draggable="false"
+                />
+            </div>
+            <div class="markdown-banner-overlay"></div>
+            <div class="markdown-banner-emoji">
+                <button class="markdown-doc-emoji-badge" id="emojiBadge" title="Change emoji">
+                    <span class="markdown-doc-emoji-char" id="emojiChar">🐠</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Title Area -->
+        <div class="markdown-title-area">
+            <div class="markdown-title">
+                <div class="markdown-title-text">设计模式</div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="markdown-content">
+            <!-- Properties Card -->
+            <div class="properties-card">
+                <div class="property-row">
+                    <div class="property-label">
+                        <svg viewBox="0 0 24 24"><path d="M8.389 13.824c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm0-7.2c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm-7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Z"/></svg>
+                        路线
+                    </div>
+                    <div class="property-value">空</div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">
+                        <svg viewBox="0 0 24 24"><path d="M8.389 13.824c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm0-7.2c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm-7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Z"/></svg>
+                        状态
+                    </div>
+                    <div class="property-value">
+                        <span class="property-tag">
+                            <span>⏳</span>
+                            <span>进行中</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">
+                        <svg viewBox="0 0 24 24"><path d="M8.389 13.824c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm0-7.2c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm-7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Z"/></svg>
+                        分类
+                    </div>
+                    <div class="property-value">
+                        <span class="property-tag" style="background: rgba(136, 49, 204, 0.15); color: #b87aff;">
+                            <span>⛵</span>
+                            <span>设计模式</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="property-row">
+                    <div class="property-label">
+                        <svg viewBox="0 0 24 24"><path d="M8.389 13.824c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm0-7.2c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Zm-7.2 0c1.026 0 1.809.786 1.809 1.8 0 .979-.818 1.8-1.81 1.8a1.81 1.81 0 0 1-1.79-1.8c0-.996.808-1.8 1.79-1.8Z"/></svg>
+                        创建时间
+                    </div>
+                    <div class="property-value">2025/08/28</div>
+                </div>
+            </div>
+
+            <!-- Note Content -->
+            <h1 style="display: none;">设计模式</h1>
+            <p>这是一篇关于设计模式的学习笔记。设计模式是软件工程中针对特定问题的经典解决方案。</p>
+            
+            <h2>创建型模式</h2>
+            <p>创建型模式处理对象创建机制，试图以适合情况的方式创建对象。</p>
+            
+            <h2>结构型模式</h2>
+            <p>结构型模式解释如何将类和对象组合成更大的结构，同时保持结构的灵活性和效率。</p>
+        </div>
+    </div>
+
+    <!-- Controls Panel -->
+    <div class="controls">
+        <h3>Banner 设置</h3>
+        
+        <div class="control-group">
+            <label>垂直位置 (banner_y)</label>
+            <input type="range" id="bannerY" min="0" max="100" value="50" />
+            <div class="control-value" id="bannerYValue">50%</div>
+        </div>
+        
+        <div class="control-group">
+            <label>高度 (height)</label>
+            <input type="range" id="bannerHeight" min="100" max="400" value="200" />
+            <div class="control-value" id="bannerHeightValue">200px</div>
+        </div>
+        
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="bannerLock" />
+                锁定位置 (sticky)
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>图片源</label>
+            <select id="bannerSrc">
+                <option value="https://picsum.photos/1200/400?random=1">随机图片 1</option>
+                <option value="https://picsum.photos/1200/400?random=2">随机图片 2</option>
+                <option value="https://picsum.photos/1200/400?random=3">随机图片 3</option>
+                <option value="https://picsum.photos/1200/400?grayscale">灰度图片</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label>Emoji</label>
+            <select id="emojiSelect">
+                <option value="🐠">🐠 鱼</option>
+                <option value="⛵">⛵ 帆船</option>
+                <option value="🚀">🚀 火箭</option>
+                <option value="💡">💡 灯泡</option>
+                <option value="🎯">🎯 靶心</option>
+                <option value="📚">📚 书本</option>
+            </select>
+        </div>
+    </div>
+
+    <script>
+        // Controls
+        const bannerContainer = document.getElementById('bannerContainer');
+        const bannerImage = document.getElementById('bannerImage');
+        const emojiChar = document.getElementById('emojiChar');
+        
+        const bannerYSlider = document.getElementById('bannerY');
+        const bannerYValue = document.getElementById('bannerYValue');
+        
+        const bannerHeightSlider = document.getElementById('bannerHeight');
+        const bannerHeightValue = document.getElementById('bannerHeightValue');
+        
+        const bannerLockCheckbox = document.getElementById('bannerLock');
+        const bannerSrcSelect = document.getElementById('bannerSrc');
+        const emojiSelect = document.getElementById('emojiSelect');
+        
+        // Banner Y position
+        bannerYSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            bannerYValue.textContent = `${value}%`;
+            bannerContainer.style.setProperty('--banner-y', `${value}%`);
+        });
+        
+        // Banner Height
+        bannerHeightSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            bannerHeightValue.textContent = `${value}px`;
+            bannerContainer.style.setProperty('--banner-height', `${value}px`);
+        });
+        
+        // Banner Lock
+        bannerLockCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                bannerContainer.classList.add('locked');
+            } else {
+                bannerContainer.classList.remove('locked');
+            }
+        });
+        
+        // Banner Source
+        bannerSrcSelect.addEventListener('change', (e) => {
+            bannerImage.classList.remove('loaded');
+            bannerImage.classList.add('loading');
+            bannerImage.src = e.target.value;
+        });
+        
+        // Image load handler
+        bannerImage.addEventListener('load', () => {
+            bannerImage.classList.remove('loading');
+            bannerImage.classList.add('loaded');
+        });
+        
+        // Emoji select
+        emojiSelect.addEventListener('change', (e) => {
+            emojiChar.textContent = e.target.value;
+        });
+        
+        // Emoji badge click
+        document.getElementById('emojiBadge').addEventListener('click', () => {
+            // Simulate emoji picker open
+            alert('Emoji picker would open here');
+        });
+        
+        // Scroll effect for locked banner
+        window.addEventListener('scroll', () => {
+            if (bannerContainer.classList.contains('locked')) {
+                const scrollY = window.scrollY;
+                if (scrollY > 100) {
+                    bannerContainer.classList.add('collapsed');
+                } else {
+                    bannerContainer.classList.remove('collapsed');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

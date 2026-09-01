@@ -8,10 +8,11 @@
 //   - wheel:        zoom 25%..400%, anchored at the cursor position
 //   - drag:         pan when the zoomed image overflows the viewport
 //   - double-click: toggle between "fit viewport" and 100% (natural size)
+//   - R key:        rotate 90° clockwise
 //   - ESC / click backdrop / close button: close
 //
 // Zoom uses CSS transform (no reflow), so large images stay smooth.
-// ponytail: no inertia / momentum on pan, no pinch-zoom for touch, no rotation —
+// ponytail: no inertia / momentum on pan, no pinch-zoom for touch,
 // the common cases (read a screenshot, check a detail) are covered; upgrade path is
 // a lib like yet-another-react-lightbox if we ever need thumbnails/galleries.
 
@@ -49,6 +50,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
     const [zoom, setZoom] = useState(1);
     const [tx, setTx] = useState(0);
     const [ty, setTy] = useState(0);
+    const [rotation, setRotation] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const imgRef = useRef<HTMLImageElement | null>(null);
     // Where the wheel/dblclick handling sits: zoom changes are relative to current zoom,
@@ -69,6 +71,9 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
             if (e.key === "Escape") {
                 e.preventDefault();
                 onClose();
+            } else if (e.key === "r" || e.key === "R") {
+                e.preventDefault();
+                setRotation(prev => (prev + 90) % 360);
             }
         };
         window.addEventListener("keydown", onKeyDown);
@@ -80,6 +85,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         setZoom(1);
         setTx(0);
         setTy(0);
+        setRotation(0);
         // Recompute fit once the new image's natural size is known.
         const img = imgRef.current;
         if (img != null && img.complete && img.naturalWidth > 0) {
@@ -116,6 +122,10 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
         setZoom((prev) => clampZoom(prev * factor));
+    }, []);
+
+    const handleRotate = useCallback(() => {
+        setRotation(prev => (prev + 90) % 360);
     }, []);
 
     const handleDoubleClick = useCallback(() => {
@@ -180,6 +190,9 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
             <button className="image-lightbox-close" title="Close (ESC)" onClick={onClose} aria-label="Close image">
                 <i className="fa-sharp fa-solid fa-xmark" />
             </button>
+            <button className="image-lightbox-rotate" title="Rotate (R)" onClick={handleRotate} aria-label="Rotate image">
+                <i className="fa-solid fa-rotate" />
+            </button>
             <div
                 className="image-lightbox-stage"
                 onMouseDown={panEnabled ? undefined : (e) => e.stopPropagation()}
@@ -190,7 +203,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
                     alt={alt ?? ""}
                     draggable={false}
                     className={clsx("image-lightbox-img", isDragging && "dragging")}
-                    style={{ transform: `translate(${tx}px, ${ty}px) scale(${zoom})` }}
+                    style={{ transform: `translate(${tx}px, ${ty}px) rotate(${rotation}deg) scale(${zoom})` }}
                 />
             </div>
         </div>,

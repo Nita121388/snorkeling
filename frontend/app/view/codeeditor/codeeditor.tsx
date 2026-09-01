@@ -14,7 +14,7 @@ function defaultEditorOptions(): MonacoTypes.editor.IEditorOptions {
     const opts: MonacoTypes.editor.IEditorOptions = {
         scrollBeyondLastLine: false,
         fontSize: 12,
-        fontFamily: "Hack",
+        fontFamily: "'Cascadia Code', 'Microsoft YaHei', 'Hack', monospace",
         smoothScrolling: true,
         scrollbar: {
             useShadows: false,
