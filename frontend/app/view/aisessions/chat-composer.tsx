@@ -824,7 +824,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                             {isRunning ? (
                                 <button
                                     type="button"
-                                    className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-error text-white hover:bg-error/85"
+                                    className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white hover:bg-accent/85"
                                     title="Stop"
                                     aria-label="Stop"
                                     onClick={handleAbort}
