@@ -103,9 +103,12 @@ import {
     listBlockActions,
     listInlineStyles,
     listSlashCommands,
+    normalizeSlashCommandResult,
     runBlockAction,
     type BlockCtx,
+    type OpenPickerResult,
     type SlashCommandSpec,
+    type TextReplaceResult,
 } from "@/app/element/block-editor/registry";
 import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
 import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
@@ -117,11 +120,14 @@ import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
+    parseImageSizeSuffix,
+    removeImageSizeInLine,
     removeImageSyntaxInLine,
     replaceImageSrcInLine,
     resolveRemoteFile,
     resolveSrcSet,
     transformBlocks,
+    updateImageSizeInLine,
 } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
@@ -1193,28 +1199,46 @@ const MarkdownImg = ({
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const [pathInputOpen, setPathInputOpen] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [copiedFull, setCopiedFull] = useState(false);
     const [inputPos, setInputPos] = useState<{ top: number; left: number } | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const imgRef = useRef<HTMLImageElement | null>(null);
     const [newPath, setNewPath] = useState("");
 
+    // --- Image resize state ---
+    const { src: rawImgSrc, width: initWidth, height: initHeight } = parseImageSizeSuffix(props.src);
+    const [imgWidth, setImgWidth] = useState<number | null>(initWidth);
+    const [imgHeight, setImgHeight] = useState<number | null>(initHeight);
+    const [isResizing, setIsResizing] = useState(false);
+    const [showResizeHandle, setShowResizeHandle] = useState(false);
+    const resizeRef = useRef<{
+        startX: number;
+        startY: number;
+        origW: number;
+        origH: number;
+        maintainAspect: boolean;
+        currentW: number;
+        currentH: number;
+    } | null>(null);
+    const resizeTooltipRef = useRef<HTMLDivElement | null>(null);
+
     useEffect(() => {
-        if (props.src.startsWith("data:image/")) {
+        if (rawImgSrc.startsWith("data:image/")) {
             setResolving(false);
-            setResolvedSrc(props.src);
+            setResolvedSrc(rawImgSrc);
             setResolvedStr(null);
             return;
         }
         if (resolveOpts == null) {
             setResolving(false);
             setResolvedSrc(null);
-            setResolvedStr(`[img:${props.src}]`);
+            setResolvedStr(`[img:${rawImgSrc}]`);
             return;
         }
 
         const resolveFn = async () => {
             const [resolvedSrc, resolvedSrcSet] = await Promise.all([
-                resolveRemoteFile(props.src, resolveOpts),
+                resolveRemoteFile(rawImgSrc, resolveOpts),
                 resolveSrcSet(props.srcSet, resolveOpts),
             ]);
 
@@ -1224,7 +1248,15 @@ const MarkdownImg = ({
             setResolving(false);
         };
         resolveFn();
-    }, [props.src, props.srcSet]);
+    }, [rawImgSrc, props.srcSet]);
+
+    // Sync size state when the source image path or size suffix changes (e.g., file reload,
+    // undo, or another editor changing the size).
+    useEffect(() => {
+        const { width, height } = parseImageSizeSuffix(props.src);
+        setImgWidth(width);
+        setImgHeight(height);
+    }, [props.src]);
 
     // Only real, loadable images participate in the lightbox / context menu. Placeholder
     // ([img:...]) and data-URI images are excluded from edit ops but data: URIs still zoom.
@@ -1234,7 +1266,7 @@ const MarkdownImg = ({
     // type it, so reach through a cast (mirrors getSourceLine's `props: any`).
     const nodePos = (props as any)?.node?.position;
     const sourceLine = nodePos?.start?.line;
-    const sourceSrc = props.src;
+    const sourceSrc = rawImgSrc;
 
     // Edit ops need the source line (from the rehype node position) plus the commit channel.
     // (data: URI images have no source line and are excluded from edit ops.)
@@ -1290,6 +1322,113 @@ const MarkdownImg = ({
         window.setTimeout(() => setCopied(false), 1200);
     };
 
+    const copyImageFullPath = async () => {
+        let fullPath = sourceSrc ?? "";
+        // Resolve relative paths to absolute using baseDir from resolveOpts.
+        // Skip absolute paths (Unix / or Windows C:\\) and remote URLs (http/https).
+        if (
+            resolveOpts?.baseDir &&
+            fullPath &&
+            !fullPath.startsWith("/") &&
+            !fullPath.match(/^[A-Z]:\\\\/i) &&
+            !fullPath.startsWith("http://") &&
+            !fullPath.startsWith("https://")
+        ) {
+            fullPath = `${resolveOpts.baseDir}/${fullPath}`;
+        }
+        await navigator.clipboard.writeText(fullPath);
+        setCopiedFull(true);
+        window.setTimeout(() => setCopiedFull(false), 1200);
+    };
+
+    // --- Image resize handlers ---
+    const commitImageSize = useCallback(
+        (width: number, height: number) => {
+            if (!canEdit || sourceLine == null) {
+                return;
+            }
+            const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
+                updateImageSizeInLine(lineText, sourceSrc, width, height)
+            );
+            if (newText != null) {
+                onInlineEditCommit(newText);
+            }
+        },
+        [canEdit, sourceLine, fullText, sourceSrc, onInlineEditCommit]
+    );
+
+    const clearImageSize = useCallback(() => {
+        if (!canEdit || sourceLine == null) {
+            return;
+        }
+        const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
+            removeImageSizeInLine(lineText, sourceSrc)
+        );
+        if (newText != null) {
+            onInlineEditCommit(newText);
+        }
+        setImgWidth(null);
+        setImgHeight(null);
+    }, [canEdit, sourceLine, fullText, sourceSrc, onInlineEditCommit]);
+
+    const handleResizeMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            if (!canEdit || !imgRef.current) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            const img = imgRef.current;
+            const currentW = imgWidth ?? img.naturalWidth ?? img.offsetWidth;
+            const currentH = imgHeight ?? img.naturalHeight ?? img.offsetHeight;
+            resizeRef.current = {
+                startX: e.clientX,
+                startY: e.clientY,
+                origW: currentW,
+                origH: currentH,
+                maintainAspect: e.shiftKey,
+                currentW,
+                currentH,
+            };
+            setIsResizing(true);
+
+            const onMouseMove = (ev: MouseEvent) => {
+                const ref = resizeRef.current;
+                if (ref == null) {
+                    return;
+                }
+                const dx = ev.clientX - ref.startX;
+                const newW = Math.max(20, Math.round(ref.origW + dx));
+                let newH: number;
+                if (ref.maintainAspect && ref.origW > 0) {
+                    newH = Math.max(20, Math.round((newW / ref.origW) * ref.origH));
+                } else {
+                    newH = ref.origH;
+                }
+                ref.currentW = newW;
+                ref.currentH = newH;
+                setImgWidth(newW);
+                setImgHeight(newH);
+            };
+
+            const onMouseUp = () => {
+                setIsResizing(false);
+                const ref = resizeRef.current;
+                resizeRef.current = null;
+                window.removeEventListener("mousemove", onMouseMove);
+                window.removeEventListener("mouseup", onMouseUp);
+                // Commit the final size to the markdown source.
+                if (ref != null && ref.currentW != null && ref.currentH != null) {
+                    commitImageSize(ref.currentW, ref.currentH);
+                }
+            };
+
+            window.addEventListener("mousemove", onMouseMove);
+            window.addEventListener("mouseup", onMouseUp);
+        },
+        [canEdit, imgWidth, imgHeight, commitImageSize]
+    );
+
     const handleImgClick = (e: React.MouseEvent) => {
         if (!imageUsable) {
             return;
@@ -1311,13 +1450,17 @@ const MarkdownImg = ({
         e.preventDefault();
         e.stopPropagation();
         const menu: ContextMenuItem[] = [
-            { label: "放大查看", click: () => setLightboxOpen(true) },
-            { label: "复制图片路径", click: () => void copyImagePath() },
+            { label: "Zoom in", click: () => setLightboxOpen(true) },
+            { label: "Copy image path", click: () => void copyImagePath() },
+            { label: "Copy full image path", click: () => void copyImageFullPath() },
         ];
         if (canEdit) {
             menu.push({ type: "separator" });
-            menu.push({ label: "修改路径", click: openPathInput });
-            menu.push({ label: "删除图片", click: deleteImage });
+            if (imgWidth != null) {
+                menu.push({ label: "Reset image size", click: clearImageSize });
+            }
+            menu.push({ label: "Edit path", click: openPathInput });
+            menu.push({ label: "Delete image", click: deleteImage });
         }
         ContextMenuModel.getInstance().showContextMenu(menu, e);
     };
@@ -1329,18 +1472,63 @@ const MarkdownImg = ({
         return <span>{resolvedStr}</span>;
     }
     if (resolvedSrc != null) {
+        const imgStyle: React.CSSProperties = {};
+        if (imgWidth != null) {
+            imgStyle.width = imgWidth;
+        }
+        if (imgHeight != null) {
+            imgStyle.height = imgHeight;
+        }
+        const hasResize = canEdit;
         return (
             <>
-                <img
-                    ref={imgRef}
-                    {...props}
-                    src={resolvedSrc}
-                    srcSet={resolvedSrcSet}
-                    className={cn(props.className, "markdown-img-clickable")}
-                    onClick={handleImgClick}
-                    onContextMenu={handleImgContextMenu}
-                />
-                {copied && <span className="markdown-img-copied">已复制路径</span>}
+                <span
+                    className={cn(
+                        "markdown-img-wrapper",
+                        hasResize && "markdown-img-resizable",
+                        isResizing && "resizing"
+                    )}
+                    onMouseEnter={() => hasResize && !isResizing && setShowResizeHandle(true)}
+                    onMouseLeave={() => !isResizing && setShowResizeHandle(false)}
+                >
+                    <img
+                        ref={imgRef}
+                        {...props}
+                        src={resolvedSrc}
+                        srcSet={resolvedSrcSet}
+                        className={cn(props.className, "markdown-img-clickable")}
+                        style={imgStyle}
+                        onClick={handleImgClick}
+                        onContextMenu={handleImgContextMenu}
+                    />
+                    {hasResize && (showResizeHandle || isResizing) && (
+                        <div
+                            className="markdown-img-resize-handle"
+                            onMouseDown={handleResizeMouseDown}
+                            title="Drag to resize (Shift = proportional)"
+                        />
+                    )}
+                    {hasResize && imgWidth != null && (
+                        <div className="markdown-img-size-actions">
+                            <span className="markdown-img-size-badge">
+                                {imgWidth}×{imgHeight ?? "auto"}
+                            </span>
+                            <button
+                                className="markdown-img-size-clear"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    clearImageSize();
+                                }}
+                                title="Reset to natural size"
+                                type="button"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    )}
+                </span>
+                {copied && <span className="markdown-img-copied">Path copied</span>}
+                {copiedFull && <span className="markdown-img-copied">Full path copied</span>}
                 {lightboxOpen && <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />}
                 {pathInputOpen && inputPos != null &&
                     ReactDOM.createPortal(
@@ -1350,7 +1538,7 @@ const MarkdownImg = ({
                                 autoFocus
                                 value={newPath}
                                 spellCheck={false}
-                                placeholder="图片路径"
+                                placeholder="Image path"
                                 onChange={(e) => setNewPath(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter") {
@@ -3352,12 +3540,23 @@ const Markdown = ({
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
+    // Emoji picker opened via `/emoji` slash command (separate from the ":" inline trigger).
+    // This state tracks whether the picker is open, its anchor position, and search state.
+    const [slashEmojiState, setSlashEmojiState] = useState<{
+        open: boolean;
+        anchor: { top: number; left: number } | null;
+        query: string;
+        activeIndex: number;
+        catalog: EmojiCatalog | null;
+    }>({ open: false, anchor: null, query: "", activeIndex: 0, catalog: null });
+
     // Any session teardown closes the transient block-editor UI with it.
     useEffect(() => {
         if (editSessionKind == null) {
             setSlashState(null);
             setEmojiState(null);
             setInlineSelection(null);
+            setSlashEmojiState((s) => (s.open ? { ...s, open: false } : s));
         }
     }, [editSessionKind]);
 
@@ -3472,6 +3671,46 @@ const Markdown = ({
         [focusEditedLine, blockKindForFocus]
     );
 
+    // --- Slash-originated emoji picker: opened when a slash command returns `type: "open-picker"`. ---
+    const handleSlashPickerOpen = useCallback(
+        (picker: OpenPickerResult) => {
+            if (picker.pickerType !== "emoji") {
+                return; // only emoji picker supported for now
+            }
+            // Lazy-load the catalog if not yet loaded.
+            if (getLoadedEmojiCatalog() == null) {
+                void loadEmojiCatalog().then((cat) => {
+                    setSlashEmojiState((s) => ({ ...s, catalog: cat }));
+                });
+            }
+            // Anchor the picker at the current caret position in the overlay textarea.
+            const rect = inlineEdit.overlayRect;
+            const typo = inlineEdit.editSession?.typography;
+            const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
+            const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
+            const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+            const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
+            const caretRow = inlineEdit.draftText.slice(0, caret).split("\n").length - 1;
+            const approxHeight = 300;
+            let top = rect != null ? rect.top + (caretRow + 1) * lineHeight + 4 : 200;
+            let placement: "top" | "bottom" = "bottom";
+            if (rect != null && top + approxHeight > window.innerHeight && rect.top > approxHeight) {
+                top = rect.top + caretRow * lineHeight - 4;
+                placement = "top";
+            }
+            const anchor = { top, left: (rect?.left ?? 100) + 16 };
+            setSlashEmojiState((s) => ({
+                ...s,
+                open: true,
+                anchor,
+                query: "",
+                activeIndex: 0,
+                catalog: s.catalog ?? getLoadedEmojiCatalog(),
+            }));
+        },
+        [inlineEdit]
+    );
+
     const handleSlashPick = useCallback(
         (cmd: SlashCommandSpec) => {
             const session = inlineEdit.editSession;
@@ -3488,6 +3727,25 @@ const Markdown = ({
             if (result == null) {
                 return;
             }
+            // Picker dispatch: result.type === "open-picker" / "composite" opens a picker
+            // instead of mutating the document. One branch, easy to extend (file, date, …).
+            if (result.type === "open-picker" || result.type === "composite") {
+                const pickerPart = result.type === "open-picker" ? result : result.openPicker;
+                if (pickerPart != null) {
+                    handleSlashPickerOpen(pickerPart as OpenPickerResult);
+                    // Composite may also carry a text replacement — commit it first.
+                    if (result.type === "composite" && result.textReplace != null) {
+                        const tr = result.textReplace as TextReplaceResult & { text: string };
+                        handleInlineEditCommit(
+                            tr.text,
+                            session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+                        );
+                        // Don't dismiss yet; the picker will overlay for the next keystroke.
+                    }
+                }
+                return;
+            }
+            // Common case: text-replace
             handleInlineEditCommit(
                 result.text,
                 session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
@@ -3497,6 +3755,7 @@ const Markdown = ({
                 refocusCommittedBlock(result.text, result.focusLine, result.caret);
             }
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock]
     );
 
@@ -3600,6 +3859,51 @@ const Markdown = ({
         },
         [emojiState, inlineEdit]
     );
+
+    // === Slash-originated emoji picker: items, pick handler, keyboard nav ==========
+    const slashEmojiItems = useMemo(() => {
+        if (!slashEmojiState.open || slashEmojiState.catalog == null) {
+            return [];
+        }
+        return buildEmojiPickerItems(slashEmojiState.catalog, slashEmojiState.query, getRecentEmojis());
+    }, [slashEmojiState.open, slashEmojiState.catalog, slashEmojiState.query]);
+
+    const slashEmojiPickables = useMemo(() => emojiPickerEntries(slashEmojiItems), [slashEmojiItems]);
+
+    const handleSlashEmojiPick = useCallback(
+        (entry: EmojiEntry) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (!slashEmojiState.open || ta == null) {
+                return;
+            }
+            // Insert the emoji at the current caret position (no trigger text to strip).
+            const draft = inlineEdit.draftText;
+            const cursorPos = ta.selectionStart;
+            const next = draft.slice(0, cursorPos) + entry.char + draft.slice(cursorPos);
+            const nextCaret = cursorPos + entry.char.length;
+            inlineEdit.setDraftText(next);
+            recordRecentEmoji(entry.char);
+            setSlashEmojiState((s) => ({ ...s, open: false, query: "", activeIndex: 0 }));
+            requestAnimationFrame(() => {
+                if (ta != null) {
+                    ta.focus({ preventScroll: true });
+                    ta.setSelectionRange(nextCaret, nextCaret);
+                }
+            });
+        },
+        [slashEmojiState.open, inlineEdit]
+    );
+
+    const handleSlashEmojiClose = useCallback(() => {
+        setSlashEmojiState((s) => ({ ...s, open: false, query: "", activeIndex: 0 }));
+        // Return focus to the editor.
+        requestAnimationFrame(() => {
+            const el = inlineEdit.textareaRef.current;
+            if (el != null) {
+                el.focus({ preventScroll: true });
+            }
+        });
+    }, [inlineEdit]);
 
     // === Block editor M4: table toolbar (方案 04 §1). Caret→(row,col) mapping drives
     // which row/column the ops touch; ops rewrite the DRAFT and commit on blur like any
@@ -3765,6 +4069,33 @@ const Markdown = ({
                 setEmojiState(null);
                 return;
             }
+            // Slash-originated emoji picker: same nav shape as the inline emoji picker.
+            if (slashEmojiState.open && slashEmojiPickables.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashEmojiState((s) => ({
+                        ...s,
+                        activeIndex:
+                            (s.activeIndex + (e.key === "ArrowDown" ? 1 : -1) + slashEmojiPickables.length) %
+                            slashEmojiPickables.length,
+                    }));
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    const entry = slashEmojiPickables[Math.min(slashEmojiState.activeIndex, slashEmojiPickables.length - 1)];
+                    if (entry != null) {
+                        handleSlashEmojiPick(entry);
+                    }
+                    return;
+                }
+            }
+            if (slashEmojiState.open && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSlashEmojiClose();
+                return;
+            }
             const isMod = e.metaKey || e.ctrlKey;
             if (isMod && !e.altKey) {
                 const sessKind = inlineEdit.editSession?.blockKind;
@@ -3812,7 +4143,7 @@ const Markdown = ({
             }
             inlineEditKeyDown(e);
         },
-        [slashState, slashItems, handleSlashPick, emojiState, emojiPickables, handleEmojiPick, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
+        [slashState, slashItems, handleSlashPick, emojiState, emojiPickables, handleEmojiPick, slashEmojiState, slashEmojiPickables, handleSlashEmojiPick, handleSlashEmojiClose, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
     );
 
     const toolbarAnchor = useMemo(() => {
@@ -4858,6 +5189,20 @@ const Markdown = ({
                             onActiveChange={(i) => setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))}
                             onPick={handleEmojiPick}
                             onClose={() => setEmojiState(null)}
+                        />
+                    )}
+                    {slashEmojiState.open && slashEmojiState.anchor != null && slashEmojiState.catalog != null && inlineEdit.editSession != null && (
+                        <EmojiPicker
+                            anchor={slashEmojiState.anchor}
+                            placement="bottom"
+                            mode="inline"
+                            catalog={slashEmojiState.catalog}
+                            query={slashEmojiState.query}
+                            activeIndex={Math.min(slashEmojiState.activeIndex, Math.max(0, slashEmojiPickables.length - 1))}
+                            onQueryChange={(q) => setSlashEmojiState((s) => ({ ...s, query: q, activeIndex: 0 }))}
+                            onActiveChange={(i) => setSlashEmojiState((s) => ({ ...s, activeIndex: i }))}
+                            onPick={handleSlashEmojiPick}
+                            onClose={handleSlashEmojiClose}
                         />
                     )}
                     {editSessionKind === "table" && toolbarAnchor != null && isBlockEditorFeatureEnabled("table") && (

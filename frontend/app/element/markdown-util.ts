@@ -267,7 +267,9 @@ function locateImageSyntaxInLine(lineText: string, src: string): { start: number
     let m: RegExpExecArray | null;
     while ((m = re.exec(lineText)) != null) {
         const { src: curSrc } = splitImageSrcAndTitle(m[1]);
-        if (curSrc === src) {
+        // Also match the stripped src so sized images (=WxH) are found by raw URL.
+        const curStripped = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
+        if (curSrc === src || curStripped === src) {
             return { start: m.index, end: m.index + m[0].length };
         }
     }
@@ -284,7 +286,8 @@ export function replaceImageSrcInLine(lineText: string, src: string, newSrc: str
     const frag = lineText.slice(loc.start, loc.end);
     const parenStart = frag.indexOf("(");
     const { src: curSrc } = splitImageSrcAndTitle(frag.slice(parenStart + 1, -1));
-    if (curSrc !== src) {
+    const curStripped = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
+    if (curSrc !== src && curStripped !== src) {
         return null;
     }
     const srcStart = loc.start + parenStart + 1;
@@ -303,6 +306,8 @@ export function removeImageSyntaxInLine(lineText: string, src: string): { text: 
     const removed = lineText.slice(0, loc.start) + lineText.slice(loc.end);
     return { text: removed, isEmpty: removed.trim().length === 0 };
 }
+
+
 
 // Apply a per-line edit to `fullText` at the given 1-based line number, then join back
 // with "\n". Returns the new full text, or null when the line is out of range or the
@@ -323,4 +328,79 @@ export function editImageSyntaxInFullText(
     }
     lines[idx] = result;
     return lines.join("\n");
+}
+
+// Parse an optional size suffix (=WxH) from an image src string.
+// Returns { src, width, height } where src is the real URL without the size suffix.
+// Example: "path.png =300x200" → { src: "path.png", width: 300, height: 200 }
+export function parseImageSizeSuffix(rawSrc: string): {
+    src: string;
+    width: number | null;
+    height: number | null;
+} {
+    if (rawSrc == null) {
+        return { src: rawSrc ?? "", width: null, height: null };
+    }
+    const m = rawSrc.match(/^(.+?)\s+=(\d+)(?:x(\d+))?\s*$/);
+    if (m == null) {
+        return { src: rawSrc, width: null, height: null };
+    }
+    const src = m[1];
+    const width = parseInt(m[2], 10);
+    const height = m[3] != null ? parseInt(m[3], 10) : null;
+    return { src, width, height };
+}
+
+// Replace the size suffix in a markdown image fragment's src, preserving alt + title.
+// If the image has no existing size suffix, it is appended.
+// Example:
+//   updateImageSizeInLine("![alt](path.png)", "path.png", 300, 200)
+//   → "![alt](path.png =300x200)"
+export function updateImageSizeInLine(
+    lineText: string,
+    src: string,
+    width: number,
+    height: number
+): string | null {
+    const loc = locateImageSyntaxInLine(lineText, src);
+    if (loc == null) {
+        return null;
+    }
+    const frag = lineText.slice(loc.start, loc.end);
+    const parenStart = frag.indexOf("(");
+    const inner = frag.slice(parenStart + 1, -1);
+    const { src: curSrc, title } = splitImageSrcAndTitle(inner);
+    if (curSrc !== src && curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "") !== src) {
+        return null;
+    }
+    // Build new inner: src =WxH "title"
+    const realSrc = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
+    let newInner = `${realSrc} =${width}x${height}`;
+    if (title != null) {
+        newInner += ` "${title}"`;
+    }
+    const newFrag = frag.slice(0, parenStart + 1) + newInner + ")";
+    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
+}
+
+// Remove the size suffix from a markdown image fragment's src.
+export function removeImageSizeInLine(lineText: string, src: string): string | null {
+    const loc = locateImageSyntaxInLine(lineText, src);
+    if (loc == null) {
+        return null;
+    }
+    const frag = lineText.slice(loc.start, loc.end);
+    const parenStart = frag.indexOf("(");
+    const inner = frag.slice(parenStart + 1, -1);
+    const { src: curSrc, title } = splitImageSrcAndTitle(inner);
+    const realSrc = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
+    if (realSrc === curSrc) {
+        return null; // no size suffix to remove
+    }
+    let newInner = realSrc;
+    if (title != null) {
+        newInner += ` "${title}"`;
+    }
+    const newFrag = frag.slice(0, parenStart + 1) + newInner + ")";
+    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
 }

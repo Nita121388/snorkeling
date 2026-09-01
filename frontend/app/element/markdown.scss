@@ -703,6 +703,80 @@
     cursor: zoom-in;
 }
 
+// Drag-to-resize image wrapper.
+.markdown-img-wrapper {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
+.markdown-img-wrapper.markdown-img-resizable {
+    border: 1px solid transparent;
+    border-radius: 4px;
+
+    &:hover {
+        border-color: var(--accent-color, #32afff);
+    }
+
+    &.resizing {
+        border-color: var(--accent-color, #32afff);
+        opacity: 0.8;
+    }
+}
+
+// Bottom-right drag handle — appears on hover / during resize.
+.markdown-img-resize-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent-color, #32afff);
+    border: 1px solid var(--modal-bg-color, #1e1e1e);
+    border-radius: 2px;
+    cursor: nwse-resize;
+    z-index: 1;
+}
+
+// Size badge + reset button shown when a custom size is active.
+.markdown-img-size-actions {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.markdown-img-size-badge {
+    font-size: 10px;
+    font-family: var(--font-fixed, monospace);
+    color: var(--accent-color, #32afff);
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+
+.markdown-img-size-clear {
+    pointer-events: auto;
+    font-size: 12px;
+    font-family: var(--font-fixed, monospace);
+    color: var(--secondary-text-color, #888);
+    background: var(--modal-bg-color, #1e1e1e);
+    border: 1px solid var(--modal-border-color, #333);
+    border-radius: 3px;
+    padding: 0 4px;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--error-color, #ff5f5f);
+        border-color: var(--error-color, #ff5f5f);
+    }
+}
+
 .markdown-img-copied {
     position: absolute;
     margin-left: 6px;
