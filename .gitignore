@@ -55,3 +55,6 @@ electron-vite
 
 # GitNexus temp scratch
 .gitnexus-tmp/
+
+# Backup files
+.backup/
