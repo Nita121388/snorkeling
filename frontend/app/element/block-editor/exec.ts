@@ -15,7 +15,8 @@ import {
     transformBlockType,
     type BlockKind,
 } from "../markdown-transform/block-type";
-import type { BlockCtx, SlashCommandSpec } from "./registry";
+import type { BlockCtx, SlashCommandSpec, SlashCommandRunResult, TextReplaceResult } from "./registry";
+import { normalizeSlashCommandResult } from "./registry";
 
 /** The fields of an InlineEditSession that command execution needs (structural, so we
  *  don't import the React hook module at runtime). */
@@ -122,8 +123,16 @@ function replaceRange(text: string, s: number, e: number, segment: string): stri
 /**
  * Execute a slash command: strip `trigger…caret` from the draft, compose the base text,
  * then run the command with a correct BlockCtx on the (possibly shifted) block.
+ *
+ * Returns the NORMALIZED discriminated-union result (TextReplaceResult / OpenPickerResult /
+ * CompositeResult) — legacy `{ text, caret?, focusLine? }` shapes are wrapped automatically
+ * via normalizeSlashCommandResult.
  */
-export function execSlashCommand(fullText: string, inv: SlashInvocation, cmd: SlashCommandSpec): ExecResult | null {
+export function execSlashCommand(
+    fullText: string,
+    inv: SlashInvocation,
+    cmd: SlashCommandSpec
+): SlashCommandRunResult | null {
     const { session, draftText } = inv;
     const triggerStart = Math.max(0, Math.min(inv.triggerStart, draftText.length));
     const caret = Math.max(triggerStart, Math.min(inv.caret, draftText.length));
@@ -144,7 +153,7 @@ export function execSlashCommand(fullText: string, inv: SlashInvocation, cmd: Sl
     if (inFence || kind === "code") {
         return null; // commands never fire with code context (方案 02 §2.4)
     }
-    return cmd.run(ctx);
+    return normalizeSlashCommandResult(cmd.run(ctx));
 }
 
 /** Toolbar / keyboard block-type switch while an inline edit session is in flight:
@@ -154,14 +163,14 @@ export function transformSessionBlock(
     session: ExecSessionInfo,
     draftText: string,
     to: BlockKind
-): ExecResult | null {
+): TextReplaceResult | null {
     const baseText = composeSessionText(fullText, session, draftText);
     const line = composeBlockStartLine(session, fullText, draftText);
     const result = transformBlockType(baseText, line, to);
     if (result == null) {
         return null;
     }
-    return { text: result.text, caret: result.caret, focusLine: line };
+    return { type: "text-replace", text: result.text, caret: result.caret, focusLine: line };
 }
 
 /** Absolute char offset of the START of 1-based `line` inside `text`. */

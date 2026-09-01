@@ -37,7 +37,7 @@ describe("execSlashCommand", () => {
             triggerStart: 0,
             caret: 3,
         };
-        const r = execSlashCommand(text, inv, heading2Cmd);
+        const r = execSlashCommand(text, inv, heading2Cmd) as import("./registry").TextReplaceResult | null;
         // draft stripped to "" → the paragraph row collapses; the heading takes that slot
         // (merged with the surrounding blank separators) — one block swap, one diff.
         expect(r?.text).toBe("before\n\n## \nafter");

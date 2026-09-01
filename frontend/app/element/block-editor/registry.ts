@@ -91,6 +91,62 @@ export function resetBlockActionsForTests(): void {
 
 export type SlashGroup = "text" | "structure" | "insert" | "custom";
 
+/** Discriminated-union result types for slash command execution. */
+
+/** Text replacement (the common case — existing commands). */
+export interface TextReplaceResult {
+    type: "text-replace";
+    text: string;
+    caret?: number;
+    focusLine?: number;
+}
+
+/** Open a picker (emoji, file, date, …) — UI dispatch handled by the host. */
+export interface OpenPickerResult {
+    type: "open-picker";
+    /** Picker type identifier (must match a registered PickerDefinition). */
+    pickerType: string;
+    /** Arbitrary config forwarded to the picker component. */
+    pickerConfig?: Record<string, unknown>;
+}
+
+/** Composite: text replacement + open a picker in one command. */
+export interface CompositeResult {
+    type: "composite";
+    textReplace?: { text: string; caret?: number; focusLine?: number };
+    openPicker?: { pickerType: string; pickerConfig?: Record<string, unknown> };
+}
+
+/** All result types a slash command `run()` may return. */
+export type SlashCommandRunResult = TextReplaceResult | OpenPickerResult | CompositeResult;
+
+/** Legacy inline shape — every existing command returns this. */
+export interface SlashCommandSimpleResult {
+    text: string;
+    caret?: number;
+    focusLine?: number;
+}
+
+/**
+ * Normalize the return value of a slash command `run()`. Existing commands return
+ * `{ text, caret?, focusLine? }` (the old simple shape); the new discriminated-union
+ * types pass through unchanged. This helper lets `execSlashCommand` / `handleSlashPick`
+ * accept BOTH old-style and new-style commands without modifying every call-site.
+ */
+export function normalizeSlashCommandResult(
+    value: SlashCommandRunResult | SlashCommandSimpleResult | null | undefined
+): SlashCommandRunResult | null {
+    if (value == null) {
+        return null;
+    }
+    // Already a discriminated-union member?
+    if ("type" in value) {
+        return value as SlashCommandRunResult;
+    }
+    // Legacy simple shape → wrap in TextReplaceResult.
+    return { type: "text-replace", text: value.text, caret: value.caret, focusLine: value.focusLine };
+}
+
 export interface SlashCommandSpec {
     id: string;
     label: string;
@@ -104,11 +160,14 @@ export interface SlashCommandSpec {
     /** Availability filter — same semantics as block actions (false ⇒ greyed/hidden). */
     when?: (ctx: BlockCtx) => boolean;
     /**
-     * Produce the post-command document. `ctx` describes the block the slash trigger
-     * sits in, with the trigger query ALREADY stripped (see exec.ts). Return value:
-     * next full text + optional caret offset + optional line to refocus editing on.
+     * Produce the post-command result. `ctx` describes the block the slash trigger
+     * sits in, with the trigger query ALREADY stripped (see exec.ts).
+     *
+     * Accepts both legacy `{ text, caret?, focusLine? }` and the new
+     * discriminated-union types (TextReplaceResult / OpenPickerResult / CompositeResult).
+     * Use `normalizeSlashCommandResult()` to unify both shapes.
      */
-    run: (ctx: BlockCtx) => { text: string; caret?: number; focusLine?: number } | null;
+    run: (ctx: BlockCtx) => SlashCommandRunResult | SlashCommandSimpleResult | null;
 }
 
 const slashCommands: SlashCommandSpec[] = [];
@@ -172,11 +231,8 @@ export interface InlineStyleSpec {
     hint?: string;
 }
 
-export interface SlashCommandRunResult {
-    text: string;
-    caret?: number;
-    focusLine?: number;
-}
+/** Legacy alias — use SlashCommandRunResult instead. */
+export type SlashCommandRunResultCompat = SlashCommandSimpleResult;
 
 const inlineStyles: InlineStyleSpec[] = [];
 

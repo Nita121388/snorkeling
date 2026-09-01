@@ -9,7 +9,7 @@
  */
 
 import { transformBlockType, type BlockKind } from "../../markdown-transform/block-type";
-import type { BlockCtx, SlashCommandSpec } from "../registry";
+import type { BlockCtx, OpenPickerResult, SlashCommandSpec } from "../registry";
 
 function blockTransformCommand(
     id: string,
@@ -104,6 +104,17 @@ const wikiLinkCommand: SlashCommandSpec = {
     },
 };
 
+const emojiSlashCommand: SlashCommandSpec = {
+    id: "emoji",
+    label: "Emoji",
+    hint: "😀",
+    keywords: ["emoji", "biaoqing", "emoticon"],
+    group: "insert",
+    run: (_ctx): OpenPickerResult => {
+        return { type: "open-picker", pickerType: "emoji" };
+    },
+};
+
 export function builtinSlashCommands(): SlashCommandSpec[] {
     return [
         blockTransformCommand("text", "Text", "text", { keywords: ["paragraph", "plain"] }),
@@ -125,5 +136,6 @@ export function builtinSlashCommands(): SlashCommandSpec[] {
         dividerCommand,
         imageCommand,
         wikiLinkCommand,
+        emojiSlashCommand,
     ];
 }
