@@ -35,7 +35,10 @@ export class AgentViewModel implements ViewModel {
     blockAtom: jotai.Atom<Block>;
     viewType = "agent";
     viewIcon = jotai.atom("robot");
-    viewName = jotai.atom("Agent");
+    viewName = jotai.atom((get) => {
+        const detail = get(this.detailAtom);
+        return detail?.summary?.title || "Agent";
+    });
     noPadding = jotai.atom(true);
 
     // 会话详情相关状态

@@ -3,7 +3,8 @@
 
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
-import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, TagPresenceFilter } from "./types";
+import { CHAT_SOURCES, getChatSource } from "./sources";
+import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import { DefaultPathFilter, DefaultTagPresence, PathFilterOtherRoot } from "./types";
 import type { PathAncestorSegment, PathCountGroup, PathRootOption } from "./utils";
 import { pathFilterToPrefix, shortenPathForChip } from "./utils";
@@ -132,6 +133,8 @@ export function FilterPanel({
     setMarkedFilter,
     dateRange,
     setDateRange,
+    source,
+    setSource,
     availableTags,
     tagFilters,
     tagPresence,
@@ -148,6 +151,8 @@ export function FilterPanel({
     setMarkedFilter: (value: MarkedFilter) => void;
     dateRange: DateRangeFilter;
     setDateRange: (value: DateRangeFilter) => void;
+    source: SourceFilter;
+    setSource: (value: SourceFilter) => void;
     availableTags: SessionTagSummary[];
     tagFilters: string[];
     tagPresence: TagPresenceFilter;
@@ -166,12 +171,13 @@ export function FilterPanel({
     const pathActive = pathFilter.root !== "";
     const pathChipFull = pathFilterToPrefix(pathFilter);
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
+    const sourceActive = source !== "";
     // Untagged is mutually exclusive with tag-include at the ViewModel layer
     // (setTagPresence / setTagFilters enforce the reset on the other side).
     // We visually dim the tag chip row while Untagged is active so the user
     // sees the constraint instead of clicking into a no-op.
     const tagSectionDim = tagPresence === "untagged";
-    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0 || tagPresenceActive;
+    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0 || tagPresenceActive || sourceActive;
     return (
         <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-panel shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
@@ -205,6 +211,34 @@ export function FilterPanel({
                     </SegTrack>
                     {markedActive ? (
                         <span className="text-[11px] text-secondary">{markedLabel(markedFilter)}</span>
+                    ) : null}
+                </div>
+                <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
+                    <i className="fa-sharp fa-solid fa-robot w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                    <SegTrack className="min-w-0 flex-1">
+                        <SegButton
+                            active={source === ""}
+                            title="All agents"
+                            onClick={() => setSource("")}
+                        >
+                            <span className="text-xs">All</span>
+                        </SegButton>
+                        {CHAT_SOURCES.map((s) => (
+                            <SegButton
+                                key={s.id}
+                                active={source === s.id}
+                                title={s.label}
+                                onClick={() => setSource(s.id as SourceFilter)}
+                            >
+                                {s.icon ? (
+                                    <span className="flex items-center [&_svg]:h-3.5 [&_svg]:w-3.5">{s.icon}</span>
+                                ) : null}
+                                <span className="text-xs">{s.label}</span>
+                            </SegButton>
+                        ))}
+                    </SegTrack>
+                    {sourceActive ? (
+                        <span className="text-[11px] text-secondary">{getChatSource(source).label}</span>
                     ) : null}
                 </div>
                 <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
@@ -426,6 +460,13 @@ export function FilterPanel({
                             icon={markedFilter === "starred" ? "fa-solid fa-star" : "fa-regular fa-star"}
                             label={markedLabel(markedFilter)}
                             onRemove={() => setMarkedFilter("all")}
+                        />
+                    ) : null}
+                    {sourceActive ? (
+                        <ActiveChip
+                            icon="fa-solid fa-robot"
+                            label={getChatSource(source).label}
+                            onRemove={() => setSource("")}
                         />
                     ) : null}
                     {dateActive ? (

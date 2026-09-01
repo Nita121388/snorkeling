@@ -484,11 +484,12 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
 
     // 点击外部自动关闭面板（与 session-menu 同模式）：监听范围包住整张
     // composer 卡片（弹层 + 三个 chip 都在内），点到卡片外才收起。
+    const panelRef = useRef<HTMLDivElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (!panelOpen) return;
         const handlePointer = (e: PointerEvent) => {
-            if (cardRef.current != null && !cardRef.current.contains(e.target as Node)) {
+            if (panelRef.current != null && !panelRef.current.contains(e.target as Node)) {
                 setPanelMode(null);
             }
         };
@@ -528,7 +529,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                 ) : null}
                 <div ref={cardRef} className="relative">
                     {panelOpen ? (
-                        <div className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
+                        <div ref={panelRef} className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
                             {effectiveMode === "commands" && slashQuery != null ? (
                                 <div className="shrink-0 border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
                                     Commands · Tab/Enter to complete · Esc to close

@@ -16,8 +16,8 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../session-overview/session-overview.scss";
-import { IconButton, SortButton, SourceButton } from "./controls";
-import { CHAT_SOURCES, defaultChatSource } from "./sources";
+import { IconButton, SortButton } from "./controls";
+import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
@@ -421,6 +421,7 @@ export class AiSessionsViewModel implements ViewModel {
 
     clearAllFilters(): void {
         globalStore.set(this.markedFilterAtom, "all");
+        globalStore.set(this.sourceAtom, "");
         globalStore.set(this.dateRangeAtom, DefaultDateRange);
         globalStore.set(this.tagFiltersAtom, []);
         globalStore.set(this.tagPresenceAtom, DefaultTagPresence);
@@ -990,7 +991,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         (dateActive ? 1 : 0) +
         normalizedTagFilters.length +
         (pathActive ? 1 : 0) +
-        (tagPresenceActive ? 1 : 0);
+        (tagPresenceActive ? 1 : 0) +
+        (source !== "" ? 1 : 0);
     const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
     const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
     const pathAncestors = useMemo(() => pathAncestorSegments(pathFilter), [pathFilter]);
@@ -1251,24 +1253,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="inline-flex rounded-lg border border-border/70 bg-surface p-0.5 shadow-sm">
-                                        <SourceButton
-                                            label="All"
-                                            active={source === ""}
-                                            busy={filterBusy && source === ""}
-                                            onClick={() => setSource("")}
-                                        />
-                                        {CHAT_SOURCES.map((s) => (
-                                            <SourceButton
-                                                key={s.id}
-                                                label={s.label}
-                                                icon={s.icon}
-                                                active={source === s.id}
-                                                busy={filterBusy && source === s.id}
-                                                onClick={() => setSource(s.id as SourceFilter)}
-                                            />
-                                        ))}
-                                    </div>
                                     <div className="flex-1" />
                                     <button
                                         type="button"
@@ -1324,6 +1308,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     setMarkedFilter={setMarkedFilter}
                                     dateRange={dateRange}
                                     setDateRange={setDateRange}
+                                    source={source}
+                                    setSource={setSource}
                                     availableTags={availableTags}
                                     tagFilters={normalizedTagFilters}
                                     tagPresence={tagPresence}
