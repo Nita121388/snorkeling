@@ -1,0 +1,156 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Obsidian Banner 样式
+// 兼容 Obsidian Banner 插件的视觉风格
+
+// Banner 容器
+.snorkeling-banner-container {
+    --banner-height: 200px;
+    --banner-y: 50%;
+    --banner-radius: 8px;
+
+    position: relative;
+    width: 100%;
+    height: var(--banner-height);
+    overflow: visible; // 允许子元素溢出（如 emoji badge）
+    cursor: pointer;
+    transition: height 0.3s ease;
+
+    // 非锁定模式：底部圆角 + 间距
+    &:not(.locked) {
+        border-radius: 0 0 var(--banner-radius) var(--banner-radius);
+        margin-bottom: 24px;
+    }
+
+    // 锁定模式
+    &.locked {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        border-radius: 0;
+
+        // 折叠状态
+        &.collapsed {
+            height: 60px;
+        }
+    }
+}
+
+// 图片包装器
+.snorkeling-banner-image-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+// Banner 图片
+.snorkeling-banner-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center var(--banner-y);
+    transition: opacity 0.3s ease, object-position 0.3s ease;
+    display: block;
+
+    &.loading {
+        opacity: 0;
+    }
+
+    &.loaded {
+        opacity: 1;
+    }
+
+    &:hover {
+        // 轻微缩放效果
+        transform: scale(1.02);
+    }
+}
+
+// 渐变遮罩
+.snorkeling-banner-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60%;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(0, 0, 0, 0.3) 100%
+    );
+    pointer-events: none;
+}
+
+// 图片加载失败占位符
+.snorkeling-banner-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-surface, #242424);
+    color: var(--color-muted, #666666);
+    gap: 8px;
+
+    i {
+        font-size: 24px;
+    }
+
+    span {
+        font-size: 14px;
+    }
+}
+
+// 锁定指示器
+.snorkeling-banner-lock-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
+    color: white;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+
+    .snorkeling-banner-container:hover & {
+        opacity: 1;
+    }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+    .snorkeling-banner-container {
+        --banner-height: 150px;
+
+        &.collapsed {
+            height: 48px;
+        }
+    }
+
+    .snorkeling-banner-lock-indicator {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+    }
+}
+
+// 暗色主题适配（如果需要）
+@media (prefers-color-scheme: dark) {
+    .snorkeling-banner-placeholder {
+        background: #1a1a1a;
+    }
+}
