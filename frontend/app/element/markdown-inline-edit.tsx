@@ -3,6 +3,8 @@
 
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
+import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -248,6 +250,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     beginInsertEdit: (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => void;
     commit: () => void;
     cancel: () => void;
+    /** Close the session WITHOUT committing or reverting: used by slash / toolbar command
+     *  paths that already composed and committed their final text themselves. */
+    dismiss: () => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     overlayRect: { top: number; left: number; width: number; height: number } | null;
 } {
@@ -596,6 +601,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         });
         setEditSession(null);
         setDraftText("");
+        // 方案 02 §2.1 typing transform: a paragraph/blank editor whose first draft line
+        // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
+        // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
+        // markdown and the block transforms on re-render, all inside this one commit.
+        // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
+        const committedDraft =
+            (current.blockKind === "p" || current.blockKind === "blank") && isBlockEditorFeatureEnabled("blockeditor")
+                ? rewriteDraftFirstLine(draftText) ?? draftText
+                : draftText;
         if (current.placeholder) {
             // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
             // blank row for us to type into). Typed something → replace the row; block-level
@@ -615,8 +629,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             }
             onCommit(
                 current.placeholderInline
-                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText)
-                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, draftText)
+                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft)
+                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, committedDraft)
             );
             return;
         }
@@ -636,7 +650,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
             // with a blank line so it renders as its own paragraph.
             const lines = fullTextRef.current.split(/\r\n|\n/);
-            const draftLines = draftText.split(/\r\n|\n/);
+            const draftLines = committedDraft.split(/\r\n|\n/);
             newFull = spliceInsertBlock(
                 lines,
                 current.startLine,
@@ -645,7 +659,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 draftLines
             ).join("\n");
         } else {
-            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, draftText);
+            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft);
         }
         onCommit(newFull);
     }, [editSession, draftText, onCommit]);
@@ -660,6 +674,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         setDraftText("");
     }, [editSession]);
 
+    // Silent close: no commit, no insertRevert. Command flows (slash palette, toolbar
+    // block switch) compute their final text themselves and commit once — afterwards the
+    // session must simply go away.
+    const dismiss = useCallback(() => {
+        inlineEditDebug("dismiss", { kind: editSession?.blockKind, startLine: editSession?.startLine });
+        setEditSession(null);
+        setDraftText("");
+    }, [editSession]);
+
     return {
         editSession,
         draftText,
@@ -668,6 +691,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         beginInsertEdit,
         commit,
         cancel,
+        dismiss,
         textareaRef,
         overlayRect,
     };
@@ -679,10 +703,14 @@ type InlineEditOverlayProps = {
     typography?: React.CSSProperties;
     draftText: string;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    onTextChange: (v: string) => void;
+    onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
     onBlur: () => void;
+    /** Block-appropriate placeholder (方案 03 §2) — shown only while the draft is empty. */
+    placeholder?: string;
+    /** Caret activity (click/keyup/select) — drives slash-palette / toolbar tracking. */
+    onCaretChange?: (caret: number, selEnd: number) => void;
 };
 
 export function InlineEditOverlay({
@@ -695,6 +723,8 @@ export function InlineEditOverlay({
     onKeyDown,
     onPaste,
     onBlur,
+    placeholder,
+    onCaretChange,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -730,10 +760,23 @@ export function InlineEditOverlay({
                 style={typography}
                 value={draftText}
                 rows={1}
-                onChange={(e) => onTextChange(e.target.value)}
+                placeholder={placeholder}
+                onChange={(e) => onTextChange(e.target.value, e.target.selectionStart)}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
                 onBlur={onBlur}
+                onSelect={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
+                onKeyUp={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
+                onClick={(e) => {
+                    const t = e.currentTarget;
+                    onCaretChange?.(t.selectionStart, t.selectionEnd);
+                }}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
@@ -1131,4 +1174,25 @@ export function deleteBlockRange(fullText: string, startLine: number, endLine: n
         merged.pop();
     }
     return merged.join("\n");
+}
+
+/**
+ * Placeholder text for the inline-edit textarea (方案 03 §2). English-only per project
+ * rule; keyed on the SESSION's block kind. Rendered natively by the textarea (shows only
+ * while the draft is empty).
+ */
+export function placeholderForBlockKind(kind: InlineEditBlockKind | null | undefined): string {
+    switch (kind) {
+        case "p":
+        case "blank":
+            return "Type '/' for commands";
+        case "list":
+            return "List item";
+        case "h":
+            return "Heading";
+        case "code":
+            return "Code";
+        default:
+            return "";
+    }
 }

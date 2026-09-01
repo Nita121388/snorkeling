@@ -42,6 +42,7 @@ import {
     isSelectingRange,
     makeInlineEditKeydown,
     deleteBlockRange,
+    placeholderForBlockKind,
     replaceSourceRange,
     spliceInsertBlock,
     splitBlockAtCaretText,
@@ -66,6 +67,53 @@ import {
     type LinkEditRequest,
 } from "@/app/element/markdown-link-edit";
 import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
+import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
+import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
+import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
+import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
+import {
+    caretToTableCoord,
+    deleteTableColumn,
+    deleteTableRow,
+    getColumnAlign,
+    insertTableColumn,
+    insertTableRow,
+    setColumnAlign,
+} from "@/app/element/markdown-transform/table";
+import {
+    buildEmojiPickerItems,
+    emojiPickerEntries,
+    getLoadedEmojiCatalog,
+    getRecentEmojis,
+    loadEmojiCatalog,
+    recordRecentEmoji,
+    type EmojiCatalog,
+    type EmojiEntry,
+} from "@/app/element/markdown-transform/emoji";
+import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
+import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
+import {
+    execSlashCommand,
+    lineStartOffset,
+    transformSessionBlock,
+} from "@/app/element/block-editor/exec";
+import {
+    filterSlashCommands,
+    isBlockActionEnabled,
+    listBlockActions,
+    listInlineStyles,
+    listSlashCommands,
+    runBlockAction,
+    type BlockCtx,
+    type SlashCommandSpec,
+} from "@/app/element/block-editor/registry";
+import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
+import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
+import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
+import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
+import { TableBlock, TableEditContext, type TableEditContextValue, type TableCellFocus } from "@/app/element/block-editor/components/table-block";
+import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -123,6 +171,10 @@ import {
 import { IconButton } from "./iconbutton";
 import { buildCopyContextText } from "./selection-copy-overlay";
 import "./markdown.scss";
+
+// Block-editor (方案 06): register built-in capabilities (M1 Turn-into ▸, later slash /
+// inline styles) into the L1.5 registry exactly once for this module instance.
+ensureBuiltinBlockEditorCommands();
 
 function isLiveScrollDebugEnabled(): boolean {
     return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingLiveScrollDebug") === "1";
@@ -963,9 +1015,15 @@ type CodeBlockProps = {
     onClickExecute?: (cmd: string) => void;
     sourceLine?: number;
     sourceLineEnd?: number;
+    /** Detected fence language (from the <code> child's className); null when unset. */
+    language?: string | null;
+    /** When provided the language badge becomes an editable affordance (方案 04 §2). */
+    onApplyLanguage?: (lang: string | null) => void;
 };
 
-const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: CodeBlockProps) => {
+const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, language, onApplyLanguage }: CodeBlockProps) => {
+    const [editingLang, setEditingLang] = useState(false);
+    const [langDraft, setLangDraft] = useState("");
     const getTextContent = (children: any): string => {
         if (typeof children === "string") {
             return children;
@@ -996,6 +1054,44 @@ const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd }: Code
         <pre className="codeblock" {...sourceLineAttrs(sourceLine, sourceLineEnd)}>
             {children}
             <div className="codeblock-actions">
+                {/* Language badge (方案 04 §2): click → inline input → Enter applies via a
+                    one-line fence rewrite (setCodeBlockLanguage), Esc/blur cancels. */}
+                {editingLang ? (
+                    <input
+                        className="codeblock-lang-input"
+                        autoFocus
+                        value={langDraft}
+                        placeholder="language"
+                        onChange={(e) => setLangDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                e.preventDefault();
+                                onApplyLanguage?.(langDraft.trim() || null);
+                                setEditingLang(false);
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditingLang(false);
+                            }
+                        }}
+                        onBlur={() => setEditingLang(false)}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                ) : onApplyLanguage != null ? (
+                    <button
+                        type="button"
+                        className="codeblock-lang-badge"
+                        title="Set language"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setLangDraft(language ?? "");
+                            setEditingLang(true);
+                        }}
+                    >
+                        {language ?? "text"}
+                    </button>
+                ) : (
+                    language != null && <span className="codeblock-lang-badge is-static">{language}</span>
+                )}
                 <CopyButton onClick={handleCopy} title="Copy" />
                 {onClickExecute && (
                     <IconButton
@@ -1615,6 +1711,17 @@ const Markdown = ({
     );
     const resolveGroupContinuation = useCallback((line: number) => getPreviousOrderedListContinuation(text, line), [text]);
 
+    // === TableBlock context: stable commit channel for WYSIWYG cell editing ==========
+    // getFullText reads from a ref so it's always fresh even across remounts.
+    const textRef = useRef(text);
+    textRef.current = text;
+    const pendingCellFocusRef = useRef<TableCellFocus | null>(null);
+    const tableEditContext = useMemo<TableEditContextValue>(() => ({
+        getFullText: () => textRef.current,
+        commitFullText: handleInlineEditCommit,
+        pendingFocusRef: pendingCellFocusRef,
+    }), [handleInlineEditCommit]);
+
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
     // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
@@ -1683,6 +1790,11 @@ const Markdown = ({
             } else if (tag === "OL" || tag === "UL" || tag === "LI") {
                 blockKind = "list";
             } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
+                // When tablecell flag is ON, cell clicks are handled by TableBlock's own
+                // mousedown→contentEditable path. Returning here would open the raw textarea.
+                if (isBlockEditorFeatureEnabled("tablecell")) {
+                    return null;
+                }
                 blockKind = "table";
             } else if (tag === "PRE" || target.classList.contains("codeblock")) {
                 blockKind = "code";
@@ -2372,7 +2484,7 @@ const Markdown = ({
     // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
     // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p") => {
+        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p", caretOffset?: number) => {
             let attempts = 0;
             // Safety net for exhausted retries: the caller committed an insert/split but we
             // could never open its follow-up editor (re-render landed too late, viewport gone,
@@ -2421,7 +2533,7 @@ const Markdown = ({
                     blockKind,
                     newLine,
                     el,
-                    prefill != null ? prefill.length : 0,
+                    caretOffset ?? (prefill != null ? prefill.length : 0),
                     revert,
                     placeholder,
                     keepOnEmpty
@@ -2484,15 +2596,23 @@ const Markdown = ({
                 draft,
                 pos
             );
+            // 打字变换 (方案 02 §2.1): the committed FRONT half may be a typing pattern
+            // ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width variants). Rewrite it
+            // in the SAME commit so the block transforms on re-render; lineDelta keeps the
+            // follow-up editor anchored to the true new row when lines were added (e.g. the
+            // fence auto-close).
+            const typed = isBlockEditorFeatureEnabled("blockeditor") ? applyTypingPatternAtLine(newFull, session.startLine) : null;
+            const finalText = typed?.text ?? newFull;
+            const targetLine = newLine + (typed?.lineDelta ?? 0);
             const revert = () => {
                 handleInlineEditCommit(text); // restore the document to what it was before the split
             };
-            handleInlineEditCommit(newFull);
+            handleInlineEditCommit(finalText);
             // The split pre-inserted a single placeholder row. An empty follow-up commit (blur /
             // Ctrl+S) must keep the line we just committed — NOT revert the whole insert back to
             // before the split, or the next Save would persist the rollback and the typed line
             // would vanish. Pass keepOnEmpty so commit() closes the session without reverting.
-            focusEditedLine(newLine, revert, true, undefined, true);
+            focusEditedLine(targetLine, revert, true, undefined, true);
             return;
         }
 
@@ -2751,6 +2871,49 @@ const Markdown = ({
             // block so source numbering stays consistent with what renders.
             const isListItemBlock = el.tagName === "LI" || el.tagName === "OL" || el.tagName === "UL";
             const renumberOpts = isListItemBlock ? { renumberOrderedListFromLine: startLineRaw } : undefined;
+
+            // Block-editor M1 (方案 02 §2.2): "Turn into ▸" submenu from the block-action
+            // registry. The current kind is checked, code blocks disable the entire submenu,
+            // tables allow only row-level conversion back to text, and nested list items show
+            // same-family conversions only (方案 02 §2.4).
+            const anchorLineText = lines[startLineRaw - 1] ?? "";
+            const anchorBlockKind = detectBlockKind(lines, startLineRaw);
+            let turnIntoMenuItem: ContextMenuItem | null = null;
+            if (anchorBlockKind != null && isBlockEditorFeatureEnabled("turninto")) {
+                const ctx: BlockCtx = {
+                    text,
+                    line: startLineRaw,
+                    endLine,
+                    kind: anchorBlockKind,
+                    nested: /^\s+(?:[-+*]|\d+[.)])\s/.test(anchorLineText),
+                };
+                const items: ContextMenuItem[] = listBlockActions().map((action) => {
+                    const checked = action.targetKind === anchorBlockKind;
+                    const enabled = !checked && isBlockActionEnabled(action, ctx);
+                    return {
+                        label: action.label,
+                        type: "checkbox" as const,
+                        checked,
+                        enabled,
+                        click: () => {
+                            const next = runBlockAction(action, ctx);
+                            if (next == null || next.text === text) {
+                                return;
+                            }
+                            handleInlineEditCommit(next.text, renumberOpts);
+                        },
+                    };
+                });
+                if (items.length > 0) {
+                    turnIntoMenuItem = {
+                        label: "Turn into",
+                        type: "submenu",
+                        submenu: items,
+                        enabled: anchorBlockKind !== "code",
+                    };
+                }
+            }
+
             const duplicateBlock = () => {
                 const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
                 handleInlineEditCommit(newFull, renumberOpts);
@@ -2765,6 +2928,7 @@ const Markdown = ({
                 { label: "复制", click: () => void copyBlock() },
                 { label: "Copy Context", click: () => void copyContext() },
                 { label: "复制为副本", click: duplicateBlock },
+                ...(turnIntoMenuItem != null ? ([{ type: "separator" }, turnIntoMenuItem] as ContextMenuItem[]) : []),
                 ...(numberingSubmenu != null
                     ? ([
                           { type: "separator" },
@@ -3008,6 +3172,11 @@ const Markdown = ({
                     return;
                 }
             }
+            // tablecell ON: suppress block grip on tables (handled by TableBlock's own handles).
+            if (isBlockEditorFeatureEnabled("tablecell") && (e.target as HTMLElement)?.closest(".table-wrapper") != null) {
+                setInsertAnchor(null);
+                return;
+            }
             const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
                 "[data-source-line]:not(img)"
             );
@@ -3172,6 +3341,520 @@ const Markdown = ({
             }),
         [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp]
     );
+
+    // === Block editor M2: slash palette + floating toolbar + inline-style shortcuts ===
+    // === Block editor M3: emoji picker (":" trigger, lazy emojibase catalog) ==========
+    // Detection is trigger-layer based (全/半角等价); every command executes through
+    // block-editor/exec.ts so ONE gesture = ONE handleInlineEditCommit diff.
+    const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [emojiCatalog, setEmojiCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
+    const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
+    const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
+
+    // Any session teardown closes the transient block-editor UI with it.
+    useEffect(() => {
+        if (editSessionKind == null) {
+            setSlashState(null);
+            setEmojiState(null);
+            setInlineSelection(null);
+        }
+    }, [editSessionKind]);
+
+    const trackEditorTriggers = useCallback(
+        (draft: string, caret: number) => {
+            // Neither ":" nor "/" triggers inside code or table cells (方案 02 §2.4 / 05 §0).
+            if (editSessionKind === "code" || editSessionKind === "table") {
+                setSlashState(null);
+                setEmojiState(null);
+                return;
+            }
+            const trig = detectInlineTrigger(draft, caret);
+            if (trig != null && trig.command === "slash" && isBlockEditorFeatureEnabled("slash")) {
+                setSlashState((prev) =>
+                    prev != null && prev.triggerStart === trig.triggerStart
+                        ? { ...prev, query: trig.query }
+                        : { query: trig.query, triggerStart: trig.triggerStart, activeIndex: 0 }
+                );
+                setEmojiState(null);
+                return;
+            }
+            if (trig != null && trig.command === "emoji" && isBlockEditorFeatureEnabled("emoji")) {
+                // Lazy-load the ~500KB catalog exactly once per app run, on FIRST trigger.
+                if (getLoadedEmojiCatalog() == null) {
+                    void loadEmojiCatalog().then(setEmojiCatalog);
+                }
+                setEmojiState((prev) =>
+                    prev != null && prev.triggerStart === trig.triggerStart
+                        ? { ...prev, query: trig.query }
+                        : { query: trig.query, triggerStart: trig.triggerStart, activeIndex: 0 }
+                );
+                setSlashState(null);
+                return;
+            }
+            setSlashState(null);
+            setEmojiState(null);
+        },
+        [editSessionKind]
+    );
+
+    const slashCtx = useMemo<BlockCtx | null>(() => {
+        const session = inlineEdit.editSession;
+        if (slashState == null || session == null) {
+            return null;
+        }
+        const lines = text.split(/\r\n|\n/);
+        return {
+            text,
+            line: session.startLine,
+            endLine: session.endLine,
+            kind: detectBlockKind(lines, session.startLine) ?? "text",
+        };
+    }, [slashState, inlineEdit.editSession, text]);
+
+    const slashItems = useMemo(() => {
+        if (slashCtx == null || slashState == null) {
+            return [];
+        }
+        return filterSlashCommands(listSlashCommands(slashCtx), slashState.query);
+    }, [slashCtx, slashState]);
+
+    // Palette anchors on the trigger line inside the overlay textarea: approximate the row
+    // offset via the session typography (line-height from the rendered block snapshot).
+    const slashAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (slashState == null || rect == null) {
+            return null;
+        }
+        const typo = inlineEdit.editSession?.typography;
+        const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
+        const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
+        const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+        const triggerRow = inlineEdit.draftText.slice(0, slashState.triggerStart).split("\n").length - 1;
+        const approxHeight = Math.min(340, slashItems.length * 30 + 12);
+        let top = rect.top + (triggerRow + 1) * lineHeight + 4;
+        let placement: "top" | "bottom" = "bottom";
+        if (top + approxHeight > window.innerHeight && rect.top > approxHeight) {
+            top = rect.top + triggerRow * lineHeight - 4;
+            placement = "top";
+        }
+        return { anchor: { top, left: rect.left + 16 }, placement };
+    }, [slashState, inlineEdit.overlayRect, inlineEdit.draftText, inlineEdit.editSession, slashItems.length]);
+
+    const blockKindForFocus = useCallback((kind: BlockKind): InlineEditBlockKind => {
+        if (kind.startsWith("heading")) {
+            return "h";
+        }
+        if (kind === "code") {
+            return "code";
+        }
+        if (kind === "bulleted" || kind === "numbered" || kind === "todo") {
+            return "list";
+        }
+        if (kind === "table") {
+            return "table";
+        }
+        return "p";
+    }, []);
+
+    // Re-open the inline editor on a block after a command committed its transform, caret
+    // landing where the command asked (absolute offset → relative to the block line).
+    const refocusCommittedBlock = useCallback(
+        (nextText: string, focusLine: number, caret?: number) => {
+            const lines = nextText.split(/\r\n|\n/);
+            const kind = detectBlockKind(lines, focusLine);
+            if (kind == null) {
+                return;
+            }
+            const relCaret = caret != null ? Math.max(0, caret - lineStartOffset(nextText, focusLine)) : undefined;
+            focusEditedLine(focusLine, undefined, false, undefined, undefined, blockKindForFocus(kind), relCaret);
+        },
+        [focusEditedLine, blockKindForFocus]
+    );
+
+    const handleSlashPick = useCallback(
+        (cmd: SlashCommandSpec) => {
+            const session = inlineEdit.editSession;
+            if (session == null || slashState == null) {
+                return;
+            }
+            const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
+            const result = execSlashCommand(
+                text,
+                { session, draftText: inlineEdit.draftText, triggerStart: slashState.triggerStart, caret },
+                cmd
+            );
+            setSlashState(null);
+            if (result == null) {
+                return;
+            }
+            handleInlineEditCommit(
+                result.text,
+                session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+            );
+            inlineEdit.dismiss();
+            if (result.focusLine != null) {
+                refocusCommittedBlock(result.text, result.focusLine, result.caret);
+            }
+        },
+        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock]
+    );
+
+    const handleSessionBlockTransform = useCallback(
+        (to: BlockKind) => {
+            const session = inlineEdit.editSession;
+            if (session == null) {
+                return;
+            }
+            const result = transformSessionBlock(text, session, inlineEdit.draftText, to);
+            if (result == null) {
+                return;
+            }
+            handleInlineEditCommit(
+                result.text,
+                session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+            );
+            inlineEdit.dismiss();
+            if (result.focusLine != null) {
+                refocusCommittedBlock(result.text, result.focusLine, result.caret);
+            }
+        },
+        [inlineEdit, text, handleInlineEditCommit, refocusCommittedBlock]
+    );
+
+    const handleInlineStyle = useCallback(
+        (style: InlineStyleId) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (ta == null || inlineEdit.editSession == null) {
+                return;
+            }
+            const next = applyInlineStyle(inlineEdit.draftText, ta.selectionStart, ta.selectionEnd, style);
+            if (next == null) {
+                return;
+            }
+            inlineEdit.setDraftText(next.text);
+            setInlineSelection({ start: next.start, end: next.end });
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                    el.setSelectionRange(next.start, next.end);
+                }
+            });
+        },
+        [inlineEdit]
+    );
+
+    // === Emoji picker (M3): ":" trigger in the same textarea. Shares the slash
+    // positioning math; Enter/Arrows/Esc handled in handleEditorKeyDown. ==============
+    const emojiItems = useMemo(() => {
+        if (emojiState == null || emojiCatalog == null) {
+            return [];
+        }
+        return buildEmojiPickerItems(emojiCatalog, emojiState.query, []);
+    }, [emojiState, emojiCatalog]);
+
+    const emojiPickables = useMemo(() => emojiPickerEntries(emojiItems), [emojiItems]);
+
+    const emojiAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (emojiState == null || rect == null) {
+            return null;
+        }
+        const typo = inlineEdit.editSession?.typography;
+        const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
+        const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
+        const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+        const triggerRow = inlineEdit.draftText.slice(0, emojiState.triggerStart).split("\n").length - 1;
+        const approxHeight = 300;
+        let top = rect.top + (triggerRow + 1) * lineHeight + 4;
+        let placement: "top" | "bottom" = "bottom";
+        if (top + approxHeight > window.innerHeight && rect.top > approxHeight) {
+            top = rect.top + triggerRow * lineHeight - 4;
+            placement = "top";
+        }
+        return { anchor: { top, left: rect.left + 16 }, placement };
+    }, [emojiState, inlineEdit.overlayRect, inlineEdit.draftText, inlineEdit.editSession]);
+
+    const handleEmojiPick = useCallback(
+        (entry: EmojiEntry) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (emojiState == null) {
+                return;
+            }
+            // Replace ":query" (trigger char .. caret) with the emoji, caret after it.
+            const draft = inlineEdit.draftText;
+            const caret = ta?.selectionStart ?? emojiState.triggerStart + 1 + emojiState.query.length;
+            const next = draft.slice(0, emojiState.triggerStart) + entry.char + draft.slice(caret);
+            const nextCaret = emojiState.triggerStart + entry.char.length;
+            inlineEdit.setDraftText(next);
+            recordRecentEmoji(entry.char);
+            setEmojiState(null);
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                    el.setSelectionRange(nextCaret, nextCaret);
+                }
+            });
+        },
+        [emojiState, inlineEdit]
+    );
+
+    // === Block editor M4: table toolbar (方案 04 §1). Caret→(row,col) mapping drives
+    // which row/column the ops touch; ops rewrite the DRAFT and commit on blur like any
+    // other table edit (single commit channel, undo-friendly).
+    const [tableCaret, setTableCaret] = useState<{ row: number; col: number } | null>(null);
+    useEffect(() => {
+        if (editSessionKind !== "table") {
+            setTableCaret(null);
+        }
+    }, [editSessionKind]);
+
+    const handleTableOp = useCallback(
+        (op: TableOp) => {
+            const ta = inlineEdit.textareaRef.current;
+            if (ta == null || tableCaret == null) {
+                return;
+            }
+            const draft = inlineEdit.draftText;
+            const rowLine = tableCaret.row + 1;
+            let next: string | null = null;
+            switch (op.type) {
+                case "insert-row":
+                    next = insertTableRow(draft, rowLine);
+                    break;
+                case "delete-row":
+                    next = deleteTableRow(draft, rowLine);
+                    break;
+                case "insert-col":
+                    next = insertTableColumn(draft, rowLine, tableCaret.col, op.side);
+                    break;
+                case "delete-col":
+                    next = deleteTableColumn(draft, rowLine, tableCaret.col);
+                    break;
+                case "align":
+                    next = setColumnAlign(draft, rowLine, tableCaret.col, op.align);
+                    break;
+            }
+            if (next == null || next === draft) {
+                return;
+            }
+            inlineEdit.setDraftText(next);
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                }
+            });
+        },
+        [inlineEdit, tableCaret]
+    );
+
+    const tableCaretAlign =
+        tableCaret != null && editSessionKind === "table"
+            ? getColumnAlign(inlineEdit.draftText, tableCaret.row + 1, tableCaret.col)
+            : null;
+
+    // === Block editor M5: document emoji (方案 05 §2) — frontmatter `emoji:` read from
+    // the live text; writes go through the same single-commit funnel + autosave. =====
+    const [docEmojiOpen, setDocEmojiOpen] = useState(false);
+    const [docEmojiAnchor, setDocEmojiAnchor] = useState<{ top: number; left: number } | null>(null);
+    const [docEmojiQuery, setDocEmojiQuery] = useState("");
+    const [docEmojiActive, setDocEmojiActive] = useState(0);
+    const docEmojiBadgeRef = useRef<HTMLButtonElement | null>(null);
+    const docEmoji = useMemo(() => (isBlockEditorFeatureEnabled("docemoji") ? getFrontmatterEmoji(text) : null), [text]);
+
+    const toggleDocEmojiPicker = useCallback(() => {
+        if (docEmojiOpen) {
+            setDocEmojiOpen(false);
+            return;
+        }
+        const rect = docEmojiBadgeRef.current?.getBoundingClientRect();
+        if (rect == null) {
+            return;
+        }
+        if (getLoadedEmojiCatalog() == null) {
+            void loadEmojiCatalog().then(setEmojiCatalog);
+        }
+        setDocEmojiQuery("");
+        setDocEmojiActive(0);
+        setDocEmojiAnchor({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
+        setDocEmojiOpen(true);
+    }, [docEmojiOpen]);
+
+    const docEmojiItems = useMemo(
+        () => (emojiCatalog == null || !docEmojiOpen ? [] : buildEmojiPickerItems(emojiCatalog, docEmojiQuery, getRecentEmojis())),
+        [emojiCatalog, docEmojiOpen, docEmojiQuery]
+    );
+    const docEmojiPickables = useMemo(() => emojiPickerEntries(docEmojiItems), [docEmojiItems]);
+
+    const applyDocEmoji = useCallback(
+        (emoji: string | null) => {
+            const next = setFrontmatterEmoji(text, emoji);
+            setDocEmojiOpen(false);
+            if (next !== text) {
+                handleInlineEditCommit(next);
+            }
+        },
+        [text, handleInlineEditCommit]
+    );
+
+
+    const handleEditorKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            // Palette navigation swallows the keys before the edit keymap sees them.
+            if (slashState != null && slashItems.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashState((s) =>
+                        s == null
+                            ? s
+                            : {
+                                  ...s,
+                                  activeIndex:
+                                      (s.activeIndex + (e.key === "ArrowDown" ? 1 : -1) + slashItems.length) %
+                                      slashItems.length,
+                              }
+                    );
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    const item = slashItems[slashState.activeIndex] ?? slashItems[0];
+                    if (item != null) {
+                        handleSlashPick(item);
+                    }
+                    return;
+                }
+            }
+            if (slashState != null && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setSlashState(null);
+                return;
+            }
+            // Emoji picker nav — same shape as the slash palette.
+            if (emojiState != null && emojiPickables.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setEmojiState((s) =>
+                        s == null
+                            ? s
+                            : {
+                                  ...s,
+                                  activeIndex:
+                                      (s.activeIndex + (e.key === "ArrowDown" ? 1 : -1) + emojiPickables.length) %
+                                      emojiPickables.length,
+                              }
+                    );
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    const entry = emojiPickables[Math.min(emojiState.activeIndex, emojiPickables.length - 1)];
+                    if (entry != null) {
+                        handleEmojiPick(entry);
+                    }
+                    return;
+                }
+            }
+            if (emojiState != null && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setEmojiState(null);
+                return;
+            }
+            const isMod = e.metaKey || e.ctrlKey;
+            if (isMod && !e.altKey) {
+                const sessKind = inlineEdit.editSession?.blockKind;
+                const key = e.key.toLowerCase();
+                // Inline styles (not inside code sessions — a code fork isn't prose).
+                if (sessKind !== "code") {
+                    if (!e.shiftKey && (key === "b" || key === "i" || key === "k")) {
+                        e.preventDefault();
+                        handleInlineStyle(key === "b" ? "bold" : key === "i" ? "italic" : "link");
+                        return;
+                    }
+                    if (e.shiftKey && key === "x") {
+                        e.preventDefault();
+                        handleInlineStyle("strike");
+                        return;
+                    }
+                    if (!e.shiftKey && e.key === "`") {
+                        e.preventDefault();
+                        handleInlineStyle("code");
+                        return;
+                    }
+                }
+                // Block-type transforms: ⌘0 text, ⌘1..6 headings, ⌘⇧7/8/9 numbered/bulleted/todo.
+                if (sessKind != null && sessKind !== "code" && sessKind !== "table") {
+                    const digitMap: Record<string, BlockKind> =
+                        e.shiftKey
+                            ? { Digit7: "numbered", Digit8: "bulleted", Digit9: "todo" }
+                            : {
+                                  Digit0: "text",
+                                  Digit1: "heading1",
+                                  Digit2: "heading2",
+                                  Digit3: "heading3",
+                                  Digit4: "heading4",
+                                  Digit5: "heading5",
+                                  Digit6: "heading6",
+                              };
+                    const to = digitMap[e.code];
+                    if (to != null) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSessionBlockTransform(to);
+                        return;
+                    }
+                }
+            }
+            inlineEditKeyDown(e);
+        },
+        [slashState, slashItems, handleSlashPick, emojiState, emojiPickables, handleEmojiPick, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
+    );
+
+    const toolbarAnchor = useMemo(() => {
+        const rect = inlineEdit.overlayRect;
+        if (rect == null) {
+            return null;
+        }
+        let top = rect.top - 38;
+        if (top < 8) {
+            top = rect.top + rect.height + 6;
+        }
+        const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
+        return { top, left };
+    }, [inlineEdit.overlayRect]);
+
+
+    const toolbarBlockItems = useMemo(() => {
+        const session = inlineEdit.editSession;
+        if (session == null) {
+            return [];
+        }
+        const lines = text.split(/\r\n|\n/);
+        const kind = detectBlockKind(lines, session.startLine);
+        const ctx: BlockCtx = {
+            text,
+            line: session.startLine,
+            endLine: session.endLine,
+            kind: kind ?? "text",
+            nested: /^\s+(?:[-+*]|\d+[.)])\s/.test(lines[session.startLine - 1] ?? ""),
+        };
+        return listBlockActions().map((a) => ({
+            id: a.id,
+            label: a.label,
+            active: a.targetKind === ctx.kind,
+            enabled: a.targetKind !== ctx.kind && isBlockActionEnabled(a, ctx),
+        }));
+    }, [inlineEdit.editSession, text]);
+
+    const currentBlockLabel = useMemo(() => {
+        const active = toolbarBlockItems.find((i) => i.active);
+        return active?.label ?? "Text";
+    }, [toolbarBlockItems]);
 
     const normalizedScrollTargetText = useMemo(
         () => normalizeScrollTargetText(scrollTargetText ?? ""),
@@ -3778,11 +4461,19 @@ const Markdown = ({
                 <hr {...props} {...srcLineAttrs(props)} />
             ),
             table: (props: React.HTMLAttributes<HTMLTableElement>) => (
-                <CollapsibleTable
-                    props={props}
-                    collapsed={collapsedTables.has(String(getSourceLine(props)))}
-                    onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
-                />
+                isBlockEditorFeatureEnabled("tablecell") ? (
+                    <TableBlock
+                        props={props}
+                        collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                        onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+                    />
+                ) : (
+                    <CollapsibleTable
+                        props={props}
+                        collapsed={collapsedTables.has(String(getSourceLine(props)))}
+                        onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
+                    />
+                )
             ),
             ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
                 <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
@@ -3807,14 +4498,30 @@ const Markdown = ({
                 <MarkdownSource props={props} resolveOpts={resolveOpts} />
             ),
             code: Code,
-            pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-                <CodeBlock
-                    children={props.children}
-                    onClickExecute={onClickExecute}
-                    sourceLine={getSourceLine(props)}
-                    sourceLineEnd={getSourceLineEnd(props)}
-                />
-            ),
+            pre: (props: React.HTMLAttributes<HTMLPreElement>) => {
+                const langMatch = (props.children as any)?.props?.className?.match(/language-([\w+#.-]+)/);
+                const lang: string | null = langMatch?.[1] ?? null;
+                const srcLine = getSourceLine(props);
+                return (
+                    <CodeBlock
+                        children={props.children}
+                        onClickExecute={onClickExecute}
+                        sourceLine={srcLine}
+                        sourceLineEnd={getSourceLineEnd(props)}
+                        language={lang}
+                        onApplyLanguage={
+                            onInlineEditCommit != null && srcLine != null && isBlockEditorFeatureEnabled("codelang")
+                                ? (nextLang) => {
+                                      const next = setCodeBlockLanguage(text, srcLine, nextLang);
+                                      if (next != null) {
+                                          handleInlineEditCommit(next);
+                                      }
+                                  }
+                                : undefined
+                        }
+                    />
+                );
+            },
         };
         // Non-standard tags (waveblock, mermaidblock) are bracket-assigned to avoid TS
         // excess-property checks on the literal — the original code used this exact pattern
@@ -3995,11 +4702,45 @@ const Markdown = ({
         mergedStyle["--markdown-fixed-font-size"] = `${boundNumber(fixedFontSizeOverride, 6, 64)}px`;
     }
     return (
+        <TableEditContext.Provider value={tableEditContext}>
         <div
             className={clsx("markdown", className, onInlineEditCommit != null && "markdown-editable")}
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
         >
+            {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
+                <DocEmojiHeader
+                    emoji={docEmoji}
+                    buttonRef={docEmojiBadgeRef}
+                    open={docEmojiOpen}
+                    onToggle={toggleDocEmojiPicker}
+                />
+            )}
+            {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
+                <>
+                    <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
+                    <EmojiPicker
+                        anchor={docEmojiAnchor}
+                        placement="bottom"
+                        mode="document"
+                        catalog={emojiCatalog}
+                        query={docEmojiQuery}
+                        onQueryChange={(q) => {
+                            setDocEmojiQuery(q);
+                            setDocEmojiActive(0);
+                        }}
+                        activeIndex={Math.min(docEmojiActive, Math.max(0, docEmojiPickables.length - 1))}
+                        onActiveChange={setDocEmojiActive}
+                        onPick={(entry) => {
+                            recordRecentEmoji(entry.char);
+                            applyDocEmoji(entry.char);
+                        }}
+                        onClose={() => setDocEmojiOpen(false)}
+                        allowRemove={docEmoji != null}
+                        onRemove={() => applyDocEmoji(null)}
+                    />
+                </>
+            )}
             {scrollable ? (
                 <OverlayScrollbarsComponent
                     ref={contentsOsRef}
@@ -4079,12 +4820,83 @@ const Markdown = ({
                             typography={inlineEdit.editSession?.typography}
                             draftText={inlineEdit.draftText}
                             textareaRef={inlineEdit.textareaRef}
-                            onTextChange={inlineEdit.setDraftText}
-                            onKeyDown={inlineEditKeyDown}
+                            onTextChange={(v, caret) => {
+                                inlineEdit.setDraftText(v);
+                                trackEditorTriggers(v, caret);
+                            }}
+                            onKeyDown={handleEditorKeyDown}
                             onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
+                            placeholder={placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
+                            onCaretChange={(caret, selEnd) => {
+                                trackEditorTriggers(inlineEdit.draftText, caret);
+                                setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
+                                if (editSessionKind === "table") {
+                                    setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
+                                }
+                            }}
                         />
                     )}
+                    {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (
+                        <SlashPalette
+                            anchor={slashAnchor.anchor}
+                            placement={slashAnchor.placement}
+                            items={slashItems}
+                            activeIndex={Math.min(slashState.activeIndex, Math.max(0, slashItems.length - 1))}
+                            onHover={(i) => setSlashState((s) => (s == null ? s : { ...s, activeIndex: i }))}
+                            onPick={handleSlashPick}
+                        />
+                    )}
+                    {emojiState != null && emojiAnchor != null && emojiCatalog != null && inlineEdit.editSession != null && (
+                        <EmojiPicker
+                            anchor={emojiAnchor.anchor}
+                            placement={emojiAnchor.placement}
+                            mode="inline"
+                            catalog={emojiCatalog}
+                            query={emojiState.query}
+                            activeIndex={Math.min(emojiState.activeIndex, Math.max(0, emojiPickables.length - 1))}
+                            onActiveChange={(i) => setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))}
+                            onPick={handleEmojiPick}
+                            onClose={() => setEmojiState(null)}
+                        />
+                    )}
+                    {editSessionKind === "table" && toolbarAnchor != null && isBlockEditorFeatureEnabled("table") && (
+                        <TableToolbar
+                            anchor={toolbarAnchor}
+                            contextValid={tableCaret != null}
+                            currentAlign={tableCaretAlign}
+                            onOp={handleTableOp}
+                        />
+                    )}
+                    {inlineSelection != null &&
+                        inlineEdit.editSession != null &&
+                        inlineEdit.editSession.blockKind !== "code" &&
+                        isBlockEditorFeatureEnabled("toolbar") &&
+                        toolbarAnchor != null && (
+                            <FloatingToolbar
+                                anchor={toolbarAnchor}
+                                blockLabel={currentBlockLabel}
+                                blockItems={toolbarBlockItems}
+                                styles={listInlineStyles().map((s) => ({
+                                    id: s.id as InlineStyleId,
+                                    label: s.label,
+                                    hint: s.hint,
+                                    active: hasInlineStyle(
+                                        inlineEdit.draftText,
+                                        inlineSelection.start,
+                                        inlineSelection.end,
+                                        s.id as InlineStyleId
+                                    ),
+                                }))}
+                                onBlockType={(id) => {
+                                    const action = listBlockActions().find((a) => a.id === id);
+                                    if (action?.targetKind != null) {
+                                        handleSessionBlockTransform(action.targetKind);
+                                    }
+                                }}
+                                onStyle={handleInlineStyle}
+                            />
+                        )}
                     {onInlineEditCommit && selectedBlock != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <div
@@ -4193,6 +5005,7 @@ const Markdown = ({
                 </div>
             )}
         </div>
+        </TableEditContext.Provider>
     );
 };
 

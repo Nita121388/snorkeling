@@ -886,3 +886,547 @@
 .markdown ul[data-loose="true"] > li {
     margin-block: 0.5em;
 }
+
+// --- Block editor (M2): slash palette + floating toolbar + textarea placeholder ------
+// Same flyout skin as the link tooltip: --overlay-bg-color panel, 4px radius, modal
+// shadow, accent hover on items. Both render to document.body via createPortal and use
+// fixed positioning, so their rules sit at the top level (not under .markdown).
+
+.inline-edit-overlay .inline-edit-textarea::placeholder {
+    color: color-mix(in srgb, var(--main-text-color, #999) 35%, transparent);
+}
+
+.markdown-slash-palette {
+    position: fixed;
+    z-index: 10010;
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+    border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+
+    &.placement-top {
+        transform: translateY(-100%);
+    }
+
+    .markdown-slash-empty {
+        padding: 8px 10px;
+        font-size: 12px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+        user-select: none;
+    }
+
+    .markdown-slash-item {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        width: 100%;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+
+        &.is-active,
+        &:hover {
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+        }
+
+        .markdown-slash-item-label {
+            flex: 1 1 auto;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .markdown-slash-item-hint {
+            flex: 0 0 auto;
+            font-size: 11px;
+            opacity: 0.55;
+        }
+    }
+}
+
+.markdown-floating-toolbar {
+    position: fixed;
+    z-index: 10005;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+    border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    user-select: none;
+
+    .markdown-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 5px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 12px;
+        cursor: pointer;
+
+        &:hover {
+            background: color-mix(in srgb, var(--main-text-color, #888) 14%, transparent);
+        }
+
+        &.is-active {
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 26%, transparent);
+            color: var(--accent-color, #58c4ff);
+        }
+
+        .mono {
+            font-family: var(--mono-font, monospace);
+            font-size: 11px;
+        }
+    }
+
+    .markdown-toolbar-divider {
+        width: 1px;
+        height: 16px;
+        margin: 0 3px;
+        background: color-mix(in srgb, var(--main-text-color, #888) 20%, transparent);
+    }
+
+    .markdown-toolbar-blocktype {
+        position: relative;
+
+        .markdown-toolbar-blocktype-btn {
+            min-width: 0;
+            padding: 0 7px;
+            white-space: nowrap;
+        }
+
+        .markdown-toolbar-blocktype-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 150px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+            border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            padding: 4px;
+            z-index: 1;
+        }
+
+        .markdown-toolbar-blocktype-item {
+            display: block;
+            width: 100%;
+            padding: 5px 8px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--main-text-color, inherit);
+            font-size: 12px;
+            text-align: left;
+            white-space: nowrap;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+
+            &.is-active {
+                color: var(--accent-color, #58c4ff);
+            }
+        }
+    }
+}
+
+// Emoji picker (M3) — same flyout skin as the slash palette; the inline variant has no
+// search row (the editor IS the search field), the document variant (M5) gets one.
+.markdown-emoji-picker {
+    position: fixed;
+    z-index: 10020;
+    width: 320px;
+    background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
+    border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 6px;
+
+    &.placement-top {
+        transform: translateY(-100%);
+    }
+
+    .markdown-emoji-searchrow {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+
+    .markdown-emoji-search {
+        flex: 1 1 auto;
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 12px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color, #58c4ff);
+        }
+    }
+
+    .markdown-emoji-remove {
+        flex: 0 0 auto;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--error-color, #e5484d);
+        font-size: 12px;
+        cursor: pointer;
+        padding: 0 8px;
+
+        &:hover {
+            background: color-mix(in srgb, var(--error-color, #e5484d) 16%, transparent);
+        }
+    }
+
+    .markdown-emoji-list {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 2px;
+        max-height: 280px;
+        overflow-y: auto;
+    }
+
+    .markdown-emoji-group {
+        grid-column: 1 / -1;
+        padding: 4px 2px 2px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--main-text-color, #888) 55%, transparent);
+        user-select: none;
+    }
+
+    .markdown-emoji-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        font-size: 18px;
+        cursor: pointer;
+        line-height: 1;
+
+        &:hover,
+        &.is-active {
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+        }
+    }
+
+    .markdown-emoji-empty {
+        grid-column: 1 / -1;
+        padding: 16px 8px;
+        text-align: center;
+        font-size: 12px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+    }
+}
+
+// M4: code-block language badge + table polish (方案 04 §1-2)
+.codeblock {
+    .codeblock-lang-badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 6px;
+        border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+        border-radius: 4px;
+        background: transparent;
+        color: color-mix(in srgb, var(--main-text-color, #888) 72%, transparent);
+        font-size: 10px;
+        font-family: var(--mono-font, monospace);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+
+        &:hover {
+            color: var(--accent-color, #58c4ff);
+            border-color: var(--accent-color, #58c4ff);
+        }
+
+        &.is-static {
+            cursor: default;
+        }
+    }
+
+    .codeblock-lang-input {
+        width: 84px;
+        height: 20px;
+        padding: 0 6px;
+        border: 1px solid var(--accent-color, #58c4ff);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--main-text-color, inherit);
+        font-size: 11px;
+        font-family: var(--mono-font, monospace);
+        outline: none;
+    }
+}
+
+// Table typography: fixed layout + word-break keep edited cells from blowing the column
+// layout wide open mid-type (方案 04 §1 render enhancement).
+.markdown table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.markdown th,
+.markdown td {
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+// Table toolbar inherits .markdown-floating-toolbar's skin; small label tweak only.
+.markdown-table-toolbar .markdown-toolbar-btn {
+    font-size: 11px;
+    padding: 0 6px;
+}
+
+// M5: document emoji badge (方案 05 §2-3) — absolute in the note's top-right corner so
+// it never shifts layout; the "add" affordance fades in on container hover.
+.markdown {
+    position: relative;
+}
+
+.markdown-doc-emoji-badge {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    z-index: 50;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover,
+    &.is-open {
+        background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+    }
+
+    &.is-empty {
+        opacity: 0;
+        font-size: 14px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 55%, transparent);
+    }
+}
+
+.markdown:hover .markdown-doc-emoji-badge.is-empty {
+    opacity: 1;
+}
+
+// Click-away backdrop for the document emoji picker (transparent, sits under it).
+.markdown-emoji-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10019;
+}
+
+// document-mode picker sits above the backdrop
+.markdown-emoji-picker.mode-document {
+    z-index: 10021;
+}
+
+// ===========================================================================
+// TableBlock (方案 07) — milkdown-style WYSIWYG table chrome
+// ===========================================================================
+
+// --- In-tree: wrapper + cell highlight ---------------------------------------
+
+.table-wrapper.tb-wrapper {
+    position: relative;
+    user-select: none;
+
+    &.tb-editing {
+        user-select: text;
+    }
+}
+
+// Column highlight via CSS (data-selected-col is 1-based column index)
+.table-wrapper[data-selected-col] th,
+.table-wrapper[data-selected-col] td {
+    background-color: transparent;
+    transition: background-color 0.1s;
+}
+.table-wrapper[data-selected-col="1"] th:nth-child(1),
+.table-wrapper[data-selected-col="1"] td:nth-child(1),
+.table-wrapper[data-selected-col="2"] th:nth-child(2),
+.table-wrapper[data-selected-col="2"] td:nth-child(2),
+.table-wrapper[data-selected-col="3"] th:nth-child(3),
+.table-wrapper[data-selected-col="3"] td:nth-child(3),
+.table-wrapper[data-selected-col="4"] th:nth-child(4),
+.table-wrapper[data-selected-col="4"] td:nth-child(4),
+.table-wrapper[data-selected-col="5"] th:nth-child(5),
+.table-wrapper[data-selected-col="5"] td:nth-child(5),
+.table-wrapper[data-selected-col="6"] th:nth-child(6),
+.table-wrapper[data-selected-col="6"] td:nth-child(6),
+.table-wrapper[data-selected-col="7"] th:nth-child(7),
+.table-wrapper[data-selected-col="7"] td:nth-child(7),
+.table-wrapper[data-selected-col="8"] th:nth-child(8),
+.table-wrapper[data-selected-col="8"] td:nth-child(8),
+.table-wrapper[data-selected-col="9"] th:nth-child(9),
+.table-wrapper[data-selected-col="9"] td:nth-child(9),
+.table-wrapper[data-selected-col="10"] th:nth-child(10),
+.table-wrapper[data-selected-col="10"] td:nth-child(10) {
+    background-color: color-mix(in srgb, var(--accent-color, #5a8080) 15%, transparent);
+}
+
+// Row highlight (imperative class applied via JS)
+.tb-cell-selected {
+    background-color: color-mix(in srgb, var(--accent-color, #5a8080) 15%, transparent) !important;
+}
+
+// --- Portaled chrome (position: fixed, appended to body) ---------------------
+
+// Col pill handle — 28×16 rounded capsule above hovered column
+.tb-pill {
+    border-radius: 4px;
+    background: var(--accent-color, #5a8080);
+    opacity: 0.85;
+    cursor: pointer;
+    z-index: 10000;
+    touch-action: none;
+    transition: opacity 0.1s;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+// Vertical line handle (column boundary)
+.tb-line-v {
+    background: var(--accent-color, #5a8080);
+    opacity: 0.5;
+    z-index: 10000;
+    pointer-events: none;
+
+    .tb-line-plus {
+        pointer-events: all;
+    }
+}
+
+// Horizontal line handle (row boundary)
+.tb-line-h {
+    background: var(--accent-color, #5a8080);
+    opacity: 0.5;
+    z-index: 10000;
+    pointer-events: none;
+
+    .tb-line-plus {
+        pointer-events: all;
+    }
+}
+
+// + button on line handles
+.tb-line-plus {
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-color, #5a8080);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    z-index: 10001;
+    transition: background 0.1s;
+
+    &:hover {
+        background: color-mix(in srgb, var(--accent-color, #5a8080) 80%, #000);
+    }
+}
+
+// Action button groups (col align/delete, row delete)
+.tb-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: var(--panel-bg-color, #fff);
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+}
+
+.tb-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--main-text-color, #1f2328);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    transition: background 0.1s;
+
+    &:hover {
+        background: var(--highlight-bg-color, #e0e0e0);
+    }
+
+    &.tb-action-delete {
+        color: var(--error-color, #aa5555);
+
+        &:hover {
+            background: color-mix(in srgb, var(--error-color, #aa5555) 12%, transparent);
+        }
+    }
+}
+
+// Drag preview pill
+.tb-drag-preview {
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    user-select: none;
+    z-index: 10000;
+}
+
+// Drop position indicator line
+.tb-drop-indicator {
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 9999;
+}
