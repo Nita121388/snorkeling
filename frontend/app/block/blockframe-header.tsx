@@ -593,7 +593,7 @@ const BlockFrame_Header = ({
                     {preIconButton && <IconButton decl={preIconButton} className="block-frame-preicon-button" />}
                     <div className="block-frame-default-header-iconview">
                         {viewIconElem}
-                        {viewName && !hideViewName && <div className="block-frame-view-type">{viewName}</div>}
+                        {viewName && !hideViewName && <div className="block-frame-view-type"><span>{viewName}</span></div>}
                     </div>
                 </>
             )}
