@@ -677,14 +677,13 @@ const AgentTargetFloatingWindow = memo(
                 // localStorage 不可用时仅本次会话内生效
             }
         }, []);
-        // GUI 对话模式：创建带 newchat 标志的 aisessions block，首条消息后自动绑定真实会话
+        // GUI 对话模式：创建带 newchat 标志的 agent block，首条消息后自动绑定真实会话
         const createGuiChatBlockDef = (): BlockDef => ({
             meta: {
-                view: "aisessions",
-                "frame:title": "AI Chat",
-                icon: "comments",
+                view: "agent",
+                "frame:title": "Agent",
+                icon: "robot",
                 "aisessions:newchat": true,
-                "aisessions:sessionlistcollapsed": true,
             } as MetaType,
         });
         // Vendor chip row collapse state: default only the current/selected chip shows, the rest are
