@@ -11,6 +11,8 @@ import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
+import type { RefreshStatus } from "@/app/element/refresh-status-icon";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -131,13 +133,32 @@ export class AiSessionsViewModel implements ViewModel {
         this.service = new AISessionsServiceType(waveEnv);
         this.blockAtom = this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`);
         this.endIconButtons = jotai.atom((get) => {
+            const blockData = get(this.blockAtom);
             const loading = get(this.loadingAtom);
+            const autoRefreshMs = normalizeAutoRefreshIntervalMs(
+                blockData?.meta?.[AutoRefreshIntervalMetaKey]
+            );
+            const autoRefreshEnabled = this.getConnection() === "";
+            const refreshStatus: RefreshStatus = deriveRefreshStatus({
+                loading,
+                autoRefreshEnabled,
+                autoRefreshIntervalMs: autoRefreshMs,
+                lastRefreshAt: get(this.lastSessionsRefreshAtAtom),
+                error: get(this.errorAtom),
+                now: Date.now(),
+            });
             return [
                 {
                     elemtype: "iconbutton",
-                    icon: loading ? "spinner" : "arrows-rotate",
+                    icon: (
+                        <RefreshStatusIcon
+                            status={refreshStatus}
+                            lastRefreshAt={get(this.lastSessionsRefreshAtAtom)}
+                            autoRefreshIntervalMs={autoRefreshEnabled ? autoRefreshMs : 0}
+                        />
+                    ),
                     iconSpin: loading,
-                    title: "Refresh sessions",
+                    title: loading ? "Refreshing sessions…" : "Refresh sessions",
                     disabled: loading,
                     zone: "pinned",
                     click: () => {

@@ -79,10 +79,12 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
 
     return (
         <div
-            className={`flex flex-row flex-grow min-h-0 min-w-0 w-full items-center justify-center overflow-hidden relative ${noTopPadding ? "" : "pt-[3px]"} pr-[3px]`}
+            className={`flex flex-row flex-grow min-h-0 min-w-0 w-full items-stretch overflow-hidden relative ${noTopPadding ? "" : "pt-[3px]"} pr-[3px]`}
         >
-            {innerContent}
             {tabData && <BlockSidebar tabId={tabId} tabAtom={tabAtom} />}
+            <div className="flex-1 min-w-0 min-h-0">
+                {innerContent}
+            </div>
         </div>
     );
 });

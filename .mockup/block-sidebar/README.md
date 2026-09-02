@@ -77,10 +77,21 @@ Blocks 组  → 文件夹式 icon，展开后显示组内所有 Block
 └──┴──────────────┘
 ```
 
+### 最小化入口
+
+正常布局中的 Block 通过以下方式落入 BlockBar（**替代旧的 `Minimize to Float` 浮动按钮**）：
+
+- **标题栏按钮**：Block 标题栏 hover 时显示 `—` 最小化按钮，点击即最小化到侧栏
+- **右键菜单**：右键 Block → `Minimize to BlockBar`
+
+> 旧的设置菜单中的 `Minimize to Float` 已移除，不再隐藏到浮动按钮，统一收纳到 BlockBar。
+
 ### 交互
 
 | 操作 | 效果 |
 |------|------|
+| 点击 Block 标题栏 `—` | 最小化 Block 到侧栏 |
+| 右键 Block → Minimize to BlockBar | 最小化 Block 到侧栏 |
 | Hover icon | Tooltip 显示 Block 标题 + 路径 |
 | 点击 icon | 恢复 Block 到布局 |
 | 右键 icon | 恢复 / 预览 / 删除 |

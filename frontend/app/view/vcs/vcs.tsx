@@ -9,7 +9,7 @@ import { filterVcsFileStatuses, VcsFileTypeFilter, VcsFileTypeFilterOptions } fr
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock, openLink } from "@/store/global";
-import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
+import { basename, fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
@@ -190,10 +190,14 @@ export class VcsViewModel implements ViewModel {
         });
         this.viewText = atom((get) => {
             const basePath = get(this.pathAtom);
+            // 只显示路径最后一段, hover tooltip 展示完整路径; copytext 支持点击复制
+            const displayPath = isBlank(basePath) ? "" : basename(basePath);
             return [
                 {
-                    elemtype: "text",
+                    elemtype: "copytext",
                     text: basePath,
+                    displayText: displayPath,
+                    tooltipText: basePath,
                     className: "vcs-block-path",
                 },
             ];

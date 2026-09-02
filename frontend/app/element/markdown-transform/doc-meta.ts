@@ -10,6 +10,16 @@
 export type FrontmatterSpan = { start: number; end: number }; // 0-based indexes of the `---` lines
 
 /**
+ * A parsed frontmatter property with its source line information.
+ */
+export interface FrontmatterProperty {
+    key: string;
+    value: string;
+    raw: string;        // Original line text (preserved for round-trip)
+    lineNumber: number; // 1-based line number in the source
+}
+
+/**
  * Frontmatter block bounds. Must start at document offset 0: `---` as the very first
  * line, then the closing `---` (or `…`). Returns null when the document doesn't begin
  * with a well-formed fence.
@@ -29,6 +39,84 @@ export function findFrontmatterSpan(text: string): FrontmatterSpan | null {
         }
     }
     return null;
+}
+
+// --- Frontmatter property parsing & reordering ---
+
+const PropKeyRe = /^\s*([a-zA-Z_-][a-zA-Z0-9_-]*)\s*:/;
+
+/**
+ * Parse all properties from frontmatter, preserving their order.
+ * Skips blank lines, comment lines, and the emoji key (handled separately).
+ */
+export function parseFrontmatterProperties(text: string): FrontmatterProperty[] {
+    const span = findFrontmatterSpan(text);
+    if (span == null) {
+        return [];
+    }
+    const lines = text.split(/\r\n|\n/);
+    const props: FrontmatterProperty[] = [];
+    for (let i = span.start + 1; i < span.end; i++) {
+        const line = lines[i];
+        if (line == null) continue;
+        const trimmed = line.trim();
+        if (trimmed === "" || trimmed.startsWith("#")) continue;
+        const m = line.match(PropKeyRe);
+        if (m == null) continue;
+        const key = m[1];
+        const valuePart = line.slice(m[0].length).trim();
+        props.push({
+            key,
+            value: valuePart,
+            raw: line,
+            lineNumber: i + 1, // 1-based
+        });
+    }
+    return props;
+}
+
+/**
+ * Reorder frontmatter properties by moving the property at `fromIndex` to `toIndex`.
+ * Only rearranges lines between start+1 and end-1; everything else is untouched.
+ * Returns the full document text with the reordered frontmatter.
+ */
+export function reorderFrontmatterProperties(
+    text: string,
+    fromIndex: number,
+    toIndex: number,
+): string {
+    const span = findFrontmatterSpan(text);
+    if (span == null) return text;
+    const lines = text.split(/\r\n|\n/);
+    // Collect only the property lines (non-blank, non-comment) between the fences.
+    const propLines: number[] = []; // line indexes into `lines`
+    for (let i = span.start + 1; i < span.end; i++) {
+        const trimmed = lines[i]?.trim();
+        if (trimmed != null && trimmed !== "" && !trimmed.startsWith("#") && PropKeyRe.test(lines[i])) {
+            propLines.push(i);
+        }
+    }
+    if (fromIndex < 0 || fromIndex >= propLines.length) return text;
+    if (toIndex < 0 || toIndex >= propLines.length) return text;
+    if (fromIndex === toIndex) return text;
+    // Extract the moved line text and remove it from the array of line indexes.
+    const movedLineIdx = propLines[fromIndex];
+    const movedLine = lines[movedLineIdx];
+    // Build a new set of property lines in the desired order.
+    const reorderedKeys: string[] = propLines.map((li) => lines[li]);
+    const [moved] = reorderedKeys.splice(fromIndex, 1);
+    reorderedKeys.splice(toIndex, 0, moved);
+    // Now splice back into the `lines` array: remove all old prop lines, insert new ones.
+    // Work backwards so earlier indexes stay valid.
+    for (let k = propLines.length - 1; k >= 0; k--) {
+        lines.splice(propLines[k], 1);
+    }
+    // Insert point: right after span.start, in order.
+    // The insertion indexes are sequential starting from span.start + 1.
+    for (let k = 0; k < reorderedKeys.length; k++) {
+        lines.splice(span.start + 1 + k, 0, reorderedKeys[k]);
+    }
+    return lines.join("\n");
 }
 
 const EmojiKeyRe = /^(\s*emoji\s*:\s*)(?:"([^"]*)"|'([^']*)'|(.*))\s*$/;

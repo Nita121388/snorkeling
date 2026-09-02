@@ -500,6 +500,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         setSelectedTreeNodes([node]);
     }, []);
 
+    const handleMarqueeSelect = useCallback((nodes: TreeNodeData[]) => {
+        setSelectedTreeNodes(nodes);
+    }, []);
+
     const handleTreeNodeContextMenu = useCallback(
         async (event: MouseEvent<HTMLDivElement>, _id: string, node: TreeNodeData) => {
             const finfo = treeNodeToFileInfo(node);
@@ -1015,6 +1019,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         }}
                         onSelectionChange={(_id, node) => setSelectedTreeNode(node)}
                         onNodeClick={handleTreeNodeClick}
+                        onMarqueeSelect={handleMarqueeSelect}
                         extraSelectedIds={[...selectedTreeNodePaths]}
                         onRenameSelected={renameSelectedTreeNode}
                         onNodeContextMenu={handleTreeNodeContextMenu}

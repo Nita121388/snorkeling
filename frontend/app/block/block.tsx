@@ -203,6 +203,11 @@ const InlineTabLabel = memo(
             if (blockView === "term" && !isBlank(connection)) {
                 return connection;
             }
+            // VCS Block: 显示路径最后一段; 无路径时只显示图标不显示文字
+            if (blockView === "vcs") {
+                const vcsPath = typeof blockData?.meta?.["vcs:path"] === "string" ? blockData.meta["vcs:path"] : "";
+                return isBlank(vcsPath) ? "" : basename(vcsPath);
+            }
             return blockViewToName(blockView) || blockId.slice(0, 8);
         }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta]);
         // 完整路径(供 hover tooltip 用): 仅 preview 读 meta.file, agent/term 读 cmd:cwd, 远端附 connection
@@ -214,6 +219,11 @@ const InlineTabLabel = memo(
             }
             if (blockView === "preview" && !isBlank(filePath)) {
                 return isBlank(connection) ? filePath : `${filePath} · ${connection}`;
+            }
+            // VCS Block: hover tooltip 显示完整路径
+            if (blockView === "vcs") {
+                const vcsPath = typeof blockData?.meta?.["vcs:path"] === "string" ? blockData.meta["vcs:path"] : "";
+                return isBlank(vcsPath) ? "" : isBlank(connection) ? vcsPath : `${vcsPath} · ${connection}`;
             }
             return "";
         }, [blockId, blockView, connection, filePath, blockData?.meta]);

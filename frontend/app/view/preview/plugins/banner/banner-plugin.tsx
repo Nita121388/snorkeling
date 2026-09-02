@@ -8,7 +8,7 @@
 //
 // 实现要点：
 // - match 排除 editMode：编辑态回落到 codeedit，不拦截。
-// - 有 banner 属性 → 渲染 Banner 组件 + Markdown 预览
+// - 有 banner 属性 → 渲染 Banner 组件 + Emoji Badge + 标题 + Markdown 预览
 // - 无 banner 属性 → 原样 MarkdownPreview，零改动回退。
 // - 优先级低于 md-properties 插件，确保属性卡片优先显示。
 
@@ -22,7 +22,10 @@ import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock } from "../md-properties/frontmatter-block";
 import { parseBannerFromFrontmatter, type BannerBlock } from "./banner-block";
+import { getFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
 import { BannerRenderer } from "./banner-renderer";
+import { EmojiBadge } from "./emoji-badge";
+import { TitleArea } from "./title-area";
 
 const pluginId = "markdown-banner";
 
@@ -53,6 +56,17 @@ function BannerView({ model, parentRef }: { model: PreviewModel; parentRef: Reac
         return parseBannerFromFrontmatter(frontmatterBlock.data);
     }, [frontmatterBlock]);
 
+    // 解析 emoji 属性
+    const emoji = useMemo(() => (text ? getFrontmatterEmoji(text) : null), [text]);
+
+    // 解析标题（从 markdown 内容中提取第一个 H1）
+    const title = useMemo(() => {
+        if (!text) return null;
+        // 匹配第一个 H1 标题
+        const match = text.match(/^#\s+(.+)$/m);
+        return match ? match[1].trim() : null;
+    }, [text]);
+
     // 获取文件路径（用于构建图片基础路径）
     const statFilePathLoadable = useAtomValue(loadable(model.statFilePath));
     const filePath = statFilePathLoadable.state === "hasData" ? statFilePathLoadable.data : undefined;
@@ -70,6 +84,11 @@ function BannerView({ model, parentRef }: { model: PreviewModel; parentRef: Reac
         console.log("Banner clicked:", bannerData.banner);
     }, [bannerData]);
 
+    // Emoji 点击处理
+    const handleEmojiClick = useCallback(() => {
+        console.log("Emoji clicked:", emoji);
+    }, [emoji]);
+
     if (!bannerData) {
         // 无 banner 属性 → 原样 markdown 渲染
         return <MarkdownPreview model={model} parentRef={parentRef} />;
@@ -78,13 +97,27 @@ function BannerView({ model, parentRef }: { model: PreviewModel; parentRef: Reac
     return (
         <div className="flex flex-col h-full">
             {/* Banner 区域 */}
-            <BannerRenderer
-                banner={bannerData.banner}
-                bannerY={bannerData.bannerY}
-                bannerLock={bannerData.bannerLock}
-                baseUrl={baseUrl}
-                onClick={handleBannerClick}
-            />
+            <div className="relative">
+                <BannerRenderer
+                    banner={bannerData.banner}
+                    bannerY={bannerData.bannerY}
+                    bannerLock={bannerData.bannerLock}
+                    baseUrl={baseUrl}
+                    onClick={handleBannerClick}
+                />
+                {/* Emoji Badge - 从 banner 底部突出 */}
+                {emoji && (
+                    <EmojiBadge
+                        emoji={emoji}
+                        onClick={handleEmojiClick}
+                    />
+                )}
+            </div>
+
+            {/* 标题区域 */}
+            {title && (
+                <TitleArea title={title} emoji={emoji} />
+            )}
 
             {/* Markdown 内容区域 */}
             <div className="flex-1 overflow-auto">

@@ -208,7 +208,7 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                                 onClick={() => model.stopResponse()}
                                 className={cn(
                                     "w-5 h-5 transition-colors flex items-center justify-center",
-                                    "text-success hover:text-primary cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                                    "text-secondary hover:text-secondary cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
                                 )}
                                 aria-label="Stop response"
                             >

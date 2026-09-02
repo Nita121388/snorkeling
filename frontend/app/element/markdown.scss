@@ -591,23 +591,27 @@
     }
 }
 
-// Link edit form — same skin as the tooltip, with the menu typography (12px / -0.12px).
+// Link edit form — same skin as the tooltip, with the menu typography (13px / -0.12px).
 .markdown-link-editor {
     position: fixed;
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    width: 240px;
-    padding: 8px 10px 10px;
+    gap: 8px;
+    width: 320px;
+    min-width: 280px;
+    max-width: 80vw;
+    padding: 12px 14px 14px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--overlay-bg-color);
     box-shadow: 0 8px 24px var(--modal-shadow-color);
-    font-size: 12px;
+    font-size: 13px;
     letter-spacing: -0.12px;
     color: var(--main-text-color);
     animation: markdown-flyout-in 80ms ease-out;
+    resize: horizontal;
+    overflow: auto;
 
     .markdown-link-editor-header {
         display: flex;
@@ -639,17 +643,17 @@
     .markdown-link-editor-field {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 3px;
 
         span {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--secondary-text-color);
         }
 
         input {
-            height: 24px;
-            padding: 2px 6px;
-            font-size: 12px;
+            height: 32px;
+            padding: 4px 8px;
+            font-size: 13px;
             color: var(--main-text-color);
             background: var(--input-bg-color, rgba(255, 255, 255, 0.06));
             border: 1px solid var(--border-color);
@@ -666,11 +670,11 @@
     .markdown-link-editor-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 4px;
+        gap: 6px;
 
         button {
-            padding: 3px 10px;
-            font-size: 12px;
+            padding: 5px 12px;
+            font-size: 13px;
             border: 1px solid var(--border-color);
             border-radius: 2px;
             background: transparent;
@@ -1310,36 +1314,61 @@
 
 .markdown-doc-emoji-badge {
     position: relative;
-    display: block;
-    width: fit-content;
-    min-width: 40px;
-    min-height: 40px;
-    padding: 8px 12px;
-    border: 0;
-    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 14px;
     background: transparent;
-    font-size: 3em;
+    font-size: 32px;
     line-height: 1;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.2s ease;
+    box-shadow: none;
     /* Prevent flex from stretching this element */
     flex: 0 0 auto;
     align-self: flex-start;
 
     &:hover,
     &.is-open {
-        background: color-mix(in srgb, var(--main-text-color, #888) 8%, transparent);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-color: rgba(0, 0, 0, 0.1);
+        transform: scale(1.08);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    &:active {
+        transform: scale(0.98);
     }
 
     &.is-empty {
         opacity: 0;
-        font-size: 1.2em;
-        color: color-mix(in srgb, var(--main-text-color, #888) 55%, transparent);
+        font-size: 22px;
+        color: var(--secondary-text-color, #666);
     }
 }
 
 .markdown:hover .markdown-doc-emoji-badge.is-empty {
     opacity: 1;
+}
+
+// 暗色主题下的 hover 样式
+@media (prefers-color-scheme: dark) {
+    .markdown-doc-emoji-badge {
+        &:hover,
+        &.is-open {
+            background: rgba(30, 30, 30, 0.85);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+    }
 }
 
 // Divider line between emoji badge and first heading

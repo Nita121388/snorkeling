@@ -25,6 +25,7 @@ import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/pr
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData } from "./frontmatter-block";
+import { reorderFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
 import { isMdPropertiesMatch } from "./md-properties-match";
 import { ObsidianPropertiesCard, getObsidianPropsCollapsed, setObsidianPropsCollapsed } from "./obsidian-properties-card";
 
@@ -64,18 +65,31 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
         [text, frontmatterBlock, model]
     );
 
+    // 属性拖拽排序：调整 frontmatter 中属性行的顺序
+    const handleReorder = useCallback(
+        (fromIndex: number, toIndex: number) => {
+            if (text == null) return;
+            const newText = reorderFrontmatterProperties(text, fromIndex, toIndex);
+            if (newText !== text) {
+                globalStore.set(model.newFileContent, newText);
+            }
+        },
+        [text, model]
+    );
+
     const waveBlockRenderers = useMemo(
         () => ({
             "obsidian-props": (block: MarkdownContentBlockType) => (
                 <ObsidianPropertiesCard
                     block={block}
                     onDataChange={handleDataChange}
+                    onReorder={handleReorder}
                     collapsedSeed={getObsidianPropsCollapsed(collapseKey)}
                     onCollapsedChange={(next) => setObsidianPropsCollapsed(collapseKey, next)}
                 />
             ),
         }),
-        [handleDataChange, collapseKey]
+        [handleDataChange, handleReorder, collapseKey]
     );
 
     if (frontmatterBlock == null) {

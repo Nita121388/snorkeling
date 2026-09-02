@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中文字体预览</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: #1a1a1a; 
+            color: #e0e0e0; 
+            padding: 40px;
+        }
+        h1 { color: #fff; margin-bottom: 30px; }
+        .font-card {
+            background: #2d2d2d;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #404040;
+        }
+        .font-name {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .font-sample {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #333;
+        }
+        .code-comment { color: #6a9955; }
+        .code-keyword { color: #569cd6; }
+        .code-string { color: #ce9178; }
+        .code-number { color: #b5cea8; }
+        .code-function { color: #dcdcaa; }
+        .code-variable { color: #9cdcfe; }
+        .code-chinese { color: #d4d4d4; }
+        .recommended {
+            display: inline-block;
+            background: #2ea043;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        .note {
+            background: #2563eb20;
+            border-left: 3px solid #3b82f6;
+            padding: 16px;
+            margin-top: 30px;
+            border-radius: 0 8px 8px 0;
+            font-size: 13px;
+            color: #93c5fd;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔤 中文字体效果预览</h1>
+    
+    <div class="font-card">
+        <div class="font-name">
+            1. 微软雅黑 (Microsoft YaHei) <span class="recommended">推荐</span>
+        </div>
+        <div class="font-sample" style="font-family: 'Microsoft YaHei', 'Hack', monospace;">
+            <span class="code-comment">// 这是一段中文注释</span><br>
+            <span class="code-keyword">const</span> <span class="code-variable">greeting</span> = <span class="code-string">"你好，世界！"</span>;<br>
+            <span class="code-function">console</span>.<span class="code-function">log</span>(<span class="code-variable">greeting</span>); <span class="code-comment">// 输出: 你好，世界！</span><br>
+            <span class="code-chinese">中文显示效果：笔画清晰，现代感强，适合屏幕阅读</span>
+        </div>
+    </div>
+    
+    <div class="font-card">
+        <div class="font-name">
+            2. 宋体 (SimSun)
+        </div>
+        <div class="font-sample" style="font-family: 'SimSun', 'Hack', monospace;">
+            <span class="code-comment">// 这是一段中文注释</span><br>
+            <span class="code-keyword">const</span> <span class="code-variable">greeting</span> = <span class="code-string">"你好，世界！"</span>;<br>
+            <span class="code-function">console</span>.<span class="code-function">log</span>(<span class="code-variable">greeting</span>); <span class="code-comment">// 输出: 你好，世界！</span><br>
+            <span class="code-chinese">中文显示效果：传统衬线字体，笔画有粗细变化，正式感</span>
+        </div>
+    </div>
+    
+    <div class="font-card">
+        <div class="font-name">
+            3. 思源黑体 (Source Han Sans) <span class="recommended">推荐</span>
+        </div>
+        <div class="font-sample" style="font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'Hack', monospace;">
+            <span class="code-comment">// 这是一段中文注释</span><br>
+            <span class="code-keyword">const</span> <span class="code-variable">greeting</span> = <span class="code-string">"你好，世界！"</span>;<br>
+            <span class="code-function">console</span>.<span class="code-function">log</span>(<span class="code-variable">greeting</span>); <span class="code-comment">// 输出: 你好，世界！</span><br>
+            <span class="code-chinese">中文显示效果：开源字体，多种字重，专业感强</span>
+        </div>
+    </div>
+    
+    <div class="font-card">
+        <div class="font-name">
+            4. 等距云 (LXGW WenKai) <span class="recommended">文艺风格</span>
+        </div>
+        <div class="font-sample" style="font-family: 'LXGW WenKai', 'LXGW WenKai Mono', 'Hack', monospace;">
+            <span class="code-comment">// 这是一段中文注释</span><br>
+            <span class="code-keyword">const</span> <span class="code-variable">greeting</span> = <span class="code-string">"你好，世界！"</span>;<br>
+            <span class="code-function">console</span>.<span class="code-function">log</span>(<span class="code-variable">greeting</span>); <span class="code-comment">// 输出: 你好，世界！</span><br>
+            <span class="code-chinese">中文显示效果：楷体风格，圆润柔和，适合长时间阅读</span>
+        </div>
+    </div>
+    
+    <div class="font-card">
+        <div class="font-name">
+            5. 系统默认 (sans-serif)
+        </div>
+        <div class="font-sample" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hack', monospace;">
+            <span class="code-comment">// 这是一段中文注释</span><br>
+            <span class="code-keyword">const</span> <span class="code-variable">greeting</span> = <span class="code-string">"你好，世界！"</span>;<br>
+            <span class="code-function">console</span>.<span class="code-function">log</span>(<span class="code-variable">greeting</span>); <span class="code-comment">// 输出: 你好，世界！</span><br>
+            <span class="code-chinese">中文显示效果：使用系统默认字体，各平台略有不同</span>
+        </div>
+    </div>
+    
+    <div class="note">
+        💡 <strong>选择建议：</strong><br>
+        • 追求<strong>现代感</strong>和<strong>清晰度</strong> → 微软雅黑<br>
+        • 追求<strong>专业感</strong>和<strong>可定制性</strong> → 思源黑体（需安装）<br>
+        • 喜欢<strong>柔和风格</strong> → 等距云（需安装）<br>
+        • 追求<strong>传统感</strong> → 宋体<br>
+        • 懒得装字体 → 系统默认（微软雅黑通常已内置）
+    </div>
+    
+    <script>
+        // 添加等距云字体（需要网络加载）
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css';
+        document.head.appendChild(link);
+    </script>
+</body>
+</html>

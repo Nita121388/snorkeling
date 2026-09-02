@@ -77,10 +77,11 @@ type SessionTagSummary struct {
 }
 
 type SessionFile struct {
-	Source string
-	Path   string
-	MTime  int64
-	Size   int64
+	Source      string
+	Path        string
+	MTime       int64
+	Size        int64
+	ContentHash string
 }
 
 type Provider interface {

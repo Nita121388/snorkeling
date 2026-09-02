@@ -1043,9 +1043,8 @@ function createAgentBlockDef(
         cmdEnv["PI_CODING_AGENT_SESSION_DIR"] = selectedVendor.pi_config_dir;
     }
 
-    // Pi agent 使用新的 agent view 类型（只包含聊天界面，不包含 session 列表）
     const blockMeta: MetaType = {
-        view: "agent",
+        view: "term",
         controller: "cmd",
         cmd: resolvedCmd,
         "cmd:shell": false,

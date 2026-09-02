@@ -120,6 +120,8 @@ type ObsidianPropertiesCardProps = {
     block: MarkdownContentBlockType;
     /** 属性变更回调（上层负责写回草稿/保存）。缺省 = 只读模式。 */
     onDataChange?: (newData: Record<string, unknown>) => void;
+    /** 属性顺序变更回调。 */
+    onReorder?: (fromIndex: number, toIndex: number) => void;
     /** 折叠状态持久化（可选）：重挂后恢复的种子值（true=收起）。与标题折叠同模式。 */
     collapsedSeed?: boolean;
     /** 折叠变更回写（可选）：折叠/展开时回调，上层持久化，供下次重挂恢复。 */
@@ -140,7 +142,7 @@ export function setObsidianPropsCollapsed(key: string, next: boolean): void {
     obsidianPropsCollapsedCache.set(key, next);
 }
 
-export function ObsidianPropertiesCard({ block, onDataChange, collapsedSeed, onCollapsedChange }: ObsidianPropertiesCardProps) {
+export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collapsedSeed, onCollapsedChange }: ObsidianPropertiesCardProps) {
     const data = useMemo(() => parseFrontmatterYamlText(block.content), [block.content]);
     const entries = useMemo(() => buildPropertyEntries(data), [data]);
     const [collapsed, setCollapsed] = useState<boolean>(() => collapsedSeed ?? false);
@@ -148,6 +150,11 @@ export function ObsidianPropertiesCard({ block, onDataChange, collapsedSeed, onC
     const [editDraft, setEditDraft] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
     const editable = onDataChange != null;
+    const dragable = onReorder != null;
+
+    // Drag-and-drop state
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [overIndex, setOverIndex] = useState<number | null>(null);
 
     const toggleCollapsed = () => {
         // 折叠时若有编辑进行中，直接放弃编辑态（行不可见后输入框无意义）
@@ -185,6 +192,32 @@ export function ObsidianPropertiesCard({ block, onDataChange, collapsedSeed, onC
         setEditingKey(null);
     };
 
+    // Drag-and-drop handlers
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(index));
+        setDragIndex(index);
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOverIndex(index);
+    };
+
+    const handleDragEnd = () => {
+        if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
+            onReorder?.(dragIndex, overIndex);
+        }
+        setDragIndex(null);
+        setOverIndex(null);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        handleDragEnd();
+    };
+
     return (
         <div className="obsidian-props-card" data-obsidian-props-card="true">
             <div
@@ -200,15 +233,35 @@ export function ObsidianPropertiesCard({ block, onDataChange, collapsedSeed, onC
                 <span className="obsidian-props-count">{entries.length}</span>
             </div>
             {!collapsed &&
-                entries.map((entry) => {
+                entries.map((entry, index) => {
                     const isEditing = editingKey === entry.key;
                     return (
                         <div
-                            className={clsx("obsidian-props-row", editable && "is-editable", isEditing && "is-editing")}
+                            className={clsx(
+                                "obsidian-props-row",
+                                editable && "is-editable",
+                                isEditing && "is-editing",
+                                dragable && "is-draggable",
+                                dragIndex === index && "is-dragging",
+                                overIndex === index && dragIndex !== index && "is-drag-over",
+                            )}
                             key={entry.key}
+                            draggable={dragable && !isEditing}
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragOver={(e) => handleDragOver(e, index)}n                            onDragEnd={handleDragEnd}
+                            onDrop={handleDrop}
                             onClick={() => startEdit(entry)}
                             title={editable ? "点击编辑" : undefined}
                         >
+                            {dragable && !isEditing && (
+                                <span
+                                    className="obsidian-props-drag-handle"
+                                    title="拖拽排序"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <i className="fa-solid fa-grip-vertical" aria-hidden="true" />
+                                </span>
+                            )}
                             <i className={clsx("obsidian-props-icon", typeIcons[entry.type])} aria-hidden="true" />
                             <span className="obsidian-props-key" title={entry.key}>
                                 {entry.key}

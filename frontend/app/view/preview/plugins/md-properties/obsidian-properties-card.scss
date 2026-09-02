@@ -5,10 +5,10 @@
     display: flex;
     flex-direction: column;
     margin: 0 0 14px 0;
-    padding: 8px 12px 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background: var(--panel-bg-color);
+    padding: 0 0 16px 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
     font-size: var(--markdown-font-size, 14px);
 
     .obsidian-props-header {
@@ -39,10 +39,15 @@
 
     .obsidian-props-row {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 10px;
-        padding: 3px 0;
+        padding: 8px 0;
         min-height: 26px;
+        border-bottom: 1px solid var(--border-color, #333);
+
+        &:last-child {
+            border-bottom: none;
+        }
 
         .obsidian-props-icon {
             flex: 0 0 auto;
@@ -50,7 +55,7 @@
             text-align: center;
             font-size: 0.8em;
             color: var(--secondary-text-color);
-            transform: translateY(0.2em);
+            transform: none;
         }
 
         .obsidian-props-key {
@@ -61,13 +66,14 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             color: var(--secondary-text-color);
-            font-size: 0.92em;
+            font-size: 14px;
         }
 
         .obsidian-props-value {
             flex: 1 1 auto;
             min-width: 0;
             color: var(--main-text-color);
+            font-size: 14px;
         }
     }
 }
@@ -172,5 +178,62 @@
 
     &.is-collapsed {
         margin-bottom: 0;
+    }
+}
+
+// ---------- Phase 3：拖拽排序 ----------
+
+.obsidian-props-row.is-draggable {
+    cursor: grab;
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+.obsidian-props-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    flex-shrink: 0;
+    color: var(--secondary-text-color, #666);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    cursor: grab;
+
+    &:active {
+        cursor: grabbing;
+    }
+
+    i {
+        font-size: 12px;
+    }
+}
+
+.obsidian-props-row:hover .obsidian-props-drag-handle {
+    opacity: 0.6;
+}
+
+.obsidian-props-row .obsidian-props-drag-handle:hover {
+    opacity: 1;
+}
+
+.obsidian-props-row.is-dragging {
+    opacity: 0.4;
+    background: transparent !important;
+}
+
+.obsidian-props-row.is-drag-over {
+    &::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--accent-color, #4a9eff);
+        border-radius: 1px;
+        pointer-events: none;
     }
 }

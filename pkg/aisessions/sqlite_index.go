@@ -189,6 +189,10 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated ON ai_sessions(updated_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_messages_session ON ai_session_messages(session_key, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_tags_tag ON ai_session_tags(tag)`,
+		// Composite indexes for ListWithDistribution / Search hot paths
+		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_list ON ai_sessions(missing, source, updated_at DESC, project_path)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_search ON ai_sessions(missing, title)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_session_meta_key ON ai_session_meta(session_key, marked, updated_at)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := idx.db.ExecContext(ctx, stmt); err != nil {
@@ -202,6 +206,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		return err
 	}
 	if err := idx.ensureMessageThinkingColumn(ctx); err != nil {
+		return err
+	}
+	if err := idx.ensureContentHashColumn(ctx); err != nil {
 		return err
 	}
 	if err := idx.migrateThinkingMessageCache(ctx, existingSchemaVersion); err != nil {
@@ -278,6 +285,25 @@ func (idx *SQLiteIndex) ensureMessageThinkingColumn(ctx context.Context) error {
 		}
 	}
 	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_session_messages ADD COLUMN thinking TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+// ensureContentHashColumn adds content_hash to ai_files for incremental scan optimization.
+// Columns added by older binaries are not repairable if mtime+size matches but content changed,
+// so the first scan after migration will re-hash all files.
+func (idx *SQLiteIndex) ensureContentHashColumn(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_files')`); err != nil {
+		return err
+	}
+	for _, column := range columns {
+		if column.Name == "content_hash" {
+			return nil
+		}
+	}
+	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_files ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -582,6 +608,89 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	}
 	summary.Tags = tags
 	return nil
+}
+
+// batchMetaMaps holds preloaded per-session metadata for a list of keys.
+// loaded=true means the meta row existed (otherwise the fields are zero values).
+type batchMetaMaps struct {
+	loaded  map[string]bool
+	marked  map[string]bool
+	note    map[string]string
+	title   map[string]string
+	tags    map[string][]string
+}
+
+// batchMetaForKeys loads metadata for many session keys with 2 queries instead of
+// 2-per-key (N+1). Returns empty (non-nil) maps; callers use applyBatchMeta.
+func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (batchMetaMaps, error) {
+	result := batchMetaMaps{
+		loaded: make(map[string]bool, len(keys)),
+		marked: make(map[string]bool, len(keys)),
+		note:   make(map[string]string, len(keys)),
+		title:  make(map[string]string, len(keys)),
+		tags:   make(map[string][]string, len(keys)),
+	}
+	if len(keys) == 0 {
+		return result, nil
+	}
+	metaRows := []struct {
+		Key    string `db:"session_key"`
+		Marked bool   `db:"marked"`
+		Note   string `db:"note"`
+		Title  string `db:"title"`
+	}{}
+	query, args, err := sqlx.In(`SELECT session_key, marked, note, title FROM ai_session_meta WHERE session_key IN (?)`, keys)
+	if err != nil {
+		return result, err
+	}
+	query = idx.db.Rebind(query)
+	if err := idx.db.SelectContext(ctx, &metaRows, query, args...); err != nil {
+		return result, err
+	}
+	for _, row := range metaRows {
+		result.loaded[row.Key] = true
+		result.marked[row.Key] = row.Marked
+		result.note[row.Key] = row.Note
+		result.title[row.Key] = row.Title
+	}
+	tagRows := []struct {
+		Key string `db:"session_key"`
+		Tag string `db:"tag"`
+	}{}
+	query, args, err = sqlx.In(`SELECT session_key, tag FROM ai_session_tags WHERE session_key IN (?) ORDER BY session_key, tag`, keys)
+	if err != nil {
+		return result, err
+	}
+	query = idx.db.Rebind(query)
+	if err := idx.db.SelectContext(ctx, &tagRows, query, args...); err != nil {
+		return result, err
+	}
+	for _, row := range tagRows {
+		result.tags[row.Key] = append(result.tags[row.Key], row.Tag)
+	}
+	return result, nil
+}
+
+// applyBatchMeta applies preloaded metadata to a summary, mirroring ApplyMeta semantics
+// (title only set when non-empty; TitleSource promoted to user-edit).
+func (idx *SQLiteIndex) applyBatchMeta(summary *SessionSummary, meta batchMetaMaps) {
+	if summary == nil || strings.TrimSpace(summary.Key) == "" {
+		return
+	}
+	if !meta.loaded[summary.Key] {
+		// No meta row: clear defaults (mirrors ApplyMeta with ErrNoRows).
+		summary.Marked = false
+		summary.Note = ""
+		summary.Tags = nil
+		return
+	}
+	summary.Marked = meta.marked[summary.Key]
+	summary.Note = meta.note[summary.Key]
+	if title := meta.title[summary.Key]; title != "" {
+		summary.Title = title
+		summary.TitleSource = "user"
+	}
+	summary.Tags = meta.tags[summary.Key]
 }
 
 func (idx *SQLiteIndex) SetTitle(ctx context.Context, key string, title string) error {
@@ -1144,46 +1253,59 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 // which the path-filter UI uses to navigate the directory tree with true counts.
 func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptions) ([]SessionSummary, []ProjectPathSummary, error) {
 	var rows []sqliteSessionRow
-	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions`)
+	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions WHERE missing = 0`)
 	if err != nil {
 		return nil, nil, err
 	}
+	// --- Pass 1: convert rows to summaries (no meta yet) ---
+	summaries := make([]SessionSummary, 0, len(rows))
+	for _, row := range rows {
+		summaries = append(summaries, row.summary())
+	}
+	// --- Batch-load meta (2 queries for all keys) ---
+	keys := make([]string, 0, len(summaries))
+	for i := range summaries {
+		keys = append(keys, summaries[i].Key)
+	}
+	batchMeta, metaErr := idx.batchMetaForKeys(ctx, keys)
+	if metaErr != nil {
+		// Fallback: degrade gracefully to per-row ApplyMeta (safe, just slower).
+		for i := range summaries {
+			if err := idx.ApplyMeta(ctx, &summaries[i]); err != nil {
+				return nil, nil, err
+			}
+		}
+	} else {
+		for i := range summaries {
+			idx.applyBatchMeta(&summaries[i], batchMeta)
+		}
+	}
+	// --- Pass 2: filter (non-project) + compute distribution, then apply project filter ---
 	baseOpts := opts
 	baseOpts.Project = ""
-	var summaries []SessionSummary
 	dist := make(map[string]int, 16)
-	for _, row := range rows {
+	var filtered []SessionSummary
+	for i := range summaries {
 		if ctx.Err() != nil {
-			return summaries, summarizeProjectPathsFromMap(dist), ctx.Err()
+			return filtered, summarizeProjectPathsFromMap(dist), ctx.Err()
 		}
-		summary := row.summary()
-		if err := idx.ApplyMeta(ctx, &summary); err != nil {
-			return summaries, summarizeProjectPathsFromMap(dist), err
-		}
-		// non-project filters decide the distribution (path selection must not
-		// narrow the tree the UI can navigate to), then the project filter
-		// narrows the returned session list.
-		if !summaryMatchesList(summary, baseOpts) {
+		if !summaryMatchesList(summaries[i], baseOpts) {
 			continue
 		}
-		dist[summary.ProjectPath]++
-		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
+		dist[summaries[i].ProjectPath]++
+		if opts.Project != "" && !projectPathMatches(summaries[i].ProjectPath, opts.Project) {
 			continue
 		}
-		// Defensive double-check: summaryMatchesList already covers both
-		// TagPresence and TagFilters, but a historical duplicate filter call
-		// stays here to keep behavior identical if anyone reorders the
-		// sqlite path away from summaryMatchesList.
-		if !sessionMatchesTagPresence(summary, opts.TagPresence, opts.TagFilters) {
+		if !sessionMatchesTagPresence(summaries[i], opts.TagPresence, opts.TagFilters) {
 			continue
 		}
-		if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
+		if !sessionTagsContainAll(summaries[i].Tags, opts.TagFilters) {
 			continue
 		}
-		summaries = append(summaries, summary)
+		filtered = append(filtered, summaries[i])
 	}
-	sortSummaries(summaries)
-	return limitSummaries(summaries, opts.Limit), summarizeProjectPathsFromMap(dist), nil
+	sortSummaries(filtered)
+	return limitSummaries(filtered, opts.Limit), summarizeProjectPathsFromMap(dist), nil
 }
 
 func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {

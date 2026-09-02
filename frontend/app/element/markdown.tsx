@@ -1216,7 +1216,6 @@ const MarkdownImg = ({
         startY: number;
         origW: number;
         origH: number;
-        maintainAspect: boolean;
         currentW: number;
         currentH: number;
     } | null>(null);
@@ -1386,7 +1385,6 @@ const MarkdownImg = ({
                 startY: e.clientY,
                 origW: currentW,
                 origH: currentH,
-                maintainAspect: e.shiftKey,
                 currentW,
                 currentH,
             };
@@ -1398,13 +1396,18 @@ const MarkdownImg = ({
                     return;
                 }
                 const dx = ev.clientX - ref.startX;
-                const newW = Math.max(20, Math.round(ref.origW + dx));
-                let newH: number;
-                if (ref.maintainAspect && ref.origW > 0) {
-                    newH = Math.max(20, Math.round((newW / ref.origW) * ref.origH));
+                const dy = ev.clientY - ref.startY;
+                // Always maintain aspect ratio: use the axis with larger absolute displacement
+                let scale: number;
+                if (ref.origW > 0 && ref.origH > 0) {
+                    const scaleX = (ref.origW + dx) / ref.origW;
+                    const scaleY = (ref.origH + dy) / ref.origH;
+                    scale = Math.abs(dx) >= Math.abs(dy) ? scaleX : scaleY;
                 } else {
-                    newH = ref.origH;
+                    scale = 1;
                 }
+                const newW = Math.max(20, Math.round(ref.origW * scale));
+                const newH = Math.max(20, Math.round(ref.origH * scale));
                 ref.currentW = newW;
                 ref.currentH = newH;
                 setImgWidth(newW);
@@ -1505,7 +1508,7 @@ const MarkdownImg = ({
                         <div
                             className="markdown-img-resize-handle"
                             onMouseDown={handleResizeMouseDown}
-                            title="Drag to resize (Shift = proportional)"
+                            title="Drag to resize"
                         />
                     )}
                     {hasResize && imgWidth != null && (

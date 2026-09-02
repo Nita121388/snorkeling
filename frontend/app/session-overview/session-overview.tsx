@@ -2558,26 +2558,36 @@ export class SessionOverviewViewModel implements ViewModel {
     viewName = jotai.atom("Overview");
     noPadding = jotai.atom(true);
     refreshSeqAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
+    lastRefreshAtAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     viewComponent = SessionOverviewPanel as ViewComponent;
 
     constructor(_: ViewModelInitType) {
-        this.endIconButtons = jotai.atom(() => [
-            {
-                elemtype: "iconbutton",
-                icon: "rotate-right",
-                title: "Refresh overview",
-                zone: "pinned",
-                click: (e) => {
-                    e.stopPropagation();
-                    this.refresh();
+        this.endIconButtons = jotai.atom((get) => {
+            const seq = get(this.refreshSeqAtom);
+            const lastAt = get(this.lastRefreshAtAtom);
+            const elapsed = lastAt > 0 ? Date.now() - lastAt : 0;
+            const syncing = seq > 0 && elapsed < 3_000; // within 3s of last manual refresh
+            const icon = syncing ? "arrows-rotate" : "rotate-right";
+            return [
+                {
+                    elemtype: "iconbutton",
+                    icon,
+                    iconSpin: syncing,
+                    title: syncing ? "Refreshing overview…" : "Refresh overview",
+                    zone: "pinned",
+                    click: (e) => {
+                        e.stopPropagation();
+                        this.refresh();
+                    },
                 },
-            },
-        ]);
+            ];
+        });
     }
 
     refresh(): void {
         globalStore.set(this.refreshSeqAtom, globalStore.get(this.refreshSeqAtom) + 1);
+        globalStore.set(this.lastRefreshAtAtom, Date.now());
     }
 }
 

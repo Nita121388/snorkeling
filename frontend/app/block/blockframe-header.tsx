@@ -123,7 +123,7 @@ export function showBlockContextMenu(
     }
     if (moveContext && !ephemeral) {
         menu.push({
-            label: "Minimize to Float",
+            label: "Minimize to BlockBar",
             enabled: !minimizedPreview,
             click: () => minimizeBlockToFloat(moveContext.currentTabId, blockId),
         });

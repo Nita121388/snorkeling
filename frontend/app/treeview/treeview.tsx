@@ -78,6 +78,7 @@ export interface TreeViewProps {
     onOpenFile?: (id: string, node: TreeNodeData, event: MouseEvent<HTMLDivElement>) => void;
     onSelectionChange?: (id: string, node: TreeNodeData) => void;
     onNodeClick?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
+    onMarqueeSelect?: (nodes: TreeNodeData[]) => void;
     onRenameSelected?: (id: string, node: TreeNodeData) => void;
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
@@ -102,6 +103,7 @@ const DefaultOverscan = 10;
 const DefaultMaxExpandAllDepth = 8;
 const DefaultMaxExpandAllDirectories = 500;
 const ChevronWidth = 12;
+const MarqueeDragThreshold = 5;
 
 function normalizeLabel(node: TreeNodeData): string {
     if (node.label?.trim()) {
@@ -400,6 +402,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onNodeContextMenu,
         onBackgroundContextMenu,
         onNodeClick,
+        onMarqueeSelect,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
@@ -414,6 +417,40 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const lastRefreshKeyRef = useRef(refreshKey);
     const rootIdsKey = rootIds.join("\u0000");
     const defaultExpandedIdsKey = (defaultExpandedIds ?? []).join("\u0000");
+
+    // Marquee (rubber-band) selection state
+    const [marqueeActive, setMarqueeActive] = useState(false);
+    const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+    const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+    const marqueeDraggingRef = useRef(false);
+    const dragStartXRef = useRef<number>(0);
+    const dragStartYRef = useRef<number>(0);
+    const ignoreNextClickRef = useRef(false);
+    const marqueeJustCompletedRef = useRef(false);
+    const onMarqueeSelectRef = useRef(onMarqueeSelect);
+    onMarqueeSelectRef.current = onMarqueeSelect;
+
+    const onScrollContainerMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) {
+            return;
+        }
+        const target = e.target as HTMLElement;
+        if (target.closest("button")) {
+            return;
+        }
+        if (!scrollRef.current) {
+            return;
+        }
+        // Clear the flag so the NEXT click (not this mousedown's click) works normally
+        marqueeJustCompletedRef.current = false;
+        const rect = scrollRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left + scrollRef.current.scrollLeft;
+        const y = e.clientY - rect.top + scrollRef.current.scrollTop;
+        marqueeStartRef.current = { x, y };
+        marqueeDraggingRef.current = true;
+        dragStartXRef.current = e.clientX;
+        dragStartYRef.current = e.clientY;
+    };
 
     useEffect(() => {
         nodesByIdRef.current = nodesById;
@@ -446,6 +483,72 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         estimateSize: () => rowHeight,
         overscan,
     });
+
+    // Document-level mouse handlers for marquee drag
+    useEffect(() => {
+        const handleMouseMove = (e: globalThis.MouseEvent) => {
+            if (!marqueeDraggingRef.current || !scrollRef.current || !marqueeStartRef.current) {
+                return;
+            }
+            const rect = scrollRef.current.getBoundingClientRect();
+            const currentX = e.clientX - rect.left + scrollRef.current.scrollLeft;
+            const currentY = e.clientY - rect.top + scrollRef.current.scrollTop;
+            const startX = marqueeStartRef.current.x;
+            const startY = marqueeStartRef.current.y;
+            const dragDistance =
+                Math.abs(e.clientX - dragStartXRef.current) + Math.abs(e.clientY - dragStartYRef.current);
+
+            if (!marqueeActive && dragDistance > MarqueeDragThreshold) {
+                setMarqueeActive(true);
+                ignoreNextClickRef.current = true;
+            }
+
+            if (marqueeActive || dragDistance > MarqueeDragThreshold) {
+                const left = Math.min(startX, currentX);
+                const top = Math.min(startY, currentY);
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+                setMarqueeRect({ left, top, width, height });
+
+                // Calculate intersecting rows
+                const virtualItems = virtualizer.getVirtualItems();
+                const intersectingNodes: TreeNodeData[] = [];
+                for (const virtualRow of virtualItems) {
+                    const row = visibleRows[virtualRow.index];
+                    if (row.kind !== "node" || row.node == null) {
+                        continue;
+                    }
+                    const rowTop = virtualRow.start;
+                    const rowBottom = rowTop + rowHeight;
+                    const intersects = top < rowBottom && top + height > rowTop;
+                    if (intersects) {
+                        intersectingNodes.push(row.node);
+                    }
+                }
+
+                onMarqueeSelectRef.current?.(intersectingNodes);
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (marqueeDraggingRef.current) {
+                marqueeDraggingRef.current = false;
+                marqueeStartRef.current = null;
+                if (marqueeActive) {
+                    marqueeJustCompletedRef.current = true;
+                }
+                setMarqueeActive(false);
+                setMarqueeRect(null);
+            }
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [marqueeActive, rowHeight, visibleRows, virtualizer]);
 
     const commitSelection = (id: string) => {
         const node = nodesByIdRef.current.get(id);
@@ -806,7 +909,9 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         >
             <div
                 ref={scrollRef}
-                className="h-full overflow-auto"
+                className="h-full overflow-auto select-none"
+                style={{ position: "relative" }}
+                onMouseDown={onScrollContainerMouseDown}
                 onContextMenu={(event) => {
                     onBackgroundContextMenu?.(event);
                 }}
@@ -835,10 +940,20 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                     if (row.kind !== "node" || row.node == null) {
                                         return;
                                     }
+                                    // Skip click if a marquee drag just completed
+                                    if (ignoreNextClickRef.current || marqueeJustCompletedRef.current) {
+                                        ignoreNextClickRef.current = false;
+                                        marqueeJustCompletedRef.current = false;
+                                        return;
+                                    }
                                     onNodeClick?.(event, row.id, row.node);
                                     commitSelection(row.id);
                                     // ctrl/cmd 按住时为多选操作,不展开文件夹,避免多选多个目录把树撑长
-                                    if (expandDirectoriesOnSingleClick && row.isDirectory && !(event.ctrlKey || event.metaKey)) {
+                                    if (
+                                        expandDirectoriesOnSingleClick &&
+                                        row.isDirectory &&
+                                        !(event.ctrlKey || event.metaKey)
+                                    ) {
                                         toggleExpand(row.id);
                                     }
                                 }}
@@ -922,6 +1037,17 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                         );
                     })}
                 </div>
+                {marqueeActive && marqueeRect && (
+                    <div
+                        className="pointer-events-none absolute z-50 border border-[var(--accent-color)] bg-[var(--accent-color)]/10"
+                        style={{
+                            left: marqueeRect.left,
+                            top: marqueeRect.top,
+                            width: marqueeRect.width,
+                            height: marqueeRect.height,
+                        }}
+                    />
+                )}
             </div>
         </div>
     );

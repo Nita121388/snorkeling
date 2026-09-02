@@ -1732,10 +1732,25 @@ const Widgets = memo(() => {
         env.isDev() ? env.electron.getDevRuntimeInfo() : null
     );
     const [mode, setMode] = useState<"normal" | "compact" | "supercompact">("normal");
-    const [hovered, setHovered] = useState(false);
     // 固定态：为 true 时按钮条常驻（占用 w-12 布局、把内容挤左），不受 hover/离开影响。
     const [pinned, setPinned] = useState<boolean>(() => loadWidgetsBarPinned());
-    const collapseTimerRef = useRef<number | null>(null);
+    // ── listen for expand/collapse events from tabbar ──
+    useEffect(() => {
+        const onExpand = () => {
+            setPinned(true);
+            saveWidgetsBarPinned(true);
+        };
+        const onCollapse = () => {
+            setPinned(false);
+            saveWidgetsBarPinned(false);
+        };
+        window.addEventListener("widget-bar:expand", onExpand);
+        window.addEventListener("widget-bar:collapse", onCollapse);
+        return () => {
+            window.removeEventListener("widget-bar:expand", onExpand);
+            window.removeEventListener("widget-bar:collapse", onCollapse);
+        };
+    }, []);
     const containerRef = useRef<HTMLDivElement>(null);
     // 本次启动自定义变量（agent / terminal 各一份，浮窗关闭不清空——避免误关丢失）
     const [agentLaunchEnv, setAgentLaunchEnv] = useState<Record<string, string>>({});
@@ -2379,16 +2394,6 @@ const Widgets = memo(() => {
         e.preventDefault();
         const menu: ContextMenuItem[] = [
             {
-                label: pinned ? "Unpin widgets bar" : "Pin widgets bar",
-                click: () => {
-                    setPinned((prev) => {
-                        const next = !prev;
-                        saveWidgetsBarPinned(next);
-                        return next;
-                    });
-                },
-            },
-            {
                 label: "Edit widgets.json",
                 click: () => {
                     fireAndForget(async () => {
@@ -2414,47 +2419,12 @@ const Widgets = memo(() => {
 
     const anyFloatingOpen =
         isAppsOpen || isSettingsOpen || (isAgentTargetOpen && groupSinkNodeId == null) || (isTerminalTargetOpen && groupSinkNodeId == null);
-    const expanded = pinned || hovered || anyFloatingOpen;
-
-    const clearCollapseTimer = useCallback(() => {
-        if (collapseTimerRef.current != null) {
-            window.clearTimeout(collapseTimerRef.current);
-            collapseTimerRef.current = null;
-        }
-    }, []);
-
-    const handleWidgetsBarMouseEnter = useCallback(() => {
-        clearCollapseTimer();
-        setHovered(true);
-    }, [clearCollapseTimer]);
-
-    const handleWidgetsBarMouseLeave = useCallback(() => {
-        // 固定态：展开由 pinned 维持，鼠标离开不收起、也不清 hovered（避免取消固定瞬间误判为“未 hover”而闪收）。
-        if (pinned) {
-            return;
-        }
-        // 浮窗打开时保持展开（由 anyFloatingOpen 维持），并置 hovered=false 以便浮窗关闭后自动收起。
-        if (anyFloatingOpen) {
-            setHovered(false);
-            return;
-        }
-        // 普通态：离开后延时收起，期间移回则取消。
-        clearCollapseTimer();
-        collapseTimerRef.current = window.setTimeout(() => {
-            collapseTimerRef.current = null;
-            setHovered(false);
-        }, WidgetBarAutoCollapseMs);
-    }, [pinned, anyFloatingOpen, clearCollapseTimer]);
-
-    // 卸载时清理待收起计时器。
-    useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
+    const expanded = pinned || anyFloatingOpen;
 
     return (
         <>
             <div
                 ref={containerRef}
-                onMouseEnter={handleWidgetsBarMouseEnter}
-                onMouseLeave={handleWidgetsBarMouseLeave}
                 onContextMenu={handleWidgetsBarContextMenu}
                 className={clsx("relative shrink-0 select-none", pinned ? "w-12" : "w-0")}
             >
@@ -2477,34 +2447,6 @@ const Widgets = memo(() => {
                     }}
                 >
                         <div className="flex flex-col w-12 overflow-hidden h-full">
-                            {/* 固定/取消固定按钮：固定后按钮条常驻（占用 w-12 布局、把内容挤左），不随 hover 收起。
-                                ponytail: 固定 = docked（占布局），与默认 hover-peek 的 overlay 零挤压不冲突；
-                                仅用户主动点固定时触发一次 relayout。若要“常驻但不占布局”的覆盖式固定，改外层容器恒为 w-0 让浮层常显即可。 */}
-                            <button
-                                type="button"
-                                className={clsx(
-                                    "flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-lg overflow-hidden rounded-sm cursor-pointer transition-colors",
-                                    pinned
-                                        ? "text-accent hover:bg-hoverbg hover:text-accenthover"
-                                        : "text-secondary hover:bg-hoverbg hover:text-white"
-                                )}
-                                aria-label={pinned ? "Unpin widgets bar" : "Pin widgets bar"}
-                                title={pinned ? "Unpin widgets bar" : "Pin widgets bar"}
-                                onClick={() => {
-                                    setPinned((prev) => {
-                                        const next = !prev;
-                                        saveWidgetsBarPinned(next);
-                                        return next;
-                                    });
-                                }}
-                            >
-                                <i className={makeIconClass(pinned ? "thumbtack" : "regular@thumbtack", true)} />
-                                {mode === "normal" && (
-                                    <div className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                                        {pinned ? "unpin" : "pin"}
-                                    </div>
-                                )}
-                            </button>
                             {mode === "supercompact" ? (
                                 <>
                                     <div className="grid grid-cols-2 gap-0 w-full">

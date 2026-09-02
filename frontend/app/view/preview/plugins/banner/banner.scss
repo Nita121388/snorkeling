@@ -20,7 +20,7 @@
     // 非锁定模式：底部圆角 + 间距
     &:not(.locked) {
         border-radius: 0 0 var(--banner-radius) var(--banner-radius);
-        margin-bottom: 24px;
+        margin-bottom: 24px;  // 为 emoji badge 留空间
     }
 
     // 锁定模式
@@ -131,7 +131,114 @@
     }
 }
 
+// ============================================
+// Emoji Badge 样式
+// ============================================
+.snorkeling-emoji-badge {
+    position: absolute;
+    bottom: -24px;  // 从 banner 底部向下偏移
+    left: 32px;
+    z-index: 10;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    background: rgba(var(--color-bg-rgb, 26, 26, 26), 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 2px solid rgba(var(--color-border-rgb, 51, 51, 51), 0.3);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+    &:hover {
+        background: rgba(var(--color-bg-rgb, 26, 26, 26), 0.95);
+        transform: scale(1.08);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    &:active {
+        transform: scale(0.98);
+    }
+}
+
+.snorkeling-emoji-char {
+    font-size: 32px;
+    line-height: 1;
+}
+
+// ============================================
+// Title Area 样式
+// ============================================
+.snorkeling-title-area {
+    position: relative;
+    padding: 32px 32px 0;
+    margin-top: -8px;  // 与 banner 重叠
+}
+
+.snorkeling-title {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.snorkeling-title-text {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--color-foreground, #e0e0e0);
+    line-height: 1.2;
+}
+
+// ============================================
+// Properties Card 样式（无边框）
+// ============================================
+.snorkeling-properties-card {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 0 0 16px;
+    margin-bottom: 24px;
+}
+
+.snorkeling-property-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border, #333333);
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.snorkeling-property-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 120px;
+    color: var(--color-muted, #666666);
+    font-size: 14px;
+
+    svg {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
+    }
+}
+
+.snorkeling-property-value {
+    flex: 1;
+    font-size: 14px;
+    color: var(--color-foreground, #e0e0e0);
+}
+
+// ============================================
 // 响应式设计
+// ============================================
 @media (max-width: 768px) {
     .snorkeling-banner-container {
         --banner-height: 150px;
@@ -139,6 +246,25 @@
         &.collapsed {
             height: 48px;
         }
+    }
+
+    .snorkeling-emoji-badge {
+        left: 20px;
+        bottom: -20px;
+        width: 48px;
+        height: 48px;
+    }
+
+    .snorkeling-emoji-char {
+        font-size: 28px;
+    }
+
+    .snorkeling-title-area {
+        padding: 24px 20px 0;
+    }
+
+    .snorkeling-title-text {
+        font-size: 26px;
     }
 
     .snorkeling-banner-lock-indicator {

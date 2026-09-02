@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import clsx from "clsx";
 import { SessionOverviewButton } from "@/app/session-overview/session-overview";
 import {
     filterSessionOverviewTabIds,
@@ -166,6 +167,27 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
 
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const [isWrapperHovered, setIsWrapperHovered] = useState(false);
+    // ── block sidebar expand icon (left-most in tab bar) ──
+    const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+        if (typeof window === "undefined") return true;
+        try { return localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"; } catch { return true; }
+    });
+    useEffect(() => {
+        const handler = () => setSidebarExpanded(false);
+        window.addEventListener("block-sidebar:collapse", handler);
+        return () => window.removeEventListener("block-sidebar:collapse", handler);
+    }, []);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try { setSidebarExpanded(localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"); } catch { setSidebarExpanded(true); }
+    }, [activeTabId]);
+    // ── widget bar expand icon (right-most in tab bar) ──
+    const [widgetBarExpanded, setWidgetBarExpanded] = useState(false);
+    useEffect(() => {
+        const handler = () => setWidgetBarExpanded(false);
+        window.addEventListener("widget-bar:collapse", handler);
+        return () => window.removeEventListener("widget-bar:collapse", handler);
+    }, []);
     const hideTabBarHoverTimerRef = useRef<number | null>(null);
     const hideWrapperHoverTimerRef = useRef<number | null>(null);
     const cancelPendingHideTabBarHover = useCallback(() => {
@@ -833,6 +855,20 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                     <i className="fa fa-ellipsis" />
                 </div>
             )}
+            <button
+                type="button"
+                className="session-overview-tabbutton"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                onClick={() => {
+                    const next = !sidebarExpanded;
+                    setSidebarExpanded(next);
+                    window.dispatchEvent(new Event(next ? "block-sidebar:expand" : "block-sidebar:collapse"));
+                }}
+                title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+            >
+                <i className={clsx("fa fa-solid", sidebarExpanded ? "fa-chevron-left" : "fa-chevron-right")} />
+            </button>
             <WaveAIButton divRef={waveAIButtonRef} />
             {!noTabs && <SessionOverviewButton />}
             <Tooltip
@@ -910,6 +946,21 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             />
             <div ref={rightContainerRef} className="flex flex-row gap-1 items-end" style={{ pointerEvents: "none" }}>
                 <UpdateStatusBanner />
+                {/* widget bar expand/collapse icon (right side, before window controls) */}
+                <button
+                    type="button"
+                    className="session-overview-tabbutton"
+                    style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as React.CSSProperties}
+                    onClick={() => {
+                        const next = !widgetBarExpanded;
+                        setWidgetBarExpanded(next);
+                        window.dispatchEvent(new Event(next ? "widget-bar:expand" : "widget-bar:collapse"));
+                    }}
+                    title={widgetBarExpanded ? "Collapse widgets bar" : "Expand widgets bar"}
+                    aria-label={widgetBarExpanded ? "Collapse widgets bar" : "Expand widgets bar"}
+                >
+                    <i className={clsx("fa fa-solid", widgetBarExpanded ? "fa-chevron-right" : "fa-chevron-left")} />
+                </button>
                 <div
                     className="h-full shrink-0 z-window-drag"
                     style={{ width: windowDragRightWidth, WebkitAppRegion: "drag", pointerEvents: "auto" } as any}
