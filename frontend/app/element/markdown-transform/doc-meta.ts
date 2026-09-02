@@ -76,45 +76,53 @@ export function parseFrontmatterProperties(text: string): FrontmatterProperty[] 
 }
 
 /**
- * Reorder frontmatter properties by moving the property at `fromIndex` to `toIndex`.
+ * Reorder frontmatter properties by key names.
+ * `fromKey` is the key to move, `toKey` is the reference key (insert before it).
+ * If `toKey` is null, move to the end.
  * Only rearranges lines between start+1 and end-1; everything else is untouched.
  * Returns the full document text with the reordered frontmatter.
  */
 export function reorderFrontmatterProperties(
     text: string,
-    fromIndex: number,
-    toIndex: number,
+    fromKey: string,
+    toKey: string | null,
 ): string {
+    console.log("[reorder] called with:", { fromKey, toKey, textLength: text?.length });
     const span = findFrontmatterSpan(text);
+    console.log("[reorder] span:", span);
     if (span == null) return text;
     const lines = text.split(/\r\n|\n/);
-    // Collect only the property lines (non-blank, non-comment) between the fences.
-    const propLines: number[] = []; // line indexes into `lines`
+    // Collect all property lines with their keys.
+    const propLines: Array<{ lineIdx: number; key: string; line: string }> = [];
     for (let i = span.start + 1; i < span.end; i++) {
         const trimmed = lines[i]?.trim();
-        if (trimmed != null && trimmed !== "" && !trimmed.startsWith("#") && PropKeyRe.test(lines[i])) {
-            propLines.push(i);
+        if (trimmed != null && trimmed !== "" && !trimmed.startsWith("#")) {
+            const m = lines[i].match(PropKeyRe);
+            if (m != null) {
+                propLines.push({ lineIdx: i, key: m[1], line: lines[i] });
+            }
         }
     }
-    if (fromIndex < 0 || fromIndex >= propLines.length) return text;
-    if (toIndex < 0 || toIndex >= propLines.length) return text;
-    if (fromIndex === toIndex) return text;
-    // Extract the moved line text and remove it from the array of line indexes.
-    const movedLineIdx = propLines[fromIndex];
-    const movedLine = lines[movedLineIdx];
-    // Build a new set of property lines in the desired order.
-    const reorderedKeys: string[] = propLines.map((li) => lines[li]);
-    const [moved] = reorderedKeys.splice(fromIndex, 1);
-    reorderedKeys.splice(toIndex, 0, moved);
+    console.log("[reorder] propLines:", propLines.map(p => p.key));
+    // Find the indices in propLines
+    const fromIdx = propLines.findIndex(p => p.key === fromKey);
+    const toIdx = toKey != null ? propLines.findIndex(p => p.key === toKey) : propLines.length - 1;
+    console.log("[reorder] fromIdx:", fromIdx, "toIdx:", toIdx);
+    if (fromIdx < 0 || toIdx < 0) return text;
+    if (fromIdx === toIdx) return text;
+    // Extract the moved line text and reorder
+    const reorderedLines = propLines.map(p => p.line);
+    const [moved] = reorderedLines.splice(fromIdx, 1);
+    reorderedLines.splice(toIdx > fromIdx ? toIdx : toIdx, 0, moved);
+    console.log("[reorder] reorderedLines:", reorderedLines.length);
     // Now splice back into the `lines` array: remove all old prop lines, insert new ones.
     // Work backwards so earlier indexes stay valid.
     for (let k = propLines.length - 1; k >= 0; k--) {
-        lines.splice(propLines[k], 1);
+        lines.splice(propLines[k].lineIdx, 1);
     }
     // Insert point: right after span.start, in order.
-    // The insertion indexes are sequential starting from span.start + 1.
-    for (let k = 0; k < reorderedKeys.length; k++) {
-        lines.splice(span.start + 1 + k, 0, reorderedKeys[k]);
+    for (let k = 0; k < reorderedLines.length; k++) {
+        lines.splice(span.start + 1 + k, 0, reorderedLines[k]);
     }
     return lines.join("\n");
 }

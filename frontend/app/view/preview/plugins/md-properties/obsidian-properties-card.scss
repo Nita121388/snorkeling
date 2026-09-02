@@ -7,7 +7,7 @@
     margin: 0 0 14px 0;
     padding: 0 0 16px 0;
     border: none;
-    border-radius: 8px;
+    border-radius: 0;
     background: transparent;
     font-size: var(--markdown-font-size, 14px);
 
@@ -43,6 +43,7 @@
         gap: 10px;
         padding: 8px 0;
         min-height: 26px;
+        position: relative;
         border-bottom: 1px solid var(--border-color, #333);
 
         &:last-child {
@@ -116,37 +117,21 @@
 // ---------- Phase 2：属性编辑 ----------
 
 .obsidian-props-row.is-editable {
-    cursor: text;
-    border-radius: 6px;
+    cursor: pointer;
+    border-radius: 0;
     padding-left: 4px;
     padding-right: 4px;
     margin-left: -4px;
     margin-right: -4px;
+    transition: background 0.15s ease;
 
     &:hover {
         background: var(--highlight-bg-color);
     }
 
-    .obsidian-props-edit-icon {
-        flex: 0 0 auto;
-        margin-left: auto;
-        font-size: 0.78em;
-        color: var(--secondary-text-color);
-        opacity: 0;
-        transition: opacity 0.12s ease;
-        transform: translateY(0.2em);
-    }
-
-    &:hover .obsidian-props-edit-icon {
-        opacity: 0.75;
-    }
-
     &.is-editing {
         background: transparent;
-
-        .obsidian-props-edit-icon {
-            display: none;
-        }
+        cursor: text;
     }
 }
 
@@ -225,15 +210,31 @@
 }
 
 .obsidian-props-row.is-drag-over {
+    position: relative;
+
     &::before {
         content: "";
         position: absolute;
-        top: -1px;
+        top: -2px;
         left: 0;
         right: 0;
-        height: 2px;
+        height: 3px;
         background: var(--accent-color, #4a9eff);
-        border-radius: 1px;
+        border-radius: 2px;
+        pointer-events: none;
+        box-shadow: 0 0 4px rgba(74, 158, 255, 0.5);
+    }
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: 8px;
+        width: 0;
+        height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 5px solid var(--accent-color, #4a9eff);
         pointer-events: none;
     }
 }

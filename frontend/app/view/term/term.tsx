@@ -13,6 +13,7 @@ import {
     type SelectionCopyOverlayState,
     type SelectionQuickActionItem,
 } from "@/app/element/selection-copy-overlay";
+import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import {
@@ -1178,6 +1179,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const viewRef = React.useRef<HTMLDivElement>(null);
     const connectElemRef = React.useRef<HTMLDivElement>(null);
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);
+    const [isTermAtBottom, setIsTermAtBottom] = React.useState(true);
     const [selectionCopyOverlay, setSelectionCopyOverlay] = React.useState<SelectionCopyOverlayState | null>(null);
     const [selectionLogicalLineText, setSelectionLogicalLineText] = React.useState<string | null>(null);
     const lastSelectionPointerRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -1383,6 +1385,13 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             globalStore.set(searchProps.resultsCount, results.resultCount);
         };
         fireAndForget(termWrap.initTerminal.bind(termWrap));
+        // Track xterm viewport scroll position for the scroll-to-bottom FAB.
+        const scrollDisposable = termWrap.terminal.onScroll(() => {
+            const buf = termWrap.terminal.buffer.active;
+            const viewportRows = termWrap.terminal.rows;
+            const atBottom = buf.viewportY + viewportRows >= buf.baseY + buf.length - 1;
+            setIsTermAtBottom(atBottom);
+        });
         if (wasFocused) {
             setTimeout(() => {
                 model.giveFocus();
@@ -1395,6 +1404,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 tabId: tabModel.tabId,
             });
             termWrap.onSelectionTextChange = null;
+            scrollDisposable.dispose();
             termWrap.dispose();
             rszObs.disconnect();
             setTermWrapInst(null);
@@ -1739,6 +1749,13 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 overlay={selectionCopyOverlay}
                 onHide={hideSelectionCopyOverlay}
                 copyMenuItems={terminalCopyMenuItems}
+            />
+            <ScrollToBottomButton
+                isAtBottom={isTermAtBottom}
+                onClick={() => {
+                    model.termRef.current?.terminal.scrollToBottom();
+                    setIsTermAtBottom(true);
+                }}
             />
         </div>
     );

@@ -191,7 +191,7 @@ const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBloc
                     )}
                 </div>
             </div>
-            <pre className="px-4 pb-2 pt-0 overflow-x-auto m-0 text-primary bg-white max-w-full">{children}</pre>
+            <pre className="px-4 pb-2 pt-0 overflow-x-auto m-0 text-primary max-w-full">{children}</pre>
         </div>
     );
 };

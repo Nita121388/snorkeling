@@ -11,6 +11,7 @@ import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import clsx from "clsx";
 import { useMemo, useRef, useState } from "react";
 import { buildPropertyEntries, parseFrontmatterYamlText, type PropertyEntry } from "./frontmatter-block";
+import { ListPropertyEditor } from "./list-property-editor";
 import "./obsidian-properties-card.scss";
 
 const JsonPreviewMaxLen = 300;
@@ -173,6 +174,7 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
             onDataChange?.({ ...data, [entry.key]: String(entry.value) !== "true" });
             return;
         }
+        // list/tags 类型直接进入编辑态（使用 ListPropertyEditor）
         setEditingKey(entry.key);
         setEditDraft(propertyValueToEditString(entry));
         // 等一帧聚焦，输入框挂载后
@@ -185,6 +187,11 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
         if (entry != null) {
             onDataChange?.({ ...data, [editingKey]: parsePropertyEditString(entry, editDraft) });
         }
+        setEditingKey(null);
+    };
+
+    const commitListEdit = (entry: PropertyEntry, newItems: string[]) => {
+        onDataChange?.({ ...data, [entry.key]: newItems });
         setEditingKey(null);
     };
 
@@ -206,16 +213,25 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
     };
 
     const handleDragEnd = () => {
-        if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
-            onReorder?.(dragIndex, overIndex);
-        }
+        // 注意：onDragEnd 可能在 onDrop 之前触发，所以这里只重置状态
+        // 实际的 reorder 逻辑在 handleDrop 中处理
         setDragIndex(null);
         setOverIndex(null);
     };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
-        handleDragEnd();
+        e.dataTransfer.dropEffect = "move";
+        console.log("[drag-drop] handleDrop:", { dragIndex, overIndex });
+        // 在这里执行 reorder，因为 onDrop 一定在 onDragEnd 之前触发
+        if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
+            console.log("[drag-drop] calling onReorder:", dragIndex, "->", overIndex);
+            onReorder?.(dragIndex, overIndex);
+        } else {
+            console.log("[drag-drop] skipping reorder:", { dragIndex, overIndex });
+        }
+        setDragIndex(null);
+        setOverIndex(null);
     };
 
     return (
@@ -248,10 +264,10 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                             key={entry.key}
                             draggable={dragable && !isEditing}
                             onDragStart={(e) => handleDragStart(e, index)}
-                            onDragOver={(e) => handleDragOver(e, index)}n                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragEnd={handleDragEnd}
                             onDrop={handleDrop}
                             onClick={() => startEdit(entry)}
-                            title={editable ? "点击编辑" : undefined}
                         >
                             {dragable && !isEditing && (
                                 <span
@@ -268,33 +284,35 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                             </span>
                             <span className="obsidian-props-value">
                                 {isEditing ? (
-                                    <input
-                                        ref={inputRef}
-                                        className="obsidian-props-input"
-                                        value={editDraft}
-                                        onChange={(e) => setEditDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                                e.stopPropagation();
-                                                commitEdit();
-                                            } else if (e.key === "Escape") {
-                                                e.stopPropagation();
-                                                cancelEdit();
-                                            }
-                                        }}
-                                        onBlur={() => setEditingKey(null)}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
+                                    (entry.type === "tags" || entry.type === "list") ? (
+                                        <ListPropertyEditor
+                                            items={entry.value as string[]}
+                                            onChange={(items) => commitListEdit(entry, items)}
+                                            onClose={() => setEditingKey(null)}
+                                        />
+                                    ) : (
+                                        <input
+                                            ref={inputRef}
+                                            className="obsidian-props-input"
+                                            value={editDraft}
+                                            onChange={(e) => setEditDraft(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") {
+                                                    e.stopPropagation();
+                                                    commitEdit();
+                                                } else if (e.key === "Escape") {
+                                                    e.stopPropagation();
+                                                    cancelEdit();
+                                                }
+                                            }}
+                                            onBlur={() => setEditingKey(null)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    )
                                 ) : (
                                     renderValue(entry)
                                 )}
                             </span>
-                            {editable && !isEditing && (
-                                <i
-                                    className="fa-regular fa-pen-to-square obsidian-props-edit-icon"
-                                    aria-hidden="true"
-                                />
-                            )}
                         </div>
                     );
                 })}

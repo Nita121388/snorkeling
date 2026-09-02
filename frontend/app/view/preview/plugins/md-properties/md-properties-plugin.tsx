@@ -24,7 +24,7 @@ import { useCallback, useMemo } from "react";
 import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
-import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData } from "./frontmatter-block";
+import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData, buildPropertyEntries } from "./frontmatter-block";
 import { reorderFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
 import { isMdPropertiesMatch } from "./md-properties-match";
 import { ObsidianPropertiesCard, getObsidianPropsCollapsed, setObsidianPropsCollapsed } from "./obsidian-properties-card";
@@ -52,6 +52,12 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
     // markdownCollapsedHeadings 同模式（key = blockId）。
     const collapseKey = model.blockId;
 
+    // 解析 frontmatter 属性用于拖拽排序
+    const entries = useMemo(() => {
+        if (frontmatterBlock?.data == null) return [];
+        return buildPropertyEntries(frontmatterBlock.data);
+    }, [frontmatterBlock]);
+
     // 属性变更：新对象 → YAML 序列化 → 整块替换 frontmatter 区域 → 写草稿（Save/Cmd+S 落盘）。
     const handleDataChange = useCallback(
         (newData: Record<string, unknown>) => {
@@ -68,13 +74,24 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
     // 属性拖拽排序：调整 frontmatter 中属性行的顺序
     const handleReorder = useCallback(
         (fromIndex: number, toIndex: number) => {
-            if (text == null) return;
-            const newText = reorderFrontmatterProperties(text, fromIndex, toIndex);
+            console.log("[drag-drop] handleReorder:", { fromIndex, toIndex, entriesCount: entries.length });
+            if (text == null) {
+                console.log("[drag-drop] text is null, returning");
+                return;
+            }
+            // 将 UI 索引转换为 key 名称
+            const fromKey = entries[fromIndex]?.key;
+            const toKey = toIndex < entries.length ? entries[toIndex]?.key : null;
+            console.log("[drag-drop] fromKey:", fromKey, "toKey:", toKey);
+            if (fromKey == null) return;
+            const newText = reorderFrontmatterProperties(text, fromKey, toKey);
+            console.log("[drag-drop] newText === text:", newText === text, "newText length:", newText?.length);
             if (newText !== text) {
+                console.log("[drag-drop] setting newFileContent");
                 globalStore.set(model.newFileContent, newText);
             }
         },
-        [text, model]
+        [text, model, entries]
     );
 
     const waveBlockRenderers = useMemo(

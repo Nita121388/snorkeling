@@ -1374,6 +1374,14 @@
     }
 }
 
+.block-sidebar-item-fallback {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--secondary-text-color);
+    opacity: 0.3;
+}
+
 /* ── context menu ── */
 
 .block-sidebar-context-menu {

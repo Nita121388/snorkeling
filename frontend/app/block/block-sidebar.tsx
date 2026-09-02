@@ -44,6 +44,82 @@ function getBlockTitle(block: Block | null | undefined): string {
     return m["frame:title"] || m["frame:text"] || m["display:name"] || m.file || m.url || m.cmd || m.view || block?.oid || "Block";
 }
 
+// ── sanitize icon name for makeIconClass (only accepts [a-z0-9-]+) ──
+function sanitizeIconName(raw: string | undefined | null): string {
+    if (!raw) return "cube";
+    // strip fa-solid / fa-regular / fa-brands / fa-sharp prefixes
+    let name = raw.replace(/^fa-(solid|regular|brands|sharp)\s+/, "");
+    // strip leading fa-
+    name = name.replace(/^fa-/, "");
+    // strip any remaining prefix like "solid@" / "regular@"
+    name = name.replace(/^(solid|regular|brands|custom)@/, "");
+    // lowercase + keep only [a-z0-9-]
+    name = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    return name || "cube";
+}
+
+// ── view type → FA icon mapping (view names are not icon names) ──
+const ViewIconMap: Record<string, string> = {
+    term: "terminal",
+    agent: "robot",
+    vcs: "code-branch",
+    processviewer: "chart-bar",
+    sessionoverview: "list-tree",
+    waveconfig: "gear",
+    default: "cube",
+};
+
+// ── file extension → FA icon ──
+const FileExtIconMap: Record<string, string> = {
+    md: "file-lines",
+    markdown: "file-lines",
+    txt: "file-lines",
+    json: "file-code",
+    js: "file-code",
+    ts: "file-code",
+    tsx: "file-code",
+    jsx: "file-code",
+    py: "file-code",
+    go: "file-code",
+    rs: "file-code",
+    csv: "file-csv",
+    xlsx: "file-excel",
+    xls: "file-excel",
+    pdf: "file-pdf",
+    png: "file-image",
+    jpg: "file-image",
+    jpeg: "file-image",
+    gif: "file-image",
+    svg: "file-image",
+    webp: "file-image",
+    mp4: "file-video",
+    mp3: "file-audio",
+    zip: "file-zipper",
+    tar: "file-zipper",
+    gz: "file-zipper",
+};
+
+function resolveBlockIcon(meta: Record<string, unknown> | undefined): string | null {
+    if (!meta) return null;
+    // 1. explicit icon fields take priority
+    const raw = (meta["frame:icon"] || meta["icon"]) as string | undefined;
+    if (raw) {
+        const resolved = sanitizeIconName(raw);
+        return resolved !== "cube" ? resolved : null;
+    }
+    // 2. file extension → icon (for file-based blocks like markdown)
+    const filePath = (meta["file"] || meta["url"]) as string | undefined;
+    if (filePath) {
+        const ext = filePath.split(".").pop()?.toLowerCase();
+        if (ext && FileExtIconMap[ext]) return FileExtIconMap[ext];
+    }
+    // 3. view type → mapped icon
+    const view = (meta["view"] as string) || "";
+    if (view && ViewIconMap[view]) return ViewIconMap[view];
+    // 4. no valid icon → show nothing
+    return null;
+}
+
 // ── context menu position clamp ──
 
 function clampMenuPosition(x: number, y: number): { left: number; top: number } {
@@ -65,10 +141,11 @@ function SidebarIconItem({
     onRestore,
     onContextMenu,
 }: {
-    item: { blockId: string; title: string; icon: string };
+    item: { blockId: string; title: string; icon: string | null };
     onRestore: (id: string) => void;
-    onContextMenu: (e: ReactMouseEvent, item: { blockId: string; title: string; icon: string }) => void;
+    onContextMenu: (e: ReactMouseEvent, item: { blockId: string; title: string; icon: string | null }) => void;
 }) {
+    const iconClass = item.icon ? makeIconClass(item.icon, false) : null;
     return (
         <div
             className="block-sidebar-item"
@@ -76,7 +153,7 @@ function SidebarIconItem({
             onClick={() => onRestore(item.blockId)}
             onContextMenu={(e) => onContextMenu(e, item)}
         >
-            <i className={makeIconClass(item.icon, false, { defaultIcon: "cube" })} />
+            {iconClass ? <i className={iconClass} /> : <span className="block-sidebar-item-fallback" />}
         </div>
     );
 }
@@ -98,10 +175,10 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
                 return {
                     blockId,
                     title: getBlockTitle(block),
-                    icon: block?.meta?.["frame:icon"] || block?.meta?.icon || block?.meta?.view || "cube",
+                    icon: resolveBlockIcon(block?.meta as Record<string, unknown> | undefined),
                 };
             })
-            .filter(Boolean) as { blockId: string; title: string; icon: string }[];
+            .filter(Boolean) as { blockId: string; title: string; icon: string | null }[];
     }, [layoutModel, minimizedBlockIds.join(":")]);
 
     // ── listen for expand/collapse events from tabbar ──

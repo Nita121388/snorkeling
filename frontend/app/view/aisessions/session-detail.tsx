@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Modal } from "@/app/modals/modal";
+import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { cn } from "@/util/util";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1021,22 +1022,14 @@ export function SessionDetailPane({
                                     </div>
                                 )}
                             </div>
-                            {showJumpPill && !deltaLoading ? (
-                                <button
-                                    type="button"
-                                    className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border/60 bg-panel/80 px-3 py-1.5 text-xxs text-secondary shadow-lg backdrop-blur-sm hover:text-primary"
-                                    onClick={() => {
-                                        const node = detailScrollRef.current;
-                                        if (node != null) node.scrollTop = node.scrollHeight;
-                                        setShowJumpPill(false);
-                                    }}
-                                >
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <i className="fa-sharp fa-solid fa-arrow-down" />
-                                        Jump to latest
-                                    </span>
-                                </button>
-                            ) : null}
+                            <ScrollToBottomButton
+                                isAtBottom={!showJumpPill || deltaLoading}
+                                onClick={() => {
+                                    const node = detailScrollRef.current;
+                                    if (node != null) node.scrollTop = node.scrollHeight;
+                                    setShowJumpPill(false);
+                                }}
+                            />
                         </div>
                         {summary != null && summary.id != null && isSourceAvailable(summary.source, availableChatSources) ? (
                             <ChatComposer

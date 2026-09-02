@@ -1,0 +1,102 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// 列表属性编辑器样式
+
+.list-property-editor {
+    width: 100%;
+    min-height: 32px;
+    padding: 4px 8px;
+    border: 1px solid var(--accent-color, #4a9eff);
+    border-radius: 6px;
+    background: var(--panel-bg-color, #fff);
+    cursor: text;
+    transition: border-color 0.15s ease;
+
+    &:focus-within {
+        border-color: var(--accent-color, #4a9eff);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #4a9eff) 20%, transparent);
+    }
+}
+
+.list-property-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.list-property-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--highlight-bg-color, #e8e8e8);
+    color: var(--main-text-color, #333);
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: color-mix(in srgb, var(--highlight-bg-color, #e8e8e8) 80%, var(--main-text-color, #333));
+    }
+}
+
+.list-property-chip-text {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list-property-chip-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--secondary-text-color, #666);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.1);
+        color: var(--main-text-color, #333);
+    }
+}
+
+.list-property-input {
+    flex: 1;
+    min-width: 80px;
+    padding: 2px 0;
+    border: none;
+    background: transparent;
+    color: var(--main-text-color, #333);
+    font-size: 13px;
+    outline: none;
+
+    &::placeholder {
+        color: var(--secondary-text-color, #999);
+    }
+}
+
+// 暗色主题适配
+@media (prefers-color-scheme: dark) {
+    .list-property-editor {
+        background: var(--panel-bg-color, #1e1e1e);
+    }
+
+    .list-property-chip-remove {
+        &:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+    }
+}

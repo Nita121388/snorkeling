@@ -531,6 +531,7 @@ const BlockFrame_Header = ({
     const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));
     const metaFrameTitle = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:title"));
     const metaFrameIcon = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:icon"));
+    const metaFrameText = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "frame:text"));
     const metaConnection = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "connection"));
     let viewName = util.useAtomValueSafe(viewModel?.viewName) ?? blockViewToName(metaView);
     let viewIconUnion = util.useAtomValueSafe(viewModel?.viewIcon) ?? blockViewToIcon(metaView);
@@ -593,7 +594,7 @@ const BlockFrame_Header = ({
                     {preIconButton && <IconButton decl={preIconButton} className="block-frame-preicon-button" />}
                     <div className="block-frame-default-header-iconview">
                         {viewIconElem}
-                        {viewName && !hideViewName && <div className="block-frame-view-type"><span>{viewName}</span></div>}
+                        {metaFrameText && !hideViewName && <div className="block-frame-view-type"><span>{metaFrameText}</span></div>}
                     </div>
                 </>
             )}

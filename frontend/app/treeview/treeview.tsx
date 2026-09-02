@@ -82,6 +82,7 @@ export interface TreeViewProps {
     onRenameSelected?: (id: string, node: TreeNodeData) => void;
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
+    onBackgroundClick?: () => void;
 }
 
 export interface TreeViewExpandAllResult {
@@ -403,6 +404,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onBackgroundContextMenu,
         onNodeClick,
         onMarqueeSelect,
+        onBackgroundClick,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
@@ -912,6 +914,13 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 className="h-full overflow-auto select-none"
                 style={{ position: "relative" }}
                 onMouseDown={onScrollContainerMouseDown}
+                onClick={(event) => {
+                    // Click on empty space (not on a row) → clear selection
+                    // But skip if a marquee just completed (the flag will be cleared on next mousedown)
+                    if (!(event.target as HTMLElement).closest("[data-treeview-row]") && !marqueeJustCompletedRef.current) {
+                        onBackgroundClick?.();
+                    }
+                }}
                 onContextMenu={(event) => {
                     onBackgroundContextMenu?.(event);
                 }}
@@ -926,6 +935,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                         return (
                             <div
                                 key={row.id}
+                                data-treeview-row
                                 className={clsx(
                                     "absolute left-0 right-0 flex items-center overflow-hidden rounded-[5px] text-sm",
                                     row.kind === "node" ? "cursor-pointer" : "text-muted",

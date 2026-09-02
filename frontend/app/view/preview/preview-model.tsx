@@ -2334,6 +2334,11 @@ export class PreviewModel implements ViewModel {
             this.toggleOpenFileModal();
             return true;
         }
+        // Ctrl+S / Cmd+S: 保存文件（preview 和 edit 模式都支持）
+        if (checkKeyPressed(e, "Cmd:s") || checkKeyPressed(e, "Ctrl:s")) {
+            fireAndForget(this.handleFileSave.bind(this));
+            return true;
+        }
         const canPreview = globalStore.get(this.canPreview);
         if (canPreview) {
             if (checkKeyPressed(e, "Cmd:e")) {
