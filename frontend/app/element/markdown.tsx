@@ -127,6 +127,7 @@ import {
     resolveRemoteFile,
     resolveSrcSet,
     transformBlocks,
+    updateImageAltInLine,
     updateImageSizeInLine,
 } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
@@ -1204,6 +1205,8 @@ const MarkdownImg = ({
     const inputRef = useRef<HTMLInputElement | null>(null);
     const imgRef = useRef<HTMLImageElement | null>(null);
     const [newPath, setNewPath] = useState("");
+    const [altEditing, setAltEditing] = useState(false);
+    const [altDraft, setAltDraft] = useState("");
 
     // --- Image resize state ---
     const { src: rawImgSrc, width: initWidth, height: initHeight } = parseImageSizeSuffix(props.src);
@@ -1313,6 +1316,24 @@ const MarkdownImg = ({
             onInlineEditCommit(newText);
         }
         setPathInputOpen(false);
+    };
+
+    const commitAltEdit = () => {
+        if (!canEdit || sourceLine == null) {
+            setAltEditing(false);
+            return;
+        }
+        const trimmed = altDraft.trim();
+        // Only commit if the alt actually changed
+        if (trimmed !== (props.alt ?? "")) {
+            const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
+                updateImageAltInLine(lineText, sourceSrc, trimmed)
+            );
+            if (newText != null) {
+                onInlineEditCommit(newText);
+            }
+        }
+        setAltEditing(false);
     };
 
     const copyImagePath = async () => {
@@ -1530,6 +1551,40 @@ const MarkdownImg = ({
                         </div>
                     )}
                 </span>
+                {canEdit && !altEditing && (
+                    <div
+                        className="markdown-img-alt-display"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setAltDraft(props.alt ?? "");
+                            setAltEditing(true);
+                        }}
+                        title="Click to edit alt text"
+                    >
+                        {(props.alt ?? "") === "" ? "+ Add description" : props.alt}
+                    </div>
+                )}
+                {canEdit && altEditing && (
+                    <div className="markdown-img-alt-editor" onClick={(e) => e.stopPropagation()}>
+                        <input
+                            autoFocus
+                            className="markdown-img-alt-input"
+                            value={altDraft}
+                            placeholder="Image description"
+                            onChange={(e) => setAltDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    commitAltEdit();
+                                } else if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    setAltEditing(false);
+                                }
+                            }}
+                            onBlur={commitAltEdit}
+                        />
+                    </div>
+                )}
                 {copied && <span className="markdown-img-copied">Path copied</span>}
                 {copiedFull && <span className="markdown-img-copied">Full path copied</span>}
                 {lightboxOpen && <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />}
@@ -1649,6 +1704,11 @@ type MarkdownProps = {
      * the custom component renders instead of the default file-card.
      */
     waveBlockRenderers?: Record<string, (block: MarkdownContentBlockType) => React.ReactNode>;
+    /**
+     * When true, the markdown preview enters presentation mode: full-screen, centered content,
+     * and Ctrl+scroll zoom. Controlled by the Preview model's presentationMode atom.
+     */
+    presentationMode?: boolean;
 };
 
 type MarkdownScrollSourceState = {
@@ -1696,6 +1756,7 @@ const Markdown = ({
     onScrollTopChange,
     frontmatterBlock,
     waveBlockRenderers,
+    presentationMode = false,
 }: MarkdownProps) => {
     // `fileContentAtom` is an async atom (Atom<Promise<string>>). On invalidation `useAtomValue`
     // throws the pending Promise → without a Suspense boundary above, ReactMarkdown's subtree
@@ -1746,6 +1807,76 @@ const Markdown = ({
     const [collapsedTables, setCollapsedTables] = useState<Set<string>>(
         () => collapsedTablesProp ?? new Set()
     );
+
+    // === Presentation mode ================================================================
+    const [presentationZoom, setPresentationZoom] = useState(100);
+    const [showZoomIndicator, setShowZoomIndicator] = useState(false);
+    const zoomIndicatorTimerRef = useRef<number | null>(null);
+
+    // Enter/exit fullscreen when presentationMode changes
+    useEffect(() => {
+        if (presentationMode) {
+            document.documentElement.requestFullscreen?.().catch(() => {});
+        } else if (document.fullscreenElement) {
+            document.exitFullscreen?.().catch(() => {});
+            setPresentationZoom(100);
+        }
+    }, [presentationMode]);
+
+    // Esc key exits presentation mode
+    useEffect(() => {
+        if (!presentationMode) {
+            return;
+        }
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                // The fullscreen API also fires Escape, but we handle it here for clarity
+            }
+        };
+        const handleFullscreenChange = () => {
+            if (!document.fullscreenElement && presentationMode) {
+                // Exited fullscreen via browser UI (e.g. Esc key) — sync state
+            }
+        };
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFullscreenChange);
+        };
+    }, [presentationMode]);
+
+    // Ctrl+scroll zoom in presentation mode
+    const handlePresentationWheel = useCallback(
+        (e: React.WheelEvent) => {
+            if (!presentationMode || !e.ctrlKey) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -10 : 10;
+            setPresentationZoom((prev) => {
+                const next = Math.max(60, Math.min(300, prev + delta));
+                // Show zoom indicator
+                setShowZoomIndicator(true);
+                if (zoomIndicatorTimerRef.current != null) {
+                    window.clearTimeout(zoomIndicatorTimerRef.current);
+                }
+                zoomIndicatorTimerRef.current = window.setTimeout(() => {
+                    setShowZoomIndicator(false);
+                }, 1500);
+                return next;
+            });
+        },
+        [presentationMode]
+    );
+
+    // Clean up zoom indicator timer on unmount
+    useEffect(() => {
+        return () => {
+            if (zoomIndicatorTimerRef.current != null) {
+                window.clearTimeout(zoomIndicatorTimerRef.current);
+            }
+        };
+    }, []);
 
     // Ensure uniqueness of ids between MD preview instances. When the caller supplies a stable
     // idPrefix (blockId+path-derived) the persisted collapsedHeadings Set stays matchable across
@@ -3534,7 +3665,7 @@ const Markdown = ({
     );
 
     // === Block editor M2: slash palette + floating toolbar + inline-style shortcuts ===
-    // === Block editor M3: emoji picker (":" trigger, lazy emojibase catalog) ==========
+    // === Block editor M3: emoji picker ("::" double-colon trigger, lazy emojibase catalog) ==========
     // Detection is trigger-layer based (全/半角等价); every command executes through
     // block-editor/exec.ts so ONE gesture = ONE handleInlineEditCommit diff.
     const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
@@ -3543,7 +3674,7 @@ const Markdown = ({
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
-    // Emoji picker opened via `/emoji` slash command (separate from the ":" inline trigger).
+    // Emoji picker opened via `/emoji` slash command (separate from the "::" inline trigger).
     // This state tracks whether the picker is open, its anchor position, and search state.
     const [slashEmojiState, setSlashEmojiState] = useState<{
         open: boolean;
@@ -3565,7 +3696,7 @@ const Markdown = ({
 
     const trackEditorTriggers = useCallback(
         (draft: string, caret: number) => {
-            // Neither ":" nor "/" triggers inside code or table cells (方案 02 §2.4 / 05 §0).
+            // Neither "::" nor "/" triggers inside code or table cells (方案 02 §2.4 / 05 §0).
             if (editSessionKind === "code" || editSessionKind === "table") {
                 setSlashState(null);
                 setEmojiState(null);
@@ -3807,7 +3938,7 @@ const Markdown = ({
         [inlineEdit]
     );
 
-    // === Emoji picker (M3): ":" trigger in the same textarea. Shares the slash
+    // === Emoji picker (M3): "::" double-colon trigger in the same textarea. Shares the slash
     // positioning math; Enter/Arrows/Esc handled in handleEditorKeyDown. ==============
     const emojiItems = useMemo(() => {
         if (emojiState == null || emojiCatalog == null) {
@@ -3844,9 +3975,9 @@ const Markdown = ({
             if (emojiState == null) {
                 return;
             }
-            // Replace ":query" (trigger char .. caret) with the emoji, caret after it.
+            // Replace "::query" (double-colon trigger .. caret) with the emoji, caret after it.
             const draft = inlineEdit.draftText;
-            const caret = ta?.selectionStart ?? emojiState.triggerStart + 1 + emojiState.query.length;
+            const caret = ta?.selectionStart ?? emojiState.triggerStart + 2 + emojiState.query.length;
             const next = draft.slice(0, emojiState.triggerStart) + entry.char + draft.slice(caret);
             const nextCaret = emojiState.triggerStart + entry.char.length;
             inlineEdit.setDraftText(next);
@@ -5035,12 +5166,21 @@ const Markdown = ({
     if (fixedFontSizeOverride != null) {
         mergedStyle["--markdown-fixed-font-size"] = `${boundNumber(fixedFontSizeOverride, 6, 64)}px`;
     }
+    if (presentationMode) {
+        mergedStyle["--markdown-font-size"] = `${presentationZoom}%`;
+    }
     return (
         <TableEditContext.Provider value={tableEditContext}>
         <div
-            className={clsx("markdown", className, onInlineEditCommit != null && "markdown-editable")}
+            className={clsx(
+                "markdown",
+                className,
+                onInlineEditCommit != null && "markdown-editable",
+                presentationMode && "markdown-presentation"
+            )}
             style={mergedStyle}
             data-copy-context-path={copyContextPath || undefined}
+            onWheel={presentationMode ? handlePresentationWheel : undefined}
         >
             {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
                 <>
@@ -5358,6 +5498,11 @@ const Markdown = ({
                         resizeStorageKey="snorkeling.markdownOutline.preview.size"
                         onSelectItem={handleSelectTocItem}
                     />
+                </div>
+            )}
+            {presentationMode && showZoomIndicator && (
+                <div className="markdown-zoom-indicator">
+                    {presentationZoom}%
                 </div>
             )}
         </div>

@@ -64,21 +64,30 @@ export type InlineTriggerMatch = {
 /** Boundary chars allowed immediately before an `inline-after-boundary` trigger. A
  *  trigger preceded by anything else (letters, digits, "/", ":", …) does not fire —
  *  that's how "https://…" and "a:b" stay inert. */
-const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "(", "[", "{", "<", "（", "【", "「", "『", "《", "　", '"', "'", "“", "”"]);
+const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "(", "[", "{", "<", "（", "【", "「", "『", "《", "　", '"', "'", "\u201c", "\u201d"]);
 
 function isBoundaryChar(ch: string | undefined): boolean {
     return ch === undefined || BOUNDARY_CHARS.has(ch);
+}
+
+/** True when the char is a colon (half-width `:` or full-width `：`). */
+function isColon(ch: string | undefined): boolean {
+    if (ch == null) return false;
+    return ch === ":" || ch === "：";
 }
 
 /**
  * Scan the text before `caret` for the nearest eligible trigger char on the caret's
  * own line. Returns null when:
  *   - no trigger char is present before the caret on that line,
- *   - the nearest candidate's `where` rule fails (slash not at line-start, emoji `:` not
+ *   - the nearest candidate's `where` rule fails (slash not at line-start, emoji `::` not
  *     after a boundary char),
  *   - the query between trigger and caret already contains whitespace (the user typed a
  *     space → palette dismissed),
  *   - the caret sits inside a fenced code block (triggers never fire inside code).
+ *
+ * Emoji trigger specifically requires TWO consecutive colons (`::` / `：：` / `:：` / `：:`)
+ * to avoid conflicts with normal typing like `https://` or `a:b`.
  *
  * `text` is the CURRENT BLOCK's draft text (not the whole document) and `caret` is a
  * 0-based char offset into it — matching how the inline-edit textarea reports them.
@@ -101,6 +110,37 @@ export function detectInlineTrigger(text: string, caret: number): InlineTriggerM
         if (spec == null) {
             continue;
         }
+
+        // Emoji trigger: require double colon (`::` / `：：` / mixed half+full width)
+        if (spec.command === "emoji") {
+            // The char at `i` is a colon. The char before it (`i-1`) must also be a colon.
+            if (i < 1 || !isColon(beforeCaret[i - 1])) {
+                continue; // single colon — not a trigger, keep scanning
+            }
+            // `triggerStart` points to the FIRST colon (position i-1).
+            const doubleColonStart = i - 1;
+            const query = beforeCaret.slice(i + 1);
+            // Query must be a single word: any whitespace between trigger and caret kills it.
+            if (/[\s]/.test(query)) {
+                return null;
+            }
+            // Boundary check: the char before the FIRST colon must be a boundary.
+            const prev = doubleColonStart === 0 ? undefined : beforeCaret[doubleColonStart - 1];
+            if (!isBoundaryChar(prev)) {
+                continue; // boundary fails — keep scanning for another pair
+            }
+            if (isCaretInFence(text, clamped)) {
+                return null;
+            }
+            return {
+                command: spec.command,
+                triggerStart: lineStart + doubleColonStart,
+                queryStart: lineStart + doubleColonStart + 2,
+                query,
+            };
+        }
+
+        // Non-emoji triggers (slash, heading, etc.): original single-char logic.
         // Query must be a single word: any whitespace between trigger and caret kills it.
         const query = beforeCaret.slice(i + 1);
         if (/[\s]/.test(query)) {

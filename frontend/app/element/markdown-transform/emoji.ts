@@ -28,13 +28,13 @@ export interface EmojiCatalog {
 export const EMOJI_GROUP_LABELS: Record<number, string> = {
     0: "Smileys",
     1: "People",
-    2: "Animals & Nature",
-    3: "Food & Drink",
-    4: "Travel & Places",
-    5: "Activities",
-    6: "Objects",
-    7: "Symbols",
-    8: "Flags",
+    3: "Animals & Nature",
+    4: "Food & Drink",
+    5: "Travel & Places",
+    6: "Activities",
+    7: "Objects",
+    8: "Symbols",
+    9: "Flags",
 };
 
 const RECENT_KEY = "snorkeling:recent-emoji";
@@ -83,8 +83,13 @@ export function loadEmojiCatalog(): Promise<EmojiCatalog> {
             }
         };
         const entries: EmojiEntry[] = [];
+        // Skip Component group (2: skin tones, hair modifiers) and undefined groups
+        const SKIP_GROUPS = new Set([2]);
         for (const e of ((en as any).default ?? en) as any[]) {
             if (e.emoji == null || e.hexcode == null || e.group == null) {
+                continue;
+            }
+            if (SKIP_GROUPS.has(e.group) || EMOJI_GROUP_LABELS[e.group] == null) {
                 continue;
             }
             const labelEn: string = e.label ?? "";
@@ -236,4 +241,60 @@ export function buildEmojiPickerItems(catalog: EmojiCatalog, query: string, rece
 /** The selectable subset of picker items, in render order — what arrow keys walk over. */
 export function emojiPickerEntries(items: EmojiPickerItem[]): EmojiEntry[] {
     return items.flatMap((it) => ("entry" in it && it.entry != null ? [it.entry] : []));
+}
+
+/** Representative emoji icon for each group tab (used by the category bar). */
+export const EMOJI_GROUP_ICONS: Record<number, string> = {
+    0: "😀",
+    1: "👤",
+    3: "🐾",
+    4: "🍔",
+    5: "✈️",
+    6: "⚽",
+    7: "💻",
+    8: "🔔",
+    9: "🏁",
+};
+
+/**
+ * Map from flat picker-item index → group number.
+ * Returns null for header items (which have no pickable index).
+ * Used by the category tab bar to determine which group is visible.
+ */
+export function pickerItemGroupMap(items: EmojiPickerItem[]): Array<number | null> {
+    const map: Array<number | null> = [];
+    let currentGroup: number | null = null;
+    for (const it of items) {
+        if ("header" in it) {
+            // Extract group number from header key "h:0", "h:1", … or "h:recent"
+            const groupNum = parseInt(it.key.slice(2), 10);
+            currentGroup = Number.isFinite(groupNum) ? groupNum : null;
+            map.push(null); // header items are not pickable
+        } else {
+            map.push(currentGroup);
+        }
+    }
+    return map;
+}
+
+/**
+ * Returns the flat pickable-index of the first emoji in each visible group.
+ * Used so clicking a category tab can scroll to / activate the first emoji of that group.
+ */
+export function groupFirstPickableIndex(items: EmojiPickerItem[]): Map<number, number> {
+    const result = new Map<number, number>();
+    let pickIdx = -1;
+    let currentGroup: number | null = null;
+    for (const it of items) {
+        if ("header" in it) {
+            const groupNum = parseInt(it.key.slice(2), 10);
+            currentGroup = Number.isFinite(groupNum) ? groupNum : null;
+        } else {
+            pickIdx++;
+            if (currentGroup != null && !result.has(currentGroup)) {
+                result.set(currentGroup, pickIdx);
+            }
+        }
+    }
+    return result;
 }

@@ -145,6 +145,7 @@ type WshRpcInterface interface {
 	RemoteVcsSyncCommand(ctx context.Context, data CommandRemoteVcsSyncData) (*RemoteVcsSyncRtnData, error)
 	RemoteVcsFileHistoryCommand(ctx context.Context, data CommandRemoteVcsFileHistoryData) (*RemoteVcsFileHistoryRtnData, error)
 	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
+	RemoteVcsStatCommand(ctx context.Context, data CommandRemoteVcsStatData) (*RemoteVcsStatRtnData, error)
 
 	// emain
 	WebSelectorCommand(ctx context.Context, data CommandWebSelectorData) ([]string, error)
@@ -1185,4 +1186,17 @@ type RemoteVcsFileDiffRtnData struct {
 	Original *string `json:"original,omitempty"`
 	Modified *string `json:"modified,omitempty"`
 	Error    string  `json:"error,omitempty"`
+}
+
+// lightweight stat for the composer bar: branch + added/removed/files
+type CommandRemoteVcsStatData struct {
+	Path string `json:"path"`
+}
+
+type RemoteVcsStatRtnData struct {
+	Branch  string `json:"branch,omitempty"`
+	Added   int    `json:"added"`
+	Removed int    `json:"removed"`
+	Files   int    `json:"files"`
+	Error   string `json:"error,omitempty"`
 }

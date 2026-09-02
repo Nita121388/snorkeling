@@ -890,6 +890,12 @@ func RemoteVcsResolvePathCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcs
 	return resp, err
 }
 
+// command "remotevcsstat", wshserver.RemoteVcsStatCommand
+func RemoteVcsStatCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsStatData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsStatRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsStatRtnData](w, "remotevcsstat", data, opts)
+	return resp, err
+}
+
 // command "remotevcssync", wshserver.RemoteVcsSyncCommand
 func RemoteVcsSyncCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsSyncData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsSyncRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsSyncRtnData](w, "remotevcssync", data, opts)

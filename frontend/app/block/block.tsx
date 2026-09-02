@@ -16,6 +16,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
 import {
@@ -174,6 +175,15 @@ const InlineTabLabel = memo(
         const [draftTitle, setDraftTitle] = useState(customTitle ?? "");
         const inputRef = useRef<HTMLInputElement>(null);
         const tabRef = useRef<HTMLDivElement>(null);
+        const [isHovered, setIsHovered] = useState(false);
+        const [isCardHovered, setIsCardHovered] = useState(false);
+        const hideCardTimerRef = useRef<number | null>(null);
+        const cancelPendingHideCard = useCallback(() => {
+            if (hideCardTimerRef.current != null) {
+                window.clearTimeout(hideCardTimerRef.current);
+                hideCardTimerRef.current = null;
+            }
+        }, []);
         const isLocked = ((blockData?.meta ?? {}) as Record<string, unknown>)[BlockLockMetaKey] === true;
         const dirtyAtom = useMemo(() => getBlockDirtyAtom(blockId), [blockId]);
         const isDirty = useAtomValue(dirtyAtom);
@@ -391,8 +401,14 @@ const InlineTabLabel = memo(
             ],
         );
 
+        const isAgentBlock = isAgentTerminalMeta(blockData?.meta);
+        const isGuiChat = blockData?.meta?.["aisessions:newchat"] === true;
+        const hoverCardMode = isGuiChat ? "gui" : "tui";
+        const showHoverCard = isAgentBlock && !isActive && (isHovered || isCardHovered);
+
         return (
-            <div
+            <>
+                <div
                 ref={tabRef}
                 onContextMenu={handleContextMenu}
                 className={clsx("inline-tab-block-tab", {
@@ -400,6 +416,18 @@ const InlineTabLabel = memo(
                     dragging: isDragging,
                     "drop-target": isOver,
                 })}
+                onMouseEnter={() => {
+                    cancelPendingHideCard();
+                    setIsHovered(true);
+                }}
+                onMouseLeave={() => {
+                    cancelPendingHideCard();
+                    hideCardTimerRef.current = window.setTimeout(() => {
+                        hideCardTimerRef.current = null;
+                        setIsHovered(false);
+                        setIsCardHovered(false);
+                    }, 300);
+                }}
             >
                 <div className="inline-tab-block-tab-main-wrapper">
                     <Tooltip
@@ -490,7 +518,39 @@ const InlineTabLabel = memo(
                     <i className={makeIconClass("xmark", true)} />
                 </button>
             </div>
-        );
+            {/* Agent hover card for inactive tabs */}
+            {showHoverCard && (
+                <div
+                    className="agent-hover-card-wrapper"
+                    style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        zIndex: 100,
+                        marginTop: 2,
+                    }}
+                    onMouseEnter={() => {
+                        cancelPendingHideCard();
+                        setIsCardHovered(true);
+                    }}
+                    onMouseLeave={() => {
+                        cancelPendingHideCard();
+                        hideCardTimerRef.current = window.setTimeout(() => {
+                            hideCardTimerRef.current = null;
+                            setIsCardHovered(false);
+                            setIsHovered(false);
+                        }, 300);
+                    }}
+                >
+                    <AgentHoverCard
+                        blockId={blockId}
+                        blockData={blockData ?? null}
+                        mode={hoverCardMode}
+                    />
+                </div>
+            )}
+        </>
+    );
     }
 );
 InlineTabLabel.displayName = "InlineTabLabel";

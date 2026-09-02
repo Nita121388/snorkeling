@@ -79,6 +79,7 @@
             flex-direction: column;
 
             .block-frame-default-header {
+                position: relative;
                 max-height: var(--header-height);
                 min-height: var(--header-height);
                 display: flex;
@@ -833,6 +834,7 @@
     }
 
     .inline-tab-block-tab {
+        position: relative;
         display: inline-flex;
         align-items: center;
         padding: 0 4px 0 4px;
@@ -1339,7 +1341,6 @@
     background: rgb(from var(--modal-bg-color) r g b / 0.85);
     backdrop-filter: blur(20px);
     border-right: 1px solid rgb(from var(--border-color) r g b / 0.6);
-    box-shadow: 2px 0 24px rgb(0 0 0 / 0.25);
     border-radius: 0 12px 12px 0;
     padding: 4px 0;
 }

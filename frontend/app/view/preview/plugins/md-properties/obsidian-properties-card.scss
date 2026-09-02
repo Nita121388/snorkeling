@@ -7,35 +7,9 @@
     margin: 0 0 14px 0;
     padding: 0 0 16px 0;
     border: none;
-    border-radius: 0;
+    border-radius: 8px;
     background: transparent;
     font-size: var(--markdown-font-size, 14px);
-
-    .obsidian-props-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding-bottom: 6px;
-        margin-bottom: 4px;
-        color: var(--secondary-text-color);
-
-        i {
-            font-size: 0.8em;
-            opacity: 0.8;
-        }
-
-        .obsidian-props-title {
-            font-weight: 600;
-            letter-spacing: 0.02em;
-        }
-
-        .obsidian-props-count {
-            margin-left: auto;
-            font-size: 0.85em;
-            opacity: 0.7;
-            user-select: none;
-        }
-    }
 
     .obsidian-props-row {
         display: flex;
@@ -118,7 +92,7 @@
 
 .obsidian-props-row.is-editable {
     cursor: pointer;
-    border-radius: 0;
+    border-radius: 4px;
     padding-left: 4px;
     padding-right: 4px;
     margin-left: -4px;
@@ -155,15 +129,136 @@
 // ---------- Phase 2.5：折叠/展开 ----------
 
 .obsidian-props-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 4px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--main-text-color);
+    font: inherit;
+    font-size: inherit;
     cursor: pointer;
     user-select: none;
-    border-radius: 6px;
-    padding: 3px 4px;
-    margin: -3px -4px 4px -4px;
+    text-align: left;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: var(--highlight-bg-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
 
     &.is-collapsed {
-        margin-bottom: 0;
+        // 折叠态可选微调
     }
+}
+
+.obsidian-props-title {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.obsidian-props-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--secondary-text-color);
+    transition: transform 0.2s ease;
+
+    // 展开时箭头朝下，折叠时旋转到朝右
+    svg[data-collapsed="true"] {
+        transform: rotate(-90deg);
+    }
+    svg[data-collapsed="false"] {
+        transform: rotate(0deg);
+    }
+}
+
+.obsidian-props-separator {
+    height: 1px;
+    background: var(--border-color);
+    margin: 2px 0 6px 0;
+}
+
+// ---------- Add property ----------
+
+.obsidian-props-add-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    min-height: 26px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 0 -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: var(--highlight-bg-color);
+    }
+
+    .obsidian-props-icon {
+        flex: 0 0 auto;
+        width: 16px;
+        text-align: center;
+        font-size: 0.8em;
+        color: var(--secondary-text-color);
+        opacity: 0.6;
+    }
+
+    .obsidian-props-add-text {
+        color: var(--secondary-text-color);
+        font-size: 14px;
+        opacity: 0.7;
+    }
+
+    &.is-adding {
+        cursor: default;
+        background: transparent;
+
+        &:hover {
+            background: transparent;
+        }
+    }
+}
+
+.obsidian-props-add-key-input,
+.obsidian-props-add-value-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--panel-bg-color);
+    color: var(--main-text-color);
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+        opacity: 0.5;
+    }
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+}
+
+.obsidian-props-add-key-input {
+    flex: 0 1 35%;
+    min-width: 90px;
+    max-width: 220px;
 }
 
 // ---------- Phase 3：拖拽排序 ----------

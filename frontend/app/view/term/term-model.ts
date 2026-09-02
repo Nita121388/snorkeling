@@ -596,15 +596,21 @@ export class TermViewModel implements ViewModel {
         }
         const doneElapsedMs = doneUnread ? agentDoneElapsedMs(status, Date.now()) : 0;
         const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
+        const allRead = !unread && !doneUnread;
+        // allRead 灰化: R 与 D 各自看自己的未读判定, 任何一个未读都不灰;
+        // 两个都已阅 (或没有未读可点亮) → is-acked 视觉上变淡, 标签显示 "Seen".
         const titleText = unread
             ? `${presentation.label} — click to mark as read`
             : doneUnread
               ? `${presentation.label} (${doneElapsedText} ago) — click to dismiss`
-              : `${presentation.label} — up to date`;
-        const labelText = doneUnread ? `${presentation.label} ${doneElapsedText}` : presentation.label;
-        // 已阅灰化: R 与 D 各自看自己的未读判定, 任何一个未读都不灰;
-        // 两个都已阅 (或没有未读可点亮) → is-acked 视觉上变淡.
-        const allRead = !unread && !doneUnread;
+              : allRead && status.state === "idle"
+                ? `Seen — up to date`
+                : `${presentation.label} — up to date`;
+        const labelText = doneUnread
+            ? `${presentation.label} ${doneElapsedText}`
+            : allRead && status.state === "idle"
+              ? "Seen"
+              : presentation.label;
         return {
             elemtype: "text",
             text: labelText,

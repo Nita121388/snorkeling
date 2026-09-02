@@ -69,6 +69,7 @@ function MarkdownPreview({
     const fontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fontsize"));
     const fixedFontSizeOverride = useAtomValue(getOverrideConfigAtom(model.blockId, "markdown:fixedfontsize"));
     const collapsibleOrderedLists = MarkdownFilePattern.test(fileInfo.path ?? fileInfo.name ?? "");
+    const presentationMode = useAtomValue(model.presentationMode);
     // note:autosave (default ON): inline-edit commits flush to disk automatically after 1.5s.
     const inlineEditAutosave = useAtomValue(getSettingsKeyAtom("note:autosave")) ?? true;
     // Stable heading-id prefix + collapse snapshot so the rehype-slug ids (and the Set of collapsed
@@ -152,6 +153,7 @@ function MarkdownPreview({
                 onScrollTopChange={onScrollTopChange}
                 frontmatterBlock={frontmatterBlock}
                 waveBlockRenderers={waveBlockRenderers}
+                presentationMode={presentationMode}
                 contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
             />
         </div>

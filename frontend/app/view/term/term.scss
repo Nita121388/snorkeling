@@ -533,3 +533,145 @@
         }
     }
 }
+
+/* AgentHoverCard wrapper */
+.agent-hover-card-wrapper {
+    pointer-events: auto;
+}
+
+.agent-hover-card-section {
+    padding: 0 0 4px 0;
+}
+
+.agent-hover-card-section:last-child {
+    padding-bottom: 0;
+}
+
+.agent-hover-card-outline {
+    border-top: 1px solid var(--border-color);
+    padding-top: 4px;
+    margin-top: 4px;
+}
+
+.agent-hover-card-outline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.agent-hover-card-outline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+
+    &:hover {
+        background: var(--hover-bg-color);
+    }
+}
+
+.agent-hover-card-outline-seq {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--accent-color);
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+.agent-hover-card-outline-text {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* AgentHoverCard - GUI header/tab hover 卡片 */
+.agent-hover-card {
+    min-width: 200px;
+    max-width: 400px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--block-bg-color);
+    color: var(--main-text-color);
+    font-size: 12px;
+    padding: 6px 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.agent-hover-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.agent-hover-card-icon {
+    font-size: 10px;
+    color: var(--accent-color);
+    flex-shrink: 0;
+}
+
+.agent-hover-card-title {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-hover-card-preview {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--main-text-color);
+    font-size: 12px;
+    padding: 4px 6px;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--accent-color);
+        background: var(--hover-bg-color);
+    }
+}
+
+.agent-hover-card-empty {
+    color: var(--secondary-text-color);
+    font-style: italic;
+}
+
+.agent-hover-card-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.agent-hover-card-input {
+    width: 100%;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font-size: 12px;
+    padding: 4px 6px;
+    resize: vertical;
+
+    &:focus {
+        outline: none;
+    }
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
+}
+
+.agent-hover-card-error {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--error-color);
+}

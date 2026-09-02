@@ -114,12 +114,21 @@ const WidgetQuickLaunchModal = memo(() => {
             if (widgets.length === 0) {
                 return;
             }
-            if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+
+            let nextIdx = highlightIdx;
+
+            if (e.key === "ArrowRight") {
                 e.preventDefault();
-                setHighlightIdx((i) => (i + 1) % widgets.length);
-            } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                nextIdx = (highlightIdx + 1) % widgets.length;
+            } else if (e.key === "ArrowLeft") {
                 e.preventDefault();
-                setHighlightIdx((i) => (i - 1 + widgets.length) % widgets.length);
+                nextIdx = (highlightIdx - 1 + widgets.length) % widgets.length;
+            } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                nextIdx = Math.min(highlightIdx + cols, widgets.length - 1);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                nextIdx = Math.max(highlightIdx - cols, 0);
             } else if (e.key === "Enter") {
                 e.preventDefault();
                 const w = widgets[highlightIdx];
@@ -133,8 +142,10 @@ const WidgetQuickLaunchModal = memo(() => {
                     launch(w, "group");
                 }
             }
+
+            setHighlightIdx(nextIdx);
         },
-        [widgets, highlightIdx, launch]
+        [widgets, highlightIdx, cols, launch]
     );
 
     return (

@@ -25,6 +25,8 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
+import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
+import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     insertBlockAtFixedLeftOrder,
@@ -546,18 +548,33 @@ const BlockFrame_Header = ({
     const iconColor = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "icon:color"));
     const dragHandleRef = preview ? null : nodeModel.dragHandleRef;
     const isTerminalBlock = metaView === "term";
+    const blockData = jotai.useAtomValue(
+        waveEnv.wos.getWaveObjectAtom<Block>(WOS.makeORef("block", nodeModel.blockId))
+    );
+    const isAgentBlock = isTerminalBlock && isAgentTerminalMeta(blockData?.meta);
     viewName = metaFrameTitle ?? viewName;
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
     const [isHovered, setIsHovered] = React.useState(false);
+    const [isCardHovered, setIsCardHovered] = React.useState(false);
     const hideHoverTimerRef = React.useRef<number | null>(null);
+    const hideCardTimerRef = React.useRef<number | null>(null);
     const cancelPendingHideHover = React.useCallback(() => {
         if (hideHoverTimerRef.current != null) {
             window.clearTimeout(hideHoverTimerRef.current);
             hideHoverTimerRef.current = null;
         }
     }, []);
+    const cancelPendingHideCard = React.useCallback(() => {
+        if (hideCardTimerRef.current != null) {
+            window.clearTimeout(hideCardTimerRef.current);
+            hideCardTimerRef.current = null;
+        }
+    }, []);
 
-    React.useEffect(() => () => cancelPendingHideHover(), [cancelPendingHideHover]);
+    React.useEffect(() => () => {
+        cancelPendingHideHover();
+        cancelPendingHideCard();
+    }, [cancelPendingHideHover, cancelPendingHideCard]);
 
     React.useEffect(() => {
         if (magnified && !preview && !prevMagifiedState.current) {
@@ -629,6 +646,37 @@ const BlockFrame_Header = ({
                 moveContext={moveContext}
                 isHovered={isHovered}
             />
+            {/* Agent hover card - only show for agent blocks in GUI mode (TUI uses TermSessionTopBar) */}
+            {isAgentBlock && (isHovered || isCardHovered) && (
+                <div
+                    className="agent-hover-card-wrapper"
+                    style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        zIndex: 100,
+                        marginTop: 2,
+                    }}
+                    onMouseEnter={() => {
+                        cancelPendingHideCard();
+                        setIsCardHovered(true);
+                    }}
+                    onMouseLeave={() => {
+                        cancelPendingHideCard();
+                        hideCardTimerRef.current = window.setTimeout(() => {
+                            hideCardTimerRef.current = null;
+                            setIsCardHovered(false);
+                            setIsHovered(false);
+                        }, 300);
+                    }}
+                >
+                    <AgentHoverCard
+                        blockId={nodeModel.blockId}
+                        blockData={blockData ?? null}
+                        mode="gui"
+                    />
+                </div>
+            )}
         </div>
     );
 };

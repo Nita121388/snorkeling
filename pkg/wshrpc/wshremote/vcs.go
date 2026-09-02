@@ -2097,3 +2097,69 @@ func (impl *ServerImpl) RemoteVcsFileDiffCommand(ctx context.Context, data wshrp
 		Modified: modifiedText,
 	}, nil
 }
+
+func (impl *ServerImpl) RemoteVcsStatCommand(ctx context.Context, data wshrpc.CommandRemoteVcsStatData) (*wshrpc.RemoteVcsStatRtnData, error) {
+	path, err := normalizeVcsBasePath(data.Path)
+	if err != nil {
+		return &wshrpc.RemoteVcsStatRtnData{Error: err.Error()}, nil
+	}
+	gitRoot := detectGitRoot(ctx, path)
+	if gitRoot == "" {
+		return &wshrpc.RemoteVcsStatRtnData{}, nil
+	}
+	// branch
+	branch, _ := runVcsCommand(ctx, gitRoot, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	if branch == "HEAD" {
+		shortHash, hashErr := runVcsCommand(ctx, gitRoot, "git", "rev-parse", "--short", "HEAD")
+		if hashErr == nil && shortHash != "" {
+			branch = "detached@" + shortHash
+		}
+	}
+	// numstat: added/removed lines
+	added := 0
+	removed := 0
+	numstat, numstatErr := runVcsCommand(ctx, gitRoot, "git", "diff", "--numstat", "HEAD")
+	if numstatErr == nil {
+		for _, line := range strings.Split(numstat, "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 3)
+			if len(parts) < 3 {
+				continue
+			}
+			// binary files show "-\t-\tpath"
+			if parts[0] == "-" || parts[1] == "-" {
+				continue
+			}
+			added += parseNumstatInt(parts[0])
+			removed += parseNumstatInt(parts[1])
+		}
+	}
+	// file count
+	files := 0
+	statusOut, _ := runVcsCommand(ctx, gitRoot, "git", "status", "--porcelain=1", "-uall")
+	if statusOut != "" {
+		for _, rawLine := range strings.Split(statusOut, "\n") {
+			line := strings.TrimRight(rawLine, "\r")
+			if len(line) >= 3 {
+				files++
+			}
+		}
+	}
+	return &wshrpc.RemoteVcsStatRtnData{
+		Branch:  branch,
+		Added:   added,
+		Removed: removed,
+		Files:   files,
+	}, nil
+}
+
+func parseNumstatInt(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+

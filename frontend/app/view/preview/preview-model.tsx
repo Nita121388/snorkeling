@@ -447,6 +447,7 @@ export class PreviewModel implements ViewModel {
     openFileModalGiveFocusRef: React.RefObject<() => boolean>;
 
     markdownShowToc: PrimitiveAtom<boolean>;
+    presentationMode: PrimitiveAtom<boolean>;
     liveSourceBlockId: Atom<string | null>;
     liveSourceBlock: Atom<Block | null>;
     liveSourceModel: Atom<PreviewModel | null>;
@@ -505,6 +506,7 @@ export class PreviewModel implements ViewModel {
             return deriveExplorerRootPath(fileInfo, fallbackPath);
         });
         this.markdownShowToc = atom(false);
+        this.presentationMode = atom(false);
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
         this.searchTargetLine = atom((get) =>
@@ -736,6 +738,13 @@ export class PreviewModel implements ViewModel {
                         previewMenuItems.push({
                             label: "Open Live Preview Block",
                             onClick: () => fireAndForget(() => this.openLivePreviewBlock()),
+                        });
+                        previewMenuItems.push({
+                            label: "Presentation Mode",
+                            onClick: () => {
+                                const current = globalStore.get(this.presentationMode);
+                                globalStore.set(this.presentationMode, !current);
+                            },
                         });
                     }
                     viewTextChildren.push({

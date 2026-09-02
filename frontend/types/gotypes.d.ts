@@ -944,6 +944,11 @@ declare global {
         path: string;
     };
 
+    // wshrpc.CommandRemoteVcsStatData
+    type CommandRemoteVcsStatData = {
+        path: string;
+    };
+
     // wshrpc.CommandRemoteVcsSyncData
     type CommandRemoteVcsSyncData = {
         repotype: string;
@@ -1885,6 +1890,15 @@ declare global {
         repotype?: string;
         repopath?: string;
         reponame?: string;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsStatRtnData
+    type RemoteVcsStatRtnData = {
+        branch?: string;
+        added: number;
+        removed: number;
+        files: number;
         error?: string;
     };
 

@@ -9,7 +9,7 @@
 
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import clsx from "clsx";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { buildPropertyEntries, parseFrontmatterYamlText, type PropertyEntry } from "./frontmatter-block";
 import { ListPropertyEditor } from "./list-property-editor";
 import "./obsidian-properties-card.scss";
@@ -153,9 +153,18 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
     const editable = onDataChange != null;
     const dragable = onReorder != null;
 
+    // Add property state
+    const [addingNew, setAddingNew] = useState(false);
+    const [newKey, setNewKey] = useState("");
+    const [newValue, setNewValue] = useState("");
+    const newKeyRef = useRef<HTMLInputElement>(null);
+    const newValueRef = useRef<HTMLInputElement>(null);
+
     // Drag-and-drop state
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [overIndex, setOverIndex] = useState<number | null>(null);
+    const dragIndexRef = useRef<number | null>(null);
+    const overIndexRef = useRef<number | null>(null);
 
     const toggleCollapsed = () => {
         // 折叠时若有编辑进行中，直接放弃编辑态（行不可见后输入框无意义）
@@ -199,55 +208,94 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
         setEditingKey(null);
     };
 
+    // ---------- Add property ----------
+
+    const startAdd = useCallback(() => {
+        setAddingNew(true);
+        setNewKey("");
+        setNewValue("");
+        requestAnimationFrame(() => newKeyRef.current?.focus());
+    }, []);
+
+    const commitAdd = useCallback(() => {
+        const trimmedKey = newKey.trim();
+        if (trimmedKey === "") {
+            setAddingNew(false);
+            return;
+        }
+        onDataChange?.({ ...data, [trimmedKey]: newValue.trim() || "" });
+        setAddingNew(false);
+    }, [newKey, newValue, data, onDataChange]);
+
+    const cancelAdd = useCallback(() => {
+        setAddingNew(false);
+    }, []);
+
     // Drag-and-drop handlers
     const handleDragStart = (e: React.DragEvent, index: number) => {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(index));
         setDragIndex(index);
+        dragIndexRef.current = index;
     };
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         setOverIndex(index);
+        overIndexRef.current = index;
     };
 
     const handleDragEnd = () => {
-        // 注意：onDragEnd 可能在 onDrop 之前触发，所以这里只重置状态
-        // 实际的 reorder 逻辑在 handleDrop 中处理
         setDragIndex(null);
         setOverIndex(null);
+        dragIndexRef.current = null;
+        overIndexRef.current = null;
     };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        console.log("[drag-drop] handleDrop:", { dragIndex, overIndex });
-        // 在这里执行 reorder，因为 onDrop 一定在 onDragEnd 之前触发
-        if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
-            console.log("[drag-drop] calling onReorder:", dragIndex, "->", overIndex);
-            onReorder?.(dragIndex, overIndex);
-        } else {
-            console.log("[drag-drop] skipping reorder:", { dragIndex, overIndex });
+        const from = dragIndexRef.current;
+        const to = overIndexRef.current;
+        if (from !== null && to !== null && from !== to) {
+            onReorder?.(from, to);
         }
         setDragIndex(null);
         setOverIndex(null);
+        dragIndexRef.current = null;
+        overIndexRef.current = null;
     };
 
     return (
         <div className="obsidian-props-card" data-obsidian-props-card="true">
-            <div
+            <button
+                type="button"
                 className={clsx("obsidian-props-header", collapsed && "is-collapsed")}
+                aria-expanded={!collapsed}
+                data-state={collapsed ? "closed" : "open"}
                 onClick={toggleCollapsed}
-                title={collapsed ? "展开属性" : "折叠属性"}
+                title={collapsed ? "Expand properties" : "Collapse properties"}
             >
-                <i
-                    className={clsx("fa-solid", collapsed ? "fa-chevron-right" : "fa-chevron-down")}
-                    aria-hidden="true"
-                />
-                <span className="obsidian-props-title">属性</span>
-                <span className="obsidian-props-count">{entries.length}</span>
-            </div>
+                <span className="obsidian-props-title">Properties</span>
+                <span className="obsidian-props-chevron" aria-hidden="true">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="1em"
+                        height="1em"
+                        fill="none"
+                        data-collapsed={collapsed}
+                        style={{ userSelect: "none", flexShrink: 0 }}
+                    >
+                        <path
+                            fill="currentColor"
+                            d="M13.15 15.132a.757.757 0 0 1-1.3 0L8.602 9.605c-.29-.491.072-1.105.65-1.105h6.497c.577 0 .938.614.65 1.105z"
+                        />
+                    </svg>
+                </span>
+            </button>
+            <div className="obsidian-props-separator" />
             {!collapsed &&
                 entries.map((entry, index) => {
                     const isEditing = editingKey === entry.key;
@@ -272,7 +320,7 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                             {dragable && !isEditing && (
                                 <span
                                     className="obsidian-props-drag-handle"
-                                    title="拖拽排序"
+                                    title="Drag to reorder"
                                     onMouseDown={(e) => e.stopPropagation()}
                                 >
                                     <i className="fa-solid fa-grip-vertical" aria-hidden="true" />
@@ -316,6 +364,58 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                         </div>
                     );
                 })}
+            {!collapsed && editable && (
+                addingNew ? (
+                    <div className="obsidian-props-add-row is-adding">
+                        <i className="obsidian-props-icon fa-solid fa-font" aria-hidden="true" />
+                        <input
+                            ref={newKeyRef}
+                            className="obsidian-props-add-key-input"
+                            placeholder="key"
+                            value={newKey}
+                            onChange={(e) => setNewKey(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.stopPropagation();
+                                    // Enter 在 key 输入框：跳到 value 输入框
+                                    newValueRef.current?.focus();
+                                } else if (e.key === "Escape") {
+                                    e.stopPropagation();
+                                    cancelAdd();
+                                }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <input
+                            ref={newValueRef}
+                            className="obsidian-props-add-value-input"
+                            placeholder="value"
+                            value={newValue}
+                            onChange={(e) => setNewValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.stopPropagation();
+                                    commitAdd();
+                                } else if (e.key === "Escape") {
+                                    e.stopPropagation();
+                                    cancelAdd();
+                                }
+                            }}
+                            onBlur={() => commitAdd()}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                ) : (
+                    <div
+                        className="obsidian-props-add-row"
+                        onClick={() => startAdd()}
+                        title="Add property"
+                    >
+                        <i className="obsidian-props-icon fa-solid fa-plus" aria-hidden="true" />
+                        <span className="obsidian-props-add-text">Add property</span>
+                    </div>
+                )
+            )}
         </div>
     );
 }

@@ -29,7 +29,6 @@ import {
     openedThisLaunchTabIdsAtom,
     wasTabOpenedThisLaunch,
 } from "./tab-open-state";
-import { partitionAndOrderTabs } from "./tab-pinned-order";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -359,16 +358,11 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     }, [activeTabId, markTabOpened]);
 
     const renderOrderedTabIds = useMemo(() => {
-        if (dragTabId != null) {
-            return orderedTabIds;
-        }
-        const { pinnedTabIds, hoverRevealedTabIds } = partitionAndOrderTabs(
-            orderedTabIds,
-            activeTabId,
-            openedThisLaunchTabIds
-        );
-        return [...pinnedTabIds, ...hoverRevealedTabIds];
-    }, [activeTabId, dragTabId, openedThisLaunchTabIds, orderedTabIds]);
+        // 始终按物理顺序渲染, 不做分组重排.
+        // 原因: partitionAndOrderTabs 会把 pinned tab 提到前面, 导致 hover 展开时
+        // 隐藏的 tab 跑到可见 tab 前面, 造成位置跳变.
+        return orderedTabIds;
+    }, [orderedTabIds]);
 
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
@@ -453,7 +447,43 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                     const isHidden =
                         !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null && !hasUnreadDots;
                     if (isHidden) {
-                        return null;
+                        return (
+                            <div key={tabId}>
+                                <VTabWrapper
+                                    tabId={tabId}
+                                    active={isActive}
+                                    showDivider={false}
+                                    isDragging={false}
+                                    isReordering={false}
+                                    hoverResetVersion={hoverResetVersion}
+                                    hidden={true}
+                                    index={index}
+                                    onSelect={() => {
+                                        markTabOpened(tabId);
+                                        env.electron.setActiveTab(tabId);
+                                    }}
+                                    onClose={() =>
+                                        fireAndForget(async () => {
+                                            if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                                                return;
+                                            }
+                                            if (!(await confirmCloseTabIfHasContent(tabId))) {
+                                                return;
+                                            }
+                                            await env.electron.closeTab(workspace.oid, tabId, false);
+                                        })
+                                    }
+                                    onRename={(newName) =>
+                                        fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
+                                    }
+                                    onDragStart={() => {}}
+                                    onDragOver={() => {}}
+                                    onDrop={() => {}}
+                                    onDragEnd={() => {}}
+                                    onHoverChanged={() => {}}
+                                />
+                            </div>
+                        );
                     }
                     return (
                         <div key={tabId}>

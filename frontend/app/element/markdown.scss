@@ -34,6 +34,7 @@
         }
 
         .heading {
+            position: relative;
             color: var(--main-text-color);
             margin-top: 1.143em;
             margin-bottom: 0.571em;
@@ -44,9 +45,10 @@
             gap: 0.286em;
 
             .heading-collapse-button {
-                width: 1.286em;
+                width: 0;
                 height: 1.286em;
-                flex: 0 0 1.286em;
+                flex: 0 0 0;
+                padding: 0;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -56,8 +58,10 @@
                 color: var(--secondary-text-color);
                 cursor: pointer;
                 opacity: 0;
+                overflow: hidden;
                 font-size: 0.65em;
                 line-height: 1;
+                transition: width 0.15s ease, opacity 0.15s ease;
             }
 
             .heading-title {
@@ -68,6 +72,9 @@
             &.collapsed .heading-collapse-button,
             .heading-collapse-button:focus-visible {
                 opacity: 1;
+                width: 1.286em;
+                flex: 0 0 1.286em;
+                padding: 0;
             }
 
             .heading-collapse-button:hover,
@@ -374,8 +381,8 @@
         pre.codeblock {
             background-color: var(--panel-bg-color);
             margin: 0.286em 0.714em;
-            padding: 0.4em 0.7em;
-            border-radius: 4px;
+            padding: 0.6em 1em;
+            border-radius: 6px;
             position: relative;
 
             code {
@@ -400,6 +407,12 @@
                 align-items: center;
                 justify-content: flex-end;
                 gap: 0.286em;
+
+                .codeblock-lang-badge {
+                    position: absolute;
+                    left: 0;
+                    right: auto;
+                }
             }
 
             &:hover .codeblock-actions {
@@ -794,6 +807,53 @@
     z-index: 1;
 }
 
+// Image alt text display + inline editor (hover to reveal).
+.markdown-img-alt-display {
+    display: block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--main-text-color, #888) 50%, transparent);
+    background: transparent;
+    border: 1px dashed transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+
+    &:hover {
+        color: var(--main-text-color, #ccc);
+        border-color: color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+        background: color-mix(in srgb, var(--main-text-color, #888) 6%, transparent);
+    }
+}
+
+.markdown-img-alt-editor {
+    margin-top: 4px;
+}
+
+.markdown-img-alt-input {
+    width: 100%;
+    padding: 3px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--main-text-color, inherit);
+    background: var(--input-bg-color, #2a2a2a);
+    border: 1px solid var(--accent-color, #58c4ff);
+    border-radius: 4px;
+    outline: none;
+    box-sizing: border-box;
+
+    &::placeholder {
+        color: color-mix(in srgb, var(--main-text-color, #888) 40%, transparent);
+    }
+}
+
 // Inline "edit path" popover, positioned just below the image.
 .markdown-img-path-input {
     position: fixed;
@@ -1181,16 +1241,26 @@
 
     .markdown-emoji-remove {
         flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
         border: 0;
         border-radius: 4px;
         background: transparent;
         color: var(--error-color, #e5484d);
-        font-size: 12px;
+        font-size: 13px;
         cursor: pointer;
-        padding: 0 8px;
+        padding: 0;
 
-        &:hover {
+        &:hover:not(:disabled) {
             background: color-mix(in srgb, var(--error-color, #e5484d) 16%, transparent);
+        }
+
+        &:disabled {
+            opacity: 0.3;
+            cursor: default;
         }
     }
 
@@ -1200,6 +1270,7 @@
         gap: 2px;
         max-height: 280px;
         overflow-y: auto;
+        scroll-behavior: smooth;
     }
 
     .markdown-emoji-group {
@@ -1237,6 +1308,44 @@
         text-align: center;
         font-size: 12px;
         color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+    }
+}
+
+// Category tab bar — horizontal row of emoji group icons above the grid.
+.markdown-emoji-categories {
+    display: flex;
+    gap: 2px;
+    padding: 4px 2px 6px;
+    overflow-x: auto;
+    scrollbar-width: none; // Firefox
+    -ms-overflow-style: none; // IE
+
+    &::-webkit-scrollbar {
+        display: none; // Chrome / Safari
+    }
+}
+
+.markdown-emoji-cat-tab {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 26px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.12s;
+    line-height: 1;
+
+    &:hover {
+        background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+    }
+
+    &.is-active {
+        background: color-mix(in srgb, var(--accent-color, #58c4ff) 22%, transparent);
     }
 }
 
@@ -1372,13 +1481,17 @@
 }
 
 // Divider line between emoji badge and first heading
-.markdown.markdown .content .markdown-render-root .heading:first-of-type::before {
+// Only render when a doc emoji badge is present (sibling or parent :has)
+// position:absolute keeps it out of the flex flow so the heading text isn't pushed right.
+.markdown-doc-emoji-badge ~ .markdown-render-root .heading:first-of-type::before,
+:has(.markdown-doc-emoji-badge) .markdown-render-root .heading:first-of-type::before {
     content: "";
-    display: block;
+    position: absolute;
+    top: -13px;
+    left: 0;
     width: 100%;
     height: 1px;
     background: var(--border-color, #333);
-    margin-bottom: 12px;
     opacity: 0.5;
 }
 
@@ -1582,4 +1695,63 @@
     border-radius: 1px;
     pointer-events: none;
     z-index: 9999;
+}
+
+// === Presentation mode ==================================================================
+.markdown-presentation {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: var(--content-bg-color, #1e1e1e);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: auto;
+    padding: 40px 20px;
+
+    .content {
+        max-width: 900px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 20px 40px;
+        background: var(--content-bg-color, #1e1e1e);
+        border-radius: 8px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .markdown-render-root {
+        font-size: var(--markdown-font-size, 100%);
+        line-height: 1.8;
+    }
+}
+
+// Zoom indicator (shown briefly during Ctrl+scroll)
+.markdown-zoom-indicator {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    background: var(--overlay-bg-color, rgba(30, 30, 30, 0.9));
+    color: var(--main-text-color, #fff);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10001;
+    pointer-events: none;
+    animation: zoom-indicator-fade 1.5s ease-out forwards;
+}
+
+@keyframes zoom-indicator-fade {
+    0% {
+        opacity: 1;
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
 }

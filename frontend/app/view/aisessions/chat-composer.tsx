@@ -19,6 +19,7 @@ import {
 } from "./chat-slash";
 import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
 import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
+import { GitStatusBar } from "./git-status-bar";
 
 type PendingImage = {
     id: string;
@@ -729,6 +730,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 ))}
                             </div>
                         ) : null}
+                        <GitStatusBar projectPath={projectPath} isRunning={isRunning} />
                         <textarea
                             ref={inputRef}
                             style={{ maxHeight: `${maxH}px` }}

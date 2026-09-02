@@ -894,6 +894,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotevcsresolvepath", data, opts);
     }
 
+    // command "remotevcsstat" [call]
+    RemoteVcsStatCommand(client: WshClient, data: CommandRemoteVcsStatData, opts?: RpcOpts): Promise<RemoteVcsStatRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsstat", data, opts);
+        return client.wshRpcCall("remotevcsstat", data, opts);
+    }
+
     // command "remotevcssync" [call]
     RemoteVcsSyncCommand(client: WshClient, data: CommandRemoteVcsSyncData, opts?: RpcOpts): Promise<RemoteVcsSyncRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcssync", data, opts);

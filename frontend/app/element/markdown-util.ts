@@ -404,3 +404,21 @@ export function removeImageSizeInLine(lineText: string, src: string): string | n
     const newFrag = frag.slice(0, parenStart + 1) + newInner + ")";
     return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
 }
+
+// Replace the alt text of the matched image fragment in `lineText`, preserving src + title.
+// Returns null when the fragment isn't found.
+export function updateImageAltInLine(lineText: string, src: string, newAlt: string): string | null {
+    const loc = locateImageSyntaxInLine(lineText, src);
+    if (loc == null) {
+        return null;
+    }
+    const frag = lineText.slice(loc.start, loc.end);
+    // frag = "![old alt](src ...)" — alt is between ![ and ]
+    const bracketEnd = frag.indexOf("]");
+    if (bracketEnd < 0) {
+        return null;
+    }
+    // Rebuild: "![newAlt](rest..."
+    const newFrag = "![" + newAlt + "]" + frag.slice(bracketEnd + 1);
+    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
+}
