@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Block } from "@/app/block/block";
-import { MinimizedBlocksFloat } from "@/app/block/minimized-blocks-float";
+import { BlockSidebar } from "@/app/block/block-sidebar";
 import { CenteredDiv } from "@/element/quickelems";
 import { ContentRenderer, NodeModel, PreviewRenderer, TileLayout } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
@@ -82,7 +82,7 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
             className={`flex flex-row flex-grow min-h-0 min-w-0 w-full items-center justify-center overflow-hidden relative ${noTopPadding ? "" : "pt-[3px]"} pr-[3px]`}
         >
             {innerContent}
-            {tabData && <MinimizedBlocksFloat tabId={tabId} tabAtom={tabAtom} />}
+            {tabData && <BlockSidebar tabId={tabId} tabAtom={tabAtom} />}
         </div>
     );
 });
