@@ -4,7 +4,7 @@
 import { Button } from "@/app/element/button";
 import { cn } from "@/util/util";
 import clsx from "clsx";
-import { forwardRef } from "react";
+import { forwardRef, useLayoutEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 
 import "./modal.scss";
@@ -21,6 +21,8 @@ interface ModalProps {
     onClose?: () => void;
     okDisabled?: boolean;
     cancelDisabled?: boolean;
+    initialFocusRef?: React.RefObject<HTMLElement>;
+    restoreFocus?: boolean;
 }
 
 const Modal = forwardRef<HTMLDivElement, ModalProps>(
@@ -37,9 +39,29 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
             onClickBackdrop,
             okDisabled,
             cancelDisabled,
+            initialFocusRef,
+            restoreFocus = true,
         }: ModalProps,
         ref
     ) => {
+        const previousActiveElementRef = useRef<HTMLElement | null>(null);
+
+        // 用 initialFocusRef + 下一帧聚焦比子组件 autoFocus 更可靠：portal 挂载/异步加载下 autoFocus 常失效。
+        useLayoutEffect(() => {
+            previousActiveElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            const frame = requestAnimationFrame(() => initialFocusRef?.current?.focus({ preventScroll: true }));
+            return () => cancelAnimationFrame(frame);
+        }, [initialFocusRef]);
+
+        // 关闭（卸载）时恢复打开前的焦点，避免焦点丢到 body / 被全局 refocus 抢走。
+        useLayoutEffect(() => {
+            return () => {
+                if (!restoreFocus) return;
+                const previous = previousActiveElementRef.current;
+                if (previous != null && document.contains(previous)) previous.focus({ preventScroll: true });
+            };
+        }, [restoreFocus]);
+
         const renderBackdrop = (onClick) => <div className="modal-backdrop" onClick={onClick}></div>;
 
         const renderFooter = () => {
@@ -119,6 +141,8 @@ interface FlexiModalProps {
     children?: React.ReactNode;
     className?: string;
     onClickBackdrop?: () => void;
+    initialFocusRef?: React.RefObject<HTMLElement>;
+    restoreFocus?: boolean;
 }
 
 interface FlexiModalComponent extends React.ForwardRefExoticComponent<
@@ -129,7 +153,23 @@ interface FlexiModalComponent extends React.ForwardRefExoticComponent<
 }
 
 const FlexiModal = forwardRef<HTMLDivElement, FlexiModalProps>(
-    ({ children, className, onClickBackdrop }: FlexiModalProps, ref) => {
+    ({ children, className, onClickBackdrop, initialFocusRef, restoreFocus = true }: FlexiModalProps, ref) => {
+        const previousActiveElementRef = useRef<HTMLElement | null>(null);
+
+        useLayoutEffect(() => {
+            previousActiveElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            const frame = requestAnimationFrame(() => initialFocusRef?.current?.focus({ preventScroll: true }));
+            return () => cancelAnimationFrame(frame);
+        }, [initialFocusRef]);
+
+        useLayoutEffect(() => {
+            return () => {
+                if (!restoreFocus) return;
+                const previous = previousActiveElementRef.current;
+                if (previous != null && document.contains(previous)) previous.focus({ preventScroll: true });
+            };
+        }, [restoreFocus]);
+
         const renderBackdrop = (onClick: () => void) => <div className="modal-backdrop" onClick={onClick}></div>;
 
         const renderModal = () => (

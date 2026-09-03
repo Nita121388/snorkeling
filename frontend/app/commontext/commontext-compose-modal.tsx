@@ -874,6 +874,7 @@ const CommonTextComposeModal = memo(() => {
     return (
         <Modal
             ref={modalRef}
+            initialFocusRef={editorRef}
             // 尺寸由 modalSize state 驱动：用户 resize 后写成 px 精确尺寸，再次打开沿用；
             // 首次打开用兜底值（max(500px, min(85vw,900px)) / max(350px, min(78vh,620px))）。
             // min-w/min-h 写死，避免用户拖太小后塌缩；max-w/max-h 留屏幕边界。

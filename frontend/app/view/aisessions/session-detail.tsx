@@ -207,6 +207,7 @@ export function SessionDetailPane({
     const bottomDeltaRequestedRef = useRef(false);
     const bottomDeltaTimerRef = useRef<number | null>(null);
     const latestNoteDraftRef = useRef("");
+    const noteEditorRef = useRef<HTMLTextAreaElement>(null);
     const summaryKeyRef = useRef<string | null>(null);
     const summaryNoteRef = useRef("");
     // 新建会话时屏蔽旧 detail 的竞态残留：未绑定、或绑定属上一轮 epoch 时一律隐藏；
@@ -1107,6 +1108,7 @@ export function SessionDetailPane({
             {noteEditorOpen && summary != null ? (
                 <Modal
                     className="w-[520px] max-w-[calc(100vw-32px)]"
+                    initialFocusRef={noteEditorRef}
                     onClose={closeNoteEditor}
                     onClickBackdrop={closeNoteEditor}
                 >
@@ -1117,7 +1119,7 @@ export function SessionDetailPane({
                         </div>
                         <SessionTagChips tags={nextTags} />
                         <textarea
-                            autoFocus
+                            ref={noteEditorRef}
                             className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
                             placeholder="Add a note, use #tag to add tags"
                             value={noteDraft}
