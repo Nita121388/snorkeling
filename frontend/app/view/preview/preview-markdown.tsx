@@ -154,7 +154,7 @@ function MarkdownPreview({
                 frontmatterBlock={frontmatterBlock}
                 waveBlockRenderers={waveBlockRenderers}
                 presentationMode={presentationMode}
-                contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
+                contentClassName="pt-[5px] pr-[15px] pb-[80px] pl-[15px]"
             />
         </div>
     );
@@ -374,7 +374,7 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
                             }
                             onUserScrollSourceLine={isVisibleBuffer ? handlePreviewUserScrollSourceLine : undefined}
                             collapsibleOrderedLists={collapsibleOrderedLists}
-                            contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
+                            contentClassName="pt-[5px] pr-[15px] pb-[80px] pl-[15px]"
                         />
                     </div>
                 );

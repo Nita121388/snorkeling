@@ -85,7 +85,7 @@ function EditableCase() {
                     text={text}
                     onInlineEditCommit={(t) => setText(t)}
                     collapsibleOrderedLists={false}
-                    contentClassName="pt-[5px] pr-[15px] pb-[10px] pl-[15px]"
+                    contentClassName="pt-[5px] pr-[15px] pb-[80px] pl-[15px]"
                 />
             </div>
         </div>
