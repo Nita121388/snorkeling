@@ -1387,9 +1387,11 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         fireAndForget(termWrap.initTerminal.bind(termWrap));
         // Track xterm viewport scroll position for the scroll-to-bottom FAB.
         const scrollDisposable = termWrap.terminal.onScroll(() => {
+            // xterm 语义：baseY 是「完全滚到底时 viewport 顶部所在行」，viewportY ∈ [0, baseY]。
+            // 在底部 ⇔ viewportY >= baseY。旧公式 (viewportY + rows >= baseY + length - 1)
+            // 在 scrollback > 1 行时数学上永不成立，导致滚到底按钮仍显示。
             const buf = termWrap.terminal.buffer.active;
-            const viewportRows = termWrap.terminal.rows;
-            const atBottom = buf.viewportY + viewportRows >= buf.baseY + buf.length - 1;
+            const atBottom = buf.viewportY >= buf.baseY;
             setIsTermAtBottom(atBottom);
         });
         if (wasFocused) {

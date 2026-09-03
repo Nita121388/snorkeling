@@ -124,13 +124,18 @@ const [isTermAtBottom, setIsTermAtBottom] = useState(true);
 ```tsx
 // 在 termWrap.initTerminal() 之后添加
 const disposable = termWrap.terminal.onScroll(() => {
-    const { viewportY, baseY, length } = termWrap.terminal.buffer.active;
-    const viewportRows = termWrap.terminal.rows;
-    const atBottom = viewportY + viewportRows >= baseY + length - 1;
+    const { viewportY, baseY } = termWrap.terminal.buffer.active;
+    // xterm 语义：baseY = 完全滚到底时 viewport 顶部所在行；viewportY ∈ [0, baseY]。
+    // 在底部 ⇔ viewportY >= baseY。
+    const atBottom = viewportY >= baseY;
     setIsTermAtBottom(atBottom);
 });
 // 在 cleanup 中 dispose
 ```
+
+> **修正记录**：初版公式 `viewportY + rows >= baseY + length - 1` 有误。
+> 滚到底部时 viewportY = baseY，且 length ≈ baseY + rows，代入后需 baseY ≤ 1 才成立，
+> 即 scrollback 超过 1 行时按钮永不隐藏。正确判据为 `viewportY >= baseY`。
 
 **在 JSX 的 `view-term` div 内部末尾添加：**
 ```tsx
