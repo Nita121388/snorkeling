@@ -151,6 +151,7 @@ export function SessionDetailPane({
     onRunningSessionIdsChange,
     isNewChat = false,
     newChatEpoch = 0,
+    projectPath,
 }: {
     model: SessionDetailController;
     detail: SessionDetail | null;
@@ -168,6 +169,8 @@ export function SessionDetailPane({
     onRunningSessionIdsChange?: (sessionIds: ReadonlySet<string>) => void;
     /** 每开启一轮新 New Chat 自增：作废上一轮的绑定/草稿/迟到流 */
     newChatEpoch?: number;
+    /** 新会话使用的项目路径，传给 pi 以确定会话文件目录 */
+    projectPath?: string;
 }) {
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
@@ -362,6 +365,7 @@ export function SessionDetailPane({
         clearLiveTurn,
         moveLiveTurn,
         flushLiveTurn,
+        setTurnError,
     } = useLiveTurns();
     const {
         statuses: chatStreamStatuses,
@@ -539,6 +543,10 @@ export function SessionDetailPane({
             }
 
             if (evt.type === "turn_end" || evt.type === "turn_failed") {
+                // turn_failed 携带错误信息：存入 LiveTurn.error 以便渲染错误 UI + 重试/继续按钮
+                if (evt.type === "turn_failed" && evt.error) {
+                    setTurnError(key, { message: evt.error, retryable: true });
+                }
                 flushLiveTurn(key);
                 turnIdBySessionRef.current.delete(key);
                 if (newChatTurnRef.current) {
@@ -558,22 +566,29 @@ export function SessionDetailPane({
             }
             handleLiveTurnEvent(key, evt);
         },
-        [clearLiveTurn, clearLiveTurnWhenPersisted, flushLiveTurn, handleLiveTurnEvent, isNewChat, model, moveChatStream, moveLiveTurn, onBound]
+        [clearLiveTurn, clearLiveTurnWhenPersisted, flushLiveTurn, handleLiveTurnEvent, isNewChat, model, moveChatStream, moveLiveTurn, onBound, setTurnError]
     );
 
     const handleChatSend = useCallback(
         (body: ChatRequestBody) => {
             const key = summary?.id || boundSessionId || NewChatLiveTurnKey;
+            // For new chats: after the first message, pi assigns a real sessionId.
+            // Inject it into the request body so subsequent messages reuse the same
+            // subprocess instead of spawning a duplicate.
+            const effectiveBody =
+                isNewChat && !body.sessionId && boundSessionId
+                    ? { ...body, sessionId: boundSessionId }
+                    : body;
             streamEpochRef.current.set(key, epochRef.current);
             const messageSeqFloor = (effectiveDetail?.messages ?? []).reduce(
                 (maxSeq, message) => Math.max(maxSeq, message.seq),
                 0
             );
             turnIdBySessionRef.current.delete(key);
-            flushSync(() => startLiveTurn(key, body.message ?? "", messageSeqFloor));
-            sendChatStream(key, chatEndpoint, body, handleChatEvent);
+            flushSync(() => startLiveTurn(key, effectiveBody.message ?? "", messageSeqFloor));
+            sendChatStream(key, chatEndpoint, effectiveBody, handleChatEvent);
         },
-        [chatEndpoint, effectiveDetail?.messages, handleChatEvent, sendChatStream, startLiveTurn, summary?.id]
+        [chatEndpoint, effectiveDetail?.messages, handleChatEvent, isNewChat, boundSessionId, sendChatStream, startLiveTurn, summary?.id]
     );
 
     const handleChatSteer = useCallback(
@@ -1017,7 +1032,36 @@ export function SessionDetailPane({
                                         })}
                                         {/* 实时流式块：当前 turn 的临时渲染，turn_end 后由正式数据替换 */}
                                         {liveTurn != null ? (
-                                            <LiveTurnBlock turn={liveTurn} userMessagePersisted={liveUserMessagePersisted} />
+                                            <LiveTurnBlock
+                                                turn={liveTurn}
+                                                userMessagePersisted={liveUserMessagePersisted}
+                                                onRetry={() => {
+                                                    // 重试：清除当前 live turn，从最后一条用户消息重新发送
+                                                    const lastUserMsg = [...(effectiveDetail?.messages ?? [])]
+                                                        .reverse()
+                                                        .find((m) => m.role === "user");
+                                                    if (lastUserMsg) {
+                                                        clearLiveTurn(activeLiveTurnKey);
+                                                        abortChatStream(activeLiveTurnKey);
+                                                        handleChatSend({
+                                                            source: summary?.source ?? composeSource,
+                                                            sessionId: summary?.id ?? boundSessionId ?? undefined,
+                                                            projectPath: summary?.projectPath ?? projectPath,
+                                                            message: lastUserMsg.text,
+                                                        });
+                                                    }
+                                                }}
+                                                onContinue={() => {
+                                                    // 继续：清除当前 live turn，从当前上下文发送空消息让 agent 继续
+                                                    clearLiveTurn(activeLiveTurnKey);
+                                                    handleChatSend({
+                                                        source: summary?.source ?? composeSource,
+                                                        sessionId: summary?.id ?? boundSessionId ?? undefined,
+                                                        projectPath: summary?.projectPath ?? projectPath,
+                                                        message: "",
+                                                    });
+                                                }}
+                                            />
                                         ) : null}
                                     </div>
                                 )}
@@ -1049,6 +1093,7 @@ export function SessionDetailPane({
                                 source={composeSource}
                                 sessionId=""
                                 availableSources={availableChatSources}
+                                projectPath={projectPath ?? summary?.projectPath}
                                 onSourceChange={setComposeSource}
                                 streamStatus={activeChatStreamStatus}
                                 onSend={handleChatSend}

@@ -16,9 +16,10 @@
 // Upgrade path: multiplex both connections through one event reducer.
 
 import { WaveStreamdown } from "@/app/element/streamdown";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatEvent } from "./use-chat-stream";
 import { ThinkingDisclosure, ToolCallRow } from "./session-message";
+import { ToolGroup } from "./tool-group";
 
 export type LiveToolRun = {
     id?: string;
@@ -36,10 +37,16 @@ export type LiveItem =
     | { kind: "text"; text: string }
     | { kind: "tool"; tool: LiveToolRun };
 
+export type LiveTurnError = {
+    message: string;
+    retryable: boolean;
+};
+
 export type LiveTurn = {
     userText: string;
     userMessageSeqFloor: number;
     items: LiveItem[];
+    error?: LiveTurnError;
 };
 
 export type LiveTurns = Record<string, LiveTurn>;
@@ -48,6 +55,7 @@ const emptyTurn = (userText = "", userMessageSeqFloor = 0): LiveTurn => ({
     userText,
     userMessageSeqFloor,
     items: [],
+    error: undefined,
 });
 const LiveTurnFlushIntervalMs = 32;
 
@@ -248,6 +256,15 @@ export function useLiveTurns() {
         [scheduleFlush]
     );
 
+    const setTurnError = useCallback((key: string, error: LiveTurnError) => {
+        if (key === "") return;
+        setLiveTurns((current) => {
+            const turn = current[key];
+            if (turn == null) return current;
+            return { ...current, [key]: { ...turn, error } };
+        });
+    }, []);
+
     return {
         liveTurns,
         startLiveTurn,
@@ -255,6 +272,7 @@ export function useLiveTurns() {
         clearLiveTurn,
         moveLiveTurn: moveLiveTurnState,
         flushLiveTurn,
+        setTurnError,
     };
 }
 
@@ -273,7 +291,7 @@ function liveToolPreview(text?: string): string {
  * style as persisted MessageCard (no bubble) so the turn_end handoff does
  * not shift layout; tool rows share ToolCallRow with persisted ToolCallCard.
  */
-export function LiveTurnBlock({ turn, userMessagePersisted = false }: { turn: LiveTurn; userMessagePersisted?: boolean }) {
+export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onContinue }: { turn: LiveTurn; userMessagePersisted?: boolean; onRetry?: () => void; onContinue?: () => void }) {
     // live 工具行展开状态（key = items 数组下标；items 只追加，顺序稳定）
     const [openLiveTools, setOpenLiveTools] = useState<Record<number, boolean>>({});
     const items = turn.items;
@@ -286,54 +304,139 @@ export function LiveTurnBlock({ turn, userMessagePersisted = false }: { turn: Li
                     </div>
                 </div>
             ) : null}
-            {items.map((item, idx) => {
-                const isLast = idx === items.length - 1;
-                if (item.kind === "thinking") {
-                    // 与历史思考同一组件（Paseo 风格）：该段仍在增长时展开+脉冲，后续内容到达后收起
-                    return <ThinkingDisclosure key={`live-thinking-${idx}`} text={item.text} streaming={isLast} />;
-                }
-                if (item.kind === "tool") {
-                    const tool = item.tool;
-                    // tool_call_update 会带 status="running"：null 和 "running" 都算运行中，
-                    // 否则 update 一到（常与 start 同批）就误判完成，spinner 永远看不到。
-                    const running = tool.status == null || tool.status === "running";
-                    const detailParts = [
-                        tool.args ? `Input:\n${tool.args}` : "",
-                        tool.result ? `Output:\n${tool.result}` : "",
-                    ].filter(Boolean);
-                    return (
-                        <ToolCallRow
-                            key={`live-tool-${idx}`}
-                            name={tool.name}
-                            preview={liveToolPreview(tool.args)}
-                            status={running ? "running" : tool.status === "failed" ? "failed" : "completed"}
-                            animateStatus={!running}
-                            expanded={openLiveTools[idx] ?? false}
-                            onToggle={() => setOpenLiveTools((current) => ({ ...current, [idx]: !current[idx] }))}
-                        >
-                            {detailParts.length > 0 ? (
-                                <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
-                                    {detailParts.join("\n\n")}
-                                </pre>
-                            ) : (
-                                <div className="text-secondary">No tool detail.</div>
-                            )}
-                        </ToolCallRow>
-                    );
-                }
-                // 文本段：与落盘 MessageCard 的 AI 正文同款开放散文（无气泡），交接时样式不断裂
-                return (
-                    <div key={`live-text-${idx}`} className="w-full min-w-0 px-1 py-0.5 text-sm">
-                        <WaveStreamdown text={item.text} parseIncompleteMarkdown />
-                        {isLast ? <span className="ly-cursor" /> : null}
-                    </div>
-                );
-            })}
-            {items.length === 0 ? (
+            {/* 将连续的 tool items 分组渲染 ToolGroup */}
+            {(() => {
+                const groups: ReactNode[] = [];
+                let toolBuf: { item: Extract<LiveItem, { kind: "tool" }>; idx: number }[] = [];
+                const flushToolBuf = () => {
+                    if (toolBuf.length === 0) return;
+                    if (toolBuf.length === 1) {
+                        // 单个工具不包装 ToolGroup，直接渲染 ToolCallRow
+                        const { item, idx } = toolBuf[0];
+                        const tool = item.tool;
+                        const running = tool.status == null || tool.status === "running";
+                        const detailParts = [
+                            tool.args ? `Input:\n${tool.args}` : "",
+                            tool.result ? `Output:\n${tool.result}` : "",
+                        ].filter(Boolean);
+                        groups.push(
+                            <ToolCallRow
+                                key={`live-tool-${idx}`}
+                                name={tool.name}
+                                preview={liveToolPreview(tool.args)}
+                                status={running ? "running" : tool.status === "failed" ? "failed" : "completed"}
+                                animateStatus={!running}
+                                expanded={openLiveTools[idx] ?? false}
+                                onToggle={() => setOpenLiveTools((current) => ({ ...current, [idx]: !current[idx] }))}
+                            >
+                                {detailParts.length > 0 ? (
+                                    <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
+                                        {detailParts.join("\n\n")}
+                                    </pre>
+                                ) : (
+                                    <div className="text-secondary">No tool detail.</div>
+                                )}
+                            </ToolCallRow>
+                        );
+                    } else {
+                        // 多个连续工具：包装 ToolGroup
+                        const isAnyRunning = toolBuf.some(({ item }) => item.tool.status == null || item.tool.status === "running");
+                        const toolNames = toolBuf.map(({ item }) => item.tool.name);
+                        const toolArgsList = toolBuf.map(({ item }) => {
+                            try { return item.tool.args ? JSON.parse(item.tool.args) : undefined; } catch { return undefined; }
+                        });
+                        groups.push(
+                            <ToolGroup
+                                key={`live-tool-group-${toolBuf[0].idx}`}
+                                toolNames={toolNames}
+                                toolArgs={toolArgsList}
+                                running={isAnyRunning}
+                            >
+                                {toolBuf.map(({ item, idx }) => {
+                                    const tool = item.tool;
+                                    const running = tool.status == null || tool.status === "running";
+                                    const detailParts = [
+                                        tool.args ? `Input:\n${tool.args}` : "",
+                                        tool.result ? `Output:\n${tool.result}` : "",
+                                    ].filter(Boolean);
+                                    return (
+                                        <ToolCallRow
+                                            key={`live-tool-${idx}`}
+                                            name={tool.name}
+                                            preview={liveToolPreview(tool.args)}
+                                            status={running ? "running" : tool.status === "failed" ? "failed" : "completed"}
+                                            animateStatus={!running}
+                                            expanded={openLiveTools[idx] ?? false}
+                                            onToggle={() => setOpenLiveTools((current) => ({ ...current, [idx]: !current[idx] }))}
+                                        >
+                                            {detailParts.length > 0 ? (
+                                                <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
+                                                    {detailParts.join("\n\n")}
+                                                </pre>
+                                            ) : (
+                                                <div className="text-secondary">No tool detail.</div>
+                                            )}
+                                        </ToolCallRow>
+                                    );
+                                })}
+                            </ToolGroup>
+                        );
+                    }
+                    toolBuf = [];
+                };
+                items.forEach((item, idx) => {
+                    if (item.kind === "tool") {
+                        toolBuf.push({ item, idx });
+                    } else {
+                        flushToolBuf();
+                        const isLast = idx === items.length - 1;
+                        if (item.kind === "thinking") {
+                            groups.push(<ThinkingDisclosure key={`live-thinking-${idx}`} text={item.text} streaming={isLast} />);
+                        } else {
+                            groups.push(
+                                <div key={`live-text-${idx}`} className="w-full min-w-0 px-1 py-0.5 text-sm">
+                                    <WaveStreamdown text={item.text} parseIncompleteMarkdown />
+                                    {isLast ? <span className="ly-cursor" /> : null}
+                                </div>
+                            );
+                        }
+                    }
+                });
+                flushToolBuf();
+                return groups;
+            })()}
+            {items.length === 0 && !turn.error ? (
                 <div className="flex items-center gap-1.5 px-1 py-2">
                     <span className="ly-flow-dot" />
                     <span className="ly-flow-dot" />
                     <span className="ly-flow-dot" />
+                </div>
+            ) : null}
+            {turn.error ? (
+                <div className="mt-1 flex flex-col gap-1.5 rounded-xl border border-error/25 bg-error/10 px-3.5 py-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-error">
+                        <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px]" />
+                        <span>出错了</span>
+                    </div>
+                    <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">{turn.error.message}</div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                        <button
+                            type="button"
+                            className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary"
+                            onClick={onContinue}
+                        >
+                            <i className="fa-sharp fa-solid fa-forward text-[10px]" />
+                            <span>继续</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary"
+                            onClick={onRetry}
+                        >
+                            <i className="fa-sharp fa-solid fa-rotate-right text-[10px]" />
+                            <span>重试</span>
+                        </button>
+                    </div>
                 </div>
             ) : null}
         </div>

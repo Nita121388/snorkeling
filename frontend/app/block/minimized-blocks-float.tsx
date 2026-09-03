@@ -16,7 +16,15 @@ import {
     useRef,
     useState,
 } from "react";
-import { getMinimizedBlockIds, removeMinimizedBlockId, restoreMinimizedBlockToLayout } from "./block-minimize";
+import {
+    deleteMinimizedGroup,
+    getMinimizedBlockIds,
+    getMinimizedGroups,
+    removeMinimizedBlockId,
+    restoreMinimizedBlockToLayout,
+    restoreMinimizedGroupToLayout,
+    type MinimizedGroups,
+} from "./block-minimize";
 
 const FloatPositionStoragePrefix = "snorkeling:minimized-blocks-float-position:";
 const FloatButtonSize = 42;
@@ -29,6 +37,11 @@ type MinimizedBlockItem = {
     title: string;
     subtitle: string;
     icon: string;
+};
+
+type MinimizedGroupItem = {
+    groupId: string;
+    members: MinimizedBlockItem[];
 };
 
 type FloatPosition = {
@@ -112,6 +125,62 @@ function getBlockSubtitle(block: Block | null | undefined): string {
     return location ? `${view} · ${location}` : view;
 }
 
+function buildItem(block: Block | null | undefined): MinimizedBlockItem {
+    return {
+        blockId: block?.oid || "",
+        title: getBlockTitle(block),
+        subtitle: getBlockSubtitle(block),
+        icon: block?.meta?.["frame:icon"] || block?.meta?.icon || block?.meta?.view || "cube",
+    };
+}
+
+/**
+ * Build the ordered render list from flat blockIds + group map.
+ * Groups are inserted at the position of their first member blockId.
+ * Group member blockIds (after the first) are skipped so they don't render
+ * as top-level rows; they render inside the group row instead.
+ */
+function buildRenderList(
+    minimizedBlockIds: string[],
+    groups: MinimizedGroups,
+    layoutModel: ReturnType<typeof getLayoutModelForTabById>
+): Array<{ type: "block"; item: MinimizedBlockItem } | { type: "group"; group: MinimizedGroupItem }> {
+    const result: Array<{ type: "block"; item: MinimizedBlockItem } | { type: "group"; group: MinimizedGroupItem }> = [];
+    const renderedGroupIds = new Set<string>();
+
+    for (const blockId of minimizedBlockIds) {
+        // Check if this blockId is a member of any group.
+        let foundGroup = false;
+        for (const [groupId, memberIds] of Object.entries(groups)) {
+            const idx = memberIds.indexOf(blockId);
+            if (idx === -1) continue;
+            foundGroup = true;
+
+            // Only render the group once, at the position of the first member.
+            if (!renderedGroupIds.has(groupId)) {
+                renderedGroupIds.add(groupId);
+                const members = memberIds
+                    .map((id) => buildItem(layoutModel?.getBlockById(id)))
+                    .filter((m) => m.blockId && m.title);
+                if (members.length > 0) {
+                    result.push({ type: "group", group: { groupId, members } });
+                }
+            }
+            // Skip subsequent members — they render inside the group row.
+            break;
+        }
+        if (!foundGroup) {
+            const item = buildItem(layoutModel?.getBlockById(blockId));
+            if (item.blockId && item.title) {
+                result.push({ type: "block", item });
+            }
+        }
+    }
+    return result;
+}
+
+// ── Row components ──
+
 function MinimizedBlockRow({
     item,
     tabId,
@@ -167,33 +236,141 @@ function MinimizedBlockRow({
     );
 }
 
+function MinimizedGroupRow({
+    group,
+    tabId,
+    expanded,
+    onToggleExpand,
+    onPreview,
+    onRestoreGroup,
+    onDeleteGroup,
+}: {
+    group: MinimizedGroupItem;
+    tabId: string;
+    expanded: boolean;
+    onToggleExpand: () => void;
+    onPreview: (blockId: string) => void;
+    onRestoreGroup: (groupId: string) => void;
+    onDeleteGroup: (groupId: string) => void;
+}) {
+    const [showActions, setShowActions] = useState(false);
+    const actionsTimerRef = useRef<number | null>(null);
+
+    const cancelHideActions = useCallback(() => {
+        if (actionsTimerRef.current != null) {
+            window.clearTimeout(actionsTimerRef.current);
+            actionsTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => () => cancelHideActions(), [cancelHideActions]);
+
+    const handleHeaderEnter = useCallback(() => {
+        cancelHideActions();
+        actionsTimerRef.current = window.setTimeout(() => {
+            actionsTimerRef.current = null;
+            setShowActions(true);
+        }, 300);
+    }, [cancelHideActions]);
+
+    const handleHeaderLeave = useCallback(() => {
+        cancelHideActions();
+        setShowActions(false);
+    }, [cancelHideActions]);
+
+    return (
+        <div className={clsx("minimized-group-row", expanded && "expanded")}>
+            <div
+                className="minimized-group-header"
+                onClick={onToggleExpand}
+                onMouseEnter={handleHeaderEnter}
+                onMouseLeave={handleHeaderLeave}
+            >
+                <button type="button" className="minimized-group-expand-btn" title={expanded ? "Collapse" : "Expand"}>
+                    <i className={makeIconClass(expanded ? "folder-open" : "folder", false, { defaultIcon: "layer-group" })} />
+                </button>
+                <span className="minimized-group-title">Group</span>
+                <span className="minimized-group-count">{group.members.length}</span>
+                {showActions && (
+                    <div className="minimized-group-hover-actions">
+                        <button
+                            type="button"
+                            className="minimized-block-restore-button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRestoreGroup(group.groupId);
+                            }}
+                            title="Restore Group"
+                        >
+                            <i className={makeIconClass("arrow-up-right-from-square", false)} />
+                        </button>
+                        <button
+                            type="button"
+                            className="minimized-block-delete-button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteGroup(group.groupId);
+                            }}
+                            title="Delete Group"
+                        >
+                            <i className={makeIconClass("trash", false)} />
+                        </button>
+                    </div>
+                )}
+            </div>
+            {expanded && (
+                <div className="minimized-group-members">
+                    {group.members.map((member) => (
+                        <div key={member.blockId} className="minimized-group-member-row">
+                            <button
+                                type="button"
+                                className="minimized-block-preview-button minimized-group-member-btn"
+                                onClick={() => onPreview(member.blockId)}
+                                title={member.title}
+                            >
+                                <i className={makeIconClass(member.icon, false, { defaultIcon: "cube" })} />
+                                <span className="minimized-block-title">{member.title}</span>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Main component ──
+
 function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> }) {
     const tab = useAtomValue(tabAtom);
     const minimizedBlockIds = getMinimizedBlockIds(tab);
+    const minimizedGroups = getMinimizedGroups(tab);
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState<FloatPosition>(() => readStoredFloatPosition(tabId));
     const [containerWidth, setContainerWidth] = useState(0);
     const [dragging, setDragging] = useState(false);
     const [deletingBlockIds, setDeletingBlockIds] = useState<Set<string>>(() => new Set());
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
     const floatRef = useRef<HTMLDivElement>(null);
     const dragStateRef = useRef<FloatDragState | null>(null);
     const deletingBlockIdsRef = useRef<Set<string>>(new Set());
     const latestPositionRef = useRef(position);
     const suppressClickRef = useRef(false);
     const layoutModel = getLayoutModelForTabById(tabId);
-    const items = useMemo<MinimizedBlockItem[]>(() => {
-        return minimizedBlockIds
-            .map((blockId) => {
-                const block = layoutModel?.getBlockById(blockId);
-                return {
-                    blockId,
-                    title: getBlockTitle(block),
-                    subtitle: getBlockSubtitle(block),
-                    icon: block?.meta?.["frame:icon"] || block?.meta?.icon || block?.meta?.view || "cube",
-                };
-            })
-            .filter((item) => item.title);
-    }, [layoutModel, minimizedBlockIds.join(":")]);
+
+    const renderList = useMemo(
+        () => buildRenderList(minimizedBlockIds, minimizedGroups, layoutModel),
+        [minimizedBlockIds, minimizedGroups, layoutModel]
+    );
+
+    const totalItemCount = useMemo(() => {
+        let count = 0;
+        for (const entry of renderList) {
+            count += entry.type === "group" ? entry.group.members.length : 1;
+        }
+        return count;
+    }, [renderList]);
+
     const popoverAlignLeft = containerWidth > 0 && containerWidth - position.right < 360;
 
     const applyPosition = useCallback((nextPosition: FloatPosition, containerRect: DOMRect) => {
@@ -250,11 +427,11 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
 
     const restoreBlock = useCallback(
         (_blockId: string) => {
-            if (items.length <= 1) {
+            if (totalItemCount <= 1) {
                 setOpen(false);
             }
         },
-        [items.length]
+        [totalItemCount]
     );
 
     const deleteBlock = useCallback(
@@ -268,7 +445,7 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                 .then(() => {
                     layoutModel?.closeEphemeralNodeForBlock(blockId);
                     removeMinimizedBlockId(tabId, blockId);
-                    if (items.length <= 1) {
+                    if (totalItemCount <= 1) {
                         setOpen(false);
                     }
                 })
@@ -284,8 +461,50 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                     });
                 });
         },
-        [items.length, layoutModel, tabId]
+        [totalItemCount, layoutModel, tabId]
     );
+
+    const handleRestoreGroup = useCallback(
+        (groupId: string) => {
+            restoreMinimizedGroupToLayout(tabId, groupId);
+            setExpandedGroups((prev) => {
+                const next = new Set(prev);
+                next.delete(groupId);
+                return next;
+            });
+            if (totalItemCount <= 1) {
+                setOpen(false);
+            }
+        },
+        [tabId, totalItemCount]
+    );
+
+    const handleDeleteGroup = useCallback(
+        (groupId: string) => {
+            deleteMinimizedGroup(tabId, groupId);
+            setExpandedGroups((prev) => {
+                const next = new Set(prev);
+                next.delete(groupId);
+                return next;
+            });
+            if (totalItemCount <= 1) {
+                setOpen(false);
+            }
+        },
+        [tabId, totalItemCount]
+    );
+
+    const toggleGroupExpand = useCallback((groupId: string) => {
+        setExpandedGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            return next;
+        });
+    }, []);
 
     const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
         if (e.button !== 0) {
@@ -368,7 +587,7 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
         [position.bottom, position.right]
     );
 
-    if (!layoutModel || items.length === 0) {
+    if (!layoutModel || totalItemCount === 0) {
         return null;
     }
 
@@ -387,20 +606,36 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                 <div className="minimized-blocks-popover">
                     <div className="minimized-blocks-popover-header">
                         <span>Minimized Blocks</span>
-                        <strong>{items.length}</strong>
+                        <strong>{totalItemCount}</strong>
                     </div>
                     <div className="minimized-blocks-list">
-                        {items.map((item) => (
-                            <MinimizedBlockRow
-                                key={item.blockId}
-                                item={item}
-                                tabId={tabId}
-                                onPreview={previewBlock}
-                                onRestore={restoreBlock}
-                                onDelete={deleteBlock}
-                                deleting={deletingBlockIds.has(item.blockId)}
-                            />
-                        ))}
+                        {renderList.map((entry) => {
+                            if (entry.type === "group") {
+                                return (
+                                    <MinimizedGroupRow
+                                        key={`group-${entry.group.groupId}`}
+                                        group={entry.group}
+                                        tabId={tabId}
+                                        expanded={expandedGroups.has(entry.group.groupId)}
+                                        onToggleExpand={() => toggleGroupExpand(entry.group.groupId)}
+                                        onPreview={previewBlock}
+                                        onRestoreGroup={handleRestoreGroup}
+                                        onDeleteGroup={handleDeleteGroup}
+                                    />
+                                );
+                            }
+                            return (
+                                <MinimizedBlockRow
+                                    key={entry.item.blockId}
+                                    item={entry.item}
+                                    tabId={tabId}
+                                    onPreview={previewBlock}
+                                    onRestore={restoreBlock}
+                                    onDelete={deleteBlock}
+                                    deleting={deletingBlockIds.has(entry.item.blockId)}
+                                />
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -417,7 +652,7 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                 aria-pressed={open}
             >
                 <i className={makeIconClass(open ? "box-open" : "box", false)} />
-                <span>{items.length}</span>
+                <span>{totalItemCount}</span>
             </button>
         </div>
     );

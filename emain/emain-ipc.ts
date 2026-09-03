@@ -869,4 +869,73 @@ export function initIpcHandlers() {
             return false;
         }
     });
+
+    // markdown 导出插件：把渲染好的 HTML 落盘（.html）。
+    // 返回结构化结果 { ok, canceled, filePath, error }，供前端做成功/失败反馈。
+    electron.ipcMain.handle("export-html", async (event, fileName: string, html: string) => {
+        const ww = electron.BrowserWindow.fromWebContents(event.sender);
+        if (ww == null) {
+            return { ok: false, canceled: false, filePath: null, error: "export window unavailable" };
+        }
+        const result = await electron.dialog.showSaveDialog(ww, {
+            title: "Export HTML",
+            defaultPath: fileName || "export.html",
+            filters: [{ name: "HTML", extensions: ["html"] }],
+        });
+        if (result.canceled || !result.filePath) {
+            return { ok: false, canceled: true, filePath: null, error: null };
+        }
+        try {
+            await fs.promises.writeFile(result.filePath, html, "utf-8");
+            console.log("exported html to", result.filePath);
+            return { ok: true, canceled: false, filePath: result.filePath, error: null };
+        } catch (err) {
+            console.error("error exporting html file", err);
+            return { ok: false, canceled: false, filePath: null, error: String(err) };
+        }
+    });
+
+    // markdown 导出插件：离屏窗口渲染 HTML 后打印为 PDF。
+    electron.ipcMain.handle("export-pdf", async (event, fileName: string, html: string, pdfOptions: any) => {
+        const ww = electron.BrowserWindow.fromWebContents(event.sender);
+        if (ww == null) {
+            return { ok: false, canceled: false, filePath: null, error: "export window unavailable" };
+        }
+        const printWin = new electron.BrowserWindow({
+            show: false,
+            webPreferences: {
+                offscreen: true,
+                sandbox: false,
+                nodeIntegration: false,
+                contextIsolation: true,
+            },
+        });
+        try {
+            await printWin.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+            const data = await printWin.webContents.printToPDF({
+                printBackground: true,
+                pageSize: pdfOptions?.pageSize ?? "A4",
+                margins: pdfOptions?.margins ?? { marginType: "default" },
+            });
+            if (data == null || data.length === 0) {
+                return { ok: false, canceled: false, filePath: null, error: "printToPDF returned empty data" };
+            }
+            const result = await electron.dialog.showSaveDialog(ww, {
+                title: "Export PDF",
+                defaultPath: fileName || "export.pdf",
+                filters: [{ name: "PDF", extensions: ["pdf"] }],
+            });
+            if (result.canceled || !result.filePath) {
+                return { ok: false, canceled: true, filePath: null, error: null };
+            }
+            await fs.promises.writeFile(result.filePath, data);
+            console.log("exported pdf to", result.filePath);
+            return { ok: true, canceled: false, filePath: result.filePath, error: null };
+        } catch (err) {
+            console.error("error exporting pdf file", err);
+            return { ok: false, canceled: false, filePath: null, error: String(err) };
+        } finally {
+            printWin.destroy();
+        }
+    });
 }

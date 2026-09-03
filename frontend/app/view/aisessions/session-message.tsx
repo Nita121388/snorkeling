@@ -12,11 +12,129 @@
 
 import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
-import type { ReactNode } from "react";
-import { memo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CopyIconButton } from "./controls";
 import { formatDateTimeToSecond } from "./utils";
 import { useDomTextHighlight } from "./use-dom-highlight";
+
+// ── Thinking Ticker：思考过程单行滚动预览（Ref: Lyra ThinkingBlock.tsx Ticker） ──
+const FADE = 24;
+const LOOP_GAP = 44;
+const SPEED = 46;
+
+/** 将思考文本按段落分割为 runs */
+function thinkingRuns(text: string): string[] {
+    return text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+}
+
+function Ticker({ text, mode }: { text: string; mode: "follow" | "loop" }) {
+    const boxRef = useRef<HTMLSpanElement>(null);
+    const trackRef = useRef<HTMLSpanElement>(null);
+    const runs = useMemo(() => thinkingRuns(text), [text]);
+    const [loop, setLoop] = useState<{ distance: number; duration: number } | null>(null);
+
+    useLayoutEffect(() => {
+        const outer = boxRef.current;
+        const inner = trackRef.current;
+        if (!outer || !inner) return;
+        const measure = () => {
+            if (mode === "follow") {
+                const overflow = Math.max(0, inner.offsetWidth - outer.clientWidth);
+                inner.style.transform = `translateX(${-overflow}px)`;
+                const fade = overflow > 0 ? `${FADE}px` : "0px";
+                outer.style.setProperty("--ly-fade-left", fade);
+                outer.style.setProperty("--ly-fade-right", fade);
+                return;
+            }
+            const width = Math.round((inner.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0);
+            const overflow = width - outer.clientWidth;
+            const distance = width + LOOP_GAP;
+            const duration = Math.max(2200, Math.round((distance / SPEED) * 1000));
+            setLoop((prev) => {
+                if (overflow <= 1) return prev === null ? prev : null;
+                return prev && Math.abs(prev.distance - distance) <= 1 ? prev : { distance, duration };
+            });
+        };
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(outer);
+        return () => observer.disconnect();
+    }, [runs, mode]);
+
+    const looping = mode === "loop" && loop !== null;
+    const copy = (hidden: boolean) => (
+        <span aria-hidden={hidden || undefined} className="ly-think-runs">
+            {runs.map((run, index) => (
+                <span key={index}>{run}</span>
+            ))}
+        </span>
+    );
+
+    return (
+        <span
+            ref={boxRef}
+            aria-hidden
+            className={cn("ly-think-ticker")}
+            style={
+                looping
+                    ? ({ "--ly-marquee": `-${loop.distance}px`, "--ly-scroll": `${loop.duration}ms` } as CSSProperties)
+                    : undefined
+            }
+        >
+            <span ref={trackRef} className={looping ? "ly-marquee-track" : "ly-think-track"}>
+                {copy(false)}
+                {looping && copy(true)}
+            </span>
+        </span>
+    );
+}
+
+// ── 工具专属图标映射（Ref: Lyra ToolCard.tsx ICONS） ──
+const TOOL_ICONS: Record<string, string> = {
+    read: "fa-file-lines",
+    write: "fa-file-circle-plus",
+    edit: "fa-file-code",
+    ls: "fa-folder-tree",
+    glob: "fa-magnifying-glass",
+    grep: "fa-magnifying-glass",
+    bash: "fa-terminal",
+    bash_output: "fa-terminal",
+    todo_write: "fa-list-check",
+    task: "fa-users",
+    skill: "fa-wand-magic-sparkles",
+    web_fetch: "fa-globe",
+};
+function toolIcon(name: string): string {
+    return TOOL_ICONS[name] ?? "fa-terminal";
+}
+
+// ── 可展开详情容器：用 ResizeObserver 实测高度做过渡（Ref: Lyra ToolGroup） ──
+function AnimatedExpand({ open, children }: { open: boolean; children: ReactNode }) {
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const [height, setHeight] = useState(0);
+
+    useEffect(() => {
+        const el = bodyRef.current;
+        if (!el) return;
+        const measure = () => setHeight(el.scrollHeight);
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [children, open]);
+
+    return (
+        <div
+            style={{ height: open ? height : 0 }}
+            className="overflow-hidden transition-[height] duration-200 ease-out"
+        >
+            <div ref={bodyRef} className="border-t border-border px-3 py-2">
+                {children}
+            </div>
+        </div>
+    );
+}
 
 // 思考块（Paseo 风格：与工具调用同式的可展开徽章行）。
 // streaming=true 时默认展开看实时内容，行头用脉冲点+脉冲标签表示“正在思考”；
@@ -46,8 +164,15 @@ export function ToolCallRow({
 }) {
   const hasError = status === "failed" || Boolean(exitCode);
   const running = status === "running";
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = useRef(Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 250);
+    return () => clearInterval(timer);
+  }, [running]);
   return (
-    <div className="relative my-1 min-w-0 overflow-hidden rounded-lg text-xs">
+    <div className={cn("relative my-1 min-w-0 overflow-hidden rounded-lg text-xs", running && "ly-rail")}>
       <button
         type="button"
         className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
@@ -70,6 +195,7 @@ export function ToolCallRow({
             )}
           />
         )}
+        <i className={cn("fa-sharp fa-solid shrink-0 text-[10px]", toolIcon(name), running ? "text-accent animate-pulse" : "text-secondary/70")} />
         <span className="shrink-0 font-mono text-[11px] text-primary">{name || "tool"}</span>
         {exitCode != null && exitCode !== 0 ? (
           <span className="shrink-0 rounded bg-error/15 px-1 py-px text-[9px] font-medium text-error">
@@ -77,12 +203,13 @@ export function ToolCallRow({
           </span>
         ) : null}
         <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{preview}</span>
+        {running && elapsed > 0 && (
+          <span className="shrink-0 tabular-nums text-[10px] text-accent/80">{elapsed}s</span>
+        )}
       </button>
-      {expanded ? (
-        <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
-          {children}
-        </div>
-      ) : null}
+      <AnimatedExpand open={expanded}>
+        {children}
+      </AnimatedExpand>
       {running ? <span className="ly-shimmer" /> : null}
     </div>
   );
@@ -123,16 +250,18 @@ export function ThinkingDisclosure({
         <span className={cn("shrink-0 font-mono text-[11px]", streaming ? "animate-pulse text-primary" : "text-primary")}>
           Thinking
         </span>
-        {!open ? <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{preview}</span> : null}
+        {!open ? (
+            <span className="min-w-0 flex-1 overflow-hidden">
+                <Ticker key={streaming ? "follow" : "loop"} text={trimmed} mode={streaming ? "follow" : "loop"} />
+            </span>
+        ) : null}
       </button>
-      {open ? (
-        <div className="border-t border-border px-3 py-2" style={{ animation: "slideDown 0.2s ease-out" }}>
-          <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary font-sans">
-            {trimmed}
-            {streaming ? <span className="ly-cursor" /> : null}
-          </pre>
+      <AnimatedExpand open={open}>
+        <div className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-secondary font-sans">
+          <WaveStreamdown text={trimmed} parseIncompleteMarkdown />
+          {streaming ? <span className="ly-cursor" /> : null}
         </div>
-      ) : null}
+      </AnimatedExpand>
     </div>
   );
 }

@@ -215,14 +215,76 @@ svg [aria-label="tip"] g path {
 }
 
 /* D. 工具完成落定 — ly-pop
-   Icon settling in once a tool finishes. Overshoot then settle. */
+   Icon settling in once a tool finishes. Overshoot then settle.
+   Curve: cubic-bezier(0.34, 1.56, 0.64, 1) — 过冲回弹，与 Lyra 对齐。 */
 @keyframes ly-pop {
     0%   { opacity: 0; transform: scale(0.5); }
     60%  { opacity: 1; transform: scale(1.15); }
     100% { opacity: 1; transform: scale(1); }
 }
 .ly-pop {
-    animation: ly-pop 0.3s ease-out forwards;
+    animation: ly-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* F. 运行中工具卡片底部进度条 — ly-rail
+   1.5px 渐变条从左到右循环，两端淡出。
+   Ref: Lyra styles.css ly-rail。 */
+.ly-rail {
+    position: relative;
+    overflow: hidden;
+}
+.ly-rail::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 1.5px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--color-accent) 45%, transparent) 35%,
+        var(--color-accent) 50%,
+        color-mix(in srgb, var(--color-accent) 45%, transparent) 65%,
+        transparent 100%
+    );
+    animation: ly-rail-track 1.4s linear infinite;
+}
+@keyframes ly-rail-track {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+/* G. 运行中工具摘要行文字扫光 — ly-glide
+   background-clip: text 让渐变只在文字上可见，2.6s 匀速循环。
+   Ref: Lyra styles.css ly-glide。 */
+.ly-glide {
+    background-image: linear-gradient(
+        100deg,
+        var(--color-secondary) 0%,
+        var(--color-secondary) 42%,
+        var(--color-primary) 50%,
+        var(--color-secondary) 58%,
+        var(--color-secondary) 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: ly-glide 2.6s linear infinite;
+}
+@keyframes ly-glide {
+    from { background-position: 100% 50%; }
+    to   { background-position: -100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ly-glide {
+        animation: none;
+        background: none;
+        color: var(--color-secondary);
+        -webkit-background-clip: border-box;
+        background-clip: border-box;
+    }
 }
 
 /* E. 详情落盘过渡 — ly-fade-up / ly-enter
@@ -239,6 +301,58 @@ svg [aria-label="tip"] g path {
     .ly-enter { animation: none; }
 }
 
+/* H. Thinking Ticker — 思考过程单行滚动预览（Ref: Lyra styles.css）
+   follow 模式：streaming 时 track 平移到最新文字
+   loop 模式：完成后 hover 触发 marquee 滚动读回 */
+.ly-think-ticker {
+    display: block;
+    min-width: 0;
+    max-width: 480px;
+    overflow: hidden;
+    white-space: nowrap;
+    animation: ly-fade-in 180ms ease-out;
+    mask-image: linear-gradient(
+        to right,
+        transparent 0,
+        #000 var(--ly-fade-left, 0px),
+        #000 calc(100% - var(--ly-fade-right, 0px)),
+        transparent 100%
+    );
+}
+.ly-think-track {
+    display: inline-flex;
+    padding-right: 16px;
+    white-space: nowrap;
+    transition: transform 320ms ease-out;
+    will-change: transform;
+}
+.ly-think-runs {
+    display: inline-flex;
+    gap: 28px;
+    white-space: nowrap;
+}
+.ly-marquee-track {
+    display: inline-flex;
+    gap: 44px;
+    white-space: nowrap;
+}
+.ly-scroll:hover .ly-marquee-track {
+    animation: ly-marquee var(--ly-scroll, 8s) linear 300ms infinite;
+}
+.ly-scroll:has(:focus-visible) .ly-marquee-track {
+    animation: ly-marquee var(--ly-scroll, 8s) linear 300ms infinite;
+}
+@keyframes ly-marquee {
+    to { transform: translateX(var(--ly-marquee, 0)); }
+}
+@keyframes ly-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+.ly-fade-in {
+    animation: ly-fade-in 180ms ease-out;
+}
+
 /* 隐藏滚动条 - 保持滚动功能 */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
@@ -246,5 +360,37 @@ svg [aria-label="tip"] g path {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* I. 手机端 hover fallback（Ref: Lyra styles.css hover-reveal）
+   手机上没有 pointer hover，group-hover:opacity-0 的元素永远不可见。
+   (hover: none) 时强制显示所有 hover-reveal 控件。 */
+@media (hover: none) {
+    [class*="group-hover"][class*="opacity-0"] {
+        opacity: 1 !important;
+    }
+}
+
+/* J. Reduced Motion 完善支持（Ref: Lyra styles.css）
+   data-reduce-motion 属性开关，与 @media 互补。 */
+:root[data-reduce-motion="on"] .ly-enter,
+:root[data-reduce-motion="system"] .ly-enter {
+    animation: none;
+}
+:root[data-reduce-motion="on"] .ly-glide,
+:root[data-reduce-motion="system"] .ly-glide {
+    animation: none;
+    background: none;
+    color: var(--color-secondary);
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+}
+:root[data-reduce-motion="on"] .ly-pop,
+:root[data-reduce-motion="system"] .ly-pop {
+    animation: none;
+}
+:root[data-reduce-motion="on"] .ly-shimmer,
+:root[data-reduce-motion="system"] .ly-shimmer {
+    animation: none;
 }
 

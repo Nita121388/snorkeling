@@ -18,6 +18,7 @@ import {
     createTerminalBlockDefForTarget,
     DefaultAgentWidgetId,
     DefaultTerminalWidgetId,
+    getCurrentWorkspaceContextMeta,
     getAgentProfileDetectionCommands,
     getAgentProfileOptions,
     getCurrentTabAgentLaunchTargets,
@@ -678,14 +679,25 @@ const AgentTargetFloatingWindow = memo(
             }
         }, []);
         // GUI 对话模式：创建带 newchat 标志的 agent block，首条消息后自动绑定真实会话
-        const createGuiChatBlockDef = (): BlockDef => ({
-            meta: {
+        const createGuiChatBlockDef = (): BlockDef => {
+            const contextMeta = getCurrentWorkspaceContextMeta();
+            const meta: MetaType & Record<string, unknown> = {
                 view: "agent",
                 "frame:title": "Agent",
                 icon: "robot",
                 "aisessions:newchat": true,
-            } as MetaType,
-        });
+            };
+            // 继承当前工作区上下文（活跃终端的 cwd），使 GUI 新会话与 TUI
+            // 终端落在同一项目目录下，pi 按 cwd 分目录存储会话文件 ——
+            // 否则会话会写到 Snorkeling 默认目录，TUI `pi --resume` 看不到。
+            if (typeof contextMeta["cmd:cwd"] === "string" && contextMeta["cmd:cwd"] !== "") {
+                meta["cmd:cwd"] = contextMeta["cmd:cwd"];
+            }
+            if (typeof contextMeta.connection === "string" && contextMeta.connection !== "") {
+                meta.connection = contextMeta.connection;
+            }
+            return { meta };
+        };
         // Vendor chip row collapse state: default only the current/selected chip shows, the rest are
         // hidden behind a "+N▾" inline toggle. Pure frontend; reset to collapsed each time the
         // floating window reopens (see the isOpen useEffect below) so a prior expand never leaks.

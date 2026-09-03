@@ -22,6 +22,7 @@ import { getPreviewPluginById } from "./preview-plugin-registry";
 import { registerBaseViewPlugin } from "./plugins/base-view/base-view-plugin";
 import { registerMdPropertiesPlugin } from "./plugins/md-properties/md-properties-plugin";
 import { registerBannerPlugin } from "./plugins/banner";
+import { registerExportPlugin } from "./plugins/export";
 import type { PreviewEnv } from "./previewenv";
 
 export type SpecializedViewProps = {
@@ -44,6 +45,8 @@ registerBaseViewPlugin();
 registerMdPropertiesPlugin();
 // 注册 Obsidian Banner 插件（.md 只读预览，frontmatter → Banner 渲染）。
 registerBannerPlugin();
+// 注册 Markdown 导出插件（HTML / PDF，可插拔 provider 注册表）。
+registerExportPlugin();
 
 // 内部插件渲染：注册表插件 ID → 组件。接口形状与 SpecializedViewProps 兼容（model+parentRef）。
 function resolveSpecializedViewComponent(

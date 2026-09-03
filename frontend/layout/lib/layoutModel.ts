@@ -1640,6 +1640,25 @@ export class LayoutModel {
         return true;
     }
 
+    /**
+     * Remove a single block from an inline tab group node without removing the
+     * other sibling blocks from the layout. Returns true when the block existed
+     * in the group node.
+     */
+    removeBlockFromInlineTab(nodeId: string, blockId: string): boolean {
+        const node = findNode(this.treeState.rootNode, nodeId);
+        if (!node) {
+            return false;
+        }
+        const blockIds = getLayoutDataBlockIds(node.data);
+        if (blockIds.length <= 1 || !blockIds.includes(blockId)) {
+            return false;
+        }
+        removeBlockIdFromInlineTabNode(node, blockId);
+        this.commitInlineTabMutation(node.id);
+        return true;
+    }
+
     inlineMinimizeBlock(blockId: string): boolean {
         const mergeTarget = findInlineTabMergeTarget(
             blockId,

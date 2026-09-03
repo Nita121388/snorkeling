@@ -105,7 +105,8 @@ func TestPiAdapter_Integration_PromptAck(t *testing.T) {
 }
 
 // TestManager_EnsureDedupes verifies the Manager reuses one Session for the
-// same source+sessionID and errors on a second concurrent prompt.
+// same source+sessionID (non-empty) and creates separate sessions for each
+// empty-sessionID call (new-chat requests must not collide).
 func TestManager_EnsureDedupes(t *testing.T) {
 	requirePi(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -115,26 +116,52 @@ func TestManager_EnsureDedupes(t *testing.T) {
 	defer mgr.CloseAll()
 
 	sessDir := t.TempDir()
-	s1, first, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
+
+	// --- Empty SessionID (new-chat): each call must create a separate session ---
+	s1, first, key1, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
 	if !first {
 		t.Fatal("expected first=true for fresh session")
 	}
-	s2, firstAgain, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
+	s2, first2, key2, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
 	if err != nil {
 		t.Fatalf("Ensure(dup) failed: %v", err)
 	}
-	if firstAgain {
-		t.Fatal("expected first=false for duplicate")
+	if !first2 {
+		t.Fatal("expected first=true for second new-chat (empty SessionID)")
 	}
-	if s1 != s2 {
-		t.Fatal("expected same *Session for duplicate Ensure")
+	if s1 == s2 {
+		t.Fatal("expected different *Session for second new-chat")
 	}
-	mgr.Close("pi", "")
+	if key1 == key2 {
+		t.Fatal("expected different keys for second new-chat")
+	}
+
+	// --- Non-empty SessionID: deduplication must work ---
+	sessDir2 := t.TempDir()
+	s3, first3, _, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionID: "test-session-abc", SessionDir: sessDir2})
+	if err != nil {
+		t.Fatalf("Ensure failed: %v", err)
+	}
+	if !first3 {
+		t.Fatal("expected first=true for fresh non-empty session")
+	}
+	s4, first4, _, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionID: "test-session-abc", SessionDir: sessDir2})
+	if err != nil {
+		t.Fatalf("Ensure(dup) failed: %v", err)
+	}
+	if first4 {
+		t.Fatal("expected first=false for duplicate non-empty session")
+	}
+	if s3 != s4 {
+		t.Fatal("expected same *Session for duplicate non-empty Ensure")
+	}
+
+	mgr.CloseAll()
 	if mgr.ActiveCount() != 0 {
-		t.Fatal("expected zero active sessions after Close")
+		t.Fatal("expected zero active sessions after CloseAll")
 	}
 }
 
@@ -149,7 +176,7 @@ func TestManager_Sweep(t *testing.T) {
 	// Force a tiny idle timeout for the test.
 	mgr.idle = 100 * time.Millisecond
 	sessDir := t.TempDir()
-	_, _, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
+	_, _, _, err := mgr.Ensure(ctx, &piAdapter{}, StartOptions{SessionDir: sessDir})
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}

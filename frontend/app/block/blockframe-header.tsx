@@ -558,6 +558,7 @@ const BlockFrame_Header = ({
     const [isCardHovered, setIsCardHovered] = React.useState(false);
     const hideHoverTimerRef = React.useRef<number | null>(null);
     const hideCardTimerRef = React.useRef<number | null>(null);
+    const cardFocusRef = React.useRef(false);
     const cancelPendingHideHover = React.useCallback(() => {
         if (hideHoverTimerRef.current != null) {
             window.clearTimeout(hideHoverTimerRef.current);
@@ -661,8 +662,23 @@ const BlockFrame_Header = ({
                         cancelPendingHideCard();
                         setIsCardHovered(true);
                     }}
+                    onFocusCapture={() => {
+                        cardFocusRef.current = true;
+                        cancelPendingHideCard();
+                        setIsCardHovered(true);
+                        setIsHovered(true);
+                    }}
+                    onBlurCapture={(event) => {
+                        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
+                            return;
+                        }
+                        cardFocusRef.current = false;
+                    }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
+                        if (cardFocusRef.current) {
+                            return;
+                        }
                         hideCardTimerRef.current = window.setTimeout(() => {
                             hideCardTimerRef.current = null;
                             setIsCardHovered(false);

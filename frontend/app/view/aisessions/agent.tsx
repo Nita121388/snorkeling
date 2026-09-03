@@ -39,6 +39,10 @@ export class AgentViewModel implements ViewModel {
         const detail = get(this.detailAtom);
         return detail?.summary?.title || "Agent";
     });
+    viewText = jotai.atom((get) => {
+        const detail = get(this.detailAtom);
+        return detail?.summary?.title || "";
+    });
     noPadding = jotai.atom(true);
 
     // 会话详情相关状态
@@ -93,6 +97,14 @@ export class AgentViewModel implements ViewModel {
         return (blockData?.meta as Record<string, unknown> | undefined)?.["aisessions:newchat"] === true;
     }
 
+    // 获取当前块绑定的项目路径（cmd:cwd），用于 GUI 新会话创建时传给 pi
+    getProjectPath(): string {
+        const blockData = globalStore.get(this.blockAtom);
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const cwd = meta["cmd:cwd"];
+        return typeof cwd === "string" ? cwd.trim() : "";
+    }
+
     // 启动新会话
     startNewSession(): void {
         const existing = globalStore.get(this.newSessionAtom);
@@ -141,7 +153,13 @@ export class AgentViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             void this.loadDetail(summary, true);
         } catch {
-            // 忽略错误
+            // Summary RPC 失败（会话文件可能还没被索引），兜底用 loadDetailById
+            // 直接按 sessionId 从后端拉详情，让标题尽快从 "New Chat" 切换
+            const placeholder = globalStore.get(this.newSessionAtom);
+            if (placeholder != null && placeholder.id === sessionId) {
+                globalStore.set(this.newSessionAtom, null);
+            }
+            void this.loadDetailById(sessionId, true);
         }
     }
 
@@ -522,6 +540,7 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
                 detail={detail}
                 isNewChat={isNewChat}
                 newChatEpoch={newChatEpoch}
+                projectPath={model.getProjectPath()}
                 loading={
                     error === "" &&
                     (loading ||

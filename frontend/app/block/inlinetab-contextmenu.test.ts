@@ -18,6 +18,7 @@ const call = (blockId: string, blockIds: string[], locked: Set<string>) =>
         noop,
         noop,
         noop,
+        noop,
         undefined as never
     );
 

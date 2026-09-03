@@ -57,6 +57,7 @@ import {
     shouldWarmupInlineTabController,
 } from "./block-recovery";
 import "./block.scss";
+import { minimizeGroupToFloat } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
 import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
 import { BlockFrame } from "./blockframe";
@@ -136,6 +137,7 @@ type InlineTabLabelProps = {
     onCloseOthersExceptLocked: () => void;
     onCloseAll: () => void;
     onCloseAllExceptLocked: () => void;
+    onMinimizeGroup: () => void;
     lockedBlockIds: Set<string>;
     onRename: (title: string) => void;
     onReorder: (dragBlockId: string, hoverIndex: number) => void;
@@ -158,6 +160,7 @@ const InlineTabLabel = memo(
         onCloseOthersExceptLocked,
         onCloseAll,
         onCloseAllExceptLocked,
+        onMinimizeGroup,
         lockedBlockIds,
         onRename,
         onReorder,
@@ -383,6 +386,7 @@ const InlineTabLabel = memo(
                     onCloseAll,
                     onCloseAllExceptLocked,
                     toggleLock,
+                    onMinimizeGroup,
                     waveEnv,
                 );
                 waveEnv.showContextMenu(menu, e);
@@ -397,6 +401,7 @@ const InlineTabLabel = memo(
                 onCloseAll,
                 onCloseAllExceptLocked,
                 toggleLock,
+                onMinimizeGroup,
                 waveEnv,
             ],
         );
@@ -834,6 +839,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                                 onCloseAllExceptLocked={() =>
                                     layoutModel?.closeAllInlineTabBlocksExceptLocked(nodeModel.nodeId, lockedBlockIds)
                                 }
+                                onMinimizeGroup={() => minimizeGroupToFloat(tabModel.tabId, blockIds)}
                                 index={index}
                                 onReorder={(dragBlockId, hoverIndex) =>
                                     layoutModel?.reorderInlineTabBlock(nodeModel.nodeId, dragBlockId, hoverIndex)

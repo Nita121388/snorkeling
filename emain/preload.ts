@@ -92,6 +92,9 @@ contextBridge.exposeInMainWorld("api", {
     doRefresh: () => ipcRenderer.send("do-refresh"),
     getPathForFile: (file: File): string => webUtils.getPathForFile(file),
     saveTextFile: (fileName: string, content: string) => ipcRenderer.invoke("save-text-file", fileName, content),
+    exportHtml: (fileName: string, html: string) => ipcRenderer.invoke("export-html", fileName, html),
+    exportPdf: (fileName: string, html: string, pdfOptions?: object) =>
+        ipcRenderer.invoke("export-pdf", fileName, html, pdfOptions),
     setIsActive: () => ipcRenderer.invoke("set-is-active"),
     startWindowDrag: () => ipcRenderer.send("window-start-drag"),
     endWindowDrag: () => ipcRenderer.send("window-end-drag"),

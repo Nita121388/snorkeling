@@ -16,6 +16,7 @@ export function buildInlineTabContextMenu(
     onCloseAll: () => void,
     onCloseAllExceptLocked: () => void,
     onToggleLock: () => void,
+    onMinimizeGroup: () => void,
     env: BlockEnv,
 ): ContextMenuItem[] {
     const isLocked = lockedBlockIds.has(blockId);
@@ -36,9 +37,10 @@ export function buildInlineTabContextMenu(
     if (hasLocked) {
         menu.push({ label: "关闭全部（锁定除外）", click: onCloseAllExceptLocked });
     }
-    menu.push(
-        { type: "separator" },
-        { label: "复制 BlockId", click: () => navigator.clipboard.writeText(blockId) },
-    );
+    menu.push({ label: "复制 BlockId", click: () => navigator.clipboard.writeText(blockId) });
+    if (blockIds.length >= 2) {
+        menu.push({ type: "separator" });
+        menu.push({ label: "Minimize Group to BlockBar", click: onMinimizeGroup });
+    }
     return menu;
 }

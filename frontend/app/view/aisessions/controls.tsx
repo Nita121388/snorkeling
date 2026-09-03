@@ -258,9 +258,9 @@ export function CopyTextButton({
                         )}
                     >
                         {status === "copied" ? (
-                            <i className="fa-sharp fa-solid fa-check text-[9px]" />
+                            <i className="fa-sharp fa-solid fa-check text-[9px] ly-pop" />
                         ) : status === "failed" ? (
-                            <i className="fa-sharp fa-solid fa-triangle-exclamation text-[9px]" />
+                            <i className="fa-sharp fa-solid fa-triangle-exclamation text-[9px] ly-pop" />
                         ) : (
                             <span className="h-1.5 w-1.5 rounded-full bg-accent/90 ring-2 ring-accent/20" />
                         )}

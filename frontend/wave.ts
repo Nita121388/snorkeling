@@ -1,6 +1,15 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Country flag emoji polyfill — must run BEFORE any React rendering.
+// On Windows, Segoe UI Emoji has no flag glyphs; this polyfill injects a
+// Twemoji-based font face so 🇨🇳🇺🇸🇯🇵 etc. render as actual flags.
+// Uses a local copy of TwemojiCountryFlags.woff2 (copied to public/fonts/)
+// so it works offline / without CDN. The polyfill auto-detects via canvas
+// whether flags are missing and only injects on affected platforms.
+import { polyfillCountryFlagEmojis } from "country-flag-emoji-polyfill";
+polyfillCountryFlagEmojis("Twemoji Country Flags", "fonts/TwemojiCountryFlags.woff2");
+
 import { App } from "@/app/app";
 import { registerBuiltinViews } from "@/app/block/builtinviews";
 import { loadMonaco, setMonacoTheme } from "@/app/monaco/monaco-env";

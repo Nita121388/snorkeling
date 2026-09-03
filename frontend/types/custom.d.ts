@@ -7,6 +7,13 @@ import type * as jotai from "jotai";
 import type * as rxjs from "rxjs";
 
 declare global {
+    type ExportResult = {
+        ok: boolean;
+        canceled: boolean;
+        filePath: string | null;
+        error: string | null;
+    };
+
     type GlobalAtomsType = {
         builderId: jotai.Atom<string>; // readonly (for builder mode)
         builderAppId: jotai.PrimitiveAtom<string>; // app being edited in builder mode
@@ -159,6 +166,8 @@ declare global {
         doRefresh: () => void; // do-refresh
         getPathForFile: (file: File) => string; // webUtils.getPathForFile
         saveTextFile: (fileName: string, content: string) => Promise<boolean>; // save-text-file
+        exportHtml: (fileName: string, html: string) => Promise<ExportResult>; // export-html
+        exportPdf: (fileName: string, html: string, pdfOptions?: Record<string, unknown>) => Promise<ExportResult>; // export-pdf
         setIsActive: () => Promise<void>; // set-is-active
         startWindowDrag: () => void; // window-start-drag
         endWindowDrag: () => void; // window-end-drag

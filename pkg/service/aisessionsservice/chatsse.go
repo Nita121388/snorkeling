@@ -100,19 +100,24 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		SessionDir:   req.SessionDir,
 		NoExtensions: req.NoExtensions,
 	}
-	session, isNew, err := chatManager.Ensure(r.Context(), provider, opts)
+	session, isNew, sessionKey, err := chatManager.Ensure(r.Context(), provider, opts)
 	if err != nil {
 		_ = sseHandler.WriteError(fmt.Sprintf("chat session start failed: %v", err))
 		return
 	}
 	if isNew {
-		svrDebugf("chat session spawned: source=%q session=%q", req.Source, req.SessionID)
+		svrDebugf("chat session spawned: source=%q session=%q key=%q", req.Source, req.SessionID, sessionKey)
 	}
 
 	// Emit a session snapshot so the frontend can prime the header without
 	// waiting for the first turn.
 	if st, err := session.GetState(r.Context()); err == nil {
 		_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
+		// If pi assigned a real session ID, promote the session from its transient key
+		// so subsequent requests with the real ID can find it.
+		if st.SessionID != "" && req.SessionID == "" {
+			chatManager.PromoteSession(req.Source, sessionKey, st.SessionID, session)
+		}
 	}
 
 	if req.Command != nil {

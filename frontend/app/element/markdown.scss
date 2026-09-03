@@ -45,9 +45,9 @@
             gap: 0.286em;
 
             .heading-collapse-button {
-                width: 0;
-                height: 1.286em;
-                flex: 0 0 0;
+                width: 0.857em;
+                height: 0.857em;
+                flex: 0 0 0.857em;
                 padding: 0;
                 display: inline-flex;
                 align-items: center;
@@ -55,13 +55,13 @@
                 border: none;
                 border-radius: 4px;
                 background: transparent;
-                color: var(--secondary-text-color);
+                color: #999;
                 cursor: pointer;
                 opacity: 0;
                 overflow: hidden;
-                font-size: 0.65em;
+                font-size: 0.45em;
                 line-height: 1;
-                transition: width 0.15s ease, opacity 0.15s ease;
+                transition: opacity 0.15s ease;
             }
 
             .heading-title {
@@ -72,15 +72,11 @@
             &.collapsed .heading-collapse-button,
             .heading-collapse-button:focus-visible {
                 opacity: 1;
-                width: 1.286em;
-                flex: 0 0 1.286em;
-                padding: 0;
             }
 
             .heading-collapse-button:hover,
             .heading-collapse-button:focus-visible {
-                background-color: var(--highlight-bg-color);
-                color: var(--main-text-color);
+                color: #bbb;
                 outline: none;
             }
 
@@ -1293,6 +1289,7 @@
         border-radius: 6px;
         background: transparent;
         font-size: 18px;
+        font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
         cursor: pointer;
         line-height: 1;
 
@@ -1435,6 +1432,7 @@
     border-radius: 14px;
     background: transparent;
     font-size: 32px;
+    font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
     line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1464,7 +1462,7 @@
     }
 }
 
-.markdown:hover .markdown-doc-emoji-badge.is-empty {
+.markdown-doc-emoji-badge.is-empty:hover {
     opacity: 1;
 }
 

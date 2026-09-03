@@ -43,6 +43,8 @@ import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
+import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
+import { isMarkdownFile } from "./plugins/export/pdf-export";
 import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
 import {
     PreviewLiveScrollSyncMetaKey,
@@ -448,6 +450,8 @@ export class PreviewModel implements ViewModel {
 
     markdownShowToc: PrimitiveAtom<boolean>;
     presentationMode: PrimitiveAtom<boolean>;
+    // markdown 导出反馈：header 显示一条带样式的瞬态状态文本（成功/失败），3s 后自动清除。
+    markdownExportStatus: PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
     liveSourceBlockId: Atom<string | null>;
     liveSourceBlock: Atom<Block | null>;
     liveSourceModel: Atom<PreviewModel | null>;
@@ -464,6 +468,7 @@ export class PreviewModel implements ViewModel {
     liveScrollSourceState: PrimitiveAtom<LiveScrollSourceState>;
 
     monacoRef: React.RefObject<MonacoTypes.editor.IStandaloneCodeEditor>;
+    private exportStatusTimer: number | null = null;
     searchTargetLine: Atom<number | null>;
 
     directoryDisplayMode: Atom<PreviewDirectoryDisplayMode>;
@@ -507,6 +512,7 @@ export class PreviewModel implements ViewModel {
         });
         this.markdownShowToc = atom(false);
         this.presentationMode = atom(false);
+        this.markdownExportStatus = atom<{ kind: "ok" | "err"; text: string } | null>(null) as PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
         this.searchTargetLine = atom((get) =>
@@ -662,7 +668,16 @@ export class PreviewModel implements ViewModel {
             // 文件是否有未落盘的草稿(脏). 信号驱动地址栏文件名样式(accent+italic)与 Tab 脏点.
             // 保存入口: Ctrl/Cmd+S 全局落盘 + 右键菜单 Save File, 头部不再保留 Save 按钮.
             const isDirty = get(this.newFileContent) !== null;
+            const exportStatus = get(this.markdownExportStatus);
             const viewTextChildren: HeaderElem[] = [
+                ...(exportStatus
+                    ? [{
+                          elemtype: "text" as const,
+                          text: exportStatus.text,
+                          title: exportStatus.text,
+                          className: exportStatus.kind === "ok" ? "text-success" : "text-error",
+                      }]
+                    : []),
                 {
                     elemtype: "div",
                     className: "preview-filename-shell",
@@ -755,6 +770,19 @@ export class PreviewModel implements ViewModel {
                         className: "compact-open-target-menubutton",
                         items: previewMenuItems,
                     });
+                    if (isMarkdownView) {
+                        const exportItems = this.buildExportMenuItems();
+                        if (exportItems.length > 0) {
+                            viewTextChildren.push({
+                                elemtype: "menubutton",
+                                text: "Export",
+                                icon: "file-export",
+                                title: "Export Markdown",
+                                className: "compact-open-target-menubutton",
+                                items: exportItems,
+                            });
+                        }
+                    }
                 }
                 if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
                     const syncEnabled = get(this.liveScrollSyncEnabled);
@@ -1232,6 +1260,82 @@ export class PreviewModel implements ViewModel {
 
     markdownShowTocToggle() {
         globalStore.set(this.markdownShowToc, !globalStore.get(this.markdownShowToc));
+    }
+
+    /** 在 header 显示一条导出的瞬态状态文本（成功/失败），3s 后自动清除。 */
+    private showExportStatus(kind: "ok" | "err", text: string) {
+        globalStore.set(this.markdownExportStatus, { kind, text });
+        if (this.exportStatusTimer != null) {
+            window.clearTimeout(this.exportStatusTimer);
+        }
+        this.exportStatusTimer = window.setTimeout(() => {
+            globalStore.set(this.markdownExportStatus, null);
+            this.exportStatusTimer = null;
+        }, 3000);
+    }
+
+    /**
+     * 导出入口：读取当前 markdown 文本（未落盘草稿优先），交给导出插件编排器跑 HTML/PDF。
+     * 无草稿时回落到磁盘文件内容；取到文本后按可用 provider 执行指定格式。
+     * 成功后调用 revealNativePath 在文件管理器中定位导出的文件，并给出瞬态反馈。
+     */
+    async runExport(format: "html" | "pdf") {
+        const filePath = globalStore.get(this.metaFilePath);
+        const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
+        if (!isMarkdownFile({ fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false })) {
+            this.showExportStatus("err", "仅 Markdown 文件可导出");
+            return;
+        }
+        const draft = globalStore.get(this.newFileContent);
+        const source = draft != null ? draft : await globalStore.get(this.fileContent).catch(() => "");
+        if (source == null || source.length === 0) {
+            this.showExportStatus("err", "无可导出的内容");
+            return;
+        }
+        const baseName = filePath?.split(/[\\/]/).pop() ?? "export";
+        const stem = baseName.replace(/\.mdx?$/i, "") || "export";
+        const fileName = format === "pdf" ? `${stem}.pdf` : `${stem}.html`;
+        const ctx = { fileInfo: null, mimeType, fileName, filePath, editMode: false };
+        const providers = availableExportProviders(ctx);
+        const provider = providers.find((p) => p.formats.includes(format));
+        if (provider == null) {
+            this.showExportStatus("err", "没有可用的导出器");
+            return;
+        }
+        this.showExportStatus("ok", `${format.toUpperCase()} 导出中…`);
+        const result = await runMarkdownExport(provider.id, format, source, ctx);
+        if (result.canceled) {
+            globalStore.set(this.markdownExportStatus, null);
+            return;
+        }
+        if (!result.ok) {
+            this.showExportStatus("err", result.error ?? "导出失败");
+            return;
+        }
+        const outName = result.filePath?.split(/[\\/]/).pop() ?? fileName;
+        this.showExportStatus("ok", `已导出 ${outName}`);
+        // 在操作系统文件管理器中定位导出的文件，作为最直观的导出成功反馈。
+        if (result.filePath != null) {
+            (window as any).api?.revealNativePath?.(result.filePath);
+        }
+    }
+
+    /** 生成 markdown 预览工具栏「导出」菜单项。 */
+    buildExportMenuItems(): MenuItem[] {
+        const filePath = globalStore.get(this.metaFilePath);
+        const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
+        const ctx = { fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false };
+        const providers = availableExportProviders(ctx);
+        const items: MenuItem[] = [];
+        for (const provider of providers) {
+            for (const format of provider.formats) {
+                items.push({
+                    label: provider.displayName + (provider.formats.length > 1 ? ` (${format.toUpperCase()})` : ""),
+                    onClick: () => fireAndForget(() => this.runExport(format)),
+                });
+            }
+        }
+        return items;
     }
 
     get viewComponent(): ViewComponent {

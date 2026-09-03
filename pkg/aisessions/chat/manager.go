@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // DefaultIdleTimeout is how long an un-attended ChatSession stays alive before
@@ -42,11 +44,24 @@ func sessionKey(source, sessionID string) string {
 	return source + "/" + sessionID
 }
 
+// EnsureResult holds the result of Ensure: the session, whether it was newly created,
+// the manager key (for later promotion), and any error.
+type EnsureResult struct {
+	Session *Session
+	IsNew   bool
+	Key     string
+}
+
 // Ensure returns the live Session for source+sessionID, starting it via the
 // provider if absent. The returned session may already have a turn running.
-func (m *Manager) Ensure(ctx context.Context, provider Provider, opts StartOptions) (*Session, bool, error) {
+//
+// When opts.SessionID is empty (new chat), a unique transient key is generated
+// so that multiple concurrent "new chat" requests each spawn their own subprocess
+// instead of sharing one. Once pi assigns a real session ID via session_state,
+// the caller promotes the session to the real key via PromoteSession.
+func (m *Manager) Ensure(ctx context.Context, provider Provider, opts StartOptions) (*Session, bool, string, error) {
 	if provider == nil {
-		return nil, false, fmt.Errorf("no chat provider for source")
+		return nil, false, "", fmt.Errorf("no chat provider for source")
 	}
 	m.mu.Lock()
 	if !m.started {
@@ -54,26 +69,53 @@ func (m *Manager) Ensure(ctx context.Context, provider Provider, opts StartOptio
 		go m.sweepLoop()
 	}
 	key := sessionKey(provider.Source(), opts.SessionID)
+	if opts.SessionID == "" {
+		// New chat: generate a unique transient key so each request gets its own subprocess.
+		key = sessionKey(provider.Source(), "new:"+uuid.NewString())
+	}
 	if s, ok := m.sessions[key]; ok {
 		m.mu.Unlock()
-		return s, false, nil
+		return s, false, key, nil
 	}
 	m.mu.Unlock()
 
 	s, err := provider.Start(ctx, opts)
 	if err != nil {
-		return nil, false, err
+		return nil, false, "", err
 	}
 	m.mu.Lock()
 	// Another goroutine may have won the race; if so, close ours and reuse theirs.
 	if existing, ok := m.sessions[key]; ok {
 		m.mu.Unlock()
 		_ = s.Close()
-		return existing, false, nil
+		return existing, false, key, nil
 	}
 	m.sessions[key] = s
 	m.mu.Unlock()
-	return s, true, nil
+	return s, true, key, nil
+}
+
+// PromoteSession moves a session from its transient key to the real source+sessionID
+// key once pi assigns a real session ID. This allows subsequent requests with the
+// real session ID to find the existing subprocess.
+func (m *Manager) PromoteSession(source, oldKey string, realSessionID string, session *Session) {
+	if session == nil || realSessionID == "" {
+		return
+	}
+	realKey := sessionKey(source, realSessionID)
+	if realKey == oldKey {
+		return // already at the right key
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Only delete old key if it still maps to this session
+	if m.sessions[oldKey] == session {
+		delete(m.sessions, oldKey)
+	}
+	// Don't overwrite an existing real-key entry
+	if _, exists := m.sessions[realKey]; !exists {
+		m.sessions[realKey] = session
+	}
 }
 
 // Get returns an existing session without starting one (nil if absent).

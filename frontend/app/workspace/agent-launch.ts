@@ -874,7 +874,7 @@ export function getCurrentTabTerminalLaunchTargets(): AgentLaunchTarget[] {
     );
 }
 
-function getCurrentWorkspaceContextMeta(): AgentContextMeta {
+export function getCurrentWorkspaceContextMeta(): AgentContextMeta {
     const focusedBlockId = getFocusedBlockId();
     const focusedBlock = isBlank(focusedBlockId)
         ? null
