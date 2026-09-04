@@ -896,6 +896,18 @@ func RemoteVcsStatCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsStatDat
 	return resp, err
 }
 
+// command "remotevcsbranchlist", wshserver.RemoteVcsBranchListCommand
+func RemoteVcsBranchListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsBranchListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsBranchListRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsBranchListRtnData](w, "remotevcsbranchlist", data, opts)
+	return resp, err
+}
+
+// command "remotevcspipelinelist", wshserver.RemoteVcsPipelineListCommand
+func RemoteVcsPipelineListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsPipelineListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsPipelineListRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsPipelineListRtnData](w, "remotevcspipelinelist", data, opts)
+	return resp, err
+}
+
 // command "remotevcssync", wshserver.RemoteVcsSyncCommand
 func RemoteVcsSyncCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsSyncData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsSyncRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsSyncRtnData](w, "remotevcssync", data, opts)

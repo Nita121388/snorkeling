@@ -146,6 +146,8 @@ type WshRpcInterface interface {
 	RemoteVcsFileHistoryCommand(ctx context.Context, data CommandRemoteVcsFileHistoryData) (*RemoteVcsFileHistoryRtnData, error)
 	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
 	RemoteVcsStatCommand(ctx context.Context, data CommandRemoteVcsStatData) (*RemoteVcsStatRtnData, error)
+	RemoteVcsBranchListCommand(ctx context.Context, data CommandRemoteVcsBranchListData) (*RemoteVcsBranchListRtnData, error)
+	RemoteVcsPipelineListCommand(ctx context.Context, data CommandRemoteVcsPipelineListData) (*RemoteVcsPipelineListRtnData, error)
 
 	// emain
 	WebSelectorCommand(ctx context.Context, data CommandWebSelectorData) ([]string, error)
@@ -1025,6 +1027,62 @@ type CommandRemoteFileNameSearchRtnData struct {
 	Truncated bool                  `json:"truncated,omitempty"`
 }
 
+// wshrpc.VcsBranchInfo
+type VcsBranchInfo struct {
+	Name      string `json:"name"`
+	Hash      string `json:"hash,omitempty"`
+	IsCurrent bool   `json:"iscurrent,omitempty"`
+	Ahead     int    `json:"ahead,omitempty"`
+	Behind    int    `json:"behind,omitempty"`
+	IsRemote  bool   `json:"isremote,omitempty"`
+}
+
+// wshrpc.CommandRemoteVcsBranchListData
+type CommandRemoteVcsBranchListData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+}
+
+// wshrpc.RemoteVcsBranchListRtnData
+type RemoteVcsBranchListRtnData struct {
+	RepoPath    string         `json:"repopath"`
+	RepoType    string         `json:"repotype"`
+	Current     string         `json:"current,omitempty"`
+	Local       []VcsBranchInfo `json:"local,omitempty"`
+	Remote      []VcsBranchInfo `json:"remote,omitempty"`
+	Error       string         `json:"error,omitempty"`
+}
+
+// wshrpc.VcsPipelineRunInfo
+type VcsPipelineRunInfo struct {
+	Id         int64  `json:"id"`
+	Name       string `json:"name,omitempty"`
+	Branch     string `json:"branch,omitempty"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion,omitempty"`
+	Commit     string `json:"commit,omitempty"`
+	Author     string `json:"author,omitempty"`
+	StartedAt  string `json:"startedat,omitempty"`
+	EndedAt    string `json:"endedat,omitempty"`
+	Url        string `json:"url,omitempty"`
+}
+
+// wshrpc.CommandRemoteVcsPipelineListData
+type CommandRemoteVcsPipelineListData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// wshrpc.RemoteVcsPipelineListRtnData
+type RemoteVcsPipelineListRtnData struct {
+	RepoPath string              `json:"repopath"`
+	RepoType string              `json:"repotype"`
+	Runs     []VcsPipelineRunInfo `json:"runs,omitempty"`
+	Error    string              `json:"error,omitempty"`
+}
+
+// wshrpc.CommandRemoteVcsRepositoriesData
 type CommandRemoteVcsRepositoriesData struct {
 	Path          string `json:"path"`
 	StatusLimit   int    `json:"statuslimit,omitempty"`
