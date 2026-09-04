@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { InlineRenameInput } from "@/app/element/inline-rename-input";
 import { makeIconClass, naturalStringCompare } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
@@ -83,6 +84,9 @@ export interface TreeViewProps {
     onNodeContextMenu?: (event: MouseEvent<HTMLDivElement>, id: string, node: TreeNodeData) => void;
     onBackgroundContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
     onBackgroundClick?: () => void;
+    editingNodeId?: string | null;
+    onRenameCommit?: (id: string, newLabel: string) => void;
+    onRenameCancel?: (id: string) => void;
 }
 
 export interface TreeViewExpandAllResult {
@@ -405,6 +409,9 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onNodeClick,
         onMarqueeSelect,
         onBackgroundClick,
+        editingNodeId,
+        onRenameCommit,
+        onRenameCancel,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
@@ -1033,12 +1040,21 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                         : (row.node.iconColor ?? "inherit"),
                                             }}
                                         />
-                                        <span
-                                            className={clsx("ml-1 truncate", row.node.isReadonly && "text-muted")}
-                                            title={row.label}
-                                        >
-                                            {row.label}
-                                        </span>
+                                        {editingNodeId === row.id ? (
+                                            <InlineRenameInput
+                                                className="ml-1 h-full min-w-0 flex-1 rounded-[3px] border border-[var(--accent-color)] bg-[var(--overlay-bg-color)] px-1 text-sm outline-none"
+                                                defaultValue={row.label}
+                                                onCommit={(newLabel) => onRenameCommit?.(row.id, newLabel)}
+                                                onCancel={() => onRenameCancel?.(row.id)}
+                                            />
+                                        ) : (
+                                            <span
+                                                className={clsx("ml-1 truncate", row.node.isReadonly && "text-muted")}
+                                                title={row.label}
+                                            >
+                                                {row.label}
+                                            </span>
+                                        )}
                                     </>
                                 ) : (
                                     <span className="ml-1 truncate text-xs">{row.label}</span>

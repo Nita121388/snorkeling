@@ -2358,7 +2358,6 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             <div className="session-overview-panel" aria-label="Overview">
                 <div className="session-overview-header">
                     <div>
-                        <div className="session-overview-title">Overview</div>
                         <div className="session-overview-subtitle">
                             {displayedBlockCount} of {blocks.length} blocks · {unreadCount} unread{agentSummary}
                             {agentStatusHookInstall.error ? (

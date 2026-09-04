@@ -695,10 +695,12 @@ export class PreviewModel implements ViewModel {
                         // 里 .preview-filename-copy-button 那套 opacity 过渡。
                         {
                             elemtype: "iconbutton",
-                            icon: "magnifying-glass",
+                            icon: "folder-open",
                             title: "Go to Path",
                             click: () => this.toggleOpenFileModal(),
                             className: "preview-filename-copy-button",
+                            tooltipNode: "Go to Path — jump to a file or folder",
+                            tooltipProps: { openDelay: 200, divClassName: "inline-flex" },
                         },
                     ],
                 },
@@ -770,19 +772,6 @@ export class PreviewModel implements ViewModel {
                         className: "compact-open-target-menubutton",
                         items: previewMenuItems,
                     });
-                    if (isMarkdownView) {
-                        const exportItems = this.buildExportMenuItems();
-                        if (exportItems.length > 0) {
-                            viewTextChildren.push({
-                                elemtype: "menubutton",
-                                text: "Export",
-                                icon: "file-export",
-                                title: "Export Markdown",
-                                className: "compact-open-target-menubutton",
-                                items: exportItems,
-                            });
-                        }
-                    }
                 }
                 if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
                     const syncEnabled = get(this.liveScrollSyncEnabled);
@@ -1332,6 +1321,24 @@ export class PreviewModel implements ViewModel {
                 items.push({
                     label: provider.displayName + (provider.formats.length > 1 ? ` (${format.toUpperCase()})` : ""),
                     onClick: () => fireAndForget(() => this.runExport(format)),
+                });
+            }
+        }
+        return items;
+    }
+
+    /** 生成 Block 设置菜单中的 markdown 导出子菜单项。 */
+    getExportMenuItems(): ContextMenuItem[] {
+        const filePath = globalStore.get(this.metaFilePath);
+        const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
+        const ctx = { fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false };
+        const providers = availableExportProviders(ctx);
+        const items: ContextMenuItem[] = [];
+        for (const provider of providers) {
+            for (const format of provider.formats) {
+                items.push({
+                    label: provider.displayName + (provider.formats.length > 1 ? ` (${format.toUpperCase()})` : ""),
+                    click: () => fireAndForget(() => this.runExport(format)),
                 });
             }
         }

@@ -133,6 +133,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const [collapsedSearchPaths, setCollapsedSearchPaths] = useState<Set<string>>(() => new Set());
     const [entryManagerProps, setEntryManagerProps] = useState<EntryManagerOverlayProps | null>(null);
     const [treeExpandingAll, setTreeExpandingAll] = useState(false);
+    const [editingRenameNode, setEditingRenameNode] = useState<{ path: string; isDir: boolean } | null>(null);
     const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNodeData | null>(null);
     const [selectedTreeNodes, setSelectedTreeNodes] = useState<TreeNodeData[]>([]);
     const selectedTreeNodePaths = useMemo(
@@ -413,21 +414,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
 
     const openRename = useCallback(
         (path: string, isDir: boolean) => {
-            const fileName = getPathLeaf(path);
-            setEntryManagerProps({
-                entryManagerType: EntryManagerType.EditName,
-                startingValue: fileName,
-                onSave: (newName: string) => {
-                    if (newName !== fileName) {
-                        const lastInstance = path.lastIndexOf(fileName);
-                        const newPath = path.substring(0, lastInstance) + newName;
-                        handleRename(model, path, newPath, isDir, setErrorMsg);
-                    }
-                    setEntryManagerProps(null);
-                },
-            });
+            setEditingRenameNode({ path, isDir });
         },
-        [model, setErrorMsg]
+        []
     );
 
     const openMoveTo = useCallback(
@@ -1029,6 +1018,22 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         onRenameSelected={renameSelectedTreeNode}
                         onNodeContextMenu={handleTreeNodeContextMenu}
                         onBackgroundContextMenu={handleTreeBackgroundContextMenu}
+                        editingNodeId={editingRenameNode?.path ?? null}
+                        onRenameCommit={(id, newLabel) => {
+                            const editing = editingRenameNode;
+                            if (editing == null) {
+                                return;
+                            }
+                            const fileName = getPathLeaf(editing.path);
+                            if (newLabel !== fileName) {
+                                const lastInstance = editing.path.lastIndexOf(fileName);
+                                const newPath = editing.path.substring(0, lastInstance) + newLabel;
+                                console.log(`replacing ${fileName} with ${newLabel}: ${editing.path}`);
+                                handleRename(model, editing.path, newPath, editing.isDir, setErrorMsg);
+                            }
+                            setEditingRenameNode(null);
+                        }}
+                        onRenameCancel={() => setEditingRenameNode(null)}
                     />
                 </div>
                 <div

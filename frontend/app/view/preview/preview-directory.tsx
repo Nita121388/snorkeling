@@ -28,6 +28,7 @@ import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overl
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { debounce } from "throttle-debounce";
+import { InlineRenameInput } from "@/app/element/inline-rename-input";
 import "./directorypreview.scss";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import {
@@ -100,6 +101,7 @@ interface DirectoryTableProps {
     selectedPaths: Set<string>;
     setSelectedPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
     entryManagerOverlayPropsAtom: PrimitiveAtom<EntryManagerOverlayProps>;
+    editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
     newFile: () => void;
     newDirectory: () => void;
 }
@@ -117,6 +119,7 @@ function DirectoryTable({
     selectedPaths,
     setSelectedPaths,
     entryManagerOverlayPropsAtom,
+    editingRenameAtom,
     newFile,
     newDirectory,
 }: DirectoryTableProps) {
@@ -326,6 +329,7 @@ function DirectoryTable({
                 selectedPaths={selectedPaths}
                 setSelectedPaths={setSelectedPaths}
                 osRef={osRef.current}
+                editingRenameAtom={editingRenameAtom}
             />
         </OverlayScrollbarsComponent>
     );
@@ -344,6 +348,7 @@ interface TableBodyProps {
     selectedPaths: Set<string>;
     setSelectedPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
     osRef: OverlayScrollbarsComponentRef;
+    editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
 }
 
 function TableBody({
@@ -357,6 +362,7 @@ function TableBody({
     selectedPaths,
     setSelectedPaths,
     osRef,
+    editingRenameAtom,
 }: TableBodyProps) {
     const searchActive = useAtomValue(model.directorySearchActive);
     const dummyLineRef = useRef<HTMLDivElement>(null);
@@ -529,6 +535,7 @@ function TableBody({
                         selected={selectedPaths.has(dotdotRow.getValue("path") as string)}
                         handleRowClick={handleRowClick}
                         handleFileContextMenu={handleFileContextMenu}
+                        editingRenameAtom={editingRenameAtom}
                         key="dotdot"
                     />
                 )}
@@ -542,6 +549,7 @@ function TableBody({
                         selected={selectedPaths.has(row.getValue("path") as string)}
                         handleRowClick={handleRowClick}
                         handleFileContextMenu={handleFileContextMenu}
+                        editingRenameAtom={editingRenameAtom}
                         key={idx}
                     />
                 ))}
@@ -559,6 +567,7 @@ type TableRowProps = {
     selected: boolean;
     handleRowClick: (e: React.MouseEvent<HTMLDivElement>, row: Row<FileInfo>, idx: number) => void;
     handleFileContextMenu: (e: any, finfo: FileInfo, idx: number) => Promise<void>;
+    editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
 };
 
 function TableRow({
@@ -570,9 +579,12 @@ function TableRow({
     selected,
     handleRowClick,
     handleFileContextMenu,
+    editingRenameAtom,
 }: TableRowProps) {
     const dirPath = useAtomValue(model.statFilePath);
     const connection = useAtomValue(model.connection);
+    const setErrorMsg = useSetAtom(model.errorMsgAtom);
+    const [editingRename, setEditingRename] = useAtom(editingRenameAtom);
 
     const dragItem: DraggedFile = {
         relName: row.getValue("name") as string,
@@ -611,15 +623,40 @@ function TableRow({
             onContextMenu={(e) => handleFileContextMenu(e, row.original, idx)}
             ref={dragRef}
         >
-            {row.getVisibleCells().map((cell) => (
-                <div
-                    className={clsx("dir-table-body-cell", "col-" + cell.column.id)}
-                    key={cell.id}
-                    style={{ width: `calc(var(--col-${cell.column.id}-size) * 1px)` }}
-                >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </div>
-            ))}
+            {row.getVisibleCells().map((cell) => {
+                const isEditingName =
+                    cell.column.id === "name" &&
+                    editingRename != null &&
+                    editingRename.path === (row.getValue("path") as string);
+                return (
+                    <div
+                        className={clsx("dir-table-body-cell", "col-" + cell.column.id)}
+                        key={cell.id}
+                        style={{ width: `calc(var(--col-${cell.column.id}-size) * 1px)` }}
+                    >
+                        {isEditingName ? (
+                            <InlineRenameInput
+                                defaultValue={row.getValue("name") as string}
+                                onCommit={(newName) => {
+                                    const oldPath = row.getValue("path") as string;
+                                    const fileName = row.getValue("name") as string;
+                                    const trimmed = newName.trim();
+                                    if (trimmed !== "" && trimmed !== fileName) {
+                                        const lastInstance = oldPath.lastIndexOf(fileName);
+                                        const newPath = oldPath.substring(0, lastInstance) + trimmed;
+                                        console.log(`replacing ${fileName} with ${trimmed}: ${oldPath}`);
+                                        handleRename(model, oldPath, newPath, row.original.isdir, setErrorMsg);
+                                    }
+                                    setEditingRename(null);
+                                }}
+                                onCancel={() => setEditingRename(null)}
+                            />
+                        ) : (
+                            flexRender(cell.column.columnDef.cell, cell.getContext())
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -649,6 +686,10 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     const supportsFileCreation = finfo?.supportsmkdir !== false && !isWindowsDrivesPath(dirPath);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const blockMoveMenuItems = useBlockMoveMenuItems();
+    const editingRenameAtom = useState(
+        atom(null) as PrimitiveAtom<{ path: string; isDir: boolean } | null>
+    )[0];
+    const editingRename = useAtomValue(editingRenameAtom);
 
     useEffect(
         () =>
@@ -1003,7 +1044,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                 className="dir-table-container"
                 onChangeCapture={(e) => {
                     const event = e as React.ChangeEvent<HTMLInputElement>;
-                    if (!entryManagerProps) {
+                    if (!entryManagerProps && editingRename == null) {
                         setSearchText(event.target.value.toLowerCase());
                     }
                 }}
@@ -1022,6 +1063,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                     selectedPaths={selectedPaths}
                     setSelectedPaths={setSelectedPaths}
                     entryManagerOverlayPropsAtom={entryManagerPropsAtom}
+                    editingRenameAtom={editingRenameAtom}
                     newFile={newFile}
                     newDirectory={newDirectory}
                 />
