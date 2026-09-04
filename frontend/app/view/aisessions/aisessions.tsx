@@ -1302,6 +1302,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         mode={groupMode}
                                         onChange={(next) => setGroupMode(next)}
                                     />
+                                    <div className="flex-1" />
                                     <button
                                         type="button"
                                         title="Filters"

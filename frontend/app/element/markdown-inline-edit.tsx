@@ -812,6 +812,7 @@ export function InlineEditOverlay({
                         pointerEvents: "none",
                         whiteSpace: "pre",
                         ...typography,
+                        ...formatTypography,
                         color: "transparent",
                     }}
                     aria-hidden="true"
