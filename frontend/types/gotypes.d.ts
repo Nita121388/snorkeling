@@ -2692,6 +2692,61 @@ declare global {
         statuserr?: string;
     };
 
+    // wshrpc.VcsBranchInfo
+    type VcsBranchInfo = {
+        name: string;
+        hash?: string;
+        iscurrent?: boolean;
+        ahead?: number;
+        behind?: number;
+        isremote?: boolean;
+    };
+
+    // wshrpc.CommandRemoteVcsBranchListData
+    type CommandRemoteVcsBranchListData = {
+        repotype: string;
+        repopath: string;
+    };
+
+    // wshrpc.RemoteVcsBranchListRtnData
+    type RemoteVcsBranchListRtnData = {
+        repopath: string;
+        repotype: string;
+        current?: string;
+        local?: VcsBranchInfo[];
+        remote?: VcsBranchInfo[];
+        error?: string;
+    };
+
+    // wshrpc.VcsPipelineRunInfo
+    type VcsPipelineRunInfo = {
+        id: number;
+        name?: string;
+        branch?: string;
+        status: string;
+        conclusion?: string;
+        commit?: string;
+        author?: string;
+        startedat?: string;
+        endedat?: string;
+        url?: string;
+    };
+
+    // wshrpc.CommandRemoteVcsPipelineListData
+    type CommandRemoteVcsPipelineListData = {
+        repotype: string;
+        repopath: string;
+        limit?: number;
+    };
+
+    // wshrpc.RemoteVcsPipelineListRtnData
+    type RemoteVcsPipelineListRtnData = {
+        repopath: string;
+        repotype: string;
+        runs?: VcsPipelineRunInfo[];
+        error?: string;
+    };
+
     // ccswitch.Vendor
     type Vendor = {
         id: string;

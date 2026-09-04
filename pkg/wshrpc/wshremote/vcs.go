@@ -6,6 +6,7 @@ package wshremote
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -2161,5 +2162,174 @@ func parseNumstatInt(s string) int {
 		return 0
 	}
 	return n
+}
+
+func (impl *ServerImpl) RemoteVcsBranchListCommand(ctx context.Context, data wshrpc.CommandRemoteVcsBranchListData) (*wshrpc.RemoteVcsBranchListRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+	if repoType != "git" {
+		return &wshrpc.RemoteVcsBranchListRtnData{
+			RepoPath: repoPath,
+			RepoType: repoType,
+			Error:    "branch listing only supported for git repositories",
+		}, nil
+	}
+
+	result := &wshrpc.RemoteVcsBranchListRtnData{
+		RepoPath: repoPath,
+		RepoType: repoType,
+	}
+
+	// Get current branch
+	currentBranch, currentErr := runVcsCommand(ctx, repoPath, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	if currentErr == nil {
+		result.Current = strings.TrimSpace(currentBranch)
+	}
+
+	// List local branches with hash, ahead/behind
+	localOut, localErr := runVcsCommand(ctx, repoPath, "git", "branch", "-vv", "--format=%(refname:short)\t%(objectname:short)\t%(upstream:trackshort)")
+	if localErr == nil {
+		for _, line := range strings.Split(localOut, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "\t")
+			if len(parts) < 2 {
+				continue
+			}
+			branch := wshrpc.VcsBranchInfo{
+				Name: strings.TrimSpace(parts[0]),
+				Hash: strings.TrimSpace(parts[1]),
+			}
+			if branch.Name == result.Current {
+				branch.IsCurrent = true
+			}
+			// Parse ahead/behind from trackshort
+			if len(parts) >= 3 {
+				track := strings.TrimSpace(parts[2])
+				if strings.HasPrefix(track, "+") || strings.Contains(track, ">") {
+					branch.Ahead = 1
+				}
+				if strings.HasPrefix(track, "-") || strings.Contains(track, "<") {
+					branch.Behind = 1
+				}
+			}
+			result.Local = append(result.Local, branch)
+		}
+	}
+
+	// List remote branches
+	remoteOut, remoteErr := runVcsCommand(ctx, repoPath, "git", "branch", "-r", "--format=%(refname:short)\t%(objectname:short)")
+	if remoteErr == nil {
+		for _, line := range strings.Split(remoteOut, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.Contains(line, "HEAD ->") {
+				continue
+			}
+			parts := strings.Split(line, "\t")
+			if len(parts) < 2 {
+				continue
+			}
+			result.Remote = append(result.Remote, wshrpc.VcsBranchInfo{
+				Name:     strings.TrimSpace(parts[0]),
+				Hash:     strings.TrimSpace(parts[1]),
+				IsRemote: true,
+			})
+		}
+	}
+
+	return result, nil
+}
+
+func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data wshrpc.CommandRemoteVcsPipelineListData) (*wshrpc.RemoteVcsPipelineListRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+
+	result := &wshrpc.RemoteVcsPipelineListRtnData{
+		RepoPath: repoPath,
+		RepoType: repoType,
+	}
+
+	if repoType != "git" {
+		result.Error = "pipeline listing only supported for git repositories"
+		return result, nil
+	}
+
+	limit := data.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	// Try to detect GitHub Actions runs via gh CLI
+	ghPath, ghErr := runVcsCommand(ctx, repoPath, "which", "gh")
+	if ghErr != nil || strings.TrimSpace(ghPath) == "" {
+		result.Error = "gh CLI not found; install GitHub CLI to view pipeline runs"
+		return result, nil
+	}
+
+	// List workflow runs using gh
+	ghOut, ghErr := runVcsCommand(ctx, repoPath, "gh", "run", "list",
+		"--limit", strconv.Itoa(limit),
+		"--json", "id,name,headBranch,status,conclusion,headSha,createdAt,updatedAt,url,triggeringActor",
+	)
+	if ghErr != nil {
+		result.Error = fmt.Sprintf("failed to list workflow runs: %s", ghErr.Error())
+		return result, nil
+	}
+
+	// Parse gh JSON output
+	type ghRun struct {
+		Id          int64  `json:"id"`
+		Name        string `json:"name"`
+		HeadBranch  string `json:"headBranch"`
+		Status      string `json:"status"`
+		Conclusion  string `json:"conclusion"`
+		HeadSha     string `json:"headSha"`
+		CreatedAt   string `json:"createdAt"`
+		UpdatedAt   string `json:"updatedAt"`
+		Url         string `json:"url"`
+		TriggeringActor struct {
+			Login string `json:"login"`
+		} `json:"triggeringActor"`
+	}
+	var ghRuns []ghRun
+	if jsonErr := json.Unmarshal([]byte(ghOut), &ghRuns); jsonErr != nil {
+		result.Error = fmt.Sprintf("failed to parse workflow runs: %s", jsonErr.Error())
+		return result, nil
+	}
+
+	for _, ghRun := range ghRuns {
+		run := wshrpc.VcsPipelineRunInfo{
+			Id:         ghRun.Id,
+			Name:       ghRun.Name,
+			Branch:     ghRun.HeadBranch,
+			Status:     ghRun.Status,
+			Conclusion: ghRun.Conclusion,
+			Commit:     ghRun.HeadSha,
+			Author:     ghRun.TriggeringActor.Login,
+			StartedAt:  ghRun.CreatedAt,
+			EndedAt:    ghRun.UpdatedAt,
+			Url:        ghRun.Url,
+		}
+		result.Runs = append(result.Runs, run)
+	}
+
+	return result, nil
 }
 
