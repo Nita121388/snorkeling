@@ -303,11 +303,10 @@ export function useChatStreams() {
                         const finalKey = resolveKey(key);
                         if (controllersRef.current.get(finalKey) === controller) {
                             if (terminalEvent == null) {
-                                terminalEvent = "turn_failed";
-                                onEvent?.(
-                                    { type: "turn_failed", error: "Chat stream ended before the turn completed" },
-                                    finalKey
-                                );
+                                // Treat an orderly stream close as a handoff to history
+                                // reconciliation, not as a synthetic chat failure.
+                                terminalEvent = "turn_end";
+                                onEvent?.({ type: "turn_end" }, finalKey);
                             }
                             setStatus(finalKey, terminalEvent === "turn_failed" ? "error" : "idle");
                         }

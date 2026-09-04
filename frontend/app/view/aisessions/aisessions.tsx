@@ -23,6 +23,7 @@ import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
+import { mergeSessionTimeline } from "./session-timeline-sync";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
@@ -116,6 +117,7 @@ export class AiSessionsViewModel implements ViewModel {
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
+    historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
         SessionSummary | null
@@ -241,10 +243,12 @@ export class AiSessionsViewModel implements ViewModel {
                 "aisessions:newchat": null,
             } as MetaType,
         }).catch(() => undefined);
+        // Session promotion is deliberately fire-and-forget: the live turn remains
+        // the primary UI while summary/history and the left list catch up.
         void this.promoteNewSession(sessionId);
     }
 
-    async promoteNewSession(sessionId: string): Promise<void> {
+    async promoteNewSession(sessionId: string, attempt = 0): Promise<void> {
         try {
             const summary = await this.service.Summary({
                 id: sessionId,
@@ -263,8 +267,16 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             void this.loadDetail(summary, true);
             void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
-        } catch {
-            void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+        } catch (error) {
+            const placeholder = globalStore.get(this.newSessionAtom);
+            if (placeholder == null || placeholder.id !== sessionId) return;
+            globalStore.set(this.historySyncErrorAtom, getErrorMessage(error));
+            if (attempt >= 5) return;
+            const delayMs = Math.min(500 * 2 ** attempt, 8000);
+            window.setTimeout(() => {
+                void this.promoteNewSession(sessionId, attempt + 1);
+            }, delayMs);
+            void this.loadSessions(false, globalStore.get(this.sortDescendingAtom));
         }
     }
 
@@ -521,10 +533,11 @@ export class AiSessionsViewModel implements ViewModel {
                 return;
             }
             globalStore.set(this.detailAtom, detail);
+            globalStore.set(this.historySyncErrorAtom, "");
             this.replaceSession(detail.summary);
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
         } finally {
             if (loadSeq === this.detailLoadSeq) {
@@ -550,6 +563,7 @@ export class AiSessionsViewModel implements ViewModel {
         const loadSeq = this.detailLoadSeq;
         globalStore.set(this.detailDeltaLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
+        globalStore.set(this.historySyncErrorAtom, "");
         try {
             const delta = await this.service.DetailDelta({
                 id: currentSummary.key,
@@ -577,7 +591,7 @@ export class AiSessionsViewModel implements ViewModel {
             return true;
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
             return false;
         } finally {
@@ -590,17 +604,17 @@ export class AiSessionsViewModel implements ViewModel {
         if (detail?.summary?.key !== sessionKey) {
             return;
         }
-        const existingSeqs = new Set((detail.messages ?? []).map((message) => message.seq));
-        const nextMessages = [
-            ...(detail.messages ?? []),
-            ...(delta.messages ?? []).filter((message) => !existingSeqs.has(message.seq)),
-        ];
+        const merged = mergeSessionTimeline(detail.messages ?? [], detail.cursor, delta.messages ?? [], delta.cursor);
+        if (merged.resetRequired) {
+            void this.loadDetail(detail.summary, true);
+            return;
+        }
         const nextSummary = mergeDeltaSummary(detail.summary, delta.summary);
         const nextDetail: SessionDetail = {
             ...detail,
             summary: nextSummary,
-            messages: nextMessages,
-            cursor: delta.cursor ?? detail.cursor,
+            messages: merged.messages,
+            cursor: merged.cursor,
         };
         globalStore.set(this.detailAtom, nextDetail);
         this.replaceSession(nextSummary);
@@ -976,6 +990,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
     const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
+    const historySyncError = jotai.useAtomValue(model.historySyncErrorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
@@ -1250,8 +1265,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         : "";
 
     return (
-        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
-            {error ? (
+        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
+            {error && detail == null && activeSession?.key !== NewSessionKey ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                     {error}
                 </div>
@@ -1448,16 +1463,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     newChatEpoch={newChatEpoch}
                     loading={
                         error === "" &&
-                        (loading ||
-                            detailLoading ||
-                            (activeSession != null &&
-                                activeSession.key !== NewSessionKey &&
-                                detail?.summary?.key !== activeSession.key))
+                        detailLoading &&
+                        detail == null &&
+                        activeSession?.key !== NewSessionKey
                     }
                     deltaLoading={detailDeltaLoading}
                     toolCallsLoading={toolCallsLoading}
                     restoring={restoring}
                     deleting={deleting}
+                    error={error}
+                    historySyncError={historySyncError}
                     onBound={(sessionId) => model.bindNewSession(sessionId)}
                     onRunningSessionIdsChange={handleRunningChatSessionIdsChange}
                     onExpandSessionList={

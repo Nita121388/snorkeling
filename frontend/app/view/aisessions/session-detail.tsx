@@ -145,6 +145,8 @@ export function SessionDetailPane({
     toolCallsLoading,
     restoring,
     deleting,
+    error = "",
+    historySyncError = "",
     onClose,
     onExpandSessionList,
     onBound,
@@ -161,6 +163,8 @@ export function SessionDetailPane({
     toolCallsLoading: boolean;
     restoring: boolean;
     deleting: boolean;
+    error?: string;
+    historySyncError?: string;
     onClose?: () => void;
     /** 会话列表收起时，头栏行首展示「展开列表」按钮（左右同行，非悬浮叠加） */
     onExpandSessionList?: () => void;
@@ -434,6 +438,7 @@ export function SessionDetailPane({
         if (node != null) node.scrollTop = node.scrollHeight;
     }, [liveTurn]);
 
+    const historyRetryRef = useRef({ error: "", attempt: 0 });
     const requestDetailDelta = useCallback(
         (reason: "manual" | "bottom") => {
             if (reason === "manual") {
@@ -452,6 +457,25 @@ export function SessionDetailPane({
         },
         [model, summary]
     );
+
+    useEffect(() => {
+        if (!historySyncError || effectiveDetail == null || liveTurn != null) {
+            historyRetryRef.current = { error: "", attempt: 0 };
+            return;
+        }
+        const retry = historyRetryRef.current;
+        if (retry.error !== historySyncError) {
+            retry.error = historySyncError;
+            retry.attempt = 0;
+        }
+        if (retry.attempt >= 3) return;
+        retry.attempt += 1;
+        const delayMs = Math.min(1000 * 2 ** (retry.attempt - 1), 8000);
+        const handle = window.setTimeout(() => {
+            void requestDetailDelta("manual");
+        }, delayMs);
+        return () => window.clearTimeout(handle);
+    }, [effectiveDetail, historySyncError, liveTurn, requestDetailDelta]);
 
     // 交接保护：turn_end 后先确认正式 assistant 消息已落盘，再清除 live 临时块。
     // 否则后端持久化滞后时会出现「回应显示后内容消失」的空窗（见 use-live-turn.tsx 顶部注释）。
@@ -807,6 +831,18 @@ export function SessionDetailPane({
     const sessionFilePath = summary?.filePath?.trim() ?? "";
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
+            {historySyncError && effectiveDetail != null ? (
+                <div className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning" role="status">
+                    <span className="min-w-0 flex-1 truncate">History sync paused: {historySyncError}</span>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer rounded border border-warning/40 px-2 py-0.5 text-[11px] hover:bg-warning/10"
+                        onClick={() => void requestDetailDelta("manual")}
+                    >
+                        Retry
+                    </button>
+                </div>
+            ) : null}
             <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-border px-3">
                 {onExpandSessionList ? (
                     <IconButton

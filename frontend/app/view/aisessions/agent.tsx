@@ -14,6 +14,7 @@ import { globalStore } from "@/store/jotaiStore";
 import * as jotai from "jotai";
 import { useCallback, useEffect } from "react";
 import { SessionDetailPane, type SessionDetailController } from "./session-detail";
+import { mergeSessionTimeline } from "./session-timeline-sync";
 import { defaultChatSource } from "./sources";
 import {
     AiSessionNoteUpdatedEvent,
@@ -55,6 +56,7 @@ export class AgentViewModel implements ViewModel {
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
+    historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
     newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
@@ -136,10 +138,12 @@ export class AgentViewModel implements ViewModel {
                 "aisessions:newchat": null,
             } as MetaType,
         }).catch(() => undefined);
+        // Session promotion is deliberately fire-and-forget: the live turn remains
+        // the primary UI while history catches up in the background.
         void this.promoteNewSession(sessionId);
     }
 
-    async promoteNewSession(sessionId: string): Promise<void> {
+    async promoteNewSession(sessionId: string, attempt = 0): Promise<void> {
         try {
             const summary = await this.service.Summary({
                 id: sessionId,
@@ -152,14 +156,15 @@ export class AgentViewModel implements ViewModel {
             globalStore.set(this.selectedKeyAtom, summary.key);
             globalStore.set(this.detailAtom, null);
             void this.loadDetail(summary, true);
-        } catch {
-            // Summary RPC 失败（会话文件可能还没被索引），兜底用 loadDetailById
-            // 直接按 sessionId 从后端拉详情，让标题尽快从 "New Chat" 切换
+        } catch (error) {
             const placeholder = globalStore.get(this.newSessionAtom);
-            if (placeholder != null && placeholder.id === sessionId) {
-                globalStore.set(this.newSessionAtom, null);
-            }
-            void this.loadDetailById(sessionId, true);
+            if (placeholder == null || placeholder.id !== sessionId) return;
+            globalStore.set(this.historySyncErrorAtom, getErrorMessage(error));
+            if (attempt >= 5) return;
+            const delayMs = Math.min(500 * 2 ** attempt, 8000);
+            window.setTimeout(() => {
+                void this.promoteNewSession(sessionId, attempt + 1);
+            }, delayMs);
         }
     }
 
@@ -183,9 +188,10 @@ export class AgentViewModel implements ViewModel {
                 return;
             }
             globalStore.set(this.detailAtom, detail);
+            globalStore.set(this.historySyncErrorAtom, "");
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
         } finally {
             if (loadSeq === this.detailLoadSeq) {
@@ -211,6 +217,7 @@ export class AgentViewModel implements ViewModel {
         const loadSeq = this.detailLoadSeq;
         globalStore.set(this.detailDeltaLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
+        globalStore.set(this.historySyncErrorAtom, "");
         try {
             const delta = await this.service.DetailDelta({
                 id: currentSummary.key,
@@ -238,7 +245,7 @@ export class AgentViewModel implements ViewModel {
             return true;
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
             return false;
         } finally {
@@ -251,11 +258,11 @@ export class AgentViewModel implements ViewModel {
         if (detail?.summary?.key !== sessionKey) {
             return;
         }
-        const existingSeqs = new Set((detail.messages ?? []).map((message) => message.seq));
-        const nextMessages = [
-            ...(detail.messages ?? []),
-            ...(delta.messages ?? []).filter((message) => !existingSeqs.has(message.seq)),
-        ];
+        const merged = mergeSessionTimeline(detail.messages ?? [], detail.cursor, delta.messages ?? [], delta.cursor);
+        if (merged.resetRequired) {
+            void this.loadDetail(detail.summary, true);
+            return;
+        }
         const nextSummary = {
             ...detail.summary,
             source: delta.summary?.source || detail.summary.source,
@@ -268,8 +275,8 @@ export class AgentViewModel implements ViewModel {
         const nextDetail: SessionDetail = {
             ...detail,
             summary: nextSummary,
-            messages: nextMessages,
-            cursor: delta.cursor ?? detail.cursor,
+            messages: merged.messages,
+            cursor: merged.cursor,
         };
         globalStore.set(this.detailAtom, nextDetail);
     }
@@ -493,6 +500,7 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
     const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
+    const historySyncError = jotai.useAtomValue(model.historySyncErrorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
 
@@ -529,10 +537,10 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
     );
 
     return (
-        <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
-            {error ? (
+        <div className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
+            {(error || (historySyncError && detail == null)) && !isNewChat ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
-                    {error}
+                    {error || historySyncError}
                 </div>
             ) : null}
             <SessionDetailPane
@@ -543,16 +551,17 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
                 projectPath={model.getProjectPath()}
                 loading={
                     error === "" &&
-                    (loading ||
-                        detailLoading ||
-                        (isNewChat
-                            ? false
-                            : detail?.summary?.key !== selectedKey && selectedKey !== ""))
+                    historySyncError === "" &&
+                    detailLoading &&
+                    detail == null &&
+                    !isNewChat
                 }
                 deltaLoading={detailDeltaLoading}
                 toolCallsLoading={toolCallsLoading}
                 restoring={restoring}
                 deleting={deleting}
+                error={error}
+                historySyncError={historySyncError}
                 onBound={handleBound}
             />
         </div>
