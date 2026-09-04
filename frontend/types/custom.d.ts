@@ -232,6 +232,16 @@ declare global {
         disabled?: boolean;
         noAction?: boolean;
         zone?: "pinned" | "reveal";
+        // Optional rich Tooltip. When present, the header renderer wraps the icon in the shared
+        // `<Tooltip>` component (replacing the native `title`). Used by header path-jump icons
+        // that want the same styled tooltip as the block path copy element.
+        tooltipNode?: React.ReactNode;
+        tooltipProps?: {
+            forceOpen?: boolean;
+            openDelay?: number;
+            hideOnClick?: boolean;
+            divClassName?: string;
+        };
     };
 
     type IconButtonDecl = IconButtonCommon & {

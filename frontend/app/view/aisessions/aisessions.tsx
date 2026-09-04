@@ -18,7 +18,7 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../session-overview/session-overview.scss";
-import { IconButton, SortButton } from "./controls";
+import { IconButton, SortButton, GroupModeSwitch, type ListGroupMode } from "./controls";
 import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
@@ -29,6 +29,7 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { SessionRow } from "./session-row";
+import { GroupedSessionList, SessionGroup, readCollapsedGroups, writeCollapsedGroups } from "./session-group";
 import { normalizeSessionTags } from "./session-tags";
 import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import {
@@ -47,14 +48,17 @@ import {
     formatDateTimeToSecond,
     formatRelativeRefreshTime,
     getErrorMessage,
+    groupSessionsByProject,
     otherRootMatcher,
     pathAncestorSegments,
     pathFilterEqual,
     pathFilterToPrefix,
+    readGroupPreference,
     readSortPreference,
     restoreMetaForSession,
     shouldStartEmptyChat,
     sortSessionsByTime,
+    writeGroupPreference,
     writeSortPreference,
 } from "./utils";
 
@@ -91,6 +95,7 @@ export class AiSessionsViewModel implements ViewModel {
     noPadding = jotai.atom(true);
 
     sortDescendingAtom = jotai.atom<boolean>(readSortPreference());
+    groupModeAtom = jotai.atom<ListGroupMode>(readGroupPreference());
     sessionsAtom = jotai.atom<SessionSummary[]>([]);
     detailAtom: jotai.PrimitiveAtom<SessionDetail | null> = jotai.atom(
         null
@@ -975,7 +980,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
+    const [groupMode, setGroupMode] = jotai.useAtom(model.groupModeAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
+    const [groupCollapsed, setGroupCollapsed] = useState<string[]>(() => readCollapsedGroups());
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
@@ -990,6 +997,15 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         const base = sortSessionsByTime(sessions, sortDescending);
         return newSession != null ? [newSession, ...base] : base;
     }, [sessions, sortDescending, newSession]);
+    /*
+     * The 按项目 cut of the same pool. The New Chat placeholder is pinned above
+     * every group (it has no folder yet), so it is set aside before grouping;
+     * every real session ends up in exactly one bucket, empty buckets never render.
+     */
+    const groupedSessions = useMemo(() => {
+        const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
+        return groupSessionsByProject(base);
+    }, [visibleSessions, newSession]);
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
@@ -1087,6 +1103,14 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         writeSortPreference(sortDescending);
     }, [sortDescending]);
+
+    useEffect(() => {
+        writeGroupPreference(groupMode);
+    }, [groupMode]);
+
+    useEffect(() => {
+        writeCollapsedGroups(groupCollapsed);
+    }, [groupCollapsed]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
@@ -1274,6 +1298,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <GroupModeSwitch
+                                        mode={groupMode}
+                                        onChange={(next) => setGroupMode(next)}
+                                    />
                                     <div className="flex-1" />
                                     <button
                                         type="button"
@@ -1363,50 +1391,42 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 ) : visibleSessions.length === 0 ? (
                                     <EmptyState text={emptySessionsText(markedFilter, remoteFilterActive)} />
                                 ) : (
-                                    visibleSessions.map((session) =>
-                                        session.key === NewSessionKey ? (
-                                            <button
-                                                key={session.key}
-                                                type="button"
-                                                onClick={() => {
-                                                    globalStore.set(model.selectedKeyAtom, NewSessionKey);
-                                                    globalStore.set(model.detailAtom, null);
-                                                }}
-                                                className={cn(
-                                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs ring-inset hover:bg-hover",
-                                                    selectedKey === NewSessionKey && "bg-accent/5 ring-1 ring-accent/40"
-                                                )}
-                                            >
-                                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                                                <span className="min-w-0 truncate font-medium text-primary">New Chat</span>
-                                                <span className="ml-auto shrink-0 text-[10px] text-secondary">unsent</span>
-                                            </button>
-                                        ) : (
-                                        <SessionRow
-                                            key={session.key}
-                                            session={session}
-                                            selected={session.key === selectedKey}
-                                            onSelect={() => model.loadDetail(session)}
-                                            onMark={(e) => {
-                                                e.stopPropagation();
-                                                model.toggleMark(session);
-                                            }}
-                                            onNoteSave={(note, tags) => model.updateNote(session, note, tags)}
-                                            onResume={(e) => {
-                                                e.stopPropagation();
-                                                void model.restoreSession(session);
-                                            }}
-                                            resumeDisabled={restoring}
-                                            runningState={
-                                                sessionsRunning.get(session.key) ??
-                                                sessionsRunning.get(session.id) ??
-                                                null
-                                            }
-                                            chatRunning={runningChatSessionIds.has(session.key) || runningChatSessionIds.has(session.id)}
-                                            onJumpToBlock={jumpToRunningSessionBlock}
-                                            />
-                                        )
-                                    )
+                                    <GroupedSessionList
+                                        groupMode={groupMode}
+                                        sessions={visibleSessions}
+                                        grouped={groupedSessions}
+                                        groupCollapsed={groupCollapsed}
+                                        onToggleGroup={(key) =>
+                                            setGroupCollapsed((current) =>
+                                                current.includes(key)
+                                                    ? current.filter((k) => k !== key)
+                                                    : [...current, key]
+                                            )
+                                        }
+                                        selectedKey={selectedKey}
+                                        onSelectNew={() => {
+                                            globalStore.set(model.selectedKeyAtom, NewSessionKey);
+                                            globalStore.set(model.detailAtom, null);
+                                        }}
+                                        onSelectSession={(session) => model.loadDetail(session)}
+                                        onMark={(session, e) => {
+                                            e.stopPropagation();
+                                            model.toggleMark(session);
+                                        }}
+                                        onNoteSave={(session, note, tags) => model.updateNote(session, note, tags)}
+                                        onResume={(session, e) => {
+                                            e.stopPropagation();
+                                            void model.restoreSession(session);
+                                        }}
+                                        resumeDisabled={restoring}
+                                        runningStateOf={(session) =>
+                                            sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null
+                                        }
+                                        chatRunningOf={(session) =>
+                                            runningChatSessionIds.has(session.key) || runningChatSessionIds.has(session.id)
+                                        }
+                                        onJumpToBlock={jumpToRunningSessionBlock}
+                                    />
                                 )}
                             </div>
                         </>

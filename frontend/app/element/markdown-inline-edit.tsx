@@ -146,6 +146,12 @@ export type InlineEditSession = {
      * Save would persist the erased text ("typed a line, Enter, Save → content disappears").
      */
     placeholderKeepOnEmpty?: boolean;
+    /**
+     * Dynamic placeholder text for slash command format selection. When present, this
+     * overrides the default placeholderForBlockKind() value. Used by slash commands to
+     * show format-specific hints like "Heading 1" while the user types.
+     */
+    dynamicPlaceholder?: string;
 };
 
 // Fallback selector used to re-locate a block within the viewport by start line when the
@@ -711,6 +717,17 @@ type InlineEditOverlayProps = {
     placeholder?: string;
     /** Caret activity (click/keyup/select) — drives slash-palette / toolbar tracking. */
     onCaretChange?: (caret: number, selEnd: number) => void;
+    /**
+     * Format prefix for slash command ghost placeholder. When draftText equals this prefix,
+     * a gray ghost text is shown after the prefix to hint the user what format they chose.
+     * E.g., formatPrefix="# " + ghostPlaceholder="Heading 1" shows "# Heading 1" with
+     * "Heading 1" in gray.
+     */
+    formatPrefix?: string;
+    /** Ghost placeholder text shown in gray after the format prefix. */
+    ghostPlaceholder?: string;
+    /** Override typography for the textarea when format prefix is active. */
+    formatTypography?: React.CSSProperties;
 };
 
 export function InlineEditOverlay({
@@ -725,6 +742,9 @@ export function InlineEditOverlay({
     onBlur,
     placeholder,
     onCaretChange,
+    formatPrefix,
+    ghostPlaceholder,
+    formatTypography,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -757,7 +777,7 @@ export function InlineEditOverlay({
             <textarea
                 ref={textareaRef}
                 className="inline-edit-textarea"
-                style={typography}
+                style={{ ...typography, ...formatTypography }}
                 value={draftText}
                 rows={1}
                 placeholder={placeholder}
@@ -781,6 +801,25 @@ export function InlineEditOverlay({
                 autoCapitalize="off"
                 autoCorrect="off"
             />
+            {/* Ghost placeholder: shows gray hint text after format prefix when draft is just the prefix */}
+            {formatPrefix != null && ghostPlaceholder != null && draftText === formatPrefix && (
+                <span
+                    className="inline-edit-ghost-placeholder"
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        pointerEvents: "none",
+                        whiteSpace: "pre",
+                        ...typography,
+                        ...formatTypography,
+                        color: "transparent",
+                    }}
+                    aria-hidden="true"
+                >
+                    {formatPrefix}<span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
+                </span>
+            )}
         </div>,
         document.body
     );

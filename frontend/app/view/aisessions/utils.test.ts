@@ -8,10 +8,12 @@ import {
     formatFileSize,
     formatRelativeRefreshTime,
     formatSessionRelativeTime,
+    groupSessionsByProject,
     isReadableMessage,
     restoreCommandForSession,
     restoreMetaForSession,
     shouldStartEmptyChat,
+    UnclassifiedGroupName,
 } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
@@ -313,5 +315,60 @@ describe("AI session detail timeline", () => {
             "agent:claudevendorid": "vendor-a",
             "agent:claudevendorname": "Vendor A",
         });
+    });
+});
+
+function makeSummary(key: string, projectPath?: string, updatedAt = 1000): SessionSummary {
+    return { key, id: key, source: "pi", projectPath, updatedAt };
+}
+
+describe("groupSessionsByProject", () => {
+    it("buckets sessions by the basename of their project path", () => {
+        const groups = groupSessionsByProject([
+            makeSummary("a", "/Users/me/work/snorkeling"),
+            makeSummary("b", "/Users/me/work/snorkeling"),
+            makeSummary("c", "/Users/me/work/other"),
+        ]);
+        expect(groups.map((g) => g.name)).toEqual(["snorkeling", "other"]);
+        expect(groups[0].sessions.length).toBe(2);
+        expect(groups[1].sessions.length).toBe(1);
+    });
+
+    it("groups Windows and trailing-slash paths by their last component", () => {
+        const groups = groupSessionsByProject([
+            makeSummary("a", "C:\\Repo\\lyra\\", 200),
+            makeSummary("b", "~/Primary/projects/Lyra", 100),
+        ]);
+        expect(groups.map((g) => g.name)).toEqual(["lyra", "Lyra"]);
+    });
+
+    it("sinks every missing or empty projectPath into one muted 未归类 bucket", () => {
+        const groups = groupSessionsByProject([
+            makeSummary("a", ""),
+            makeSummary("b", "   "),
+            makeSummary("c", undefined),
+            makeSummary("d", "/Users/me/work/real"),
+        ]);
+        expect(groups[0].name).toBe("real");
+        expect(groups[1].name).toBe(UnclassifiedGroupName);
+        expect(groups[1].unclassified).toBe(true);
+        expect(groups[1].sessions.length).toBe(3);
+    });
+
+    it("orders groups by their most recently touched session, newest bucket first", () => {
+        const groups = groupSessionsByProject([
+            makeSummary("old", "/work/stale", 100),
+            makeSummary("fresh", "/work/fresh", 999),
+            makeSummary("mid", "/work/mid", 500),
+        ]);
+        expect(groups.map((g) => g.name)).toEqual(["fresh", "mid", "stale"]);
+    });
+
+    it("keeps per-group sessions in the caller's newest-first order", () => {
+        const groups = groupSessionsByProject([
+            makeSummary("new", "/work/x", 300),
+            makeSummary("old", "/work/x", 100),
+        ]);
+        expect(groups[0].sessions.map((s) => s.key)).toEqual(["new", "old"]);
     });
 });

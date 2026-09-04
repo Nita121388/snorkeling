@@ -45,6 +45,7 @@ import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
+import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
 import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
 import {
     PreviewLiveScrollSyncMetaKey,
@@ -695,10 +696,12 @@ export class PreviewModel implements ViewModel {
                         // 里 .preview-filename-copy-button 那套 opacity 过渡。
                         {
                             elemtype: "iconbutton",
-                            icon: "magnifying-glass",
+                            icon: "folder-open",
                             title: "Go to Path",
                             click: () => this.toggleOpenFileModal(),
                             className: "preview-filename-copy-button",
+                            tooltipNode: "Go to Path — jump to a file or folder",
+                            tooltipProps: { openDelay: 200, divClassName: "inline-flex" },
                         },
                     ],
                 },
@@ -770,19 +773,6 @@ export class PreviewModel implements ViewModel {
                         className: "compact-open-target-menubutton",
                         items: previewMenuItems,
                     });
-                    if (isMarkdownView) {
-                        const exportItems = this.buildExportMenuItems();
-                        if (exportItems.length > 0) {
-                            viewTextChildren.push({
-                                elemtype: "menubutton",
-                                text: "Export",
-                                icon: "file-export",
-                                title: "Export Markdown",
-                                className: "compact-open-target-menubutton",
-                                items: exportItems,
-                            });
-                        }
-                    }
                 }
                 if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
                     const syncEnabled = get(this.liveScrollSyncEnabled);
@@ -1279,7 +1269,7 @@ export class PreviewModel implements ViewModel {
      * 无草稿时回落到磁盘文件内容；取到文本后按可用 provider 执行指定格式。
      * 成功后调用 revealNativePath 在文件管理器中定位导出的文件，并给出瞬态反馈。
      */
-    async runExport(format: "html" | "pdf") {
+    async runExport(format: ExportFormat, options: ExportOptions) {
         const filePath = globalStore.get(this.metaFilePath);
         const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
         if (!isMarkdownFile({ fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false })) {
@@ -1294,7 +1284,8 @@ export class PreviewModel implements ViewModel {
         }
         const baseName = filePath?.split(/[\\/]/).pop() ?? "export";
         const stem = baseName.replace(/\.mdx?$/i, "") || "export";
-        const fileName = format === "pdf" ? `${stem}.pdf` : `${stem}.html`;
+        const exportName = options.fileName || stem;
+        const fileName = format === "pdf" ? `${exportName}.pdf` : `${exportName}.html`;
         const ctx = { fileInfo: null, mimeType, fileName, filePath, editMode: false };
         const providers = availableExportProviders(ctx);
         const provider = providers.find((p) => p.formats.includes(format));
@@ -1303,7 +1294,7 @@ export class PreviewModel implements ViewModel {
             return;
         }
         this.showExportStatus("ok", `${format.toUpperCase()} 导出中…`);
-        const result = await runMarkdownExport(provider.id, format, source, ctx);
+        const result = await runMarkdownExport(provider.id, format, source, ctx, options, fileName);
         if (result.canceled) {
             globalStore.set(this.markdownExportStatus, null);
             return;
@@ -1320,22 +1311,18 @@ export class PreviewModel implements ViewModel {
         }
     }
 
-    /** 生成 markdown 预览工具栏「导出」菜单项。 */
-    buildExportMenuItems(): MenuItem[] {
+    /** 打开导出设置弹窗；用户确认后执行导出。 */
+    showExportModal(defaultFormat: ExportFormat = "html") {
         const filePath = globalStore.get(this.metaFilePath);
-        const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
-        const ctx = { fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false };
-        const providers = availableExportProviders(ctx);
-        const items: MenuItem[] = [];
-        for (const provider of providers) {
-            for (const format of provider.formats) {
-                items.push({
-                    label: provider.displayName + (provider.formats.length > 1 ? ` (${format.toUpperCase()})` : ""),
-                    onClick: () => fireAndForget(() => this.runExport(format)),
-                });
-            }
-        }
-        return items;
+        const baseName = filePath?.split(/[\\/]/).pop() ?? "export";
+        const defaultFileName = baseName.replace(/\.mdx?$/i, "") || "export";
+        modalsModel.pushModal("ExportOptionsModal", {
+            defaultFormat,
+            defaultFileName,
+            onSubmit: (format: ExportFormat, options: ExportOptions) => {
+                fireAndForget(() => this.runExport(format, options));
+            },
+        });
     }
 
     get viewComponent(): ViewComponent {
@@ -2412,6 +2399,21 @@ export class PreviewModel implements ViewModel {
             menuItems.push({ type: "separator" });
             menuItems.push({ label: "Default Settings", enabled: false });
             menuItems.push(...makeDirectoryDefaultMenuItems(this));
+        }
+        // Markdown 预览块的导出入口：点击后弹出导出设置弹窗
+        // 直接检查文件路径扩展名，避免 loadable 异步导致 mimeType 为空而漏判；不依赖 provider 匹配，确保按钮可见
+        {
+            const filePath = globalStore.get(this.metaFilePath);
+            const isMdByPath = /\.mdx?$/i.test(filePath ?? "");
+            const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
+            const isMdByMime = isMarkdownLike(mimeType);
+            if (isMdByPath || isMdByMime) {
+                menuItems.push({ type: "separator" });
+                menuItems.push({
+                    label: "Export",
+                    click: () => fireAndForget(() => this.showExportModal("html")),
+                });
+            }
         }
         return menuItems;
     }

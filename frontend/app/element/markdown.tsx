@@ -3672,6 +3672,9 @@ const Markdown = ({
     const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
     const [emojiCatalog, setEmojiCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
+    const [dynamicPlaceholder, setDynamicPlaceholder] = useState<string | null>(null);
+    const [formatPrefix, setFormatPrefix] = useState<string | null>(null);
+    const [formatTypography, setFormatTypography] = useState<React.CSSProperties | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
     // Emoji picker opened via `/emoji` slash command (separate from the "::" inline trigger).
@@ -3690,6 +3693,9 @@ const Markdown = ({
             setSlashState(null);
             setEmojiState(null);
             setInlineSelection(null);
+            setDynamicPlaceholder(null);
+            setFormatPrefix(null);
+            setFormatTypography(null);
             setSlashEmojiState((s) => (s.open ? { ...s, open: false } : s));
         }
     }, [editSessionKind]);
@@ -3845,12 +3851,60 @@ const Markdown = ({
         [inlineEdit]
     );
 
+    // Helper to get format prefix and placeholder for slash commands
+    const getSlashFormatInfo = useCallback((cmd: SlashCommandSpec): { prefix: string; placeholder: string; typography: React.CSSProperties } | null => {
+        const baseTypography = inlineEdit.editSession?.typography ?? {};
+        switch (cmd.id) {
+            case "heading-1": return { prefix: "# ", placeholder: "Heading 1", typography: { ...baseTypography, fontSize: "2em", fontWeight: 700 } };
+            case "heading-2": return { prefix: "## ", placeholder: "Heading 2", typography: { ...baseTypography, fontSize: "1.5em", fontWeight: 700 } };
+            case "heading-3": return { prefix: "### ", placeholder: "Heading 3", typography: { ...baseTypography, fontSize: "1.25em" } };
+            case "heading-4": return { prefix: "#### ", placeholder: "Heading 4", typography: { ...baseTypography, fontSize: "1.125em" } };
+            case "heading-5": return { prefix: "##### ", placeholder: "Heading 5", typography: { ...baseTypography, fontSize: "1em" } };
+            case "heading-6": return { prefix: "###### ", placeholder: "Heading 6", typography: { ...baseTypography, fontSize: "0.9em" } };
+            case "bulleted-list": return { prefix: "- ", placeholder: "List item", typography: baseTypography };
+            case "numbered-list": return { prefix: "1. ", placeholder: "List item", typography: baseTypography };
+            case "todo-list": return { prefix: "- [ ] ", placeholder: "To-do", typography: baseTypography };
+            case "quote": return { prefix: "> ", placeholder: "Quote", typography: baseTypography };
+            case "callout-note": return { prefix: "> [!note] ", placeholder: "Note", typography: baseTypography };
+            case "callout-warning": return { prefix: "> [!warning] ", placeholder: "Warning", typography: baseTypography };
+            case "callout-tip": return { prefix: "> [!tip] ", placeholder: "Tip", typography: baseTypography };
+            case "code-block": return { prefix: "```\n", placeholder: "Code", typography: { ...baseTypography, fontFamily: "monospace" } };
+            case "table": return { prefix: "| ", placeholder: "Table", typography: baseTypography };
+            case "text": return { prefix: "", placeholder: "Type '/' for commands", typography: baseTypography };
+            default: return null;
+        }
+    }, [inlineEdit.editSession?.typography]);
+
     const handleSlashPick = useCallback(
         (cmd: SlashCommandSpec) => {
             const session = inlineEdit.editSession;
             if (session == null || slashState == null) {
                 return;
             }
+            
+            // New approach: set format prefix and dynamic placeholder
+            // instead of immediately executing the slash command
+            const formatInfo = getSlashFormatInfo(cmd);
+            if (formatInfo != null) {
+                // Set the draft to the format prefix
+                inlineEdit.setDraftText(formatInfo.prefix);
+                // Close the slash palette
+                setSlashState(null);
+                // Set the dynamic placeholder, format prefix, and typography
+                setDynamicPlaceholder(formatInfo.placeholder);
+                setFormatPrefix(formatInfo.prefix);
+                setFormatTypography(formatInfo.typography);
+                requestAnimationFrame(() => {
+                    const ta = inlineEdit.textareaRef.current;
+                    if (ta != null) {
+                        ta.setSelectionRange(formatInfo.prefix.length, formatInfo.prefix.length);
+                        ta.focus({ preventScroll: true });
+                    }
+                });
+                return;
+            }
+            
+            // Fallback: execute the slash command as before
             const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
             const result = execSlashCommand(
                 text,
@@ -3890,7 +3944,7 @@ const Markdown = ({
             }
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock]
+        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock, getSlashFormatInfo]
     );
 
     const handleSessionBlockTransform = useCallback(
@@ -5297,11 +5351,17 @@ const Markdown = ({
                             onTextChange={(v, caret) => {
                                 inlineEdit.setDraftText(v);
                                 trackEditorTriggers(v, caret);
+                                // Clear ghost placeholder when user starts typing content
+                                if (formatPrefix != null && v !== formatPrefix) {
+                                    setFormatPrefix(null);
+                                    setDynamicPlaceholder(null);
+                                    // Keep formatTypography so the style persists while typing
+                                }
                             }}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
-                            placeholder={placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
+                            placeholder={dynamicPlaceholder ?? placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
                             onCaretChange={(caret, selEnd) => {
                                 trackEditorTriggers(inlineEdit.draftText, caret);
                                 setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
@@ -5309,6 +5369,9 @@ const Markdown = ({
                                     setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
                                 }
                             }}
+                            formatPrefix={formatPrefix ?? undefined}
+                            ghostPlaceholder={dynamicPlaceholder ?? undefined}
+                            formatTypography={formatTypography ?? undefined}
                         />
                     )}
                     {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (

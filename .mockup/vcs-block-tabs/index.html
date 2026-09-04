@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS Block — 三 Tab 下拉面板原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <h1>VCS Block — 三 Tab 下拉面板</h1>
+  <p class="intro">
+    将 Version Control 下拉面板从单一文件列表改为 <b>三 Tab 页面</b>：
+    <b>文件改动</b>（当前功能）+ <b>分支</b>（列表/切换/创建）+ <b>流水线</b>（CI 运行）。
+    参考 Lyra <code>GitPanel.tsx</code> 的 Tab 结构，顶部常驻仓库头（分支名 + KPI + 同步按钮）。
+  </p>
+
+  <!-- 场景切换 -->
+  <div id="scenario-bar" class="scenario-bar"></div>
+
+  <!-- VCS 下拉面板模拟 -->
+  <div id="vcs-panel" class="vcs-panel"></div>
+
+  <!-- 设计说明 -->
+  <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
+    <h2 style="font-size:15px;margin:0 0 8px">设计说明</h2>
+    <table class="design-table">
+      <thead>
+        <tr>
+          <th>维度</th>
+          <th>当前</th>
+          <th>三 Tab 方案</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>面板结构</td>
+          <td>单一文件列表 + 折叠区</td>
+          <td>顶部仓库头 + 三 Tab（改动/分支/流水线）</td>
+        </tr>
+        <tr>
+          <td>分支信息</td>
+          <td>RepoHeader 文字显示，不可操作</td>
+          <td>独立 Tab：列表、切换、创建、ahead/behind</td>
+        </tr>
+        <tr>
+          <td>CI/CD</td>
+          <td>无</td>
+          <td>独立 Tab：运行列表、状态、耗时、展开详情</td>
+        </tr>
+        <tr>
+          <td>顶部同步</td>
+          <td>Pull 按钮在 RepoHeader</td>
+          <td>常驻 Fetch/Pull/Push 按钮 + KPI badge</td>
+        </tr>
+        <tr>
+          <td>文件操作</td>
+          <td>Diff/History 常驻</td>
+          <td>hover 浮现（120ms transition）</td>
+        </tr>
+        <tr>
+          <td>Tab 栏</td>
+          <td>无</td>
+          <td>图标 + 文字 + badge，参考 Lyra VIEWS[]</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>

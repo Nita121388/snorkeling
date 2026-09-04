@@ -136,6 +136,58 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
     );
 }
 
+export type ListGroupMode = "project" | "time";
+
+/**
+ * The segment switch between Project (folders) and Time (flat newest-first).
+ *
+ * Same flat, token-only treatment as `SortButton`/`Filters` beside it: an
+ * inline-flex strip whose moving fill is the selected label, so it reads as one
+ * control at the same size as its neighbours rather than a second sort affordance.
+ */
+export function GroupModeSwitch({
+    mode,
+    onChange,
+}: {
+    mode: ListGroupMode;
+    onChange: (mode: ListGroupMode) => void;
+}) {
+    const options: { value: ListGroupMode; label: string; icon: string }[] = [
+        { value: "project", label: "Project", icon: "fa-folder" },
+        { value: "time", label: "Time", icon: "fa-clock" },
+    ];
+    return (
+        <div
+            role="tablist"
+            aria-label="List grouping"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border/70 bg-surface p-0.5"
+        >
+            {options.map(({ value, label, icon }) => {
+                const current = value === mode;
+                return (
+                    <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={current}
+                        title={current ? `View by ${label}` : `Switch to ${label}`}
+                        onClick={() => onChange(value)}
+                        className={cn(
+                            "flex h-[22px] cursor-pointer items-center gap-1 rounded px-2 text-xs transition-colors",
+                            current
+                                ? "bg-background text-primary shadow-sm"
+                                : "text-secondary hover:text-primary"
+                        )}
+                    >
+                        <i className={cn("fa-sharp fa-solid text-[10px]", icon)} />
+                        <span>{label}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export function IconButton({
     icon,
     label,

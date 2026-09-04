@@ -530,15 +530,11 @@ function RemoteSection({
                         <>
                             <RemoteCommitList title="Incoming" commits={incoming} />
                             <RemoteCommitList title="Outgoing" commits={outgoing} />
-                            {incoming.length === 0 && outgoing.length === 0 && !remote?.error && (
-                                <div className="text-xs text-muted mt-1">No remote changes.</div>
-                            )}
+                            {/* No remote changes message removed */}
                         </>
                     ) : (
                         <>
-                            {remoteFiles.length === 0 ? (
-                                !remote?.error && <div className="text-xs text-muted mt-1">No remote changes.</div>
-                            ) : (
+                            {/* No remote changes message removed */}
                                 <div className="mt-1 overflow-x-auto rounded">
                                     <div className="min-w-full">
                                         {remoteFiles.map((status, idx) => (
@@ -546,7 +542,6 @@ function RemoteSection({
                                         ))}
                                     </div>
                                 </div>
-                            )}
                         </>
                     )}
                 </div>
@@ -766,11 +761,7 @@ function RepoPanel({
             />
             {sectionState.changes && (
                 <>
-                    {filteredChangedList.length === 0 ? (
-                        <div className="text-xs text-muted mt-1">
-                            {changedList.length === 0 ? "No changed files." : "No changed files match the filters."}
-                        </div>
-                    ) : (
+                    {/* No changed files message removed */}
                         <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
                                 {filteredChangedList.map((status, idx) => (
@@ -785,7 +776,6 @@ function RepoPanel({
                                 ))}
                             </div>
                         </div>
-                    )}
                 </>
             )}
             <CollapsibleHeader
@@ -815,13 +805,7 @@ function RepoPanel({
             />
             {sectionState.untracked && (
                 <>
-                    {filteredUntrackedList.length === 0 ? (
-                        <div className="text-xs text-muted mt-1">
-                            {untrackedList.length === 0
-                                ? "No untracked files."
-                                : "No untracked files match the filters."}
-                        </div>
-                    ) : (
+                    {/* No untracked files message removed */}
                         <div className="mt-1 overflow-x-auto rounded">
                             <div className="min-w-full">
                                 {filteredUntrackedList.map((status, idx) => (
@@ -836,7 +820,6 @@ function RepoPanel({
                                 ))}
                             </div>
                         </div>
-                    )}
                 </>
             )}
             <RemoteSection

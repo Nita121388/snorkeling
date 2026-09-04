@@ -3,8 +3,8 @@
 
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { isWindows } from "@/util/platformutil";
-import type { MarkedFilter, PathFilter } from "./types";
-import { PathFilterOtherRoot, sortPreferenceStorageKey } from "./types";
+import type { MarkedFilter, PathFilter, SessionGroupMode } from "./types";
+import { PathFilterOtherRoot, groupPreferenceStorageKey, sortPreferenceStorageKey } from "./types";
 
 const ExactToolCallAnchorPattern = /^\[Tool:\s*[^\]]+\]$/;
 const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
@@ -160,6 +160,81 @@ export function readSortPreference(): boolean {
 export function writeSortPreference(descending: boolean): void {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(sortPreferenceStorageKey, descending ? "1" : "0");
+}
+
+export function readGroupPreference(): SessionGroupMode {
+    if (typeof window === "undefined") return "project";
+    return window.localStorage.getItem(groupPreferenceStorageKey) === "time" ? "time" : "project";
+}
+
+export function writeGroupPreference(mode: SessionGroupMode): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(groupPreferenceStorageKey, mode);
+}
+
+/**
+ * A project bucket produced by `groupSessionsByProject`.
+ *
+ * `name` is the folder's `basename(projectPath)`; the bucket whose sessions
+ * carry no usable path is named after the absence of one, and rendered muted.
+ */
+export type ProjectSessionGroup = {
+    /** Display name: basename of the project path, or the 未归类 label. */
+    name: string;
+    /** The raw projectPath the group is keyed on, or "" for 未归类. */
+    path: string;
+    /** Sessions in this project, newest first (by the same key as the flat list). */
+    sessions: SessionSummary[];
+    /** Whether this bucket holds sessions with no usable project path. */
+    unclassified: boolean;
+};
+
+export const UnclassifiedGroupName = "未归类";
+
+/**
+ * The trailing path segment of a disk path (or URL-ish string), across separators.
+ *
+ * Folders live at the end of an absolute path, so the basename is the identity a
+ * user recognizes; grouping on the whole absolute path would split one checkout
+ * across every machine it has been opened on.
+ */
+export function basenamePath(path: string): string {
+    const trimmed = (path ?? "").trim().replace(/[\/\\]+$/, "");
+    if (!trimmed) return "";
+    const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+    return idx >= 0 && idx < trimmed.length - 1 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+/**
+ * Bucket a flat list of sessions by their project folder.
+ *
+ * Pure and order-agnostic: the caller hands in sessions already sorted newest
+ * first (the flat view's order), and this only cuts them into buckets. Groups
+ * come back ordered by their most-recently-touched session, so the project you
+ * worked in two minutes ago floats to the top; 未归类 always sinks last.
+ */
+export function groupSessionsByProject(sessions: SessionSummary[]): ProjectSessionGroup[] {
+    const buckets = new Map<string, ProjectSessionGroup>();
+    for (const session of sessions) {
+        const path = (session.projectPath ?? "").trim();
+        const key = path === "" ? "" : basenamePath(path);
+        const name = key === "" ? UnclassifiedGroupName : key;
+        const existing = buckets.get(key);
+        if (existing) {
+            existing.sessions.push(session);
+        } else {
+            buckets.set(key, { name, path, sessions: [session], unclassified: key === "" });
+        }
+    }
+    const groups = [...buckets.values()];
+    groups.sort((left, right) => {
+        // 未归类 is not a project; it belongs at the very bottom.
+        if (left.unclassified !== right.unclassified) return left.unclassified ? 1 : -1;
+        const leftTime = sessionSortTime(left.sessions[0]);
+        const rightTime = sessionSortTime(right.sessions[0]);
+        return rightTime - leftTime;
+    });
+    return groups;
 }
 
 export function formatRelativeRefreshTime(timestamp: number, now = Date.now()): string {

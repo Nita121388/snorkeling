@@ -347,7 +347,22 @@ HeaderCopyTextElem.displayName = "HeaderCopyTextElem";
 
 export const HeaderTextElem = React.memo(({ elem, preview }: { elem: HeaderElem; preview: boolean }) => {
     if (elem.elemtype == "iconbutton") {
-        return <IconButton decl={elem} className={clsx("block-frame-header-iconbutton", elem.className)} />;
+        const iconButton = <IconButton decl={elem} className={clsx("block-frame-header-iconbutton", elem.className)} />;
+        if (elem.tooltipNode != null) {
+            return (
+                <Tooltip
+                    placement="top"
+                    content={elem.tooltipNode}
+                    forceOpen={elem.tooltipProps?.forceOpen}
+                    openDelay={elem.tooltipProps?.openDelay ?? 200}
+                    hideOnClick={elem.tooltipProps?.hideOnClick}
+                    divClassName={elem.tooltipProps?.divClassName}
+                >
+                    {iconButton}
+                </Tooltip>
+            );
+        }
+        return iconButton;
     } else if (elem.elemtype == "toggleiconbutton") {
         return <ToggleIconButton decl={elem} className={clsx("block-frame-header-iconbutton", elem.className)} />;
     } else if (elem.elemtype == "input") {

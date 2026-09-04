@@ -59,5 +59,7 @@ export function dateRangeToSinceBefore(range: DateRangeFilter, now: number): { s
 }
 
 export const sortPreferenceStorageKey = "aisessions.sortDescending";
+export const groupPreferenceStorageKey = "aisessions.groupMode";
+export type SessionGroupMode = "project" | "time";
 export const defaultVisibleMessageCount = 30;
 export const visibleMessageCountStep = 30;
