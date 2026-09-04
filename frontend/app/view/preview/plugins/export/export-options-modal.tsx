@@ -6,7 +6,7 @@
 // 上次的选择用 localStorage 记住，下次打开弹窗默认沿用。
 
 import { Toggle } from "@/element/toggle";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Modal } from "@/app/modals/modal";
 import { defaultExportOptions, type ExportFormat, type ExportOptions } from "./export-provider";
 import "./export-options-modal.scss";
@@ -76,6 +76,7 @@ export function ExportOptionsModal({
     onSubmit,
     onCancel,
 }: ExportOptionsModalProps) {
+    const fileNameInputRef = useRef<HTMLInputElement>(null);
     const [format, setFormat] = useState<ExportFormat>(defaultFormat);
     const [options, setOptions] = useState<ExportOptions>(() => ({
         ...loadStoredExportOptions(),
@@ -102,6 +103,7 @@ export function ExportOptionsModal({
             onCancel={onCancel}
             onClickBackdrop={onCancel}
             onClose={onCancel}
+            initialFocusRef={fileNameInputRef}
         >
             <div className="export-options-title">导出 Markdown</div>
 
@@ -126,6 +128,7 @@ export function ExportOptionsModal({
                 </label>
                 <div className="export-options-filename-input-wrapper">
                     <input
+                        ref={fileNameInputRef}
                         id="export-file-name"
                         className="export-options-filename-input"
                         type="text"
