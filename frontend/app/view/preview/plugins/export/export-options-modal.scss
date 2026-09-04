@@ -1,7 +1,7 @@
-// 导出设置弹窗样式：复用项目现有 Modal，只定义内容区布局。
+// 导出设置弹窗样式：复用项目现有 Modal，定义内容区布局。
 
 .export-options-modal {
-    max-width: 380px;
+    max-width: 420px;
 
     .export-options-title {
         font-size: 1rem;
@@ -10,6 +10,99 @@
         margin-bottom: 16px;
     }
 
+    // 格式选择行
+    .export-options-format-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+
+        .export-format-btn {
+            flex: 1;
+            padding: 8px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--main-text-color);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+
+            &:hover {
+                background: var(--bg-secondary);
+            }
+
+            &.active {
+                border-color: var(--accent-color);
+                background: var(--accent-color);
+                color: #fff;
+            }
+        }
+    }
+
+    // 文件名输入行
+    .export-options-filename-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+
+        .export-options-filename-label {
+            font-size: 0.9rem;
+            color: var(--main-text-color);
+            white-space: nowrap;
+        }
+
+        .export-options-filename-input-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-primary);
+            overflow: hidden;
+
+            &:focus-within {
+                border-color: var(--accent-color);
+            }
+
+            .export-options-filename-input {
+                flex: 1;
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--main-text-color);
+                font-size: 0.9rem;
+                outline: none;
+                min-width: 0;
+
+                &::placeholder {
+                    color: var(--text-muted);
+                }
+            }
+
+            .export-options-filename-ext {
+                padding: 6px 10px;
+                font-size: 0.85rem;
+                color: var(--text-muted);
+                border-left: 1px solid var(--border-color);
+                user-select: none;
+            }
+        }
+    }
+
+    // 文件名预览
+    .export-options-preview {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+
+        strong {
+            color: var(--main-text-color);
+        }
+    }
+
+    // 选项列表
     .export-options-list {
         display: flex;
         flex-direction: column;

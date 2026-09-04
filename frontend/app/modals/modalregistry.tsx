@@ -18,6 +18,7 @@ import { NoteDirectoryModal } from "./notedirectorymodal";
 import { FileConflictModal } from "./file-conflict-modal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
+import { ExportOptionsModal } from "@/app/view/preview/plugins/export/export-options-modal";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [NewInstallOnboardingModal.displayName || "NewInstallOnboardingModal"]: NewInstallOnboardingModal,
@@ -39,6 +40,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [RenameFileModal.displayName || "RenameFileModal"]: RenameFileModal,
     [DeleteFileModal.displayName || "DeleteFileModal"]: DeleteFileModal,
     [SetSecretDialog.displayName || "SetSecretDialog"]: SetSecretDialog,
+    [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
 };
 
 export const getModalComponent = (key: string): React.ComponentType<any> | undefined => {

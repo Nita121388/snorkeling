@@ -6,12 +6,12 @@
 <title>Agent 开篇 · Agent ID Card 原型</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="dark">
 <div class="page">
   <h1>Agent 开篇 · Agent ID Card</h1>
   <p class="subtitle">
     新建 / resume 一个 Agent 时，终端 block 先亮出一张「身份证」开篇卡；跑起来后自动折叠成 header 小徽标，随时可展开。
-    只借证件的<b>视觉语法</b>（横版比例、左照片区+右信息行、抬头条、底部编号行、印章），不借证件字段。
+    只借证件的<b>视觉语法</b>（横版比例、左照片区+右信息行、底部编号行），不借证件字段。
     状态文案逐字对齐真实 <code>agent-status-derive.ts</code> 的 <code>agentStatusPresentation()</code>；
     结构镜像真实 <code>blockframe-header.tsx</code> + <code>term.tsx</code>。应用内文案英文，中文仅为评审注释。
   </p>
@@ -50,10 +50,6 @@
       <div class="mock-block-body">
         <!-- ★ 新增点③：开篇卡本体（Agent 启动瞬间展示；有输出后自动折叠为①） -->
         <article class="agent-id-card" id="agent-card" data-state="working">
-          <header class="card-head">
-            <span class="card-brand" title="Snorkeling">🤿 <span>Snorkeling</span></span>
-          </header>
-
           <div class="card-body">
             <figure class="card-photo">
               <!-- 真实来源：getAgentLogoByProvider() 的 provider logo；外圈为状态环 -->
@@ -79,17 +75,45 @@
               </div>
               <div class="field field-note">
                 <dt>Note</dt>
-                <dd id="f-note" class="dd-note" role="button" tabindex="0" title="Edit note">排查 auth 中间件 401 问题 <span class="tag">#backend</span> <span class="tag">#p1</span></dd>
+                <dd id="f-note" class="dd-note" role="button" tabindex="0" title="Edit note">排查 auth 中间件 401 问题</dd>
               </div>
-              <div class="field">
+              <div class="field field-tags">
+                <dt>Tags</dt>
+                <dd id="f-tags" class="dd-tags"><span class="tag">#backend</span> <span class="tag">#p1</span></dd>
+              </div>
+              <div class="field field-sessions">
                 <dt>Sessions</dt>
-                <dd><a href="#" id="f-sessions" class="sessions-link">3 sessions · last active 2h ago<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></dd>
+                <dd class="dd-sessions">
+                  <span class="session-tiles" id="session-tiles"></span>
+                  <a href="#" id="f-sessions" class="sessions-link">3 sessions · last active 2h ago<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+                </dd>
               </div>
             </dl>
 
-            <!-- ★ 可选装饰：状态印章（设置可关） -->
-            <span class="stamp" id="stamp" aria-hidden="true">WORKING</span>
           </div>
+
+          <!-- ★ 新增点④：时间条（时间轨迹）——由色块组成的进度条，分段展示 运行/错误暂停搁置/再次运行 的时间轨迹 + 总时间 -->
+          <section class="card-timeline" aria-label="Time trajectory">
+            <div class="tl-head">
+              <span class="tl-label">Time</span>
+              <span class="tl-total" id="tl-total">2h 14m</span>
+            </div>
+            <div class="tl-track" id="tl-track" role="img" aria-label="Segmented time trajectory">
+              <span class="tl-seg tl-seg--run" style="flex:52 1 0%" title="run · 52m"></span>
+              <span class="tl-seg tl-seg--error" style="flex:9 1 0%" title="error · 9m"></span>
+              <span class="tl-seg tl-seg--blocked" style="flex:22 1 0%" title="paused · approval · 22m"></span>
+              <span class="tl-seg tl-seg--resumed" style="flex:41 1 0%" title="resumed run · 41m"></span>
+              <span class="tl-seg tl-seg--idle" style="flex:8 1 0%" title="idle · 8m"></span>
+              <span class="tl-seg tl-seg--run" style="flex:2 1 0%" title="run · now · 2m"></span>
+            </div>
+            <div class="tl-legend" id="tl-legend">
+              <span class="tl-legend-item"><i class="tl-seg--run"></i>run <b>54m</b></span>
+              <span class="tl-legend-item"><i class="tl-seg--error"></i>error <b>9m</b></span>
+              <span class="tl-legend-item"><i class="tl-seg--blocked"></i>paused <b>22m</b></span>
+              <span class="tl-legend-item"><i class="tl-seg--resumed"></i>resumed <b>41m</b></span>
+              <span class="tl-legend-item"><i class="tl-seg--idle"></i>idle <b>8m</b></span>
+            </div>
+          </section>
 
           <footer class="card-number">
             <code class="sid" id="f-sid">0f3a9c2e-77b1-4d2a-9f31-a8c4e2b6d9f0</code>
@@ -116,7 +140,6 @@
       <tr><td>Note 备注</td><td><code>SessionSummary.note + tags</code>，点击进现有 note 编辑入口</td></tr>
       <tr><td>Sessions 行</td><td>aisessions 列表按 <code>projectPath + source</code> 过滤的计数与最近活跃时间，点击跳 Sessions 视图带过滤</td></tr>
       <tr><td>底部编号行</td><td><code>resolveAgentSessionId(meta)</code> 的 sessionId，等宽字体 + 复制</td></tr>
-      <tr><td>印章（可关）</td><td>state → 章：working=蓝「WORKING」、blocked/error/rate-limited=红、done=绿「DONE」、stale/idle=灰；状态跳变时盖章动画</td></tr>
     </table>
 
     <h2>场景清单（scenario bar 可切换）</h2>

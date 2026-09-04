@@ -139,7 +139,7 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
 export type ListGroupMode = "project" | "time";
 
 /**
- * The segment switch between 按项目 (folders) and 按时间 (flat newest-first).
+ * The segment switch between Project (folders) and Time (flat newest-first).
  *
  * Same flat, token-only treatment as `SortButton`/`Filters` beside it: an
  * inline-flex strip whose moving fill is the selected label, so it reads as one
@@ -153,8 +153,8 @@ export function GroupModeSwitch({
     onChange: (mode: ListGroupMode) => void;
 }) {
     const options: { value: ListGroupMode; label: string; icon: string }[] = [
-        { value: "project", label: "项目", icon: "fa-folder" },
-        { value: "time", label: "时间", icon: "fa-clock" },
+        { value: "project", label: "Project", icon: "fa-folder" },
+        { value: "time", label: "Time", icon: "fa-clock" },
     ];
     return (
         <div

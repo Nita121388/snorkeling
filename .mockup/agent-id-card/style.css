@@ -146,9 +146,7 @@ h1 { font-size: 22px; margin: 0 0 6px; }
     color: #29434a;
 
     /* 纸面 + 波纹 guilloche 底纹 */
-    background:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='130'%3E%3Cg fill='none' stroke='%23295a63'%3E%3Cpath d='M0 30 Q32.5 8 65 30 T130 30 T195 30 T260 30' stroke-opacity='.07'/%3E%3Cpath d='M0 52 Q32.5 30 65 52 T130 52 T195 52 T260 52' stroke-opacity='.05'/%3E%3Cpath d='M0 74 Q32.5 52 65 74 T130 74 T195 74 T260 74' stroke-opacity='.07'/%3E%3Cpath d='M0 96 Q32.5 74 65 96 T130 96 T195 96 T260 96' stroke-opacity='.05'/%3E%3Cpath d='M0 118 Q32.5 96 65 118 T130 118 T195 118 T260 118' stroke-opacity='.06'/%3E%3C/g%3E%3C/svg%3E"),
-        linear-gradient(135deg, #f2f7f7, #dfebec);
+    background: linear-gradient(145deg, #ffffff, #eef4f4 58%, #e3eeee);
     animation: card-in .35s cubic-bezier(.2, .9, .3, 1.2);
 }
 @keyframes card-in {
@@ -164,16 +162,6 @@ h1 { font-size: 22px; margin: 0 0 6px; }
 .agent-id-card[data-state="stale"]         { --state-color: #8a7a52; }
 .agent-id-card[data-state="unbound"]       { --state-color: #9aa5a6; }
 .agent-id-card[data-state="missing"]       { --state-color: #9aa5a6; filter: grayscale(.85) contrast(.92); opacity: .78; }
-
-/* 抬头条 */
-.card-head {
-    display: flex; justify-content: center; align-items: center;
-    padding: 8px 16px;
-    background: linear-gradient(90deg, rgba(41,90,99,.16), rgba(41,90,99,.05));
-    border-bottom: 1px solid rgba(41,67,74,.22);
-}
-.card-brand { font-size: 11px; color: #587a80; display: inline-flex; gap: 4px; align-items: center; }
-.card-brand span { letter-spacing: .04em; }
 
 /* 卡身 */
 .card-body {
@@ -240,34 +228,106 @@ h1 { font-size: 22px; margin: 0 0 6px; }
     background: rgba(63,110,120,.12); color: #3f6e78; border-radius: 999px;
 }
 
+.dd-sessions { display: flex; align-items: center; gap: 8px; }
+
+/* ★ 会话方块：每个历史会话一个小方块，provider 色 + 最近活动提示点 */
+.session-tiles { display: inline-flex; align-items: center; gap: 4px; }
+.session-tile {
+    position: relative;
+    width: 16px; height: 16px; border-radius: 4px;
+    background: rgba(63,110,120,.16);
+    border: 1px solid rgba(41,67,74,.22);
+    cursor: default;
+}
+.session-tile.is-live { background: var(--state-color); border-color: transparent; }
+.session-tile:hover::after {
+    content: attr(data-label);
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    padding: 3px 8px; white-space: nowrap;
+    background: #23383e; color: #eaf3f4; font-size: 11px; border-radius: 5px;
+    box-shadow: 0 3px 8px rgba(0,0,0,.25); z-index: 5;
+}
+.session-tile:hover::before {
+    content: ""; position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: #23383e; z-index: 5;
+}
+
 .sessions-link {
     color: #2f6fb3; text-decoration: none; display: inline-flex; align-items: center; gap: 2px;
 }
 .sessions-link:hover { text-decoration: underline; }
 .sessions-link .chev { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2.4; }
 
-/* 印章（可选装饰） */
-.stamp {
-    position: absolute; right: 14px; bottom: 8px; z-index: 1;
-    display: flex; align-items: center; justify-content: center;
-    width: 86px; height: 86px; border-radius: 50%;
-    border: 3px double var(--stamp-color, var(--state-color));
-    color: var(--stamp-color, var(--state-color));
-    font-size: 11.5px; font-weight: 800; letter-spacing: .1em; text-align: center;
-    transform: rotate(-12deg);
-    mix-blend-mode: multiply; opacity: .82;
-    pointer-events: none;
-    background:
-        radial-gradient(circle at 30% 35%, transparent 62%, rgba(0,0,0,.03) 100%);
+/* ============ ★ 新增点④：时间条（时间轨迹） ============ */
+.card-timeline {
+    padding: 10px 18px 12px;
+    border-top: 1px solid rgba(41,67,74,.18);
+    background: rgba(255,255,255,.38);
 }
-.agent-id-card.no-stamp .stamp { display: none; }
-.agent-id-card[data-state="unbound"] .stamp,
-.agent-id-card[data-state="missing"] .stamp { border-style: dashed; }
-.stamp.just-stamped { animation: stamp-in .3s cubic-bezier(.3, 1.6, .5, 1); }
-@keyframes stamp-in {
-    from { transform: rotate(-12deg) scale(1.7); opacity: 0; }
-    60%  { opacity: .95; }
+.tl-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 7px;
 }
+.tl-label {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+    color: #6d8a90; text-transform: uppercase;
+}
+.tl-total {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px; color: #33565e; font-weight: 600;
+}
+.tl-track {
+    display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden;
+    background: rgba(41,67,74,.08);
+}
+.tl-seg {
+    height: 100%; min-width: 3px; cursor: default;
+    transition: filter .15s ease;
+}
+.tl-seg:hover { filter: brightness(1.12); }
+.tl-seg--run      { background: #2f6fb3; }
+.tl-seg--resumed  { background: #3e8e5a; }
+.tl-seg--error    { background: #c14b43; }
+.tl-seg--blocked  { background: #c07a2f; }
+.tl-seg--idle     { background: #7b8b8e; }
+.tl-seg--done     { background: #6d9a7c; }
+
+.tl-legend {
+    display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px;
+}
+.tl-legend-item {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; color: #557076;
+}
+.tl-legend-item i {
+    width: 9px; height: 9px; border-radius: 2px; flex: none;
+}
+.tl-legend-item b {
+    font-family: Consolas, monospace; font-weight: 600; color: #33565e;
+}
+.agent-id-card[data-state="missing"] .card-timeline { opacity: .55; }
+
+/* App theme previews: mirrors light, dark, and monochrome modes. */
+body[data-theme="dark"] { background: #111418; color: #d8dee6; }
+body[data-theme="dark"] .subtitle, body[data-theme="dark"] .log { color: #9ba7b3; }
+body[data-theme="dark"] .scenario-bar { background: #1b2026; border-color: #303943; }
+body[data-theme="dark"] .scenario-btn { background: #222a32; color: #cbd5de; border-color: #3b4651; }
+body[data-theme="dark"] .notes { color: #b8c2cc; border-color: #303943; }
+body[data-theme="dark"] .notes h2 { color: #e1e8ee; }
+body[data-theme="dark"] .notes th, body[data-theme="dark"] .notes td { border-color: #303943; }
+body[data-theme="dark"] .notes th { background: #222a32; }
+body[data-theme="dark"] .desk.is-light { background: #1b2026; }
+body[data-theme="monochrome"] { background: #f5f5f5; color: #202428; }
+body[data-theme="monochrome"] .agent-id-card { --state-color: #444b52; background: linear-gradient(145deg, #ffffff, #f0f1f2); }
+body[data-theme="monochrome"] .tl-seg--run,
+body[data-theme="monochrome"] .tl-seg--resumed,
+body[data-theme="monochrome"] .tl-seg--done { background: #4b535b; }
+body[data-theme="monochrome"] .tl-seg--error { background: #737373; }
+body[data-theme="monochrome"] .tl-seg--blocked,
+body[data-theme="monochrome"] .tl-seg--idle { background: #a7adb1; }
+body[data-theme="monochrome"] .scenario-btn.is-active { background: #454b51; border-color: #454b51; }
+.theme-toggle { margin-left: auto; }
+.theme-toggle select { border: 1px solid #c9d1cf; border-radius: 6px; padding: 4px 7px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 
 /* 底部编号行 */
 .card-number {

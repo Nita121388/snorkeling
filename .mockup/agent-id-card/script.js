@@ -19,8 +19,21 @@ const SCENARIOS = [
         output: "$ go test ./pkg/auth  \u2714 12 tests passed",
         note: "\u6392\u67e5 auth \u4e2d\u95f4\u4ef6 401 \u95ee\u9898", tags: ["#backend", "#p1"],
         sessions: "3 sessions \u00b7 last active 2h ago",
+        sessionTiles: [
+            { label: "initial run \u00b7 1h ago", live: false },
+            { label: "fix attempt \u00b7 40m ago", live: false },
+            { label: "current \u00b7 active now", live: true },
+        ],
+        totalTime: "2h 14m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 52 },
+            { kind: "error", label: "error", minutes: 9 },
+            { kind: "blocked", label: "paused \u00b7 approval", minutes: 22 },
+            { kind: "resumed", label: "resumed run", minutes: 41 },
+            { kind: "idle", label: "idle", minutes: 8 },
+            { kind: "run", label: "run \u00b7 now", minutes: 2 },
+        ],
         sid: "0f3a9c2e-77b1-4d2a-9f31-a8c4e2b6d9f0",
-        stamp: "WORKING",
     },
     {
         id: "working-thinking",
@@ -33,8 +46,19 @@ const SCENARIOS = [
         output: "\u2026 reading session.go",
         note: "\u5148\u5199\u5931\u8d25\u7528\u4f8b\u518d\u4fee", tags: ["#auth"],
         sessions: "3 sessions \u00b7 last active just now",
+        sessionTiles: [
+            { label: "setup \u00b7 2h ago", live: false },
+            { label: "debug \u00b7 1h ago", live: false },
+            { label: "current \u00b7 active now", live: true },
+        ],
+        totalTime: "1h 47m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 68 },
+            { kind: "blocked", label: "paused \u00b7 checkpoint", minutes: 16 },
+            { kind: "resumed", label: "resumed run", minutes: 21 },
+            { kind: "run", label: "run \u00b7 now", minutes: 2 },
+        ],
         sid: "b21d7740-51aa-4c03-9e88-2f0ac41be773",
-        stamp: "THINKING",
     },
     {
         id: "blocked",
@@ -47,8 +71,19 @@ const SCENARIOS = [
         output: "awaiting approval: rm -rf dist_old/",
         note: "\u5371\u9669\u64cd\u4f5c\uff0c\u7b49\u6211\u786e\u8ba4", tags: ["#db"],
         sessions: "3 sessions \u00b7 last active 5m ago",
+        sessionTiles: [
+            { label: "migration \u00b7 3h ago", live: false },
+            { label: "preview \u00b7 1h ago", live: false },
+            { label: "current \u00b7 waiting approval", live: true },
+        ],
+        totalTime: "3h 05m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 95 },
+            { kind: "error", label: "error \u00b7 rollback", minutes: 12 },
+            { kind: "blocked", label: "paused \u00b7 awaiting approval", minutes: 58 },
+            { kind: "run", label: "run", minutes: 20 },
+        ],
         sid: "7c30e5a1-9b42-4d7f-a111-c93e02ba7d54",
-        stamp: "APPROVAL NEEDED",
     },
     {
         id: "error",
@@ -61,8 +96,16 @@ const SCENARIOS = [
         output: "npm ERR! peer dep conflict",
         note: "", tags: [],
         sessions: "1 session \u00b7 last active 1h ago",
+        sessionTiles: [
+            { label: "current \u00b7 errored out", live: true },
+        ],
+        totalTime: "40m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 30 },
+            { kind: "error", label: "error", minutes: 8 },
+            { kind: "idle", label: "idle", minutes: 2 },
+        ],
         sid: "5e9af0c2-233b-4e6a-b7c8-d0f81a94e610",
-        stamp: "ERROR",
     },
     {
         id: "rate-limited",
@@ -75,8 +118,17 @@ const SCENARIOS = [
         output: "\u23f3 usage limit reached, retry in 32m",
         note: "", tags: [],
         sessions: "2 sessions \u00b7 last active 12m ago",
+        sessionTiles: [
+            { label: "run \u00b7 1h ago", live: false },
+            { label: "current \u00b7 rate limited", live: true },
+        ],
+        totalTime: "1h 12m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 44 },
+            { kind: "blocked", label: "rate-limited \u00b7 paused", minutes: 24 },
+            { kind: "resumed", label: "resumed run", minutes: 4 },
+        ],
         sid: "a08cf3d1-77e2-49ab-8f5c-6b90e2c4d8a7",
-        stamp: "RATE LIMIT",
     },
     {
         id: "done",
@@ -89,8 +141,21 @@ const SCENARIOS = [
         output: "\u2714 all checks passed \u00b7 committed 4 files",
         note: "\u5df2\u5b8c\u6210\uff0cPR #128 \u5f85 review", tags: ["#backend", "#p1", "#done"],
         sessions: "3 sessions \u00b7 last active 2h ago",
+        sessionTiles: [
+            { label: "explore \u00b7 6h ago", live: false },
+            { label: "implement \u00b7 3h ago", live: false },
+            { label: "finalize \u00b7 2h ago", live: false },
+        ],
+        totalTime: "4h 38m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 120 },
+            { kind: "blocked", label: "paused", minutes: 34 },
+            { kind: "resumed", label: "resumed run", minutes: 66 },
+            { kind: "error", label: "error \u00b7 test fail", minutes: 10 },
+            { kind: "run", label: "run", minutes: 38 },
+            { kind: "done", label: "done", minutes: 10 },
+        ],
         sid: "0f3a9c2e-77b1-4d2a-9f31-a8c4e2b6d9f0",
-        stamp: "DONE",
     },
     {
         id: "idle",
@@ -103,8 +168,15 @@ const SCENARIOS = [
         output: "> _",
         note: "", tags: [],
         sessions: "1 session \u00b7 last active yesterday",
+        sessionTiles: [
+            { label: "explore \u00b7 idle", live: true },
+        ],
+        totalTime: "1h 20m",
+        timeline: [
+            { kind: "run", label: "run", minutes: 50 },
+            { kind: "idle", label: "idle", minutes: 30 },
+        ],
         sid: "c441b8e9-0d63-4f5a-92cb-e7a30f86b215",
-        stamp: "IDLE",
     },
     {
         id: "stale",
@@ -117,8 +189,15 @@ const SCENARIOS = [
         output: "(no output for 2 days)",
         note: "\u65ad\u7f51\u540e\u6ca1\u6062\u590d", tags: ["#spike"],
         sessions: "1 session \u00b7 last active 2d ago",
+        sessionTiles: [
+            { label: "old spike \u00b7 stale", live: true },
+        ],
+        totalTime: "2d",
+        timeline: [
+            { kind: "run", label: "run", minutes: 75 },
+            { kind: "idle", label: "idle \u00b7 stalled", minutes: 2800 },
+        ],
         sid: "f0d2917a-3cc8-4b1e-8a90-74de5c6f0b32",
-        stamp: "STALE",
     },
     {
         // 对应 resolveAgentSessionId 的 new-codex-session-unbound：待落户
@@ -132,8 +211,10 @@ const SCENARIOS = [
         output: "> _",
         note: "", tags: [], hintNote: true,
         sessions: "no history yet",
+        sessionTiles: [],
+        totalTime: "\u2014",
+        timeline: [],
         sid: "\u2014 binding after first reply \u2014",
-        stamp: "PENDING",
     },
     {
         // 对应 SessionSummary.missing：户籍注销
@@ -147,8 +228,10 @@ const SCENARIOS = [
         output: "session file not found",
         note: "", tags: [],
         sessions: "file missing",
+        sessionTiles: [],
+        totalTime: "\u2014",
+        timeline: [],
         sid: "9a2ce4d0-88b1-4c7f-b3aa-1f6d0e58c944",
-        stamp: "MISSING",
         disabled: true,
     },
 ];
@@ -156,7 +239,6 @@ const SCENARIOS = [
 // ============ 渲染 ============
 const $ = (id) => document.getElementById(id);
 let currentScenario = SCENARIOS[0];
-let lastStamp = "";
 
 function render(scenario) {
     currentScenario = scenario;
@@ -186,32 +268,66 @@ function render(scenario) {
     if (scenario.hintNote) {
         noteEl.textContent = "Click to register a note\u2026";
         noteEl.className = "dd-note is-hint";
-    } else if (!scenario.note && !scenario.tags.length) {
+    } else if (!scenario.note) {
         noteEl.textContent = "\u2014";
         noteEl.className = "dd-note";
     } else {
-        noteEl.innerHTML =
-            escapeHtml(scenario.note) +
-            scenario.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join("");
+        noteEl.textContent = scenario.note;
         noteEl.className = "dd-note";
     }
+
+    const tagsEl = $("f-tags");
+    tagsEl.replaceChildren();
+    if (scenario.tags && scenario.tags.length) {
+        scenario.tags.forEach((t) => {
+            const span = document.createElement("span");
+            span.className = "tag";
+            span.textContent = t;
+            tagsEl.appendChild(span);
+        });
+    } else {
+        tagsEl.textContent = "\u2014";
+    }
+
+    const tileHost = $("session-tiles");
+    tileHost.replaceChildren();
+    (scenario.sessionTiles || []).forEach((tile) => {
+        const el = document.createElement("span");
+        el.className = `session-tile ${tile.live ? "is-live" : ""}`.trim();
+        el.dataset.label = tile.label;
+        el.setAttribute("aria-label", tile.label);
+        tileHost.appendChild(el);
+    });
 
     const sessLink = $("f-sessions");
     sessLink.textContent = scenario.sessions;
     sessLink.appendChild(Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "svg"), { className: "chev", viewBox: "0 0 24 24", innerHTML: '<path d="M9 6l6 6-6 6"/>' }));
 
-    $("f-sid").textContent = scenario.sid;
+    const timeline = scenario.timeline || [];
+    const totalMinutes = timeline.reduce((sum, segment) => sum + segment.minutes, 0);
+    const track = $("tl-track");
+    const legend = $("tl-legend");
+    track.replaceChildren();
+    legend.replaceChildren();
+    $("tl-total").textContent = scenario.totalTime || formatDuration(totalMinutes);
 
-    // 印章：状态跳变时盖章动画
-    const stamp = $("stamp");
-    stamp.textContent = scenario.stamp;
-    stamp.style.setProperty("--stamp-color", "");
-    if (lastStamp !== scenario.stamp) {
-        stamp.classList.remove("just-stamped");
-        void stamp.offsetWidth; // restart animation
-        stamp.classList.add("just-stamped");
-    }
-    lastStamp = scenario.stamp;
+    timeline.forEach((segment) => {
+        const el = document.createElement("span");
+        el.className = `tl-seg tl-seg--${segment.kind}`;
+        el.style.flex = `${segment.minutes} 1 0%`;
+        el.title = `${segment.label} · ${formatDuration(segment.minutes)}`;
+        track.appendChild(el);
+    });
+    const summary = new Map();
+    timeline.forEach((segment) => summary.set(segment.kind, (summary.get(segment.kind) || 0) + segment.minutes));
+    summary.forEach((minutes, kind) => {
+        const item = document.createElement("span");
+        item.className = "tl-legend-item";
+        item.innerHTML = `<i class="tl-seg--${kind}"></i>${timeline.find((segment) => segment.kind === kind).label.split(" · ")[0]} <b>${formatDuration(minutes)}</b>`;
+        legend.appendChild(item);
+    });
+
+    $("f-sid").textContent = scenario.sid;
 
     document.querySelectorAll(".scenario-btn").forEach((btn) => {
         btn.classList.toggle("is-active", btn.dataset.scenario === scenario.id);
@@ -221,6 +337,13 @@ function render(scenario) {
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function formatDuration(minutes) {
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
 
 // ============ 场景栏 ============
@@ -243,14 +366,16 @@ function buildScenarioBar() {
     sep.className = "scenario-sep";
     bar.appendChild(sep);
 
-    // 印章开关（评审用）
-    const stampToggle = document.createElement("label");
-    stampToggle.className = "scenario-toggle";
-    stampToggle.innerHTML = '<input type="checkbox" checked> stamp';
-    stampToggle.querySelector("input").addEventListener("change", (e) => {
-        $("agent-card").classList.toggle("no-stamp", !e.target.checked);
+    // 主题切换（对齐 AppThemeMode: light / dark / monochrome）
+    const themeLabel = document.createElement("label");
+    themeLabel.className = "scenario-toggle theme-toggle";
+    themeLabel.innerHTML =
+        '<span class="scenario-toggle">App theme</span>' +
+        '<select><option value="light">Light</option><option value="dark">Dark</option><option value="monochrome">Monochrome</option></select>';
+    themeLabel.querySelector("select").addEventListener("change", (e) => {
+        document.body.dataset.theme = e.target.value;
     });
-    bar.appendChild(stampToggle);
+    bar.appendChild(themeLabel);
 
     // 桌面明暗（对照卡片恒浅色）
     const deskToggle = document.createElement("label");

@@ -3672,6 +3672,8 @@ const Markdown = ({
     const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
     const [emojiCatalog, setEmojiCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
+    const [dynamicPlaceholder, setDynamicPlaceholder] = useState<string | null>(null);
+    const [formatPrefix, setFormatPrefix] = useState<string | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
     // Emoji picker opened via `/emoji` slash command (separate from the "::" inline trigger).
@@ -3690,6 +3692,8 @@ const Markdown = ({
             setSlashState(null);
             setEmojiState(null);
             setInlineSelection(null);
+            setDynamicPlaceholder(null);
+            setFormatPrefix(null);
             setSlashEmojiState((s) => (s.open ? { ...s, open: false } : s));
         }
     }, [editSessionKind]);
@@ -3845,12 +3849,58 @@ const Markdown = ({
         [inlineEdit]
     );
 
+    // Helper to get format prefix and placeholder for slash commands
+    const getSlashFormatInfo = useCallback((cmd: SlashCommandSpec): { prefix: string; placeholder: string } | null => {
+        switch (cmd.id) {
+            case "heading-1": return { prefix: "# ", placeholder: "Heading 1" };
+            case "heading-2": return { prefix: "## ", placeholder: "Heading 2" };
+            case "heading-3": return { prefix: "### ", placeholder: "Heading 3" };
+            case "heading-4": return { prefix: "#### ", placeholder: "Heading 4" };
+            case "heading-5": return { prefix: "##### ", placeholder: "Heading 5" };
+            case "heading-6": return { prefix: "###### ", placeholder: "Heading 6" };
+            case "bulleted-list": return { prefix: "- ", placeholder: "List item" };
+            case "numbered-list": return { prefix: "1. ", placeholder: "List item" };
+            case "todo-list": return { prefix: "- [ ] ", placeholder: "To-do" };
+            case "quote": return { prefix: "> ", placeholder: "Quote" };
+            case "callout-note": return { prefix: "> [!note] ", placeholder: "Note" };
+            case "callout-warning": return { prefix: "> [!warning] ", placeholder: "Warning" };
+            case "callout-tip": return { prefix: "> [!tip] ", placeholder: "Tip" };
+            case "code-block": return { prefix: "```\n", placeholder: "Code" };
+            case "table": return { prefix: "| ", placeholder: "Table" };
+            case "text": return { prefix: "", placeholder: "Type '/' for commands" };
+            default: return null;
+        }
+    }, []);
+
     const handleSlashPick = useCallback(
         (cmd: SlashCommandSpec) => {
             const session = inlineEdit.editSession;
             if (session == null || slashState == null) {
                 return;
             }
+            
+            // New approach: set format prefix and dynamic placeholder
+            // instead of immediately executing the slash command
+            const formatInfo = getSlashFormatInfo(cmd);
+            if (formatInfo != null) {
+                // Set the draft to the format prefix
+                inlineEdit.setDraftText(formatInfo.prefix);
+                // Close the slash palette
+                setSlashState(null);
+                // Set the dynamic placeholder and format prefix
+                setDynamicPlaceholder(formatInfo.placeholder);
+                setFormatPrefix(formatInfo.prefix);
+                requestAnimationFrame(() => {
+                    const ta = inlineEdit.textareaRef.current;
+                    if (ta != null) {
+                        ta.setSelectionRange(formatInfo.prefix.length, formatInfo.prefix.length);
+                        ta.focus({ preventScroll: true });
+                    }
+                });
+                return;
+            }
+            
+            // Fallback: execute the slash command as before
             const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
             const result = execSlashCommand(
                 text,
@@ -3890,7 +3940,7 @@ const Markdown = ({
             }
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock]
+        [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock, getSlashFormatInfo]
     );
 
     const handleSessionBlockTransform = useCallback(
@@ -5297,11 +5347,16 @@ const Markdown = ({
                             onTextChange={(v, caret) => {
                                 inlineEdit.setDraftText(v);
                                 trackEditorTriggers(v, caret);
+                                // Clear ghost placeholder when user starts typing content
+                                if (formatPrefix != null && v !== formatPrefix) {
+                                    setFormatPrefix(null);
+                                    setDynamicPlaceholder(null);
+                                }
                             }}
                             onKeyDown={handleEditorKeyDown}
                             onPaste={handleEditorPaste}
                             onBlur={inlineEdit.commit}
-                            placeholder={placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
+                            placeholder={dynamicPlaceholder ?? placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
                             onCaretChange={(caret, selEnd) => {
                                 trackEditorTriggers(inlineEdit.draftText, caret);
                                 setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
@@ -5309,6 +5364,8 @@ const Markdown = ({
                                     setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
                                 }
                             }}
+                            formatPrefix={formatPrefix ?? undefined}
+                            ghostPlaceholder={dynamicPlaceholder ?? undefined}
                         />
                     )}
                     {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (

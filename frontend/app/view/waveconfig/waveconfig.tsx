@@ -33,12 +33,12 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
     };
 
     return (
-        <div className="flex flex-col w-48 border-r border-border @w600:h-full @max-w600:absolute @max-w600:left-0.5 @max-w600:top-0 @max-w600:bottom-0.5 @max-w600:z-10 @max-w600:bg-background @max-w600:shadow-xl @max-w600:rounded-bl">
+        <div className="flex flex-col w-48 border-r border-border bg-modalbg @w600:h-full @max-w600:absolute @max-w600:left-0.5 @max-w600:top-0 @max-w600:bottom-0.5 @max-w600:z-10 @max-w600:bg-background @max-w600:shadow-xl @max-w600:rounded-bl">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border @w600:hidden">
                 <span className="font-semibold">Config Files</span>
                 <button
                     onClick={() => setIsMenuOpen(false)}
-                    className="hover:bg-secondary/50 rounded p-1 cursor-pointer transition-colors"
+                    className="hover:bg-hoverbg rounded p-1 cursor-pointer transition-colors"
                 >
                     ✕
                 </button>
@@ -50,7 +50,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                     className={`px-4 py-2 border-b border-border cursor-pointer transition-colors ${
                         selectedFile?.path === file.path
                             ? "bg-actionsoft text-actionsofttext border-actionsoftborder"
-                            : "hover:bg-secondary/50"
+                            : "hover:bg-hoverbg"
                     }`}
                 >
                     <div className="flex items-center gap-1">
@@ -75,7 +75,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                             className={`px-4 py-2 border-b border-border cursor-pointer transition-colors ${
                                 selectedFile?.path === file.path
                                     ? "bg-actionsoft text-actionsofttext border-actionsoftborder"
-                                    : "hover:bg-secondary/50"
+                                    : "hover:bg-hoverbg"
                             }`}
                         >
                             <div className="flex items-center gap-2 overflow-hidden">

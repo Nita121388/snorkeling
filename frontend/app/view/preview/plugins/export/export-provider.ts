@@ -6,6 +6,7 @@ import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-regi
 export type ExportFormat = "html" | "pdf";
 
 export type ExportOptions = {
+    fileName: string;
     includeFrontmatter: boolean;
     includeToc: boolean;
     inlineImages: boolean;
@@ -14,6 +15,7 @@ export type ExportOptions = {
 };
 
 export const defaultExportOptions: ExportOptions = {
+    fileName: "",
     includeFrontmatter: true,
     includeToc: false,
     inlineImages: false,
