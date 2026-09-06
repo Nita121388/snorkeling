@@ -113,15 +113,15 @@ const config = {
     win: {
         fileAssociations: markdownFileAssociations,
         target: ["nsis", "msi", "zip"],
-        nsis: {
-            include: "build/nsis-folder-open.nsh",
-        },
         signtoolOptions: windowsShouldSign && {
             signingHashAlgorithms: ["sha256"],
             publisherName: "Command Line Inc",
             certificateSubjectName: "Command Line Inc",
             certificateSha1: process.env.SM_CODE_SIGNING_CERT_SHA1_HASH,
         },
+    },
+    nsis: {
+        include: "build/nsis-folder-open.nsh",
     },
     appImage: {
         license: "LICENSE",
