@@ -7,25 +7,24 @@
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
+import * as WOS from "@/app/store/wos";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { getCurrentWorkspaceContextMeta } from "@/app/workspace/agent-launch";
 import { globalStore } from "@/store/jotaiStore";
 import * as jotai from "jotai";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SessionDetailPane, type SessionDetailController } from "./session-detail";
-import { mergeSessionTimeline } from "./session-timeline-sync";
-import { defaultChatSource } from "./sources";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
+import { mergeSessionTimeline } from "./session-timeline-sync";
+import { defaultChatSource } from "./sources";
 import { NewSessionKey } from "./types";
-import {
-    getErrorMessage,
-    restoreMetaForSession,
-} from "./utils";
+import { getErrorMessage, restoreMetaForSession } from "./utils";
 
 export class AgentViewModel implements ViewModel {
     blockId: string;
@@ -59,9 +58,9 @@ export class AgentViewModel implements ViewModel {
     historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
-    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
-        SessionSummary | null
-    >;
+    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(
+        null
+    ) as jotai.PrimitiveAtom<SessionSummary | null>;
     newChatEpochAtom = jotai.atom(0);
 
     // 用于 SessionDetailController 的加载序列
@@ -87,6 +86,20 @@ export class AgentViewModel implements ViewModel {
         return typeof connection === "string" ? connection.trim() : "";
     }
 
+    async changeEmptyChatDirectory(): Promise<string | null> {
+        if (this.getBoundSessionId() !== "" || !this.shouldAutoStartNewChat()) return null;
+        const picker = (window as Window & { api?: { pickDirectory?: () => Promise<string | null> } }).api
+            ?.pickDirectory;
+        if (picker == null) return null;
+        const selected = (await picker())?.trim() ?? "";
+        if (selected === "") return null;
+        await RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: { "cmd:cwd": selected, connection: null } as MetaType,
+        });
+        return selected;
+    }
+
     getBoundSessionId(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
@@ -99,12 +112,37 @@ export class AgentViewModel implements ViewModel {
         return (blockData?.meta as Record<string, unknown> | undefined)?.["aisessions:newchat"] === true;
     }
 
-    // 获取当前块绑定的项目路径（cmd:cwd），用于 GUI 新会话创建时传给 pi
+    // 获取当前块绑定的项目路径（cmd:cwd），用于 GUI 新会话创建时传给 pi。
+    // 块自身可能不带 cmd:cwd（例如 New Agent GUI 对话块），此时回退到工作区上下文
+    //（活跃终端的 cwd），保证 GitStatusBar 仍能展示项目/分支/改动。
     getProjectPath(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
         const cwd = meta["cmd:cwd"];
-        return typeof cwd === "string" ? cwd.trim() : "";
+        if (typeof cwd === "string" && cwd.trim() !== "") {
+            return cwd.trim();
+        }
+        try {
+            const contextMeta = getCurrentWorkspaceContextMeta() as Record<string, unknown> | null | undefined;
+            const parentCwd = contextMeta?.["cmd:cwd"];
+            if (typeof parentCwd === "string" && parentCwd.trim() !== "") {
+                return parentCwd.trim();
+            }
+
+            // GUI Agent block may sit beside a project preview rather than a terminal.
+            // Use that preview's directory as the same workspace context.
+            const tab = globalStore.get(this.tabModel.tabAtom);
+            for (const blockId of tab?.blockids ?? []) {
+                const sibling = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+                const file = sibling?.meta?.file;
+                if (sibling?.meta?.view === "preview" && typeof file === "string" && file.trim() !== "") {
+                    return file.trim();
+                }
+            }
+        } catch {
+            // 回退失败时静默返回空
+        }
+        return "";
     }
 
     // 启动新会话
@@ -503,6 +541,8 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
     const historySyncError = jotai.useAtomValue(model.historySyncErrorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
+    const [emptyChatDirectory, setEmptyChatDirectory] = useState(() => model.getProjectPath());
+    const [emptyChatConnection, setEmptyChatConnection] = useState(() => model.getConnection());
 
     const isNewChat = selectedKey === NewSessionKey;
 
@@ -535,6 +575,13 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
         },
         [model]
     );
+    const handleChangeDirectory = useCallback(async () => {
+        const selected = await model.changeEmptyChatDirectory();
+        if (selected != null) {
+            setEmptyChatDirectory(selected);
+            setEmptyChatConnection("");
+        }
+    }, [model]);
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
@@ -548,14 +595,11 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
                 detail={detail}
                 isNewChat={isNewChat}
                 newChatEpoch={newChatEpoch}
-                projectPath={model.getProjectPath()}
-                loading={
-                    error === "" &&
-                    historySyncError === "" &&
-                    detailLoading &&
-                    detail == null &&
-                    !isNewChat
-                }
+                projectPath={isNewChat ? emptyChatDirectory : model.getProjectPath()}
+                connection={isNewChat ? emptyChatConnection : model.getConnection()}
+                canChangeDirectory={isNewChat && model.getBoundSessionId() === ""}
+                onChangeDirectory={handleChangeDirectory}
+                loading={error === "" && historySyncError === "" && detailLoading && detail == null && !isNewChat}
                 deltaLoading={detailDeltaLoading}
                 toolCallsLoading={toolCallsLoading}
                 restoring={restoring}

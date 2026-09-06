@@ -848,6 +848,12 @@ func RemoteTerminateJobManagerCommand(w *wshutil.WshRpc, data wshrpc.CommandRemo
 	return err
 }
 
+// command "remotevcsbranchlist", wshserver.RemoteVcsBranchListCommand
+func RemoteVcsBranchListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsBranchListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsBranchListRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsBranchListRtnData](w, "remotevcsbranchlist", data, opts)
+	return resp, err
+}
+
 // command "remotevcscommit", wshserver.RemoteVcsCommitCommand
 func RemoteVcsCommitCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCommitData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCommitRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCommitRtnData](w, "remotevcscommit", data, opts)
@@ -878,6 +884,12 @@ func RemoteVcsFileHistoryCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcs
 	return resp, err
 }
 
+// command "remotevcspipelinelist", wshserver.RemoteVcsPipelineListCommand
+func RemoteVcsPipelineListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsPipelineListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsPipelineListRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsPipelineListRtnData](w, "remotevcspipelinelist", data, opts)
+	return resp, err
+}
+
 // command "remotevcsrepositories", wshserver.RemoteVcsRepositoriesCommand
 func RemoteVcsRepositoriesCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsRepositoriesData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsRepositoriesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsRepositoriesRtnData](w, "remotevcsrepositories", data, opts)
@@ -896,15 +908,9 @@ func RemoteVcsStatCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsStatDat
 	return resp, err
 }
 
-// command "remotevcsbranchlist", wshserver.RemoteVcsBranchListCommand
-func RemoteVcsBranchListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsBranchListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsBranchListRtnData, error) {
-	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsBranchListRtnData](w, "remotevcsbranchlist", data, opts)
-	return resp, err
-}
-
-// command "remotevcspipelinelist", wshserver.RemoteVcsPipelineListCommand
-func RemoteVcsPipelineListCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsPipelineListData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsPipelineListRtnData, error) {
-	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsPipelineListRtnData](w, "remotevcspipelinelist", data, opts)
+// command "remotevcsswitchbranch", wshserver.RemoteVcsSwitchBranchCommand
+func RemoteVcsSwitchBranchCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsSwitchBranchData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsSwitchBranchRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsSwitchBranchRtnData](w, "remotevcsswitchbranch", data, opts)
 	return resp, err
 }
 

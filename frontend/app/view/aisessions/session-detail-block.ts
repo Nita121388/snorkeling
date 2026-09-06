@@ -6,7 +6,8 @@ import { createBlock, createBlockSplitHorizontally } from "@/store/global";
 export async function openAISessionDetailBlock(
     sessionId: string,
     sourceBlockId?: string,
-    connection?: string
+    connection?: string,
+    cwd?: string
 ): Promise<void> {
     const trimmedSessionId = sessionId.trim();
     if (trimmedSessionId === "") {
@@ -25,6 +26,10 @@ export async function openAISessionDetailBlock(
     const trimmedConnection = connection?.trim() ?? "";
     if (trimmedConnection !== "") {
         blockDef.meta.connection = trimmedConnection;
+    }
+    const trimmedCwd = cwd?.trim() ?? "";
+    if (trimmedCwd !== "") {
+        blockDef.meta["cmd:cwd"] = trimmedCwd;
     }
     if (sourceBlockId) {
         try {

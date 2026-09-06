@@ -6,26 +6,25 @@ import {
     formatAgentProvider,
     isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
-import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
-import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
+import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { appHandleKeyDown } from "@/app/store/keymodel";
-import { isLightResolvedTheme } from "@/app/theme-mode";
 import { modalsModel } from "@/app/store/modalmodel";
 import type { TabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
+import { isLightResolvedTheme } from "@/app/theme-mode";
 import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";
-import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
@@ -57,12 +56,17 @@ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/uti
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
-import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { getAgentLogoByProvider } from "./agent-logo";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
-import { formatTerminalSessionDebugInfo, runAISessionsRpcProbe, sessionCopyCommandDebug, sessionCopyDebugPreview } from "./session-debug";
-import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
+import {
+    formatTerminalSessionDebugInfo,
+    runAISessionsRpcProbe,
+    sessionCopyCommandDebug,
+    sessionCopyDebugPreview,
+} from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
+import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 import {
     computeTheme,
     getDefaultTermTheme,
@@ -343,7 +347,10 @@ export class TermViewModel implements ViewModel {
         this.termBPMAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
         this.termThemeNameAtom = useBlockAtom(blockId, "termthemeatom", () => {
             return jotai.atom<string>((get) => {
-                return get(getOverrideConfigAtom(this.blockId, "term:theme")) ?? getDefaultTermTheme(get(atoms.resolvedAppThemeAtom));
+                return (
+                    get(getOverrideConfigAtom(this.blockId, "term:theme")) ??
+                    getDefaultTermTheme(get(atoms.resolvedAppThemeAtom))
+                );
             });
         });
         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {
@@ -1249,7 +1256,8 @@ export class TermViewModel implements ViewModel {
                     label: "Open Session Detail",
                     click: () => {
                         const connection = typeof meta.connection === "string" ? meta.connection : "";
-                        fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId, connection));
+                        const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
+                        fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId, connection, cwd));
                     },
                 },
                 agentFolderMenuItem,

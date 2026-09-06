@@ -30,6 +30,7 @@
         "package:local": "node scripts/run-task.mjs package",
         "coverage": "vitest run --coverage",
         "pslog:query": "node scripts/pslog-query.mjs",
+        "trace:tab": "node scripts/trace-tab-switch.mjs",
         "test": "vitest",
         "postinstall": "node ./postinstall.cjs"
     },

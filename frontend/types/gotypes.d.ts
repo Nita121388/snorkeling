@@ -888,6 +888,12 @@ declare global {
         jobmanagerstartts: number;
     };
 
+    // wshrpc.CommandRemoteVcsBranchListData
+    type CommandRemoteVcsBranchListData = {
+        repotype: string;
+        repopath: string;
+    };
+
     // wshrpc.CommandRemoteVcsCommitData
     type CommandRemoteVcsCommitData = {
         repotype: string;
@@ -931,6 +937,13 @@ declare global {
         limit?: number;
     };
 
+    // wshrpc.CommandRemoteVcsPipelineListData
+    type CommandRemoteVcsPipelineListData = {
+        repotype: string;
+        repopath: string;
+        limit?: number;
+    };
+
     // wshrpc.CommandRemoteVcsRepositoriesData
     type CommandRemoteVcsRepositoriesData = {
         path: string;
@@ -947,6 +960,13 @@ declare global {
     // wshrpc.CommandRemoteVcsStatData
     type CommandRemoteVcsStatData = {
         path: string;
+    };
+
+    // wshrpc.CommandRemoteVcsSwitchBranchData
+    type CommandRemoteVcsSwitchBranchData = {
+        repotype: string;
+        repopath: string;
+        branch: string;
     };
 
     // wshrpc.CommandRemoteVcsSyncData
@@ -1826,6 +1846,16 @@ declare global {
         homedir: string;
     };
 
+    // wshrpc.RemoteVcsBranchListRtnData
+    type RemoteVcsBranchListRtnData = {
+        repopath: string;
+        repotype: string;
+        current?: string;
+        local?: VcsBranchInfo[];
+        remote?: VcsBranchInfo[];
+        error?: string;
+    };
+
     // wshrpc.RemoteVcsCommitFilesRtnData
     type RemoteVcsCommitFilesRtnData = {
         repopath: string;
@@ -1873,6 +1903,14 @@ declare global {
         error?: string;
     };
 
+    // wshrpc.RemoteVcsPipelineListRtnData
+    type RemoteVcsPipelineListRtnData = {
+        repopath: string;
+        repotype: string;
+        runs?: VcsPipelineRunInfo[];
+        error?: string;
+    };
+
     // wshrpc.RemoteVcsRepositoriesRtnData
     type RemoteVcsRepositoriesRtnData = {
         basepath: string;
@@ -1899,6 +1937,13 @@ declare global {
         added: number;
         removed: number;
         files: number;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsSwitchBranchRtnData
+    type RemoteVcsSwitchBranchRtnData = {
+        repopath: string;
+        branch?: string;
         error?: string;
     };
 
@@ -2645,6 +2690,16 @@ declare global {
         body?: string;
     };
 
+    // wshrpc.VcsBranchInfo
+    type VcsBranchInfo = {
+        name: string;
+        hash?: string;
+        iscurrent?: boolean;
+        ahead?: number;
+        behind?: number;
+        isremote?: boolean;
+    };
+
     // wshrpc.VcsCommitFileInfo
     type VcsCommitFileInfo = {
         path: string;
@@ -2665,6 +2720,20 @@ declare global {
         code: string;
         staged?: boolean;
         untracked?: boolean;
+    };
+
+    // wshrpc.VcsPipelineRunInfo
+    type VcsPipelineRunInfo = {
+        id: number;
+        name?: string;
+        branch?: string;
+        status: string;
+        conclusion?: string;
+        commit?: string;
+        author?: string;
+        startedat?: string;
+        endedat?: string;
+        url?: string;
     };
 
     // wshrpc.VcsRemoteState
@@ -2690,61 +2759,6 @@ declare global {
         remote?: VcsRemoteState;
         status?: VcsFileStatus[];
         statuserr?: string;
-    };
-
-    // wshrpc.VcsBranchInfo
-    type VcsBranchInfo = {
-        name: string;
-        hash?: string;
-        iscurrent?: boolean;
-        ahead?: number;
-        behind?: number;
-        isremote?: boolean;
-    };
-
-    // wshrpc.CommandRemoteVcsBranchListData
-    type CommandRemoteVcsBranchListData = {
-        repotype: string;
-        repopath: string;
-    };
-
-    // wshrpc.RemoteVcsBranchListRtnData
-    type RemoteVcsBranchListRtnData = {
-        repopath: string;
-        repotype: string;
-        current?: string;
-        local?: VcsBranchInfo[];
-        remote?: VcsBranchInfo[];
-        error?: string;
-    };
-
-    // wshrpc.VcsPipelineRunInfo
-    type VcsPipelineRunInfo = {
-        id: number;
-        name?: string;
-        branch?: string;
-        status: string;
-        conclusion?: string;
-        commit?: string;
-        author?: string;
-        startedat?: string;
-        endedat?: string;
-        url?: string;
-    };
-
-    // wshrpc.CommandRemoteVcsPipelineListData
-    type CommandRemoteVcsPipelineListData = {
-        repotype: string;
-        repopath: string;
-        limit?: number;
-    };
-
-    // wshrpc.RemoteVcsPipelineListRtnData
-    type RemoteVcsPipelineListRtnData = {
-        repopath: string;
-        repotype: string;
-        runs?: VcsPipelineRunInfo[];
-        error?: string;
     };
 
     // ccswitch.Vendor

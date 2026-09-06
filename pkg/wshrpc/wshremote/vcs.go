@@ -2248,6 +2248,34 @@ func (impl *ServerImpl) RemoteVcsBranchListCommand(ctx context.Context, data wsh
 	return result, nil
 }
 
+func (impl *ServerImpl) RemoteVcsSwitchBranchCommand(ctx context.Context, data wshrpc.CommandRemoteVcsSwitchBranchData) (*wshrpc.RemoteVcsSwitchBranchRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return &wshrpc.RemoteVcsSwitchBranchRtnData{Error: err.Error()}, nil
+	}
+	branch := strings.TrimSpace(data.Branch)
+	if branch == "" || strings.ContainsAny(branch, "\r\n") {
+		return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Error: "branch name is required"}, nil
+	}
+	// If it names an existing local branch, a plain switch is enough.
+	_, localErr := runVcsCommandLogged(ctx, repoPath, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	if localErr != nil {
+		// Otherwise treat it as a remote-tracking ref (e.g. origin/foo) and create a
+		// local branch that tracks it. git derives the local name itself, so we hand over
+		// the whole remote ref rather than stripping a segment.
+		_, switchErr := runVcsCommandLogged(ctx, repoPath, "git", "switch", "--track", branch)
+		if switchErr != nil {
+			return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Error: switchErr.Error()}, nil
+		}
+		return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Branch: branch}, nil
+	}
+	// Existing local branch.
+	if _, switchErr := runVcsCommandLogged(ctx, repoPath, "git", "switch", branch); switchErr != nil {
+		return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Error: switchErr.Error()}, nil
+	}
+	return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Branch: branch}, nil
+}
+
 func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data wshrpc.CommandRemoteVcsPipelineListData) (*wshrpc.RemoteVcsPipelineListRtnData, error) {
 	repoPath, err := normalizeVcsBasePath(data.RepoPath)
 	if err != nil {
@@ -2295,15 +2323,15 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 
 	// Parse gh JSON output
 	type ghRun struct {
-		Id          int64  `json:"id"`
-		Name        string `json:"name"`
-		HeadBranch  string `json:"headBranch"`
-		Status      string `json:"status"`
-		Conclusion  string `json:"conclusion"`
-		HeadSha     string `json:"headSha"`
-		CreatedAt   string `json:"createdAt"`
-		UpdatedAt   string `json:"updatedAt"`
-		Url         string `json:"url"`
+		Id              int64  `json:"id"`
+		Name            string `json:"name"`
+		HeadBranch      string `json:"headBranch"`
+		Status          string `json:"status"`
+		Conclusion      string `json:"conclusion"`
+		HeadSha         string `json:"headSha"`
+		CreatedAt       string `json:"createdAt"`
+		UpdatedAt       string `json:"updatedAt"`
+		Url             string `json:"url"`
 		TriggeringActor struct {
 			Login string `json:"login"`
 		} `json:"triggeringActor"`
@@ -2332,4 +2360,3 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 
 	return result, nil
 }
-

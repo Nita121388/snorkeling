@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions/chat"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/web/sse"
 )
 
@@ -17,6 +20,37 @@ import (
 // package scope so both the SSE handler and the service control methods
 // (ChatAbort / ChatClose) share one manager.
 var chatManager = chat.NewManager()
+
+// modelsCacheTTL bounds the process-level cache of get_available_models
+// results. The model registry is near-static (pi config/auth), so re-spawning
+// a pi subprocess (seconds of startup) just to list models is wasted latency.
+const modelsCacheTTL = 10 * time.Minute
+
+type modelsCacheEntry struct {
+	data      any
+	fetchedAt time.Time
+}
+
+var modelsCache = struct {
+	sync.Mutex
+	bySource map[string]modelsCacheEntry
+}{bySource: map[string]modelsCacheEntry{}}
+
+func getCachedModels(source string) (any, bool) {
+	modelsCache.Lock()
+	defer modelsCache.Unlock()
+	entry, ok := modelsCache.bySource[source]
+	if !ok || time.Since(entry.fetchedAt) > modelsCacheTTL {
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func putCachedModels(source string, data any) {
+	modelsCache.Lock()
+	defer modelsCache.Unlock()
+	modelsCache.bySource[source] = modelsCacheEntry{data: data, fetchedAt: time.Now()}
+}
 
 // ChatImage is one base64-encoded image attachment (pi ImageContent shape).
 type ChatImage struct {
@@ -92,12 +126,25 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The GUI may pass shell-style abbreviated paths ("~/proj"); Go's exec
+	// does not expand ~, so chdir would fail with "no such file or directory".
+	projectPath := wavebase.ExpandHomeDirSafe(req.ProjectPath)
+	sessionDir := wavebase.ExpandHomeDirSafe(req.SessionDir)
+	// Serve the model list from the process cache when warm — a cache hit
+	// skips Ensure() entirely, so no pi subprocess is spawned for this request.
+	if req.Command != nil && req.Command.Name == "get_available_models" {
+		if data, ok := getCachedModels(req.Source); ok {
+			_ = sseHandler.WriteJsonData(map[string]any{"type": "command_result", "command": req.Command.Name, "data": data})
+			return
+		}
+	}
+
 	opts := chat.StartOptions{
 		SessionID:    req.SessionID,
-		ProjectPath:  req.ProjectPath,
+		ProjectPath:  projectPath,
 		Provider:     req.Provider,
 		Model:        req.Model,
-		SessionDir:   req.SessionDir,
+		SessionDir:   sessionDir,
 		NoExtensions: req.NoExtensions,
 	}
 	session, isNew, sessionKey, err := chatManager.Ensure(r.Context(), provider, opts)
@@ -127,6 +174,9 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 			result["error"] = err.Error()
 		} else {
 			result["data"] = data
+			if req.Command.Name == "get_available_models" {
+				putCachedModels(req.Source, data)
+			}
 			// Model/thinking changes are reflected in a fresh state snapshot.
 			if req.Command.Name == "set_model" || req.Command.Name == "set_thinking_level" {
 				if st, err := session.GetState(r.Context()); err == nil {

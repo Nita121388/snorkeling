@@ -74,15 +74,15 @@ function RepoFileFilterBar({
     const extension = filterState.extension ?? "";
     const filtersActive = search.trim() !== "" || type !== "all" || extension.trim() !== "";
     const controlClassName =
-        "h-[24px] rounded border border-border bg-panel text-xs text-foreground outline-none " +
-        "placeholder:text-muted focus:border-accent";
+        "h-7 rounded-md border border-border bg-surface text-xs text-foreground outline-none " +
+        "placeholder:text-muted transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20";
     return (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-border bg-panel/80 px-2 py-1.5">
-            <div className="relative min-w-[180px] flex-1">
-                <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted" />
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md bg-panel/60 px-2 py-1.5">
+            <div className="group relative min-w-[180px] flex-1">
+                <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted transition-colors group-focus-within:text-accent" />
                 <input
-                    className={`${controlClassName} w-full pl-6 pr-7`}
-                    type="search"
+                    className={`${controlClassName} w-full pl-7 ${search.trim() !== "" ? "pr-7" : "pr-2"}`}
+                    type="text"
                     value={search}
                     onChange={(e) => onChange({ ...filterState, search: e.target.value })}
                     placeholder="Search files"
@@ -99,8 +99,8 @@ function RepoFileFilterBar({
             </div>
             <div className="relative w-[118px] shrink-0">
                 <input
-                    className={`${controlClassName} w-full px-2 pr-7`}
-                    type="search"
+                    className={`${controlClassName} w-full px-2 ${extension.trim() !== "" ? "pr-7" : ""}`}
+                    type="text"
                     value={extension}
                     onChange={(e) => onChange({ ...filterState, extension: e.target.value })}
                     placeholder="Ext .ts"
@@ -118,34 +118,37 @@ function RepoFileFilterBar({
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-secondary">
                 <span>Type</span>
-                <select
-                    className={`${controlClassName} px-1.5`}
-                    value={type}
-                    onChange={(e) =>
-                        onChange({
-                            ...filterState,
-                            type: e.target.value as string,
-                        })
-                    }
-                >
-                    {VcsFileTypeFilterOptions.map((option) => (
-                        <option key={option.value} value={option.value} className="bg-panel text-foreground">
-                            {option.label}
-                        </option>
-                    ))}
-                </select>
+                <div className="relative">
+                    <select
+                        className={`${controlClassName} appearance-none pl-2 pr-7 cursor-pointer`}
+                        value={type}
+                        onChange={(e) =>
+                            onChange({
+                                ...filterState,
+                                type: e.target.value as string,
+                            })
+                        }
+                    >
+                        {VcsFileTypeFilterOptions.map((option) => (
+                            <option key={option.value} value={option.value} className="bg-panel text-foreground">
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                    <i className="fa-sharp fa-solid fa-chevron-down pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted" />
+                </div>
             </label>
-            <div className="ml-auto shrink-0 text-[11px] text-muted">
-                {filtersActive ? `${visibleCount}/${totalCount} shown` : `${totalCount} files`}
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted">
+                {filtersActive ? `${visibleCount}/${totalCount}` : `${totalCount} files`}
+                {filtersActive && (
+                    <button
+                        className="text-accent hover:underline cursor-pointer"
+                        onClick={() => onChange({ search: "", type: "all", extension: "" })}
+                    >
+                        Reset
+                    </button>
+                )}
             </div>
-            {filtersActive && (
-                <button
-                    className="text-[11px] text-secondary hover:underline cursor-pointer"
-                    onClick={() => onChange({ search: "", type: "all", extension: "" })}
-                >
-                    Reset
-                </button>
-            )}
         </div>
     );
 }
@@ -438,7 +441,6 @@ export function VcsChangesTab({
             )}
             {hasSelectedFiles && (
                 <>
-                    <div className="mt-3 text-xs font-medium text-secondary mb-1">Commit Selected Files</div>
                     <textarea className="w-full min-h-[58px] rounded border border-border bg-panel/80 px-2 py-1.5 text-xs outline-none focus:border-accent" value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} placeholder="Commit message..." />
                     <div className="mt-2 flex items-center gap-2">
                         <button className="rounded bg-action px-2.5 py-1 text-xs text-actiontext font-semibold hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default" disabled={commitRunning} onClick={onCommit}>

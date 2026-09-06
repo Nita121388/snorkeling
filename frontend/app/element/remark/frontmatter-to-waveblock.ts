@@ -90,6 +90,18 @@ const remarkFrontmatterToWaveBlock = function (
             waveBlock,
             ...children.slice(replaceEnd + 1),
         ];
+
+        // Move the waveblock to after the first heading (if any) so that the title appears
+        // above the properties card (emoji → title → properties → rest).
+        const firstHeadingIndex = tree.children.findIndex(node => node.type === "heading");
+        if (firstHeadingIndex > replaceStart) {
+            // Remove the waveblock from its current position (replaceStart)
+            const waveBlockNode = tree.children[replaceStart];
+            tree.children.splice(replaceStart, 1);
+            // Insert after the first heading (now at firstHeadingIndex - 1 because we removed an earlier element)
+            const insertIndex = firstHeadingIndex; // after removal, the heading shifted left by one
+            tree.children.splice(insertIndex, 0, waveBlockNode);
+        }
     };
 };
 

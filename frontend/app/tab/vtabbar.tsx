@@ -358,11 +358,23 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     }, [activeTabId, markTabOpened]);
 
     const renderOrderedTabIds = useMemo(() => {
-        // 始终按物理顺序渲染, 不做分组重排.
-        // 原因: partitionAndOrderTabs 会把 pinned tab 提到前面, 导致 hover 展开时
-        // 隐藏的 tab 跑到可见 tab 前面, 造成位置跳变.
-        return orderedTabIds;
-    }, [orderedTabIds]);
+        // 分组排序: 今天打开过的 tab (含 active / unreadDots) 排前面,
+        // 没打开过的排后面. 两组内部均保持物理顺序.
+        // 这样 hover 展开时, 可见 tab 的相对位置不变, 不会发生位置跳变.
+        const visibleGroup: string[] = [];
+        const hiddenGroup: string[] = [];
+        for (const tabId of orderedTabIds) {
+            const isActive = tabId === activeTabId;
+            const wasOpened = openedThisLaunchTabIds.has(tabId);
+            const hasUnread = tabsWithUnreadDots.has(tabId);
+            if (isActive || wasOpened || hasUnread) {
+                visibleGroup.push(tabId);
+            } else {
+                hiddenGroup.push(tabId);
+            }
+        }
+        return [...visibleGroup, ...hiddenGroup];
+    }, [orderedTabIds, activeTabId, openedThisLaunchTabIds, tabsWithUnreadDots]);
 
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;

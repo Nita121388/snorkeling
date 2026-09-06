@@ -148,16 +148,16 @@ export function VcsBranchesTab({
             )}
 
             {/* Create new branch */}
-            <div className="mt-3 flex items-center gap-2 rounded border border-border bg-panel/80 px-2 py-1.5">
+            <div className="mt-3 flex items-center gap-2 rounded-md bg-panel/60 px-2 py-1.5">
                 <input
-                    className="flex-1 h-[26px] rounded border border-border bg-panel text-xs text-foreground outline-none px-2 placeholder:text-muted focus:border-accent"
+                    className="h-7 min-w-0 flex-1 rounded-md border border-border bg-surface text-xs text-foreground outline-none px-2 placeholder:text-muted transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
                     type="text"
                     value={newBranchName}
                     onChange={(e) => setNewBranchName(e.target.value)}
                     placeholder="new-branch-name"
                 />
                 <button
-                    className="rounded bg-action px-2.5 py-1 text-[11px] text-actiontext font-semibold hover:bg-actionhover disabled:opacity-40 cursor-pointer disabled:cursor-default"
+                    className="h-7 shrink-0 rounded-md bg-action px-3 text-xs text-actiontext font-medium hover:bg-actionhover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default"
                     disabled={!newBranchName.trim()}
                     onClick={() => {
                         if (newBranchName.trim()) {

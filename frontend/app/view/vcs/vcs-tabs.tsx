@@ -6,9 +6,9 @@ import React from "react";
 type View = "changes" | "branches" | "pipelines";
 
 const VIEWS: { id: View; label: string; icon: string }[] = [
-    { id: "changes", label: "文件改动", icon: "✎" },
-    { id: "branches", label: "分支", icon: "⑂" },
-    { id: "pipelines", label: "流水线", icon: "◫" },
+    { id: "changes", label: "Changes", icon: "fa-file-pen" },
+    { id: "branches", label: "Branches", icon: "fa-code-branch" },
+    { id: "pipelines", label: "Pipelines", icon: "fa-diagram-project" },
 ];
 
 function shortHash(hash: string): string {
@@ -51,7 +51,7 @@ export function VcsTabBar({
     const remoteCount = getRemotePendingCount(repo);
 
     return (
-        <div className="flex shrink-0 items-center gap-0.5 px-1.5 pb-1.5">
+        <div className="flex shrink-0 items-center gap-1 border-b border-border/70 px-2">
             {VIEWS.map((entry) => {
                 const isDisabled = entry.id === "branches" && !isGit;
                 const badge =
@@ -66,18 +66,19 @@ export function VcsTabBar({
                         type="button"
                         disabled={isDisabled}
                         onClick={() => !isDisabled && onViewChange(entry.id)}
-                        className={`flex h-[26px] shrink-0 items-center gap-1.5 rounded-md text-detail transition-colors px-2.5 ${
-                            isDisabled ? "opacity-40 cursor-default" : ""
+                        aria-label={entry.label}
+                        className={`relative flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-detail transition-colors ${
+                            isDisabled ? "opacity-40 cursor-default" : "cursor-pointer"
                         } ${
                             currentView === entry.id
-                                ? "bg-card-hover text-ink"
-                                : "text-ink-muted hover:bg-card-hover/60"
+                                ? "text-ink after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:rounded-full after:bg-accent"
+                                : "text-ink-muted hover:bg-hoverbg/60 hover:text-ink"
                         }`}
                     >
-                        <span className="text-[12px] shrink-0">{entry.icon}</span>
+                        <i className={`fa-sharp fa-solid ${entry.icon} text-[11px] shrink-0`} />
                         <span className="truncate">{entry.label}</span>
                         {badge != null && (
-                            <span className="min-w-[16px] h-[14px] rounded-full bg-accent/12 text-accent text-[10px] tabular-nums inline-flex items-center justify-center px-1">
+                            <span className="min-w-[18px] h-4 rounded-full bg-accent/12 text-accent text-[10px] tabular-nums inline-flex items-center justify-center px-1">
                                 {badge}
                             </span>
                         )}

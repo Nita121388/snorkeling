@@ -7,19 +7,13 @@
 // + GUI-mapped built-ins), image attachments, steering while streaming. Pure
 // slash logic lives in chat-slash.ts (unit-tested).
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "@/util/util";
 import { getWebServerEndpoint } from "@/util/endpoints";
-import {
-    filterSlashItems,
-    mergeSlashItems,
-    parseSlashQuery,
-    slashSourceLabel,
-    type SlashItem,
-} from "./chat-slash";
-import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
-import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
+import { cn } from "@/util/util";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { filterSlashItems, mergeSlashItems, parseSlashQuery, slashSourceLabel, type SlashItem } from "./chat-slash";
 import { GitStatusBar } from "./git-status-bar";
+import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
+import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
 
 type PendingImage = {
     id: string;
@@ -69,12 +63,35 @@ type PanelMode = null | "commands" | "agents" | "models" | "levels";
 
 type ModelOption = { provider?: string; id?: string; name?: string };
 
+// 模型列表 localStorage 兜底（stale-while-revalidate）：应用刚重启、后端缓存未热时，
+// 面板先显示旧列表，后台请求回来后覆盖。key 按 source（agent）隔离。
+const modelCacheLSKey = (source: string) => `aisessions.modelOptions.${source}`;
+
+function loadCachedModels(source: string): ModelOption[] | null {
+    try {
+        const parsed = JSON.parse(window.localStorage.getItem(modelCacheLSKey(source)) ?? "null");
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveCachedModels(source: string, models: ModelOption[]) {
+    try {
+        window.localStorage.setItem(modelCacheLSKey(source), JSON.stringify(models));
+    } catch {
+        // localStorage 不可用（隐私模式等）时静默降级
+    }
+}
 
 type ChatComposerProps = {
     source: string;
     sessionId: string;
     availableSources: ReadonlySet<string>;
     projectPath?: string;
+    connection?: string;
+    canChangeDirectory?: boolean;
+    onChangeDirectory?: () => Promise<void>;
     provider?: string;
     model?: string;
     streamStatus: ChatStreamStatus;
@@ -84,7 +101,22 @@ type ChatComposerProps = {
     onSourceChange?: (source: string) => void;
 };
 
-function ChatComposerInner({ source, sessionId, availableSources, projectPath, provider, model, streamStatus, onSend, onSteer, onAbort, onSourceChange }: ChatComposerProps) {
+function ChatComposerInner({
+    source,
+    sessionId,
+    availableSources,
+    projectPath,
+    connection,
+    canChangeDirectory,
+    onChangeDirectory,
+    provider,
+    model,
+    streamStatus,
+    onSend,
+    onSteer,
+    onAbort,
+    onSourceChange,
+}: ChatComposerProps) {
     const [input, setInput] = useState("");
     const [images, setImages] = useState<PendingImage[]>([]);
     const [dynamicCommands, setDynamicCommands] = useState<SlashItem[]>([]);
@@ -135,36 +167,33 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
     }, [input, maxH]);
 
     // 卡片顶边整条可拖拽调高：向上拖变高、向下拖变矮（ponytail: 原生 mouse 事件，无依赖）
-    const startResize = useCallback(
-        (down: React.MouseEvent) => {
-            down.preventDefault();
-            draggingRef.current = true;
-            const startY = down.clientY;
-            // 基准用真实渲染高度而非 maxH：空框单行 ~35px，若从 maxH 起算首帧会跳变
-            const startHeight = Math.round(inputRef.current?.getBoundingClientRect().height ?? 35);
-            const apply = (h: number) => {
-                setMaxH(h);
-                const el = inputRef.current;
-                if (el) el.style.height = `${h}px`;
-            };
-            const onMove = (e: MouseEvent) => {
-                const delta = startY - e.clientY; // up => taller
-                apply(Math.min(Math.max(startHeight + delta, COMPOSER_MIN_H), composerMaxH()));
-            };
-            const onUp = () => {
-                draggingRef.current = false;
-                window.removeEventListener("mousemove", onMove);
-                window.removeEventListener("mouseup", onUp);
-                setMaxH((h) => {
-                    window.localStorage.setItem("aisessions.composerMaxH", String(h));
-                    return h;
-                });
-            };
-            window.addEventListener("mousemove", onMove);
-            window.addEventListener("mouseup", onUp);
-        },
-        []
-    );
+    const startResize = useCallback((down: React.MouseEvent) => {
+        down.preventDefault();
+        draggingRef.current = true;
+        const startY = down.clientY;
+        // 基准用真实渲染高度而非 maxH：空框单行 ~35px，若从 maxH 起算首帧会跳变
+        const startHeight = Math.round(inputRef.current?.getBoundingClientRect().height ?? 35);
+        const apply = (h: number) => {
+            setMaxH(h);
+            const el = inputRef.current;
+            if (el) el.style.height = `${h}px`;
+        };
+        const onMove = (e: MouseEvent) => {
+            const delta = startY - e.clientY; // up => taller
+            apply(Math.min(Math.max(startHeight + delta, COMPOSER_MIN_H), composerMaxH()));
+        };
+        const onUp = () => {
+            draggingRef.current = false;
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+            setMaxH((h) => {
+                window.localStorage.setItem("aisessions.composerMaxH", String(h));
+                return h;
+            });
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+    }, []);
 
     const flashNotice = useCallback((text: string) => {
         setNotice(text);
@@ -208,15 +237,19 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                     }))
             );
         });
+        // 模型列表预取：配合后端进程缓存（热路径毫秒级、不 spawn pi），首次点击面板即秒开。
+        void runChatCommand(endpoint, { ...baseBody, command: { name: "get_available_models" } }).then((res) => {
+            if (cancelled || !res.ok || !Array.isArray(res.data?.models)) return;
+            setModelOptions(res.data.models);
+            setModelsLoadedFor(source);
+            saveCachedModels(source, res.data.models);
+        });
         return () => {
             cancelled = true;
         };
-    }, [endpoint, baseBody]);
+    }, [endpoint, baseBody, source]);
 
-    const chatSources = useMemo(
-        () => chatSourcesForAvailability(availableSources),
-        [availableSources]
-    );
+    const chatSources = useMemo(() => chatSourcesForAvailability(availableSources), [availableSources]);
     const sourceAvailable = availableSources.has(source);
     const isRunning = streamStatus === "sending" || streamStatus === "streaming";
     // 停止后 SSE 直接断开，不会再来 turn_end；补发一个合成事件让主列表
@@ -227,7 +260,8 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
     }, [onAbort]);
     const hasContent = input.trim().length > 0 || images.length > 0;
     // Streaming 状态下允许继续提交：走 steer 队列而不是杀掉在飞的 turn。
-    const canSubmit = sourceAvailable && hasContent && (streamStatus === "idle" || streamStatus === "error" || isRunning);
+    const canSubmit =
+        sourceAvailable && hasContent && (streamStatus === "idle" || streamStatus === "error" || isRunning);
 
     // 联动：切模型后按新模型刷新思考深度列表（不同模型支持的级别可能不同）
     const refreshThinkingLevels = useCallback(async () => {
@@ -249,6 +283,12 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
             if (mode === "models" && modelsLoadedFor === source) return;
             if (mode === "levels" && levelsLoadedFor === source) return;
             const cmd = mode === "models" ? "get_available_models" : "get_available_thinking_levels";
+            if (mode === "models") {
+                // 面板已开：先用 localStorage 旧列表占位（stale-while-revalidate），
+                // 请求回来后覆盖；请求失败时旧列表仍在，不白屏。
+                const cached = loadCachedModels(source);
+                if (cached) setModelOptions(cached);
+            }
             const res = await runChatCommand(endpoint, { ...baseBody, command: { name: cmd } });
             if (!res.ok) {
                 flashNotice(`✗ ${cmd}: ${res.error ?? "failed"}`);
@@ -256,8 +296,10 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                 return;
             }
             if (mode === "models") {
-                setModelOptions(Array.isArray(res.data?.models) ? res.data.models : []);
+                const models = Array.isArray(res.data?.models) ? res.data.models : [];
+                setModelOptions(models);
                 setModelsLoadedFor(source);
+                saveCachedModels(source, models);
             } else {
                 setThinkingLevels(Array.isArray(res.data?.levels) ? res.data.levels.map(String) : []);
                 setLevelsLoadedFor(source);
@@ -283,23 +325,27 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
         // 模型搜索：按名称/id/provider 子串过滤；思考深度仅按级别名匹配
         const q = pickerQuery.trim().toLowerCase();
         if (effectiveMode === "models") {
-            return (q
-                ? modelOptions.filter((m) =>
-                      `${m.name || ""} ${m.id || ""} ${m.provider || ""}`.toLowerCase().includes(q)
-                  )
-                : modelOptions
+            return (
+                q
+                    ? modelOptions.filter((m) =>
+                          `${m.name || ""} ${m.id || ""} ${m.provider || ""}`.toLowerCase().includes(q)
+                      )
+                    : modelOptions
             ).map((item) => ({ kind: "model" as const, item }));
         }
         if (effectiveMode === "levels") {
-            return (q ? thinkingLevels.filter((l) => l.toLowerCase().includes(q)) : thinkingLevels).map(
-                (level) => ({ kind: "level" as const, level })
-            );
+            return (q ? thinkingLevels.filter((l) => l.toLowerCase().includes(q)) : thinkingLevels).map((level) => ({
+                kind: "level" as const,
+                level,
+            }));
         }
         if (effectiveMode === "agents") {
-            return chatSources.filter((a) => !q || a.label.toLowerCase().includes(q)).map((agent) => ({
-                kind: "agent" as const,
-                agent,
-            }));
+            return chatSources
+                .filter((a) => !q || a.label.toLowerCase().includes(q))
+                .map((agent) => ({
+                    kind: "agent" as const,
+                    agent,
+                }));
         }
         return [];
     }, [effectiveMode, slashQuery, allCommands, modelOptions, thinkingLevels, pickerQuery, chatSources]);
@@ -350,7 +396,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                     // 会话创建时即绑定到某一 source，运行期切换 agent 不被后端支持。
                     // ponytail: 若日后支持跨 agent 迁移，这里改调 onSourceChange 并在
                     // session_state 刷新后重新拉取模型/思考级别即可。
-                    flashNotice(`This session is bound to ${getChatSource(source).label} — switching agents is not supported`);
+                    flashNotice(
+                        `This session is bound to ${getChatSource(source).label} — switching agents is not supported`
+                    );
                     setPanelMode(null);
                     inputRef.current?.focus();
                     return;
@@ -411,8 +459,7 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
         const body = {
             ...baseBody,
             message: text,
-            images:
-                images.length > 0 ? images.map((img) => ({ data: img.base64, mimeType: img.mimeType })) : undefined,
+            images: images.length > 0 ? images.map((img) => ({ data: img.base64, mimeType: img.mimeType })) : undefined,
         };
         setInput("");
         setImages([]);
@@ -426,6 +473,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            // IME 组合期间的 Enter 是确认拼音，不能触发选行/发送，否则会
+            // 误选候选项或把半截拼音当消息发出去。
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (effectiveMode != null && panelRows.length > 0) {
                 if (e.key === "ArrowDown") {
                     e.preventDefault();
@@ -481,7 +531,10 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
     // 拿到会话状态后就显示真实级别（包括 off，与校选择列表的 off 选项一致），
     // 未拿到状态时保持[思考]占位。
     const currentThinking = agentState?.thinkingLevel?.trim() ? agentState.thinkingLevel : "";
-    const panelOpen = effectiveMode != null && panelRows.length > 0;
+    // 面板打开与否只看面板模式：搜索无结果时保持弹窗（否则搜索框随弹窗卸载，
+    // 焦点丢失、输入中断，看起来像“打字打到一半弹窗自己关了”）。空状态由
+    // 面板内的 No match 提示承接。
+    const panelOpen = effectiveMode != null;
 
     // 点击外部自动关闭面板（与 session-menu 同模式）：监听范围包住整张
     // composer 卡片（弹层 + 三个 chip 都在内），点到卡片外才收起。
@@ -498,9 +551,11 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
         return () => document.removeEventListener("pointerdown", handlePointer, true);
     }, [panelOpen]);
 
-    // 搜索框内键盘导航：与 textarea 面板导航同一套行选中逻辑
+    // 搜索框内键盘导航：与 textarea 面板导航同一套行选中逻辑。
+    // isComposing 守卫：中文/日文 IME 组合期间按 Enter 是确认拼音，不是选行。
     const handlePickerSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 moveIndex(1);
@@ -530,7 +585,10 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                 ) : null}
                 <div ref={cardRef} className="relative">
                     {panelOpen ? (
-                        <div ref={panelRef} className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl">
+                        <div
+                            ref={panelRef}
+                            className="absolute bottom-full left-0 z-40 mb-2 flex max-h-80 w-[22rem] flex-col overflow-hidden rounded-xl border border-border bg-modalbg py-1 shadow-2xl"
+                        >
                             {effectiveMode === "commands" && slashQuery != null ? (
                                 <div className="shrink-0 border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
                                     Commands · Tab/Enter to complete · Esc to close
@@ -563,72 +621,103 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 </div>
                             ) : null}
                             <div className="min-h-0 flex-1 overflow-y-auto">
-                            {panelRows.map((row, idx) => {
-                                if (row.kind === "agent") {
-                                    return (
-                                        <button
-                                            key={`agent-${row.agent.id}`}
-                                            type="button"
-                                            className={cn(
-                                                "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
-                                                row.agent.available
-                                                    ? idx === cmdIndex
+                                {panelRows.map((row, idx) => {
+                                    if (row.kind === "agent") {
+                                        return (
+                                            <button
+                                                key={`agent-${row.agent.id}`}
+                                                type="button"
+                                                className={cn(
+                                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                                    row.agent.available
+                                                        ? idx === cmdIndex
+                                                            ? "bg-accent/10 text-primary"
+                                                            : "text-secondary hover:bg-hover"
+                                                        : "cursor-not-allowed text-secondary/40"
+                                                )}
+                                                onMouseEnter={() => setCmdIndex(idx)}
+                                                onClick={() => applyCommandRow(row)}
+                                            >
+                                                <i className="fa-sharp fa-solid fa-robot shrink-0 text-[10px] text-accent" />
+                                                <span className="flex-1">{row.agent.label}</span>
+                                                {!row.agent.available ? (
+                                                    <span className="shrink-0 text-[9px] opacity-60">
+                                                        Not supported yet
+                                                    </span>
+                                                ) : source === row.agent.id ? (
+                                                    <span className="text-[9px] text-accent">Current</span>
+                                                ) : null}
+                                            </button>
+                                        );
+                                    }
+                                    const prev = idx > 0 ? panelRows[idx - 1] : null;
+                                    const showSection =
+                                        effectiveMode != null &&
+                                        effectiveMode !== "commands" &&
+                                        row.kind !== "command" &&
+                                        prev?.kind !== row.kind;
+                                    if (row.kind === "command") {
+                                        const badge = slashSourceLabel(row.item.source);
+                                        return (
+                                            <button
+                                                key={`cmd-${row.item.name}`}
+                                                type="button"
+                                                className={cn(
+                                                    "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                                    idx === cmdIndex
                                                         ? "bg-accent/10 text-primary"
                                                         : "text-secondary hover:bg-hover"
-                                                    : "cursor-not-allowed text-secondary/40"
-                                            )}
-                                            onMouseEnter={() => setCmdIndex(idx)}
-                                            onClick={() => applyCommandRow(row)}
-                                        >
-                                            <i className="fa-sharp fa-solid fa-robot shrink-0 text-[10px] text-accent" />
-                                            <span className="flex-1">{row.agent.label}</span>
-                                            {!row.agent.available ? (
-                                                <span className="shrink-0 text-[9px] opacity-60">Not supported yet</span>
-                                            ) : source === row.agent.id ? (
-                                                <span className="text-[9px] text-accent">Current</span>
-                                            ) : null}
-                                        </button>
-                                    );
-                                }
-                                const prev = idx > 0 ? panelRows[idx - 1] : null;
-                                const showSection =
-                                    effectiveMode != null &&
-                                    effectiveMode !== "commands" &&
-                                    row.kind !== "command" &&
-                                    prev?.kind !== row.kind;
-                                if (row.kind === "command") {
-                                    const badge = slashSourceLabel(row.item.source);
-                                    return (
-                                        <button
-                                            key={`cmd-${row.item.name}`}
-                                            type="button"
-                                            className={cn(
-                                                "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
-                                                idx === cmdIndex
-                                                    ? "bg-accent/10 text-primary"
-                                                    : "text-secondary hover:bg-hover"
-                                            )}
-                                            onMouseEnter={() => setCmdIndex(idx)}
-                                            onClick={() => applyCommandRow(row)}
-                                        >
-                                            <span className="shrink-0 font-mono font-medium text-accent">
-                                                /{row.item.name}
-                                            </span>
-                                            <span className="min-w-0 flex-1 truncate">{row.item.description}</span>
-                                            {badge ? (
-                                                <span className="shrink-0 rounded border border-border px-1 text-[9px]">
-                                                    {badge}
+                                                )}
+                                                onMouseEnter={() => setCmdIndex(idx)}
+                                                onClick={() => applyCommandRow(row)}
+                                            >
+                                                <span className="shrink-0 font-mono font-medium text-accent">
+                                                    /{row.item.name}
                                                 </span>
-                                            ) : null}
-                                        </button>
-                                    );
-                                }
-                                if (row.kind === "model") {
+                                                <span className="min-w-0 flex-1 truncate">{row.item.description}</span>
+                                                {badge ? (
+                                                    <span className="shrink-0 rounded border border-border px-1 text-[9px]">
+                                                        {badge}
+                                                    </span>
+                                                ) : null}
+                                            </button>
+                                        );
+                                    }
+                                    if (row.kind === "model") {
+                                        return (
+                                            <div key={`model-${row.item.provider}-${row.item.id}`}>
+                                                {showSection ? (
+                                                    <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
+                                                        Model
+                                                    </div>
+                                                ) : null}
+                                                <button
+                                                    type="button"
+                                                    className={cn(
+                                                        "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
+                                                        idx === cmdIndex
+                                                            ? "bg-accent/10 text-primary"
+                                                            : "text-secondary hover:bg-hover"
+                                                    )}
+                                                    onMouseEnter={() => setCmdIndex(idx)}
+                                                    onClick={() => applyCommandRow(row)}
+                                                >
+                                                    <i className="fa-sharp fa-solid fa-microchip shrink-0 text-[10px] text-accent" />
+                                                    <span className="min-w-0 flex-1 truncate">
+                                                        {row.item.name || row.item.id}
+                                                    </span>
+                                                    <span className="shrink-0 text-[9px] opacity-70">
+                                                        {row.item.provider}
+                                                    </span>
+                                                </button>
+                                            </div>
+                                        );
+                                    }
                                     return (
-                                        <div key={`model-${row.item.provider}-${row.item.id}`}>
+                                        <div key={`level-${row.level}`}>
                                             {showSection ? (
                                                 <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                    Model
+                                                    Thinking depth
                                                 </div>
                                             ) : null}
                                             <button
@@ -642,51 +731,28 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                                 onMouseEnter={() => setCmdIndex(idx)}
                                                 onClick={() => applyCommandRow(row)}
                                             >
-                                                <i className="fa-sharp fa-solid fa-microchip shrink-0 text-[10px] text-accent" />
-                                                <span className="min-w-0 flex-1 truncate">
-                                                    {row.item.name || row.item.id}
-                                                </span>
-                                                <span className="shrink-0 text-[9px] opacity-70">
-                                                    {row.item.provider}
-                                                </span>
+                                                <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
+                                                <span className="flex-1">{row.level}</span>
+                                                {currentThinking === row.level ? (
+                                                    <span className="text-[9px] text-accent">Current</span>
+                                                ) : null}
                                             </button>
                                         </div>
                                     );
-                                }
-                                return (
-                                    <div key={`level-${row.level}`}>
-                                        {showSection ? (
-                                            <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                Thinking depth
-                                            </div>
-                                        ) : null}
-                                        <button
-                                            type="button"
-                                            className={cn(
-                                                "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs",
-                                                idx === cmdIndex
-                                                    ? "bg-accent/10 text-primary"
-                                                    : "text-secondary hover:bg-hover"
-                                            )}
-                                            onMouseEnter={() => setCmdIndex(idx)}
-                                            onClick={() => applyCommandRow(row)}
-                                        >
-                                            <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
-                                            <span className="flex-1">{row.level}</span>
-                                            {currentThinking === row.level ? (
-                                                <span className="text-[9px] text-accent">Current</span>
-                                            ) : null}
-                                        </button>
+                                })}
+                                {panelRows.length === 0 ? (
+                                    <div className="px-3 py-3 text-center text-xs text-secondary">
+                                        {effectiveMode === "models" && modelsLoadedFor !== source
+                                            ? "Loading models…"
+                                            : effectiveMode === "levels" && levelsLoadedFor !== source
+                                              ? "Loading thinking levels…"
+                                              : effectiveMode != null &&
+                                                  effectiveMode !== "commands" &&
+                                                  pickerQuery.trim()
+                                                ? `No match for "${pickerQuery.trim()}"`
+                                                : "No options"}
                                     </div>
-                                );
-                            })}
-                            {panelRows.length === 0 ? (
-                                <div className="px-3 py-3 text-center text-xs text-secondary">
-                                    {effectiveMode != null && effectiveMode !== "commands" && pickerQuery.trim()
-                                        ? `No match for "${pickerQuery.trim()}"`
-                                        : "No options"}
-                                </div>
-                            ) : null}
+                                ) : null}
                             </div>
                         </div>
                     ) : null}
@@ -694,7 +760,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                     <div
                         className={cn(
                             "relative rounded-[9px] border bg-surface p-1.5 shadow-lg transition-colors",
-                            panelOpen || input ? "border-secondary/50" : "border-border focus-within:border-secondary/50"
+                            panelOpen || input
+                                ? "border-secondary/50"
+                                : "border-border focus-within:border-secondary/50"
                         )}
                         onClick={(e) => {
                             // 点击卡片空白处聚焦输入框（按钮点击不触发）
@@ -730,13 +798,23 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 ))}
                             </div>
                         ) : null}
-                        <GitStatusBar projectPath={projectPath} isRunning={isRunning} />
+                        <GitStatusBar
+                            projectPath={projectPath}
+                            connection={connection}
+                            canChangeDirectory={canChangeDirectory}
+                            onChangeDirectory={onChangeDirectory}
+                            isRunning={isRunning}
+                        />
                         <textarea
                             ref={inputRef}
                             style={{ maxHeight: `${maxH}px` }}
                             className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70 overflow-y-auto"
                             placeholder={
-                                !sourceAvailable ? "Current agent doesn't support GUI chat yet" : isRunning ? "Agent running… press Enter to queue a message" : "Message the agent…"
+                                !sourceAvailable
+                                    ? "Current agent doesn't support GUI chat yet"
+                                    : isRunning
+                                      ? "Agent running… press Enter to queue a message"
+                                      : "Message the agent…"
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
@@ -804,7 +882,9 @@ function ChatComposerInner({ source, sessionId, availableSources, projectPath, p
                                 type="button"
                                 className={cn(
                                     "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs hover:bg-hover",
-                                    currentThinking && currentThinking !== "off" ? "text-accent" : "text-secondary hover:text-primary"
+                                    currentThinking && currentThinking !== "off"
+                                        ? "text-accent"
+                                        : "text-secondary hover:text-primary"
                                 )}
                                 title="Thinking level"
                                 onClick={() => {

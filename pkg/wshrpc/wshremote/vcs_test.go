@@ -11,6 +11,41 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
+func TestRemoteVcsSwitchBranchSwitchesLocalBranch(t *testing.T) {
+	root := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-qm", "initial")
+	run("branch", "feature/test")
+
+	impl := &ServerImpl{}
+	result, err := impl.RemoteVcsSwitchBranchCommand(context.Background(), wshrpc.CommandRemoteVcsSwitchBranchData{
+		RepoType: "git", RepoPath: root, Branch: "feature/test",
+	})
+	if err != nil || result.Error != "" {
+		t.Fatalf("switch failed: err=%v result=%+v", err, result)
+	}
+	current, err := exec.Command("git", "-C", root, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(current)) != "feature/test" {
+		t.Fatalf("expected feature/test, got %q", current)
+	}
+}
+
 func TestDetectRepoRootsRetainsGitAndSvnForSamePath(t *testing.T) {
 	root := t.TempDir()
 	normalizedRoot := normalizeRepoRootPath(root)

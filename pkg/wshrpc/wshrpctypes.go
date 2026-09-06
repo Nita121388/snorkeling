@@ -147,6 +147,7 @@ type WshRpcInterface interface {
 	RemoteVcsFileDiffCommand(ctx context.Context, data CommandRemoteVcsFileDiffData) (*RemoteVcsFileDiffRtnData, error)
 	RemoteVcsStatCommand(ctx context.Context, data CommandRemoteVcsStatData) (*RemoteVcsStatRtnData, error)
 	RemoteVcsBranchListCommand(ctx context.Context, data CommandRemoteVcsBranchListData) (*RemoteVcsBranchListRtnData, error)
+	RemoteVcsSwitchBranchCommand(ctx context.Context, data CommandRemoteVcsSwitchBranchData) (*RemoteVcsSwitchBranchRtnData, error)
 	RemoteVcsPipelineListCommand(ctx context.Context, data CommandRemoteVcsPipelineListData) (*RemoteVcsPipelineListRtnData, error)
 
 	// emain
@@ -1043,14 +1044,26 @@ type CommandRemoteVcsBranchListData struct {
 	RepoPath string `json:"repopath"`
 }
 
+type CommandRemoteVcsSwitchBranchData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	Branch   string `json:"branch"`
+}
+
+type RemoteVcsSwitchBranchRtnData struct {
+	RepoPath string `json:"repopath"`
+	Branch   string `json:"branch,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
 // wshrpc.RemoteVcsBranchListRtnData
 type RemoteVcsBranchListRtnData struct {
-	RepoPath    string         `json:"repopath"`
-	RepoType    string         `json:"repotype"`
-	Current     string         `json:"current,omitempty"`
-	Local       []VcsBranchInfo `json:"local,omitempty"`
-	Remote      []VcsBranchInfo `json:"remote,omitempty"`
-	Error       string         `json:"error,omitempty"`
+	RepoPath string          `json:"repopath"`
+	RepoType string          `json:"repotype"`
+	Current  string          `json:"current,omitempty"`
+	Local    []VcsBranchInfo `json:"local,omitempty"`
+	Remote   []VcsBranchInfo `json:"remote,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 // wshrpc.VcsPipelineRunInfo
@@ -1076,10 +1089,10 @@ type CommandRemoteVcsPipelineListData struct {
 
 // wshrpc.RemoteVcsPipelineListRtnData
 type RemoteVcsPipelineListRtnData struct {
-	RepoPath string              `json:"repopath"`
-	RepoType string              `json:"repotype"`
+	RepoPath string               `json:"repopath"`
+	RepoType string               `json:"repotype"`
 	Runs     []VcsPipelineRunInfo `json:"runs,omitempty"`
-	Error    string              `json:"error,omitempty"`
+	Error    string               `json:"error,omitempty"`
 }
 
 // wshrpc.CommandRemoteVcsRepositoriesData

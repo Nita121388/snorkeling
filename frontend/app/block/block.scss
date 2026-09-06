@@ -124,8 +124,14 @@
                     }
 
                     @keyframes marquee-auto {
-                        0%, 20%   { transform: translateX(0); }
-                        80%, 100% { transform: translateX(calc(-100% + 150px)); }
+                        0%,
+                        20% {
+                            transform: translateX(0);
+                        }
+                        80%,
+                        100% {
+                            transform: translateX(calc(-100% + 150px));
+                        }
                     }
 
                     .block-frame-blockid {
@@ -1337,12 +1343,12 @@
 
 /* pinned: glassmorphism bar that pushes layout (matches WidgetsBar style) */
 .block-sidebar-pinned {
-    width: 48px;
+    width: 32px;
     background: rgb(from var(--modal-bg-color) r g b / 0.85);
     backdrop-filter: blur(20px);
     border-right: 1px solid rgb(from var(--border-color) r g b / 0.6);
     border-radius: 0 12px 12px 0;
-    padding: 4px 0;
+    padding: 0;
 }
 
 /* icon list */
@@ -1351,23 +1357,31 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 4px 0;
+    padding: 3px 0;
     gap: 2px;
     overflow-y: auto;
     overflow-x: hidden;
 }
 
+/* while a group flyout is open, drop the clipping so the flyout can render
+   outside the icon strip (restored on close) */
+.block-sidebar.has-open-flyout .block-sidebar-icons {
+    overflow: visible;
+}
+
 .block-sidebar-item {
-    width: 34px;
-    height: 34px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: 5px;
     cursor: pointer;
     color: var(--secondary-text-color);
-    font-size: 15px;
-    transition: background 0.12s, color 0.12s;
+    font-size: 11px;
+    transition:
+        background 0.12s,
+        color 0.12s;
 
     &:hover {
         background: var(--hover-bg-color);
@@ -1376,11 +1390,197 @@
 }
 
 .block-sidebar-item-fallback {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--secondary-text-color);
     opacity: 0.3;
+}
+
+/* ── collapsible group (minimized block group) ── */
+
+.block-sidebar-group-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* group button: no extra card layers — the layer-group glyph already
+   conveys "stack"; hover/expanded background comes from .block-sidebar-item */
+.block-sidebar-group-btn {
+    position: relative;
+    font-size: 10px;
+}
+
+.block-sidebar-group-item.expanded .block-sidebar-group-btn {
+    background: var(--hover-bg-color);
+    color: var(--main-text-color);
+}
+
+/* member count badge: same-hue soft chip (accent 15% bg + accent text),
+   inverted to solid accent + white while the flyout is expanded. The ring
+   keeps it crisp where it overlaps the stack cards. */
+.block-sidebar-group-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    min-width: 12px;
+    height: 12px;
+    padding: 0 2px;
+    border-radius: 6px;
+    background: rgb(from var(--accent-color) r g b / 0.15);
+    color: var(--action-soft-text-color);
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 12px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px rgb(from var(--modal-bg-color) r g b / 0.85);
+    transition:
+        background 0.12s,
+        color 0.12s;
+}
+
+.block-sidebar-group-item.expanded .block-sidebar-group-badge {
+    background: var(--accent-color);
+    color: #fff;
+}
+
+/* flyout that opens to the RIGHT of the bar, over the layout (no reflow).
+   NOTE: the block sidebar sits on the LEFT edge of the window, so the flyout
+   must open rightward — leftward would land off-screen. */
+.block-sidebar-group-flyout {
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 0;
+    min-width: 200px;
+    max-width: 280px;
+    background: var(--modal-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+    z-index: 200;
+    overflow: hidden;
+}
+
+.block-sidebar-group-flyout-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--main-text-color);
+    border-bottom: 1px solid var(--border-color);
+
+    i {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+    }
+}
+
+.block-sidebar-group-flyout-count {
+    margin-left: auto;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--hover-bg-color);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--secondary-text-color);
+}
+
+.block-sidebar-group-flyout-members {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.block-sidebar-group-member {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--secondary-text-color);
+    transition: background 0.1s;
+
+    > i:first-child {
+        width: 14px;
+        text-align: center;
+        font-size: 11px;
+        flex-shrink: 0;
+    }
+
+    .block-sidebar-item-fallback {
+        width: 8px;
+        height: 8px;
+        flex-shrink: 0;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.block-sidebar-group-member-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.block-sidebar-group-member-restore {
+    font-size: 9px;
+    opacity: 0;
+    transition: opacity 0.1s;
+    color: var(--secondary-text-color);
+}
+
+.block-sidebar-group-member:hover .block-sidebar-group-member-restore {
+    opacity: 1;
+}
+
+.block-sidebar-group-flyout-footer {
+    display: flex;
+    border-top: 1px solid var(--border-color);
+}
+
+.block-sidebar-group-flyout-action {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--secondary-text-color);
+    transition: background 0.1s;
+
+    i {
+        font-size: 10px;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+
+    &.danger {
+        color: var(--error-color);
+        border-left: 1px solid var(--border-color);
+    }
+
+    &.danger:hover {
+        background: rgb(from var(--error-color) r g b / 0.15);
+    }
 }
 
 /* ── context menu ── */

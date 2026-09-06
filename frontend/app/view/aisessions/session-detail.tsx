@@ -1,30 +1,25 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Modal } from "@/app/modals/modal";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
-import { cn } from "@/util/util";
+import { Modal } from "@/app/modals/modal";
 import { getWebServerEndpoint } from "@/util/endpoints";
+import { cn } from "@/util/util";
 import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
+import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
-import { SessionTagChips } from "./session-tag-chips";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
-import {
-    extractSessionTagsFromNote,
-    mergeSessionTags,
-    removeSessionTagFromNote,
-    sessionTagsEqual,
-} from "./session-tags";
-import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
-import { ChatComposer } from "./chat-composer";
+import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "./session-outline-rail";
+import { SessionTagChips } from "./session-tag-chips";
+import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
+import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { LiveTurnBlock, useLiveTurns } from "./use-live-turn";
-import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
-import { SessionOutlineRail, useActiveOutlineSeq, type OutlinePrompt } from "./session-outline-rail";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -154,6 +149,9 @@ export function SessionDetailPane({
     isNewChat = false,
     newChatEpoch = 0,
     projectPath,
+    connection = "",
+    canChangeDirectory = false,
+    onChangeDirectory,
 }: {
     model: SessionDetailController;
     detail: SessionDetail | null;
@@ -175,6 +173,9 @@ export function SessionDetailPane({
     newChatEpoch?: number;
     /** 新会话使用的项目路径，传给 pi 以确定会话文件目录 */
     projectPath?: string;
+    connection?: string;
+    canChangeDirectory?: boolean;
+    onChangeDirectory?: () => Promise<void>;
 }) {
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
@@ -309,7 +310,13 @@ export function SessionDetailPane({
         [readableMessages, visibleMessageCount]
     );
     const timelineItems = useMemo(
-        () => buildSessionDetailTimeline(effectiveDetail?.messages ?? [], detailMessages, effectiveDetail?.toolCalls, true),
+        () =>
+            buildSessionDetailTimeline(
+                effectiveDetail?.messages ?? [],
+                detailMessages,
+                effectiveDetail?.toolCalls,
+                true
+            ),
         [effectiveDetail?.messages, detailMessages, effectiveDetail?.toolCalls]
     );
     const outlineMessages = useMemo(
@@ -486,9 +493,7 @@ export function SessionDetailPane({
             // 先抓取本 turn 的 seq 基线（live 块被清后就读不到了）
             const seqFloor = liveTurnsRef.current[key]?.userMessageSeqFloor ?? 0;
             const hasLanded = () =>
-                (detailRef.current?.messages ?? []).some(
-                    (m) => m.role === "assistant" && (m.seq ?? 0) > seqFloor
-                );
+                (detailRef.current?.messages ?? []).some((m) => m.role === "assistant" && (m.seq ?? 0) > seqFloor);
             if (hasLanded()) {
                 clearLiveTurn(key);
                 return;
@@ -590,7 +595,18 @@ export function SessionDetailPane({
             }
             handleLiveTurnEvent(key, evt);
         },
-        [clearLiveTurn, clearLiveTurnWhenPersisted, flushLiveTurn, handleLiveTurnEvent, isNewChat, model, moveChatStream, moveLiveTurn, onBound, setTurnError]
+        [
+            clearLiveTurn,
+            clearLiveTurnWhenPersisted,
+            flushLiveTurn,
+            handleLiveTurnEvent,
+            isNewChat,
+            model,
+            moveChatStream,
+            moveLiveTurn,
+            onBound,
+            setTurnError,
+        ]
     );
 
     const handleChatSend = useCallback(
@@ -600,9 +616,7 @@ export function SessionDetailPane({
             // Inject it into the request body so subsequent messages reuse the same
             // subprocess instead of spawning a duplicate.
             const effectiveBody =
-                isNewChat && !body.sessionId && boundSessionId
-                    ? { ...body, sessionId: boundSessionId }
-                    : body;
+                isNewChat && !body.sessionId && boundSessionId ? { ...body, sessionId: boundSessionId } : body;
             streamEpochRef.current.set(key, epochRef.current);
             const messageSeqFloor = (effectiveDetail?.messages ?? []).reduce(
                 (maxSeq, message) => Math.max(maxSeq, message.seq),
@@ -612,7 +626,16 @@ export function SessionDetailPane({
             flushSync(() => startLiveTurn(key, effectiveBody.message ?? "", messageSeqFloor));
             sendChatStream(key, chatEndpoint, effectiveBody, handleChatEvent);
         },
-        [chatEndpoint, effectiveDetail?.messages, handleChatEvent, isNewChat, boundSessionId, sendChatStream, startLiveTurn, summary?.id]
+        [
+            chatEndpoint,
+            effectiveDetail?.messages,
+            handleChatEvent,
+            isNewChat,
+            boundSessionId,
+            sendChatStream,
+            startLiveTurn,
+            summary?.id,
+        ]
     );
 
     const handleChatSteer = useCallback(
@@ -832,7 +855,10 @@ export function SessionDetailPane({
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
             {historySyncError && effectiveDetail != null ? (
-                <div className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning" role="status">
+                <div
+                    className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"
+                    role="status"
+                >
                     <span className="min-w-0 flex-1 truncate">History sync paused: {historySyncError}</span>
                     <button
                         type="button"
@@ -1010,7 +1036,11 @@ export function SessionDetailPane({
                             </div>
                         </div>
                         <div className="relative min-h-0 flex-1">
-                            <SessionOutlineRail prompts={outlinePrompts} activeSeq={activeOutlineSeq} onJump={jumpToMessage} />
+                            <SessionOutlineRail
+                                prompts={outlinePrompts}
+                                activeSeq={activeOutlineSeq}
+                                onJump={jumpToMessage}
+                            />
                             <div
                                 ref={detailScrollRef}
                                 className="h-full min-h-0 overflow-auto p-3 pb-10"
@@ -1019,9 +1049,12 @@ export function SessionDetailPane({
                                 {detailMessages.length === 0 && liveTurn == null ? (
                                     isNewChat ? (
                                         <div className="px-1 py-10">
-                                            <div className="text-sm font-medium text-primary">Start a new conversation</div>
+                                            <div className="text-sm font-medium text-primary">
+                                                Start a new conversation
+                                            </div>
                                             <div className="mt-1 text-xs leading-5 text-secondary">
-                                                After you send the first message, pi creates a session automatically; it will appear in the list on the left.
+                                                After you send the first message, pi creates a session automatically; it
+                                                will appear in the list on the left.
                                             </div>
                                         </div>
                                     ) : (
@@ -1111,13 +1144,18 @@ export function SessionDetailPane({
                                 }}
                             />
                         </div>
-                        {summary != null && summary.id != null && isSourceAvailable(summary.source, availableChatSources) ? (
+                        {summary != null &&
+                        summary.id != null &&
+                        isSourceAvailable(summary.source, availableChatSources) ? (
                             <ChatComposer
                                 key={`composer-${summary.id}`}
                                 source={summary.source}
                                 sessionId={summary.id}
                                 availableSources={availableChatSources}
-                                projectPath={summary.projectPath}
+                                projectPath={summary.projectPath?.trim() || projectPath}
+                                connection={connection}
+                                canChangeDirectory={canChangeDirectory}
+                                onChangeDirectory={onChangeDirectory}
                                 streamStatus={activeChatStreamStatus}
                                 onSend={handleChatSend}
                                 onSteer={handleChatSteer}
@@ -1130,6 +1168,9 @@ export function SessionDetailPane({
                                 sessionId=""
                                 availableSources={availableChatSources}
                                 projectPath={projectPath ?? summary?.projectPath}
+                                connection={connection}
+                                canChangeDirectory={canChangeDirectory}
+                                onChangeDirectory={onChangeDirectory}
                                 onSourceChange={setComposeSource}
                                 streamStatus={activeChatStreamStatus}
                                 onSend={handleChatSend}
@@ -1231,7 +1272,12 @@ export function SessionDetailPane({
                                 disabled={deleting}
                                 onClick={() => void model.deleteSession(summary)}
                             >
-                                <i className={cn("fa-sharp fa-solid", deleting ? "fa-spinner animate-spin" : "fa-trash")} />
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid",
+                                        deleting ? "fa-spinner animate-spin" : "fa-trash"
+                                    )}
+                                />
                                 <span>{deleting ? "Deleting..." : "Delete"}</span>
                             </button>
                         </div>
