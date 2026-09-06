@@ -125,6 +125,12 @@ const config = {
     },
     appImage: {
         license: "LICENSE",
+        // AppImage's app-builder schema only accepts a single ext string per
+        // fileAssociation entry (unlike mac/win which accept arrays), so each
+        // markdown extension becomes its own association.
+        fileAssociations: markdownFileAssociations.flatMap((fa) =>
+            fa.ext.map((ext) => ({ ...fa, ext }))
+        ),
     },
     snap: {
         base: "core22",
