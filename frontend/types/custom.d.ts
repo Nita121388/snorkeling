@@ -139,6 +139,7 @@ declare global {
         getOpenedThisLaunchTabIds: () => string[]; // get-opened-this-launch-tab-ids
         markTabOpenedThisLaunch: (tabId: string) => void; // mark-tab-opened-this-launch
         onOpenedThisLaunchTabIdsChange: (callback: (tabIds: string[]) => void) => void; // opened-this-launch-tab-ids-change
+        onExternalOpenPaths: (callback: (paths: string[]) => void) => void; // external-open-paths
         closeTab: (workspaceId: string, tabId: string, confirmClose: boolean) => Promise<boolean>; // close-tab
         moveTabToNewWindow: (tabId: string) => Promise<boolean>; // move-tab-to-new-window
         moveTabBack: (tabId: string) => Promise<boolean>; // move-tab-back

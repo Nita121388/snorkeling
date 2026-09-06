@@ -54,6 +54,11 @@ const platform = getApi().getPlatform();
 document.title = `Wave Terminal`;
 let savedInitOpts: WaveInitOpts = null;
 
+// Paths handed to us by the OS ("Open with Snorkeling") that arrived before the
+// wave environment finished initializing. Flushed once first render completes.
+let pendingExternalOpenPaths: string[] = [];
+let externalOpenFlushScheduled = false;
+
 (window as any).WOS = WOS;
 (window as any).globalStore = globalStore;
 (window as any).globalAtoms = atoms;
@@ -99,6 +104,13 @@ async function initBare() {
     document.body.style.visibility = "hidden";
     document.body.style.opacity = "0";
     document.body.classList.add("is-transparent");
+    getApi().onExternalOpenPaths((paths) => {
+        pendingExternalOpenPaths.push(...paths);
+        if (!savedInitOpts && !isWaveFullyReady()) {
+            return;
+        }
+        flushExternalOpenPaths();
+    });
     getApi().onWaveInit(initWaveWrap);
     getApi().onBuilderInit(initBuilderWrap);
     setKeyUtilPlatform(platform);
@@ -114,6 +126,32 @@ async function initBare() {
 }
 
 document.addEventListener("DOMContentLoaded", initBare);
+
+// The wave env is only usable once first render completed (set wave-ready). Before
+// that we can't open preview blocks, so we buffer external-open requests.
+let waveFullyReady = false;
+function isWaveFullyReady(): boolean {
+    return waveFullyReady;
+}
+
+function flushExternalOpenPaths() {
+    if (externalOpenFlushScheduled || pendingExternalOpenPaths.length === 0) {
+        return;
+    }
+    externalOpenFlushScheduled = true;
+    setTimeout(() => {
+        externalOpenFlushScheduled = false;
+        if (!isWaveFullyReady()) {
+            return;
+        }
+        const paths = pendingExternalOpenPaths.splice(0, pendingExternalOpenPaths.length);
+        for (const p of paths) {
+            import("@/app/view/preview/file-link-navigation").then(({ openPathInPreview }) => {
+                openPathInPreview(p).catch((e) => console.error("external-open failed for", p, e));
+            });
+        }
+    }, 0);
+}
 
 async function initWaveWrap(initOpts: WaveInitOpts) {
     try {
@@ -247,6 +285,8 @@ async function initWave(initOpts: WaveInitOpts) {
     root.render(reactElem);
     await firstRenderPromise;
     console.log("Wave First Render Done");
+    waveFullyReady = true;
+    flushExternalOpenPaths();
     getApi().setWindowInitStatus("wave-ready");
     scheduleUpdaterStatusSync();
 }

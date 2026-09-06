@@ -30,6 +30,12 @@ import { initIpcHandlers } from "./emain-ipc";
 import { log } from "./emain-log";
 import { initMenuEventSubscriptions, makeAndSetAppMenu, makeDockTaskbar } from "./emain-menu";
 import {
+    extractOpenPathsFromArgv,
+    flushPendingExternalOpenPaths,
+    openExternalPathsAtStartup,
+    sendExternalOpenPathsToFocusedWindow,
+} from "./emain-open";
+import {
     checkIfRunningUnderARM64Translation,
     getElectronAppBasePath,
     getElectronAppUnpackedBasePath,
@@ -397,8 +403,24 @@ async function appMain() {
         electronApp.quit();
         return;
     }
+    const bootArgv = process.argv.slice();
+    electronApp.on("open-file", (event, filePath) => {
+        event.preventDefault();
+        console.log("open-file event:", filePath);
+        sendExternalOpenPathsToFocusedWindow([filePath]);
+    });
     electronApp.on("second-instance", (_event, argv, workingDirectory) => {
         console.log("second-instance event, argv:", argv, "workingDirectory:", workingDirectory);
+        const paths = extractOpenPathsFromArgv(argv);
+        if (paths.length > 0) {
+            sendExternalOpenPathsToFocusedWindow(paths);
+            const win = focusedWaveWindow ?? getAllWaveWindows()[0];
+            if (win != null && !win.isDestroyed()) {
+                win.show();
+                win.focus();
+            }
+            return;
+        }
         fireAndForget(createNewWaveWindow);
     });
     try {
@@ -439,6 +461,8 @@ async function appMain() {
     }
     ensureHotSpareTab(fullConfig);
     await relaunchBrowserWindows();
+    openExternalPathsAtStartup(bootArgv);
+    flushPendingExternalOpenPaths();
     setTimeout(runActiveTimer, 5000); // start active timer, wait 5s just to be safe
     setTimeout(sendDisplaysTDataEvent, 5000);
 

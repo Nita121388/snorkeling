@@ -89,6 +89,7 @@ const previewElectronApi: ElectronApi = {
     getOpenedThisLaunchTabIds: () => [],
     markTabOpenedThisLaunch: (_tabId: string) => {},
     onOpenedThisLaunchTabIdsChange: (_callback: (tabIds: string[]) => void) => {},
+    onExternalOpenPaths: (_callback: (paths: string[]) => void) => {},
     closeTab: (_workspaceId: string, _tabId: string, _confirmClose: boolean) => Promise.resolve(false),
     moveTabToNewWindow: (_tabId: string) => Promise.resolve(false),
     moveTabBack: (_tabId: string) => Promise.resolve(false),
