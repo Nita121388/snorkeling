@@ -7,6 +7,7 @@ import { formatRemoteUri } from "./waveutil";
 
 type AddOpenMenuItemsOptions = {
     openInCurrentBlock?: (() => void | Promise<void>) | null;
+    openInNewBlock?: ((isDir: boolean) => void | Promise<void>) | null;
 };
 
 export function addOpenMenuItems(
@@ -81,37 +82,24 @@ export function addOpenMenuItems(
             },
         });
     }
-    if (finfo.isdir) {
-        menu.push({
-            label: "Open in New Block",
-            click: () =>
-                fireAndForget(async () => {
-                    const blockDef: BlockDef = {
-                        meta: {
-                            view: "preview",
-                            file: finfo.path,
-                            connection: conn,
-                        },
-                    };
-                    await createBlock(blockDef);
-                }),
-        });
-    } else {
-        menu.push({
-            label: "Open Preview in New Block",
-            click: () =>
-                fireAndForget(async () => {
-                    const blockDef: BlockDef = {
-                        meta: {
-                            view: "preview",
-                            file: finfo.path,
-                            connection: conn,
-                        },
-                    };
-                    await createBlock(blockDef);
-                }),
-        });
-    }
+    const openInNewBlock = async () => {
+        if (options.openInNewBlock) {
+            await options.openInNewBlock(finfo.isdir);
+            return;
+        }
+        const blockDef: BlockDef = {
+            meta: {
+                view: "preview",
+                file: finfo.path,
+                connection: conn,
+            },
+        };
+        await createBlock(blockDef);
+    };
+    menu.push({
+        label: finfo.isdir ? "Open in New Block" : "Open Preview in New Block",
+        click: () => fireAndForget(openInNewBlock),
+    });
     menu.push({
         label: "Open Terminal Here",
         click: () => {

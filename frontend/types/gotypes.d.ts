@@ -2040,6 +2040,7 @@ declare global {
         note?: string;
         tags?: string[];
         missing?: boolean;
+        live?: boolean;
         size?: number;
     };
 

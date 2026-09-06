@@ -19,7 +19,7 @@ import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
-import { LiveTurnBlock, useLiveTurns } from "./use-live-turn";
+import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -55,6 +55,8 @@ export type SessionDetailController = {
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
     loadDetailDelta?: (reason?: "manual" | "bottom") => Promise<boolean>;
     loadDetailTools: (refresh?: boolean) => Promise<boolean>;
+    // turn_end 后只刷新工具调用，不整块替换消息列表（避免旧快照覆盖新内容）。
+    refreshToolCallsOnly?: () => Promise<boolean>;
     updateNote: (session: SessionSummary, note: string, tags?: string[]) => Promise<boolean>;
     updateTitle: (session: SessionSummary, title: string) => Promise<boolean>;
     deleteSession: (session: SessionSummary) => Promise<void>;
@@ -99,19 +101,21 @@ function ToolCallCard({
     toolCall,
     expanded,
     onToggle,
+    liveStatus,
 }: {
     toolCall: ToolCall;
     expanded: boolean;
     onToggle: () => void;
+    liveStatus?: "running" | "completed" | "failed";
 }) {
     const detailText = toolCallDetailText(toolCall);
-    const hasError = Boolean(toolCall.exitCode);
+    const hasError = Boolean(toolCall.exitCode) || liveStatus === "failed";
     return (
         // 与流式 live 工具行共用 ToolCallRow，保证 turn_end 交接时外观/交互一致
         <ToolCallRow
             name={toolCall.name || "tool"}
             preview={formatToolCallPreview(toolCall)}
-            status={hasError ? "failed" : "completed"}
+            status={liveStatus ?? (hasError ? "failed" : "completed")}
             exitCode={toolCall.exitCode ?? undefined}
             expanded={expanded}
             onToggle={onToggle}
@@ -194,6 +198,10 @@ export function SessionDetailPane({
     const boundEpochRef = useRef(-1);
     const newChatTurnRef = useRef(false);
     const [newChatTurnFinished, setNewChatTurnFinished] = useState(false);
+    // 运行中的新消息进入本地 FIFO，当前 turn 完成并落盘后再逐条发送。
+    const queuedMessagesRef = useRef<ChatRequestBody[]>([]);
+    const flushQueuedRef = useRef<() => void>(() => {});
+    const [queuedCount, setQueuedCount] = useState(0);
     const wasNewChatRef = useRef(false);
     // 搜索工具栏（第二行）默认隐藏，点 🔍 展开
     const [searchExpanded, setSearchExpanded] = useState(false);
@@ -381,7 +389,6 @@ export function SessionDetailPane({
     const {
         statuses: chatStreamStatuses,
         send: sendChatStream,
-        steer: steerChatStream,
         abort: abortChatStream,
         move: moveChatStream,
     } = useChatStreams();
@@ -521,12 +528,14 @@ export function SessionDetailPane({
     );
 
     // 新会话的正式详情可能先于 SSE 结束到达，必须等本轮结束再替换临时内容。
+    // detail 在此 effect 触发时已加载（依赖 detail?.summary?.id === sessionId），
+    // 因此用只追加的 delta 合并 + 工具刷新，不做全量 loadDetailTools(true) 覆盖。
     useEffect(() => {
         const sessionId = boundRef.current;
         if (newChatTurnRef.current && newChatTurnFinished && detail?.summary?.id === sessionId) {
             void (async () => {
-                await model.loadDetailTools(true);
                 await clearLiveTurnWhenPersisted(sessionId);
+                await model.refreshToolCallsOnly?.();
                 newChatTurnRef.current = false;
                 setNewChatTurnFinished(false);
             })();
@@ -584,8 +593,14 @@ export function SessionDetailPane({
                 }
                 if (activeSessionIdRef.current === key) {
                     void (async () => {
-                        await model.loadDetailTools(true);
+                        // 不再用 loadDetailTools(true) 全量替换 detail：那会与并发 delta /
+                        // 后端旧快照竞态，用更短列表覆盖旧内容。改为只追加的 delta 合并
+                        // （clearLiveTurnWhenPersisted 内部轮询 requestDetailDelta）确认正式
+                        // assistant 消息落盘，再单独刷新工具调用。消息列表只增不减。
                         await clearLiveTurnWhenPersisted(key);
+                        await model.refreshToolCallsOnly?.();
+                        // 本回合结束且正式数据已落盘：若队列里还有等待中的消息，补发下一条。
+                        flushQueuedRef.current();
                     })();
                 } else {
                     // 非激活会话：直接清临时块，正式内容切回时由详情加载补齐
@@ -638,12 +653,28 @@ export function SessionDetailPane({
         ]
     );
 
-    const handleChatSteer = useCallback(
-        (body: ChatRequestBody) => steerChatStream(chatEndpoint, body),
-        [chatEndpoint, steerChatStream]
-    );
+    // 当前 turn 已结束并落盘，把队列里的下一条作为正常发送（复用 handleChatSend
+    // 的单连接语义，不再用 steer 并行第二条 SSE，避免多流互相覆盖）。放在 ref 里
+    // 由 turn_end 分支调用，避免 handleChatSend 定义在 handleChatEvent 之后带来的
+    // 顺序/陈旧闭包问题。
+    flushQueuedRef.current = () => {
+        const next = queuedMessagesRef.current.shift();
+        setQueuedCount(queuedMessagesRef.current.length);
+        if (next) {
+            handleChatSend(next);
+        }
+    };
+
+    const handleChatQueue = useCallback((body: ChatRequestBody) => {
+        queuedMessagesRef.current.push(body);
+        setQueuedCount(queuedMessagesRef.current.length);
+    }, []);
 
     const handleChatAbort = useCallback(() => {
+        // Stop means stop the current run and discard messages waiting behind it;
+        // otherwise they would unexpectedly execute after the user pressed Stop.
+        queuedMessagesRef.current = [];
+        setQueuedCount(0);
         abortChatStream(activeLiveTurnKey);
         handleChatEvent({ type: "turn_end" }, activeLiveTurnKey);
     }, [abortChatStream, activeLiveTurnKey, handleChatEvent]);
@@ -852,6 +883,10 @@ export function SessionDetailPane({
                   : "";
     const projectDirectory = summary?.projectPath?.trim() ?? "";
     const sessionFilePath = summary?.filePath?.trim() ?? "";
+    // 实时 turn 转成与历史同款 timeline 项，追加在历史项之后，用同一套
+    // MessageCard / ToolCallCard 渲染——保证实时与历史样式完全一致。
+    const liveTimelineItems = liveTurn != null ? liveTurnToTimelineItems(liveTurn, liveUserMessagePersisted) : [];
+    const renderItems = liveTimelineItems.length > 0 ? [...timelineItems, ...liveTimelineItems] : timelineItems;
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
             {historySyncError && effectiveDetail != null ? (
@@ -1072,8 +1107,8 @@ export function SessionDetailPane({
                                                 </button>
                                             ) : null}
                                         </div>
-                                        {timelineItems.map((item, itemIdx) => {
-                                            const prevItem = itemIdx > 0 ? timelineItems[itemIdx - 1] : null;
+                                        {renderItems.map((item, itemIdx) => {
+                                            const prevItem = itemIdx > 0 ? renderItems[itemIdx - 1] : null;
                                             const isGroupStart =
                                                 item.kind !== "message" ||
                                                 prevItem == null ||
@@ -1094,43 +1129,63 @@ export function SessionDetailPane({
                                                 <ToolCallCard
                                                     key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
                                                     toolCall={item.toolCall}
+                                                    liveStatus={"liveStatus" in item ? item.liveStatus : undefined}
                                                     expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
                                                     onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
                                                 />
                                             );
                                         })}
-                                        {/* 实时流式块：当前 turn 的临时渲染，turn_end 后由正式数据替换 */}
-                                        {liveTurn != null ? (
-                                            <LiveTurnBlock
-                                                turn={liveTurn}
-                                                userMessagePersisted={liveUserMessagePersisted}
-                                                onRetry={() => {
-                                                    // 重试：清除当前 live turn，从最后一条用户消息重新发送
-                                                    const lastUserMsg = [...(effectiveDetail?.messages ?? [])]
-                                                        .reverse()
-                                                        .find((m) => m.role === "user");
-                                                    if (lastUserMsg) {
-                                                        clearLiveTurn(activeLiveTurnKey);
-                                                        abortChatStream(activeLiveTurnKey);
-                                                        handleChatSend({
-                                                            source: summary?.source ?? composeSource,
-                                                            sessionId: summary?.id ?? boundSessionId ?? undefined,
-                                                            projectPath: summary?.projectPath ?? projectPath,
-                                                            message: lastUserMsg.text,
-                                                        });
-                                                    }
-                                                }}
-                                                onContinue={() => {
-                                                    // 继续：清除当前 live turn，从当前上下文发送空消息让 agent 继续
-                                                    clearLiveTurn(activeLiveTurnKey);
-                                                    handleChatSend({
-                                                        source: summary?.source ?? composeSource,
-                                                        sessionId: summary?.id ?? boundSessionId ?? undefined,
-                                                        projectPath: summary?.projectPath ?? projectPath,
-                                                        message: "",
-                                                    });
-                                                }}
-                                            />
+                                        {/* 实时 turn 错误 UI：重试/继续（正文与工具已并入上方 renderItems 统一渲染） */}
+                                        {liveTurn?.error ? (
+                                            <div className="mt-2 flex flex-col gap-1.5 rounded-xl border border-error/25 bg-error/10 px-3.5 py-2.5">
+                                                <div className="flex items-center gap-1.5 text-xs font-medium text-error">
+                                                    <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px]" />
+                                                    <span>出错了</span>
+                                                </div>
+                                                <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">
+                                                    {liveTurn.error.message}
+                                                </div>
+                                                <div className="flex items-center gap-2 pt-0.5">
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                                        onClick={() => {
+                                                            clearLiveTurn(activeLiveTurnKey);
+                                                            handleChatSend({
+                                                                source: summary?.source ?? composeSource,
+                                                                sessionId: summary?.id ?? boundSessionId ?? undefined,
+                                                                projectPath: summary?.projectPath ?? projectPath,
+                                                                message: "",
+                                                            });
+                                                        }}
+                                                    >
+                                                        <i className="fa-sharp fa-solid fa-forward text-[10px]" />
+                                                        <span>继续</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                                        onClick={() => {
+                                                            const lastUserMsg = [...(effectiveDetail?.messages ?? [])]
+                                                                .reverse()
+                                                                .find((m) => m.role === "user");
+                                                            if (lastUserMsg) {
+                                                                clearLiveTurn(activeLiveTurnKey);
+                                                                abortChatStream(activeLiveTurnKey);
+                                                                handleChatSend({
+                                                                    source: summary?.source ?? composeSource,
+                                                                    sessionId: summary?.id ?? boundSessionId ?? undefined,
+                                                                    projectPath: summary?.projectPath ?? projectPath,
+                                                                    message: lastUserMsg.text,
+                                                                });
+                                                            }
+                                                        }}
+                                                    >
+                                                        <i className="fa-sharp fa-solid fa-rotate-right text-[10px]" />
+                                                        <span>重试</span>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         ) : null}
                                     </div>
                                 )}
@@ -1157,8 +1212,9 @@ export function SessionDetailPane({
                                 canChangeDirectory={canChangeDirectory}
                                 onChangeDirectory={onChangeDirectory}
                                 streamStatus={activeChatStreamStatus}
+                                queuedCount={queuedCount}
                                 onSend={handleChatSend}
-                                onSteer={handleChatSteer}
+                                onQueue={handleChatQueue}
                                 onAbort={handleChatAbort}
                             />
                         ) : isNewChat ? (
@@ -1173,8 +1229,9 @@ export function SessionDetailPane({
                                 onChangeDirectory={onChangeDirectory}
                                 onSourceChange={setComposeSource}
                                 streamStatus={activeChatStreamStatus}
+                                queuedCount={queuedCount}
                                 onSend={handleChatSend}
-                                onSteer={handleChatSteer}
+                                onQueue={handleChatQueue}
                                 onAbort={handleChatAbort}
                             />
                         ) : null}

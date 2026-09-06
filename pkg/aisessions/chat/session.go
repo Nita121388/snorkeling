@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -25,22 +26,22 @@ const (
 
 // SessionStateInfo is the subset of the agent get_state payload the GUI shows.
 type SessionStateInfo struct {
-	SessionID       string      `json:"sessionId,omitempty"`
-	SessionName     string      `json:"sessionName,omitempty"`
-	SessionFile     string      `json:"sessionFile,omitempty"`
-	MessageCount    int         `json:"messageCount,omitempty"`
-	IsStreaming     bool        `json:"isStreaming,omitempty"`
-	ThinkingLevel   string      `json:"thinkingLevel,omitempty"`
-	Model           *ModelInfo  `json:"model,omitempty"`
-	ContextUsagePct *float64    `json:"contextUsagePercent,omitempty"`
+	SessionID       string     `json:"sessionId,omitempty"`
+	SessionName     string     `json:"sessionName,omitempty"`
+	SessionFile     string     `json:"sessionFile,omitempty"`
+	MessageCount    int        `json:"messageCount,omitempty"`
+	IsStreaming     bool       `json:"isStreaming,omitempty"`
+	ThinkingLevel   string     `json:"thinkingLevel,omitempty"`
+	Model           *ModelInfo `json:"model,omitempty"`
+	ContextUsagePct *float64   `json:"contextUsagePercent,omitempty"`
 }
 
 // ModelInfo is the model descriptor returned by get_state.
 type ModelInfo struct {
-	Provider    string `json:"provider,omitempty"`
-	ID          string `json:"id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	ContextWindow int  `json:"contextWindow,omitempty"`
+	Provider      string `json:"provider,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name,omitempty"`
+	ContextWindow int    `json:"contextWindow,omitempty"`
 }
 
 // Session is one live agent subprocess behind a GUI chat. It wraps a
@@ -65,6 +66,11 @@ type Session struct {
 	mapper  func(RpcEvent) *ChatEvent
 	usage   *ChatUsage
 	lastMsg map[string]any
+
+	// lastState caches the most recent get_state snapshot (session id/file
+	// path, message count) so WaitPersisted and session registration do not
+	// need an extra RPC round-trip.
+	lastState *SessionStateInfo
 }
 
 // eventSub is the subscription identity for ChatEvent callbacks.
@@ -170,9 +176,9 @@ func (s *Session) publish(evt ChatEvent) {
 
 // ImageContent is one inline image attachment (pi ImageContent wire shape).
 type ImageContent struct {
-	Type     string `json:"type"`              // always "image"
-	Data     string `json:"data"`              // base64-encoded bytes
-	MimeType string `json:"mimeType"`          // e.g. image/png
+	Type     string `json:"type"`     // always "image"
+	Data     string `json:"data"`     // base64-encoded bytes
+	MimeType string `json:"mimeType"` // e.g. image/png
 }
 
 // PromptOptions is one user turn: text plus optional image attachments. When
@@ -187,9 +193,9 @@ type PromptOptions struct {
 // controlMethods is the RPC allowlist for GUI-driven session commands.
 // Anything outside it is rejected before reaching the agent subprocess.
 var controlMethods = map[string]bool{
-	"get_commands":                 true,
-	"get_available_models":         true,
-	"set_model":                    true,
+	"get_commands":                  true,
+	"get_available_models":          true,
+	"set_model":                     true,
 	"get_available_thinking_levels": true,
 	"set_thinking_level":            true,
 	"compact":                       true,
@@ -277,6 +283,8 @@ func (s *Session) Abort(ctx context.Context) error {
 }
 
 // GetState queries the agent's current session state (model, streaming, etc.).
+// The last successful snapshot is cached so WaitPersisted can find the session
+// file without another RPC round-trip.
 func (s *Session) GetState(ctx context.Context) (*SessionStateInfo, error) {
 	s.mu.Lock()
 	rpc := s.rpc
@@ -296,7 +304,68 @@ func (s *Session) GetState(ctx context.Context) (*SessionStateInfo, error) {
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	s.lastState = &info
+	s.mu.Unlock()
 	return &info, nil
+}
+
+// cachedSessionFile returns the session file path from the last get_state
+// snapshot, or "" if none was observed yet.
+func (s *Session) cachedSessionFile() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastState != nil {
+		return s.lastState.SessionFile
+	}
+	return ""
+}
+
+// DefaultPersistTimeout bounds WaitPersisted.
+const DefaultPersistTimeout = 5 * time.Second
+
+// persistPollInterval controls how often WaitPersisted re-stats the file.
+const persistPollInterval = 150 * time.Millisecond
+
+// WaitPersisted blocks until the session's transcript file has been flushed
+// with this turn's output (file exists and its size is stable across two
+// consecutive polls), the context is cancelled, or the timeout expires. The
+// bool result reports whether the file was confirmed in time; callers treat
+// false as "unknown" and fall back to their existing refresh logic.
+func (s *Session) WaitPersisted(ctx context.Context, timeout time.Duration) bool {
+	if s.State() == StateClosed {
+		return false
+	}
+	if timeout <= 0 {
+		timeout = DefaultPersistTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	var file string
+	var lastSize int64 = -1
+	for {
+		if ctx.Err() != nil {
+			return false
+		}
+		if file == "" {
+			file = s.cachedSessionFile()
+		}
+		if file != "" {
+			if info, err := os.Stat(file); err == nil && info.Size() > 0 {
+				if info.Size() == lastSize {
+					return true
+				}
+				lastSize = info.Size()
+			}
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(persistPollInterval):
+		}
+	}
 }
 
 // Close tears down the subprocess. Safe to call multiple times.

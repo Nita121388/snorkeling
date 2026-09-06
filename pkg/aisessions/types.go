@@ -41,6 +41,7 @@ type SessionSummary struct {
 	Note         string   `json:"note,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
 	Missing      bool     `json:"missing,omitempty"`
+	Live         bool     `json:"live,omitempty"`
 	MTime        int64    `json:"-"`
 	Size         int64    `json:"size,omitempty"`
 }
@@ -131,15 +132,15 @@ type MessageDelta struct {
 }
 
 type ListOptions struct {
-	Source       string
-	Project      string
-	Since        int64
-	Before       int64
-	Limit        int
-	Marked       string
-	TagFilters   []string
-	TagPresence  string
-	Refresh      bool
+	Source      string
+	Project     string
+	Since       int64
+	Before      int64
+	Limit       int
+	Marked      string
+	TagFilters  []string
+	TagPresence string
+	Refresh     bool
 }
 
 type SearchOptions struct {

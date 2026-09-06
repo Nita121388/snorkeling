@@ -223,4 +223,114 @@ describe("addOpenMenuItems", () => {
 
         expect(menu.some((item) => item.label === "Open in Obsidian")).toBe(false);
     });
+
+    it("routes folders via the smart open-in-new-block action when provided", async () => {
+        vi.resetModules();
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const openInNewBlock = vi.fn();
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(
+            menu,
+            "local",
+            {
+                path: "/repo/sub",
+                dir: "/repo",
+                isdir: true,
+                name: "sub",
+            } as FileInfo,
+            { openInNewBlock }
+        );
+
+        const folderItem = menu.find((item) => item.label === "Open in New Block");
+        expect(folderItem).toBeDefined();
+        await folderItem?.click?.();
+        expect(openInNewBlock).toHaveBeenCalledTimes(1);
+        expect(openInNewBlock).toHaveBeenCalledWith(true);
+    });
+
+    it("routes files via the smart open-in-new-block action when provided", async () => {
+        vi.resetModules();
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: vi.fn(),
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const openInNewBlock = vi.fn();
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(
+            menu,
+            "local",
+            {
+                path: "/repo/README.md",
+                dir: "/repo",
+                isdir: false,
+                name: "README.md",
+                mimetype: "text/markdown",
+            } as FileInfo,
+            { openInNewBlock }
+        );
+
+        const fileItem = menu.find((item) => item.label === "Open Preview in New Block");
+        expect(fileItem).toBeDefined();
+        await fileItem?.click?.();
+        expect(openInNewBlock).toHaveBeenCalledTimes(1);
+        expect(openInNewBlock).toHaveBeenCalledWith(false);
+    });
+
+    it("falls back to createBlock when no smart open-in-new-block action is provided", async () => {
+        vi.resetModules();
+        const createBlockMock = vi.fn(async () => ({ oref: "block:new" }));
+        vi.doMock("@/app/store/global", () => ({
+            createBlock: createBlockMock,
+            getApi: vi.fn(() => ({
+                downloadFile: vi.fn(),
+                openInVSCode: vi.fn(),
+                openNativePath: vi.fn(),
+                revealNativePath: vi.fn(),
+            })),
+        }));
+        vi.doMock("@/app/workspace/agent-launch", () => ({
+            createDefaultAgentBlockDef: vi.fn(() => ({ meta: {} })),
+        }));
+
+        const { addOpenMenuItems } = await import("./previewutil");
+        const menu: ContextMenuItem[] = [];
+
+        addOpenMenuItems(menu, "local", {
+            path: "/repo/sub",
+            dir: "/repo",
+            isdir: true,
+            name: "sub",
+        } as FileInfo);
+
+        const folderItem = menu.find((item) => item.label === "Open in New Block");
+        expect(folderItem).toBeDefined();
+        await folderItem?.click?.();
+        expect(createBlockMock).toHaveBeenCalledTimes(1);
+        expect(createBlockMock).toHaveBeenCalledWith(expect.objectContaining({ meta: expect.objectContaining({ file: "/repo/sub" }) }));
+    });
 });

@@ -492,12 +492,16 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 		}
 		toolProvider, ok := provider.(ToolCallProvider)
 		if ok {
-			toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
-			if err != nil {
-				debugf("Manager.Load tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), err)
-				return SessionDetail{}, err
+			// Pending live sessions may not have a file yet; skip tool parsing
+			// instead of failing the whole detail request.
+			if _, statErr := os.Stat(summary.FilePath); statErr == nil {
+				toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
+				if err != nil {
+					debugf("Manager.Load tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), err)
+					return SessionDetail{}, err
+				}
+				detail.ToolCalls = toolCalls
 			}
-			detail.ToolCalls = toolCalls
 		}
 	}
 	debugf("Manager.Load success id=%q key=%q messages=%d readable=%d toolCalls=%d duration=%s", identifier, summary.Key, len(messages), summary.MessageCount, len(detail.ToolCalls), time.Since(start))
@@ -516,6 +520,15 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 	provider := providerBySource(m.Providers, summary.Source)
 	if provider == nil {
 		return MessageDelta{}, fmt.Errorf("no provider for source %q", summary.Source)
+	}
+	// Pending live chat sessions: pi has not flushed the transcript yet, so a
+	// delta read has nothing to return. Report an empty delta instead of an
+	// error (which the GUI would surface as a red banner mid-first-turn).
+	if strings.TrimSpace(summary.FilePath) != "" {
+		if _, statErr := os.Stat(summary.FilePath); os.IsNotExist(statErr) {
+			debugf("Manager.LoadDelta file missing (pending live session) id=%q file=%q", identifier, summary.FilePath)
+			return MessageDelta{Cursor: opts.Cursor, Summary: summary}, nil
+		}
 	}
 	deltaProvider, ok := provider.(MessageDeltaProvider)
 	if !ok {
@@ -724,6 +737,8 @@ func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary
 	if strings.TrimSpace(summary.FilePath) == "" {
 		return SessionSummary{}, fmt.Errorf("session file path is empty")
 	}
+	RemoveLiveSession(summary.ID)
+	RemoveLiveSession(summary.Key)
 	deletedPath, err := moveSessionFileToDeleted(ctx, summary)
 	if err != nil {
 		return SessionSummary{}, err
@@ -829,6 +844,13 @@ func (m *Manager) loadMessages(ctx context.Context, summary SessionSummary, refr
 	debugf("Manager.loadMessages provider start key=%q source=%q file=%q refresh=%v", summary.Key, summary.Source, summary.FilePath, refresh)
 	messages, err := provider.LoadMessages(ctx, summary.FilePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Live chat session whose file pi has not flushed yet (pi defers
+			// file creation until the first assistant message). Return an empty
+			// message list instead of failing the GUI detail request.
+			debugf("Manager.loadMessages file missing (pending live session) key=%q file=%q", summary.Key, summary.FilePath)
+			return nil, nil
+		}
 		debugf("Manager.loadMessages provider error key=%q source=%q file=%q duration=%s err=%v", summary.Key, summary.Source, summary.FilePath, time.Since(providerStart), err)
 		return nil, err
 	}
@@ -911,6 +933,16 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 	if identifier == "" {
 		return SessionSummary{}, fmt.Errorf("session id is required")
 	}
+	// Live GUI chat sessions are resolved from the in-process registry first:
+	// a brand-new session has an id (from get_state) long before pi flushes the
+	// JSONL (pi defers file creation until the first assistant message), so a
+	// scan-based lookup would fail with "session not found" mid-first-turn.
+	if !m.remoteOnly() {
+		if summary, ok := m.resolveLiveSession(ctx, identifier); ok {
+			debugf("Manager.resolveSession live id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, time.Since(start))
+			return summary, nil
+		}
+	}
 	if !refresh {
 		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier, true); err == nil && ok {
 			debugf("Manager.resolveSession sqlite success id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, time.Since(start))
@@ -979,6 +1011,88 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 	}
 	debugf("Manager.resolveSession success id=%q key=%q source=%q file=%q scanned=%d matches=%d duration=%s", identifier, matches[0].Key, matches[0].Source, matches[0].FilePath, len(summaries), len(matches), time.Since(start))
 	return matches[0], nil
+}
+
+// remoteOnly reports whether this manager only serves a remote connection
+// (live GUI chat sessions are local to the app host, so the registry does not
+// apply to remote-session managers).
+func (m *Manager) remoteOnly() bool {
+	if len(m.Providers) != 1 {
+		return false
+	}
+	return m.Providers[0].Source() == "remote"
+}
+
+// resolveLiveSession upgrades a registered live chat session to disk data as
+// soon as the provider has flushed a parseable file; before that it returns
+// the provisional summary (Live=true, empty message list). Because the
+// upgrade parses only this one file, post-turn GUI refreshes no longer pay
+// for a full provider-directory scan.
+func (m *Manager) resolveLiveSession(ctx context.Context, identifier string) (SessionSummary, bool) {
+	registered, ok := lookupLiveSession(identifier)
+	if !ok {
+		return SessionSummary{}, false
+	}
+	if !liveSummaryReady(registered) {
+		// Still pending: pi has not created/flushed the file yet.
+		m.applySessionMeta(ctx, &registered)
+		return registered, true
+	}
+	provider := providerBySource(m.Providers, registered.Source)
+	if provider == nil {
+		m.applySessionMeta(ctx, &registered)
+		return registered, true
+	}
+	fileProvider, ok := provider.(SummaryFileProvider)
+	if !ok {
+		m.applySessionMeta(ctx, &registered)
+		return registered, true
+	}
+	info, err := os.Stat(registered.FilePath)
+	if err != nil {
+		m.applySessionMeta(ctx, &registered)
+		return registered, true
+	}
+	parsed, parseOK := fileProvider.ParseSummary(ctx, SessionFile{
+		Source: registered.Source,
+		Path:   registered.FilePath,
+		MTime:  info.ModTime().UnixMilli(),
+		Size:   info.Size(),
+	})
+	if !parseOK {
+		// File exists but header is not usable yet (partial flush) — stay on
+		// the provisional summary rather than failing the GUI request.
+		m.applySessionMeta(ctx, &registered)
+		return registered, true
+	}
+	m.applySessionMeta(ctx, &parsed)
+	updateLiveSession(parsed)
+	// Persist the upgraded summary so later non-live lookups hit the index.
+	if sqliteIdx, sqliteErr := m.openSQLiteIndex(); sqliteErr == nil && sqliteIdx != nil {
+		if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, []SessionSummary{parsed}, false); len(saveErrs) > 0 {
+			debugf("Manager.resolveLiveSession sqlite save error key=%q firstErr=%v", parsed.Key, saveErrs[0])
+		}
+		sqliteIdx.Close()
+	}
+	return parsed, true
+}
+
+// applySessionMeta overlays user metadata (title/note/tags/marked) onto a
+// summary, preferring SQLite and falling back to the JSON meta store.
+func (m *Manager) applySessionMeta(ctx context.Context, summary *SessionSummary) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.ApplyMeta(ctx, summary); err != nil {
+			debugf("Manager.applySessionMeta sqlite apply error key=%q err=%v", summary.Key, err)
+		}
+		return
+	}
+	meta, _ := m.openMeta()
+	if meta != nil {
+		defer meta.Close()
+		meta.Apply(summary)
+	}
 }
 
 func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string, requireCurrent bool) (SessionSummary, bool, error) {

@@ -513,6 +513,14 @@
                         align-items: center;
                     }
 
+                    // AISessions 自动刷新按钮带 "Auto" 徽标，宽度需自适应内容，
+                    // 否则固定 24px 会让徽标溢出遮挡右侧的 Close 按钮。
+                    .block-frame-end-icons .wave-iconbutton.aisessions-auto-refresh {
+                        width: auto;
+                        min-width: 24px;
+                        flex-shrink: 0;
+                    }
+
                     .block-frame-magnify {
                         justify-content: center;
                         align-items: center;

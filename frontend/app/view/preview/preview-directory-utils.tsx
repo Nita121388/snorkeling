@@ -375,6 +375,7 @@ type DirectoryEntryMenuActions = {
 type DirectoryEntryMenuOptions = {
     relativePathRoot?: string | null;
     openInCurrentBlock?: (() => void | Promise<void>) | null;
+    openInNewBlock?: ((isDir: boolean) => void | Promise<void>) | null;
     selectedFileInfos?: FileInfo[];
     clipboard?: PreviewFileClipboard | null;
 };
@@ -834,7 +835,10 @@ export async function makeDirectoryEntryMenuItems(
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fullFileNames))),
         }
     );
-    addOpenMenuItems(menu, conn, finfo, { openInCurrentBlock: options.openInCurrentBlock });
+    addOpenMenuItems(menu, conn, finfo, {
+        openInCurrentBlock: options.openInCurrentBlock,
+        openInNewBlock: options.openInNewBlock,
+    });
     menu.push(
         {
             type: "separator",

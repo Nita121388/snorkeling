@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { ChatEvent } from "./use-chat-stream";
 import { ThinkingDisclosure, ToolCallRow } from "./session-message";
 import { ToolGroup } from "./tool-group";
+import type { SessionDetailTimelineItem } from "./utils";
 
 export type LiveToolRun = {
     id?: string;
@@ -282,6 +283,81 @@ function liveToolPreview(text?: string): string {
     const collapsed = text.replace(/\s+/g, " ").trim();
     if (collapsed.length <= 120) return collapsed;
     return `${collapsed.slice(0, 120)}...`;
+}
+
+// 实时项分配一个稳定的、不会与真实落盘 seq 冲突的加密基准。
+// 真实消息 seq 均为小正整数；这里从高基准递增，渲染/合并互不干扰。
+const LiveSeqBase = 10_000_000;
+
+/**
+ * 把实时 turn 转成与历史完全相同的 timeline 项（Message / ToolCall），
+ * 使实时内容复用历史的 MessageCard / ToolCallCard 渲染。
+ *
+ * 数据模型：
+ *  - user echo → 一条 user Message（若尚未落盘）；
+ *  - thinking 段 → 一条 assistant Message，thinking 字段写入（历史同款折叠展开）；
+ *  - text 段 → assistant Message 的正文（连续 text 合并为一条，避免实时碎块）；
+ *  - tool 项 → ToolCall 项，带 liveStatus 以保留 running/完成态。
+ */
+export function liveTurnToTimelineItems(
+    turn: LiveTurn,
+    userMessagePersisted = false
+): SessionDetailTimelineItem[] {
+    const items: SessionDetailTimelineItem[] = [];
+    let seq = LiveSeqBase;
+
+    if (turn.userText && !userMessagePersisted) {
+        items.push({
+            kind: "message",
+            message: { role: "user", text: turn.userText, seq: seq++, charCount: turn.userText.length },
+        });
+    }
+
+    // 连续 text 段合并为一条 assistant 消息（与落盘一致：一条消息 = 一段正文）。
+    const flushText = () => {
+        if (!openText) return;
+        const text = openText.join("\n");
+        items.push({
+            kind: "message",
+            message: {
+                role: "assistant",
+                text,
+                seq: seq++,
+                thinking: openThinking.trim() || undefined,
+                charCount: text.length,
+            },
+        });
+        openText = [];
+        openThinking = "";
+    };
+    let openText: string[] = [];
+    let openThinking = "";
+
+    for (const item of turn.items) {
+        if (item.kind === "thinking") {
+            openThinking += item.text;
+        } else if (item.kind === "text") {
+            openText.push(item.text);
+        } else {
+            flushText(); // 工具前先收掉已到正文（与到达顺序一致）
+            const tool = item.tool;
+            const running = tool.status == null || tool.status === "running";
+            items.push({
+                kind: "tool",
+                toolCall: {
+                    seq: seq++,
+                    name: tool.name || "tool",
+                    summary: tool.args,
+                    output: tool.result,
+                },
+                anchorSeq: seq, // 占位锚点（live 不参与历史锚定）
+                liveStatus: running ? "running" : tool.status === "failed" ? "failed" : "completed",
+            });
+            seq++; // 锚点与 tool call seq 分离，避免与后续 text 冲突
+        }
+    }
+    flushText();
+    return items;
 }
 
 /**

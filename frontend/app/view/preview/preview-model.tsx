@@ -1595,6 +1595,42 @@ export class PreviewModel implements ViewModel {
         return null;
     }
 
+    private isFilePreviewBlock(block: Block): boolean {
+        const meta = block?.meta ?? {};
+        // A block that reports itself as a directory (pathisdir or a directory display
+        // mode) is a folder preview, not a file preview, so it must not be reused as a
+        // file tab container.
+        if (meta?.[PreviewPathIsDirMetaKey] === true) {
+            return false;
+        }
+        if (meta?.[PreviewDirectoryDisplayMetaKey] != null) {
+            return false;
+        }
+        return true;
+    }
+
+    private findDirectionalFilePreviewBlock(direction: PreviewOpenTargetDirection): string {
+        const navDirection = openTargetToNavigateDirection(direction);
+        if (navDirection == null) {
+            return null;
+        }
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetBlockIds = layoutModel.findBlockIdsInDirection(this.blockId, navDirection);
+        for (const targetBlockId of targetBlockIds) {
+            const targetBlock = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${targetBlockId}`));
+            if (targetBlock?.meta?.view !== "preview") {
+                continue;
+            }
+            if (targetBlock?.meta?.edit) {
+                continue;
+            }
+            if (this.isFilePreviewBlock(targetBlock)) {
+                return targetBlockId;
+            }
+        }
+        return null;
+    }
+
     private focusBlockById(blockId: string) {
         const layoutModel = getLayoutModelForStaticTab();
         const layoutNode = layoutModel.getNodeByBlockId(blockId);
@@ -1661,6 +1697,24 @@ export class PreviewModel implements ViewModel {
             return blockId;
         }
         return null;
+    }
+
+    private async createPreviewBlockForOpen(
+        newPath: string,
+        connection: string,
+        isDir: boolean
+    ): Promise<string | null> {
+        const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        const blockMeta: Record<string, any> = {
+            view: "preview",
+            file: newPath,
+            connection,
+            [PreviewPathIsDirMetaKey]: isDir,
+        };
+        const blockDef: BlockDef = {
+            meta: blockMeta,
+        };
+        return await ObjectService.CreateBlock(blockDef, rtOpts);
     }
 
     private async openPathInPreviewBlockAsTab(
@@ -1814,6 +1868,50 @@ export class PreviewModel implements ViewModel {
             } as any,
         };
         await createBlock(blockDef);
+    }
+
+    /**
+     * Smart "Open in New Block".
+     *
+     * - Folder (isDir=true): always add the new folder as a tab inside the CURRENT
+     *   block's group, tab-ifying the group if it is still a single block, instead of
+     *   creating a brand-new standalone block.
+     * - File (isDir=false): if the current open-target direction points at a *file*
+     *   preview block (or its tabified group), open the file as a tab there; otherwise
+     *   fall back to the normal new-block path.
+     */
+    async openPathInNewBlockSmart(newPath: string, isDir: boolean) {
+        const layoutModel = getLayoutModelForStaticTab();
+        const connection = await globalStore.get(this.connection);
+
+        if (isDir) {
+            const currentNode = layoutModel.getNodeByBlockId(this.blockId);
+            if (currentNode) {
+                const newBlockId = await this.createPreviewBlockForOpen(newPath, connection, true);
+                if (newBlockId) {
+                    if (layoutModel.addBlockToInlineTab(currentNode.id, newBlockId)) {
+                        this.focusBlockById(newBlockId);
+                        return;
+                    }
+                    fireAndForget(() => ObjectService.DeleteBlock(newBlockId));
+                }
+            }
+            await this.openPathInNewBlock(newPath, this.getOpenTargetDirection(), { pathIsDir: true });
+            return;
+        }
+
+        const direction = this.getOpenTargetDirection();
+        const targetFileBlockId = this.findDirectionalFilePreviewBlock(direction);
+        if (targetFileBlockId) {
+            const opened = await this.openPathInPreviewBlockAsTab(targetFileBlockId, newPath, connection, {
+                pathIsDir: false,
+            });
+            if (opened) {
+                this.focusBlockById(targetFileBlockId);
+                return;
+            }
+        }
+        await this.openPathInNewBlock(newPath, direction, { pathIsDir: false });
     }
 
     async openPathWithTarget(newPath: string, options?: PreviewOpenPathOptions) {

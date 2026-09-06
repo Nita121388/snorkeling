@@ -144,3 +144,49 @@ describe("reduceLiveTurn", () => {
         });
     });
 });
+
+import { liveTurnToTimelineItems } from "./use-live-turn";
+
+describe("liveTurnToTimelineItems", () => {
+    it("renders live turn as history-style message/tool timeline items", () => {
+        const turn: LiveTurn = {
+            userText: "build it",
+            userMessageSeqFloor: 0,
+            items: [
+                { kind: "thinking", text: "planning" },
+                { kind: "text", text: "Let me " },
+                { kind: "text", text: "check." },
+                { kind: "tool", tool: { name: "bash", args: "ls", status: "running" } },
+                { kind: "text", text: "Done." },
+            ],
+        };
+        const items = liveTurnToTimelineItems(turn, false);
+        expect(items[0]).toMatchObject({ kind: "message", message: { role: "user", text: "build it" } });
+        // thinking + 连续 text 合并为一条 assistant 消息
+        const assistant = items.find((i) => i.kind === "message" && i.message.role === "assistant" && i.message.text === "Let me \ncheck.");
+        expect(assistant).toBeTruthy();
+        if (assistant && assistant.kind === "message") {
+            expect(assistant.message.thinking).toBe("planning");
+        }
+        // 工具转成带 running liveStatus 的 tool 项
+        const tool = items.find((i) => i.kind === "tool");
+        expect(tool).toMatchObject({ kind: "tool", liveStatus: "running" });
+        if (tool && tool.kind === "tool") {
+            expect(tool.toolCall.name).toBe("bash");
+            expect(tool.toolCall.summary).toBe("ls");
+        }
+        // 用户消息已落盘时不再重复渲染 user echo
+        const persistedItems = liveTurnToTimelineItems(turn, true);
+        expect(persistedItems[0]).not.toMatchObject({ kind: "message", message: { role: "user" } });
+    });
+
+    it("marks failed tool liveStatus", () => {
+        const turn: LiveTurn = {
+            userText: "",
+            userMessageSeqFloor: 0,
+            items: [{ kind: "tool", tool: { name: "bash", status: "failed", result: "boom" } }],
+        };
+        const tool = liveTurnToTimelineItems(turn, true).find((i) => i.kind === "tool");
+        expect(tool).toMatchObject({ kind: "tool", liveStatus: "failed" });
+    });
+});

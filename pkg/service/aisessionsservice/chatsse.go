@@ -4,13 +4,16 @@
 package aisessionsservice
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/aisessions/chat"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/web/sse"
@@ -158,7 +161,9 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Emit a session snapshot so the frontend can prime the header without
 	// waiting for the first turn.
+	var state *chat.SessionStateInfo
 	if st, err := session.GetState(r.Context()); err == nil {
+		state = st
 		_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
 		// If pi assigned a real session ID, promote the session from its transient key
 		// so subsequent requests with the real ID can find it.
@@ -166,6 +171,7 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 			chatManager.PromoteSession(req.Source, sessionKey, st.SessionID, session)
 		}
 	}
+	registerLiveChatSession(req, state)
 
 	if req.Command != nil {
 		data, err := session.Control(r.Context(), req.Command.Name, req.Command.Args)
@@ -196,8 +202,10 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Wire mapped ChatEvents to the SSE stream.
 	turnDone := make(chan struct{})
+	var endType chat.ChatEventType
 	unsub := session.OnEvent(func(evt chat.ChatEvent) {
 		if evt.Type == chat.TurnEnd || evt.Type == chat.TurnFailed {
+			endType = evt.Type
 			select {
 			case <-turnDone:
 			default:
@@ -219,10 +227,65 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-turnDone:
+		// Normal turn end: confirm the transcript was flushed to disk before
+		// handing control back to the GUI, then emit a terminal turn_persisted
+		// event so the frontend can swap the streaming view for the persisted
+		// one without polling. Failures skip the wait (file state uncertain).
+		if endType == chat.TurnEnd {
+			persistCtx, cancel := context.WithTimeout(context.Background(), chat.DefaultPersistTimeout)
+			persisted := session.WaitPersisted(persistCtx, chat.DefaultPersistTimeout)
+			cancel()
+			_ = sseHandler.WriteJsonData(chat.ChatEvent{Type: chat.TurnPersisted, Persisted: persisted})
+			if st, err := session.GetState(context.Background()); err == nil {
+				_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
+			}
+		}
 	case <-r.Context().Done():
 		// Client vanished mid-turn; stop the agent so it doesn't keep working.
 		_ = session.Abort(r.Context())
 	}
+}
+
+// registerLiveChatSession records the freshly spawned chat session in the
+// aisessions live registry so Summary/Detail resolve it even before the
+// agent flushes its transcript file (pi defers file creation until the first
+// assistant message). The title is seeded from the first prompt line, which
+// is also what the scan-based title derivation would produce later.
+func registerLiveChatSession(req AISessionsChatRequest, state *chat.SessionStateInfo) {
+	if state == nil || state.SessionID == "" || req.Source == "" {
+		return
+	}
+	nowMS := time.Now().UnixMilli()
+	summary := aisessions.SessionSummary{
+		Source:      req.Source,
+		ID:          state.SessionID,
+		Title:       provisionalChatTitle(req.Message),
+		TitleSource: "live",
+		ProjectPath: req.ProjectPath,
+		CreatedAt:   nowMS,
+		UpdatedAt:   nowMS,
+		FilePath:    state.SessionFile,
+	}
+	summary.Key = aisessions.StableKey(summary.Source, summary.ID, summary.FilePath)
+	aisessions.RegisterLiveSession(summary)
+}
+
+// provisionalChatTitle derives the provisional session title from the user's
+// prompt: first non-empty line, whitespace-normalized, bounded to 60 chars
+// (same shape as the scan-based first_user_message title).
+func provisionalChatTitle(message string) string {
+	for _, line := range strings.Split(message, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		normalized := strings.Join(strings.Fields(trimmed), " ")
+		if len(normalized) > 60 {
+			normalized = normalized[:60]
+		}
+		return normalized
+	}
+	return ""
 }
 
 // svrDebugf mirrors aiSessionsDebugf (kept local to the chat file to avoid

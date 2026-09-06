@@ -225,7 +225,7 @@ export class AgentViewModel implements ViewModel {
             if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
                 return;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return;
             globalStore.set(this.historySyncErrorAtom, "");
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
@@ -319,6 +319,38 @@ export class AgentViewModel implements ViewModel {
         globalStore.set(this.detailAtom, nextDetail);
     }
 
+    // turn_end 后只刷新工具调用：保留已渲染的消息列表（delta 已增量合并），
+    // 仅把 ToolCalls 更新为正式数据，避免整块 Detail 替换造成旧内容闪烁/丢失。
+    async refreshToolCallsOnly(): Promise<boolean> {
+        const currentDetail = globalStore.get(this.detailAtom);
+        const currentSummary = currentDetail?.summary;
+        if (!currentSummary?.key) {
+            return false;
+        }
+        const loadSeq = ++this.detailToolsLoadSeq;
+        globalStore.set(this.toolCallsLoadingAtom, true);
+        try {
+            const detail = await this.service.Detail({
+                id: currentSummary.key,
+                connection: this.getConnection(),
+                refresh: false,
+                includeTools: true,
+            });
+            const latest = globalStore.get(this.detailAtom);
+            if (loadSeq !== this.detailToolsLoadSeq || latest?.summary?.key !== currentSummary.key) {
+                return false;
+            }
+            globalStore.set(this.detailAtom, { ...latest, toolCalls: detail.toolCalls ?? [] });
+            return true;
+        } catch (e) {
+            return false;
+        } finally {
+            if (loadSeq === this.detailToolsLoadSeq) {
+                globalStore.set(this.toolCallsLoadingAtom, false);
+            }
+        }
+    }
+
     async loadDetailTools(refresh = false): Promise<boolean> {
         const currentDetail = globalStore.get(this.detailAtom);
         const currentSummary = currentDetail?.summary;
@@ -344,7 +376,7 @@ export class AgentViewModel implements ViewModel {
             ) {
                 return false;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             return true;
         } catch (e) {
             if (loadSeq === this.detailToolsLoadSeq && globalStore.get(this.selectedKeyAtom) === selectedKey) {
@@ -356,6 +388,23 @@ export class AgentViewModel implements ViewModel {
                 globalStore.set(this.toolCallsLoadingAtom, false);
             }
         }
+    }
+
+    commitDetail(detail: SessionDetail): boolean {
+        const current = globalStore.get(this.detailAtom);
+        if (
+            current?.summary?.key === detail.summary?.key &&
+            (detail.messages?.length ?? 0) < (current.messages?.length ?? 0)
+        ) {
+            console.debug("aisessions: refused stale detail regression", {
+                key: detail.summary?.key,
+                current: current.messages?.length ?? 0,
+                incoming: detail.messages?.length ?? 0,
+            });
+            return false;
+        }
+        globalStore.set(this.detailAtom, detail);
+        return true;
     }
 
     async refreshBoundSessionSummary(): Promise<void> {
@@ -387,7 +436,7 @@ export class AgentViewModel implements ViewModel {
                 includeTools: true,
             });
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             return true;
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -518,6 +567,7 @@ export class AgentViewModel implements ViewModel {
             loadDetail: this.loadDetail.bind(this),
             loadDetailDelta: this.loadDetailDelta.bind(this),
             loadDetailTools: this.loadDetailTools.bind(this),
+            refreshToolCallsOnly: this.refreshToolCallsOnly.bind(this),
             updateNote: this.updateNote.bind(this),
             updateTitle: this.updateTitle.bind(this),
             deleteSession: this.deleteSession.bind(this),

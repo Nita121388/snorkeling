@@ -64,6 +64,8 @@ export type SessionDetailTimelineItem =
           kind: "tool";
           toolCall: ToolCall;
           anchorSeq: number;
+          /** 实时流式工具行的运行状态覆盖（历史工具由 exitCode 推断）。 */
+          liveStatus?: "running" | "completed" | "failed";
       };
 
 export function buildSessionDetailTimeline(

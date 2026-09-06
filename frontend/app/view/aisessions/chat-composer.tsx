@@ -95,8 +95,9 @@ type ChatComposerProps = {
     provider?: string;
     model?: string;
     streamStatus: ChatStreamStatus;
+    queuedCount?: number;
     onSend: (body: ChatRequestBody) => void;
-    onSteer: (body: ChatRequestBody) => void;
+    onQueue: (body: ChatRequestBody) => void;
     onAbort: () => void;
     onSourceChange?: (source: string) => void;
 };
@@ -112,8 +113,9 @@ function ChatComposerInner({
     provider,
     model,
     streamStatus,
+    queuedCount = 0,
     onSend,
-    onSteer,
+    onQueue,
     onAbort,
     onSourceChange,
 }: ChatComposerProps) {
@@ -464,12 +466,12 @@ function ChatComposerInner({
         setInput("");
         setImages([]);
         if (isRunning) {
-            onSteer(body);
+            onQueue(body);
         } else {
             onSend(body);
         }
         inputRef.current?.focus();
-    }, [canSubmit, input, slashQuery, allCommands, applyBuiltin, baseBody, images, isRunning, onSend, onSteer]);
+    }, [canSubmit, input, slashQuery, allCommands, applyBuiltin, baseBody, images, isRunning, onSend, onQueue]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -581,6 +583,11 @@ function ChatComposerInner({
                 {notice ? (
                     <div className="pb-1 pt-0.5 text-[11px] text-secondary" role="status">
                         {notice}
+                    </div>
+                ) : null}
+                {queuedCount > 0 ? (
+                    <div className="pb-1 pt-0.5 text-[11px] text-accent" role="status">
+                        {queuedCount} message{queuedCount === 1 ? "" : "s"} queued — waiting for the current turn
                     </div>
                 ) : null}
                 <div ref={cardRef} className="relative">
@@ -905,15 +912,21 @@ function ChatComposerInner({
                                 />
                             </button>
                             {isRunning ? (
-                                <button
-                                    type="button"
-                                    className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white hover:bg-accent/85"
-                                    title="Stop"
-                                    aria-label="Stop"
-                                    onClick={handleAbort}
-                                >
-                                    <i className="fa-sharp fa-solid fa-square text-[10px]" />
-                                </button>
+                                <>
+                                    <div className="ml-auto flex h-8 shrink-0 items-center gap-1.5 px-1 text-xs text-accent" role="status">
+                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
+                                        <span>Working</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white hover:bg-accent/85"
+                                        title="Stop"
+                                        aria-label="Stop"
+                                        onClick={handleAbort}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-square text-[10px]" />
+                                    </button>
+                                </>
                             ) : (
                                 <button
                                     type="button"
