@@ -37,6 +37,7 @@ import {
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
+import { isAgentTerminalMeta } from "./agent-meta";
 import {
     bufferLinesToText,
     createTempFileFromBlob,
@@ -52,6 +53,12 @@ const agentStatusLog = debug("wave:agentstatus");
 const TermFileName = "term";
 const TermCacheFileName = "cache:term:full";
 const MinDataProcessedForCache = 100 * 1024;
+// 全局空闲保存节流：无论多少个终端，两次 save 之间至少间隔这么久，避免多个大
+// serialize 在主线程上连成片、挤占切 Tab / 新建 agent 的交互响应。保留 dataBytesProcessed
+// 让下一个空闲周期补做，因此不会丢数据，只是降低保存频率。
+const MinTermSaveIntervalMs = 1500;
+// 模块级记录上一次实际触发的空闲保存时间（跨所有 TermWrap 实例共享）。
+let lastTermSaveTs = 0;
 export const SupportsImageInput = true;
 const MaxRepaintTransactionMs = 2000;
 
@@ -729,10 +736,37 @@ export class TermWrap {
         }
     }
 
+    private isAgentBlock(): boolean {
+        // 与顶部会话条（TermSessionTopBar）用同一套判定：meta 解析出 agent 会话才算 agent 块。
+        try {
+            const block = globalStore.get(
+                WOS.getWaveObjectAtom(WOS.makeORef("block", this.blockId))
+            ) as { meta?: Record<string, unknown> } | null | undefined;
+            return isAgentTerminalMeta(block?.meta ?? null);
+        } catch (err) {
+            dlog("isAgentBlock check failed", this.blockId, err);
+            return false;
+        }
+    }
+
     processAndCacheData() {
         if (this.dataBytesProcessed < MinDataProcessedForCache) {
             return;
         }
+        // Agent TUI 是动态全屏程序，保存下来的快照没有复现价值，却要承担最重的
+        // serialize + 写盘，且 agent 输出很容易突破阈值造成频繁大序列化 → 直接跳过。
+        // 历史输出仍完整记录在 term 主文件中，不受影响；只是重开该块时不能秒回画面。
+        if (this.isAgentBlock()) {
+            this.dataBytesProcessed = 0;
+            return;
+        }
+        // 全局节流：最近 MinTermSaveIntervalMs 内已有别的终端做过空闲保存，则本次跳过，
+        // 保留 dataBytesProcessed 等下一个空闲周期补做。
+        const now = Date.now();
+        if (now - lastTermSaveTs < MinTermSaveIntervalMs) {
+            return;
+        }
+        lastTermSaveTs = now;
         const serializedOutput = this.serializeAddon.serialize();
         const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
         console.log("[termwrap] idle save terminal state", {
