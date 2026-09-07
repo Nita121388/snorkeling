@@ -995,13 +995,11 @@ const CommonTextComposeModal = memo(() => {
                     </Button>
                     {canSendToTerm ? (
                         <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
-                            <i className="fa fa-solid fa-terminal mr-1" />
                             Send
                         </Button>
                     ) : (
                         <span title="Focus a terminal to enable Send" className="inline-flex">
                             <Button className="grey" disabled>
-                                <i className="fa fa-solid fa-terminal mr-1" />
                                 Send
                             </Button>
                         </span>

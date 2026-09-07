@@ -100,7 +100,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-brands fa-github mr-2"></i>Snorkeling Repo
+                        Snorkeling Repo
                     </a>
                     <a
                         href={WAVE_UPSTREAM_REPO_URL}
@@ -108,7 +108,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-brands fa-github mr-2"></i>Wave Upstream
+                        Wave Upstream
                     </a>
                     <a
                         href={`${SNORKELING_REPO_URL}/blob/main/ACKNOWLEDGEMENTS.md`}
@@ -116,7 +116,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-book mr-2"></i>Open Source
+                        Open Source
                     </a>
                     <a
                         href={WAVE_WEBSITE_URL}
@@ -124,7 +124,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-globe mr-2"></i>Wave Website
+                        Wave Website
                     </a>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2 self-stretch w-full">
@@ -133,7 +133,6 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         onClick={toggleDebugInfo}
                         className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-bug mr-2" />
                         {debugVisible ? "Hide Debug Info" : "Show Debug Info"}
                     </button>
                     <button
@@ -141,7 +140,6 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         onClick={copyDebugInfo}
                         className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-copy mr-2" />
                         {copyStatus || "Copy Debug Info"}
                     </button>
                     {debugVisible && (
@@ -151,7 +149,6 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                             disabled={debugLoading}
                             className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg disabled:opacity-50 transition-colors duration-200"
                         >
-                            <i className="fa-sharp fa-light fa-rotate mr-2" />
                             Refresh
                         </button>
                     )}
