@@ -647,7 +647,7 @@ const BlockFrame_Header = ({
                 moveContext={moveContext}
                 isHovered={isHovered}
             />
-            {/* Agent hover card - only show for agent blocks in GUI mode (TUI uses TermSessionTopBar) */}
+            {/* Agent hover card - only show for agent blocks in GUI mode (TUI uses TermAgentSessionRail) */}
             {isAgentBlock && (isHovered || isCardHovered) && (
                 <div
                     className="agent-hover-card-wrapper"

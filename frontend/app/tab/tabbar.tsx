@@ -14,6 +14,7 @@ import {
     useAcquireWorkspaceBlockStatuses,
 } from "@/app/agent-status/agent-status-tab-aggregate";
 import { globalStore } from "@/app/store/jotaiStore";
+import { getMinimizedBlockIds } from "@/app/block/block-minimize";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -21,7 +22,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab } from "@/layout/index";
 import { isMacOSTahoeOrLater } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
-import { useAtomValue } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
@@ -34,6 +35,9 @@ const TAB_HEADER_HOVER_DELAY_MS = 2000;
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
+
+// fallback atom used when there is no active tab (prevents a null atom for useAtomValue)
+const emptyTabAtom = atom<Tab | null>(null);
 
 const TabDefaultWidth = 130;
 const TabMinWidth = 100;
@@ -178,11 +182,22 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         if (typeof window === "undefined") return true;
         try { return localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"; } catch { return true; }
     });
+    // ── per-tab minimized block count for the active tab (shown on the sidebar toggle) ──
+    const activeTabAtom = useMemo(
+        () => (activeTabId ? env.wos.getWaveObjectAtom<Tab>(makeORef("tab", activeTabId)) : null),
+        [activeTabId]
+    );
+    const activeTabData = useAtomValue(activeTabAtom ?? emptyTabAtom);
+    const activeMinimizedCount = useMemo(() => getMinimizedBlockIds(activeTabData).length, [activeTabData]);
     useEffect(() => {
-        const handler = () => setSidebarExpanded(false);
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ tabId?: string }>).detail;
+            if (detail?.tabId !== activeTabId) return;
+            setSidebarExpanded(false);
+        };
         window.addEventListener("block-sidebar:collapse", handler);
         return () => window.removeEventListener("block-sidebar:collapse", handler);
-    }, []);
+    }, [activeTabId]);
     useEffect(() => {
         if (typeof window === "undefined") return;
         try { setSidebarExpanded(localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"); } catch { setSidebarExpanded(true); }
@@ -879,17 +894,28 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             )}
             <button
                 type="button"
-                className="session-overview-tabbutton"
+                className={clsx("session-overview-tabbutton", activeMinimizedCount > 0 && "has-blocks-badge")}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={() => {
                     const next = !sidebarExpanded;
                     setSidebarExpanded(next);
-                    window.dispatchEvent(new Event(next ? "block-sidebar:expand" : "block-sidebar:collapse"));
+                    window.dispatchEvent(
+                        new CustomEvent(next ? "block-sidebar:expand" : "block-sidebar:collapse", {
+                            detail: { tabId: activeTabId },
+                        })
+                    );
                 }}
-                title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                title={
+                    sidebarExpanded
+                        ? "Collapse sidebar"
+                        : `Expand sidebar${activeMinimizedCount > 0 ? ` (${activeMinimizedCount} minimized)` : ""}`
+                }
                 aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
             >
                 <i className={clsx("fa fa-solid", sidebarExpanded ? "fa-chevron-left" : "fa-chevron-right")} />
+                {activeMinimizedCount > 0 && (
+                    <span className="block-sidebar-count-badge">{activeMinimizedCount}</span>
+                )}
             </button>
             <WaveAIButton divRef={waveAIButtonRef} />
             {!noTabs && <SessionOverviewButton />}

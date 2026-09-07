@@ -126,6 +126,22 @@
         }
     }
 
+    /* Agent TUI 右侧 Message 刻度轨 (TermAgentMessageRail) */
+    .term-agent-msg-rail {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 24;
+        width: 36px;
+        pointer-events: none;
+
+        /* SessionOutlineRail 自身是 absolute；让它以整个 terminal 为参照垂直居中。 */
+        > * {
+            pointer-events: auto;
+        }
+    }
+
     .term-session-topbar {
         position: relative;
         z-index: 20;

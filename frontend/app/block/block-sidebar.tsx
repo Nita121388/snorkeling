@@ -385,11 +385,17 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
 
     // ── listen for expand/collapse events from tabbar ──
     useEffect(() => {
-        const onExpand = () => {
+        const isForThisTab = (event: Event): boolean => {
+            const detail = (event as CustomEvent<{ tabId?: string }>).detail;
+            return detail?.tabId === tabId;
+        };
+        const onExpand = (event: Event) => {
+            if (!isForThisTab(event)) return;
             setPinned(true);
             savePinned(tabId, true);
         };
-        const onCollapse = () => {
+        const onCollapse = (event: Event) => {
+            if (!isForThisTab(event)) return;
             setPinned(false);
             savePinned(tabId, false);
         };

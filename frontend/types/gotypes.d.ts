@@ -1777,6 +1777,13 @@ declare global {
         tabid: string;
     };
 
+    // wconfig.PinnedDirectoryType
+    type PinnedDirectoryType = {
+        path: string;
+        label?: string;
+        addedAt?: number;
+    };
+
     // waveobj.Point
     type Point = {
         x: number;
@@ -2136,7 +2143,7 @@ declare global {
         "preview:defaultsort"?: string;
         "preview:defaultdirectorydisplay"?: string;
         "preview:defaultopentarget"?: string;
-        "preview:pinned-directories"?: { path: string; label?: string; addedAt?: number }[];
+        "preview:pinned-directories"?: PinnedDirectoryType[];
         "tab:preset"?: string;
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;

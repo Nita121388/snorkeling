@@ -1,19 +1,20 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { DefaultAgentWidgetId, DefaultTerminalWidgetId } from "@/app/workspace/agent-launch";
 import { pickGroupAddableWidgets, type GroupAddableWidget } from "@/app/block/inlinetab-addmenu";
+import { Modal } from "@/app/modals/modal";
+import { atoms, createBlock, createBlockSplitVertically } from "@/app/store/global";
+import { globalStore } from "@/app/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
+import { ObjectService } from "@/app/store/services";
+import { DefaultAgentWidgetId, DefaultTerminalWidgetId } from "@/app/workspace/agent-launch";
 import { requestLaunchPopup } from "@/app/workspace/launch-popup-bus";
 import { LayoutTreeActionType, getLayoutModelForStaticTab, newLayoutNode } from "@/layout/index";
-import { ObjectService } from "@/app/store/services";
-import { atoms, createBlock } from "@/app/store/global";
-import { globalStore } from "@/app/store/jotaiStore";
 import { fireAndForget, makeIconClass } from "@/util/util";
-import { Modal } from "@/app/modals/modal";
-import { modalsModel } from "@/app/store/modalmodel";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PlacementTarget } from "./block-placement-store";
 
 import "./widget-quick-launch.scss";
 
@@ -23,6 +24,16 @@ const DefaultRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
 type Placement = "new" | "group";
 
+// 可选：Ctrl+Hover 传入的放置上下文。非空时创建会落到指定位置（before/after/group），
+// 而不是默认的当前 Tab / 当前 focused group。
+type QuickLaunchPlacement = {
+    target: PlacementTarget;
+};
+
+type WidgetQuickLaunchModalProps = {
+    placement?: QuickLaunchPlacement;
+};
+
 // bloom-menu 风格网格列数：数量少时更稀疏，避免格子被挤扁。
 function gridCols(count: number): number {
     if (count <= 4) return 2;
@@ -30,7 +41,7 @@ function gridCols(count: number): number {
     return 4;
 }
 
-const WidgetQuickLaunchModal = memo(() => {
+const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps) => {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const workspaceId = useAtomValue(atoms.workspaceId);
     const [highlightIdx, setHighlightIdx] = useState(0);
@@ -59,8 +70,10 @@ const WidgetQuickLaunchModal = memo(() => {
     const launch = useCallback(
         (w: GroupAddableWidget, place: Placement) => {
             const isTarget = w.id === DefaultTerminalWidgetId || w.id === DefaultAgentWidgetId;
+            const placementTarget = placement?.target ?? null;
             // Terminal / Agent: route to the existing target-selector popup (same as the right WidgetsBar),
-            // carrying the placement as the group sink.
+            // carrying the placement as the group sink. Ctrl+Hover 场景暂不支持 target 类 widget 的放置上下文，
+            // 保持原有走中间弹窗的路径（nodeId 沿用 focused group sink）。
             if (isTarget) {
                 const sinkNodeId = place === "group" ? getSinkNodeId() : undefined;
                 // 冻结的视口正中锚点（取代之前的 1px 临时 div + 300ms 后移除）：
@@ -81,6 +94,43 @@ const WidgetQuickLaunchModal = memo(() => {
                 return;
             }
             const magnified = Boolean(w.config.magnified);
+
+            // Ctrl+Hover 放置上下文：before/after 用 SplitVertical，group 用 addBlockToInlineTab。
+            if (placementTarget != null && (placementTarget.kind === "before" || placementTarget.kind === "after")) {
+                const splitPosition = placementTarget.kind;
+                fireAndForget(async () => {
+                    try {
+                        await createBlockSplitVertically(blockDef, placementTarget.blockId, splitPosition);
+                    } catch (error) {
+                        console.error("Error creating block at placement:", error);
+                    }
+                });
+                close();
+                return;
+            }
+            if (placementTarget != null && placementTarget.kind === "group") {
+                fireAndForget(async () => {
+                    const newBlockId = await ObjectService.CreateBlock(blockDef, DefaultRuntimeOpts);
+                    const layoutModel = getLayoutModelForStaticTab();
+                    const targetNodeId = layoutModel?.getNodeByBlockId(placementTarget.blockId)?.id;
+                    if (
+                        targetNodeId == null ||
+                        layoutModel == null ||
+                        !layoutModel.addBlockToInlineTab(targetNodeId, newBlockId)
+                    ) {
+                        const insertNodeAction = {
+                            type: LayoutTreeActionType.InsertNode,
+                            node: newLayoutNode(undefined, undefined, undefined, { blockId: newBlockId }),
+                            magnified,
+                            focused: true,
+                        };
+                        layoutModel?.treeReducer(insertNodeAction);
+                    }
+                });
+                close();
+                return;
+            }
+
             if (place === "group") {
                 const sinkNodeId = getSinkNodeId();
                 fireAndForget(async () => {
@@ -88,7 +138,11 @@ const WidgetQuickLaunchModal = memo(() => {
                     const layoutModel = getLayoutModelForStaticTab();
                     // 创建漏斗改道进组（addBlockToInlineTab 对单 Block 节点会自动升级为组）；
                     // sink 缺失或节点不存在则退回普通入 tab 插入，不丢 block。
-                    if (sinkNodeId == null || layoutModel == null || !layoutModel.addBlockToInlineTab(sinkNodeId, newBlockId)) {
+                    if (
+                        sinkNodeId == null ||
+                        layoutModel == null ||
+                        !layoutModel.addBlockToInlineTab(sinkNodeId, newBlockId)
+                    ) {
                         const insertNodeAction = {
                             type: LayoutTreeActionType.InsertNode,
                             node: newLayoutNode(undefined, undefined, undefined, { blockId: newBlockId }),
@@ -247,6 +301,9 @@ WidgetQuickLaunchModal.displayName = "WidgetQuickLaunchModal";
 
 export { WidgetQuickLaunchModal };
 
-export function openWidgetQuickLaunch(): void {
-    modalsModel.pushModal(WidgetQuickLaunchModal.displayName);
+export function openWidgetQuickLaunch(placement?: PlacementTarget): void {
+    modalsModel.pushModal(
+        WidgetQuickLaunchModal.displayName,
+        placement == null ? undefined : { placement: { target: placement } }
+    );
 }

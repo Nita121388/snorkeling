@@ -69,6 +69,24 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "PinnedDirectoryType": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "addedAt": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    },
     "SettingsType": {
       "properties": {
         "app:*": {
@@ -367,16 +385,10 @@
           ]
         },
         "preview:pinned-directories": {
-          "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "path": { "type": "string" },
-              "label": { "type": "string" },
-              "addedAt": { "type": "number" }
-            },
-            "required": ["path"]
-          }
+            "$ref": "#/$defs/PinnedDirectoryType"
+          },
+          "type": "array"
         },
         "tab:preset": {
           "type": "string"

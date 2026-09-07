@@ -13,7 +13,7 @@ import { EmptyState } from "./empty-state";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
-import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "./session-outline-rail";
+import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
 import { SessionTagChips } from "./session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";

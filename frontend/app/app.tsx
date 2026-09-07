@@ -1,9 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { setMonacoTheme } from "@/app/monaco/monaco-env";
-import { applyAppTheme } from "@/app/theme-mode";
 import { waveAIHasSelection } from "@/app/aipanel/waveai-focus-utils";
+import { setMonacoTheme } from "@/app/monaco/monaco-env";
 import {
     clearBadgesForBlockOnFocus,
     clearBadgesForTabOnFocus,
@@ -15,8 +14,10 @@ import { FocusManager } from "@/app/store/focusManager";
 import { GlobalModel } from "@/app/store/global-model";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId, TabModelContext } from "@/app/store/tab-model";
+import { applyAppTheme } from "@/app/theme-mode";
 import { WaveEnvContext } from "@/app/waveenv/waveenv";
 import { makeWaveEnvImpl } from "@/app/waveenv/waveenvimpl";
+import { BlockPlacementController } from "@/app/workspace/block-placement-controller";
 import { Workspace } from "@/app/workspace/workspace";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { ContextMenuModel } from "@/store/contextmenu";
@@ -437,6 +438,7 @@ const AppInner = () => {
             <MacOSFirstClickHandler />
             <AppKeyHandlers />
             <AppFocusHandler />
+            <BlockPlacementController />
             <AppSettingsUpdater />
             <BadgeAutoClearing />
             <DndProvider backend={HTML5Backend}>

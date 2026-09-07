@@ -10,6 +10,7 @@
 // - 动效：140ms ease-out CSS transition（Paseo web 同款，不用 rAF 弹簧）
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/util/util";
 
 const RAIL_WIDTH = 36;
@@ -178,15 +179,24 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
 }: {
     prompts: OutlinePrompt[];
     activeSeq: number | null;
-    onJump: (seq: number) => void;
+    /**
+     * 可选：点击 tick 跳转消息位置（GUI 会话详情）。
+     * 缺省时（如 TUI 消息轨）点击 = 固定/取消固定该消息的完整预览气泡。
+     */
+    onJump?: (seq: number) => void;
 }) {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const [pinnedSeq, setPinnedSeq] = useState<number | null>(null);
     const [previewState, setPreviewState] = useState<{
         rect: DOMRect;
         preview: string;
+        pinned: boolean;
     } | null>(null);
     const railRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const closeTimerRef = useRef<number | null>(null);
+    const previewHoveredRef = useRef(false);
+    const [copied, setCopied] = useState(false);
 
     const hoverIntent = useRef(
         createHoverIntent({
@@ -195,30 +205,88 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
             cancel: (id) => window.clearTimeout(id),
         })
     );
-    useEffect(() => () => hoverIntent.current.dispose(), []);
-    const handleHover = useCallback((index: number) => hoverIntent.current.pointAt(index), []);
-
-    // 当 hoveredIndex 变化时，直接从 DOM 读取 pill 位置来设置预览
+    useEffect(
+        () => () => {
+            hoverIntent.current.dispose();
+            if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+        },
+        []
+    );
     useEffect(() => {
-        if (hoveredIndex === null || !scrollRef.current) {
+        if (pinnedSeq == null) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setPinnedSeq(null);
+                hoverIntent.current.leave();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [pinnedSeq]);
+    const cancelClose = useCallback(() => {
+        if (closeTimerRef.current != null) {
+            window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    }, []);
+    const scheduleClose = useCallback(() => {
+        cancelClose();
+        closeTimerRef.current = window.setTimeout(() => {
+            closeTimerRef.current = null;
+            if (!previewHoveredRef.current && pinnedSeq == null) hoverIntent.current.leave();
+        }, 500);
+    }, [cancelClose, pinnedSeq]);
+    const handleHover = useCallback((index: number) => {
+        cancelClose();
+        hoverIntent.current.pointAt(index);
+    }, [cancelClose]);
+    const handleJump = useCallback(
+        (seq: number) => {
+            if (onJump != null) {
+                onJump(seq);
+                return;
+            }
+            setPinnedSeq((current) => (current === seq ? null : seq));
+        },
+        [onJump]
+    );
+
+    // 当 hoveredIndex / pinnedSeq 变化时，直接从 DOM 读取 pill 位置来设置预览。
+    // 固定点击优先于悬浮，保证点击后气泡不随指针离开消失。
+    useEffect(() => {
+        let index: number | null = null;
+        let pinned = false;
+        if (onJump == null && pinnedSeq != null) {
+            const found = prompts.findIndex((p) => p.seq === pinnedSeq);
+            if (found >= 0) {
+                index = found;
+                pinned = true;
+            }
+        }
+        if (index == null) {
+            index = hoveredIndex;
+        }
+        if (index == null || !scrollRef.current) {
             setPreviewState(null);
             return;
         }
-        const pill = scrollRef.current.children[hoveredIndex] as HTMLElement;
+        const pill = scrollRef.current.children[index] as HTMLElement;
         if (!pill) {
             setPreviewState(null);
             return;
         }
         const rect = pill.getBoundingClientRect();
-        setPreviewState({ rect, preview: prompts[hoveredIndex]?.preview ?? "" });
-    }, [hoveredIndex, prompts]);
+        setPreviewState({ rect, preview: prompts[index]?.preview ?? "", pinned });
+    }, [hoveredIndex, pinnedSeq, prompts, onJump]);
 
     // 滚动/resize 时刷新预览位置
     useEffect(() => {
-        if (hoveredIndex === null) return;
+        const index =
+            onJump == null && pinnedSeq != null ? prompts.findIndex((p) => p.seq === pinnedSeq) : hoveredIndex;
+        if (index == null || index < 0) return;
         const refresh = () => {
             if (!scrollRef.current) return;
-            const pill = scrollRef.current.children[hoveredIndex!] as HTMLElement;
+            const pill = scrollRef.current.children[index] as HTMLElement;
             if (!pill) return;
             const rect = pill.getBoundingClientRect();
             setPreviewState((prev) => (prev ? { ...prev, rect } : prev));
@@ -230,7 +298,7 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
             window.removeEventListener("scroll", onFrame, true);
             window.removeEventListener("resize", onFrame);
         };
-    }, [hoveredIndex]);
+    }, [hoveredIndex, pinnedSeq, prompts, onJump]);
 
     if (prompts.length < 2) return null;
     const attentionIndex = hoveredIndex;
@@ -241,9 +309,12 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                 ref={railRef}
                 className="pointer-events-none absolute right-0 top-1/2 z-20 -translate-y-1/2 flex flex-col justify-center py-1"
                 style={{ width: RAIL_WIDTH }}
-                onMouseEnter={(e) => hoverIntent.current.enter({ x: e.clientX, y: e.clientY })}
+                onMouseEnter={(e) => {
+                    cancelClose();
+                    hoverIntent.current.enter({ x: e.clientX, y: e.clientY });
+                }}
                 onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => hoverIntent.current.leave()}
+                onMouseLeave={scheduleClose}
             >
                 <div ref={scrollRef} className="overflow-y-auto max-h-[300px] scrollbar-hide" style={{ width: RAIL_WIDTH }}>
                     {prompts.map((prompt, index) => (
@@ -254,24 +325,67 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                             isActive={prompt.seq === activeSeq}
                             attentionIndex={attentionIndex}
                             onHover={handleHover}
-                            onJump={onJump}
+                            onJump={handleJump}
                         />
                     ))}
                 </div>
             </div>
-            {previewState && (
-                <div
-                    className="pointer-events-none fixed z-50 rounded-lg border border-border bg-panel px-3 py-2 text-xs leading-4 text-primary shadow-xl"
-                    style={{
-                        width: PREVIEW_WIDTH,
-                        right: window.innerWidth - previewState.rect.left + 6,
-                        top: previewState.rect.top + previewState.rect.height / 2,
-                        transform: "translateY(-50%)",
-                    }}
-                >
-                    <span className="line-clamp-2">{previewState.preview}</span>
-                </div>
-            )}
+            {/* 预览气泡走 portal: rail 可能挂在带 transform 的祖先(如 TUI 消息轨)下,
+                position:fixed 会被 transform 捕获而定位错乱。 */}
+            {previewState &&
+                createPortal(
+                    <div
+                        className={cn(
+                            "pointer-events-auto fixed z-50 rounded-lg border border-border bg-panel px-3 py-2 text-xs leading-4 text-primary shadow-xl",
+                            "select-text",
+                            previewState.pinned && "ring-1 ring-primary/30"
+                        )}
+                        onMouseEnter={() => {
+                            previewHoveredRef.current = true;
+                            cancelClose();
+                        }}
+                        onMouseLeave={() => {
+                            previewHoveredRef.current = false;
+                            scheduleClose();
+                        }}
+                        tabIndex={-1}
+                        style={{
+                            width: PREVIEW_WIDTH,
+                            right: window.innerWidth - previewState.rect.left + 6,
+                            top: previewState.rect.top + previewState.rect.height / 2,
+                            transform: "translateY(-50%)",
+                            maxHeight: 320,
+                            overflowY: "auto",
+                        }}
+                    >
+                        <div className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{previewState.preview}</span>
+                            {previewState.pinned ? (
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded px-1 text-secondary hover:bg-hover hover:text-primary"
+                                    aria-label={copied ? "Copied" : "Copy message"}
+                                    title={copied ? "Copied" : "Copy message"}
+                                    onClick={() => {
+                                        void (async () => {
+                                            try {
+                                                if (navigator.clipboard == null) return;
+                                                await navigator.clipboard.writeText(previewState.preview);
+                                                setCopied(true);
+                                                window.setTimeout(() => setCopied(false), 1200);
+                                            } catch {
+                                                // Clipboard 权限被拒绝时保持 Tooltip 打开，用户仍可手动选择复制。
+                                            }
+                                        })();
+                                    }}
+                                >
+                                    <i className={cn("fa-sharp fa-solid", copied ? "fa-check" : "fa-copy")} />
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>,
+                    document.body
+                )}
         </>
     );
 });

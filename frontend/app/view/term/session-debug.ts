@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { makeAgentTraceId, makePslogSessionRef } from "@/app/store/pslog-trace";
+import { makeAgentTraceId, makePslogSessionRef, pslogEvent, type PslogEventInput } from "@/app/store/pslog-trace";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { AgentCommandResolution, AgentSessionIdResolution } from "./agent-session";
 import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
@@ -289,6 +289,32 @@ export async function runAISessionsRpcProbe(
         result.outline.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     }
     return result;
+}
+
+const AgentSessionPslogBufferKey = "ps-agent-top-buf";
+
+/**
+ * Agent 会话诊断日志（agent.top/note/outline/rail 统一入口），
+ * 经 pslogEvent 落到 ps-agent-top-buf，供 "Copy Session Debug Info" 汇总。
+ */
+export function logAgentSessionEvent(
+    event: "agent.top" | "agent.note" | "agent.outline" | "agent.rail",
+    stage: string,
+    blockId: string,
+    sessionId: string,
+    result: Pick<PslogEventInput, "durationms" | "outcome" | "reason"> = {}
+): void {
+    pslogEvent(
+        {
+            event,
+            stage,
+            traceid: makeAgentTraceId(blockId, sessionId),
+            blockid: blockId,
+            sessionref: makePslogSessionRef(sessionId),
+            ...result,
+        },
+        { bufferKey: AgentSessionPslogBufferKey }
+    );
 }
 
 export {

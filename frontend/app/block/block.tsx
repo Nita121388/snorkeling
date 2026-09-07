@@ -1,6 +1,12 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { agentStatusPresentation, isInferredAgentStatus } from "@/app/agent-status/agent-status-derive";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import {
     BlockComponentModel2,
     BlockProps,
@@ -8,27 +14,18 @@ import {
     FullSubBlockProps,
     SubBlockProps,
 } from "@/app/block/blocktypes";
-import { Tooltip } from "@/app/element/tooltip";
-import { uxCloseBlock } from "@/app/store/keymodel";
 import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
+import { Tooltip } from "@/app/element/tooltip";
+import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
+import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
+import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
-import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
-import {
-    agentStatusPresentation,
-    isInferredAgentStatus,
-} from "@/app/agent-status/agent-status-derive";
-import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
-import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
-import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
-import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -46,10 +43,11 @@ import { makeORef } from "@/store/wos";
 import { focusedBlockId, getElemAsStr } from "@/util/focusutil";
 import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
-import { atom, useAtomValue } from "jotai";
 import type { Atom } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
+import { minimizeGroupToFloat } from "./block-minimize";
 import {
     getInlineTabRuntimeOpts,
     getRemainingInlineTabBlockIds,
@@ -57,13 +55,12 @@ import {
     shouldWarmupInlineTabController,
 } from "./block-recovery";
 import "./block.scss";
-import { minimizeGroupToFloat } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
-import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
-import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
+import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
+import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 
 /**
  * 读取 InlineTabLabel 所属 agent block 的 canonical agent status.
@@ -78,7 +75,9 @@ import { blockViewToIcon, blockViewToName } from "./blockutil";
  */
 function useInlineTabAgentStatus(blockId: string): AgentStatus | null {
     const store = AgentStatusStore.getInstance();
-    const [statusAtom, setStatusAtom] = useState<Atom<AgentStatus | null> | Atom<Promise<AgentStatus | null>> | null>(null);
+    const [statusAtom, setStatusAtom] = useState<Atom<AgentStatus | null> | Atom<Promise<AgentStatus | null>> | null>(
+        null
+    );
     useEffect(() => {
         const atom = store.acquire(blockId);
         setStatusAtom(atom);
@@ -296,7 +295,11 @@ const InlineTabLabel = memo(
                 doneUnread,
                 doneElapsedText,
                 title: `${presentation.label}${inferred ? " (inferred)" : ""}${
-                    unread ? " — click to mark as read" : doneUnread ? ` — done ${doneElapsedText} ago, switch to block to dismiss` : " — up to date"
+                    unread
+                        ? " — click to mark as read"
+                        : doneUnread
+                          ? ` — done ${doneElapsedText} ago, switch to block to dismiss`
+                          : " — up to date"
                 }`,
             };
         }, [agentStatus, ackedFpMap, doneAckedAtMap, blockId]);
@@ -388,7 +391,7 @@ const InlineTabLabel = memo(
                     onCloseAllExceptLocked,
                     toggleLock,
                     onMinimizeGroup,
-                    waveEnv,
+                    waveEnv
                 );
                 waveEnv.showContextMenu(menu, e);
             },
@@ -404,7 +407,7 @@ const InlineTabLabel = memo(
                 toggleLock,
                 onMinimizeGroup,
                 waveEnv,
-            ],
+            ]
         );
 
         const isAgentBlock = isAgentTerminalMeta(blockData?.meta);
@@ -415,148 +418,152 @@ const InlineTabLabel = memo(
         return (
             <>
                 <div
-                ref={tabRef}
-                onContextMenu={handleContextMenu}
-                className={clsx("inline-tab-block-tab", {
-                    active: isActive,
-                    dragging: isDragging,
-                    "drop-target": isOver,
-                })}
-                onMouseEnter={() => {
-                    cancelPendingHideCard();
-                    setIsHovered(true);
-                }}
-                onMouseLeave={() => {
-                    cancelPendingHideCard();
-                    hideCardTimerRef.current = window.setTimeout(() => {
-                        hideCardTimerRef.current = null;
-                        setIsHovered(false);
-                        setIsCardHovered(false);
-                    }, 300);
-                }}
-            >
-                <div className="inline-tab-block-tab-main-wrapper">
-                    <Tooltip
-                        content={
-                            <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
-                                {tooltip}
-                            </div>
-                        }
-                        placement="top"
-                        openDelay={300}
-                        disable={isBlank(tooltip)}
-                        divClassName="inline-tab-block-tab-main"
-                    >
-                        <button
-                            type="button"
-                            className="inline-tab-block-tab-button"
-                            onClick={onActivate}
-                            onDoubleClick={() => setIsEditing(true)}
-                            role="tab"
-                            aria-selected={isActive}
-                            aria-label={`Tab ${displayTitle}${isActive ? ", active" : ""}`}
-                            tabIndex={isActive ? 0 : -1}
-                        >
-                            {agentLogo != null ? (
-                                <span
-                                    className="agent-brand-icon inline-tab-block-tab-agentlogo"
-                                    style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
-                                >
-                                    {agentLogo.icon}
-                                </span>
-                            ) : (
-                                <i className={iconClass} />
-                            )}
-                            <span>{displayTitle}</span>
-                            {isDirty ? (
-                                <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
-                            ) : null}
-                            {isLocked ? (
-                                <i
-                                    className={makeIconClass("lock", true) + " inline-tab-block-tab-lockicon"}
-                                    title="已锁定"
-                                />
-                            ) : null}
-                            {statusDot != null ? (
-                                <span
-                                    className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
-                                        "is-inferred": statusDot.inferred,
-                                        "is-acked": !statusDot.unread && !statusDot.doneUnread,
-                                        "is-done-unread": statusDot.doneUnread,
-                                    })}
-                                    data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
-                                    // [DIAG] D 复活排查: 把 blockId 标进 dataset, 让 inspect 可以直接
-                                    // 通过 DOM 读出 D 圆点对应哪个 block, 不再需要猜对应. 排查完后删除.
-                                    data-blockid={statusDot.doneUnread ? blockId : undefined}
-                                    title={statusDot.title}
-                                    onClick={
-                                        statusDot.unread || statusDot.doneUnread
-                                            ? (e) => {
-                                                  e.stopPropagation();
-                                                  if (statusDot.unread) {
-                                                      // Pass current status so R fingerprint is stored;
-                                                      // otherwise read sites would still see unread.
-                                                      overviewModel.markAgentStatusAcked(blockId, Date.now(), agentStatus);
-                                                  }
-                                                  if (statusDot.doneUnread) {
-                                                      agentStatusDoneAckStore.markDoneAcked(blockId, Date.now(), "block-header");
-                                                  }
-                                              }
-                                            : undefined
-                                    }
-                                >
-                                    {statusDot.state === "done" ? <i className="fa-solid fa-check" /> : null}
-                                </span>
-                            ) : null}
-                        </button>
-                    </Tooltip>
-                </div>
-                <button
-                    type="button"
-                    className="inline-tab-block-tab-close"
-                    title="Close Block"
-                    onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onClose();
-                    }}
-                >
-                    <i className={makeIconClass("xmark", true)} />
-                </button>
-            </div>
-            {/* Agent hover card for inactive tabs */}
-            {showHoverCard && (
-                <div
-                    className="agent-hover-card-wrapper"
-                    style={{
-                        position: "absolute",
-                        top: "100%",
-                        left: 0,
-                        zIndex: 100,
-                        marginTop: 2,
-                    }}
+                    ref={tabRef}
+                    onContextMenu={handleContextMenu}
+                    className={clsx("inline-tab-block-tab", {
+                        active: isActive,
+                        dragging: isDragging,
+                        "drop-target": isOver,
+                    })}
                     onMouseEnter={() => {
                         cancelPendingHideCard();
-                        setIsCardHovered(true);
+                        setIsHovered(true);
                     }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
                         hideCardTimerRef.current = window.setTimeout(() => {
                             hideCardTimerRef.current = null;
-                            setIsCardHovered(false);
                             setIsHovered(false);
+                            setIsCardHovered(false);
                         }, 300);
                     }}
                 >
-                    <AgentHoverCard
-                        blockId={blockId}
-                        blockData={blockData ?? null}
-                        mode={hoverCardMode}
-                    />
+                    <div className="inline-tab-block-tab-main-wrapper">
+                        <Tooltip
+                            content={
+                                <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
+                                    {tooltip}
+                                </div>
+                            }
+                            placement="top"
+                            openDelay={300}
+                            disable={isBlank(tooltip)}
+                            divClassName="inline-tab-block-tab-main"
+                        >
+                            <button
+                                type="button"
+                                className="inline-tab-block-tab-button"
+                                onClick={onActivate}
+                                onDoubleClick={() => setIsEditing(true)}
+                                role="tab"
+                                aria-selected={isActive}
+                                aria-label={`Tab ${displayTitle}${isActive ? ", active" : ""}`}
+                                tabIndex={isActive ? 0 : -1}
+                            >
+                                {agentLogo != null ? (
+                                    <span
+                                        className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                                        style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
+                                    >
+                                        {agentLogo.icon}
+                                    </span>
+                                ) : (
+                                    <i className={iconClass} />
+                                )}
+                                <span>{displayTitle}</span>
+                                {isDirty ? (
+                                    <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
+                                ) : null}
+                                {isLocked ? (
+                                    <i
+                                        className={makeIconClass("lock", true) + " inline-tab-block-tab-lockicon"}
+                                        title="已锁定"
+                                    />
+                                ) : null}
+                                {statusDot != null ? (
+                                    <span
+                                        className={clsx("inline-tab-block-tab-statusdot", `is-${statusDot.state}`, {
+                                            "is-inferred": statusDot.inferred,
+                                            "is-acked": !statusDot.unread && !statusDot.doneUnread,
+                                            "is-done-unread": statusDot.doneUnread,
+                                        })}
+                                        data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
+                                        // [DIAG] D 复活排查: 把 blockId 标进 dataset, 让 inspect 可以直接
+                                        // 通过 DOM 读出 D 圆点对应哪个 block, 不再需要猜对应. 排查完后删除.
+                                        data-blockid={statusDot.doneUnread ? blockId : undefined}
+                                        title={statusDot.title}
+                                        onClick={
+                                            statusDot.unread || statusDot.doneUnread
+                                                ? (e) => {
+                                                      e.stopPropagation();
+                                                      if (statusDot.unread) {
+                                                          // Pass current status so R fingerprint is stored;
+                                                          // otherwise read sites would still see unread.
+                                                          overviewModel.markAgentStatusAcked(
+                                                              blockId,
+                                                              Date.now(),
+                                                              agentStatus
+                                                          );
+                                                      }
+                                                      if (statusDot.doneUnread) {
+                                                          agentStatusDoneAckStore.markDoneAcked(
+                                                              blockId,
+                                                              Date.now(),
+                                                              "block-header"
+                                                          );
+                                                      }
+                                                  }
+                                                : undefined
+                                        }
+                                    >
+                                        {statusDot.state === "done" ? <i className="fa-solid fa-check" /> : null}
+                                    </span>
+                                ) : null}
+                            </button>
+                        </Tooltip>
+                    </div>
+                    <button
+                        type="button"
+                        className="inline-tab-block-tab-close"
+                        title="Close Block"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onClose();
+                        }}
+                    >
+                        <i className={makeIconClass("xmark", true)} />
+                    </button>
                 </div>
-            )}
-        </>
-    );
+                {/* Agent hover card for inactive tabs */}
+                {showHoverCard && (
+                    <div
+                        className="agent-hover-card-wrapper"
+                        style={{
+                            position: "absolute",
+                            top: "100%",
+                            left: 0,
+                            zIndex: 100,
+                            marginTop: 2,
+                        }}
+                        onMouseEnter={() => {
+                            cancelPendingHideCard();
+                            setIsCardHovered(true);
+                        }}
+                        onMouseLeave={() => {
+                            cancelPendingHideCard();
+                            hideCardTimerRef.current = window.setTimeout(() => {
+                                hideCardTimerRef.current = null;
+                                setIsCardHovered(false);
+                                setIsHovered(false);
+                            }, 300);
+                        }}
+                    >
+                        <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
+                    </div>
+                )}
+            </>
+        );
     }
 );
 InlineTabLabel.displayName = "InlineTabLabel";
@@ -669,7 +676,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         );
     }, [blockIds, layoutData.blockTabTitles]);
     const duplicateIndexes = useMemo(() => getDuplicateIndexes(blockIds, titleMap), [blockIds, titleMap]);
-    
+
     // 计算每个标签的信息，用于下拉菜单（通过 derived atom 避免在 useMemo 中使用 hook）
     const tabsInfoAtom = useMemo(
         () =>
@@ -678,12 +685,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                     const blockData = get(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
                     const blockView = (get(waveEnv.getBlockMetaKeyAtom(blockId, "view")) as string) ?? "";
                     const customTitle = layoutData.blockTabTitles?.[blockId];
-                    const defaultTitle = blockViewToName(blockView) || blockId.slice(0, 8);
-                    const title = customTitle || defaultTitle;
-                    const dupIndex = duplicateIndexes.get(blockId);
-                    const displayTitle = dupIndex != null && dupIndex > 1 && !customTitle ? `${title} ${dupIndex}` : title;
-
-                    // 提取路径信息（与 InlineTabLabel.fullPath 逻辑对齐，只取 basename）
+                    // 提取路径信息（与 InlineTabLabel 逻辑对齐，只取 basename）
                     const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
                     const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
                     const file = typeof meta["file"] === "string" ? meta["file"] : "";
@@ -696,16 +698,13 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                     } else if (blockView === "vcs" && !isBlank(vcsPath)) {
                         rawPath = vcsPath;
                     }
-                    const path = isBlank(rawPath) ? "" : basename(rawPath);
-
-                    // Preview 类型：标题为空，只显示 icon 即可表达含义
-                    const isPreview = blockView === "preview";
-                    const displayTitleForDropdown = isPreview ? "" : displayTitle;
+                    const shortName = isBlank(rawPath)
+                        ? blockViewToName(blockView) || blockId.slice(0, 8)
+                        : basename(rawPath);
 
                     return {
                         id: blockId,
-                        title: displayTitleForDropdown,
-                        path,
+                        title: customTitle || shortName,
                         icon: blockViewToIcon(blockView),
                         isActive: blockId === activeBlockId,
                     };
@@ -897,7 +896,11 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                         ))}
                     </div>
                     <div className="inline-tab-block-addzone">
-                        <InlineTabGroupAddButton nodeId={nodeModel.nodeId} tabId={tabModel.tabId} activeBlockId={activeBlockId} />
+                        <InlineTabGroupAddButton
+                            nodeId={nodeModel.nodeId}
+                            tabId={tabModel.tabId}
+                            activeBlockId={activeBlockId}
+                        />
                         {blockIds.length > 1 && (
                             <InlineTabDropdownMenu
                                 tabs={tabsInfo}
