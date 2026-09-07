@@ -1,10 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
-import { modalsModel } from "@/app/store/modalmodel";
-import { useRef } from "react";
+import { ConfirmModal } from "@/app/modals/modal";
+import { useCallback } from "react";
 
 export type CloseTabModalChoice = "close" | "cancel";
 
@@ -15,37 +13,26 @@ type CloseTabModalProps = {
 };
 
 function CloseTabModal({ blockCount, tabName, onResolve }: CloseTabModalProps) {
-    const resolvedRef = useRef(false);
-    const resolveAndClose = (choice: CloseTabModalChoice) => {
-        if (resolvedRef.current) return;
-        resolvedRef.current = true;
-        modalsModel.popModal();
-        onResolve(choice);
-    };
+    const handleResolve = useCallback((choice: CloseTabModalChoice) => onResolve(choice), [onResolve]);
 
     return (
-        <FlexiModal
-            className="w-[420px] max-w-[calc(100vw-32px)]"
-            onClickBackdrop={() => resolveAndClose("cancel")}
-        >
-            <div className="modal-content">
-                <div className="flex flex-col gap-2">
-                    <div className="text-base font-semibold text-primary">Close Tab</div>
-                    <div className="text-[13px] leading-5 text-secondary">
-                        Close tab <span className="font-medium text-main">{tabName || "Untitled"}</span>?
-                        {blockCount > 0 && (
-                            <span> {blockCount} block{blockCount !== 1 ? "s" : ""} will be closed.</span>
-                        )}
-                    </div>
-                </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-                <Button className="grey ghost" onClick={() => resolveAndClose("cancel")}>
-                    Cancel
-                </Button>
-                <Button onClick={() => resolveAndClose("close")}>Close</Button>
-            </div>
-        </FlexiModal>
+        <ConfirmModal<CloseTabModalChoice>
+            title="Close Tab"
+            description={
+                <>
+                    Close tab <span className="font-medium text-primary">{tabName || "Untitled"}</span>?
+                    {blockCount > 0 && (
+                        <span> {blockCount} block{blockCount !== 1 ? "s" : ""} will be closed.</span>
+                    )}
+                </>
+            }
+            choices={[
+                { value: "cancel", label: "Cancel", role: "secondary" },
+                { value: "close", label: "Close" },
+            ]}
+            defaultChoice="close"
+            onResolve={handleResolve}
+        />
     );
 }
 

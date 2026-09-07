@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
+import { modalsModel } from "@/app/store/modalmodel";
 import { cn } from "@/util/util";
 import clsx from "clsx";
 import { forwardRef, useLayoutEffect, useRef } from "react";
@@ -188,4 +189,92 @@ const FlexiModal = forwardRef<HTMLDivElement, FlexiModalProps>(
 (FlexiModal as FlexiModalComponent).Content = ModalContent;
 (FlexiModal as FlexiModalComponent).Footer = ModalFooter;
 
-export { FlexiModal, Modal };
+// --- Unified confirmation modal ---
+// 轻量且通用的确认弹窗，收敛 Confirmation 类弹窗的重复模板（标题 / 描述 / 互斥 resolving / 三按钮布局）。
+// 细节调用方保持语义文字，不在标签按钮内嵌 icon（满足"禁止内部按钮 icon"规范）。
+// widthTier 默认 sm（420px），符合 CloseTab/Unsaved/Restore 等最小确认形态。
+export type ConfirmChoice = string;
+
+interface ConfirmModalChoiceSpec<C extends string> {
+    value: C;
+    label: string;
+    role?: "default" | "secondary" | "danger";
+    disabled?: boolean;
+    autoFocus?: boolean;
+}
+
+interface ConfirmModalProps<C extends string> {
+    title: string;
+    description?: React.ReactNode;
+    icon?: React.ReactNode;
+    choices: ConfirmChoice extends C ? never : ConfirmModalChoiceSpec<C>[];
+    defaultChoice?: C;
+    onResolve: (choice: C) => void;
+    widthTier?: "xs" | "sm" | "md";
+    onClickBackdropChoice?: C;
+}
+
+function ConfirmModal<C extends string>({
+    title,
+    description,
+    icon,
+    choices,
+    defaultChoice,
+    onResolve,
+    widthTier = "sm",
+    onClickBackdropChoice,
+}: ConfirmModalProps<C>) {
+    const resolvedRef = useRef(false);
+    const resolveAndClose = (choice: C) => {
+        if (resolvedRef.current) return;
+        resolvedRef.current = true;
+        modalsModel.popModal();
+        onResolve(choice);
+    };
+    const tierClass =
+        widthTier === "xs"
+            ? "w-[360px] max-w-[calc(100vw-32px)]"
+            : widthTier === "md"
+              ? "w-[520px] max-w-[calc(100vw-32px)]"
+              : "w-[420px] max-w-[calc(100vw-32px)]";
+    const backdropChoice = onClickBackdropChoice ?? (choices.find((c) => c.role === "secondary")?.value as C | undefined);
+    return (
+        <FlexiModal className={tierClass} onClickBackdrop={backdropChoice ? () => resolveAndClose(backdropChoice) : undefined}>
+            <div className="modal-content">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-base font-semibold text-primary">
+                        {icon}
+                        {title}
+                    </div>
+                    {description ? <div className="text-[13px] leading-5 text-secondary">{description}</div> : null}
+                </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+                {choices.map((choice) => {
+                    const className =
+                        choice.role === "danger"
+                            ? "red ghost"
+                            : choice.role === "secondary"
+                              ? "grey ghost"
+                              : undefined;
+                    const isDefault = choice.value === defaultChoice;
+                    return (
+                        <Button
+                            key={choice.value}
+                            className={className}
+                            disabled={choice.disabled}
+                            autoFocus={choice.autoFocus ?? isDefault}
+                            onClick={() => resolveAndClose(choice.value as C)}
+                        >
+                            {choice.label}
+                        </Button>
+                    );
+                })}
+            </div>
+        </FlexiModal>
+    );
+}
+
+(ConfirmModal as unknown as { displayName?: string }).displayName = "ConfirmModal";
+
+export { ConfirmModal, FlexiModal, Modal };

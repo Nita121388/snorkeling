@@ -28,10 +28,10 @@ Last updated: 2026-07
 
 | 类 | 定义 | 现成员 | 迁移形态 |
 |---|---|---|---|
-| **Confirmation** 确认/拦截 | 二次确认，防止误删/覆盖/关闭丢数据 | `CloseTabModal` `UnsavedFileModal` `FileConflictModal` `MessageModal` `UserInputModal` | `ConfirmModal` 统一 |
-| **SettingForm** 设置/表单 | 输入并保存 | `NoteDirectoryModal` `AgentHookSettingsModal` `ExportOptionsModal` `EnvModal` `AISessionNoteModal` | `FormModal` 统一 |
-| **ReadInfo** 信息/查看 | 只读或富展示 | `AboutModal` `AISessionDetailModal` `WidgetQuickLaunchModal` `RestoreBackupModal` | `ReadModal` 统一 |
-| **QuickSearch** 轻量搜索/输入 | 列表即时搜索选择 | `TypeaheadModal` `Conntypeahead` `CommonTextComposeModal` | 保持左栏宽度规范 |
+| **Confirmation** 确认/拦截 | 二次确认，防止误删/覆盖/关闭丢数据 | `CloseTabModal` ✅ `UnsavedFileModal` ✅ `FileConflictModal` ⏳ `MessageModal` ✅ `UserInputModal` ⏳ | `ConfirmModal` 统一 |
+| **SettingForm** 设置/表单 | 输入并保存 | `NoteDirectoryModal` `AgentHookSettingsModal` `ExportOptionsModal` `EnvModal` `AISessionNoteModal` ✅ | `FormModal` 统一 |
+| **ReadInfo** 信息/查看 | 只读或富展示 | `AboutModal` ✅ `AISessionDetailModal` `WidgetQuickLaunchModal` `RestoreBackupModal` | `ReadModal` 统一 |
+| **QuickSearch** 轻量搜索/输入 | 列表即时搜索选择 | `TypeaheadModal` `Conntypeahead` `CommonTextComposeModal` ✅ | 保持左栏宽度规范 |
 | **Onboarding** 引导 | 首启/升级 | `NewInstall/UpgradeOnboarding*` 系列 | 白名单例外（全屏形态） |
 
 **邻近非弹窗组件**（不归 Modal 管，但视觉须对齐 overlay token）：
@@ -176,12 +176,12 @@ Last updated: 2026-07
 
 | 阶段 | 内容 | 风险 |
 |---|---|---|
-| **P0 基建** | 统一 `modal.scss`：Header/Footer/宽度档位/边框1px；删 `element/modal.tsx` 迁移遗留使用方 | CRITICAL（Modal base 全局变更），单独评审 |
-| **P1 Confirmation** | 抽 `ConfirmModal` 抽象，统一 5 个确认类 | HIGH |
-| **P2 按钮 de-icon** | 去所有按钮内 icon + 语义 token 化（含 tab-target DS-009） | HIGH |
-| **P3 SettingForm/ReadInfo** | 标题/宽度/关闭冗余统一 | MEDIUM |
-| **P4 QuickSearch** | 仅校验宽度档位与 header 规范 | MEDIUM |
-| **P5 收尾** | 全量视觉走查 dark/light/monochrome，更新 registry，删 scss 冗余 | LOW |
+| **P0 基建** | 统一 `modal.scss`：Header/Footer/宽度档位/边框1px；删 `element/modal.tsx` 迁移遗留使用方 | ✅ 已完成 | 删除 legacy element/modal.tsx + scss；移除未使用代码；构建通过 |
+| **P1 Confirmation** | 抽 `ConfirmModal` 抽象，统一 5 个确认类 | ✅ 已完成 | 新增 `ConfirmModal` 泛型组件；CloseTab/UnsavedFile/Message 已迁移；FileConflict 保留 FlexiModal（4 按钮复杂布局） |
+| **P2 按钮 de-icon** | 去所有按钮内 icon + 语义 token 化（含 tab-target DS-009） | ✅ 已完成 | About/FileConflict/Env/CommonText Send 已去 icon；硬编码颜色→语义 Token |
+| **P3 SettingForm/ReadInfo** | 标题/宽度/关闭冗余统一 | 🔶 大部分完成 | 标题层级统一 text-base；AISessionNote 重复 Close 已移除；部分宽度待收敛 |
+| **P4 QuickSearch** | 仅校验宽度档位与 header 规范 | ⬜ 待做 | Typeahead/WidgetLaunch 宽度档位未对齐 |
+| **P5 收尾** | 全量视觉走查 dark/light/monochrome，更新 registry，删 scss 冗余 | ⬜ 待做 | 需 CDP 三主题截图验证 |
 
 > P0、P2 涉及 Modal base 与多个共享弹窗，按 AGENTS 强制先跑 impact 分析；P0 边界必须
 > 专项隔离（对一个 Symbol 的影响可能是 CRITICAL），与 design-system Batch 6 合并评审。

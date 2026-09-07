@@ -1,10 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
-import { modalsModel } from "@/app/store/modalmodel";
-import { useRef } from "react";
+import { ConfirmModal } from "@/app/modals/modal";
+import { useCallback } from "react";
 
 export type UnsavedFileModalChoice = "save" | "discard" | "cancel";
 
@@ -14,39 +12,22 @@ type UnsavedFileModalProps = {
 };
 
 function UnsavedFileModal({ fileName, onResolve }: UnsavedFileModalProps) {
-    const resolvedRef = useRef(false);
-    const resolveAndClose = (choice: UnsavedFileModalChoice) => {
-        if (resolvedRef.current) {
-            return;
-        }
-        resolvedRef.current = true;
-        modalsModel.popModal();
-        onResolve(choice);
-    };
+    const handleResolve = useCallback((choice: UnsavedFileModalChoice) => onResolve(choice), [onResolve]);
 
     return (
-        <FlexiModal
-            className="w-[420px] max-w-[calc(100vw-32px)]"
-            onClickBackdrop={() => resolveAndClose("cancel")}
-        >
-            <div className="modal-content">
-                <div className="flex flex-col gap-2">
-                    <div className="text-base font-semibold text-primary">Unsaved Changes</div>
-                    <div className="text-[13px] leading-5 text-secondary">
-                        Save changes to <span className="font-medium text-main">{fileName}</span> before closing?
-                    </div>
-                </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-                <Button className="grey ghost" onClick={() => resolveAndClose("cancel")}>
-                    Cancel
-                </Button>
-                <Button className="red ghost" onClick={() => resolveAndClose("discard")}>
-                    Don't Save
-                </Button>
-                <Button onClick={() => resolveAndClose("save")}>Save</Button>
-            </div>
-        </FlexiModal>
+        <ConfirmModal<UnsavedFileModalChoice>
+            title="Unsaved Changes"
+            description={
+                <>Save changes to <span className="font-medium text-primary">{fileName}</span> before closing?</>
+            }
+            choices={[
+                { value: "cancel", label: "Cancel", role: "secondary" },
+                { value: "discard", label: "Don't Save", role: "danger" },
+                { value: "save", label: "Save" },
+            ]}
+            defaultChoice="save"
+            onResolve={handleResolve}
+        />
     );
 }
 
