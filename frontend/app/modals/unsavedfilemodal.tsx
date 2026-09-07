@@ -31,7 +31,7 @@ function UnsavedFileModal({ fileName, onResolve }: UnsavedFileModalProps) {
         >
             <div className="modal-content">
                 <div className="flex flex-col gap-2">
-                    <div className="text-[15px] font-semibold text-main">Unsaved Changes</div>
+                    <div className="text-base font-semibold text-primary">Unsaved Changes</div>
                     <div className="text-[13px] leading-5 text-secondary">
                         Save changes to <span className="font-medium text-main">{fileName}</span> before closing?
                     </div>

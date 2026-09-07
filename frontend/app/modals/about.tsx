@@ -159,14 +159,14 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                 {debugVisible && (
                     <div className="self-stretch w-full">
                         {debugError ? (
-                            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                            <div className="rounded border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
                                 {debugError}
                             </div>
                         ) : (
                             <textarea
                                 readOnly
                                 value={debugLoading && debugText === "" ? "Loading..." : debugText}
-                                className="h-[220px] w-full resize-none rounded border border-border bg-black/30 p-2 font-mono text-[11px] leading-4 outline-none"
+                                className="h-[220px] w-full resize-none rounded border border-border bg-panel p-2 font-mono text-[11px] leading-4 outline-none"
                             />
                         )}
                     </div>

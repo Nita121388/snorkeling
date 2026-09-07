@@ -197,15 +197,6 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                             >
                                 {statusText}
                             </span>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
-                                    disabled={saving}
-                                    onClick={closeModal}
-                                >
-                                    Close
-                                </button>
-                            </div>
                         </div>
                     </>
                 )}

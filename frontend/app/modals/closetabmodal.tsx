@@ -30,7 +30,7 @@ function CloseTabModal({ blockCount, tabName, onResolve }: CloseTabModalProps) {
         >
             <div className="modal-content">
                 <div className="flex flex-col gap-2">
-                    <div className="text-[15px] font-semibold text-main">Close Tab</div>
+                    <div className="text-base font-semibold text-primary">Close Tab</div>
                     <div className="text-[13px] leading-5 text-secondary">
                         Close tab <span className="font-medium text-main">{tabName || "Untitled"}</span>?
                         {blockCount > 0 && (

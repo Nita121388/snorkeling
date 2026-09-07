@@ -326,7 +326,7 @@ export function EnvModalView({
                                 onClick={() => removeRow(idx)}
                                 title="Delete row"
                             >
-                                <i className="fa-sharp fa-solid fa-trash-can" />
+                                Delete
                             </button>
                         </div>
                         {overridesExisting ? (
@@ -339,7 +339,7 @@ export function EnvModalView({
                 })}
             </div>
             <button className="env-modal-btn env-modal-add" onClick={addRow}>
-                <i className="fa-sharp fa-solid fa-plus" /> Add Variable
+                Add Variable
             </button>
             <div className="env-modal-hint">
                 空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；敏感 key（JWT/TOKEN/KEY/SECRET/PASSWORD…）自动掩码。
@@ -356,7 +356,7 @@ export function EnvModalView({
                             onChange={(e) => setSearch(e.target.value)}
                         />
                         <button className="env-modal-btn" onClick={copyAll} disabled={loading || !env} title="Copy all env as KEY=VALUE lines">
-                            <i className="fa-sharp fa-solid fa-copy" /> Copy All
+                            Copy All
                         </button>
                         {sensitiveCount > 0 ? (
                             <>
@@ -410,7 +410,7 @@ export function EnvModalView({
                                                     onClick={() => toggleReveal(key)}
                                                     title={revealed ? "Hide value" : "Show value"}
                                                 >
-                                                    <i className={`fa-sharp fa-solid ${revealed ? "fa-eye-slash" : "fa-eye"}`} />
+                                                    {revealed ? "Hide" : "Show"}
                                                 </button>
                                             ) : null}
                                         </div>

@@ -39,8 +39,8 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
         >
             <div className="modal-content">
                 <div className="flex flex-col gap-2">
-                    <div className="text-[15px] font-semibold text-main flex items-center gap-2">
-                        <i className="fa-solid fa-triangle-exclamation text-[14px]" style={{ color: "var(--warning-color, #f59e0b)" }} />
+                    <div className="flex items-center gap-2 text-base font-semibold text-primary">
+                        <i className="fa-solid fa-triangle-exclamation text-[14px] text-warning" />
                         File modified externally
                     </div>
                     <div className="text-[13px] leading-5 text-secondary">
@@ -51,15 +51,15 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
                     </div>
                     <div className="border border-border rounded-md px-3 py-2.5 bg-surface flex flex-col gap-1.5 mt-0.5">
                         <div className="flex items-center gap-2.5 text-[12px]">
-                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-white/12 text-secondary">Base</span>
+                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-surface text-secondary">Base</span>
                             <span className="text-secondary">Disk version when you opened the file</span>
                         </div>
                         <div className="flex items-center gap-2.5 text-[12px]">
-                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded" style={{ background: "rgb(230 185 86 / 0.18)", color: "#e0b956" }}>External</span>
+                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-warning/15 text-warning">External</span>
                             <span className="text-secondary">Current disk version (modified by Agent)</span>
                         </div>
                         <div className="flex items-center gap-2.5 text-[12px]">
-                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded" style={{ background: "rgb(88 193 66 / 0.18)", color: "#58c141" }}>Yours</span>
+                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-success/15 text-success">Yours</span>
                             <span className="text-secondary">Unsaved draft (based on base)</span>
                         </div>
                     </div>
@@ -67,16 +67,16 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
             </div>
             <div className="flex justify-end gap-1.5 pt-4 w-full">
                 <Button className="red ghost" onClick={() => resolveAndClose("discard")}>
-                    <i className="fa-solid fa-trash" /> Discard changes
+                    Discard changes
                 </Button>
                 <Button className="grey ghost" onClick={() => resolveAndClose("cancel")}>
                     Cancel
                 </Button>
                 <Button className="green outlined" onClick={() => resolveAndClose("copy-diff")}>
-                    <i className="fa-solid fa-clipboard" /> Copy diff
+                    Copy diff
                 </Button>
                 <Button className="green" onClick={() => resolveAndClose("overwrite")}>
-                    <i className="fa-solid fa-floppy-disk" /> Save & overwrite
+                    Save & overwrite
                 </Button>
             </div>
         </FlexiModal>
