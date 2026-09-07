@@ -22,6 +22,7 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { mergeSessionTimeline } from "./session-timeline-sync";
+import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { defaultChatSource } from "./sources";
 import { NewSessionKey } from "./types";
 import { getErrorMessage, restoreMetaForSession } from "./utils";
@@ -556,7 +557,7 @@ export class AgentViewModel implements ViewModel {
 
     replaceSession(updated: SessionSummary): void {
         const detail = globalStore.get(this.detailAtom);
-        if (detail?.summary?.key === updated.key) {
+        if (detail?.summary?.key === updated.key && !isSameSessionSummary(detail.summary, updated)) {
             globalStore.set(this.detailAtom, { ...detail, summary: { ...detail.summary, ...updated } });
         }
     }

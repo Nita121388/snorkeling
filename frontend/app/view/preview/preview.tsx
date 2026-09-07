@@ -8,13 +8,14 @@ import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { memo, useEffect } from "react";
+import { memo, useCallback, useEffect } from "react";
 import { CSVView } from "./csvview";
 import { DirectoryPreview } from "./preview-directory";
 import { CodeEditPreview } from "./preview-edit";
 import { ErrorOverlay } from "./preview-error-overlay";
 import { PreviewExplorer } from "./preview-explorer";
 import { MarkdownLivePreview, MarkdownPreview } from "./preview-markdown";
+import { NewFilesFloatingWindow } from "./preview-new-files";
 import type { PreviewModel } from "./preview-model";
 import { PreviewPathIsDirMetaKey } from "./preview-navigation";
 import { StreamingPreview } from "./preview-streaming";
@@ -145,6 +146,10 @@ function PreviewView({
     const fileInfo = useAtomValue(model.statFile);
     const directoryDisplayMode = useAtomValue(model.directoryDisplayMode);
     const explorerRootPath = useAtomValue(model.explorerRootPath);
+    const newFilesWindowOpen = useAtomValue(model.newFilesWindowOpen);
+    const closeNewFilesWindow = useCallback(() => {
+        globalStore.set(model.newFilesWindowOpen, false);
+    }, [model]);
 
     useEffect(() => {
         console.log("fileInfo or connection changed", fileInfo, connection);
@@ -163,6 +168,13 @@ function PreviewView({
             } as MetaType)
         );
     }, [connection, env.services.object, fileInfo, model.blockAtom, model.blockId, setErrorMsg]);
+
+    // Track recent directory on navigation
+    useEffect(() => {
+        if (fileInfo?.isdir || fileInfo?.mimetype === "directory") {
+            model.trackRecentDir(fileInfo.path);
+        }
+    }, [fileInfo, model]);
 
     if (connStatus?.status != "connected") {
         return null;
@@ -193,6 +205,7 @@ function PreviewView({
 
     return (
         <>
+            <NewFilesFloatingWindow model={model} isOpen={newFilesWindowOpen} onClose={closeNewFilesWindow} />
             <div key="fullpreview" className="flex flex-col w-full overflow-hidden scrollbar-hide-until-hover">
                 {errorMsg && <ErrorOverlay errorMsg={errorMsg} resetOverlay={() => setErrorMsg(null)} />}
                 <div ref={contentRef} className="flex-grow overflow-hidden">

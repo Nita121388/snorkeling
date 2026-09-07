@@ -208,6 +208,45 @@ export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, 
     return insertBlockIntoLayout(tabId, blockId);
 }
 
+/**
+ * Insert a group of blocks back into the layout as an inline tab group.
+ * This preserves the group structure so the blocks appear as tabs within a single node.
+ */
+function insertInlineTabGroupIntoLayout(tabId: string, blockIds: string[]): boolean {
+    const layoutModel = getLayoutModelForTabById(tabId);
+    if (!layoutModel) {
+        return false;
+    }
+
+    // Close any ephemeral nodes for these blocks and check which ones are already in the layout.
+    const blocksToInsert: string[] = [];
+    for (const blockId of blockIds) {
+        layoutModel.closeEphemeralNodeForBlock(blockId);
+        const existingNode = layoutModel.getNodeByBlockId(blockId);
+        if (!existingNode) {
+            blocksToInsert.push(blockId);
+        }
+    }
+
+    if (blocksToInsert.length === 0) {
+        return true;
+    }
+
+    // Create a single node containing all blocks as an inline tab group.
+    const nodeData: TabLayoutData = {
+        blockIds: blocksToInsert,
+        activeBlockId: blocksToInsert[0],
+    };
+
+    layoutModel.treeReducer({
+        type: LayoutTreeActionType.InsertNode,
+        node: newLayoutNode(undefined, undefined, undefined, nodeData),
+        magnified: false,
+        focused: true,
+    } as LayoutTreeInsertNodeAction);
+    return true;
+}
+
 // ── Minimize entire group ──
 
 /**
@@ -295,10 +334,8 @@ export function restoreMinimizedGroupToLayout(tabId: string | null | undefined, 
     delete nextGroups[groupId];
     writeMinimizedState(tabId, remainingBlockIds, nextGroups);
 
-    // Restore each block into the layout (layout ops only, no meta writes).
-    for (const blockId of memberIds) {
-        insertBlockIntoLayout(tabId, blockId);
-    }
+    // Restore the group as a single inline tab group (layout ops only, no meta writes).
+    insertInlineTabGroupIntoLayout(tabId, memberIds);
     return true;
 }
 

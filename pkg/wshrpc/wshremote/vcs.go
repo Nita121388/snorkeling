@@ -2304,15 +2304,16 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 		limit = 50
 	}
 
-	// Try to detect GitHub Actions runs via gh CLI
-	ghPath, ghErr := runVcsCommand(ctx, repoPath, "which", "gh")
-	if ghErr != nil || strings.TrimSpace(ghPath) == "" {
+	// Resolve gh through the current process environment. Do not invoke the
+	// Unix-only `which` command: this RPC also runs on native Windows hosts.
+	ghPath, ghErr := exec.LookPath("gh")
+	if ghErr != nil {
 		result.Error = "gh CLI not found; install GitHub CLI to view pipeline runs"
 		return result, nil
 	}
 
-	// List workflow runs using gh
-	ghOut, ghErr := runVcsCommand(ctx, repoPath, "gh", "run", "list",
+	// List workflow runs using the resolved gh executable.
+	ghOut, ghErr := runVcsCommand(ctx, repoPath, ghPath, "run", "list",
 		"--limit", strconv.Itoa(limit),
 		"--json", "id,name,headBranch,status,conclusion,headSha,createdAt,updatedAt,url,triggeringActor",
 	)

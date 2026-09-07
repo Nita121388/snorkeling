@@ -165,20 +165,56 @@ export function transformBlocks(content: string): { content: string; blocks: Map
 // upgrade to a bounded LRU keyed the same way.
 const remoteFileResolveCache = new Map<string, Promise<string | null>>();
 
+function normalizeMarkdownFilePath(filepath: string): string {
+    const trimmed = filepath.trim();
+    let decoded = trimmed;
+    try {
+        decoded = decodeURIComponent(trimmed);
+    } catch {
+        // Keep the original path when it contains an incomplete escape sequence.
+    }
+    return decoded.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function joinMarkdownFilePath(baseDir: string, filepath: string): string {
+    const normalizedBase = baseDir.replace(/\\/g, "/").replace(/\/+$/, "");
+    const normalizedFile = filepath.replace(/^\/+/, "");
+    return `${normalizedBase}/${normalizedFile}`;
+}
+
 export const resolveRemoteFile = async (filepath: string, resolveOpts: MarkdownResolveOpts): Promise<string | null> => {
-    if (!filepath || filepath.startsWith("http://") || filepath.startsWith("https://")) {
+    if (
+        !filepath ||
+        filepath.startsWith("http://") ||
+        filepath.startsWith("https://") ||
+        filepath.startsWith("data:")
+    ) {
         return filepath;
     }
-    const cacheKey = `${resolveOpts.connName ?? ""}|${resolveOpts.baseDir ?? ""}|${filepath}`;
+    const normalizedFilepath = normalizeMarkdownFilePath(filepath);
+    const cacheKey = `${resolveOpts.connName ?? ""}|${resolveOpts.baseDir ?? ""}|${normalizedFilepath}`;
     const cached = remoteFileResolveCache.get(cacheKey);
     if (cached != null) {
         return cached;
     }
     const promise = (async (): Promise<string | null> => {
         try {
-            const baseDirUri = formatRemoteUri(resolveOpts.baseDir, resolveOpts.connName);
-            const fileInfo = await RpcApi.FileJoinCommand(TabRpcClient, [baseDirUri, filepath]);
-            const remoteUri = formatRemoteUri(fileInfo.path, resolveOpts.connName);
+            // Local Windows paths must be joined before converting to a wsh URI.
+            // Passing a nested path through FileJoinCommand makes the remote-side
+            // filepath layer reinterpret drive/Unicode segments; flat paths happen
+            // to work, while Obsidian's assets/<note-name>/... paths do not.
+            // Keep FileJoinCommand for non-local connections, where the remote
+            // filesystem owns path semantics.
+            const connName = resolveOpts.connName ?? "local";
+            let resolvedPath: string;
+            if (connName === "local") {
+                resolvedPath = joinMarkdownFilePath(resolveOpts.baseDir, normalizedFilepath);
+            } else {
+                const baseDirUri = formatRemoteUri(resolveOpts.baseDir, connName);
+                const fileInfo = await RpcApi.FileJoinCommand(TabRpcClient, [baseDirUri, normalizedFilepath]);
+                resolvedPath = fileInfo.path;
+            }
+            const remoteUri = formatRemoteUri(resolvedPath, connName);
             const usp = new URLSearchParams();
             usp.set("path", remoteUri);
             return getWebServerEndpoint() + "/wave/stream-file?" + usp.toString();

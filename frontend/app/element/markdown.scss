@@ -111,9 +111,7 @@
         }
 
         li.ordered-list-collapsible {
-            &::marker {
-                color: var(--main-text-color);
-            }
+            list-style-type: none;
 
             .ordered-list-summary-row {
                 display: flex;
@@ -123,9 +121,9 @@
             }
 
             .ordered-list-collapse-button {
-                width: 1.286em;
-                height: 1.286em;
-                flex: 0 0 1.286em;
+                width: 0.857em;
+                height: 0.857em;
+                flex: 0 0 0.857em;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -135,13 +133,21 @@
                 color: var(--secondary-text-color);
                 cursor: pointer;
                 opacity: 0;
-                font-size: 0.65em;
+                font-size: 0.5em;
                 line-height: 1;
-                margin-left: -1.571em;
+                margin-left: 0;
+                transition: opacity 0.15s ease;
             }
 
             .ordered-list-summary-content {
                 min-width: 0;
+
+                &::before {
+                    content: counter(list-item) ".";
+                    color: var(--main-text-color);
+                    font-weight: 600;
+                    margin-right: 0.286em;
+                }
             }
 
             .ordered-list-summary-content > :first-child {
@@ -256,10 +262,109 @@
         }
 
         blockquote {
-            margin: 0.286em 0.714em;
-            border-radius: 4px;
+            margin: 0.571em 0.714em;
+            border-left: 3px solid var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+            border-radius: 0 4px 4px 0;
             background-color: var(--panel-bg-color);
-            padding: 0.143em 0.286em 0.143em 0.429em;
+            padding: 0.714em 1em;
+            font-size: 1em;
+            line-height: 1.6;
+            color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+
+            > :last-child {
+                margin-bottom: 0;
+            }
+        }
+
+        // --- GitHub-style Alerts / Callouts ---
+        .markdown-alert {
+            margin: 0.571em 0.714em;
+            padding: 0.714em 1em 0.714em 2.8em;
+            border-radius: 4px 6px 6px 4px;
+            border-left: 3px solid var(--border-color);
+            background-color: var(--panel-bg-color);
+            font-size: 1em;
+            line-height: 1.6;
+            position: relative;
+            color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+
+            .markdown-alert-emoji {
+                position: absolute;
+                left: 0.5em;
+                top: 0.714em;
+                font-size: 1.1em;
+                line-height: 1.6;
+            }
+
+            .markdown-alert-title {
+                display: flex;
+                align-items: center;
+                gap: 0.5em;
+                margin: 0 0 0.4em;
+                font-weight: 600;
+                font-size: 1em;
+            }
+
+            // Emoji picker button - hidden by default, show on hover
+            .markdown-alert-emoji-btn {
+                position: absolute;
+                left: 0.5em;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 1.8em;
+                height: 1.8em;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--secondary-text-color);
+                cursor: pointer;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+                font-size: 1.1em;
+                padding: 0;
+
+                &:hover {
+                    background-color: var(--highlight-bg-color);
+                    color: var(--main-text-color);
+                }
+            }
+
+            &:hover .markdown-alert-emoji-btn {
+                opacity: 1;
+            }
+
+            > :last-child {
+                margin-bottom: 0;
+            }
+        }
+
+        // Per-type colors
+        .markdown-alert-note {
+            border-left-color: #388bfd;
+            background-color: color-mix(in srgb, #388bfd 6%, transparent);
+        }
+        .markdown-alert-tip {
+            border-left-color: #3fb950;
+            background-color: color-mix(in srgb, #3fb950 6%, transparent);
+        }
+        .markdown-alert-important {
+            border-left-color: #a371f7;
+            background-color: color-mix(in srgb, #a371f7 6%, transparent);
+        }
+        .markdown-alert-warning {
+            border-left-color: #d29922;
+            background-color: color-mix(in srgb, #d29922 6%, transparent);
+        }
+        .markdown-alert-caution {
+            border-left-color: #f85149;
+            background-color: color-mix(in srgb, #f85149 6%, transparent);
+        }
+        .markdown-alert-quote {
+            border-left-color: var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+            background-color: var(--panel-bg-color);
         }
 
         // reset.scss zeroes margins on every element, so a bare <hr> renders as a 1px line
@@ -712,6 +817,20 @@
 }
 
 // Images in rendered markdown are click-to-zoom / right-click-to-act on (see MarkdownImg).
+.markdown-img-error {
+    display: inline-block;
+    padding: 6px 8px;
+    border: 1px solid var(--error-color, #d9534f);
+    border-radius: 4px;
+    color: var(--error-color, #d9534f);
+    background: color-mix(in srgb, var(--error-color, #d9534f) 10%, transparent);
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .markdown-img-clickable {
     cursor: zoom-in;
 }

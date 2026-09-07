@@ -18,6 +18,7 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../session-overview/session-overview.scss";
+import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { IconButton, SortButton, GroupModeSwitch, type ListGroupMode } from "./controls";
 import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
@@ -905,12 +906,21 @@ export class AiSessionsViewModel implements ViewModel {
 
     replaceSession(updated: SessionSummary): void {
         const sessions = globalStore.get(this.sessionsAtom);
-        globalStore.set(
-            this.sessionsAtom,
-            sessions.map((session) => (session.key === updated.key ? { ...session, ...updated } : session))
-        );
+        let changed = false;
+        const next = sessions.map((session) => {
+            if (session.key === updated.key) {
+                // 轮询/后台刷新命中时若实质无变化, 跳过写状态, 避免触发整面板重渲染.
+                if (isSameSessionSummary(session, updated)) return session;
+                changed = true;
+                return { ...session, ...updated };
+            }
+            return session;
+        });
+        if (changed) {
+            globalStore.set(this.sessionsAtom, next);
+        }
         const detail = globalStore.get(this.detailAtom);
-        if (detail?.summary?.key === updated.key) {
+        if (detail?.summary?.key === updated.key && !isSameSessionSummary(detail.summary, updated)) {
             globalStore.set(this.detailAtom, { ...detail, summary: { ...detail.summary, ...updated } });
         }
     }

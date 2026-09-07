@@ -77,6 +77,12 @@ type CommonTextItemType struct {
 	UsageCount float64  `json:"usagecount,omitempty"`
 }
 
+type PinnedDirectoryType struct {
+	Path    string `json:"path"`
+	Label   string `json:"label,omitempty"`
+	AddedAt int64  `json:"addedAt,omitempty"`
+}
+
 type SettingsType struct {
 	AppClear                      bool   `json:"app:*,omitempty"`
 	AppGlobalHotkey               string `json:"app:globalhotkey,omitempty"`
@@ -181,6 +187,7 @@ type SettingsType struct {
 	PreviewDefaultSort             string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
 	PreviewDefaultDirectoryDisplay string `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`
 	PreviewDefaultOpenTarget       string `json:"preview:defaultopentarget,omitempty" jsonschema:"enum=off,enum=left,enum=right,enum=up,enum=down"`
+	PreviewPinnedDirectories       []PinnedDirectoryType `json:"preview:pinned-directories,omitempty"`
 
 	TabPreset       string `json:"tab:preset,omitempty"`
 	TabConfirmClose bool   `json:"tab:confirmclose,omitempty"`

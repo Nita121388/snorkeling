@@ -60,6 +60,7 @@ import "./block.scss";
 import { minimizeGroupToFloat } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
 import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
+import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
@@ -668,6 +669,51 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         );
     }, [blockIds, layoutData.blockTabTitles]);
     const duplicateIndexes = useMemo(() => getDuplicateIndexes(blockIds, titleMap), [blockIds, titleMap]);
+    
+    // 计算每个标签的信息，用于下拉菜单（通过 derived atom 避免在 useMemo 中使用 hook）
+    const tabsInfoAtom = useMemo(
+        () =>
+            atom((get) => {
+                return blockIds.map((blockId) => {
+                    const blockData = get(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
+                    const blockView = (get(waveEnv.getBlockMetaKeyAtom(blockId, "view")) as string) ?? "";
+                    const customTitle = layoutData.blockTabTitles?.[blockId];
+                    const defaultTitle = blockViewToName(blockView) || blockId.slice(0, 8);
+                    const title = customTitle || defaultTitle;
+                    const dupIndex = duplicateIndexes.get(blockId);
+                    const displayTitle = dupIndex != null && dupIndex > 1 && !customTitle ? `${title} ${dupIndex}` : title;
+
+                    // 提取路径信息（与 InlineTabLabel.fullPath 逻辑对齐，只取 basename）
+                    const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+                    const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
+                    const file = typeof meta["file"] === "string" ? meta["file"] : "";
+                    const vcsPath = typeof meta["vcs:path"] === "string" ? meta["vcs:path"] : "";
+                    let rawPath = "";
+                    if (blockView === "preview" && !isBlank(file)) {
+                        rawPath = file;
+                    } else if (!isBlank(cwd)) {
+                        rawPath = cwd;
+                    } else if (blockView === "vcs" && !isBlank(vcsPath)) {
+                        rawPath = vcsPath;
+                    }
+                    const path = isBlank(rawPath) ? "" : basename(rawPath);
+
+                    // Preview 类型：标题为空，只显示 icon 即可表达含义
+                    const isPreview = blockView === "preview";
+                    const displayTitleForDropdown = isPreview ? "" : displayTitle;
+
+                    return {
+                        id: blockId,
+                        title: displayTitleForDropdown,
+                        path,
+                        icon: blockViewToIcon(blockView),
+                        isActive: blockId === activeBlockId,
+                    };
+                });
+            }),
+        [blockIdsKey, activeBlockId, layoutData.blockTabTitles, waveEnv]
+    );
+    const tabsInfo = useAtomValue(tabsInfoAtom);
     // 组内各 block 的锁定标记集合 (block:lock meta). 锁定不拦截正常关闭,
     // 仅用于「关闭其他/全部(锁定除外)」时保留对应标签。
     const lockedBlockIds = useAtomValue(
@@ -852,6 +898,15 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                     </div>
                     <div className="inline-tab-block-addzone">
                         <InlineTabGroupAddButton nodeId={nodeModel.nodeId} tabId={tabModel.tabId} activeBlockId={activeBlockId} />
+                        {blockIds.length > 1 && (
+                            <InlineTabDropdownMenu
+                                tabs={tabsInfo}
+                                activeTabId={activeBlockId}
+                                nodeId={nodeModel.nodeId}
+                                tabId={tabModel.tabId}
+                                onSelect={(blockId) => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
+                            />
+                        )}
                     </div>
                 </div>
             )}

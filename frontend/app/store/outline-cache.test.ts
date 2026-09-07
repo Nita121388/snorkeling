@@ -80,7 +80,7 @@ describe("outline-cache (behavior baseline)", () => {
         expect(getCachedUserOutline(sessionId)).toEqual(outline);
     });
 
-    it("TTL 过期: 超过 12s 重新发 RPC", async () => {
+    it("TTL 过期: 超过 30s 重新发 RPC", async () => {
         const sessionId = nextId("expire");
         const { service, outlineFn } = makeMockService();
         const v1 = makeOutline(sessionId, 1);
@@ -90,7 +90,7 @@ describe("outline-cache (behavior baseline)", () => {
         await loadUserOutline(service, sessionId, {});
         expect(outlineFn).toHaveBeenCalledTimes(1);
 
-        vi.advanceTimersByTime(12_001);
+        vi.advanceTimersByTime(30_001);
 
         const refreshed = await loadUserOutline(service, sessionId, {});
         expect(refreshed).toEqual(v2);

@@ -4,6 +4,7 @@
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import remarkGfm from "remark-gfm";
+import remarkCalloutAlert from "./callout-alert";
 import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
 import { createContentBlockPlugin } from "@/app/element/markdown-contentblock-plugin";
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
@@ -62,6 +63,7 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         remarkMarkdownFileReferences,
         remarkSoftBreaks,
         remarkGfm,
+        remarkCalloutAlert,
         // Split BEFORE loose-list spacing + blank-line spacers so split groups become tight
         // lists and the blank rows between groups render as real spacer paragraphs.
         remarkSplitLooseLists,

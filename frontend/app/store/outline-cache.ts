@@ -6,8 +6,9 @@ import debug from "debug";
 
 // UserOutline 前端缓存：让「多个组件各自拉 outline」收敛为「同一会话共享一份」，
 // 并用 TTL + 在途合并避免重复/并发请求。模式对齐 session-overview-session-cache。
-// 会话大纲是低实时性数据（最近几条用户消息），TTL 内旧几秒完全可接受；
+// 会话大纲是低实时性数据（最近几条用户消息），TTL 内旧几十秒完全可接受；
 // 用户主动展开会话条时走 forceRefresh，保证看到最新。
+// 30s TTL: 平衡 "hover/重渲染不重复打后端" 与 "大纲不过期太旧"。
 
 const dlog = debug("wave:outlinecache");
 
@@ -17,7 +18,7 @@ type CacheEntry = {
     promise: Promise<AISessionsUserOutlineResponse | null> | null;
 };
 
-const OutlineTtlMs = 12_000;
+const OutlineTtlMs = 30_000;
 
 const outlineCache = new Map<string, CacheEntry>();
 

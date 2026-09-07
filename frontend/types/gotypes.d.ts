@@ -2136,6 +2136,7 @@ declare global {
         "preview:defaultsort"?: string;
         "preview:defaultdirectorydisplay"?: string;
         "preview:defaultopentarget"?: string;
+        "preview:pinned-directories"?: { path: string; label?: string; addedAt?: number }[];
         "tab:preset"?: string;
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;

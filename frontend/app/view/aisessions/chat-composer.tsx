@@ -578,7 +578,7 @@ function ChatComposerInner({
     );
 
     return (
-        <div className="shrink-0 bg-panel">
+        <div className="shrink-0 bg-block">
             <div className="w-full px-3 pb-2.5 pt-1">
                 {notice ? (
                     <div className="pb-1 pt-0.5 text-[11px] text-secondary" role="status">
