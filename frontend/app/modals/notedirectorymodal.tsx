@@ -69,7 +69,7 @@ function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
 
     return (
         <Modal
-            className="w-[440px] max-w-[calc(100vw-32px)]"
+            className="w-[420px] max-w-[calc(100vw-32px)]"
             okLabel={saving ? "Saving..." : "Save"}
             cancelLabel="Cancel"
             okDisabled={saving}

@@ -149,7 +149,7 @@ const WidgetQuickLaunchModal = memo(() => {
     );
 
     return (
-        <Modal className="widget-quick-launch w-[min(92vw,460px)]" onClickBackdrop={close} onClose={close}>
+        <Modal className="widget-quick-launch w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={close} onClose={close}>
             {/* header：仅左侧标题；关闭走 Modal 基类右上角的 X（Bloom 同款），不再自放 esc 键帽撞车 */}
             <div className="flex items-center gap-2 border-b border-border px-4 py-3">
                 <i className="fa-sharp fa-regular fa-bolt text-accent text-sm" />

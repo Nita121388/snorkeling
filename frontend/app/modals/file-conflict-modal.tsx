@@ -34,7 +34,7 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
 
     return (
         <FlexiModal
-            className="w-[470px] max-w-[calc(100vw-32px)]"
+            className="w-[520px] max-w-[calc(100vw-32px)]"
             onClickBackdrop={() => resolveAndClose("cancel")}
         >
             <div className="modal-content">
