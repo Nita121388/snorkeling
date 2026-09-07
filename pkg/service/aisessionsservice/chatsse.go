@@ -4,12 +4,18 @@
 package aisessionsservice
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/aisessions/chat"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/web/sse"
 )
 
@@ -17,6 +23,37 @@ import (
 // package scope so both the SSE handler and the service control methods
 // (ChatAbort / ChatClose) share one manager.
 var chatManager = chat.NewManager()
+
+// modelsCacheTTL bounds the process-level cache of get_available_models
+// results. The model registry is near-static (pi config/auth), so re-spawning
+// a pi subprocess (seconds of startup) just to list models is wasted latency.
+const modelsCacheTTL = 10 * time.Minute
+
+type modelsCacheEntry struct {
+	data      any
+	fetchedAt time.Time
+}
+
+var modelsCache = struct {
+	sync.Mutex
+	bySource map[string]modelsCacheEntry
+}{bySource: map[string]modelsCacheEntry{}}
+
+func getCachedModels(source string) (any, bool) {
+	modelsCache.Lock()
+	defer modelsCache.Unlock()
+	entry, ok := modelsCache.bySource[source]
+	if !ok || time.Since(entry.fetchedAt) > modelsCacheTTL {
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func putCachedModels(source string, data any) {
+	modelsCache.Lock()
+	defer modelsCache.Unlock()
+	modelsCache.bySource[source] = modelsCacheEntry{data: data, fetchedAt: time.Now()}
+}
 
 // ChatImage is one base64-encoded image attachment (pi ImageContent shape).
 type ChatImage struct {
@@ -92,12 +129,25 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The GUI may pass shell-style abbreviated paths ("~/proj"); Go's exec
+	// does not expand ~, so chdir would fail with "no such file or directory".
+	projectPath := wavebase.ExpandHomeDirSafe(req.ProjectPath)
+	sessionDir := wavebase.ExpandHomeDirSafe(req.SessionDir)
+	// Serve the model list from the process cache when warm — a cache hit
+	// skips Ensure() entirely, so no pi subprocess is spawned for this request.
+	if req.Command != nil && req.Command.Name == "get_available_models" {
+		if data, ok := getCachedModels(req.Source); ok {
+			_ = sseHandler.WriteJsonData(map[string]any{"type": "command_result", "command": req.Command.Name, "data": data})
+			return
+		}
+	}
+
 	opts := chat.StartOptions{
 		SessionID:    req.SessionID,
-		ProjectPath:  req.ProjectPath,
+		ProjectPath:  projectPath,
 		Provider:     req.Provider,
 		Model:        req.Model,
-		SessionDir:   req.SessionDir,
+		SessionDir:   sessionDir,
 		NoExtensions: req.NoExtensions,
 	}
 	session, isNew, sessionKey, err := chatManager.Ensure(r.Context(), provider, opts)
@@ -111,7 +161,9 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Emit a session snapshot so the frontend can prime the header without
 	// waiting for the first turn.
+	var state *chat.SessionStateInfo
 	if st, err := session.GetState(r.Context()); err == nil {
+		state = st
 		_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
 		// If pi assigned a real session ID, promote the session from its transient key
 		// so subsequent requests with the real ID can find it.
@@ -119,6 +171,7 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 			chatManager.PromoteSession(req.Source, sessionKey, st.SessionID, session)
 		}
 	}
+	registerLiveChatSession(req, state)
 
 	if req.Command != nil {
 		data, err := session.Control(r.Context(), req.Command.Name, req.Command.Args)
@@ -127,6 +180,9 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 			result["error"] = err.Error()
 		} else {
 			result["data"] = data
+			if req.Command.Name == "get_available_models" {
+				putCachedModels(req.Source, data)
+			}
 			// Model/thinking changes are reflected in a fresh state snapshot.
 			if req.Command.Name == "set_model" || req.Command.Name == "set_thinking_level" {
 				if st, err := session.GetState(r.Context()); err == nil {
@@ -146,8 +202,10 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Wire mapped ChatEvents to the SSE stream.
 	turnDone := make(chan struct{})
+	var endType chat.ChatEventType
 	unsub := session.OnEvent(func(evt chat.ChatEvent) {
 		if evt.Type == chat.TurnEnd || evt.Type == chat.TurnFailed {
+			endType = evt.Type
 			select {
 			case <-turnDone:
 			default:
@@ -169,10 +227,65 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-turnDone:
+		// Normal turn end: confirm the transcript was flushed to disk before
+		// handing control back to the GUI, then emit a terminal turn_persisted
+		// event so the frontend can swap the streaming view for the persisted
+		// one without polling. Failures skip the wait (file state uncertain).
+		if endType == chat.TurnEnd {
+			persistCtx, cancel := context.WithTimeout(context.Background(), chat.DefaultPersistTimeout)
+			persisted := session.WaitPersisted(persistCtx, chat.DefaultPersistTimeout)
+			cancel()
+			_ = sseHandler.WriteJsonData(chat.ChatEvent{Type: chat.TurnPersisted, Persisted: persisted})
+			if st, err := session.GetState(context.Background()); err == nil {
+				_ = sseHandler.WriteJsonData(map[string]any{"type": "session_state", "state": st})
+			}
+		}
 	case <-r.Context().Done():
 		// Client vanished mid-turn; stop the agent so it doesn't keep working.
 		_ = session.Abort(r.Context())
 	}
+}
+
+// registerLiveChatSession records the freshly spawned chat session in the
+// aisessions live registry so Summary/Detail resolve it even before the
+// agent flushes its transcript file (pi defers file creation until the first
+// assistant message). The title is seeded from the first prompt line, which
+// is also what the scan-based title derivation would produce later.
+func registerLiveChatSession(req AISessionsChatRequest, state *chat.SessionStateInfo) {
+	if state == nil || state.SessionID == "" || req.Source == "" {
+		return
+	}
+	nowMS := time.Now().UnixMilli()
+	summary := aisessions.SessionSummary{
+		Source:      req.Source,
+		ID:          state.SessionID,
+		Title:       provisionalChatTitle(req.Message),
+		TitleSource: "live",
+		ProjectPath: req.ProjectPath,
+		CreatedAt:   nowMS,
+		UpdatedAt:   nowMS,
+		FilePath:    state.SessionFile,
+	}
+	summary.Key = aisessions.StableKey(summary.Source, summary.ID, summary.FilePath)
+	aisessions.RegisterLiveSession(summary)
+}
+
+// provisionalChatTitle derives the provisional session title from the user's
+// prompt: first non-empty line, whitespace-normalized, bounded to 60 chars
+// (same shape as the scan-based first_user_message title).
+func provisionalChatTitle(message string) string {
+	for _, line := range strings.Split(message, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		normalized := strings.Join(strings.Fields(trimmed), " ")
+		if len(normalized) > 60 {
+			normalized = normalized[:60]
+		}
+		return normalized
+	}
+	return ""
 }
 
 // svrDebugf mirrors aiSessionsDebugf (kept local to the chat file to avoid

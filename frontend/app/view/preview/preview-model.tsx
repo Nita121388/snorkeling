@@ -81,14 +81,15 @@ import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-dr
 import { resolvePreviewPlugin, shouldPreviewPluginTakeOver } from "./preview-plugin-registry";
 import type { PreviewEnv } from "./previewenv";
 
-// TODO drive this using config
-const BOOKMARKS: { label: string; path: string }[] = [
-    { label: "Home", path: "~" },
-    { label: "Desktop", path: "~/Desktop" },
-    { label: "Downloads", path: "~/Downloads" },
-    { label: "Documents", path: "~/Documents" },
-    { label: "Root", path: "/" },
-];
+
+// Pinned directories setting key
+const PreviewPinnedDirectoriesKey = "preview:pinned-directories";
+
+export type PinnedDirectory = {
+    path: string;
+    label: string;
+    addedAt: number;
+};
 
 const MaxFileSize = 1024 * 1024 * 10; // 10MB
 const MaxCSVSize = 1024 * 1024 * 1; // 1MB
@@ -481,12 +482,29 @@ export class PreviewModel implements ViewModel {
     codeEditKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     env: PreviewEnv;
 
+    // New Files floating window state
+    newFilesWindowOpen: PrimitiveAtom<boolean>;
+    recentDirs: PrimitiveAtom<Map<string, number>>;
+    pinnedDirs: PrimitiveAtom<PinnedDirectory[]>;
+
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
         this.viewType = "preview";
         this.blockId = blockId;
         this.nodeModel = nodeModel;
         this.tabModel = tabModel;
         this.env = waveEnv;
+
+        // New Files floating window
+        this.newFilesWindowOpen = atom(false) as PrimitiveAtom<boolean>;
+        this.recentDirs = atom(new Map<string, number>()) as PrimitiveAtom<Map<string, number>>;
+        this.pinnedDirs = atom([]) as PrimitiveAtom<PinnedDirectory[]>;
+
+        // Load pinned dirs from settings on init
+        const savedPinned = globalStore.get(this.env.getSettingsKeyAtom(PreviewPinnedDirectoriesKey));
+        if (Array.isArray(savedPinned)) {
+            globalStore.set(this.pinnedDirs, savedPinned as PinnedDirectory[]);
+        }
+
         const showHiddenFiles = globalStore.get(this.env.getSettingsKeyAtom("preview:showhiddenfiles")) ?? true;
         this.showHiddenFiles = atom<boolean>(showHiddenFiles);
         this.refreshVersion = atom(0);
@@ -609,12 +627,10 @@ export class PreviewModel implements ViewModel {
                 return {
                     elemtype: "iconbutton",
                     icon: "folder-open",
-                    longClick: (e: React.MouseEvent<any>) => {
-                        const menuItems: ContextMenuItem[] = BOOKMARKS.map((bookmark) => ({
-                            label: `Go to ${bookmark.label} (${bookmark.path})`,
-                            click: () => this.goHistory(bookmark.path, undefined, bookmark.path),
-                        }));
-                        ContextMenuModel.getInstance().showContextMenu(menuItems, e);
+                    click: (e: React.MouseEvent<any>) => {
+                        // Toggle New Files floating window
+                        const isOpen = globalStore.get(this.newFilesWindowOpen);
+                        globalStore.set(this.newFilesWindowOpen, !isOpen);
                     },
                 };
             }
@@ -1595,6 +1611,42 @@ export class PreviewModel implements ViewModel {
         return null;
     }
 
+    private isFilePreviewBlock(block: Block): boolean {
+        const meta = block?.meta ?? {};
+        // A block that reports itself as a directory (pathisdir or a directory display
+        // mode) is a folder preview, not a file preview, so it must not be reused as a
+        // file tab container.
+        if (meta?.[PreviewPathIsDirMetaKey] === true) {
+            return false;
+        }
+        if (meta?.[PreviewDirectoryDisplayMetaKey] != null) {
+            return false;
+        }
+        return true;
+    }
+
+    private findDirectionalFilePreviewBlock(direction: PreviewOpenTargetDirection): string {
+        const navDirection = openTargetToNavigateDirection(direction);
+        if (navDirection == null) {
+            return null;
+        }
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetBlockIds = layoutModel.findBlockIdsInDirection(this.blockId, navDirection);
+        for (const targetBlockId of targetBlockIds) {
+            const targetBlock = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${targetBlockId}`));
+            if (targetBlock?.meta?.view !== "preview") {
+                continue;
+            }
+            if (targetBlock?.meta?.edit) {
+                continue;
+            }
+            if (this.isFilePreviewBlock(targetBlock)) {
+                return targetBlockId;
+            }
+        }
+        return null;
+    }
+
     private focusBlockById(blockId: string) {
         const layoutModel = getLayoutModelForStaticTab();
         const layoutNode = layoutModel.getNodeByBlockId(blockId);
@@ -1661,6 +1713,24 @@ export class PreviewModel implements ViewModel {
             return blockId;
         }
         return null;
+    }
+
+    private async createPreviewBlockForOpen(
+        newPath: string,
+        connection: string,
+        isDir: boolean
+    ): Promise<string | null> {
+        const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        const blockMeta: Record<string, any> = {
+            view: "preview",
+            file: newPath,
+            connection,
+            [PreviewPathIsDirMetaKey]: isDir,
+        };
+        const blockDef: BlockDef = {
+            meta: blockMeta,
+        };
+        return await ObjectService.CreateBlock(blockDef, rtOpts);
     }
 
     private async openPathInPreviewBlockAsTab(
@@ -1814,6 +1884,50 @@ export class PreviewModel implements ViewModel {
             } as any,
         };
         await createBlock(blockDef);
+    }
+
+    /**
+     * Smart "Open in New Block".
+     *
+     * - Folder (isDir=true): always add the new folder as a tab inside the CURRENT
+     *   block's group, tab-ifying the group if it is still a single block, instead of
+     *   creating a brand-new standalone block.
+     * - File (isDir=false): if the current open-target direction points at a *file*
+     *   preview block (or its tabified group), open the file as a tab there; otherwise
+     *   fall back to the normal new-block path.
+     */
+    async openPathInNewBlockSmart(newPath: string, isDir: boolean) {
+        const layoutModel = getLayoutModelForStaticTab();
+        const connection = await globalStore.get(this.connection);
+
+        if (isDir) {
+            const currentNode = layoutModel.getNodeByBlockId(this.blockId);
+            if (currentNode) {
+                const newBlockId = await this.createPreviewBlockForOpen(newPath, connection, true);
+                if (newBlockId) {
+                    if (layoutModel.addBlockToInlineTab(currentNode.id, newBlockId)) {
+                        this.focusBlockById(newBlockId);
+                        return;
+                    }
+                    fireAndForget(() => ObjectService.DeleteBlock(newBlockId));
+                }
+            }
+            await this.openPathInNewBlock(newPath, this.getOpenTargetDirection(), { pathIsDir: true });
+            return;
+        }
+
+        const direction = this.getOpenTargetDirection();
+        const targetFileBlockId = this.findDirectionalFilePreviewBlock(direction);
+        if (targetFileBlockId) {
+            const opened = await this.openPathInPreviewBlockAsTab(targetFileBlockId, newPath, connection, {
+                pathIsDir: false,
+            });
+            if (opened) {
+                this.focusBlockById(targetFileBlockId);
+                return;
+            }
+        }
+        await this.openPathInNewBlock(newPath, direction, { pathIsDir: false });
     }
 
     async openPathWithTarget(newPath: string, options?: PreviewOpenPathOptions) {
@@ -2486,6 +2600,59 @@ export class PreviewModel implements ViewModel {
 
     async formatRemoteUri(path: string, get: Getter): Promise<string> {
         return formatRemoteUri(path, await get(this.connection));
+    }
+
+    // ── Pinned directories ──────────────────────────────────────────
+    trackRecentDir(dirPath: string): void {
+        const current = globalStore.get(this.recentDirs);
+        const next = new Map(current);
+        next.set(dirPath, Date.now());
+        // Keep max 10 entries, sorted by recency
+        if (next.size > 10) {
+            const sorted = [...next.entries()].sort((a, b) => b[1] - a[1]);
+            const trimmed = new Map(sorted.slice(0, 10));
+            globalStore.set(this.recentDirs, trimmed);
+            return;
+        }
+        globalStore.set(this.recentDirs, next);
+    }
+
+    clearRecentDir(dirPath: string): void {
+        const current = globalStore.get(this.recentDirs);
+        const next = new Map(current);
+        next.delete(dirPath);
+        globalStore.set(this.recentDirs, next);
+    }
+
+    togglePinnedDir(dirPath: string, label?: string): void {
+        const current = globalStore.get(this.pinnedDirs);
+        const idx = current.findIndex((p) => p.path === dirPath);
+        let next: PinnedDirectory[];
+        if (idx >= 0) {
+            next = current.filter((_, i) => i !== idx);
+        } else {
+            next = [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
+        }
+        globalStore.set(this.pinnedDirs, next);
+        fireAndForget(() =>
+            this.env.rpc.SetConfigCommand(TabRpcClient, { [PreviewPinnedDirectoriesKey]: next })
+        );
+    }
+
+    isPinned(dirPath: string): boolean {
+        return globalStore.get(this.pinnedDirs).some((p) => p.path === dirPath);
+    }
+
+    async setTabDefaultPath(dirPath: string): Promise<void> {
+        const currentDefault = globalStore.get(this.blockAtom)?.meta?.[PreviewExplorerRootMetaKey];
+        const newValue = currentDefault === dirPath ? null : dirPath;
+        await this.env.services.object.UpdateObjectMeta(WOS.makeORef("block", this.blockId), {
+            [PreviewExplorerRootMetaKey]: newValue,
+        } as MetaType);
+    }
+
+    getTabDefaultPath(): string | undefined {
+        return globalStore.get(this.blockAtom)?.meta?.[PreviewExplorerRootMetaKey];
     }
 
     dispose(): void {

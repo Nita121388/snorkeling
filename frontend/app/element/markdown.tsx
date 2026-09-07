@@ -1197,6 +1197,7 @@ const MarkdownImg = ({
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);
     const [resolving, setResolving] = useState<boolean>(true);
+    const [imageLoadError, setImageLoadError] = useState<string | null>(null);
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const [pathInputOpen, setPathInputOpen] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -1225,6 +1226,7 @@ const MarkdownImg = ({
     const resizeTooltipRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
+        setImageLoadError(null);
         if (rawImgSrc.startsWith("data:image/")) {
             setResolving(false);
             setResolvedSrc(rawImgSrc);
@@ -1247,6 +1249,7 @@ const MarkdownImg = ({
             setResolvedSrc(resolvedSrc);
             setResolvedSrcSet(resolvedSrcSet);
             setResolvedStr(null);
+            setImageLoadError(resolvedSrc == null ? "Unable to resolve image path" : null);
             setResolving(false);
         };
         resolveFn();
@@ -1495,6 +1498,13 @@ const MarkdownImg = ({
     if (resolvedStr != null) {
         return <span>{resolvedStr}</span>;
     }
+    if (imageLoadError != null || resolvedSrc == null) {
+        return (
+            <span className="markdown-img-error" title={`${imageLoadError ?? "Unable to load image"}: ${rawImgSrc}`}>
+                [Image unavailable: {rawImgSrc}]
+            </span>
+        );
+    }
     if (resolvedSrc != null) {
         const imgStyle: React.CSSProperties = {};
         if (imgWidth != null) {
@@ -1524,6 +1534,7 @@ const MarkdownImg = ({
                         style={imgStyle}
                         onClick={handleImgClick}
                         onContextMenu={handleImgContextMenu}
+                        onError={() => setImageLoadError("Unable to load image")}
                     />
                     {hasResize && (showResizeHandle || isResizing) && (
                         <div
@@ -5125,7 +5136,7 @@ const Markdown = ({
                             // kebab `data-spacer-lines` -> `dataSpacerLines`); a regex like
                             // /^data./ would also work, but pinning the exact names keeps
                             // the surface tight.
-                            ["className", "paragraph", "blank-spacer"],
+                            ["className", "paragraph", "blank-spacer", "markdown-alert-title"],
                             "dataSpacerLines",
                             "dataEmptySpacer",
                         ],
@@ -5133,6 +5144,7 @@ const Markdown = ({
                             ...(defaultSchema.attributes?.span || []),
                             // Allow all class names starting with `hljs-`.
                             ["className", /^hljs-./],
+                            ["className", /^markdown-alert/],
                             ["srcset"],
                             ["media"],
                             ["type"],
@@ -5140,6 +5152,16 @@ const Markdown = ({
                             // ['className', 'hljs-number', 'hljs-title', 'hljs-variable']
                         ],
                         waveblock: [["blockkey"]],
+                        div: [
+                            ...(defaultSchema.attributes?.div || []),
+                            ["className", /^markdown-alert/],
+                            "dir",
+                        ],
+                        button: [
+                            ["className", /^markdown-alert/],
+                            "type",
+                            ["dataAlertType"],
+                        ],
                         // remarkLooseListSpacing tags loose lists with data-loose so CSS can
                         // restore the blank-line spacing between items.
                         ol: [...(defaultSchema.attributes?.ol || []), "dataLoose", "start", "dataSplitGroup"],
@@ -5156,6 +5178,10 @@ const Markdown = ({
                         "picture",
                         "source",
                         "mermaidblock",
+                        "div",
+                        "svg",
+                        "path",
+                        "button",
                     ],
                 }),
             (): any => rehypeSlug({ prefix: idPrefix }),

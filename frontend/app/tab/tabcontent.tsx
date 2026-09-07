@@ -60,7 +60,7 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
         innerContent = <CenteredDiv>Tab Not Found</CenteredDiv>;
     } else if ((tabData?.blockids?.length ?? 0) === 0) {
         innerContent = (
-            <div className="flex flex-col items-center justify-center gap-2 text-secondary select-none">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-secondary select-none">
                 <i className="fa-solid fa-box-open text-2xl opacity-50" />
                 <span className="text-xs font-medium">暂无 Block</span>
                 <span className="text-[11px] opacity-60">按 {PLATFORM === PlatformMacOS ? "⌘N" : "Alt+N"} 新建 Block，或点击 + 新建 Tab</span>

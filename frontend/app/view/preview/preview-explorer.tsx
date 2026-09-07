@@ -525,6 +525,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     relativePathRoot: rootPath,
                     openInCurrentBlock: () =>
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                    openInNewBlock: (isDir) => model.openPathInNewBlockSmart(finfo.path, isDir),
                     selectedFileInfos: effectiveSelectedFileInfos,
                 }
             );

@@ -567,6 +567,10 @@ export class WaveBrowserWindow extends BaseWindow {
                 }
                 const entry = this.actionQueue[0];
                 let tabId: string = null;
+                const entryStart = Date.now();
+                let backendMs = 0;
+                let webviewMs = 0;
+                let cacheHit = true;
                 // have to use "===" here to get the typechecker to work :/
                 switch (entry.op) {
                     case "createtab":
@@ -578,7 +582,14 @@ export class WaveBrowserWindow extends BaseWindow {
                             continue;
                         }
                         if (entry.setInBackend) {
+                            const backendStart = Date.now();
                             await WorkspaceService.SetActiveTab(this.workspaceId, tabId);
+                            backendMs = Date.now() - backendStart;
+                            if (backendMs > 100) {
+                                console.log(
+                                    `[tabswitch][SLOW-backend] WorkspaceService.SetActiveTab took ${backendMs}ms, tab=${tabId}`
+                                );
+                            }
                         }
                         break;
                     case "closetab": {
@@ -621,9 +632,20 @@ export class WaveBrowserWindow extends BaseWindow {
                 if (tabId == null) {
                     return;
                 }
+                const webviewStart = Date.now();
                 const [tabView, tabInitialized] = await getOrCreateWebViewForTab(this.waveWindowId, tabId);
+                cacheHit = tabInitialized;
+                webviewMs = Date.now() - webviewStart;
                 const primaryStartupTabFlag = entry.op === "switchtab" ? (entry.primaryStartupTab ?? false) : false;
+                const setViewStart = Date.now();
                 await this.setTabViewIntoWindow(tabView, tabInitialized, primaryStartupTabFlag);
+                if (entry.op === "switchtab") {
+                    const totalMs = Date.now() - entryStart;
+                    const slowMark = totalMs > 150 ? "[SLOW] " : "";
+                    console.log(
+                        `[tabswitch] ${slowMark}total=${totalMs}ms backend=${backendMs}ms webview=${webviewMs}ms(cache=${cacheHit ? "hit" : "miss"}) setview=${Date.now() - setViewStart}ms tab=${tabId}`
+                    );
+                }
             } catch (e) {
                 console.log("error caught in processActionQueue", e);
             } finally {

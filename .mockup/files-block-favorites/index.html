@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Files Block — New Files Floating Window (New Agent 风格)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Hack&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   §0  Design Tokens
+   ═══════════════════════════════════════════════ */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #222222;
+  --panel: #1f211f;
+  --surface: #2b2d2b;
+  --surface-soft: #343734;
+  --text: #f7f7f7;
+  --text-secondary: #c3c8c2;
+  --text-muted: #858a84;
+  --border: rgba(255,255,255,0.16);
+  --border-60: rgba(255,255,255,0.10);
+  --hover: rgba(255,255,255,0.1);
+  --hoverbg: #2e3340;
+  --action: #58c142;
+  --action-hover: #76df60;
+  --action-soft: rgba(88,193,66,0.12);
+  --action-soft-text: #6ee785;
+  --action-soft-border: rgba(88,193,66,0.3);
+  --accent: #58c4dc;
+  --accent-hover: #76d4ea;
+  --accent-soft: rgba(88,196,220,0.12);
+  --error: #e54d2e;
+  --error-soft: rgba(229,77,46,0.12);
+  --warning: #e0b956;
+  --shadow: rgba(0,0,0,0.55);
+  --modalbg: rgba(21,23,21,0.80);
+  --term-bright-blue: #58c4dc;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-xl: 12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--canvas);color:var(--text);
+  font:13px/1.5 Inter,"Segoe UI",system-ui,sans-serif;
+  padding:32px;min-height:100vh;
+}
+code{font-family:Hack,"JetBrains Mono",Consolas,monospace;font-size:11px;background:var(--hover);padding:1px 5px;border-radius:3px}
+
+/* ═══════════════════════════════════════════════
+   §1  Page Layout
+   ═══════════════════════════════════════════════ */
+.page-header{margin-bottom:28px}
+.page-header h1{font-size:18px;font-weight:600;margin-bottom:4px}
+.page-header .sub{color:var(--text-muted);font-size:12px}
+
+.scenario{margin-bottom:36px}
+.scenario-label{
+  font-size:11px;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:8px;display:flex;align-items:center;gap:6px;
+}
+.tag-new{font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(88,196,220,.12);color:var(--accent);border:1px solid rgba(88,196,220,.3)}
+.tag-tab{font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(88,193,66,.12);color:var(--action);border:1px solid rgba(88,193,66,.3)}
+
+/* ═══════════════════════════════════════════════
+   §2  Files Block Chrome
+   ═══════════════════════════════════════════════ */
+.block-frame{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;position:relative;box-shadow:0 2px 12px var(--shadow)}
+.block-header{display:flex;align-items:center;gap:6px;padding:0 8px;height:36px;background:var(--surface);border-bottom:1px solid var(--border);user-select:none}
+.block-header-icon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;transition:background .15s,color .15s}
+.block-header-icon:hover{background:var(--hover);color:var(--text)}
+.block-header-icon.has-fav{color:var(--action)}
+.block-header-path{flex:1;display:flex;align-items:center;gap:4px;min-width:0;font-size:12px}
+.block-header-path .path-display{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);cursor:pointer;padding:2px 4px;border-radius:var(--radius-sm);transition:background .15s}
+.block-header-path .path-display:hover{background:var(--hover);color:var(--text)}
+.block-header-actions{display:flex;align-items:center;gap:2px}
+.header-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;font-size:12px;border:none;background:none;transition:background .15s,color .15s}
+.header-btn:hover{background:var(--hover);color:var(--text)}
+.block-body{min-height:60px;padding:8px 0}
+.tree-placeholder{padding:4px 12px}
+.tree-item{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)}
+.tree-item .indent{width:16px}
+.tree-item i{width:14px;text-align:center;font-size:11px}
+.tree-item .name{flex:1}
+.tree-item .size{color:var(--text-muted);font-size:11px;font-family:Hack,monospace}
+
+/* ═══════════════════════════════════════════════
+   §3  Floating Window Scene (fix: flex row layout)
+   ═══════════════════════════════════════════════ */
+.scene-row{
+  display:flex;
+  gap:24px;
+  align-items:stretch;
+}
+.scene-left{flex:0 0 320px;position:relative}
+.scene-right{
+  flex:1 1 460px;
+  min-width:460px;
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.fav-backdrop{
+  position:absolute;inset:0;
+  background:rgba(0,0,0,.35);
+  backdrop-filter:blur(4px);
+  border-radius:var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════
+   §4  New Files Floating Window
+   ═══════════════════════════════════════════════ */
+.fav-float{
+  position:relative;
+  z-index:50;
+  width:460px;
+  max-height:560px;
+  background:var(--modalbg);
+  backdrop-filter:blur(40px);
+  border:1px solid var(--border-60);
+  border-radius:var(--radius-xl);
+  box-shadow:0 25px 50px -12px rgba(0,0,0,.6);
+  overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.fav-header{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:14px;font-weight:500;color:var(--text);border-bottom:1px solid var(--border-60)}
+.fav-header .fav-header-title{display:flex;align-items:center;gap:8px}
+.fav-header .fav-header-title i{color:var(--accent);font-size:12px}
+
+.fav-content{flex:1;overflow-y:auto;min-height:0;padding:0 4px;scrollbar-width:thin}
+.fav-content::-webkit-scrollbar{width:6px}
+.fav-content::-webkit-scrollbar-track{background:transparent}
+.fav-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+
+.fav-section+.fav-section{border-top:1px solid var(--border-60)}
+.fav-section-label{padding:10px 12px 6px;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.fav-section-label .count{font-size:10px;padding:0 5px;border-radius:3px;background:var(--hover);text-transform:none;letter-spacing:0}
+.fav-section-label i{color:var(--action)}
+
+.fav-row{position:relative;display:flex;align-items:center;gap:10px;padding:7px 12px 7px 14px;margin:0 4px 1px;border-radius:var(--radius-md);cursor:pointer;transition:background .12s;min-height:36px}
+.fav-row:hover{background:var(--hoverbg)}
+.fav-row.selected{background:var(--accent-soft)}
+.fav-row.selected::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;background:var(--accent);border-radius:1px}
+.fav-row-icon{width:16px;flex-shrink:0;text-align:center;font-size:12px;color:var(--text-muted)}
+.fav-row-icon.star{color:var(--action)}
+.fav-row-icon.clock{color:var(--text-muted)}
+.fav-row-body{flex:1;min-width:0}
+.fav-row-label{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.fav-row-path{font-size:11px;color:var(--text-muted);font-family:Hack,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-row-remove{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);color:var(--text-muted);font-size:10px;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0;cursor:pointer;border:none;background:none}
+.fav-row:hover .fav-row-remove{opacity:1}
+.fav-row-remove:hover{background:var(--error-soft);color:var(--error)}
+
+/* Default check button — mirrors widgets.tsx DefaultCheckButton (set THIS tab's default) */
+.fav-default-btn{
+  width:20px;height:20px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+  cursor:pointer;
+  border:none;background:none;
+  transition:color .15s;
+}
+.fav-default-btn.checked{color:var(--accent)}
+.fav-default-btn.unchecked{color:var(--border);opacity:0;transition:opacity .15s,color .15s}
+.fav-row:hover .fav-default-btn.unchecked{opacity:1}
+.fav-default-btn.unchecked .fav-check-empty{
+  width:12px;height:12px;
+  border-radius:2px;
+  border:1px solid var(--border);
+}
+
+.fav-add-row{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 14px;margin:2px 4px 4px;border-radius:var(--radius-md);cursor:pointer;font-size:12px;color:var(--action-soft-text);border:1px dashed var(--action-soft-border);background:transparent;transition:background .12s,border-color .12s,color .12s;width:calc(100% - 8px)}
+.fav-add-row:hover{background:var(--action-soft);border-color:var(--action);color:var(--action)}
+.fav-add-row i{font-size:11px;width:16px;text-align:center}
+
+.fav-empty{padding:20px 12px;text-align:center;color:var(--text-muted);font-size:12px}
+.fav-empty i{display:block;font-size:20px;margin-bottom:8px;opacity:.4}
+
+.fav-footer{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--border-60)}
+.fav-footer-btn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--radius-md);font-size:12px;font-weight:500;border:none;background:transparent;cursor:pointer;transition:all .15s;white-space:nowrap}
+.fav-footer-btn.primary{color:var(--accent)}
+.fav-footer-btn.primary:hover{background:var(--accent-soft);color:var(--accent-hover)}
+.fav-footer-btn.secondary{color:var(--text-secondary)}
+.fav-footer-btn.secondary:hover{background:var(--surface-soft);color:var(--text)}
+.fav-footer-btn i{font-size:9px}
+.fav-footer-sep{width:2px;height:2px;border-radius:50%;background:var(--border);flex-shrink:0}
+.fav-footer-path{margin-right:auto;font-size:11px;color:var(--text-muted);font-family:Hack,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+
+/* ═══════════════════════════════════════════════
+   §5  Context Menu (standalone block)
+   ═══════════════════════════════════════════════ */
+.ctx-menu{position:absolute;z-index:200;min-width:200px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 8px 24px var(--shadow);padding:4px}
+.ctx-item{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);cursor:pointer;transition:background .12s,color .12s}
+.ctx-item:hover{background:var(--hover);color:var(--text)}
+.ctx-item i{width:14px;text-align:center;font-size:11px}
+.ctx-sep{height:1px;background:var(--border);margin:4px 8px}
+.ctx-item.fav-star i{color:var(--action)}
+.ctx-item.fav-unstar i,.ctx-item.fav-unstar{color:var(--warning)}
+.ctx-item.set-default i{color:var(--accent)}
+
+/* ═══════════════════════════════════════════════
+   §6  Annotations
+   ═══════════════════════════════════════════════ */
+.anno{position:absolute;font-size:10px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none;z-index:500}
+.anno-new{background:rgba(88,196,220,.15);color:var(--accent);border:1px solid rgba(88,196,220,.3)}
+.anno-existing{background:rgba(255,255,255,.08);color:var(--text-muted);border:1px solid rgba(255,255,255,.1)}
+
+/* ═══════════════════════════════════════════════
+   §7  Design Notes
+   ═══════════════════════════════════════════════ */
+.design-notes{margin-top:40px;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.design-notes h2{font-size:14px;font-weight:600;margin-bottom:16px}
+.design-notes h3{font-size:12px;font-weight:600;margin:16px 0 8px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+.design-notes p,.design-notes li{font-size:12px;color:var(--text-secondary);line-height:1.7}
+.design-notes ul{margin-left:16px}
+.design-notes li{margin-bottom:4px}
+.design-notes .callout{padding:8px 12px;border-radius:var(--radius-sm);margin:8px 0;font-size:12px;border-left:3px solid var(--accent);background:var(--accent-soft);color:var(--accent)}
+.design-notes .token-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.design-notes .token-table th{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px}
+.design-notes .token-table td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.06)}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Files Block — New Files Floating Window</h1>
+  <div class="sub">置顶目录（Pinned）+ 最近访问（Recent）+ 行内 ✓ 设当前 Tab 默认 · 对齐 AgentTargetFloatingWindow · <code>preview-model.tsx</code> folder icon click → <code>NewFilesFloatingWindow</code></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     A — New Files Window (with data)
+     ═══════════════════════════════════════════════ -->
+<div class="scenario">
+  <div class="scenario-label">
+    A — New Files Window (with data)
+    <span class="tag-new">NEW</span>
+    <span class="tag-tab">Tab 级默认</span>
+  </div>
+
+  <div class="scene-row">
+    <!-- Left: faded block reference -->
+    <div class="scene-left">
+      <div class="block-frame" style="opacity:.4;pointer-events:none">
+        <div class="block-header">
+          <div class="block-header-icon has-fav" title="Tab 默认落位 → 星标"><i class="fa-solid fa-folder-open"></i></div>
+          <div class="block-header-path"><span class="path-display">~/Projects/snorkeling</span></div>
+        </div>
+        <div class="block-body">
+          <div class="tree-placeholder">
+            <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-folder" style="color:var(--term-bright-blue)"></i><span class="name">frontend</span></div>
+            <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-folder" style="color:var(--term-bright-blue)"></i><span class="name">pkg</span></div>
+            <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-file-code"></i><span class="name">package.json</span><span class="size">5.5k</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="anno anno-existing" style="top:-18px;left:0">Files Block (背景)</div>
+    </div>
+
+    <!-- Right: floating window -->
+    <div class="scene-right">
+      <div class="fav-backdrop"></div>
+      <div class="fav-float">
+        <div class="fav-header">
+          <div class="fav-header-title"><i class="fa-solid fa-location-crosshairs"></i>New Files</div>
+        </div>
+        <div class="fav-content">
+
+          <!-- 1. Pinned — 候选源（用户手动管理） -->
+          <div class="fav-section">
+            <div class="fav-section-label"><i class="fa-solid fa-star" style="font-size:10px"></i>Pinned<span class="count">3</span></div>
+            <div class="fav-row selected">
+              <div class="fav-row-icon star"><i class="fa-solid fa-star"></i></div>
+              <div class="fav-row-body"><div class="fav-row-label">Snorkeling</div><div class="fav-row-path">~/Projects/snorkeling</div></div>
+              <button class="fav-default-btn checked" title="Set as THIS tab's default path"><i class="fa-solid fa-check" style="font-size:10px"></i></button>
+              <button class="fav-row-remove" title="Unpin"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="fav-row">
+              <div class="fav-row-icon star"><i class="fa-solid fa-star"></i></div>
+              <div class="fav-row-body"><div class="fav-row-label">LiCA500</div><div class="fav-row-path">D:/Code/LiCA500</div></div>
+              <button class="fav-default-btn unchecked" title="Set as THIS tab's default path"><span class="fav-check-empty"></span></button>
+              <button class="fav-row-remove" title="Unpin"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="fav-row">
+              <div class="fav-row-icon star"><i class="fa-solid fa-star"></i></div>
+              <div class="fav-row-body"><div class="fav-row-label">Obsidian Vault</div><div class="fav-row-path">E:/Obsidian</div></div>
+              <button class="fav-default-btn unchecked" title="Set as THIS tab's default path"><span class="fav-check-empty"></span></button>
+              <button class="fav-row-remove" title="Unpin"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <button class="fav-add-row"><i class="fa-solid fa-plus"></i>Add current directory</button>
+          </div>
+
+          <!-- 2. Recent — 自动追踪（同样可勾选作默认） -->
+          <div class="fav-section">
+            <div class="fav-section-label"><i class="fa-regular fa-clock" style="font-size:10px"></i>Recent<span class="count">5</span></div>
+            <div class="fav-row"><div class="fav-row-icon clock"><i class="fa-regular fa-clock"></i></div><div class="fav-row-body"><div class="fav-row-label">Downloads</div><div class="fav-row-path">~/Downloads</div></div><button class="fav-default-btn unchecked" title="Set as this tab's default path"><span class="fav-check-empty"></span></button><button class="fav-row-remove" title="Clear from recent"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="fav-row"><div class="fav-row-icon clock"><i class="fa-regular fa-clock"></i></div><div class="fav-row-body"><div class="fav-row-label">Documents</div><div class="fav-row-path">~/Documents</div></div><button class="fav-default-btn unchecked" title="Set as this tab's default path"><span class="fav-check-empty"></span></button><button class="fav-row-remove" title="Clear from recent"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="fav-row"><div class="fav-row-icon clock"><i class="fa-regular fa-clock"></i></div><div class="fav-row-body"><div class="fav-row-label">work</div><div class="fav-row-path">~/work</div></div><button class="fav-default-btn unchecked" title="Set as this tab's default path"><span class="fav-check-empty"></span></button><button class="fav-row-remove" title="Clear from recent"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="fav-row"><div class="fav-row-icon clock"><i class="fa-regular fa-clock"></i></div><div class="fav-row-body"><div class="fav-row-label">snorkeling-design</div><div class="fav-row-path">~/Projects/snorkeling-design</div></div><button class="fav-default-btn unchecked" title="Set as this tab's default path"><span class="fav-check-empty"></span></button><button class="fav-row-remove" title="Clear from recent"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="fav-row"><div class="fav-row-icon clock"><i class="fa-regular fa-clock"></i></div><div class="fav-row-body"><div class="fav-row-label">tmp</div><div class="fav-row-path">/tmp</div></div><button class="fav-default-btn unchecked" title="Set as this tab's default path"><span class="fav-check-empty"></span></button><button class="fav-row-remove" title="Clear from recent"><i class="fa-solid fa-xmark"></i></button></div>
+          </div>
+
+          <!-- Default — no standalone section: set via row ✓ (New Agent pattern), scope from header -->
+
+        </div>
+        <div class="fav-footer">
+          <button class="fav-footer-btn secondary" title="Target settings"><i class="fa-solid fa-gears" style="font-size:10px"></i></button>
+          <span class="fav-footer-path" title="~/Projects/snorkeling">~/Projects/snorkeling</span>
+          <button class="fav-footer-btn primary"><i class="fa-sharp fa-regular fa-plus" style="font-size:9px"></i>Current</button>
+          <span class="fav-footer-sep"></span>
+          <button class="fav-footer-btn secondary"><i class="fa-sharp fa-regular fa-plus" style="font-size:9px"></i>New</button>
+          <span class="fav-footer-sep"></span>
+          <button class="fav-footer-btn secondary"><i class="fa-sharp fa-regular fa-arrow-right" style="font-size:9px"></i>Existing…</button>
+        </div>
+      </div>
+      <div class="anno anno-new" style="top:-18px;right:0">居中弹窗 · Pinned + Recent · 行内 ✓ 设 Tab 默认（对齐 New Agent）</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     B — Right-Click "Pin" + "Set Default"
+     ═══════════════════════════════════════════════ -->
+<div class="scenario">
+  <div class="scenario-label">B — Right-Click "Pin" / "Set as Default" <span class="tag-new">NEW MENU</span></div>
+
+  <div style="position:relative;display:inline-block">
+    <div class="block-frame" style="width:380px">
+      <div class="block-header">
+        <div class="block-header-icon"><i class="fa-solid fa-folder-open"></i></div>
+        <div class="block-header-path"><span class="path-display">~/Downloads</span></div>
+        <div class="block-header-actions"><button class="header-btn"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+      </div>
+      <div class="block-body">
+        <div class="tree-placeholder">
+          <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-folder" style="color:var(--term-bright-blue)"></i><span class="name">Screenshots</span></div>
+          <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-folder" style="color:var(--term-bright-blue)"></i><span class="name">project-export</span></div>
+          <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-file-zipper"></i><span class="name">backup.zip</span><span class="size">128m</span></div>
+        </div>
+      </div>
+      <div class="ctx-menu" style="left:140px;top:80px">
+        <div class="ctx-item"><i class="fa-solid fa-file"></i>New File</div>
+        <div class="ctx-item"><i class="fa-solid fa-folder"></i>New Folder</div>
+        <div class="ctx-item"><i class="fa-solid fa-pen"></i>Rename</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-copy"></i>Copy</div>
+        <div class="ctx-item"><i class="fa-solid fa-scissors"></i>Cut</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item fav-star"><i class="fa-solid fa-star"></i>Pin</div>
+        <div class="ctx-item set-default"><i class="fa-solid fa-location-crosshairs"></i>Set as THIS Tab's Default</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-copy"></i>Copy Full Path</div>
+        <div class="ctx-item"><i class="fa-solid fa-terminal"></i>Open in Terminal</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-trash" style="color:var(--error)"></i><span style="color:var(--error)">Delete</span></div>
+      </div>
+    </div>
+    <div class="anno anno-new" style="top:78px;left:144px">★ Add · + Set Default</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     C — Empty State
+     ═══════════════════════════════════════════════ -->
+<div class="scenario">
+  <div class="scenario-label">C — Empty State</div>
+
+  <div style="position:relative;display:inline-block">
+    <div class="fav-float" style="width:360px">
+      <div class="fav-header">
+        <div class="fav-header-title"><i class="fa-solid fa-location-crosshairs"></i>New Files</div>
+      </div>
+      <div class="fav-content">
+        <div class="fav-section">
+          <div class="fav-section-label"><i class="fa-solid fa-star" style="font-size:10px"></i>Pinned<span class="count">0</span></div>
+          <button class="fav-add-row"><i class="fa-solid fa-plus"></i>Add current directory</button>
+        </div>
+        <div class="fav-section">
+          <div class="fav-section-label"><i class="fa-regular fa-clock" style="font-size:10px"></i>Recent<span class="count">0</span></div>
+          <div class="fav-empty"><i class="fa-regular fa-clock"></i>Directories you navigate to will appear here.</div>
+        </div>
+      </div>
+      <div class="fav-footer">
+        <button class="fav-footer-btn secondary" title="Target settings"><i class="fa-solid fa-gears" style="font-size:10px"></i></button>
+        <button class="fav-footer-btn primary" disabled style="opacity:.4"><i class="fa-sharp fa-regular fa-plus" style="font-size:9px"></i>Current</button>
+        <span class="fav-footer-sep"></span>
+        <button class="fav-footer-btn secondary" disabled style="opacity:.4"><i class="fa-sharp fa-regular fa-plus" style="font-size:9px"></i>New</button>
+        <span class="fav-footer-sep"></span>
+        <button class="fav-footer-btn secondary" disabled style="opacity:.4"><i class="fa-sharp fa-regular fa-arrow-right" style="font-size:9px"></i>Existing…</button>
+      </div>
+    </div>
+    <div class="anno anno-new" style="top:-18px;left:0">空态 · 全局默认在 Settings 页面配置</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     D — "Unpin" (已收藏)
+     ═══════════════════════════════════════════════ -->
+<div class="scenario">
+  <div class="scenario-label">D — "Unpin" (已收藏)</div>
+
+  <div style="position:relative;display:inline-block">
+    <div class="block-frame" style="width:380px">
+      <div class="block-header">
+        <div class="block-header-icon has-fav"><i class="fa-solid fa-folder-open"></i></div>
+        <div class="block-header-path"><span class="path-display">~/Projects/snorkeling</span></div>
+        <div class="block-header-actions"><button class="header-btn"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+      </div>
+      <div class="block-body">
+        <div class="tree-placeholder">
+          <div class="tree-item"><span class="indent"></span><i class="fa-solid fa-folder-open" style="color:var(--term-bright-blue)"></i><span class="name">snorkeling</span></div>
+        </div>
+      </div>
+      <div class="ctx-menu" style="left:80px;top:60px">
+        <div class="ctx-item"><i class="fa-solid fa-file"></i>New File</div>
+        <div class="ctx-item"><i class="fa-solid fa-folder"></i>New Folder</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-paste"></i>Paste</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item fav-unstar"><i class="fa-solid fa-star"></i>Unpin</div>
+        <div class="ctx-item set-default"><i class="fa-solid fa-location-crosshairs"></i>Set as THIS Tab's Default</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-folder-open"></i>Open in New Block</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item"><i class="fa-solid fa-code-branch"></i>Git <span style="margin-left:auto"><i class="fa-solid fa-chevron-right" style="font-size:9px"></i></span></div>
+      </div>
+    </div>
+    <div class="anno anno-existing" style="top:58px;left:84px">★ 已收藏 → "Remove"；也可单独设默认</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     DESIGN NOTES
+     ═══════════════════════════════════════════════ -->
+<div class="design-notes">
+  <h2>Design Specification — New Files Floating Window</h2>
+
+  <div class="callout">
+    <strong>角色</strong>：这个浮窗是 Files Block 的<strong>「打开 / 定位」入口</strong>（对齐 New Agent / New Terminal 的 launch target 窗口）。它管三件事：
+    <strong>① 置顶目录 Pinned</strong>（用户主动固定、快捷跳转）· <strong>② Recent</strong>（自动追踪）· <strong>③ 当前 Tab 默认路径</strong>（行内 ✓ 勾选，对齐 New Agent）。
+  </div>
+
+  <h3>Trigger</h3>
+  <div class="callout">
+    Files Block folder icon <strong>click</strong>（替换当前 <code>longClick</code> context menu）→ 居中弹出 <code>NewFilesFloatingWindow</code>。
+  </div>
+
+  <h3>Floating Window 结构 (对齐 AgentTargetFloatingWindow)</h3>
+  <table class="token-table">
+    <tr><th>区域</th><th>Tailwind class</th><th>内容</th></tr>
+    <tr><td>Container</td><td><code>bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl</code></td><td>毛玻璃居中浮窗</td></tr>
+    <tr><td>Header</td><td><code>px-3 py-2 text-sm font-medium border-b border-border/60</code></td><td>◈ New Files</td></tr>
+    <tr><td>§1 Pinned</td><td>scrollable, <code>px-1 pb-1</code></td><td>用户主动置顶的常用目录；行内 ✓ = 「设为当前 Tab 默认」</td></tr>
+    <tr><td>§2 Recent</td><td></td><td>session 内自动追踪的最近目录；行内同样支持 ✓ 设默认</td></tr>
+    <tr><td>Row</td><td><code>py-2 pl-3 pr-2 rounded-md hover:bg-hoverbg</code> + selected <code>bg-accent/12</code> + left 2px bar</td><td>icon + label/path + ✓ default(row) + hover × remove</td></tr>
+    <tr><td>Footer</td><td><code>border-t border-border/60 px-3 py-2</code></td><td>⚙ | path | +Current | +New | Existing…</td></tr>
+  </table>
+
+  <h3>默认路径 — 行内 ✓ 勾选（per-tab）</h3>
+  <div class="callout">
+    <strong>规则</strong>：默认<strong>不在独立区设置</strong>，而在任意 Pinned / Recent 行上通过 <code>DefaultCheckButton</code>（✓）勾选。
+    对齐 New Agent 的 <code>AgentDefaultLaunchTargetMetaKey</code> 交互：勾选 = 设为当前 Tab 默认；再次点击 = 取消（toggle）。<br>
+    全局默认（未设 Tab 的兜底）在通用 <strong>Settings → Files → Default root</strong> 中配置，不放在本浮窗内。
+  </div>
+  <table class="token-table">
+    <tr><th>级别</th><th>语义</th><th>存储</th><th>对齐</th></tr>
+    <tr><td><strong>Tab 级</strong>（本浮窗 ✓ 勾选）</td><td>当前 Tab 的 Files 打开根</td><td><code>UpdateObjectMeta(tab, { "preview:explorer-root": pathKey })</code></td><td><code>AgentDefaultLaunchTargetMetaKey</code></td></tr>
+    <tr><td><strong>全局级</strong>（Settings 页面）</td><td>「未手动设默认」的 Tab 打开于此</td><td>settings.json <code>preview:default-root</code></td><td><code>PreviewDefaultOpenTargetSettingKey</code></td></tr>
+  </table>
+  <div class="callout">
+    <strong>解耦规则</strong>：设默认<strong>不要求</strong>先置顶；置顶<strong>不等于</strong>默认；移除置顶<strong>不会</strong>动 Tab 默认。
+    解析顺序：Tab meta → 全局 <code>preview:default-root</code> → 系统兜底。
+  </div>
+
+  <h3>Data Model</h3>
+  <ul>
+    <li><code>"preview:pinned-directories"</code> — <code>Array&lt;{ path: string, label?: string, addedAt: number }&gt;</code>，settings.json（置顶目录列表）</li>
+    <li>Tab 级默认 — per-tab meta：<code>UpdateObjectMeta(tab, { "preview:explorer-root": pathKey })</code>（复用既有 <code>PreviewExplorerRootMetaKey</code>）</li>
+    <li>Recent — <code>Map&lt;string, number&gt;</code> 前端 session 内内存追踪，不持久化</li>
+  </ul>
+
+  <h3>Files Changed</h3>
+  <table class="token-table">
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>preview-model.tsx</code></td><td>folder icon click → <code>newFilesWindowOpen</code> atom; add <code>recentDirs</code> tracking + CRUD; tab default via <code>UpdateObjectMeta</code>(<code>preview:explorer-root</code>)</td></tr>
+    <tr><td><code>preview-directory-utils.tsx</code></td><td>Add "Pin / Unpin" + "Set as Tab Default" in context menus</td></tr>
+    <tr><td><code>preview.tsx</code></td><td>Render <code>NewFilesFloatingWindow</code> when open</td></tr>
+    <tr><td>New: <code>preview-new-files.tsx</code></td><td>NewFilesFloatingWindow (FloatingPortal + useFloating centered)</td></tr>
+    <tr><td><code>schema/settings.json</code></td><td>Add <code>"preview:pinned-directories"</code></td></tr>
+  </table>
+
+  <h3>Interaction</h3>
+  <ul>
+    <li><strong>Click folder icon</strong> → toggle NewFilesFloatingWindow (居中弹窗)</li>
+    <li><strong>Click backdrop / press Esc</strong> → close</li>
+    <li><strong>Click row</strong> → navigate in current block</li>
+    <li><strong>Hover row → ✓</strong> (DefaultCheckButton) → toggle set as this tab's default</li>
+    <li><strong>Hover row → ×</strong> → unpin / clear from recent</li>
+    <li><strong>"Add current dir"</strong> → pin current path</li>
+    <li><strong>Footer "Current"</strong> → pin + set as this tab's default</li>
+    <li><strong>Footer "New"</strong> → open selected in new Files block</li>
+    <li><strong>Footer "Existing…"</strong> → open pick-a-target dialog for existing tab</li>
+    <li><strong>Right-click dir</strong> → "Pin" / "Unpin" / "Set as Tab Default"</li>
+  </ul>
+</div>
+
+</body>
+</html>

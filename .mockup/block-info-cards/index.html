@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snorkeling · Block Info Cards 原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+<div class="page">
+  <h1>Block Info Cards · 五种 Block 的开篇卡</h1>
+  <p class="subtitle">
+    与 <code>agent-id-card</code> 同一套<b>证件视觉语法</b>：横版卡身、左照片环 + 右信息行、时间条区、底部编号行；
+    照片环颜色 = 状态色，异常态才盖章（<b>正常态不盖章</b>，克制）。
+    覆盖五个核心 block：term(SSH) / web / preview / vcs / sysinfo。
+    应用内文案英文，中文仅为评审注释。Token 与 <code>frontend/app/theme.scss</code> 对齐。
+  </p>
+
+  <!-- 评审控件 -->
+  <div class="scenario-bar">
+    <span style="font-size:12px;color:var(--page-dim)">每张卡上方有状态 pills 可切换场景；右侧切换 App 主题与桌面明暗。</span>
+    <label class="scenario-toggle theme-toggle">
+      <span>App theme</span>
+      <select id="theme-select">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+        <option value="monochrome">Monochrome</option>
+      </select>
+    </label>
+    <label class="scenario-toggle"><input type="checkbox" id="desk-toggle"> dark desk</label>
+  </div>
+
+  <!-- ══════════════════ 1. Connection Card（term · SSH） ══════════════════ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>Connection Card</h2>
+      <span class="blocktype">term + connection</span>
+    </div>
+    <p class="section-desc">
+      语义： <b>登机牌</b>。SSH 连上远端的一瞬间亮出：这是哪台机器、谁在飞、飞了多久。
+      照片位 = 连接图标（或主机名首字母），环色 = 连接状态；时间条 = <b>连接稳定性轨迹</b>（在线/掉线/重连）；底部 = host key 指纹。
+    </p>
+    <div class="state-pills" data-card="card-conn">
+      <button class="state-pill is-active" data-state="connected">Connected</button>
+      <button class="state-pill" data-state="connecting">Connecting</button>
+      <button class="state-pill" data-state="dropped">Dropped</button>
+    </div>
+    <div class="desk">
+      <div class="mock-block">
+        <div class="block-frame-header">
+          <div class="block-frame-textelems-wrapper">
+            <span class="view-logo"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></span>
+            <div class="block-frame-text">ssh · deploy-01</div>
+          </div>
+          <div class="block-frame-end-icons">
+            <button class="wave-iconbutton" title="Toggle info card" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></button>
+          </div>
+        </div>
+        <div class="mock-block-body">
+          <article class="info-card" id="card-conn" data-state="connected">
+            <div class="card-body">
+              <figure class="card-photo">
+                <span class="photo-ring" id="conn-ring">
+                  <span class="photo-inner"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm7.9 9h-3.4a15.6 15.6 0 00-1.2-5.5A8 8 0 0119.9 11zM12 4c.9 1.2 1.9 3.6 2.4 7H9.6C10.1 7.6 11.1 5.2 12 4zM4.1 13h3.4c.2 2 .6 3.9 1.2 5.5A8 8 0 014.1 13zm3.4-2H4.1a8 8 0 014.6-5.5A15.6 15.6 0 007.5 11zM12 20c-.9-1.2-1.9-3.6-2.4-7h4.8c-.5 3.4-1.5 5.8-2.4 7zm3.3-1.5c.6-1.6 1-3.5 1.2-5.5h3.4a8 8 0 01-4.6 5.5z"/></svg></span>
+                </span>
+                <figcaption>deploy-01</figcaption>
+              </figure>
+              <dl class="card-fields">
+                <div class="field field-title">
+                  <dt>Host</dt>
+                  <dd>deploy-01.snorkel.dev</dd>
+                </div>
+                <div class="field">
+                  <dt>Status</dt>
+                  <dd class="dd-status"><span class="status-dot" id="conn-dot"></span><span id="conn-status">Connected · 23 ms</span></dd>
+                </div>
+                <div class="field">
+                  <dt>Auth</dt>
+                  <dd><span class="pill">ed25519</span> <span class="pill pill--dim">agent forwarding</span></dd>
+                </div>
+                <div class="field">
+                  <dt>Session</dt>
+                  <dd id="conn-uptime">Uptime 3h 12m · 1 shell</dd>
+                </div>
+                <div class="field">
+                  <dt>Remote</dt>
+                  <dd class="dd-action" title="Open remote config">ubuntu 24.04 · ~/work/api</dd>
+                </div>
+              </dl>
+              <span class="card-stamp" id="conn-stamp" hidden>Dropped</span>
+            </div>
+            <section class="card-timeline" aria-label="Connection stability">
+              <div class="tl-head">
+                <span class="tl-label">Stability · last hour</span>
+                <span class="tl-total" id="conn-avail">99.2%</span>
+              </div>
+              <div class="tl-track">
+                <span class="tl-seg tl-seg--up" style="flex:38 1 0%" title="online · 38m"></span>
+                <span class="tl-seg tl-seg--error" style="flex:3 1 0%" title="dropped · 3m"></span>
+                <span class="tl-seg tl-seg--blocked" style="flex:2 1 0%" title="reconnecting · 2m"></span>
+                <span class="tl-seg tl-seg--up" style="flex:17 1 0%" title="online · 17m"></span>
+              </div>
+              <div class="tl-legend">
+                <span class="tl-legend-item"><i class="tl-seg--up"></i>online <b>55m</b></span>
+                <span class="tl-legend-item"><i class="tl-seg--error"></i>dropped <b>3m</b></span>
+                <span class="tl-legend-item"><i class="tl-seg--blocked"></i>reconnecting <b>2m</b></span>
+              </div>
+            </section>
+            <footer class="card-number">
+              <code class="sid">SHA256:mV0aPyaCq9xk2Rf1LnTtE8wZbD4gHuJ6sKoQ3eXiY7A</code>
+              <button class="copy-btn" data-copy="SHA256:mV0aPyaCq9xk2Rf1LnTtE8wZbD4gHuJ6sKoQ3eXiY7A" title="Copy host key fingerprint"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg></button>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 2. Site Card（web） ══════════════════ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>Site Card</h2>
+      <span class="blocktype">web</span>
+    </div>
+    <p class="section-desc">
+      语义：<b>签证页</b>。一个网址是否值得信任、加载是否健康，一屏说清。
+      照片位 = favicon，环色 = <b>安全状态</b>（HTTPS 绿 / mixed content 橙 / 无 TLS 红）；底部 = 完整 URL。
+    </p>
+    <div class="state-pills" data-card="card-site">
+      <button class="state-pill is-active" data-state="secure">Secure</button>
+      <button class="state-pill" data-state="mixed">Mixed content</button>
+      <button class="state-pill" data-state="insecure">Insecure</button>
+    </div>
+    <div class="desk">
+      <div class="mock-block">
+        <div class="block-frame-header">
+          <div class="block-frame-textelems-wrapper">
+            <span class="view-logo"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm7.9 9h-3.4a15.6 15.6 0 00-1.2-5.5A8 8 0 0119.9 11zM12 4c.9 1.2 1.9 3.6 2.4 7H9.6C10.1 7.6 11.1 5.2 12 4zM4.1 13h3.4c.2 2 .6 3.9 1.2 5.5A8 8 0 014.1 13zm3.4-2H4.1a8 8 0 014.6-5.5A15.6 15.6 0 007.5 11zM12 20c-.9-1.2-1.9-3.6-2.4-7h4.8c-.5 3.4-1.5 5.8-2.4 7zm3.3-1.5c.6-1.6 1-3.5 1.2-5.5h3.4a8 8 0 01-4.6 5.5z"/></svg></span>
+            <div class="block-frame-text">web · docs.snorkeling.dev</div>
+          </div>
+          <div class="block-frame-end-icons">
+            <button class="wave-iconbutton" title="Toggle info card" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></button>
+          </div>
+        </div>
+        <div class="mock-block-body">
+          <article class="info-card" id="card-site" data-state="secure">
+            <div class="card-body">
+              <figure class="card-photo">
+                <span class="photo-ring">
+                  <span class="photo-inner" style="font:700 26px/1 Georgia,serif;color:var(--c-text-dim)">S</span>
+                </span>
+                <figcaption>snorkeling.dev</figcaption>
+              </figure>
+              <dl class="card-fields">
+                <div class="field field-title">
+                  <dt>Title</dt>
+                  <dd>Snorkeling Docs — Getting Started</dd>
+                </div>
+                <div class="field">
+                  <dt>Security</dt>
+                  <dd class="dd-status"><span class="status-dot"></span><span id="site-security">HTTPS · certificate valid</span></dd>
+                </div>
+                <div class="field">
+                  <dt>Load</dt>
+                  <dd><span class="mono-dim">1.2 s</span> · 38 requests · 640 KB</dd>
+                </div>
+                <div class="field">
+                  <dt>Trackers</dt>
+                  <dd id="site-trackers">3 blocked on this page</dd>
+                </div>
+                <div class="field">
+                  <dt>History</dt>
+                  <dd class="dd-link-row"><a href="#" class="dd-link">4 pages visited this session<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></dd>
+                </div>
+              </dl>
+              <span class="card-stamp" id="site-stamp" hidden>Not secure</span>
+            </div>
+            <section class="card-timeline" aria-label="Load performance">
+              <div class="tl-head">
+                <span class="tl-label">Load time · last visits</span>
+                <span class="tl-total">avg 1.4 s</span>
+              </div>
+              <div class="tl-track tl-track--bars" style="height:26px">
+                <span class="tl-bar" style="height:40%" title="1.1 s"></span>
+                <span class="tl-bar" style="height:55%" title="1.3 s"></span>
+                <span class="tl-bar" style="height:30%" title="0.9 s"></span>
+                <span class="tl-bar" style="height:70%" title="1.6 s"></span>
+                <span class="tl-bar" style="height:48%" title="1.2 s"></span>
+                <span class="tl-bar is-today" style="height:46%" title="1.2 s · now"></span>
+              </div>
+            </section>
+            <footer class="card-number">
+              <code class="sid">https://docs.snorkeling.dev/getting-started</code>
+              <button class="copy-btn" data-copy="https://docs.snorkeling.dev/getting-started" title="Copy URL"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg></button>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 3. File Card（preview） ══════════════════ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>File Card</h2>
+      <span class="blocktype">preview</span>
+    </div>
+    <p class="section-desc">
+      语义：<b>档案袋标签</b>。打开文件前先亮出：这是什么、多大、改过没有。
+      照片位 = 文件类型图形，环色 = <b>脏状态</b>（干净 done 绿 / 有未保存草稿 warn / 只读 idle）；底部 = 完整路径。
+    </p>
+    <div class="state-pills" data-card="card-file">
+      <button class="state-pill is-active" data-state="clean">Saved</button>
+      <button class="state-pill" data-state="dirty">Unsaved draft</button>
+      <button class="state-pill" data-state="readonly">Read-only</button>
+    </div>
+    <div class="desk">
+      <div class="mock-block">
+        <div class="block-frame-header">
+          <div class="block-frame-textelems-wrapper">
+            <span class="view-logo"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2zm8 1.5V8h4.5L14 3.5zM8 12h8v1.5H8V12zm0 3h8v1.5H8V15zm0-6h4v1.5H8V9z"/></svg></span>
+            <div class="block-frame-text">preview · README.md</div>
+          </div>
+          <div class="block-frame-end-icons">
+            <button class="wave-iconbutton" title="Toggle info card" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></button>
+          </div>
+        </div>
+        <div class="mock-block-body">
+          <article class="info-card" id="card-file" data-state="clean">
+            <div class="card-body">
+              <figure class="card-photo">
+                <span class="photo-ring">
+                  <span class="photo-inner"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 3h-17A1.5 1.5 0 002 4.5v15A1.5 1.5 0 003.5 21h17a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0020.5 3zM6.8 17.3l-3.3-4 3.3-4h2.4l-3.3 4 3.3 4H6.8zm2.7-.4l2-5.1h1.4l-2 5.1H9.5zm4.9.4h-2.4l3.3-4-3.3-4h2.4l3.3 4-3.3 4z"/></svg></span>
+                </span>
+                <figcaption>markdown</figcaption>
+              </figure>
+              <dl class="card-fields">
+                <div class="field field-title">
+                  <dt>Name</dt>
+                  <dd>README.md</dd>
+                </div>
+                <div class="field">
+                  <dt>Kind</dt>
+                  <dd>Markdown · 128 lines · UTF-8</dd>
+                </div>
+                <div class="field">
+                  <dt>Size</dt>
+                  <dd><span class="mono-dim">14.2 KB</span> · 3 images linked</dd>
+                </div>
+                <div class="field">
+                  <dt>Modified</dt>
+                  <dd id="file-modified">12m ago · by you</dd>
+                </div>
+                <div class="field">
+                  <dt>Edits</dt>
+                  <dd id="file-edits" class="dd-status"><span class="status-dot"></span><span>Saved · in sync</span></dd>
+                </div>
+              </dl>
+              <span class="card-stamp" id="file-stamp" hidden>Draft</span>
+            </div>
+            <section class="card-timeline" aria-label="Edit history">
+              <div class="tl-head">
+                <span class="tl-label">Edits · today</span>
+                <span class="tl-total" id="file-edittotal">9 edits</span>
+              </div>
+              <div class="tl-track">
+                <span class="tl-seg tl-seg--done" style="flex:5 1 0%" title="commits · 5"></span>
+                <span class="tl-seg tl-seg--run" style="flex:3 1 0%" title="unsaved draft · 3 hunks"></span>
+                <span class="tl-seg tl-seg--idle" style="flex:6 1 0%" title="no edits · 6h"></span>
+                <span class="tl-seg tl-seg--run" style="flex:1 1 0%" title="editing · now"></span>
+              </div>
+              <div class="tl-legend">
+                <span class="tl-legend-item"><i class="tl-seg--done"></i>committed <b>5</b></span>
+                <span class="tl-legend-item"><i class="tl-seg--run"></i>unsaved <b>2 hunks</b></span>
+                <span class="tl-legend-item"><i class="tl-seg--idle"></i>idle <b>6h</b></span>
+              </div>
+            </section>
+            <footer class="card-number">
+              <code class="sid">~/Primary/projects/snorkeling/README.md</code>
+              <button class="copy-btn" data-copy="~/Primary/projects/snorkeling/README.md" title="Copy path"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg></button>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 4. Repo Card（vcs） ══════════════════ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>Repo Card</h2>
+      <span class="blocktype">vcs</span>
+    </div>
+    <p class="section-desc">
+      语义：<b>护照</b>。仓库的「出入境记录」：在哪条分支、和远端差多少、带了多少未提交的东西。
+      照片位 = 分支图形，环色 = <b>同步状态</b>（in-sync 绿 / ahead+behind 橙 / conflict 红）；时间条 = <b>提交活跃度柱</b>（近 14 天）。
+    </p>
+    <div class="state-pills" data-card="card-repo">
+      <button class="state-pill is-active" data-state="insync">In sync</button>
+      <button class="state-pill" data-state="ahead">Ahead / Behind</button>
+      <button class="state-pill" data-state="conflict">Conflict</button>
+    </div>
+    <div class="desk">
+      <div class="mock-block">
+        <div class="block-frame-header">
+          <div class="block-frame-textelems-wrapper">
+            <span class="view-logo"><svg viewBox="0 0 24 24"><path d="M17 3a3 3 0 00-3 3c0 1.3.8 2.4 2 2.8v1c0 1.1-.9 2-2 2h-4c-.9 0-1.7.3-2.3.8V8.8A3 3 0 106 8.8v6.4a3 3 0 101.7.1c.4-.8 1.2-1.3 2.3-1.3h4a4 4 0 004-4v-1A3 3 0 0017 3zm0 2a1 1 0 110 2 1 1 0 010-2zM7 3a3 3 0 100 6 3 3 0 000-6zm0 2a1 1 0 110 2 1 1 0 010-2zm0 10a1 1 0 110 2 1 1 0 010-2z"/></svg></span>
+            <div class="block-frame-text">vcs · snorkeling</div>
+          </div>
+          <div class="block-frame-end-icons">
+            <button class="wave-iconbutton" title="Toggle info card" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></button>
+          </div>
+        </div>
+        <div class="mock-block-body">
+          <article class="info-card" id="card-repo" data-state="insync">
+            <div class="card-body">
+              <figure class="card-photo">
+                <span class="photo-ring">
+                  <span class="photo-inner"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.6 10.6L12 2l9.4 8.6-1.4 1.5L12 4.8l-8 7.3-1.4-1.5zM6 12h2.5v8H6v-8zm4.7 0h2.6v8h-2.6v-8zm4.8 0H18v8h-2.5v-8zM4 21h16v1.5H4V21z" transform="scale(.9) translate(1.3,1)"/></svg></span>
+                </span>
+                <figcaption>snorkeling</figcaption>
+              </figure>
+              <dl class="card-fields">
+                <div class="field field-title">
+                  <dt>Branch</dt>
+                  <dd id="repo-branch">main</dd>
+                </div>
+                <div class="field">
+                  <dt>Sync</dt>
+                  <dd class="dd-status"><span class="status-dot"></span><span id="repo-sync">In sync with origin</span></dd>
+                </div>
+                <div class="field">
+                  <dt>Changes</dt>
+                  <dd id="repo-changes" class="dd-link-row"><a href="#" class="dd-link">5 modified · 2 untracked<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></dd>
+                </div>
+                <div class="field">
+                  <dt>Commit</dt>
+                  <dd>"fix auth middleware 401" · 2h ago</dd>
+                </div>
+                <div class="field">
+                  <dt>Pipeline</dt>
+                  <dd id="repo-pipeline" class="dd-status"><span class="status-dot" style="background:var(--c-done)"></span><span>CI passed · 4m 12s</span></dd>
+                </div>
+              </dl>
+              <span class="card-stamp" id="repo-stamp" hidden>Conflict</span>
+            </div>
+            <section class="card-timeline" aria-label="Commit activity">
+              <div class="tl-head">
+                <span class="tl-label">Commit activity · 14 days</span>
+                <span class="tl-total" id="repo-commits">47 commits</span>
+              </div>
+              <div class="tl-track tl-track--bars" style="height:26px">
+                <span class="tl-bar" style="height:30%" title="2 commits"></span>
+                <span class="tl-bar" style="height:55%" title="4 commits"></span>
+                <span class="tl-bar" style="height:15%" title="1 commit"></span>
+                <span class="tl-bar" style="height:70%" title="6 commits"></span>
+                <span class="tl-bar" style="height:40%" title="3 commits"></span>
+                <span class="tl-bar" style="height:0%"  title="0 commits"></span>
+                <span class="tl-bar" style="height:0%"  title="0 commits"></span>
+                <span class="tl-bar" style="height:25%" title="2 commits"></span>
+                <span class="tl-bar" style="height:85%" title="7 commits"></span>
+                <span class="tl-bar" style="height:55%" title="4 commits"></span>
+                <span class="tl-bar" style="height:30%" title="2 commits"></span>
+                <span class="tl-bar" style="height:60%" title="5 commits"></span>
+                <span class="tl-bar" style="height:45%" title="3 commits"></span>
+                <span class="tl-bar is-today" style="height:70%" title="6 commits · today"></span>
+              </div>
+            </section>
+            <footer class="card-number">
+              <code class="sid">e4a91c7 · fix auth middleware 401</code>
+              <button class="copy-btn" data-copy="e4a91c7" title="Copy HEAD sha"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg></button>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 5. System Card（sysinfo） ══════════════════ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>System Card</h2>
+      <span class="blocktype">sysinfo / cpuplot</span>
+    </div>
+    <p class="section-desc">
+      语义：<b>体检表</b>。这台机器的健康状况一眼可读。
+      照片位特殊化：Agent 卡的照片环 → <b>环形仪表</b>（CPU 占用即「照片」），环色随负载 绿→橙→红；
+      时间条 → <b>负载迷你曲线</b>（同语法第三变体，与柱状/分段并列）。
+    </p>
+    <div class="state-pills" data-card="card-sys">
+      <button class="state-pill is-active" data-state="calm">Calm</button>
+      <button class="state-pill" data-state="busy">Busy</button>
+      <button class="state-pill" data-state="overload">Overloaded</button>
+    </div>
+    <div class="desk">
+      <div class="mock-block">
+        <div class="block-frame-header">
+          <div class="block-frame-textelems-wrapper">
+            <span class="view-logo"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></span>
+            <div class="block-frame-text">sysinfo · nita-macbook</div>
+          </div>
+          <div class="block-frame-end-icons">
+            <button class="wave-iconbutton" title="Toggle info card" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v12h16V6H4zm2.5 3h4v6h-4V9zm6 0h5v1.5h-5V9zm0 3h5v1.5h-5V9z"/></svg></button>
+          </div>
+        </div>
+        <div class="mock-block-body">
+          <article class="info-card" id="card-sys" data-state="calm">
+            <div class="card-body">
+              <figure class="card-photo">
+                <span class="photo-ring gauge-ring">
+                  <svg class="gauge" viewBox="0 0 84 84" aria-hidden="true">
+                    <circle class="gauge-circle-bg" cx="42" cy="42" r="40.5"></circle>
+                    <circle class="gauge-circle-fg" id="sys-gauge" cx="42" cy="42" r="40.5"
+                            stroke-dasharray="254.5" stroke-dashoffset="94"></circle>
+                  </svg>
+                  <span class="photo-inner gauge-value">
+                    <span id="sys-cpu">67<small style="display:inline">%</small></span>
+                    <small>CPU</small>
+                  </span>
+                </span>
+                <figcaption id="sys-host">nita-macbook</figcaption>
+              </figure>
+              <dl class="card-fields">
+                <div class="field field-title">
+                  <dt>CPU</dt>
+                  <dd id="sys-cpudetail">67% · 8 cores · M-series</dd>
+                </div>
+                <div class="field">
+                  <dt>Memory</dt>
+                  <dd><span class="mono-dim" id="sys-mem">12.4 GB</span> / 32 GB used</dd>
+                </div>
+                <div class="field">
+                  <dt>Disk</dt>
+                  <dd id="sys-disk">512 GB · 78% used</dd>
+                </div>
+                <div class="field">
+                  <dt>Net</dt>
+                  <dd id="sys-net"><span class="mono-dim">↓ 2.1 MB/s</span> · <span class="mono-dim">↑ 340 KB/s</span></dd>
+                </div>
+                <div class="field">
+                  <dt>Uptime</dt>
+                  <dd>6d 4h · battery 84%</dd>
+                </div>
+              </dl>
+              <span class="card-stamp" id="sys-stamp" hidden>Overload</span>
+            </div>
+            <section class="card-timeline" aria-label="Load history">
+              <div class="tl-head">
+                <span class="tl-label">CPU · last 5 min</span>
+                <span class="tl-total" id="sys-avg">avg 52%</span>
+              </div>
+              <svg class="tl-spark" viewBox="0 0 520 30" preserveAspectRatio="none" aria-hidden="true">
+                <path class="spark-area" d="M0,20 L40,16 L80,22 L120,10 L160,14 L200,6 L240,12 L280,18 L320,8 L360,13 L400,5 L440,11 L480,16 L520,9 L520,30 L0,30 Z"></path>
+                <path class="spark-line"  d="M0,20 L40,16 L80,22 L120,10 L160,14 L200,6 L240,12 L280,18 L320,8 L360,13 L400,5 L440,11 L480,16 L520,9"></path>
+                <line class="spark-threshold" x1="0" y1="8" x2="520" y2="8"></line>
+              </svg>
+              <div class="tl-legend">
+                <span class="tl-legend-item"><i style="background:var(--c-working)"></i>load <b>avg 52%</b></span>
+                <span class="tl-legend-item"><i style="background:var(--c-warn)"></i>threshold <b>80%</b></span>
+              </div>
+            </section>
+            <footer class="card-number">
+              <code class="sid">nita-macbook.local · 192.168.1.42</code>
+              <button class="copy-btn" data-copy="nita-macbook.local" title="Copy hostname"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg></button>
+            </footer>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 设计说明 ============ -->
+  <div class="notes">
+    <h2>统一语法（与 Agent ID Card 对齐）</h2>
+    <table>
+      <tr><th>元素</th><th>规则</th></tr>
+      <tr><td>卡身</td><td>横版 max-width 560、左照片环(84px) + 右信息行、uppercase 小标签右对齐、底部编号行等宽字体 + 复制</td></tr>
+      <tr><td>照片环</td><td>环色 = 该 Block 的核心状态色；连接/加载中脉冲，完成/静止不动。特殊化两种：环形仪表(sysinfo)、favicon(web)</td></tr>
+      <tr><td>章</td><td><b>正常态不盖章</b>，仅异常/需注意态出现（Dropped / Not secure / Draft / Conflict / Overload），克制不喧哗</td></tr>
+      <tr><td>时间条</td><td>同一区域三种变体：① 分段轨迹(连接稳定性/编辑历史，与 Agent 卡完全同款) ② 柱状(web 加载/vcs 提交活跃) ③ 迷你曲线(sysinfo 负载)</td></tr>
+      <tr><td>底部编号行</td><td>各 Block 最值得复制的那一个 id：指纹 / URL / 路径 / HEAD sha / hostname</td></tr>
+      <tr><td>生命周期</td><td>与 Agent 卡一致：block 首开亮卡 → 首个内容到达/点击后折叠为 header 徽标 → 随时展开</td></tr>
+    </table>
+
+    <h2>状态色语义（环色优先级）</h2>
+    <table>
+      <tr><th>Card</th><th>环色 = ？</th><th>正常</th><th>需注意(warn)</th><th>异常(error)</th></tr>
+      <tr><td>Connection</td><td>连接状态</td><td>connected → done 绿</td><td>connecting → working 蓝脉冲</td><td>dropped → error 红 + 章</td></tr>
+      <tr><td>Site</td><td>安全状态</td><td>HTTPS valid → done 绿</td><td>mixed content → warn 橙</td><td>无 TLS → error 红 + 章</td></tr>
+      <tr><td>File</td><td>脏状态</td><td>saved → done 绿</td><td>unsaved draft → warn 橙 + 章</td><td>read-only → idle 灰</td></tr>
+      <tr><td>Repo</td><td>同步状态</td><td>in sync → done 绿</td><td>ahead/behind → warn 橙</td><td>conflict → error 红 + 章</td></tr>
+      <tr><td>System</td><td>负载水位</td><td>&lt;50% → done 绿</td><td>50-80% → warn 橙</td><td>&gt;80% → error 红 + 章</td></tr>
+    </table>
+
+    <h2>字段 → 数据来源（对齐真实代码）</h2>
+    <table>
+      <tr><th>Card</th><th>来源</th></tr>
+      <tr><td>Connection</td><td><code>blockData.meta.connection</code>（term.tsx）+ wconfig connections（host/user/auth）+ <code>connstatusoverlay.tsx</code> 状态与延迟；指纹来自 known_hosts 校验结果</td></tr>
+      <tr><td>Site</td><td>WebViewModel：title/favicon/URL、load 指标（performance API）、证书状态与 tracker 拦截计数</td></tr>
+      <tr><td>File</td><td><code>preview-model.tsx</code>（文件信息、行数、语言）+ <code>preview-dirty-state.ts</code>（未保存 hunk 数）+ fs stat（size/mtime）</td></tr>
+      <tr><td>Repo</td><td>VcsViewModel（branch/ahead-behind/changes/HEAD）+ commits 近 14 天聚合 + pipeline 状态（vcs-pipelines-tab）</td></tr>
+      <tr><td>System</td><td><code>sysinfo.tsx</code>：cpu/mem/disk/net/uptime 采样序列（cpuplot 同源数据直接复用为 sparkline）</td></tr>
+    </table>
+
+    <h2>分期</h2>
+    <ul>
+      <li><b>P0</b>：静态卡 + 状态环/章 + 底部复制（数据全部现成，纯前端拼装；优先 Connection 与 File）</li>
+      <li><b>P1</b>：时间条三变体接真实序列数据；dd-action 行接现有入口（Remote config / History / Changes）</li>
+      <li><b>P2</b>：折叠徽标与 Agent 卡统一成一个通用 chip 组件；卡片进入动画打磨</li>
+    </ul>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="script.js"></script>
+</body>
+</html>

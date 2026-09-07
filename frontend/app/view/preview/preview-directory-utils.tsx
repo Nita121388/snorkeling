@@ -375,6 +375,7 @@ type DirectoryEntryMenuActions = {
 type DirectoryEntryMenuOptions = {
     relativePathRoot?: string | null;
     openInCurrentBlock?: (() => void | Promise<void>) | null;
+    openInNewBlock?: ((isDir: boolean) => void | Promise<void>) | null;
     selectedFileInfos?: FileInfo[];
     clipboard?: PreviewFileClipboard | null;
 };
@@ -834,7 +835,22 @@ export async function makeDirectoryEntryMenuItems(
             click: () => fireAndForget(() => navigator.clipboard.writeText(shellQuote(fullFileNames))),
         }
     );
-    addOpenMenuItems(menu, conn, finfo, { openInCurrentBlock: options.openInCurrentBlock });
+    addOpenMenuItems(menu, conn, finfo, {
+        openInCurrentBlock: options.openInCurrentBlock,
+        openInNewBlock: options.openInNewBlock,
+    });
+    // Pin / Unpin / Set as Tab Default for directories
+    if (finfo.isdir) {
+        menu.push({ type: "separator" });
+        menu.push({
+            label: model.isPinned(finfo.path) ? "Unpin" : "Pin",
+            click: () => model.togglePinnedDir(finfo.path),
+        });
+        menu.push({
+            label: "Set as Tab Default",
+            click: () => fireAndForget(() => model.setTabDefaultPath(finfo.path)),
+        });
+    }
     menu.push(
         {
             type: "separator",
@@ -903,6 +919,18 @@ export async function makeDirectoryBackgroundMenuItems(
             menu.push({ type: "separator" }, ...vcsMenuItems);
         }
         addOpenMenuItems(menu, conn, finfo);
+    }
+    // Pin / Unpin / Set as Tab Default for directories
+    if (finfo?.isdir && !isWindowsDrivesPath(finfo?.path)) {
+        menu.push({ type: "separator" });
+        menu.push({
+            label: model.isPinned(finfo.path) ? "Unpin" : "Pin",
+            click: () => model.togglePinnedDir(finfo.path),
+        });
+        menu.push({
+            label: "Set as Tab Default",
+            click: () => fireAndForget(() => model.setTabDefaultPath(finfo.path)),
+        });
     }
     return menu;
 }

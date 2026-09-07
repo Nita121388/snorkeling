@@ -5,6 +5,17 @@ const path = require("path");
 
 const windowsShouldSign = !!process.env.SM_CODE_SIGNING_CERT_SHA1_HASH;
 
+// Markdown documents that open with Snorkeling via the OS file manager.
+const markdownFileAssociations = [
+    {
+        ext: ["md", "markdown", "mdown", "mkd", "mdx"],
+        name: "Markdown Document",
+        description: "Markdown Document",
+        mimeType: "text/markdown",
+        role: "Viewer",
+    },
+];
+
 /**
  * @type {import('electron-builder').Configuration}
  * @see https://www.electron.build/configuration/configuration
@@ -45,6 +56,7 @@ const config = {
         "dist/schema/**/*", // schema files for Monaco editor
     ],
     mac: {
+        fileAssociations: markdownFileAssociations,
         target: [
             {
                 target: "zip",
@@ -78,6 +90,9 @@ const config = {
         },
     },
     linux: {
+        fileAssociations: markdownFileAssociations.flatMap((fa) =>
+            fa.ext.map((ext) => ({ ...fa, ext }))
+        ),
         artifactName: "${name}-${platform}-${arch}-${version}.${ext}",
         category: "TerminalEmulator",
         executableName: pkg.name,
@@ -98,6 +113,7 @@ const config = {
         afterInstall: "build/deb-postinstall.tpl",
     },
     win: {
+        fileAssociations: markdownFileAssociations,
         target: ["nsis", "msi", "zip"],
         signtoolOptions: windowsShouldSign && {
             signingHashAlgorithms: ["sha256"],
@@ -105,6 +121,9 @@ const config = {
             certificateSubjectName: "Command Line Inc",
             certificateSha1: process.env.SM_CODE_SIGNING_CERT_SHA1_HASH,
         },
+    },
+    nsis: {
+        include: "build/nsis-folder-open.nsh",
     },
     appImage: {
         license: "LICENSE",

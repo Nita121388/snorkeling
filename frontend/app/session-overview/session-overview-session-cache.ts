@@ -22,6 +22,14 @@ type RequestQueue = {
 };
 
 const SummaryTtlMs = 30_000;
+// Summary 的 stale-while-revalidate 窗口: 新鲜期 (SummaryTtlMs) 内直接命中;
+// [SummaryTtlMs, SummaryStaleTtlMs) 内立即返回旧值, 同时在后台合并刷新一次.
+// 这样展示路径不阻塞等待, 也避免每次 TTL 过期都同步发起一次 RPC;
+// 用户主动强一致操作仍走 forceRefresh 绕过.
+const SummaryStaleTtlMs = 120_000;
+// 后台刷新按 cacheKey 去重 + 短防抖: 同一帧内多次 stale 读取只触发一次刷新.
+const SummaryBackgroundRefreshDebounceMs = 250;
+const summaryBackgroundRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DetailTtlMs = 15_000;
 const SummaryRequestConcurrency = 4;
 const DetailRequestConcurrency = 2;
@@ -247,6 +255,41 @@ function isFresh<T>(entry: CacheEntry<T>, ttlMs: number): entry is CacheEntry<T>
     return entry.value != null && Date.now() - entry.loadedAt < ttlMs;
 }
 
+// 判断两份 SessionSummary 是否"实质无变化". 用于在轮询/后台刷新命中时跳过无意义的状态写入,
+// 避免触发 React/Jotai 重渲染 -> 子组件 effect 重跑 -> 再次拉取 outline 的级联放大.
+// 覆盖 summary 的所有展示字段; 任一字段不同即视为变化.
+export function isSameSessionSummary(
+    a: SessionSummary | null | undefined,
+    b: SessionSummary | null | undefined
+): boolean {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    const tagsA = a.tags ?? [];
+    const tagsB = b.tags ?? [];
+    return (
+        a.key === b.key &&
+        a.id === b.id &&
+        a.source === b.source &&
+        a.title === b.title &&
+        a.titleSource === b.titleSource &&
+        a.projectPath === b.projectPath &&
+        a.createdAt === b.createdAt &&
+        a.updatedAt === b.updatedAt &&
+        a.messageCount === b.messageCount &&
+        a.filePath === b.filePath &&
+        a.vendorid === b.vendorid &&
+        a.configdir === b.configdir &&
+        a.snippet === b.snippet &&
+        a.marked === b.marked &&
+        a.note === b.note &&
+        a.missing === b.missing &&
+        a.live === b.live &&
+        a.size === b.size &&
+        tagsA.length === tagsB.length &&
+        tagsA.every((tag, i) => tag === tagsB[i])
+    );
+}
+
 function enqueueRequest<T>(queue: RequestQueue, label: string, task: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const queuedAt = Date.now();
@@ -302,6 +345,56 @@ export function getCachedSessionDetail(sessionId: string): SessionDetail | null 
     return detailCache.get(canonicalSessionKey(sessionId))?.value ?? null;
 }
 
+// 把成功取回的 summary 落入缓存 (同时解析 session 别名), 并 bump Summary 频道.
+function storeSummaryResult(entry: CacheEntry<SessionSummary>, sessionId: string, summary: SessionSummary): SessionSummary {
+    const canonicalKey = registerSessionAliases(sessionId, summary);
+    const canonicalEntry = getEntry(summaryCache, canonicalKey);
+    canonicalEntry.value = summary;
+    canonicalEntry.loadedAt = Date.now();
+    canonicalEntry.promise = null;
+    dlog("summary stored", {
+        sessionId,
+        cacheKey: canonicalKey,
+        id: summary.id,
+        key: summary.key,
+        updatedAt: summary.updatedAt,
+        messageCount: summary.messageCount,
+    });
+    // Summary load 只动 summary 频道. detail 频道不受影响.
+    markChannelDirty("summary");
+    return summary;
+}
+
+// stale-while-revalidate 的后台刷新: 按 cacheKey 去重 + short debounce,
+// 同一帧内多次 stale 读取只触发一次后台刷新, 已在途 (entry.promise != null) 则跳过.
+// 刷新失败静默, 下一次 stale 读取会再次触发.
+function scheduleBackgroundSummaryRefresh(
+    service: AISessionsServiceType,
+    sessionId: string,
+    cacheKey: string,
+    entry: CacheEntry<SessionSummary>
+): void {
+    if (summaryBackgroundRefreshTimers.has(cacheKey)) return;
+    const timer = setTimeout(() => {
+        summaryBackgroundRefreshTimers.delete(cacheKey);
+        if (entry.promise != null) return;
+        dlog("summary background refresh", { sessionId, cacheKey });
+        entry.promise = enqueueRequest(summaryRequestQueue, `Summary:${cacheKey}`, () =>
+            service.Summary({ id: sessionId, refresh: true })
+        )
+            .then((summary) => storeSummaryResult(entry, sessionId, summary))
+            .catch(() => {
+                dlog("summary background refresh failed", { sessionId, cacheKey });
+                // 后台刷新失败: 回退返回仍持有的旧缓存值, 保持 Promise<SessionSummary> 类型.
+                return entry.value!;
+            })
+            .finally(() => {
+                entry.promise = null;
+            });
+    }, SummaryBackgroundRefreshDebounceMs);
+    summaryBackgroundRefreshTimers.set(cacheKey, timer);
+}
+
 export function loadCachedSessionSummary(
     service: AISessionsServiceType,
     sessionId: string,
@@ -309,9 +402,20 @@ export function loadCachedSessionSummary(
 ): Promise<SessionSummary> {
     const cacheKey = canonicalSessionKey(sessionId);
     const entry = getEntry(summaryCache, cacheKey);
-    if (!opts.forceRefresh && isFresh(entry, SummaryTtlMs)) {
-        dlog("summary cache hit", { sessionId, ageMs: Date.now() - entry.loadedAt });
-        return Promise.resolve(entry.value);
+    if (!opts.forceRefresh && entry.value != null) {
+        const ageMs = Date.now() - entry.loadedAt;
+        if (ageMs < SummaryTtlMs) {
+            // 新鲜期: 直接命中, 不打 RPC.
+            dlog("summary cache hit", { sessionId, ageMs });
+            return Promise.resolve(entry.value);
+        }
+        if (ageMs < SummaryStaleTtlMs) {
+            // 陈旧窗口: 立即返回旧值, 后台合并刷新, 不阻塞调用方.
+            dlog("summary stale hit, background refresh", { sessionId, ageMs });
+            scheduleBackgroundSummaryRefresh(service, sessionId, cacheKey, entry);
+            return Promise.resolve(entry.value);
+        }
+        // 超出陈旧窗口才走同步重新请求.
     }
     if (!opts.forceRefresh && entry.promise != null) {
         dlog("summary in-flight reuse", { sessionId });
@@ -326,24 +430,7 @@ export function loadCachedSessionSummary(
     entry.promise = enqueueRequest(summaryRequestQueue, `Summary:${cacheKey}`, () =>
         service.Summary({ id: sessionId, refresh: opts.forceRefresh === true })
     )
-        .then((summary) => {
-            const canonicalKey = registerSessionAliases(sessionId, summary);
-            const canonicalEntry = getEntry(summaryCache, canonicalKey);
-            canonicalEntry.value = summary;
-            canonicalEntry.loadedAt = Date.now();
-            canonicalEntry.promise = null;
-            dlog("summary stored", {
-                sessionId,
-                cacheKey: canonicalKey,
-                id: summary.id,
-                key: summary.key,
-                updatedAt: summary.updatedAt,
-                messageCount: summary.messageCount,
-            });
-            // Summary load 只动 summary 频道. detail 频道不受影响.
-            markChannelDirty("summary");
-            return summary;
-        })
+        .then((summary) => storeSummaryResult(entry, sessionId, summary))
         .finally(() => {
             entry.promise = null;
         });

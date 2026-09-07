@@ -21,6 +21,7 @@ import {
     getCachedSessionSummary,
     getSessionOverviewCacheRevision,
     getSessionOverviewCacheSnapshot,
+    isSameSessionSummary,
     loadCachedSessionSummary,
     loadCachedSessionDetail,
     patchCachedSessionSummary,
@@ -101,7 +102,7 @@ describe("session-overview-session-cache (behavior baseline)", () => {
         expect(summaryFn).toHaveBeenCalledTimes(1);
     });
 
-    it("Summary TTL 过期: 超过 30s 重新发 RPC", async () => {
+    it("Summary TTL 过期: 陈旧窗口内先返回旧值并后台刷新 (stale-while-revalidate)", async () => {
         const sessionId = nextId("expire");
         const { service, summaryFn } = makeMockService();
         const v1 = makeSummary(sessionId, { messageCount: 1 });
@@ -111,11 +112,76 @@ describe("session-overview-session-cache (behavior baseline)", () => {
         await loadCachedSessionSummary(service, sessionId, {});
         expect(summaryFn).toHaveBeenCalledTimes(1);
 
-        // 推进超过 SummaryTtlMs (30s).
+        // 推进到陈旧窗口内 (超过 SummaryTtlMs=30s, 但小于 SummaryStaleTtlMs=120s).
         vi.advanceTimersByTime(30_001);
 
-        await loadCachedSessionSummary(service, sessionId, {});
+        // 陈旧读取: 立即返回旧值, 不阻塞调用方, 同步不发 RPC.
+        const stale = await loadCachedSessionSummary(service, sessionId, {});
+        expect(stale).toEqual(v1);
+        expect(summaryFn).toHaveBeenCalledTimes(1);
+
+        // 后台刷新防抖定时器触发后, 只发一次 RPC 并把新值落入缓存.
+        vi.advanceTimersByTime(300);
+        for (let i = 0; i < 8; i++) {
+            await Promise.resolve();
+        }
         expect(summaryFn).toHaveBeenCalledTimes(2);
+        expect(getCachedSessionSummary(sessionId)).toEqual(v2);
+    });
+
+    it("Summary 陈旧读取并发: 同窗口多次读取只触发一次后台刷新", async () => {
+        const sessionId = nextId("expire-debounce");
+        const { service, summaryFn } = makeMockService();
+        summaryFn.mockResolvedValue(makeSummary(sessionId, { messageCount: 1 }));
+
+        await loadCachedSessionSummary(service, sessionId, {});
+        expect(summaryFn).toHaveBeenCalledTimes(1);
+        vi.advanceTimersByTime(30_001);
+
+        // 连续两次陈旧读取: 防抖窗口内只安排一次后台刷新.
+        await loadCachedSessionSummary(service, sessionId, {});
+        await loadCachedSessionSummary(service, sessionId, {});
+        expect(summaryFn).toHaveBeenCalledTimes(1);
+
+        vi.advanceTimersByTime(300);
+        for (let i = 0; i < 8; i++) {
+            await Promise.resolve();
+        }
+        expect(summaryFn).toHaveBeenCalledTimes(2);
+    });
+
+    it("Summary forceRefresh: 绕过 SWR 立即重新请求", async () => {
+        const sessionId = nextId("expire-force");
+        const { service, summaryFn } = makeMockService();
+        const v1 = makeSummary(sessionId, { messageCount: 1 });
+        const v2 = makeSummary(sessionId, { messageCount: 2 });
+        summaryFn.mockResolvedValueOnce(v1).mockResolvedValueOnce(v2);
+
+        await loadCachedSessionSummary(service, sessionId, {});
+        vi.advanceTimersByTime(30_001);
+
+        // forceRefresh 即便有旧值也同步重新请求, 拿最新.
+        const fresh = await loadCachedSessionSummary(service, sessionId, { forceRefresh: true });
+        expect(fresh).toEqual(v2);
+        expect(summaryFn).toHaveBeenCalledTimes(2);
+    });
+
+    it("isSameSessionSummary: 展示字段全等时判定为未变化, 任一字段变化即判为变化", () => {
+        const base = makeSummary("same", {
+            title: "t",
+            updatedAt: 100,
+            messageCount: 5,
+            marked: false,
+            note: "n",
+            tags: ["a", "b"],
+        });
+        expect(isSameSessionSummary(base, { ...base })).toBe(true);
+        expect(isSameSessionSummary(base, { ...base, messageCount: 6 })).toBe(false);
+        expect(isSameSessionSummary(base, { ...base, updatedAt: 101 })).toBe(false);
+        expect(isSameSessionSummary(base, { ...base, tags: ["a"] })).toBe(false);
+        expect(isSameSessionSummary(base, null)).toBe(false);
+        expect(isSameSessionSummary(null, null)).toBe(true);
+        expect(isSameSessionSummary(null, base)).toBe(false);
     });
 
     it("Summary in-flight Promise 复用: 并发两次只发一个 RPC", async () => {

@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { loadUserOutline } from "@/app/store/outline-cache";
 import { AISessionsServiceType } from "@/app/store/services";
 import {
     AiSessionNoteUpdatedEvent,
@@ -81,7 +82,7 @@ function useSessionOutline(blockId: string, blockData: Block | null) {
             setLoading(true);
             setError("");
             service
-                .UserOutline({ id: sessionId, connection, limit: 20, refresh: false })
+                loadUserOutline(service, sessionId, { connection, limit: 20 })
                 .then((nextOutline) => {
                     if (requestSeq !== requestSeqRef.current) return;
                     setOutline(nextOutline);
@@ -90,7 +91,7 @@ function useSessionOutline(blockId: string, blockData: Block | null) {
                     if (requestSeq !== requestSeqRef.current) return;
                     console.debug("[agent-hover-card] failed to load outline", { sessionId, error: e });
                     setError(e instanceof Error ? e.message : String(e));
-                    if (retryTimerRef.current == null && retryCountRef.current < 10) {
+                    if (retryTimerRef.current == null && retryCountRef.current < 4) {
                         retryCountRef.current++;
                         retryTimerRef.current = window.setTimeout(() => {
                             retryTimerRef.current = null;

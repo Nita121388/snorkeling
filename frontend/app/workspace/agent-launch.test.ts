@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentLaunchTarget } from "./agent-launch";
 import {
+    buildGuiChatBlockMeta,
     canSetLaunchTargetDefault,
     collectAgentLaunchTargetsInTab,
     collectTerminalLaunchTargetsInTab,
@@ -931,5 +932,52 @@ describe("withLaunchEnv", () => {
             controller: "shell",
             "cmd:env": { COLORTERM: "truecolor", TERM: "xterm-256color" },
         });
+    });
+});
+
+describe("buildGuiChatBlockMeta (Pi GUI directory follows selection)", () => {
+    const target = (over: Partial<AgentLaunchTarget>): AgentLaunchTarget => ({
+        blockId: "block:term-a",
+        connection: null,
+        cwd: null,
+        source: "terminal",
+        isLocal: true,
+        label: "term",
+        detail: "term",
+        ...over,
+    });
+
+    it("uses the selected target cwd over the workspace context", () => {
+        const meta = buildGuiChatBlockMeta(target({ cwd: "/repo-a" }), { "cmd:cwd": "/repo-b" });
+        expect(meta["cmd:cwd"]).toBe("/repo-a");
+    });
+
+    it("uses the selected target connection over the workspace context", () => {
+        const meta = buildGuiChatBlockMeta(target({ connection: "ssh://server" }), { connection: "ssh://other" });
+        expect(meta.connection).toBe("ssh://server");
+    });
+
+    it("carries both cwd and connection from a remote file target", () => {
+        const meta = buildGuiChatBlockMeta(
+            target({ cwd: "/remote/project", connection: "ssh://server", source: "files" }),
+            { "cmd:cwd": "/repo-b", connection: "ssh://other" }
+        );
+        expect(meta["cmd:cwd"]).toBe("/remote/project");
+        expect(meta.connection).toBe("ssh://server");
+    });
+
+    it("falls back to workspace cwd when the target has none", () => {
+        const meta = buildGuiChatBlockMeta(target({ cwd: null }), { "cmd:cwd": "/workspace" });
+        expect(meta["cmd:cwd"]).toBe("/workspace");
+    });
+
+    it("sets no cwd when the target and workspace both lack one", () => {
+        const meta = buildGuiChatBlockMeta(target({ cwd: null }), {});
+        expect(meta["cmd:cwd"]).toBeUndefined();
+    });
+
+    it("does not write an empty cwd when target cwd is whitespace", () => {
+        const meta = buildGuiChatBlockMeta(target({ cwd: "   " }), { "cmd:cwd": "/workspace" });
+        expect(meta["cmd:cwd"]).toBe("/workspace");
     });
 });

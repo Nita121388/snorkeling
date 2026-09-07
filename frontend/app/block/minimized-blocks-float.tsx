@@ -20,11 +20,12 @@ import {
     deleteMinimizedGroup,
     getMinimizedBlockIds,
     getMinimizedGroups,
+    type MinimizedGroups,
     removeMinimizedBlockId,
     restoreMinimizedBlockToLayout,
     restoreMinimizedGroupToLayout,
-    type MinimizedGroups,
 } from "./block-minimize";
+import { resolveBlockIcon } from "./block-sidebar";
 
 const FloatPositionStoragePrefix = "snorkeling:minimized-blocks-float-position:";
 const FloatButtonSize = 42;
@@ -130,7 +131,8 @@ function buildItem(block: Block | null | undefined): MinimizedBlockItem {
         blockId: block?.oid || "",
         title: getBlockTitle(block),
         subtitle: getBlockSubtitle(block),
-        icon: block?.meta?.["frame:icon"] || block?.meta?.icon || block?.meta?.view || "cube",
+        // same icon resolution as the block sidebar (folder/file/view aware)
+        icon: resolveBlockIcon(block?.meta as Record<string, unknown> | undefined) ?? "",
     };
 }
 
@@ -145,7 +147,8 @@ function buildRenderList(
     groups: MinimizedGroups,
     layoutModel: ReturnType<typeof getLayoutModelForTabById>
 ): Array<{ type: "block"; item: MinimizedBlockItem } | { type: "group"; group: MinimizedGroupItem }> {
-    const result: Array<{ type: "block"; item: MinimizedBlockItem } | { type: "group"; group: MinimizedGroupItem }> = [];
+    const result: Array<{ type: "block"; item: MinimizedBlockItem } | { type: "group"; group: MinimizedGroupItem }> =
+        [];
     const renderedGroupIds = new Set<string>();
 
     for (const blockId of minimizedBlockIds) {
@@ -287,7 +290,11 @@ function MinimizedGroupRow({
                 onMouseLeave={handleHeaderLeave}
             >
                 <button type="button" className="minimized-group-expand-btn" title={expanded ? "Collapse" : "Expand"}>
-                    <i className={makeIconClass(expanded ? "folder-open" : "folder", false, { defaultIcon: "layer-group" })} />
+                    <i
+                        className={makeIconClass(expanded ? "folder-open" : "folder", false, {
+                            defaultIcon: "layer-group",
+                        })}
+                    />
                 </button>
                 <span className="minimized-group-title">Group</span>
                 <span className="minimized-group-count">{group.members.length}</span>

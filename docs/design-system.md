@@ -27,6 +27,7 @@ It does not redefine terminal ANSI colors, syntax highlighting, provider logos, 
 4. **Quiet operational density.** Snorkeling is a repeated-use work surface. Prefer compact controls, clear alignment, and restrained surfaces.
 5. **Native behavior first.** Use native `button`, `input`, `textarea`, `select`, and `dialog` behavior unless an existing component owns the interaction.
 6. **No color-only meaning.** Error, warning, success, and selected states also require text, an icon, a border, or another persistent cue.
+7. **No fully emphasized borders.** Left emphasis lines (blockquotes, callouts, alerts) must not use `border-radius: 0` on the left corners. The line itself must remain straight, but its ends (top-left, bottom-left) should use a small radius (`4px`) to avoid harsh geometric edges. This applies to `.markdown-alert`, `blockquote`, and similar vertical accent borders. The right side may use a larger radius (`6px`) for visual balance. Example: `border-radius: 4px 6px 6px 4px;`.
 
 ## 3. Theme Contract
 

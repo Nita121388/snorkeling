@@ -477,6 +477,7 @@ function TableBody({
                 {
                     openInCurrentBlock: () =>
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
+                    openInNewBlock: (isDir) => model.openPathInNewBlockSmart(finfo.path, isDir),
                     selectedFileInfos: contextSelectedFileInfos,
                     relativePathRoot: dirPath,
                 }

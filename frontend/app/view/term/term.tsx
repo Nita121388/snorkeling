@@ -15,6 +15,7 @@ import {
 } from "@/app/element/selection-copy-overlay";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { ContextMenuModel } from "@/app/store/contextmenu";
+import { loadUserOutline } from "@/app/store/outline-cache";
 import { globalStore } from "@/app/store/jotaiStore";
 import {
     makeAgentTraceId,
@@ -446,7 +447,7 @@ TermSessionTopBar.displayName = "TermSessionTopBar";
 // 的 agent:sessionid 在启动时就有(mint 的 id)。Note/大纲首次按 id 查询必然查不到文件,
 // 所以加载失败后延迟重试,直到 agent 真正产出会话数据(或达到次数上限)。
 const TermSessionLoadRetryDelayMs = 3000;
-const TermSessionLoadMaxRetries = 10;
+const TermSessionLoadMaxRetries = 4;
 
 const TermSessionUserOutlineOverlay = React.memo(
     ({
@@ -510,8 +511,7 @@ const TermSessionUserOutlineOverlay = React.memo(
                     setLoading(true);
                 }
                 setError("");
-                service
-                    .UserOutline({ id: sessionId, connection, limit: 20, refresh })
+                loadUserOutline(service, sessionId, { connection, limit: 20, forceRefresh: refresh })
                     .then((nextOutline) => {
                         if (requestSeq !== requestSeqRef.current) {
                             logAgentSessionEvent("agent.outline", "result", blockId, sessionId, {

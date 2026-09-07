@@ -7,24 +7,25 @@
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
+import * as WOS from "@/app/store/wos";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { getCurrentWorkspaceContextMeta } from "@/app/workspace/agent-launch";
 import { globalStore } from "@/store/jotaiStore";
 import * as jotai from "jotai";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SessionDetailPane, type SessionDetailController } from "./session-detail";
-import { defaultChatSource } from "./sources";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
+import { mergeSessionTimeline } from "./session-timeline-sync";
+import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
+import { defaultChatSource } from "./sources";
 import { NewSessionKey } from "./types";
-import {
-    getErrorMessage,
-    restoreMetaForSession,
-} from "./utils";
+import { getErrorMessage, restoreMetaForSession } from "./utils";
 
 export class AgentViewModel implements ViewModel {
     blockId: string;
@@ -55,11 +56,12 @@ export class AgentViewModel implements ViewModel {
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
+    historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     deletingAtom = jotai.atom<boolean>(false);
-    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
-        SessionSummary | null
-    >;
+    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(
+        null
+    ) as jotai.PrimitiveAtom<SessionSummary | null>;
     newChatEpochAtom = jotai.atom(0);
 
     // 用于 SessionDetailController 的加载序列
@@ -85,6 +87,20 @@ export class AgentViewModel implements ViewModel {
         return typeof connection === "string" ? connection.trim() : "";
     }
 
+    async changeEmptyChatDirectory(): Promise<string | null> {
+        if (this.getBoundSessionId() !== "" || !this.shouldAutoStartNewChat()) return null;
+        const picker = (window as Window & { api?: { pickDirectory?: () => Promise<string | null> } }).api
+            ?.pickDirectory;
+        if (picker == null) return null;
+        const selected = (await picker())?.trim() ?? "";
+        if (selected === "") return null;
+        await RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: { "cmd:cwd": selected, connection: null } as MetaType,
+        });
+        return selected;
+    }
+
     getBoundSessionId(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
@@ -97,12 +113,37 @@ export class AgentViewModel implements ViewModel {
         return (blockData?.meta as Record<string, unknown> | undefined)?.["aisessions:newchat"] === true;
     }
 
-    // 获取当前块绑定的项目路径（cmd:cwd），用于 GUI 新会话创建时传给 pi
+    // 获取当前块绑定的项目路径（cmd:cwd），用于 GUI 新会话创建时传给 pi。
+    // 块自身可能不带 cmd:cwd（例如 New Agent GUI 对话块），此时回退到工作区上下文
+    //（活跃终端的 cwd），保证 GitStatusBar 仍能展示项目/分支/改动。
     getProjectPath(): string {
         const blockData = globalStore.get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
         const cwd = meta["cmd:cwd"];
-        return typeof cwd === "string" ? cwd.trim() : "";
+        if (typeof cwd === "string" && cwd.trim() !== "") {
+            return cwd.trim();
+        }
+        try {
+            const contextMeta = getCurrentWorkspaceContextMeta() as Record<string, unknown> | null | undefined;
+            const parentCwd = contextMeta?.["cmd:cwd"];
+            if (typeof parentCwd === "string" && parentCwd.trim() !== "") {
+                return parentCwd.trim();
+            }
+
+            // GUI Agent block may sit beside a project preview rather than a terminal.
+            // Use that preview's directory as the same workspace context.
+            const tab = globalStore.get(this.tabModel.tabAtom);
+            for (const blockId of tab?.blockids ?? []) {
+                const sibling = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+                const file = sibling?.meta?.file;
+                if (sibling?.meta?.view === "preview" && typeof file === "string" && file.trim() !== "") {
+                    return file.trim();
+                }
+            }
+        } catch {
+            // 回退失败时静默返回空
+        }
+        return "";
     }
 
     // 启动新会话
@@ -136,10 +177,12 @@ export class AgentViewModel implements ViewModel {
                 "aisessions:newchat": null,
             } as MetaType,
         }).catch(() => undefined);
+        // Session promotion is deliberately fire-and-forget: the live turn remains
+        // the primary UI while history catches up in the background.
         void this.promoteNewSession(sessionId);
     }
 
-    async promoteNewSession(sessionId: string): Promise<void> {
+    async promoteNewSession(sessionId: string, attempt = 0): Promise<void> {
         try {
             const summary = await this.service.Summary({
                 id: sessionId,
@@ -152,14 +195,15 @@ export class AgentViewModel implements ViewModel {
             globalStore.set(this.selectedKeyAtom, summary.key);
             globalStore.set(this.detailAtom, null);
             void this.loadDetail(summary, true);
-        } catch {
-            // Summary RPC 失败（会话文件可能还没被索引），兜底用 loadDetailById
-            // 直接按 sessionId 从后端拉详情，让标题尽快从 "New Chat" 切换
+        } catch (error) {
             const placeholder = globalStore.get(this.newSessionAtom);
-            if (placeholder != null && placeholder.id === sessionId) {
-                globalStore.set(this.newSessionAtom, null);
-            }
-            void this.loadDetailById(sessionId, true);
+            if (placeholder == null || placeholder.id !== sessionId) return;
+            globalStore.set(this.historySyncErrorAtom, getErrorMessage(error));
+            if (attempt >= 5) return;
+            const delayMs = Math.min(500 * 2 ** attempt, 8000);
+            window.setTimeout(() => {
+                void this.promoteNewSession(sessionId, attempt + 1);
+            }, delayMs);
         }
     }
 
@@ -182,10 +226,11 @@ export class AgentViewModel implements ViewModel {
             if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
                 return;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return;
+            globalStore.set(this.historySyncErrorAtom, "");
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
         } finally {
             if (loadSeq === this.detailLoadSeq) {
@@ -211,6 +256,7 @@ export class AgentViewModel implements ViewModel {
         const loadSeq = this.detailLoadSeq;
         globalStore.set(this.detailDeltaLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
+        globalStore.set(this.historySyncErrorAtom, "");
         try {
             const delta = await this.service.DetailDelta({
                 id: currentSummary.key,
@@ -238,7 +284,7 @@ export class AgentViewModel implements ViewModel {
             return true;
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
             return false;
         } finally {
@@ -251,11 +297,11 @@ export class AgentViewModel implements ViewModel {
         if (detail?.summary?.key !== sessionKey) {
             return;
         }
-        const existingSeqs = new Set((detail.messages ?? []).map((message) => message.seq));
-        const nextMessages = [
-            ...(detail.messages ?? []),
-            ...(delta.messages ?? []).filter((message) => !existingSeqs.has(message.seq)),
-        ];
+        const merged = mergeSessionTimeline(detail.messages ?? [], detail.cursor, delta.messages ?? [], delta.cursor);
+        if (merged.resetRequired) {
+            void this.loadDetail(detail.summary, true);
+            return;
+        }
         const nextSummary = {
             ...detail.summary,
             source: delta.summary?.source || detail.summary.source,
@@ -268,10 +314,42 @@ export class AgentViewModel implements ViewModel {
         const nextDetail: SessionDetail = {
             ...detail,
             summary: nextSummary,
-            messages: nextMessages,
-            cursor: delta.cursor ?? detail.cursor,
+            messages: merged.messages,
+            cursor: merged.cursor,
         };
         globalStore.set(this.detailAtom, nextDetail);
+    }
+
+    // turn_end 后只刷新工具调用：保留已渲染的消息列表（delta 已增量合并），
+    // 仅把 ToolCalls 更新为正式数据，避免整块 Detail 替换造成旧内容闪烁/丢失。
+    async refreshToolCallsOnly(): Promise<boolean> {
+        const currentDetail = globalStore.get(this.detailAtom);
+        const currentSummary = currentDetail?.summary;
+        if (!currentSummary?.key) {
+            return false;
+        }
+        const loadSeq = ++this.detailToolsLoadSeq;
+        globalStore.set(this.toolCallsLoadingAtom, true);
+        try {
+            const detail = await this.service.Detail({
+                id: currentSummary.key,
+                connection: this.getConnection(),
+                refresh: false,
+                includeTools: true,
+            });
+            const latest = globalStore.get(this.detailAtom);
+            if (loadSeq !== this.detailToolsLoadSeq || latest?.summary?.key !== currentSummary.key) {
+                return false;
+            }
+            globalStore.set(this.detailAtom, { ...latest, toolCalls: detail.toolCalls ?? [] });
+            return true;
+        } catch (e) {
+            return false;
+        } finally {
+            if (loadSeq === this.detailToolsLoadSeq) {
+                globalStore.set(this.toolCallsLoadingAtom, false);
+            }
+        }
     }
 
     async loadDetailTools(refresh = false): Promise<boolean> {
@@ -299,7 +377,7 @@ export class AgentViewModel implements ViewModel {
             ) {
                 return false;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             return true;
         } catch (e) {
             if (loadSeq === this.detailToolsLoadSeq && globalStore.get(this.selectedKeyAtom) === selectedKey) {
@@ -311,6 +389,23 @@ export class AgentViewModel implements ViewModel {
                 globalStore.set(this.toolCallsLoadingAtom, false);
             }
         }
+    }
+
+    commitDetail(detail: SessionDetail): boolean {
+        const current = globalStore.get(this.detailAtom);
+        if (
+            current?.summary?.key === detail.summary?.key &&
+            (detail.messages?.length ?? 0) < (current.messages?.length ?? 0)
+        ) {
+            console.debug("aisessions: refused stale detail regression", {
+                key: detail.summary?.key,
+                current: current.messages?.length ?? 0,
+                incoming: detail.messages?.length ?? 0,
+            });
+            return false;
+        }
+        globalStore.set(this.detailAtom, detail);
+        return true;
     }
 
     async refreshBoundSessionSummary(): Promise<void> {
@@ -342,7 +437,7 @@ export class AgentViewModel implements ViewModel {
                 includeTools: true,
             });
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             return true;
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -462,7 +557,7 @@ export class AgentViewModel implements ViewModel {
 
     replaceSession(updated: SessionSummary): void {
         const detail = globalStore.get(this.detailAtom);
-        if (detail?.summary?.key === updated.key) {
+        if (detail?.summary?.key === updated.key && !isSameSessionSummary(detail.summary, updated)) {
             globalStore.set(this.detailAtom, { ...detail, summary: { ...detail.summary, ...updated } });
         }
     }
@@ -473,6 +568,7 @@ export class AgentViewModel implements ViewModel {
             loadDetail: this.loadDetail.bind(this),
             loadDetailDelta: this.loadDetailDelta.bind(this),
             loadDetailTools: this.loadDetailTools.bind(this),
+            refreshToolCallsOnly: this.refreshToolCallsOnly.bind(this),
             updateNote: this.updateNote.bind(this),
             updateTitle: this.updateTitle.bind(this),
             deleteSession: this.deleteSession.bind(this),
@@ -493,8 +589,11 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
     const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
+    const historySyncError = jotai.useAtomValue(model.historySyncErrorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
+    const [emptyChatDirectory, setEmptyChatDirectory] = useState(() => model.getProjectPath());
+    const [emptyChatConnection, setEmptyChatConnection] = useState(() => model.getConnection());
 
     const isNewChat = selectedKey === NewSessionKey;
 
@@ -527,12 +626,19 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
         },
         [model]
     );
+    const handleChangeDirectory = useCallback(async () => {
+        const selected = await model.changeEmptyChatDirectory();
+        if (selected != null) {
+            setEmptyChatDirectory(selected);
+            setEmptyChatConnection("");
+        }
+    }, [model]);
 
     return (
-        <div className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
-            {error ? (
+        <div className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
+            {(error || (historySyncError && detail == null)) && !isNewChat ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
-                    {error}
+                    {error || historySyncError}
                 </div>
             ) : null}
             <SessionDetailPane
@@ -540,19 +646,17 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
                 detail={detail}
                 isNewChat={isNewChat}
                 newChatEpoch={newChatEpoch}
-                projectPath={model.getProjectPath()}
-                loading={
-                    error === "" &&
-                    (loading ||
-                        detailLoading ||
-                        (isNewChat
-                            ? false
-                            : detail?.summary?.key !== selectedKey && selectedKey !== ""))
-                }
+                projectPath={isNewChat ? emptyChatDirectory : model.getProjectPath()}
+                connection={isNewChat ? emptyChatConnection : model.getConnection()}
+                canChangeDirectory={isNewChat && model.getBoundSessionId() === ""}
+                onChangeDirectory={handleChangeDirectory}
+                loading={error === "" && historySyncError === "" && detailLoading && detail == null && !isNewChat}
                 deltaLoading={detailDeltaLoading}
                 toolCallsLoading={toolCallsLoading}
                 restoring={restoring}
                 deleting={deleting}
+                error={error}
+                historySyncError={historySyncError}
                 onBound={handleBound}
             />
         </div>

@@ -1139,6 +1139,36 @@ export async function resolveAgentBlockCommandForLaunch(
     };
 }
 
+// GUI-style PI chat block meta from a launch target, with a workspace-context fallback.
+// The dialog's selected target is authoritative: a selected cwd/connection must never be
+// replaced by the currently focused workspace context (which is what makes the created agent
+// show a different directory than the one the user picked). The workspace context only acts
+// as a fallback for targets that carry no explicit cwd/connection.
+export function buildGuiChatBlockMeta(
+    target: AgentLaunchTarget,
+    workspaceMeta?: Partial<MetaType> | null
+): Partial<MetaType> {
+    const contextMeta = workspaceMeta ?? {};
+    const targetCwd = target.cwd?.trim() ?? "";
+    const contextCwd = typeof contextMeta["cmd:cwd"] === "string" ? (contextMeta["cmd:cwd"] as string).trim() : "";
+    const targetConnection = target.connection?.trim() ?? "";
+    const contextConnection =
+        typeof contextMeta.connection === "string" ? (contextMeta.connection as string).trim() : "";
+
+    const meta: Partial<MetaType> = {};
+    if (targetCwd !== "") {
+        meta["cmd:cwd"] = targetCwd;
+    } else if (contextCwd !== "") {
+        meta["cmd:cwd"] = contextCwd;
+    }
+    if (targetConnection !== "") {
+        meta.connection = targetConnection;
+    } else if (contextConnection !== "") {
+        meta.connection = contextConnection;
+    }
+    return meta;
+}
+
 export function createTerminalBlockDefForTarget(target: AgentLaunchTarget, baseBlockDef?: BlockDef): BlockDef {
     return createTerminalBlockDef(
         {

@@ -34,6 +34,7 @@
     --color-warning: var(--warning-color);
     --color-success: var(--success-color);
     --color-panel: var(--panel-bg-color);
+    --color-block: var(--block-bg-color);
     --color-hover: var(--hover-bg-color);
     --color-border: var(--border-color);
     --color-modalbg: var(--modal-bg-color);

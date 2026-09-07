@@ -43,7 +43,17 @@ function persistMinimizedMeta(tabId: string, blockIds: string[], groups: Minimiz
     });
 }
 
-export function setMinimizedBlockIds(tabId: string, blockIds: string[]): void {
+/**
+ * Atomic write of the full minimized state (blockIds + groups).
+ *
+ * Every mutation of the minimized state MUST go through this function ONCE.
+ * Never issue a chain of per-block writes (one SetMetaCommand per block):
+ * each call ships a full {blockIds, groups} snapshot to the backend, and the
+ * backend may apply concurrent snapshots out of order — an earlier snapshot
+ * taken before the group record exists would land last and wipe it, turning
+ * a collapsed group icon into scattered block icons.
+ */
+function writeMinimizedState(tabId: string, blockIds: string[], groups: MinimizedGroups): void {
     const tabAtom = WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
     const tab = globalStore.get(tabAtom);
     if (!tab) {
@@ -52,7 +62,6 @@ export function setMinimizedBlockIds(tabId: string, blockIds: string[]): void {
     const normalizedBlockIds = normalizeMinimizedBlockIds(blockIds).filter((blockId) =>
         (tab.blockids ?? []).includes(blockId)
     );
-    const groups = getMinimizedGroupsFromTab(tab);
 
     // Clean up groups that reference blockIds no longer in the minimized list.
     const blockIdSet = new Set(normalizedBlockIds);
@@ -64,43 +73,27 @@ export function setMinimizedBlockIds(tabId: string, blockIds: string[]): void {
         }
     }
 
-    const nextTab: Tab = {
-        ...tab,
-        meta: {
-            ...(tab.meta ?? {}),
-            [MinimizedBlocksMetaKey]: normalizedBlockIds.length === 0 ? undefined : normalizedBlockIds,
-            [MinimizedGroupsMetaKey]: Object.keys(cleanedGroups).length === 0 ? undefined : cleanedGroups,
-        } as MetaType,
-    };
+    const nextMeta: Record<string, unknown> = { ...(tab.meta ?? {}) };
     if (normalizedBlockIds.length === 0) {
-        delete (nextTab.meta as Record<string, unknown>)[MinimizedBlocksMetaKey];
+        delete nextMeta[MinimizedBlocksMetaKey];
+    } else {
+        nextMeta[MinimizedBlocksMetaKey] = normalizedBlockIds;
     }
     if (Object.keys(cleanedGroups).length === 0) {
-        delete (nextTab.meta as Record<string, unknown>)[MinimizedGroupsMetaKey];
+        delete nextMeta[MinimizedGroupsMetaKey];
+    } else {
+        nextMeta[MinimizedGroupsMetaKey] = cleanedGroups;
     }
-    WOS.setObjectValue(nextTab, globalStore.set);
+    WOS.setObjectValue({ ...tab, meta: nextMeta } as Tab, globalStore.set);
     persistMinimizedMeta(tabId, normalizedBlockIds, cleanedGroups);
 }
 
-function persistGroups(tabId: string, groups: MinimizedGroups): void {
-    const tabAtom = WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
-    const tab = globalStore.get(tabAtom);
+export function setMinimizedBlockIds(tabId: string, blockIds: string[]): void {
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
     if (!tab) {
         return;
     }
-    const blockIds = getMinimizedBlockIdsFromTab(tab);
-    const nextTab: Tab = {
-        ...tab,
-        meta: {
-            ...(tab.meta ?? {}),
-            [MinimizedGroupsMetaKey]: Object.keys(groups).length === 0 ? undefined : groups,
-        } as MetaType,
-    };
-    if (Object.keys(groups).length === 0) {
-        delete (nextTab.meta as Record<string, unknown>)[MinimizedGroupsMetaKey];
-    }
-    WOS.setObjectValue(nextTab, globalStore.set);
-    persistMinimizedMeta(tabId, blockIds, groups);
+    writeMinimizedState(tabId, blockIds, getMinimizedGroupsFromTab(tab));
 }
 
 // ── Block-level CRUD ──
@@ -112,7 +105,7 @@ export function addMinimizedBlockId(tabId: string, blockId: string): void {
     }
     const blockIds = getMinimizedBlockIds(tab);
     if (!blockIds.includes(blockId)) {
-        setMinimizedBlockIds(tabId, [...blockIds, blockId]);
+        writeMinimizedState(tabId, [...blockIds, blockId], getMinimizedGroupsFromTab(tab));
     }
 }
 
@@ -121,9 +114,10 @@ export function removeMinimizedBlockId(tabId: string, blockId: string): void {
     if (!tab) {
         return;
     }
-    setMinimizedBlockIds(
+    writeMinimizedState(
         tabId,
-        getMinimizedBlockIds(tab).filter((id) => id !== blockId)
+        getMinimizedBlockIds(tab).filter((id) => id !== blockId),
+        getMinimizedGroupsFromTab(tab)
     );
 }
 
@@ -136,7 +130,7 @@ export function addMinimizedGroup(tabId: string, groupId: string, memberBlockIds
     }
     const groups = getMinimizedGroupsFromTab(tab);
     groups[groupId] = [...memberBlockIds];
-    persistGroups(tabId, groups);
+    writeMinimizedState(tabId, getMinimizedBlockIdsFromTab(tab), groups);
 }
 
 export function removeMinimizedGroup(tabId: string, groupId: string): void {
@@ -146,7 +140,7 @@ export function removeMinimizedGroup(tabId: string, groupId: string): void {
     }
     const groups = getMinimizedGroupsFromTab(tab);
     delete groups[groupId];
-    persistGroups(tabId, groups);
+    writeMinimizedState(tabId, getMinimizedBlockIdsFromTab(tab), groups);
 }
 
 // ── Minimize single block ──
@@ -183,15 +177,15 @@ export function minimizeBlockToFloat(tabId: string | null | undefined, blockId: 
 
 // ── Restore single block ──
 
-export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, blockId: string): boolean {
-    if (!tabId) {
-        return false;
-    }
+/**
+ * Insert a block back into the layout as a standalone node (layout only —
+ * does NOT touch the minimized meta state).
+ */
+function insertBlockIntoLayout(tabId: string, blockId: string): boolean {
     const layoutModel = getLayoutModelForTabById(tabId);
     if (!layoutModel) {
         return false;
     }
-    removeMinimizedBlockId(tabId, blockId);
     layoutModel.closeEphemeralNodeForBlock(blockId);
     const existingNode = layoutModel.getNodeByBlockId(blockId);
     if (existingNode) {
@@ -206,6 +200,53 @@ export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, 
     return true;
 }
 
+export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, blockId: string): boolean {
+    if (!tabId) {
+        return false;
+    }
+    removeMinimizedBlockId(tabId, blockId);
+    return insertBlockIntoLayout(tabId, blockId);
+}
+
+/**
+ * Insert a group of blocks back into the layout as an inline tab group.
+ * This preserves the group structure so the blocks appear as tabs within a single node.
+ */
+function insertInlineTabGroupIntoLayout(tabId: string, blockIds: string[]): boolean {
+    const layoutModel = getLayoutModelForTabById(tabId);
+    if (!layoutModel) {
+        return false;
+    }
+
+    // Close any ephemeral nodes for these blocks and check which ones are already in the layout.
+    const blocksToInsert: string[] = [];
+    for (const blockId of blockIds) {
+        layoutModel.closeEphemeralNodeForBlock(blockId);
+        const existingNode = layoutModel.getNodeByBlockId(blockId);
+        if (!existingNode) {
+            blocksToInsert.push(blockId);
+        }
+    }
+
+    if (blocksToInsert.length === 0) {
+        return true;
+    }
+
+    // Create a single node containing all blocks as an inline tab group.
+    const nodeData: TabLayoutData = {
+        blockIds: blocksToInsert,
+        activeBlockId: blocksToInsert[0],
+    };
+
+    layoutModel.treeReducer({
+        type: LayoutTreeActionType.InsertNode,
+        node: newLayoutNode(undefined, undefined, undefined, nodeData),
+        magnified: false,
+        focused: true,
+    } as LayoutTreeInsertNodeAction);
+    return true;
+}
+
 // ── Minimize entire group ──
 
 /**
@@ -213,6 +254,9 @@ export function restoreMinimizedBlockToLayout(tabId: string | null | undefined, 
  * BlockBar. Every blockId in the group is removed from the layout, added to
  * the minimized list, and registered as a group so the sidebar can render
  * a collapsible folder icon.
+ *
+ * The whole meta update is written atomically (one jotai update + one
+ * SetMetaCommand) so the group record can never be lost to write races.
  *
  * @param groupId  Stable identifier for the group. Typically the layout node id.
  */
@@ -242,16 +286,24 @@ export function minimizeGroupToFloat(
         } as LayoutTreeRemoveNodeFromLayoutAction);
     }
 
-    // Add every block in the group to the minimized list.
+    // Single atomic write: merge the group's blocks into the minimized list
+    // and record the group structure in one shot.
+    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    if (!tab) {
+        return false;
+    }
+    const existingBlockIds = getMinimizedBlockIdsFromTab(tab);
+    const mergedBlockIds = [...existingBlockIds];
     for (const blockId of groupBlockIds) {
-        addMinimizedBlockId(tabId, blockId);
+        if (!mergedBlockIds.includes(blockId)) {
+            mergedBlockIds.push(blockId);
+        }
     }
-
-    // Record the group structure so the sidebar can render a collapsible folder.
+    const groups = getMinimizedGroupsFromTab(tab);
     if (groupBlockIds.length > 1) {
-        addMinimizedGroup(tabId, effectiveGroupId, groupBlockIds);
+        groups[effectiveGroupId] = [...groupBlockIds];
     }
-
+    writeMinimizedState(tabId, mergedBlockIds, groups);
     return true;
 }
 
@@ -275,13 +327,15 @@ export function restoreMinimizedGroupToLayout(tabId: string | null | undefined, 
         return false;
     }
 
-    // Remove the group record first so sidebar re-renders cleanly.
-    removeMinimizedGroup(tabId, groupId);
+    // Single atomic write: drop the group record and all its members from the
+    // minimized list at once.
+    const remainingBlockIds = getMinimizedBlockIdsFromTab(tab).filter((id) => !memberIds.includes(id));
+    const nextGroups = { ...groups };
+    delete nextGroups[groupId];
+    writeMinimizedState(tabId, remainingBlockIds, nextGroups);
 
-    // Restore each block individually.
-    for (const blockId of memberIds) {
-        restoreMinimizedBlockToLayout(tabId, blockId);
-    }
+    // Restore the group as a single inline tab group (layout ops only, no meta writes).
+    insertInlineTabGroupIntoLayout(tabId, memberIds);
     return true;
 }
 
@@ -313,9 +367,9 @@ export function deleteMinimizedGroup(tabId: string | null | undefined, groupId: 
         return;
     }
 
-    removeMinimizedGroup(tabId, groupId);
-
-    for (const blockId of memberIds) {
-        removeMinimizedBlockId(tabId, blockId);
-    }
+    // Single atomic write: drop the group record and all its members.
+    const remainingBlockIds = getMinimizedBlockIdsFromTab(tab).filter((id) => !memberIds.includes(id));
+    const nextGroups = { ...groups };
+    delete nextGroups[groupId];
+    writeMinimizedState(tabId, remainingBlockIds, nextGroups);
 }

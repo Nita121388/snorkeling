@@ -98,6 +98,10 @@
 > - `commontext-pinned-detail-insert.html` — pinned 详情插入方向
 > - **2026-08-16**：`aisessions-path-filter/` 已按 PROCESS 目录化（v1 裸 html → `index.html` + `README.md`，位于 `_to-keep/aisessions-path-filter/`），并重做为 **v2 目录导航设计**（▲ 设计活跃）：父级面包屑回退 + 直接子目录 chips 下钻，匹配语义改为组件边界前缀，计数改用后端全量 projectPath 分布。v1 两处根因（公共前缀面包屑天花板、子串/无边界前缀泄漏兄弟目录）与落地计划见其 README。
 
+## `files-block-favorites/` — 1 项（自建目录）
+
+- `files-block-favorites/` — **▲ 设计活跃**（2026-09-04）;Files Block（Preview 视图）常用目录收藏 + 自动识别最近访问目录：folder icon 点击居中弹出 FavoritesFloatingWindow（AgentTargetFloatingWindow 风格毛玻璃浮窗），分 Favorites（手动收藏 + hover × 移除 + "Add current dir" 按钮）+ Recent（自动识别 session 内访问历史，最多 10 条）两区域，选中态 accent 左侧 bar，footer 有 Go to Path / Open / New Tab 三个操作按钮；右键文件/目录新增 "Add to Favorites" / "Remove from Favorites" 菜单项，folder icon 有收藏时显示 ★ 绿色徽标。替换现有硬编码 BOOKMARKS（Home/Desktop/Downloads/Documents/Root）+ longClick context menu。数据走 `preview:favorites` setting key，Recent 前端 session 内追踪。镜像源：`frontend/app/view/preview/preview-model.tsx`, `preview-directory-utils.tsx`, `preview.tsx`。4 场景可交互切换。
+
 ## `vcs-block-redesign/` — 1 项（自建目录）
 
 - `vcs-block-redesign/` — **▲ 设计活跃**;VCS Block（Version Control）Quiet List 重设计：去掉深色半透明→纯浅色背景，Badge 简化（C:2 U:1→3 changed + ↓4 ↑1），次要操作 hover 浮现，tabular-nums 数字对齐，accent 仅用于主按钮+链接。覆盖 4 视图（vcs/vcscommits/vcshistory/vcsdiff）+ 6 场景（Clean/Dirty/Behind-Ahead/SVN/Multi-repo/Detached HEAD）可交互切换。镜像源：`frontend/app/view/vcs/vcs.tsx`, `frontend/app/view/vcs/vcs-filter.ts`, `frontend/app/view/vcscommits/vcscommits.tsx`, `frontend/app/view/vcshistory/vcshistory.tsx`, `frontend/app/view/vcsdiff/vcsdiff.tsx`。落地计划见 `PLAN.md`（8 Phase，P0 视觉重构 1-2 天 → P2 Commit Graph 3 天）。

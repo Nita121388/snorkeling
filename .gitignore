@@ -56,5 +56,11 @@ electron-vite
 # GitNexus temp scratch
 .gitnexus-tmp/
 
+*.jsonl
+
 # Backup files
 .backup/
+
+# CDP debug/temp scripts
+scripts/.tmp-cdp-*
+scripts/cdp-gui-chat-*.mjs

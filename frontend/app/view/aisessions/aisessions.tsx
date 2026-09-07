@@ -18,11 +18,13 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../../session-overview/session-overview.scss";
+import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { IconButton, SortButton, GroupModeSwitch, type ListGroupMode } from "./controls";
 import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
+import { mergeSessionTimeline } from "./session-timeline-sync";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
@@ -116,6 +118,7 @@ export class AiSessionsViewModel implements ViewModel {
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
     toolCallsLoadingAtom = jotai.atom<boolean>(false);
     errorAtom = jotai.atom<string>("");
+    historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
     newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
         SessionSummary | null
@@ -155,6 +158,7 @@ export class AiSessionsViewModel implements ViewModel {
             return [
                 {
                     elemtype: "iconbutton",
+                    className: "aisessions-auto-refresh",
                     icon: (
                         <RefreshStatusIcon
                             status={refreshStatus}
@@ -241,10 +245,12 @@ export class AiSessionsViewModel implements ViewModel {
                 "aisessions:newchat": null,
             } as MetaType,
         }).catch(() => undefined);
+        // Session promotion is deliberately fire-and-forget: the live turn remains
+        // the primary UI while summary/history and the left list catch up.
         void this.promoteNewSession(sessionId);
     }
 
-    async promoteNewSession(sessionId: string): Promise<void> {
+    async promoteNewSession(sessionId: string, attempt = 0): Promise<void> {
         try {
             const summary = await this.service.Summary({
                 id: sessionId,
@@ -263,12 +269,20 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             void this.loadDetail(summary, true);
             void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
-        } catch {
-            void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+        } catch (error) {
+            const placeholder = globalStore.get(this.newSessionAtom);
+            if (placeholder == null || placeholder.id !== sessionId) return;
+            globalStore.set(this.historySyncErrorAtom, getErrorMessage(error));
+            if (attempt >= 5) return;
+            const delayMs = Math.min(500 * 2 ** attempt, 8000);
+            window.setTimeout(() => {
+                void this.promoteNewSession(sessionId, attempt + 1);
+            }, delayMs);
+            void this.loadSessions(false, globalStore.get(this.sortDescendingAtom));
         }
     }
 
-    async loadSessions(refresh = false, sortDescending = false): Promise<void> {
+    async loadSessions(refresh = false, sortDescending = false, background = false): Promise<void> {
         const loadSeq = ++this.sessionsLoadSeq;
         const source = globalStore.get(this.sourceAtom);
         const query = globalStore.get(this.queryAtom);
@@ -279,7 +293,10 @@ export class AiSessionsViewModel implements ViewModel {
         const pathFilter = globalStore.get(this.pathFilterAtom);
         const projectPrefix = pathFilterToPrefix(pathFilter);
         const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
-        globalStore.set(this.loadingAtom, true);
+        // 后台自动同步不把整个面板打进 loading（避免黑屏）；只有用户/首载 refresh 才置 loading。
+        if (!background) {
+            globalStore.set(this.loadingAtom, true);
+        }
         globalStore.set(this.errorAtom, "");
         try {
             const response = await this.service.List({
@@ -352,6 +369,11 @@ export class AiSessionsViewModel implements ViewModel {
                 if (selectedKey !== "" && detail?.summary?.key === selectedKey) {
                     return;
                 }
+                // 后台同步时，当前会话可能只是短暂不在本次扫描结果里（索引刷新/文件 mtime 波动）。
+                // 不要把当前会话切掉或清空 detail 去报 "session not found"：保留现状，等下次前台刷新。
+                if (background) {
+                    return;
+                }
                 const boundSessionId = selectedKey === "" ? this.getBoundSessionId() : "";
                 const boundSession = findSessionById(sessions, boundSessionId);
                 if (boundSession != null) {
@@ -384,6 +406,7 @@ export class AiSessionsViewModel implements ViewModel {
             }
         } finally {
             if (
+                !background &&
                 this.isCurrentSessionsLoad(
                     loadSeq,
                     source,
@@ -520,11 +543,12 @@ export class AiSessionsViewModel implements ViewModel {
             if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
                 return;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return;
+            globalStore.set(this.historySyncErrorAtom, "");
             this.replaceSession(detail.summary);
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
         } finally {
             if (loadSeq === this.detailLoadSeq) {
@@ -550,6 +574,7 @@ export class AiSessionsViewModel implements ViewModel {
         const loadSeq = this.detailLoadSeq;
         globalStore.set(this.detailDeltaLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
+        globalStore.set(this.historySyncErrorAtom, "");
         try {
             const delta = await this.service.DetailDelta({
                 id: currentSummary.key,
@@ -577,7 +602,7 @@ export class AiSessionsViewModel implements ViewModel {
             return true;
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
-                globalStore.set(this.errorAtom, getErrorMessage(e));
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
             }
             return false;
         } finally {
@@ -590,20 +615,54 @@ export class AiSessionsViewModel implements ViewModel {
         if (detail?.summary?.key !== sessionKey) {
             return;
         }
-        const existingSeqs = new Set((detail.messages ?? []).map((message) => message.seq));
-        const nextMessages = [
-            ...(detail.messages ?? []),
-            ...(delta.messages ?? []).filter((message) => !existingSeqs.has(message.seq)),
-        ];
+        const merged = mergeSessionTimeline(detail.messages ?? [], detail.cursor, delta.messages ?? [], delta.cursor);
+        if (merged.resetRequired) {
+            void this.loadDetail(detail.summary, true);
+            return;
+        }
         const nextSummary = mergeDeltaSummary(detail.summary, delta.summary);
         const nextDetail: SessionDetail = {
             ...detail,
             summary: nextSummary,
-            messages: nextMessages,
-            cursor: delta.cursor ?? detail.cursor,
+            messages: merged.messages,
+            cursor: merged.cursor,
         };
         globalStore.set(this.detailAtom, nextDetail);
         this.replaceSession(nextSummary);
+    }
+
+    // turn_end 后只刷新工具调用：保留已渲染的消息列表（delta 已增量合并），
+    // 仅把 ToolCalls 更新为正式数据，避免整块 Detail 替换造成旧内容闪烁/丢失。
+    async refreshToolCallsOnly(): Promise<boolean> {
+        const currentDetail = globalStore.get(this.detailAtom);
+        const currentSummary = currentDetail?.summary;
+        if (!currentSummary?.key) {
+            return false;
+        }
+        const loadSeq = ++this.detailToolsLoadSeq;
+        globalStore.set(this.toolCallsLoadingAtom, true);
+        try {
+            const detail = await this.service.Detail({
+                id: currentSummary.key,
+                connection: this.getConnection(),
+                refresh: false,
+                includeTools: true,
+            });
+            const latest = globalStore.get(this.detailAtom);
+            if (loadSeq !== this.detailToolsLoadSeq || latest?.summary?.key !== currentSummary.key) {
+                return false;
+            }
+            // 只合并 toolCalls；messages/cursor/summary 保持现状。
+            globalStore.set(this.detailAtom, { ...latest, toolCalls: detail.toolCalls ?? [] });
+            return true;
+        } catch (e) {
+            // 静默失败：工具卡片缺失可由后续刷新补齐，不打断聊天主流程。
+            return false;
+        } finally {
+            if (loadSeq === this.detailToolsLoadSeq) {
+                globalStore.set(this.toolCallsLoadingAtom, false);
+            }
+        }
     }
 
     async loadDetailTools(refresh = false): Promise<boolean> {
@@ -631,7 +690,7 @@ export class AiSessionsViewModel implements ViewModel {
             ) {
                 return false;
             }
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             this.replaceSession(detail.summary);
             return true;
         } catch (e) {
@@ -644,6 +703,27 @@ export class AiSessionsViewModel implements ViewModel {
                 globalStore.set(this.toolCallsLoadingAtom, false);
             }
         }
+    }
+
+    // 提交一次全量 Detail，防旧响应覆盖新状态。对同一 session，新消息数不应少于
+    // 当前已有（除用户切会话/rewind 外会话只会增长）；若更少则视为过期回退，拒绝覆盖
+    // ——这正是"第二条消息后旧内容消失"的根因：全量刷新与增量 delta 竞态时用更短列表覆盖。
+    commitDetail(detail: SessionDetail): boolean {
+        const current = globalStore.get(this.detailAtom);
+        const sameSession = current?.summary?.key != null && current.summary.key === detail.summary?.key;
+        if (sameSession) {
+            const currentCount = (current?.messages ?? []).length;
+            const newCount = (detail.messages ?? []).length;
+            if (newCount < currentCount) {
+                console.debug(
+                    `commitDetail: refused regression ${currentCount}->${newCount} for ${detail.summary?.key}`
+                );
+                // 保留现有数据（不允许用更短的列表覆盖已有对话）。
+                return false;
+            }
+        }
+        globalStore.set(this.detailAtom, detail);
+        return true;
     }
 
     async refreshBoundSessionSummary(): Promise<void> {
@@ -675,7 +755,7 @@ export class AiSessionsViewModel implements ViewModel {
                 includeTools: true,
             });
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
-            globalStore.set(this.detailAtom, detail);
+            if (!this.commitDetail(detail)) return false;
             this.replaceSession(detail.summary);
             return true;
         } catch (e) {
@@ -826,12 +906,21 @@ export class AiSessionsViewModel implements ViewModel {
 
     replaceSession(updated: SessionSummary): void {
         const sessions = globalStore.get(this.sessionsAtom);
-        globalStore.set(
-            this.sessionsAtom,
-            sessions.map((session) => (session.key === updated.key ? { ...session, ...updated } : session))
-        );
+        let changed = false;
+        const next = sessions.map((session) => {
+            if (session.key === updated.key) {
+                // 轮询/后台刷新命中时若实质无变化, 跳过写状态, 避免触发整面板重渲染.
+                if (isSameSessionSummary(session, updated)) return session;
+                changed = true;
+                return { ...session, ...updated };
+            }
+            return session;
+        });
+        if (changed) {
+            globalStore.set(this.sessionsAtom, next);
+        }
         const detail = globalStore.get(this.detailAtom);
-        if (detail?.summary?.key === updated.key) {
+        if (detail?.summary?.key === updated.key && !isSameSessionSummary(detail.summary, updated)) {
             globalStore.set(this.detailAtom, { ...detail, summary: { ...detail.summary, ...updated } });
         }
     }
@@ -976,6 +1065,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
     const toolCallsLoading = jotai.useAtomValue(model.toolCallsLoadingAtom);
     const error = jotai.useAtomValue(model.errorAtom);
+    const historySyncError = jotai.useAtomValue(model.historySyncErrorAtom);
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
@@ -1086,7 +1176,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         const handle = window.setInterval(() => {
             if (document.visibilityState === "hidden") return;
             if (globalStore.get(model.loadingAtom)) return;
-            void model.loadSessions(false, globalStore.get(model.sortDescendingAtom));
+            // 后台同步：不触发整面板 loading/黑屏，也不做破坏性的会话切换。
+            void model.loadSessions(false, globalStore.get(model.sortDescendingAtom), true);
             void model.refreshBoundSessionSummary();
             if (globalStore.get(model.detailAtom)?.summary?.key) {
                 void model.loadDetailDelta("manual");
@@ -1250,8 +1341,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         : "";
 
     return (
-        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-panel text-primary">
-            {error ? (
+        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
+            {error && detail == null && activeSession?.key !== NewSessionKey ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                     {error}
                 </div>
@@ -1448,16 +1539,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     newChatEpoch={newChatEpoch}
                     loading={
                         error === "" &&
-                        (loading ||
-                            detailLoading ||
-                            (activeSession != null &&
-                                activeSession.key !== NewSessionKey &&
-                                detail?.summary?.key !== activeSession.key))
+                        detailLoading &&
+                        detail == null &&
+                        activeSession?.key !== NewSessionKey
                     }
                     deltaLoading={detailDeltaLoading}
                     toolCallsLoading={toolCallsLoading}
                     restoring={restoring}
                     deleting={deleting}
+                    error={error}
+                    historySyncError={historySyncError}
                     onBound={(sessionId) => model.bindNewSession(sessionId)}
                     onRunningSessionIdsChange={handleRunningChatSessionIdsChange}
                     onExpandSessionList={

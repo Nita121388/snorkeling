@@ -287,6 +287,8 @@ export function useChatStreams() {
             abort(resolvedKey);
             const controller = new AbortController();
             let terminalEvent: "turn_end" | "turn_failed" | null = null;
+            // 收到首个非终态 SSE 事件后进入 streaming（working）态；此前保持 sending。
+            let enteredStreaming = false;
             controllersRef.current.set(resolvedKey, controller);
             setStatus(resolvedKey, "sending");
             void runChatStream(
@@ -296,6 +298,9 @@ export function useChatStreams() {
                     onEvent: (evt) => {
                         if (evt.type === "turn_end" || evt.type === "turn_failed") {
                             terminalEvent = evt.type;
+                        } else if (!enteredStreaming) {
+                            enteredStreaming = true;
+                            setStatus(resolvedKey, "streaming");
                         }
                         onEvent?.(evt, resolveKey(key));
                     },
@@ -303,11 +308,10 @@ export function useChatStreams() {
                         const finalKey = resolveKey(key);
                         if (controllersRef.current.get(finalKey) === controller) {
                             if (terminalEvent == null) {
-                                terminalEvent = "turn_failed";
-                                onEvent?.(
-                                    { type: "turn_failed", error: "Chat stream ended before the turn completed" },
-                                    finalKey
-                                );
+                                // Treat an orderly stream close as a handoff to history
+                                // reconciliation, not as a synthetic chat failure.
+                                terminalEvent = "turn_end";
+                                onEvent?.({ type: "turn_end" }, finalKey);
                             }
                             setStatus(finalKey, terminalEvent === "turn_failed" ? "error" : "idle");
                         }

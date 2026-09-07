@@ -852,6 +852,12 @@ export class RpcApiType {
         return client.wshRpcCall("remoteterminatejobmanager", data, opts);
     }
 
+    // command "remotevcsbranchlist" [call]
+    RemoteVcsBranchListCommand(client: WshClient, data: CommandRemoteVcsBranchListData, opts?: RpcOpts): Promise<RemoteVcsBranchListRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsbranchlist", data, opts);
+        return client.wshRpcCall("remotevcsbranchlist", data, opts);
+    }
+
     // command "remotevcscommit" [call]
     RemoteVcsCommitCommand(client: WshClient, data: CommandRemoteVcsCommitData, opts?: RpcOpts): Promise<RemoteVcsCommitRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscommit", data, opts);
@@ -882,6 +888,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotevcsfilehistory", data, opts);
     }
 
+    // command "remotevcspipelinelist" [call]
+    RemoteVcsPipelineListCommand(client: WshClient, data: CommandRemoteVcsPipelineListData, opts?: RpcOpts): Promise<RemoteVcsPipelineListRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcspipelinelist", data, opts);
+        return client.wshRpcCall("remotevcspipelinelist", data, opts);
+    }
+
     // command "remotevcsrepositories" [call]
     RemoteVcsRepositoriesCommand(client: WshClient, data: CommandRemoteVcsRepositoriesData, opts?: RpcOpts): Promise<RemoteVcsRepositoriesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsrepositories", data, opts);
@@ -898,6 +910,12 @@ export class RpcApiType {
     RemoteVcsStatCommand(client: WshClient, data: CommandRemoteVcsStatData, opts?: RpcOpts): Promise<RemoteVcsStatRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsstat", data, opts);
         return client.wshRpcCall("remotevcsstat", data, opts);
+    }
+
+    // command "remotevcsswitchbranch" [call]
+    RemoteVcsSwitchBranchCommand(client: WshClient, data: CommandRemoteVcsSwitchBranchData, opts?: RpcOpts): Promise<RemoteVcsSwitchBranchRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsswitchbranch", data, opts);
+        return client.wshRpcCall("remotevcsswitchbranch", data, opts);
     }
 
     // command "remotevcssync" [call]

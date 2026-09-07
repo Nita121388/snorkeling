@@ -27,7 +27,6 @@ import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } fr
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
-import { partitionAndOrderTabs } from "./tab-pinned-order";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
 
@@ -38,6 +37,10 @@ import { WorkspaceSwitcher } from "./workspaceswitcher";
 
 const TabDefaultWidth = 130;
 const TabMinWidth = 100;
+// 拖拽启动位移阈值(px): mousedown 后移动超过该距离才进入拖拽态.
+// 零阈值会让双击重命名时两次点击之间的手抖立刻触发 setDraggingTab,
+// 布局在"拖拽分支(物理顺序+全宽重算)"与"两组布局"之间来回摆动, 第二击落空.
+const DragStartThresholdPx = 5;
 const MacOSTrafficLightsWidth = 74;
 const MacOSTahoeTrafficLightsWidth = 80;
 const ScrollEdgeTolerance = 1;
@@ -137,6 +140,9 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         tabIndex: 0,
         initialOffsetX: null,
         totalScrollOffset: null,
+        // 是否已越过 DragStartThresholdPx 进入拖拽态 (未越过前 mousemove 一律 early-return,
+        // 保护双击重命名/单击不被手抖触发的布局摆动破坏)
+        engaged: false,
         dragged: false,
     });
     const osInstanceRef = useRef<OverlayScrollbars>(null);
@@ -342,19 +348,23 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             idealTabWidth = spaceForTabs / numberOfTabs;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         } else {
-            const { pinnedTabIds } = partitionAndOrderTabs(visibleTabIds, activeTabId, openedThisLaunchTabIds);
-            const pinnedTabIdSet = new Set(pinnedTabIds);
-            const pinnedTabs: string[] = [];
-            const hoverRevealedTabs: string[] = [];
+            // 使用与 isHidden 一致的判定: active / openedThisLaunch / unreadDots
+            // 排前面, 其余排后面. 两组内部保持物理顺序.
+            // 不再使用 partitionAndOrderTabs (它基于 7 天 recency, 导致 hover 时排序变化).
+            const visibleTabs: string[] = [];
+            const hiddenTabs: string[] = [];
             for (const tabId of visibleTabIds) {
-                if (pinnedTabIdSet.has(tabId)) {
-                    pinnedTabs.push(tabId);
+                const isActive = activeTabId === tabId;
+                const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
+                const hasUnread = tabsWithUnreadDots.has(tabId);
+                if (isActive || wasOpened || hasUnread) {
+                    visibleTabs.push(tabId);
                 } else {
-                    hoverRevealedTabs.push(tabId);
+                    hiddenTabs.push(tabId);
                 }
             }
-            layoutTabIds = [...pinnedTabs, ...hoverRevealedTabs];
-            const widthBasisCount = Math.max(1, pinnedTabs.length);
+            layoutTabIds = [...visibleTabs, ...hiddenTabs];
+            const widthBasisCount = Math.max(1, visibleTabs.length);
             idealTabWidth = spaceForTabs / widthBasisCount;
             idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
         }
@@ -530,6 +540,15 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             draggingTabDataRef.current.initialOffsetX = initialOffsetX;
         }
         let currentX = event.clientX - initialOffsetX - totalScrollOffset;
+
+        // 拖拽启动阈值: 未越过 DragStartThresholdPx 前不动任何状态/样式.
+        // 双击重命名两次点击间的手抖(通常 1~2px)会触发 mousemove, 零阈值下会立刻
+        // setDraggingTab → 布局切到拖拽分支(物理顺序+宽度重算)再切回, 第二击落空.
+        if (!draggingTabDataRef.current.engaged && Math.abs(currentX - tabStartX) < DragStartThresholdPx) {
+            return;
+        }
+        draggingTabDataRef.current.engaged = true;
+
         let tabBarRectWidth = tabBarRef.current.getBoundingClientRect().width;
         // for macos, it's offset to make space for the window buttons
         const tabBarRectLeftOffset = tabBarRef.current.getBoundingClientRect().left;
@@ -689,8 +708,11 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                     tabStartX,
                     tabIndex,
                     tabStartIndex: tabIndex,
-                    initialOffsetX: null,
+                    // mousedown 时就记录光标起点, 拖拽阈值从按下位置起算
+                    // (而不是第一次 mousemove, 避免小位移被当成"零偏移")
+                    initialOffsetX: event.clientX - tabStartX,
                     totalScrollOffset: 0,
+                    engaged: false,
                     dragged: false,
                 };
 
