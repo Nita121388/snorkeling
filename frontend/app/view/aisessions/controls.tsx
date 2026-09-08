@@ -179,8 +179,8 @@ export function GroupModeSwitch({
                                 : "text-secondary hover:text-primary"
                         )}
                     >
-                        <i className={cn("fa-sharp fa-solid text-[10px]", icon)} />
-                        <span>{label}</span>
+                        <i className={cn("fa-sharp fa-solid text-[10px]", icon, current ? "text-primary" : "text-secondary")} />
+                        <span className="sr-only">{label}</span>
                     </button>
                 );
             })}
