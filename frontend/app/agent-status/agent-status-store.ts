@@ -202,6 +202,22 @@ export class AgentStatusStore {
         return entry.rawAtom;
     }
 
+    /**
+     * 与 peekStatusAtom 同语义 (只取已缓存、不新建订阅、不自增 refCount), 但返回 presented
+     * atom — 即 applyStaleness 之后的状态.
+     *
+     * C 层 stale 圆点必须读它: raw atom 里 working 永远不会自己变成 stale (Go 端 watchdog 的
+     * 衰减要先等 5min TTL 才有事件), 而前端 working→stale 的翻转不产生任何事件, 只有在
+     * presented atom 里按 AgentStaleThresholdMs 现算才拿得到.
+     */
+    peekPresentedStatusAtom(blockId: string): Atom<AgentStatus | null> | null {
+        const entry = this.entries.get(blockId);
+        if (entry == null) {
+            return null;
+        }
+        return entry.presentedAtom;
+    }
+
     // [DIAG] D 复活排查: 暴露 entries 与 doneAckedAt 快照, 让 CDP eval
     // 可在不写代码改动的情况下抓 atom 实时数值. 排查完删除该方法 + window 挂载.
     diagDump(get: Getter): unknown {

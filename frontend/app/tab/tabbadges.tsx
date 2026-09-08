@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
+import { TabAgentStatusDot, TabAgentStatusDotKind } from "@/app/agent-status/agent-status-tab-aggregate";
 import { sortBadgesForTab } from "@/app/store/badge";
 import { cn, makeIconClass } from "@/util/util";
 import { useMemo } from "react";
@@ -18,14 +18,27 @@ export interface TabBadgesProps {
 const DefaultClassName =
     "tab-badges pointer-events-none absolute left-[4px] top-1/2 z-[3] flex h-[20px] w-[20px] -translate-y-1/2 items-center justify-center px-[2px] py-[1px]";
 
+// 主槽图标: D=勾 (完成), S=时钟 (卡住/长时间无更新), R=实心点 (阻塞).
+// S 只在没有 D/R 时才会进主槽 (priority 最低), 副槽一律是 4px 小圆点, 所以只有主槽需要图标.
+function tabDotIcon(kind: TabAgentStatusDotKind): string {
+    if (kind === "D") return "circle-check";
+    if (kind === "S") return "clock-rotate-left";
+    return "circle-dot";
+}
+
+// 与 collectBlockDots 的 rankPriority 量级对齐 (D=100/blocked=70/S=40), 用 badge.ts 的
+// sortBadgesForTab 兼容现有 priority 数字语义 (priority 大者居主槽).
+const TabDotPriority: Record<TabAgentStatusDotKind, number> = {
+    D: 1000,
+    R: 600,
+    S: 400,
+};
+
 function dotToBadge(dot: TabAgentStatusDot, badgeId: string): Badge {
     return {
-        icon: dot.kind === "D" ? "circle-check" : "circle-dot",
+        icon: tabDotIcon(dot.kind),
         color: dot.color,
-        // D (完成态未阅) 与 R (working/blocked) 在主槽竞争时, 让 D 的 priority 高一些;
-        // 与 collectBlockDots 的 rankPriority 量级对齐, 但保持用 badge.ts 的 sortBadgesForTab
-        // 兼容现有 priority 数字语义 (priority 大者居主槽).
-        priority: dot.kind === "D" ? 1000 : 600,
+        priority: TabDotPriority[dot.kind],
         badgeid: badgeId,
     };
 }

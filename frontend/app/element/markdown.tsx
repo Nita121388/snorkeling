@@ -1028,9 +1028,33 @@ type CodeBlockProps = {
     onApplyLanguage?: (lang: string | null) => void;
 };
 
+// 命令类语言：执行按钮常驻（不随 hover 隐藏）。本项目是终端工具，md 里的命令块一键执行
+// 是核心场景，比 Wolai 把动作藏进块菜单更顺手。
+const ShellLikeLangs = new Set([
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "shell",
+    "shell-session",
+    "console",
+    "powershell",
+    "ps1",
+    "cmd",
+    "bat",
+]);
+
+function isShellLike(language?: string | null): boolean {
+    return language != null && ShellLikeLangs.has(language.toLowerCase());
+}
+
+// 长代码块折叠阈值（行）。折叠只做 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全。
+const CodeBlockCollapseLineThreshold = 30;
+
 const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, language, onApplyLanguage }: CodeBlockProps) => {
     const [editingLang, setEditingLang] = useState(false);
     const [langDraft, setLangDraft] = useState("");
+    const [expanded, setExpanded] = useState(false);
     const getTextContent = (children: any): string => {
         if (typeof children === "string") {
             return children;
@@ -1042,25 +1066,34 @@ const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, langua
         return "";
     };
 
+    // 代码原文：复制、执行、行数统计共用一份（顶栏与折叠 UI 都不进这份文本）
+    const codeText = getTextContent(children).replace(/\n$/, "");
+    const lineCount = codeText === "" ? 0 : codeText.split("\n").length;
+    const collapsible = lineCount > CodeBlockCollapseLineThreshold;
+    const collapsed = collapsible && !expanded;
+
     const handleCopy = async (e: React.MouseEvent) => {
-        let textToCopy = getTextContent(children);
-        textToCopy = textToCopy.replace(/\n$/, ""); // remove trailing newline
-        await navigator.clipboard.writeText(textToCopy);
+        await navigator.clipboard.writeText(codeText);
     };
 
     const handleExecute = (e: React.MouseEvent) => {
-        let textToCopy = getTextContent(children);
-        textToCopy = textToCopy.replace(/\n$/, ""); // remove trailing newline
         if (onClickExecute) {
-            onClickExecute(textToCopy);
+            onClickExecute(codeText);
             return;
         }
     };
 
     return (
-        <pre className="codeblock" {...sourceLineAttrs(sourceLine, sourceLineEnd)}>
+        <pre
+            className={clsx("codeblock", collapsed && "is-collapsed")}
+            {...sourceLineAttrs(sourceLine, sourceLineEnd)}
+            // 折叠态下双击进 inline-edit 前先展开，避免“看着被截断却在编辑全文”
+            onDoubleClick={() => {
+                if (collapsed) setExpanded(true);
+            }}
+        >
             {children}
-            <div className="codeblock-actions">
+            <div className="codeblock-header">
                 {/* Language badge (方案 04 §2): click → inline input → Enter applies via a
                     one-line fence rewrite (setCodeBlockLanguage), Esc/blur cancels. */}
                 {editingLang ? (
@@ -1099,17 +1132,32 @@ const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, langua
                 ) : (
                     language != null && <span className="codeblock-lang-badge is-static">{language}</span>
                 )}
-                <CopyButton onClick={handleCopy} title="Copy" />
-                {onClickExecute && (
-                    <IconButton
-                        decl={{
-                            elemtype: "iconbutton",
-                            icon: "regular@square-terminal",
-                            click: handleExecute,
-                        }}
-                    />
-                )}
+                <div className="codeblock-ops">
+                    <CopyButton onClick={handleCopy} title="Copy" />
+                    {onClickExecute && (
+                        <IconButton
+                            decl={{
+                                elemtype: "iconbutton",
+                                icon: "regular@square-terminal",
+                                click: handleExecute,
+                                className: isShellLike(language) ? "is-persistent" : undefined,
+                            }}
+                        />
+                    )}
+                </div>
             </div>
+            {collapsible && (
+                <button
+                    type="button"
+                    className="codeblock-expand"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setExpanded((v) => !v);
+                    }}
+                >
+                    {expanded ? "收起" : `展开全部（共 ${lineCount} 行）`}
+                </button>
+            )}
         </pre>
     );
 };
@@ -3688,6 +3736,21 @@ const Markdown = ({
     const [formatTypography, setFormatTypography] = useState<React.CSSProperties | null>(null);
     const editSessionKind = inlineEdit.editSession?.blockKind ?? null;
 
+    // Code block being edited: capture its language (from the hidden preview <code>.language-*)
+    // so the overlay's isomorphic header + syntax highlight match. Reset whenever the session
+    // leaves a code block.
+    const [editCodeLanguage, setEditCodeLanguage] = useState<string | null>(null);
+    useEffect(() => {
+        const session = inlineEdit.editSession;
+        if (session?.blockKind !== "code" || !session.targetEl?.isConnected) {
+            setEditCodeLanguage(null);
+            return;
+        }
+        const code = session.targetEl.querySelector("code");
+        const langClass = code ? Array.from(code.classList).find((c) => c.startsWith("language-")) : null;
+        setEditCodeLanguage(langClass ? langClass.slice("language-".length) : null);
+    }, [inlineEdit.editSession]);
+
     // Emoji picker opened via `/emoji` slash command (separate from the "::" inline trigger).
     // This state tracks whether the picker is open, its anchor position, and search state.
     const [slashEmojiState, setSlashEmojiState] = useState<{
@@ -5374,6 +5437,7 @@ const Markdown = ({
                             typography={inlineEdit.editSession?.typography}
                             draftText={inlineEdit.draftText}
                             textareaRef={inlineEdit.textareaRef}
+                            codeEditorRef={inlineEdit.codeEditorRef}
                             onTextChange={(v, caret) => {
                                 inlineEdit.setDraftText(v);
                                 trackEditorTriggers(v, caret);
@@ -5398,6 +5462,8 @@ const Markdown = ({
                             formatPrefix={formatPrefix ?? undefined}
                             ghostPlaceholder={dynamicPlaceholder ?? undefined}
                             formatTypography={formatTypography ?? undefined}
+                            codeLanguage={editCodeLanguage}
+                            onExecuteCode={onClickExecute}
                         />
                     )}
                     {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (

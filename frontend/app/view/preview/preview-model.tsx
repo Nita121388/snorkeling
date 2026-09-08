@@ -481,9 +481,6 @@ export class PreviewModel implements ViewModel {
     directoryKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     codeEditKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     env: PreviewEnv;
-
-    // New Files floating window state
-    newFilesWindowOpen: PrimitiveAtom<boolean>;
     recentDirs: PrimitiveAtom<Map<string, number>>;
     pinnedDirs: PrimitiveAtom<PinnedDirectory[]>;
 
@@ -493,18 +490,12 @@ export class PreviewModel implements ViewModel {
         this.nodeModel = nodeModel;
         this.tabModel = tabModel;
         this.env = waveEnv;
-
-        // New Files floating window
-        this.newFilesWindowOpen = atom(false) as PrimitiveAtom<boolean>;
         this.recentDirs = atom(new Map<string, number>()) as PrimitiveAtom<Map<string, number>>;
         this.pinnedDirs = atom([]) as PrimitiveAtom<PinnedDirectory[]>;
-
-        // Load pinned dirs from settings on init
         const savedPinned = globalStore.get(this.env.getSettingsKeyAtom(PreviewPinnedDirectoriesKey));
         if (Array.isArray(savedPinned)) {
             globalStore.set(this.pinnedDirs, savedPinned as PinnedDirectory[]);
         }
-
         const showHiddenFiles = globalStore.get(this.env.getSettingsKeyAtom("preview:showhiddenfiles")) ?? true;
         this.showHiddenFiles = atom<boolean>(showHiddenFiles);
         this.refreshVersion = atom(0);
@@ -627,10 +618,11 @@ export class PreviewModel implements ViewModel {
                 return {
                     elemtype: "iconbutton",
                     icon: "folder-open",
-                    click: (e: React.MouseEvent<any>) => {
-                        // Toggle New Files floating window
-                        const isOpen = globalStore.get(this.newFilesWindowOpen);
-                        globalStore.set(this.newFilesWindowOpen, !isOpen);
+                    longClick: (e: React.MouseEvent<any>) => {
+                        const menuItems: ContextMenuItem[] = [
+                            { label: "New Files Window", click: () => { /* handled by widgets bar */ } },
+                        ];
+                        ContextMenuModel.getInstance().showContextMenu(menuItems, e);
                     },
                 };
             }
@@ -2602,16 +2594,14 @@ export class PreviewModel implements ViewModel {
         return formatRemoteUri(path, await get(this.connection));
     }
 
-    // ── Pinned directories ──────────────────────────────────────────
+    // ── Pinned / Recent directories (used by context menus + recent tracking) ──
     trackRecentDir(dirPath: string): void {
         const current = globalStore.get(this.recentDirs);
         const next = new Map(current);
         next.set(dirPath, Date.now());
-        // Keep max 10 entries, sorted by recency
         if (next.size > 10) {
             const sorted = [...next.entries()].sort((a, b) => b[1] - a[1]);
-            const trimmed = new Map(sorted.slice(0, 10));
-            globalStore.set(this.recentDirs, trimmed);
+            globalStore.set(this.recentDirs, new Map(sorted.slice(0, 10)));
             return;
         }
         globalStore.set(this.recentDirs, next);
@@ -2627,12 +2617,9 @@ export class PreviewModel implements ViewModel {
     togglePinnedDir(dirPath: string, label?: string): void {
         const current = globalStore.get(this.pinnedDirs);
         const idx = current.findIndex((p) => p.path === dirPath);
-        let next: PinnedDirectory[];
-        if (idx >= 0) {
-            next = current.filter((_, i) => i !== idx);
-        } else {
-            next = [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
-        }
+        const next = idx >= 0
+            ? current.filter((_, i) => i !== idx)
+            : [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
         globalStore.set(this.pinnedDirs, next);
         fireAndForget(() =>
             this.env.rpc.SetConfigCommand(TabRpcClient, { [PreviewPinnedDirectoriesKey]: next })

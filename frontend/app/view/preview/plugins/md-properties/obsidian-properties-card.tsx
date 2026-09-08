@@ -11,7 +11,8 @@ import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import clsx from "clsx";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { buildPropertyEntries, parseFrontmatterYamlText, type PropertyEntry } from "./frontmatter-block";
-import { ListPropertyEditor } from "./list-property-editor";
+import { PropertyTagEditor } from "./property-tag-editor";
+import { PropertyValuePopover } from "./property-value-popover";
 import "./obsidian-properties-card.scss";
 
 const JsonPreviewMaxLen = 300;
@@ -117,6 +118,11 @@ function renderValue(entry: PropertyEntry): React.ReactNode {
     }
 }
 
+/** 属性条目 → 字符串数组（tag 单值也归一成数组，便于编辑器统一处理）。 */
+function entryItems(entry: PropertyEntry): string[] {
+    return Array.isArray(entry.value) ? entry.value : [String(entry.value)];
+}
+
 type ObsidianPropertiesCardProps = {
     block: MarkdownContentBlockType;
     /** 属性变更回调（上层负责写回草稿/保存）。缺省 = 只读模式。 */
@@ -152,6 +158,10 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
     const inputRef = useRef<HTMLInputElement>(null);
     const editable = onDataChange != null;
     const dragable = onReorder != null;
+    // 浮层编辑的属性行：值单元格的 DOM 锚点（key → element）
+    const valueRefs = useRef<Record<string, HTMLElement | null>>({});
+    const editingEntry = useMemo(() => entries.find((e) => e.key === editingKey) ?? null, [entries, editingKey]);
+    const isTagLike = (type: PropertyEntry["type"]) => type === "tags" || type === "list" || type === "tag";
 
     // Add property state
     const [addingNew, setAddingNew] = useState(false);
@@ -199,9 +209,19 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
         setEditingKey(null);
     };
 
+    /**
+     * 标签/列表提交：即时写回（浮层里每次 toggle 都调用），不关闭浮层。
+     * 保真：原值是标量（如 `tags: foo`）且仍只有一项时，继续写标量而不是数组。
+     */
     const commitListEdit = (entry: PropertyEntry, newItems: string[]) => {
-        onDataChange?.({ ...data, [entry.key]: newItems });
-        setEditingKey(null);
+        if (entry.type === "tag") {
+            // 单值标签：保持 string（Obsidian 里 `tag: "#foo"` 是标量）
+            onDataChange?.({ ...data, [entry.key]: newItems[0] ?? "" });
+            return;
+        }
+        const originalIsScalar = !Array.isArray(data[entry.key]);
+        const value = originalIsScalar && newItems.length === 1 ? newItems[0] : newItems;
+        onDataChange?.({ ...data, [entry.key]: value });
     };
 
     const cancelEdit = () => {
@@ -330,16 +350,14 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                             <span className="obsidian-props-key" title={entry.key}>
                                 {entry.key}
                             </span>
-                            <span className="obsidian-props-value">
-                                {isEditing ? (
-                                    (entry.type === "tags" || entry.type === "list") ? (
-                                        <ListPropertyEditor
-                                            items={entry.value as string[]}
-                                            onChange={(items) => commitListEdit(entry, items)}
-                                            onClose={() => setEditingKey(null)}
-                                        />
-                                    ) : (
-                                        <input
+                            <span
+                                className="obsidian-props-value"
+                                ref={(el) => {
+                                    valueRefs.current[entry.key] = el;
+                                }}
+                            >
+                                {isEditing && !isTagLike(entry.type) ? (
+                                    <input
                                             ref={inputRef}
                                             className="obsidian-props-input"
                                             value={editDraft}
@@ -356,7 +374,6 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                                             onBlur={() => setEditingKey(null)}
                                             onClick={(e) => e.stopPropagation()}
                                         />
-                                    )
                                 ) : (
                                     renderValue(entry)
                                 )}
@@ -415,6 +432,22 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                         <span className="obsidian-props-add-text">Add property</span>
                     </div>
                 )
+            )}
+            {/* 标签/列表：浮层编辑（Wolai 风格）。其余类型仍为行内 input，见 P1。 */}
+            {editingEntry != null && isTagLike(editingEntry.type) && (
+                <PropertyValuePopover
+                    open
+                    anchor={valueRefs.current[editingEntry.key] ?? null}
+                    onClose={() => setEditingKey(null)}
+                >
+                    <PropertyTagEditor
+                        items={entryItems(editingEntry)}
+                        options={entryItems(editingEntry)}
+                        multiple={editingEntry.type !== "tag"}
+                        onChange={(items) => commitListEdit(editingEntry, items)}
+                        onClose={() => setEditingKey(null)}
+                    />
+                </PropertyValuePopover>
             )}
         </div>
     );

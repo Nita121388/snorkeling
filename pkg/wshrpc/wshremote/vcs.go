@@ -2315,7 +2315,7 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 	// List workflow runs using the resolved gh executable.
 	ghOut, ghErr := runVcsCommand(ctx, repoPath, ghPath, "run", "list",
 		"--limit", strconv.Itoa(limit),
-		"--json", "id,name,headBranch,status,conclusion,headSha,createdAt,updatedAt,url,triggeringActor",
+		"--json", "databaseId,name,headBranch,status,conclusion,headSha,createdAt,updatedAt,url,event",
 	)
 	if ghErr != nil {
 		result.Error = fmt.Sprintf("failed to list workflow runs: %s", ghErr.Error())
@@ -2324,18 +2324,16 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 
 	// Parse gh JSON output
 	type ghRun struct {
-		Id              int64  `json:"id"`
-		Name            string `json:"name"`
-		HeadBranch      string `json:"headBranch"`
-		Status          string `json:"status"`
-		Conclusion      string `json:"conclusion"`
-		HeadSha         string `json:"headSha"`
-		CreatedAt       string `json:"createdAt"`
-		UpdatedAt       string `json:"updatedAt"`
-		Url             string `json:"url"`
-		TriggeringActor struct {
-			Login string `json:"login"`
-		} `json:"triggeringActor"`
+		Id          int64  `json:"databaseId"`
+		Name        string `json:"name"`
+		HeadBranch  string `json:"headBranch"`
+		Status      string `json:"status"`
+		Conclusion  string `json:"conclusion"`
+		HeadSha     string `json:"headSha"`
+		CreatedAt   string `json:"createdAt"`
+		UpdatedAt   string `json:"updatedAt"`
+		Url         string `json:"url"`
+		Event       string `json:"event"`
 	}
 	var ghRuns []ghRun
 	if jsonErr := json.Unmarshal([]byte(ghOut), &ghRuns); jsonErr != nil {
@@ -2351,7 +2349,7 @@ func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data w
 			Status:     ghRun.Status,
 			Conclusion: ghRun.Conclusion,
 			Commit:     ghRun.HeadSha,
-			Author:     ghRun.TriggeringActor.Login,
+			Author:     ghRun.Event,
 			StartedAt:  ghRun.CreatedAt,
 			EndedAt:    ghRun.UpdatedAt,
 			Url:        ghRun.Url,

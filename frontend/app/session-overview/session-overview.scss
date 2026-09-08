@@ -813,9 +813,11 @@
     }
 
     &.is-stale {
-        // stale = "不新鲜但没错" — 不用强调饱和值，回退到中性 secondary。
-        --agent-status-color: var(--secondary-text-color);
-        --agent-status-bg: transparent;
+        // stale = 卡住/长时间无更新: 用独立紫 --agent-stale-color. 不能回退到
+        // --secondary-text-color — 那与 .is-unknown 同款, stale chip 会看着像"没数据".
+        --agent-status-color: var(--agent-stale-color, #a855f7);
+        --agent-status-bg: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.1);
+        border-color: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.38);
     }
 
     &.is-unknown {

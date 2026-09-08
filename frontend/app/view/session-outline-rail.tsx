@@ -316,7 +316,7 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                 onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}
                 onMouseLeave={scheduleClose}
             >
-                <div ref={scrollRef} className="overflow-y-auto max-h-[300px] scrollbar-hide" style={{ width: RAIL_WIDTH }}>
+                <div ref={scrollRef} className="overflow-y-auto max-h-[300px] scrollbar-hide-until-hover" style={{ width: RAIL_WIDTH }}>
                     {prompts.map((prompt, index) => (
                         <RailTick
                             key={prompt.seq}

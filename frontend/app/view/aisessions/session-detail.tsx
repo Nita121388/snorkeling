@@ -190,6 +190,9 @@ export function SessionDetailPane({
     const [titleDraft, setTitleDraft] = useState("");
     // 实时 agent 模型（来自聊天 session_state 事件，头栏药丸 chip 展示）
     const [chatAgentModel, setChatAgentModel] = useState("");
+    // 状态栏用量：上下文占用百分比（session_state）+ 本会话输入/输出 Token（turn_end）
+    const [chatUsage, setChatUsage] = useState<{ input?: number; output?: number }>({});
+    const [contextUsagePercent, setContextUsagePercent] = useState<number | undefined>(undefined);
     // 新会话（detail == null）使用的 agent 选择；绑定后由后端按所选 source 落地。
     const [composeSource, setComposeSource] = useState<string>(() => defaultChatSource().id);
     // 新会话首条消息流式期间暂存后端回派的 sessionId。
@@ -558,6 +561,12 @@ export function SessionDetailPane({
                     const m = evt.state.model;
                     setChatAgentModel(String(m.name || m.id || ""));
                 }
+                if (typeof evt.state?.contextUsagePercent === "number") {
+                    setContextUsagePercent(evt.state.contextUsagePercent);
+                }
+                if (evt.usage) {
+                    setChatUsage({ input: evt.usage.it, output: evt.usage.ot });
+                }
                 // 新会话：后端在首条消息后回派真实 sessionId，暂存待 turn_end 绑定。
                 if (isNewChat && evt.state?.sessionId && boundRef.current === "") {
                     boundRef.current = String(evt.state.sessionId);
@@ -584,6 +593,10 @@ export function SessionDetailPane({
                 // turn_failed 携带错误信息：存入 LiveTurn.error 以便渲染错误 UI + 重试/继续按钮
                 if (evt.type === "turn_failed" && evt.error) {
                     setTurnError(key, { message: evt.error, retryable: true });
+                }
+                // turn_end 携带本轮 usage：更新状态栏的输入/输出 Token 累计
+                if (evt.usage) {
+                    setChatUsage({ input: evt.usage.it, output: evt.usage.ot });
                 }
                 flushLiveTurn(key);
                 turnIdBySessionRef.current.delete(key);
@@ -858,10 +871,13 @@ export function SessionDetailPane({
         return () => window.clearTimeout(handle);
     }, [noteEditorOpen, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
 
-    if (detail == null && !isNewChat) {
+    // Keep the live turn visible while authoritative history is loading. The
+    // detail request may briefly clear the persisted snapshot during promotion;
+    // returning an empty pane here would hide an otherwise healthy stream.
+    if (detail == null && !isNewChat && liveTurn == null) {
         return (
             <div className="flex min-h-0 flex-1 items-center justify-center">
-                {loading && liveTurn == null ? (
+                {loading ? (
                     <i
                         className="fa-sharp fa-solid fa-spinner animate-spin text-sm text-accent"
                         role="status"
@@ -1135,6 +1151,12 @@ export function SessionDetailPane({
                                                 />
                                             );
                                         })}
+                                        {liveTurn != null && (activeChatStreamStatus === "sending" || activeChatStreamStatus === "streaming") ? (
+                                            <div className="flex items-center gap-1.5 px-1 py-1 text-xs text-accent" role="status" aria-live="polite">
+                                                <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
+                                                <span>Working</span>
+                                            </div>
+                                        ) : null}
                                         {/* 实时 turn 错误 UI：重试/继续（正文与工具已并入上方 renderItems 统一渲染） */}
                                         {liveTurn?.error ? (
                                             <div className="mt-2 flex flex-col gap-1.5 rounded-xl border border-error/25 bg-error/10 px-3.5 py-2.5">
@@ -1216,6 +1238,8 @@ export function SessionDetailPane({
                                 onSend={handleChatSend}
                                 onQueue={handleChatQueue}
                                 onAbort={handleChatAbort}
+                                contextUsagePercent={contextUsagePercent}
+                                usage={chatUsage}
                             />
                         ) : isNewChat ? (
                             <ChatComposer

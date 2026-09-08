@@ -22,13 +22,15 @@ import { useAtomValue } from "jotai";
  * 设计要点:
  * - 不主动 acquire 任何 block (那样的强订阅会强行订阅未使用的 block); 只 peek 已缓存的 atom
  *   ("agent block 的状态被 inline-tab / term-header / session-overview 之一订阅过才参与聚合").
- * - 收集范围: D (非 idle→idle 跳变未阅) + R.blocked (waiting/blocked 未阅). working/running 不上 tab
+ * - 收集范围: D (非 idle→idle 跳变未阅) + R.blocked (waiting/blocked 未阅) + S.stale
+ *   (working 超阈值无续约 → 前端 applyStaleness 算出的卡住态). working/running 不上 tab
  *   圆点 (用户拍板: "完成、阻塞这样的状态才显示状态到 app 的 tab"), 避免在跑的 agent 把顶部 tab
  *   涂成一片主题绿与 D 撞色.
  *   特性保留: working/running 永不上 tab 圆点, 为了减少噪音 — 有必要的才提示用户. 运行中的视觉色
  *   (蓝通道, 与 accent 解耦) 只在 Sessions Overview chip / term header pill / A 头部 pill 等
- *   surface 渲染, 顶部 tab 永远只承担 D / blocked 两类信号.
- * - 排序: D 优先 > blocked > 其他; 同优先级按 updatedAt 倒序.
+ *   surface 渲染.
+ * - 排序: D(100) > blocked(70) > S.stale(40) > 其他(30); 同优先级按 updatedAt 倒序.
+ *   S 排最后 = 决策 1-(a): 只在没有 D/blocked 时进 TabBadges 主槽, 否则落副槽做小紫点.
  * - 仅返回未阅信号 (R unread 或 D unread), 已阅的不再在顶部 tab 上提示.
  * - 多 agent: 决策 4 仅显示主槽 1 + 副点 2, 这里把所有未阅点都返回, 由 TabBadges 现有"主槽1+副2"
  *   渲染约定裁切. "不能忽略任何一个 agent" 的兜底由方案待办项继续讨论.
@@ -37,15 +39,16 @@ import { useAtomValue } from "jotai";
  * 暂不做分钟级 tick (同 A 头部), 后续可统一接 nowAtom.
  */
 
-export type TabAgentStatusDotKind = "R" | "D";
+/** R = blocked/阻塞, D = done/完成未阅, S = stale/卡住(长时间无更新). */
+export type TabAgentStatusDotKind = "R" | "D" | "S";
 
 export interface TabAgentStatusDot {
     blockId: string;
     kind: TabAgentStatusDotKind;
     state: string;
-    /** perceived display color — done=green, blocked=amber. working 不上 tab 圆点。 */
+    /** perceived display color — done=green, blocked=amber, stale=purple. working 不上 tab 圆点。 */
     color: string;
-    /** elapsed label only set for D ("10m" / "1h"). R leaves this empty. */
+    /** elapsed label for D ("10m") and S ("no update for 12m"). R leaves this empty. */
     elapsedText: string;
     title: string;
 }
@@ -145,7 +148,9 @@ function getWorkspaceBlockIdsAtom(tabIds: string[]): Atom<string[]> {
 function rankPriority(kind: TabAgentStatusDotKind, state: string): number {
     if (kind === "D") return 100;
     if (state === "blocked") return 70;
-    // working/stale 不再上 tab 圆点 (collectBlockDots 已过滤); 仅 30 兜底.
+    // S (stale) 上圆点但排最后 (决策 1-(a)): 只在没有 D/blocked 时进主槽, 否则落副槽小点.
+    if (kind === "S") return 40;
+    // working 不上 tab 圆点 (collectBlockDots 已过滤); 仅 30 兜底.
     return 30;
 }
 
@@ -196,7 +201,9 @@ function collectBlockDots(
     const expanded = expandBlockIdsWithSubblocks(get, blockIds);
     const dots: TabAgentStatusDot[] = [];
     for (const blockId of expanded) {
-        const statusAtom = store.peekStatusAtom(blockId);
+        // 读 presented atom 而不是 raw: stale 是 applyStaleness 在前端按阈值现算出来的
+        // (working 超 2min/5min 无续约), raw atom 里永远只有 working, 拿不到 stale.
+        const statusAtom = store.peekPresentedStatusAtom(blockId);
         if (statusAtom == null) continue;
         const status = get(statusAtom);
         if (status == null) continue;
@@ -271,8 +278,22 @@ function collectBlockDots(
                 elapsedText: "",
                 title: `Agent blocked — click tab to view`,
             });
+        } else if (status.state === "stale") {
+            // S 类 (stale/卡住): 决策 1-(a) —— 上顶部 tab 圆点, 但优先级最低
+            // (rankPriority S=40), 只在没有 D/blocked 时才进主槽, 否则落 TabBadges 副槽小紫点.
+            // 已阅判定沿用 isAgentStatusUnread (决策 2: stale 可 ack).
+            const staleMs = agentDoneElapsedMs(status, Date.now());
+            const staleText = formatDoneElapsed(staleMs);
+            dots.push({
+                blockId,
+                kind: "S",
+                state: status.state,
+                color: "var(--agent-stale-color, #a855f7)",
+                elapsedText: staleText,
+                title: `Agent stale — no update for ${staleText} — click tab to view`,
+            });
         }
-        // 其它 R 状态 (working/running/stale/unknown) 不收, 避免在跑的 agent 把顶部 tab 涂成一片
+        // 其它 R 状态 (working/running/unknown) 不收, 避免在跑的 agent 把顶部 tab 涂成一片
         // accent 绿与 D 完成态绿撞色. 这些状态走 A 头部徽章与 Session Overview chip 已足够提示.
     }
     dots.sort((a, b) => {
@@ -340,9 +361,12 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
         // (markAgentStatusAcked) invalidates and re-renders this derived atom.
         get(overview.agentStatusAckedFpAtom);
         const dots = collectBlockDots(get, blockIds, ackedFpMap, doneAckedAtMap);
-        // 仅在有 D 点亮时才订阅 nowMinuteTickAtom — 不必让无 D 的 tab 跟着分钟刷新空跑.
-        // 把 get 放在后面, 没有产生 D 的就跳过这次订阅, 减少无谓 rederive.
-        if (dots.some((d) => d.kind === "D")) {
+        // 仅在有 D/S 点亮时才订阅 nowMinuteTickAtom — 不必让无点亮的 tab 跟着分钟刷新空跑.
+        // 把 get 放在后面, 没有产生 D/S 的就跳过这次订阅, 减少无谓 rederive.
+        // D 需要它刷新 "done 10m ago"; S 需要它刷新 "no update for 12m".
+        // (working→stale 的翻转本身不靠这里: presented atom 在 raw.state==="working" 时
+        // 已自己订阅了 tick, 见 AgentStatusStore.)
+        if (dots.some((d) => d.kind === "D" || d.kind === "S")) {
             get(nowMinuteTickAtom);
         }
         return dots;

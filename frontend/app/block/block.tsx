@@ -26,6 +26,7 @@ import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -411,9 +412,11 @@ const InlineTabLabel = memo(
         );
 
         const isAgentBlock = isAgentTerminalMeta(blockData?.meta);
+        const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const isGuiChat = blockData?.meta?.["aisessions:newchat"] === true;
         const hoverCardMode = isGuiChat ? "gui" : "tui";
-        const showHoverCard = isAgentBlock && !isActive && (isHovered || isCardHovered);
+        // Note/Agent Block 折叠为 tab 后，悬浮激活/非激活标签均显示对应卡片
+        const showHoverCard = (isAgentBlock || isNoteBlock) && (isHovered || isCardHovered);
 
         return (
             <>
@@ -559,7 +562,25 @@ const InlineTabLabel = memo(
                             }, 300);
                         }}
                     >
-                        <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
+                        {isNoteBlock ? (
+                            <div className="agent-hover-card">
+                                <div className="agent-hover-card-head">
+                                    <i className="fa-sharp fa-solid fa-note-sticky agent-hover-card-icon" />
+                                    <span className="agent-hover-card-title">Note</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="agent-hover-card-preview"
+                                    onClick={onActivate}
+                                >
+                                    <span className="agent-hover-card-text">
+                                        {(blockData?.meta?.file as string) || blockData?.oid || ""}
+                                    </span>
+                                </button>
+                            </div>
+                        ) : (
+                            <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
+                        )}
                     </div>
                 )}
             </>

@@ -24,7 +24,16 @@ type GitStatusBarProps = {
     canChangeDirectory?: boolean;
     onChangeDirectory?: () => Promise<void>;
     isRunning?: boolean;
+    contextUsagePercent?: number;
+    usage?: { input?: number; output?: number };
     className?: string;
+};
+
+const formatTokenCount = (value?: number) => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+    if (value < 1000) return String(Math.round(value));
+    if (value < 10000) return `${(value / 1000).toFixed(1)}k`;
+    return `${Math.round(value / 1000)}k`;
 };
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -38,6 +47,8 @@ export const GitStatusBar = memo(
         canChangeDirectory = false,
         onChangeDirectory,
         isRunning,
+        contextUsagePercent,
+        usage,
         className,
     }: GitStatusBarProps) => {
         // makeConnRoute("") == "conn:local"; the VCS panel uses the same value so local
@@ -249,6 +260,23 @@ export const GitStatusBar = memo(
                     <span className="truncate text-secondary" title={switchError ?? undefined}>
                         {switchError ?? "Git 状态不可用"}
                     </span>
+                )}
+                {(typeof contextUsagePercent === "number" || usage?.input != null || usage?.output != null) && (
+                    <div
+                        className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-secondary"
+                        title={`上下文 ${typeof contextUsagePercent === "number" ? `${Math.round(contextUsagePercent)}%` : "未知"}；输入 ${formatTokenCount(usage?.input) ?? "-"}；输出 ${formatTokenCount(usage?.output) ?? "-"}`}
+                    >
+                        {typeof contextUsagePercent === "number" ? (
+                            <span className={cn(contextUsagePercent >= 85 ? "text-error" : contextUsagePercent >= 70 ? "text-warning" : "text-secondary")}>
+                                ◔ {Math.round(contextUsagePercent)}%
+                            </span>
+                        ) : null}
+                        {usage?.input != null || usage?.output != null ? (
+                            <span>
+                                ↑{formatTokenCount(usage?.input) ?? "-"} ↓{formatTokenCount(usage?.output) ?? "-"}
+                            </span>
+                        ) : null}
+                    </div>
                 )}
                 {branchMenuOpen && (
                     <div

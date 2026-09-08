@@ -67,6 +67,13 @@ func RegisterLiveSession(summary SessionSummary) {
 			summary.CreatedAt = existing.CreatedAt
 		}
 	}
+	// A pi RPC session may first be registered with a provisional path and
+	// later with the resolved path. Keep one canonical entry per session ID.
+	for key, existing := range liveSessions.byKey {
+		if existing.ID == summary.ID && key != summary.Key {
+			delete(liveSessions.byKey, key)
+		}
+	}
 	summary.Live = true
 	liveSessions.byKey[summary.Key] = summary
 }

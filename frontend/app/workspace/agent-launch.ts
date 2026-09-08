@@ -26,6 +26,7 @@ const DefaultHomeLaunchTargetCwd = "~";
 
 export const DefaultAgentWidgetId = "defwidget@agent";
 export const DefaultTerminalWidgetId = "defwidget@terminal";
+export const DefaultFilesWidgetId = "defwidget@files";
 export const AgentDefaultLaunchTargetMetaKey = "agent:defaultlaunchtarget";
 export const TerminalDefaultLaunchTargetMetaKey = "term:defaultlaunchtarget";
 

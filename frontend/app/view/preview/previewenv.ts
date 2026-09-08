@@ -42,6 +42,7 @@ export type PreviewEnv = WaveEnvSubset<{
         | "preview:defaultsort"
         | "preview:defaultdirectorydisplay"
         | "preview:defaultopentarget"
+        | "preview:pinned-directories"
     >;
     getConnStatusAtom: WaveEnv["getConnStatusAtom"];
 }>;

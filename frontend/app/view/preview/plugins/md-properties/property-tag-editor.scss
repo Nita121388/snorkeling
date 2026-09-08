@@ -1,0 +1,144 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// 标签/列表属性编辑器（浮层内容）。
+// 尺寸与层次对齐 Wolai 实测：容器 399 / 已选区 padding 8 8 0 / chip 22px / 候选行 30px。
+// 颜色由 JS 注入 --ptag-base / --ptag-fg-light / --ptag-fg-dark，明暗在这里切换。
+
+.property-tag-editor {
+    display: flex;
+    flex-direction: column;
+    width: 399px;
+    max-width: min(399px, calc(100vw - 32px));
+    font-size: 13px;
+    color: var(--main-text-color);
+
+    // 已选 chip + 内联输入框（同一行流内）
+    .ptag-selected {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        padding: 8px 8px 0;
+        box-shadow: 0 1px 0 var(--border-color); // Wolai 用 1px 细线分隔，不是 border
+    }
+
+    .ptag-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        margin: 0 6px 4px 0;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--ptag-base) 22%, transparent);
+        color: var(--ptag-fg-light);
+        font-size: 13px;
+        line-height: 22px;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    .ptag-chip-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ptag-chip-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        opacity: 0.65;
+        cursor: pointer;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+
+    .ptag-input {
+        flex: 1 1 0%;
+        min-width: 60px;
+        height: 22px;
+        margin-bottom: 4px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--main-text-color);
+        font-size: 13px;
+        line-height: 22px;
+        outline: none;
+
+        &::placeholder {
+            color: var(--secondary-text-color);
+            opacity: 0.75;
+        }
+    }
+
+    // 候选列表
+    .ptag-list {
+        padding: 6px 4px;
+        max-height: 240px;
+        overflow-y: auto;
+    }
+
+    .ptag-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 4px;
+        border-radius: 4px;
+        cursor: pointer;
+
+        &:hover,
+        &.is-active {
+            background: var(--highlight-bg-color);
+        }
+
+        &.is-selected .ptag-option-chip {
+            box-shadow: inset 0 0 0 1px currentcolor;
+        }
+    }
+
+    .ptag-option-chip {
+        display: inline-flex;
+        align-items: center;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--ptag-base) 22%, transparent);
+        color: var(--ptag-fg-light);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ptag-create-label {
+        margin-left: auto;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+    }
+
+    .ptag-empty {
+        padding: 6px 8px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+    }
+}
+
+// 暗色主题：背景更浓、文字取浅色（Wolai 的 L2）
+[data-theme="dark"] {
+    .property-tag-editor {
+        .ptag-chip,
+        .ptag-option-chip {
+            background: color-mix(in srgb, var(--ptag-base) 32%, transparent);
+            color: var(--ptag-fg-dark);
+        }
+    }
+}

@@ -18,6 +18,7 @@ import {
     createAgentBlockDefForTarget,
     createTerminalBlockDefForTarget,
     DefaultAgentWidgetId,
+    DefaultFilesWidgetId,
     DefaultTerminalWidgetId,
     getAgentProfileDetectionCommands,
     getAgentProfileOptions,
@@ -40,6 +41,7 @@ import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/work
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import { NewFilesFloatingWindow } from "@/app/view/preview/preview-new-files";
 import type { LayoutTreeInsertNodeAction } from "@/layout/index";
 import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import { modalsModel } from "@/store/modalmodel";
@@ -135,7 +137,7 @@ const Widget = memo(
         const [isTruncated, setIsTruncated] = useState(false);
         const labelRef = useRef<HTMLDivElement>(null);
         const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
-        const isTargetWidget = widgetId === DefaultTerminalWidgetId || widgetId === DefaultAgentWidgetId;
+        const isTargetWidget = widgetId === DefaultTerminalWidgetId || widgetId === DefaultAgentWidgetId || widgetId === DefaultFilesWidgetId;
 
         useEffect(() => {
             if (mode === "normal" && labelRef.current) {
@@ -1800,6 +1802,14 @@ const Widgets = memo(() => {
     const [groupSinkNodeId, setGroupSinkNodeId] = useState<string | null>(null);
     const agentHoverTimerRef = useRef<number | null>(null);
     const terminalHoverTimerRef = useRef<number | null>(null);
+    const [isFilesWindowOpen, setIsFilesWindowOpen] = useState(false);
+    const [filesReferenceElement, setFilesReferenceElement] = useState<HTMLElement | null>(null);
+    const [filesRecentDirs, setFilesRecentDirs] = useState<string[]>([]);
+    const filesPinnedDirs = useMemo(() => {
+        const saved = settings?.["preview:pinned-directories"];
+        return Array.isArray(saved) ? saved : [];
+    }, [settings]);
+    const filesHoverTimerRef = useRef<number | null>(null);
     // ponytail: bus 发起的（Blocks 组「＋」菜单 / Quick Launch）二级浮窗，需要把 open 状态回传给发起方，
     // 且其居中意图（centered）要透传给浮窗本身。两个 ref 在 subscribeLaunchPopup 命中时写入，
     // 浮窗关闭时回传 false 并复位。仅 bus 来源置位，右侧 WidgetsBar 自身 hover 不会误触回调。
@@ -2338,6 +2348,17 @@ const Widgets = memo(() => {
                         openAgentTargetPopup(widget, referenceElement);
                     }
                 }, WidgetHoverOpenDelayMs);
+                return;
+            }
+
+            if (widgetId === DefaultFilesWidgetId) {
+                if (filesHoverTimerRef.current != null) {
+                    window.clearTimeout(filesHoverTimerRef.current);
+                }
+                filesHoverTimerRef.current = window.setTimeout(() => {
+                    setFilesReferenceElement(referenceElement);
+                    setIsFilesWindowOpen(true);
+                }, WidgetHoverOpenDelayMs);
             }
         },
         [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup]
@@ -2354,6 +2375,10 @@ const Widgets = memo(() => {
         if (terminalHoverTimerRef.current != null) {
             window.clearTimeout(terminalHoverTimerRef.current);
             terminalHoverTimerRef.current = null;
+        }
+        if (filesHoverTimerRef.current != null) {
+            window.clearTimeout(filesHoverTimerRef.current);
+            filesHoverTimerRef.current = null;
         }
     }, []);
 
@@ -2409,6 +2434,9 @@ const Widgets = memo(() => {
             }
             if (terminalHoverTimerRef.current != null) {
                 window.clearTimeout(terminalHoverTimerRef.current);
+            }
+            if (filesHoverTimerRef.current != null) {
+                window.clearTimeout(filesHoverTimerRef.current);
             }
         };
     }, []);
@@ -2674,6 +2702,35 @@ const Widgets = memo(() => {
                     launchEnv={terminalLaunchEnv}
                     onLaunchEnvChange={setTerminalLaunchEnv}
                     centered={launchPopupCenteredRef.current}
+                />
+            )}
+            {filesReferenceElement != null && (
+                <NewFilesFloatingWindow
+                    isOpen={isFilesWindowOpen}
+                    onClose={() => setIsFilesWindowOpen(false)}
+                    referenceElement={filesReferenceElement}
+                    pinnedDirs={filesPinnedDirs}
+                    recentDirs={filesRecentDirs}
+                    onSelect={(path) => {
+                        fireAndForget(async () => {
+                            const blockDef: BlockDef = {
+                                meta: { view: "preview", file: path, connection: "local" },
+                            };
+                            await env.createBlock(blockDef, false, true);
+                        });
+                        // Track in recent
+                        setFilesRecentDirs((prev) => {
+                            const next = [path, ...prev.filter((p) => p !== path)];
+                            return next.slice(0, 10);
+                        });
+                    }}
+                    onRemovePinned={(path) => {
+                        const next = filesPinnedDirs.filter((p) => p.path !== path);
+                        fireAndForget(() => env.rpc.SetConfigCommand(TabRpcClient, { "preview:pinned-directories": next }));
+                    }}
+                    onClearRecent={(path) => {
+                        setFilesRecentDirs((prev) => prev.filter((p) => p !== path));
+                    }}
                 />
             )}
             {createToExistingTabRequest != null ? (

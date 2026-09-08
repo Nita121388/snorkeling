@@ -1,0 +1,17 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// 属性值编辑浮层外壳：对齐 Wolai 的 paper（圆角 6px + 双层阴影），非模态。
+
+.property-value-popover {
+    z-index: 1000;
+    border-radius: 6px;
+    background: var(--overlay-bg-color, var(--main-bg-color));
+    color: var(--main-text-color);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.05),
+        0 8px 24px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    max-height: 60vh;
+    overflow-y: auto;
+}

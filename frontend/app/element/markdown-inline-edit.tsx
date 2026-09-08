@@ -8,6 +8,10 @@ import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CopyButton } from "@/app/element/copybutton";
+import { IconButton } from "./iconbutton";
+import ContentEditableCodeEditor from "./content-editable-code-editor";
+import type { CodeEditorHandle } from "./content-editable-code-editor";
 
 // ---------------------------------------------------------------------------
 // Inline-edit debug log. Enable by setting `localStorage.snorkelingInlineEditDebug = "1"` in
@@ -55,12 +59,60 @@ export function inlineEditDebug(msg: string, details: Record<string, unknown> = 
 }
 
 /**
+ * 找到“真正承载文本”的那个元素，用它的 computed style 做快照。
+ *
+ * 直接拿块的根元素会漏掉差异，因为排版常在内层：
+ * - `<pre>` 的文本在 `<code>`（行高/字号/颜色都定义在 code 上）→ 取 pre 会拿到错误的行高
+ * - `<blockquote>` / `<td>` 的文本在内层 <p> / 自身，缩进与 padding 定义在外层
+ * - `<li>` 例外：缩进在 li 自己身上，必须取 li，否则列表文本会左移
+ */
+function resolveTextElement(el: HTMLElement): HTMLElement {
+    if (el.tagName === "PRE") {
+        return el.querySelector("code") ?? el;
+    }
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        if ((node.nodeValue ?? "").trim() !== "") {
+            return (node.parentElement as HTMLElement) ?? el;
+        }
+    }
+    return el;
+}
+
+/**
  * Snapshot the rendered block's typography so the editing textarea can inherit it. Read
  * once at edit-open; a stale snapshot is fine because the block's own style is static for
  * the session's lifetime (its CSS derives from the kind, not per-keystroke state).
+ *
+ * 除字体外还必须复制 **内边距**（决定文本起点）与 **折行行为**（决定换行位置）：
+ * 少了 padding，引用/代码块/列表进入编辑时文字会水平错位；少了 overflow-wrap/word-break，
+ * 长 URL/长单词的折行位置会和渲染态不一致。
+ *
+ * 注意 white-space **不复制**：textarea 必须保持 `pre-wrap` 才能保留源码里的多行与行内空格，
+ * 渲染态的 `normal` 用在源码编辑上会把多行挤成一行。
  */
-function captureBlockTypography(el: HTMLElement): React.CSSProperties {
+function captureBlockTypography(blockEl: HTMLElement): React.CSSProperties {
+    const el = resolveTextElement(blockEl);
     const cs = getComputedStyle(el);
+    // 内边距以「锚点块自身的 computed padding」为准，再补一层嵌套缩进。
+    // 为什么不直接用文本元素的矩形差值：文本常是 inline 元素（pre > code），inline 的
+    // getBoundingClientRect 是“文字墨迹”（高度 = 字体内容区，不含半行距），用它算右/下
+    // 内边距会得到荒谬的值（实测右侧差出 300px）。只有“文本元素相对内容区起点的额外
+    // 缩进”（嵌套 li / p 的 margin）才需要叠加，垂直方向同理只对 block 级文本叠加。
+    const blockCs = getComputedStyle(blockEl);
+    const blockRect = blockEl.getBoundingClientRect();
+    const textRect = el.getBoundingClientRect();
+    const px = (v: number) => (Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0);
+    const num = (v: string) => parseFloat(v) || 0;
+    const blockPadTop = num(blockCs.paddingTop);
+    const blockPadRight = num(blockCs.paddingRight);
+    const blockPadBottom = num(blockCs.paddingBottom);
+    const blockPadLeft = num(blockCs.paddingLeft);
+    // inline 文本（code/span）的 rect.top 已含半行距，垂直方向直接用块的 padding
+    const isInlineText = cs.display.startsWith("inline");
+    const extraLeft = Math.max(0, textRect.left - (blockRect.left + blockPadLeft));
+    const topOffset = isInlineText ? blockPadTop : Math.max(0, textRect.top - blockRect.top);
     return {
         fontFamily: cs.fontFamily,
         fontSize: cs.fontSize,
@@ -68,6 +120,22 @@ function captureBlockTypography(el: HTMLElement): React.CSSProperties {
         fontStyle: cs.fontStyle as React.CSSProperties["fontStyle"],
         lineHeight: cs.lineHeight,
         letterSpacing: cs.letterSpacing,
+        // 文本起点与垂直位置：与渲染态逐像素对齐
+        paddingTop: px(topOffset),
+        paddingRight: px(blockPadRight),
+        paddingBottom: px(blockPadBottom),
+        paddingLeft: px(blockPadLeft + extraLeft),
+        // 折行行为：与渲染态一致，长串/URL 才不会换到别的位置
+        overflowWrap: cs.overflowWrap as React.CSSProperties["overflowWrap"],
+        wordBreak: cs.wordBreak as React.CSSProperties["wordBreak"],
+        lineBreak: cs.lineBreak as React.CSSProperties["lineBreak"],
+        textIndent: cs.textIndent,
+        wordSpacing: cs.wordSpacing,
+        textAlign: cs.textAlign as React.CSSProperties["textAlign"],
+        textTransform: cs.textTransform as React.CSSProperties["textTransform"],
+        fontVariantLigatures: cs.fontVariantLigatures as React.CSSProperties["fontVariantLigatures"],
+        // textarea 固有：显式写出，避免被主题/UA 样式改写
+        whiteSpace: "pre-wrap",
     };
 }
 
@@ -254,12 +322,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         keepOnEmpty?: boolean
     ) => boolean;
     beginInsertEdit: (startLine: number, endLine: number, targetEl: HTMLElement, mode: "before" | "after") => void;
-    commit: () => void;
+    commit: (content?: string) => void;
     cancel: () => void;
     /** Close the session WITHOUT committing or reverting: used by slash / toolbar command
      *  paths that already composed and committed their final text themselves. */
     dismiss: () => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    codeEditorRef: React.RefObject<CodeEditorHandle | null>;
     overlayRect: { top: number; left: number; width: number; height: number } | null;
 } {
     const [editSession, setEditSession] = useState<InlineEditSession | null>(null);
@@ -278,6 +347,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         setDraftTextState(v);
     }, []);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const codeEditorRef = useRef<CodeEditorHandle | null>(null);
     // The element rendered in the live markdown tree we mirror with the textarea. We keep a
     // React-side rect derived from the DOM element so we can reposition on scroll / resize;
     // we do NOT keep the element in state because reading getBoundingClientRect during render
@@ -345,12 +415,17 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // the editor visually continuous with the surrounding prose bar.
         const renderRoot = viewport.querySelector<HTMLElement>(".markdown-render-root");
         let width = targetRect.width;
-        let left = targetRect.left;
+        // 左边缘始终锚在渲染块自己身上：以前取 min(target.left, render.left) 会把列表项/
+        // 缩进块的编辑器整体左移，双击瞬间文字就水平跳一下。起点不变、只向右扩展即可。
+        const left = targetRect.left;
         if (renderRoot != null) {
             const renderRect = renderRoot.getBoundingClientRect();
-            // contentRect left=render.left,top=render.top; renderRect.right is content end.
-            width = Math.max(targetRect.width, renderRect.right - targetRect.left);
-            left = Math.min(targetRect.left, renderRect.left);
+            // 只给“明显窄”的块（列表项、表格单元格）向右扩展到内容区右边缘，保留“打字
+            // 连续”的手感；段落/标题/引用/代码块严格用渲染块宽度，宽度一变折行位置就变。
+            const shouldExtend = targetRect.width < renderRect.width * 0.6;
+            if (shouldExtend) {
+                width = Math.max(targetRect.width, renderRect.right - targetRect.left);
+            }
         }
         const next = {
             top: targetRect.top,
@@ -453,45 +528,54 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, [editSession, measureOverlay, getViewportEl]);
 
     useLayoutEffect(() => {
+        const isCode = editSession?.blockKind === "code";
         const ta = textareaRef.current;
-        if (ta == null || editSession == null || overlayRect == null || focusedSessionRef.current === editSession) {
+        if ((!isCode && ta == null) || (isCode && codeEditorRef.current == null) || editSession == null || overlayRect == null || focusedSessionRef.current === editSession) {
             return;
         }
         focusedSessionRef.current = editSession;
         inlineEditDebug("focus+select", { kind: editSession.blockKind, startLine: editSession.startLine });
-        // preventScroll stops the browser from auto-scrolling the textarea into the viewport,
-        // which on a tall block (list/table/code whose overlay exceeds the viewport height) sets
-        // off a feedback loop: focus → auto-scroll → scroll-listener → re-measure → reposition →
-        // new top is off-screen → focus rect auto-scrolls again. The textarea is positioned
-        // absolutely over the block the user double-clicked; the scroll position the user picked
-        // when dblclicking is the one we want to keep.
-        ta.focus({ preventScroll: true });
-        if (editSession.caretOffset != null) {
-            const clamped = Math.max(0, Math.min(editSession.caretOffset, ta.value.length));
-            ta.setSelectionRange(clamped, clamped);
-        } else {
-            // Dblclick (and any path that didn't provide a caret) keeps the select-all
-            // behavior: it's the "edit this whole block" gesture.
-            ta.setSelectionRange(0, ta.value.length);
+        if (isCode) {
+            // Code blocks use contenteditable: caret at the clicked spot when known, else at end
+            // (dblclick is the "edit this whole block" gesture; contenteditable select-all is
+            // impractical — it would select across token spans).
+            codeEditorRef.current?.focus(editSession.caretOffset != null ? { start: editSession.caretOffset } : undefined);
+        } else if (ta != null) {
+            // preventScroll stops the browser from auto-scrolling the textarea into the viewport,
+            // which on a tall block (list/table/code whose overlay exceeds the viewport height) sets
+            // off a feedback loop: focus → auto-scroll → scroll-listener → re-measure → reposition →
+            // new top is off-screen → focus rect auto-scrolls again. The textarea is positioned
+            // absolutely over the block the user double-clicked; the scroll position the user picked
+            // when dblclicking is the one we want to keep.
+            ta.focus({ preventScroll: true });
+            if (editSession.caretOffset != null) {
+                const clamped = Math.max(0, Math.min(editSession.caretOffset, ta.value.length));
+                ta.setSelectionRange(clamped, clamped);
+            } else {
+                // Dblclick (and any path that didn't provide a caret) keeps the select-all
+                // behavior: it's the "edit this whole block" gesture.
+                ta.setSelectionRange(0, ta.value.length);
+            }
         }
     }, [editSession, overlayRect]);
 
-    // Auto-grow textarea height to fit content.
+    // Auto-grow textarea height to fit content. Skips code blocks (contenteditor auto-resizes via CSS).
     useLayoutEffect(() => {
-        const ta = textareaRef.current;
-        if (ta == null || editSession == null) {
+        if (editSession?.blockKind === "code") return;
+        const taEl = textareaRef.current;
+        if (taEl == null || editSession == null) {
             return;
         }
-        const beforeH = ta.style.height;
-        ta.style.height = "auto";
-        const scrollH = ta.scrollHeight;
-        ta.style.height = `${scrollH}px`;
+        const beforeH = taEl.style.height;
+        taEl.style.height = "auto";
+        const scrollH = taEl.scrollHeight;
+        taEl.style.height = `${scrollH}px`;
         inlineEditDebug("auto-grow", {
             beforeH,
             scrollH,
-            clientH: ta.clientHeight,
-            scrollWidth: ta.scrollWidth,
-            clientWidth: ta.clientWidth,
+            clientH: taEl.clientHeight,
+            scrollWidth: taEl.scrollWidth,
+            clientWidth: taEl.clientWidth,
             draftLen: draftText.length,
         });
     }, [draftText, editSession, overlayRect?.width]);
@@ -584,7 +668,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         []
     );
 
-    const commit = useCallback(() => {
+    const commit = useCallback((content?: string) => {
         // Read editSession from closure (callback identity updates with session since it's in the
         // dep array). The previous implementation called onCommit *inside* the setEditSession
         // updater — that schedules an external jotai store write (globalStore.set(model.newFileContent))
@@ -612,10 +696,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
         // markdown and the block transforms on re-render, all inside this one commit.
         // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
+        // For code blocks (contenteditable), draftText may be stale — the caller passes the
+        // actual editor content via the `content` parameter.
         const committedDraft =
-            (current.blockKind === "p" || current.blockKind === "blank") && isBlockEditorFeatureEnabled("blockeditor")
-                ? rewriteDraftFirstLine(draftText) ?? draftText
-                : draftText;
+            content ?? (
+                (current.blockKind === "p" || current.blockKind === "blank") && isBlockEditorFeatureEnabled("blockeditor")
+                    ? rewriteDraftFirstLine(draftText) ?? draftText
+                    : draftText
+            );
         if (current.placeholder) {
             // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
             // blank row for us to type into). Typed something → replace the row; block-level
@@ -699,6 +787,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         cancel,
         dismiss,
         textareaRef,
+        codeEditorRef,
         overlayRect,
     };
 }
@@ -709,10 +798,11 @@ type InlineEditOverlayProps = {
     typography?: React.CSSProperties;
     draftText: string;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    codeEditorRef: React.RefObject<CodeEditorHandle | null>;
     onTextChange: (v: string, caret: number) => void;
-    onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+    onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-    onBlur: () => void;
+    onBlur: (content?: string) => void;
     /** Block-appropriate placeholder (方案 03 §2) — shown only while the draft is empty. */
     placeholder?: string;
     /** Caret activity (click/keyup/select) — drives slash-palette / toolbar tracking. */
@@ -728,7 +818,32 @@ type InlineEditOverlayProps = {
     ghostPlaceholder?: string;
     /** Override typography for the textarea when format prefix is active. */
     formatTypography?: React.CSSProperties;
+    /** Code block being edited: language for the isomorphic top bar + syntax highlight. */
+    codeLanguage?: string | null;
+    /** Code block execute handler (forwarded from CodeBlock's onClickExecute) so the edit header's button works. */
+    onExecuteCode?: (command: string) => void;
 };
+
+/**
+ * 代码块编辑态顶栏。pre 被 inline-edit-hidden 后内部的 .codeblock-header 也跟着隐藏，
+ * 所以在 overlay 里重建一个与预览态同构的顶栏（语言标签 + 复制/执行按钮），保持视觉一致。
+ */
+function CodeBlockEditHeader({ language, getContent, onExecute }: { language?: string | null; getContent: () => string; onExecute?: (command: string) => void }) {
+    const copy = () => void navigator.clipboard.writeText(getContent());
+    return (
+        <div
+            className="codeblock-header"
+            // 顶栏按钮不抢焦点：mousedown preventDefault 阻止 button 取得焦点，避免编辑器 blur→commit→关闭。
+            onMouseDown={(e) => e.preventDefault()}
+        >
+            {language != null && <span className="codeblock-lang-badge is-static">{language}</span>}
+            <div className="codeblock-ops">
+                <CopyButton title="Copy" onClick={copy} />
+                {onExecute && <IconButton decl={{ elemtype: "iconbutton", icon: "regular@square-terminal", title: "Execute", click: () => onExecute(getContent()) }} />}
+            </div>
+        </div>
+    );
+}
 
 export function InlineEditOverlay({
     overlayRect,
@@ -736,6 +851,7 @@ export function InlineEditOverlay({
     typography,
     draftText,
     textareaRef,
+    codeEditorRef,
     onTextChange,
     onKeyDown,
     onPaste,
@@ -745,6 +861,8 @@ export function InlineEditOverlay({
     formatPrefix,
     ghostPlaceholder,
     formatTypography,
+    codeLanguage,
+    onExecuteCode,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -774,51 +892,84 @@ export function InlineEditOverlay({
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
         >
-            <textarea
-                ref={textareaRef}
-                className="inline-edit-textarea"
-                style={{ ...typography, ...formatTypography }}
-                value={draftText}
-                rows={1}
-                placeholder={placeholder}
-                onChange={(e) => onTextChange(e.target.value, e.target.selectionStart)}
-                onKeyDown={onKeyDown}
-                onPaste={onPaste}
-                onBlur={onBlur}
-                onSelect={(e) => {
-                    const t = e.currentTarget;
-                    onCaretChange?.(t.selectionStart, t.selectionEnd);
-                }}
-                onKeyUp={(e) => {
-                    const t = e.currentTarget;
-                    onCaretChange?.(t.selectionStart, t.selectionEnd);
-                }}
-                onClick={(e) => {
-                    const t = e.currentTarget;
-                    onCaretChange?.(t.selectionStart, t.selectionEnd);
-                }}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-            />
-            {/* Ghost placeholder: shows gray hint text after format prefix when draft is just the prefix */}
-            {formatPrefix != null && ghostPlaceholder != null && draftText === formatPrefix && (
-                <span
-                    className="inline-edit-ghost-placeholder"
-                    style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        pointerEvents: "none",
-                        whiteSpace: "pre",
-                        ...typography,
-                        ...formatTypography,
-                        color: "transparent",
+            {blockKind === "code" ? (
+                <pre
+                    className="codeblock"
+                    // Clicking the pre's padding zone (above/below the code) shouldn't drop focus;
+                    // route it into the editable code instead. preventDefault keeps the caret
+                    // from being destroyed by the mousedown default action.
+                    onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) {
+                            e.preventDefault();
+                            codeEditorRef.current?.focus();
+                        }
                     }}
-                    aria-hidden="true"
                 >
-                    {formatPrefix}<span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
-                </span>
+                    {/* 编辑态复用渲染态 DOM 结构：pre.codeblock > code.hljs(contenteditable) + 同构顶栏，
+                        样式由 overlay 镜像的 .codeblock 规则天然生效 → 进出编辑零跳变。 */}
+                    <ContentEditableCodeEditor
+                        ref={codeEditorRef}
+                        initialText={draftText}
+                        language={codeLanguage}
+                        onKeyDown={onKeyDown}
+                        onInput={(text, caret) => onTextChange(text, caret)}
+                        onBlur={() => onBlur(codeEditorRef.current?.getContent())}
+                    />
+                    <CodeBlockEditHeader
+                        language={codeLanguage}
+                        getContent={() => codeEditorRef.current?.getContent() ?? ""}
+                        onExecute={onExecuteCode}
+                    />
+                </pre>
+            ) : (
+                <>
+                    <textarea
+                        ref={textareaRef}
+                        className="inline-edit-textarea"
+                        style={{ ...typography, ...formatTypography }}
+                        value={draftText}
+                        rows={1}
+                        placeholder={placeholder}
+                        onChange={(e) => onTextChange(e.target.value, e.target.selectionStart)}
+                        onKeyDown={onKeyDown as (e: React.KeyboardEvent<HTMLTextAreaElement>) => void}
+                        onPaste={onPaste}
+                        onBlur={() => onBlur()}
+                        onSelect={(e) => {
+                            const t = e.currentTarget;
+                            onCaretChange?.(t.selectionStart, t.selectionEnd);
+                        }}
+                        onKeyUp={(e) => {
+                            const t = e.currentTarget;
+                            onCaretChange?.(t.selectionStart, t.selectionEnd);
+                        }}
+                        onClick={(e) => {
+                            const t = e.currentTarget;
+                            onCaretChange?.(t.selectionStart, t.selectionEnd);
+                        }}
+                        spellCheck={false}
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                    />
+                    {/* Ghost placeholder: shows gray hint text after format prefix when draft is just the prefix */}
+                    {formatPrefix != null && ghostPlaceholder != null && draftText === formatPrefix && (
+                        <span
+                            className="inline-edit-ghost-placeholder"
+                            style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                pointerEvents: "none",
+                                whiteSpace: "pre",
+                                ...typography,
+                                ...formatTypography,
+                                color: "transparent",
+                            }}
+                            aria-hidden="true"
+                        >
+                            {formatPrefix}<span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
+                        </span>
+                    )}
+                </>
             )}
         </div>,
         document.body
@@ -848,7 +999,7 @@ export function makeInlineEditKeydown(opts: {
      *  cursor up into the previous block (standard text-editor behavior on a blank line). */
     onNavigateUp?: () => void;
 }) {
-    return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    return (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Escape") {
             e.preventDefault();
             opts.cancel();
@@ -863,7 +1014,7 @@ export function makeInlineEditKeydown(opts: {
         if ((e.key === "Backspace" || e.key === "Delete") && !isCmd && !e.shiftKey && opts.onNavigateUp != null) {
             const ta = e.currentTarget;
             const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-            if (!native.isComposing && ta.value.length === 0) {
+            if (!native.isComposing && ((ta as HTMLTextAreaElement).value ?? (ta as HTMLElement).textContent ?? "").length === 0) {
                 e.preventDefault();
                 opts.onNavigateUp();
                 return;

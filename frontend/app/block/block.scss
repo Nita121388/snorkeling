@@ -225,9 +225,9 @@
                         }
 
                         &.is-stale {
-                            border-color: rgb(168 85 247 / 0.38);
-                            color: #a855f7;
-                            background: rgb(168 85 247 / 0.1);
+                            border-color: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.38);
+                            color: var(--agent-stale-color, #a855f7);
+                            background: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.1);
                         }
 
                         &.is-unknown {
@@ -972,8 +972,11 @@
                 }
 
                 &.is-stale {
-                    background: var(--secondary-text-color);
-                    opacity: 0.55;
+                    // stale = 卡住/长时间无更新: 用独立紫 --agent-stale-color, 不再复用
+                    // secondary-text-color — 后者与 idle/unknown 的灰点同色, stale 看不出来.
+                    background: var(--agent-stale-color, #a855f7);
+                    opacity: 0.9;
+                    box-shadow: 0 0 0 1px rgb(from var(--agent-stale-color, #a855f7) r g b / 0.35);
                 }
 
                 // D 类完成态点亮 (非 idle→idle 跳变后未阅): 加大 + 绿色呼吸, 与 is-idle 一致时

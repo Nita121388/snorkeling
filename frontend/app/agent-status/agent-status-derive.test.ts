@@ -231,6 +231,40 @@ describe("aggregateAgentStatuses", () => {
         expect(aggregateStatusLabel(aggregate)).toBe("1 working");
     });
 
+    it("prioritizes stale over done (a stuck agent outranks a finished one)", () => {
+        const done = deriveAgentStatus({
+            blockId: "done",
+            provider: "claude",
+            controllerStatus: controllerStatus("done"),
+            sessionUpdatedAtMs: now - 60_000,
+            viewedAtMs: now - 120_000,
+            nowMs: now,
+        });
+        const working: AgentStatus = {
+            blockId: "stuck",
+            provider: "pi",
+            state: "working",
+            phase: "tool",
+            source: "hook",
+            confidence: "high",
+            reason: "explicit-report",
+            updatedAt: now - 60_000,
+            activeSince: now - 60_000,
+        };
+        // 超过 tool 阈值 (5min) 无续约 → stale
+        const stale = applyStaleness(working, now + 6 * 60_000);
+        expect(stale.state).toBe("stale");
+
+        const aggregate = aggregateAgentStatuses([done, stale]);
+
+        expect(aggregate).toMatchObject({
+            state: "stale",
+            count: 1,
+            total: 2,
+        });
+        expect(aggregateStatusLabel(aggregate)).toBe("1 stale");
+    });
+
     it("formats provider labels", () => {
         expect(formatAgentProvider("codex")).toBe("Codex");
         expect(formatAgentProvider("claude-code")).toBe("Claude");

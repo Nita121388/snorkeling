@@ -10,7 +10,8 @@ import type { PlacementKind, PlacementTarget } from "./block-placement-store";
 import { openWidgetQuickLaunch, WidgetQuickLaunchModal } from "./widget-quick-launch";
 
 export const blockPlacementTargetAtom = atom(null) as PrimitiveAtom<PlacementTarget | null>;
-export const blockPlacementCtrlAtom = atom(false) as PrimitiveAtom<boolean>;
+// Ctrl+Shift 组合按住时置 true（两种修饰键分别跟踪，任一松开即清除）。
+export const blockPlacementArmedAtom = atom(false) as PrimitiveAtom<boolean>;
 
 const DebounceMs = 300;
 
@@ -78,12 +79,15 @@ function Preview({ target }: { target: PlacementTarget }) {
 
 export function BlockPlacementController() {
     const target = useAtomValue(blockPlacementTargetAtom);
-    const ctrlPressed = useAtomValue(blockPlacementCtrlAtom);
+    const armed = useAtomValue(blockPlacementArmedAtom);
     const launcherOpenRef = useRef(false);
     const lastTargetRef = useRef<PlacementTarget | null>(null);
     const timerRef = useRef<number | null>(null);
 
     useEffect(() => {
+        let ctrlDown = false;
+        let shiftDown = false;
+        const syncArmed = () => globalStore.set(blockPlacementArmedAtom, ctrlDown && shiftDown);
         const clearTimer = () => {
             if (timerRef.current != null) {
                 window.clearTimeout(timerRef.current);
@@ -94,19 +98,29 @@ export function BlockPlacementController() {
             clearTimer();
             launcherOpenRef.current = false;
             lastTargetRef.current = null;
+            ctrlDown = false;
+            shiftDown = false;
             globalStore.set(blockPlacementTargetAtom, null);
-            globalStore.set(blockPlacementCtrlAtom, false);
+            globalStore.set(blockPlacementArmedAtom, false);
         };
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== "Control") return;
-            if (!event.repeat) globalStore.set(blockPlacementCtrlAtom, true);
+            // 只跟踪修饰键本身，避免 Ctrl+Shift+C 等组合键的字母键被误处理。
+            if (event.key === "Control") {
+                ctrlDown = true;
+            } else if (event.key === "Shift") {
+                shiftDown = true;
+            } else {
+                return;
+            }
+            if (!event.repeat) syncArmed();
         };
         const onKeyUp = (event: KeyboardEvent) => {
-            if (event.key === "Control") clear();
+            // 任一修饰键松开即整体取消（含 Shift，防止多键混按后状态卡死）。
+            if (event.key === "Control" || event.key === "Shift") clear();
         };
         const onBlur = clear;
         const onMouseMove = (event: MouseEvent) => {
-            if (!globalStore.get(blockPlacementCtrlAtom) || launcherOpenRef.current) return;
+            if (!globalStore.get(blockPlacementArmedAtom) || launcherOpenRef.current) return;
             const element = (event.target as Element | null)?.closest?.("[data-blockid]") as HTMLElement | null;
             if (!element) {
                 clearTimer();
@@ -130,9 +144,11 @@ export function BlockPlacementController() {
             globalStore.set(blockPlacementTargetAtom, next);
             timerRef.current = window.setTimeout(() => {
                 const current = globalStore.get(blockPlacementTargetAtom);
-                if (current && sameTarget(current, next) && globalStore.get(blockPlacementCtrlAtom)) {
+                if (current && sameTarget(current, next) && globalStore.get(blockPlacementArmedAtom)) {
                     launcherOpenRef.current = true;
                     openWidgetQuickLaunch(current);
+                    // 弹窗打开即清预览：幽灵卡片/落点横线不再附着在旧 block 上。
+                    globalStore.set(blockPlacementTargetAtom, null);
                 }
                 timerRef.current = null;
             }, DebounceMs);
@@ -141,11 +157,15 @@ export function BlockPlacementController() {
         window.addEventListener("keyup", onKeyUp);
         window.addEventListener("blur", onBlur);
         document.addEventListener("mousemove", onMouseMove);
-        // 监听弹窗栈：Quick Launch 被关闭（Esc/取消/创建）后复位 launcherOpenRef，
-        // 让停留在 HOVERING 状态的预览能在下次 300ms 悬停时再次弹窗。
+        // 监听弹窗栈：Quick Launch 被关闭（Esc/取消/创建）后复位 launcherOpenRef，并清空
+        // 放置预览状态（target/lastTarget/timer），避免预览残留或取消后立即自动重弹——
+        // 需重新在 block 上悬停 300ms 才会再次弹出。Ctrl+Shift 若仍按住则保持武装状态。
         const unob = globalStore.sub(modalsModel.modalsAtom, () => {
             if (launcherOpenRef.current && !modalsModel.isModalOpen(WidgetQuickLaunchModal.displayName)) {
                 launcherOpenRef.current = false;
+                clearTimer();
+                lastTargetRef.current = null;
+                globalStore.set(blockPlacementTargetAtom, null);
             }
         });
         return () => {
@@ -158,6 +178,6 @@ export function BlockPlacementController() {
         };
     }, []);
 
-    if (!ctrlPressed || target == null) return null;
+    if (!armed || target == null) return null;
     return <Preview target={target} />;
 }

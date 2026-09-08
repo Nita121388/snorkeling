@@ -480,44 +480,81 @@
         }
 
         pre.codeblock {
-            background-color: var(--panel-bg-color);
-            margin: 0.286em 0.714em;
-            padding: 0.6em 1em;
+            // 不透明专用底色：半透明 panel-bg 会让长代码块透出预览底色、显得发脏
+            background-color: var(--codeblock-bg-color, #f7f7f7);
+            margin: 0.5em 0.75em;
+            // 顶部留出顶栏空间（22px），避免语言标签压住首行代码（Wolai 用独立标题栏解决同一问题）
+            padding: 1.6em 1em 0.85em;
             border-radius: 6px;
             position: relative;
 
             code {
-                line-height: 1.5;
+                font-size: 13px;
+                line-height: 1.6;
                 white-space: pre-wrap;
                 word-wrap: break-word;
                 overflow: auto;
                 overflow: hidden;
                 background-color: transparent;
+                // 浅色主题下 --main-text-color 是棕色，配专用代码色更清晰
+                color: var(--codeblock-text-color, var(--main-text-color));
             }
 
-            .codeblock-actions {
-                visibility: hidden;
-                display: flex;
+            // 顶栏：语言常驻（可发现“能改语言”），操作按钮 hover 才显（减噪）
+            .codeblock-header {
                 position: absolute;
-                top: 0;
-                right: 0;
-                border-radius: 4px;
-                backdrop-filter: blur(8px);
-                margin: 0.143em;
-                padding: 0.286em;
+                top: 0.25em;
+                left: 0.5em;
+                right: 0.5em;
+                height: 22px;
+                display: flex;
                 align-items: center;
-                justify-content: flex-end;
+                justify-content: space-between;
                 gap: 0.286em;
+                pointer-events: none; // 容器不吃点击，代码区仍可正常选中
 
-                .codeblock-lang-badge {
-                    position: absolute;
-                    left: 0;
-                    right: auto;
+                > * {
+                    pointer-events: auto;
                 }
             }
 
-            &:hover .codeblock-actions {
+            .codeblock-ops {
+                visibility: hidden;
+                display: flex;
+                align-items: center;
+                gap: 0.286em;
+            }
+
+            // 命令类语言的执行按钮常驻：本项目是终端，命令块一键执行是核心场景（对齐/强于 Wolai）
+            .codeblock-ops .is-persistent {
                 visibility: visible;
+            }
+
+            &:hover .codeblock-ops {
+                visibility: visible;
+            }
+
+            // 折叠：仅 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全
+            &.is-collapsed {
+                max-height: 250px;
+                overflow: hidden;
+            }
+
+            .codeblock-expand {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                display: flex;
+                align-items: flex-end;
+                justify-content: center;
+                height: 64px;
+                padding: 0 0 6px;
+                border: none;
+                background: linear-gradient(to bottom, transparent, var(--codeblock-bg-color, #f7f7f7) 72%);
+                color: var(--secondary-text-color);
+                font-size: 11px;
+                cursor: pointer;
             }
         }
 
@@ -635,6 +672,87 @@
     // un-truncated but at a scrollWidth wider than the textarea, which makes auto-grow's
     // scrollHeight recompute on every keystroke and visually flicker the box. `inherit` lets
     // the textarea wrap exactly like the surrounding prose, so the height sits stable.
+    &[data-block-kind="code"] pre.codeblock {
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 1.6em 1em 0.85em;
+        border-radius: 6px;
+        position: relative;
+        background-color: var(--codeblock-bg-color, #f7f7f7);
+        overflow: hidden;
+    }
+
+    &[data-block-kind="code"] pre.codeblock > code.hljs {
+        display: block;
+        min-height: 1em;
+        padding: 0;
+        background: transparent;
+        color: var(--codeblock-text-color, var(--main-text-color));
+        font-family: var(--markdown-code-font, var(--mono-font, monospace));
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow: hidden;
+        outline: none;
+        font-variant-ligatures: none;
+        tab-size: var(--markdown-tab-size, 4);
+        caret-color: var(--codeblock-text-color, var(--main-text-color));
+    }
+
+    &[data-block-kind="code"] pre.codeblock .codeblock-header {
+        position: absolute;
+        top: 0.25em;
+        left: 0.5em;
+        right: 0.5em;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.286em;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    &[data-block-kind="code"] pre.codeblock .codeblock-header > * { pointer-events: auto; }
+
+    &[data-block-kind="code"] pre.codeblock .codeblock-ops {
+        visibility: visible;
+        display: flex;
+        align-items: center;
+        gap: 0.286em;
+    }
+
+    // The overlay is portaled outside .markdown, so mirror the preview token selectors here.
+    &[data-block-kind="code"] pre.codeblock .hljs-comment,
+    &[data-block-kind="code"] pre.codeblock .hljs-quote { color: var(--code-token-comment, var(--secondary-text-color)); }
+    &[data-block-kind="code"] pre.codeblock .hljs-keyword,
+    &[data-block-kind="code"] pre.codeblock .hljs-selector-tag,
+    &[data-block-kind="code"] pre.codeblock .hljs-literal,
+    &[data-block-kind="code"] pre.codeblock .hljs-doctag { color: var(--code-token-keyword, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-string,
+    &[data-block-kind="code"] pre.codeblock .hljs-regexp,
+    &[data-block-kind="code"] pre.codeblock .hljs-addition,
+    &[data-block-kind="code"] pre.codeblock .hljs-meta .hljs-string { color: var(--code-token-string, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-number,
+    &[data-block-kind="code"] pre.codeblock .hljs-symbol,
+    &[data-block-kind="code"] pre.codeblock .hljs-bullet { color: var(--code-token-number, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-title,
+    &[data-block-kind="code"] pre.codeblock .hljs-title.function_,
+    &[data-block-kind="code"] pre.codeblock .hljs-section,
+    &[data-block-kind="code"] pre.codeblock .hljs-name { color: var(--code-token-function, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-attr,
+    &[data-block-kind="code"] pre.codeblock .hljs-attribute,
+    &[data-block-kind="code"] pre.codeblock .hljs-variable,
+    &[data-block-kind="code"] pre.codeblock .hljs-template-variable { color: var(--code-token-attr, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-type,
+    &[data-block-kind="code"] pre.codeblock .hljs-built_in,
+    &[data-block-kind="code"] pre.codeblock .hljs-class .hljs-title { color: var(--code-token-type, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-meta,
+    &[data-block-kind="code"] pre.codeblock .hljs-deletion { color: var(--code-token-meta, var(--secondary-text-color)); }
+
     &[data-block-kind="code"] .inline-edit-textarea {
         font-family: var(--markdown-code-font, var(--mono-font, monospace));
         font-variant-ligatures: none;
@@ -1503,6 +1621,69 @@
         font-size: 11px;
         font-family: var(--mono-font, monospace);
         outline: none;
+    }
+}
+
+// 语法高亮 token：文件顶部 @import 的 github-dark-dimmed 是**固定暗色**配色，浅色主题下
+// token 会看不清，这里按主题变量覆盖。选择器带 .markdown pre.codeblock 以提高特异性，
+// 确保盖过主题文件里的 .hljs-* 规则。
+.markdown pre.codeblock {
+    // 先掀掉 github-dark-dimmed 自带的 code.hljs 底色（#22272e）与 1em 内边距：
+    // 底色会让浅色主题下的代码块整块发暗，1em 内边距会破坏顶栏留白。
+    code.hljs {
+        padding: 0;
+        background: transparent;
+        color: var(--codeblock-text-color, var(--main-text-color));
+    }
+
+    .hljs-comment,
+    .hljs-quote {
+        color: var(--code-token-comment, var(--secondary-text-color));
+    }
+
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-literal,
+    .hljs-doctag {
+        color: var(--code-token-keyword, currentColor);
+    }
+
+    .hljs-string,
+    .hljs-regexp,
+    .hljs-addition,
+    .hljs-meta .hljs-string {
+        color: var(--code-token-string, currentColor);
+    }
+
+    .hljs-number,
+    .hljs-symbol,
+    .hljs-bullet {
+        color: var(--code-token-number, currentColor);
+    }
+
+    .hljs-title,
+    .hljs-title.function_,
+    .hljs-section,
+    .hljs-name {
+        color: var(--code-token-function, currentColor);
+    }
+
+    .hljs-attr,
+    .hljs-attribute,
+    .hljs-variable,
+    .hljs-template-variable {
+        color: var(--code-token-attr, currentColor);
+    }
+
+    .hljs-type,
+    .hljs-built_in,
+    .hljs-class .hljs-title {
+        color: var(--code-token-type, currentColor);
+    }
+
+    .hljs-meta,
+    .hljs-deletion {
+        color: var(--code-token-meta, var(--secondary-text-color));
     }
 }
 

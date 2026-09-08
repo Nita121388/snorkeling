@@ -25,6 +25,7 @@ import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/pr
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData, buildPropertyEntries } from "./frontmatter-block";
+import { deleteProperty, setProperty, type PropertyEditValue } from "./frontmatter-edit";
 import { reorderFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
 import { isMdPropertiesMatch } from "./md-properties-match";
 import { ObsidianPropertiesCard, getObsidianPropsCollapsed, setObsidianPropsCollapsed } from "./obsidian-properties-card";
@@ -58,11 +59,46 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
         return buildPropertyEntries(frontmatterBlock.data);
     }, [frontmatterBlock]);
 
-    // 属性变更：新对象 → YAML 序列化 → 整块替换 frontmatter 区域 → 写草稿（Save/Cmd+S 落盘）。
+    // 属性变更：最小 diff 写回 → 整块替换 frontmatter 行区域 → 写草稿（Save/Cmd+S 落盘）。
+    //
+    // 优先逐属性改写（frontmatter-edit）：只动变化的键，保留注释、引号、flow/block 序列风格
+    // 与其他行的原始字节。任一步失败（如 YAML 语法错误）→ 回退旧的整块序列化，功能不退化。
     const handleDataChange = useCallback(
         (newData: Record<string, unknown>) => {
             if (text == null || frontmatterBlock == null) return;
-            const newYaml = stringifyFrontmatterData(newData);
+            const oldData = frontmatterBlock.data ?? {};
+            let yaml = frontmatterBlock.yamlText;
+            let minimal = true;
+
+            for (const key of Object.keys(oldData)) {
+                if (!(key in newData)) {
+                    const next = deleteProperty(yaml, key);
+                    if (next == null) {
+                        minimal = false;
+                        break;
+                    }
+                    yaml = next;
+                }
+            }
+            if (minimal) {
+                for (const [key, value] of Object.entries(newData)) {
+                    const before = oldData[key];
+                    const same =
+                        before === value ||
+                        (typeof before === "object" &&
+                            typeof value === "object" &&
+                            JSON.stringify(before) === JSON.stringify(value));
+                    if (same) continue;
+                    const next = setProperty(yaml, key, value as PropertyEditValue);
+                    if (next == null) {
+                        minimal = false;
+                        break;
+                    }
+                    yaml = next;
+                }
+            }
+
+            const newYaml = minimal ? yaml : stringifyFrontmatterData(newData);
             const newText = replaceFrontmatter(text, frontmatterBlock, newYaml);
             if (newText !== text) {
                 globalStore.set(model.newFileContent, newText);

@@ -56,6 +56,7 @@ function fileToPendingImage(file: File): Promise<PendingImage> {
 type AgentStateInfo = {
     sessionId?: string;
     thinkingLevel?: string;
+    contextUsagePercent?: number;
     model?: { provider?: string; id?: string; name?: string } | null;
 };
 
@@ -100,6 +101,8 @@ type ChatComposerProps = {
     onQueue: (body: ChatRequestBody) => void;
     onAbort: () => void;
     onSourceChange?: (source: string) => void;
+    contextUsagePercent?: number;
+    usage?: { input?: number; output?: number };
 };
 
 function ChatComposerInner({
@@ -118,6 +121,8 @@ function ChatComposerInner({
     onQueue,
     onAbort,
     onSourceChange,
+    contextUsagePercent,
+    usage,
 }: ChatComposerProps) {
     const [input, setInput] = useState("");
     const [images, setImages] = useState<PendingImage[]>([]);
@@ -811,6 +816,8 @@ function ChatComposerInner({
                             canChangeDirectory={canChangeDirectory}
                             onChangeDirectory={onChangeDirectory}
                             isRunning={isRunning}
+                            contextUsagePercent={contextUsagePercent ?? agentState?.contextUsagePercent}
+                            usage={usage}
                         />
                         <textarea
                             ref={inputRef}
@@ -913,10 +920,6 @@ function ChatComposerInner({
                             </button>
                             {isRunning ? (
                                 <>
-                                    <div className="ml-auto flex h-8 shrink-0 items-center gap-1.5 px-1 text-xs text-accent" role="status">
-                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
-                                        <span>Working</span>
-                                    </div>
                                     <button
                                         type="button"
                                         className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white hover:bg-accent/85"

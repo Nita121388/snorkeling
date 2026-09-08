@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -171,7 +172,7 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 			chatManager.PromoteSession(req.Source, sessionKey, st.SessionID, session)
 		}
 	}
-	registerLiveChatSession(req, state)
+	registerLiveChatSession(req, state, projectPath)
 
 	if req.Command != nil {
 		data, err := session.Control(r.Context(), req.Command.Name, req.Command.Args)
@@ -251,20 +252,24 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 // agent flushes its transcript file (pi defers file creation until the first
 // assistant message). The title is seeded from the first prompt line, which
 // is also what the scan-based title derivation would produce later.
-func registerLiveChatSession(req AISessionsChatRequest, state *chat.SessionStateInfo) {
+func registerLiveChatSession(req AISessionsChatRequest, state *chat.SessionStateInfo, projectPath string) {
 	if state == nil || state.SessionID == "" || req.Source == "" {
 		return
 	}
 	nowMS := time.Now().UnixMilli()
+	filePath := strings.TrimSpace(state.SessionFile)
+	if filePath != "" && !filepath.IsAbs(filePath) && projectPath != "" {
+		filePath = filepath.Join(projectPath, filePath)
+	}
 	summary := aisessions.SessionSummary{
 		Source:      req.Source,
 		ID:          state.SessionID,
 		Title:       provisionalChatTitle(req.Message),
 		TitleSource: "live",
-		ProjectPath: req.ProjectPath,
+		ProjectPath: projectPath,
 		CreatedAt:   nowMS,
 		UpdatedAt:   nowMS,
-		FilePath:    state.SessionFile,
+		FilePath:    filePath,
 	}
 	summary.Key = aisessions.StableKey(summary.Source, summary.ID, summary.FilePath)
 	aisessions.RegisterLiveSession(summary)

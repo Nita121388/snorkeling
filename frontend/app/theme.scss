@@ -53,6 +53,19 @@
     --action-soft-text-color: var(--accent-color-300);
     --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
     --panel-bg-color: rgba(31, 33, 31, 0.5);
+    // 代码块配色：不透明，避免长代码块叠在预览底色上发灰（对齐 Wolai 的 #f5f5f5 观感）
+    // 语法高亮 token 单独定义：markdown.scss 里 @import 的 github-dark-dimmed 是固定暗色，
+    // 浅色主题必须靠这些变量覆盖，否则 token 在浅底上看不清。
+    --codeblock-bg-color: #1c1c1c;
+    --codeblock-text-color: #e6e6e6;
+    --code-token-comment: #768390;
+    --code-token-keyword: #f47067;
+    --code-token-string: #96d0ff;
+    --code-token-number: #6cb6ff;
+    --code-token-function: #dcbdfb;
+    --code-token-attr: #f69d50;
+    --code-token-type: #8ddb8c;
+    --code-token-meta: #768390;
     --highlight-bg-color: rgba(255, 255, 255, 0.2);
     --error-color: rgb(229, 77, 46);
     --warning-color: rgb(224, 185, 86);
@@ -62,8 +75,11 @@
     //                             工作中态用独立蓝通道, 完成/工作中两类信号天然分离.
     //   --agent-done-color (绿): done/D 完成态专用, 默认与 success 对齐以稳定现有视觉,
     //                          但单独成 token 以便后续独立调, 不再硬编码 #22c55e.
+    //   --agent-stale-color (紫): stale/卡住态专用. 必须与 --secondary-text-color 拉开,
+    //                          否则 stale 圆点/chip 会和 idle/unknown 的中性灰混为一体.
     --agent-working-color: #3b82f6;
     --agent-done-color: rgb(78, 154, 6);
+    --agent-stale-color: #a855f7;
     --hover-bg-color: rgba(255, 255, 255, 0.1);
     --hover-bg-color-strong: rgba(255, 255, 255, 0.2);
     --block-bg-color: rgba(0, 0, 0, 0.5);
@@ -209,6 +225,17 @@
 [data-theme="light"] {
     color: var(--main-text-color);
     --main-text-color: #4c3924;
+    // 浅色：代码块用米白底 + 深色字，token 走 GitHub Light 配色
+    --codeblock-bg-color: #f7f7f4;
+    --codeblock-text-color: #3a3226;
+    --code-token-comment: #6e7781;
+    --code-token-keyword: #cf222e;
+    --code-token-string: #0a3069;
+    --code-token-number: #0550ae;
+    --code-token-function: #8250df;
+    --code-token-attr: #953800;
+    --code-token-type: #116329;
+    --code-token-meta: #6e7781;
     --secondary-text-color: #675033;
     --grey-text-color: #777167;
     --main-bg-color: #ebe5d9;
@@ -243,6 +270,7 @@
     // agent status 专用语义色 (与 accent/success 解耦): working 蓝, done 绿.
     --agent-working-color: #2563eb;
     --agent-done-color: #2e7d32;
+    --agent-stale-color: #a855f7;
     --hover-bg-color: rgba(167, 111, 202, 0.1);
     --hover-bg-color-strong: rgba(60, 50, 40, 0.07);
     --block-bg-color: rgba(255, 253, 248, 0.72);
@@ -358,6 +386,17 @@
 [data-theme="monochrome"] {
     color: var(--main-text-color);
     --main-text-color: #0a0a0a;
+    // 无彩色主题：token 走灰阶，靠深浅与字重区分而非色相
+    --codeblock-bg-color: #f5f5f5;
+    --codeblock-text-color: #0a0a0a;
+    --code-token-comment: #808080;
+    --code-token-keyword: #0a0a0a;
+    --code-token-string: #404040;
+    --code-token-number: #333333;
+    --code-token-function: #0a0a0a;
+    --code-token-attr: #4a4a4a;
+    --code-token-type: #4a4a4a;
+    --code-token-meta: #808080;
     --secondary-text-color: #4a4a4a;
     --grey-text-color: #808080;
     --main-bg-color: #fafafa;
@@ -392,6 +431,7 @@
     // monochrome 主题: agent working 用弱饱和蓝灰, done 用弱饱和绿灰, 与黑白调子调和.
     --agent-working-color: #5a6a8a;
     --agent-done-color: #7a8a6a;
+    --agent-stale-color: #8b7fa8;
     --hover-bg-color: rgba(0, 0, 0, 0.05);
     --hover-bg-color-strong: rgba(0, 0, 0, 0.1);
     --block-bg-color: rgba(255, 255, 255, 0.72);
@@ -489,6 +529,16 @@
 // is a no-op until a matching AppThemeMode is added.
 [data-theme="light2"] {
     --main-text-color: #382603;
+    --codeblock-bg-color: #fbf8f2;
+    --codeblock-text-color: #382603;
+    --code-token-comment: #6e7781;
+    --code-token-keyword: #cf222e;
+    --code-token-string: #0a3069;
+    --code-token-number: #0550ae;
+    --code-token-function: #8250df;
+    --code-token-attr: #953800;
+    --code-token-type: #116329;
+    --code-token-meta: #6e7781;
     --secondary-text-color: #63574b;
     --grey-text-color: #777167;
     --main-bg-color: #faf7f0;
@@ -523,6 +573,7 @@
     // agent status 专用语义色 (与 accent/success 解耦): working 蓝, done 绿.
     --agent-working-color: #2563eb;
     --agent-done-color: #2e7d32;
+    --agent-stale-color: #a855f7;
     --hover-bg-color: rgba(176, 101, 53, 0.1);
     --hover-bg-color-strong: rgba(176, 101, 53, 0.18);
     --block-bg-color: rgba(255, 253, 248, 0.72);

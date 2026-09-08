@@ -43,11 +43,14 @@ type AgentStatusPresentation = {
     icon: string;
 };
 
+// 聚合优先级: stale 排在 done 之上. stale = 卡住/长时间无更新, 需要用户介入;
+// done 只是"跑完了来看结果". 旧顺序 (stale 低于 done/working/blocked) 会让一个 tab 里
+// 只要有任一 done 就把 stale 完全盖掉, 聚合 chip 永远看不到 stale.
 const stateRank: Record<AgentDisplayState, number> = {
     unknown: 0,
     idle: 1,
-    stale: 2,
-    done: 3,
+    done: 2,
+    stale: 3,
     working: 4,
     blocked: 5,
     error: 5,
