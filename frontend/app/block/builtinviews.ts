@@ -10,6 +10,7 @@ import { LauncherViewModel } from "@/app/view/launcher/launcher";
 import { PreviewModel } from "@/app/view/preview/preview-model";
 import { ProcessViewerViewModel } from "@/app/view/processviewer/processviewer";
 import { QuickTipsViewModel } from "@/app/view/quicktipsview/quicktipsview";
+import { ScheduledTasksViewModel } from "@/app/view/scheduledtasks/scheduledtasks-model";
 import { SysinfoViewModel } from "@/app/view/sysinfo/sysinfo";
 import { TermViewModel } from "@/app/view/term/term-model";
 import { TsunamiViewModel } from "@/app/view/tsunami/tsunami";
@@ -37,6 +38,7 @@ const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
     ["tsunami", TsunamiViewModel],
     ["aifilediff", AiFileDiffViewModel],
     ["waveconfig", WaveConfigViewModel],
+    ["scheduledtasks", ScheduledTasksViewModel],
     ["processviewer", ProcessViewerViewModel],
     ["aisessions", AiSessionsViewModel],
     ["agent", AgentViewModel],
