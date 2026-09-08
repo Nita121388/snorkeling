@@ -6,6 +6,7 @@ package wshserver
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/scheduler"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
@@ -25,12 +26,40 @@ var (
 func InitScheduledTasks() {
 	schedRunner = &scheduler.DefaultTaskRunner{}
 	schedStore = scheduler.NewRunStore()
+	schedRunner.Store = schedStore
+	schedRunner.UpdateMeta = updateScheduledTaskMeta
 	schedScheduler = scheduler.NewInProcessScheduler(schedRunner)
 	_ = schedScheduler.Start()
 	// Load persisted tasks and add them to scheduler
 	items := loadScheduledTaskItems()
 	for i := range items {
 		_ = schedScheduler.AddTask(&items[i])
+	}
+}
+
+// updateScheduledTaskMeta records lastRun fields on the persisted task and refreshes the
+// in-process scheduler with the updated metadata (schedule is unchanged).
+func updateScheduledTaskMeta(taskID string, status string, durationMs int64, errMsg string) {
+	items := loadScheduledTaskItems()
+	var updated *wconfig.ScheduledTaskType
+	for i := range items {
+		if items[i].Id == taskID {
+			now := time.Now().UTC().Format(time.RFC3339)
+			items[i].UpdatedAt = now
+			items[i].LastRunAt = &now
+			lastRunStatus := status
+			items[i].LastRunStatus = &lastRunStatus
+			items[i].RunCount++
+			updated = &items[i]
+			break
+		}
+	}
+	if updated == nil {
+		return
+	}
+	_ = wconfig.SetBaseConfigValue(map[string]any{wconfig.ConfigKey_ScheduledTasksItems: items})
+	if schedScheduler != nil {
+		_ = schedScheduler.UpdateTask(updated)
 	}
 }
 
