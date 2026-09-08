@@ -2006,6 +2006,55 @@ declare global {
         winsize?: WinSize;
     };
 
+    // wconfig.ScheduledTaskRunRecord
+    type ScheduledTaskRunRecord = {
+        taskId: string;
+        runAt: string;
+        status: string;
+        durationMs?: number;
+        error?: string;
+        output?: string;
+    };
+
+    // wconfig.ScheduledTaskScheduleType
+    type ScheduledTaskScheduleType = {
+        type: string;
+        cronExpr?: string;
+        intervalMs?: number;
+        timeOfDay?: string;
+        dayOfWeek?: number;
+        runAt?: string;
+        timezone?: string;
+    };
+
+    // wconfig.ScheduledTaskType
+    type ScheduledTaskType = {
+        id: string;
+        name: string;
+        enabled: boolean;
+        agentProfile?: string;
+        agentCmd?: string;
+        agentArgs?: string[];
+        provider?: string;
+        model?: string;
+        thinking?: string;
+        prompt: string;
+        systemPrompt?: string;
+        workdir?: string;
+        connection?: string;
+        schedule: ScheduledTaskScheduleType;
+        notifyOnComplete?: boolean;
+        notifyOnError?: boolean;
+        notificationMode?: string;
+        createdAt?: string;
+        updatedAt?: string;
+        lastRunAt?: string;
+        lastRunStatus?: string;
+        runCount?: number;
+        tags?: string[];
+        createdBy?: string;
+    };
+
     // wshrpc.SecretMeta
     type SecretMeta = {
         desc: string;
@@ -2185,6 +2234,8 @@ declare global {
         "tsunami:sdkreplacepath"?: string;
         "tsunami:sdkversion"?: string;
         "tsunami:gopath"?: string;
+        "scheduledtasks:*"?: boolean;
+        "scheduledtasks:items"?: ScheduledTaskType[];
     };
 
     // waveobj.StickerClickOptsType

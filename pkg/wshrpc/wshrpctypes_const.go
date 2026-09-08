@@ -48,4 +48,12 @@ const (
 	Command_Message                      = "message"
 	Command_StreamData                   = "streamdata"
 	Command_StreamDataAck                = "streamdataack"
+
+	Command_ScheduledTaskList            = "scheduledtasklist"
+	Command_ScheduledTaskGet             = "scheduledtaskget"
+	Command_ScheduledTaskCreate          = "scheduledtaskcreate"
+	Command_ScheduledTaskUpdate          = "scheduledtaskupdate"
+	Command_ScheduledTaskDelete          = "scheduledtaskdelete"
+	Command_ScheduledTaskRunNow          = "scheduledtaskrunnow"
+	Command_ScheduledTaskHistory         = "scheduledtaskhistory"
 )

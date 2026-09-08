@@ -193,6 +193,15 @@ type WshRpcInterface interface {
 	// screenshot
 	CaptureBlockScreenshotCommand(ctx context.Context, data CommandCaptureBlockScreenshotData) (string, error)
 
+	// scheduled tasks
+	ScheduledTaskListCommand(ctx context.Context) ([]wconfig.ScheduledTaskType, error)
+	ScheduledTaskGetCommand(ctx context.Context, taskId string) (*wconfig.ScheduledTaskType, error)
+	ScheduledTaskCreateCommand(ctx context.Context, data wconfig.ScheduledTaskType) (wconfig.ScheduledTaskType, error)
+	ScheduledTaskUpdateCommand(ctx context.Context, data wconfig.ScheduledTaskType) error
+	ScheduledTaskDeleteCommand(ctx context.Context, taskId string) error
+	ScheduledTaskRunNowCommand(ctx context.Context, taskId string) error
+	ScheduledTaskHistoryCommand(ctx context.Context, taskId string) ([]wconfig.ScheduledTaskRunRecord, error)
+
 	// block focus
 	SetBlockFocusCommand(ctx context.Context, blockId string) error
 	GetFocusedBlockDataCommand(ctx context.Context) (*FocusedBlockData, error)

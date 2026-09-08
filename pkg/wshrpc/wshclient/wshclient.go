@@ -956,6 +956,48 @@ func RouteUnannounceCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	return err
 }
 
+// command "scheduledtaskcreate", wshserver.ScheduledTaskCreateCommand
+func ScheduledTaskCreateCommand(w *wshutil.WshRpc, data wconfig.ScheduledTaskType, opts *wshrpc.RpcOpts) (wconfig.ScheduledTaskType, error) {
+	resp, err := sendRpcRequestCallHelper[wconfig.ScheduledTaskType](w, "scheduledtaskcreate", data, opts)
+	return resp, err
+}
+
+// command "scheduledtaskdelete", wshserver.ScheduledTaskDeleteCommand
+func ScheduledTaskDeleteCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "scheduledtaskdelete", data, opts)
+	return err
+}
+
+// command "scheduledtaskget", wshserver.ScheduledTaskGetCommand
+func ScheduledTaskGetCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (*wconfig.ScheduledTaskType, error) {
+	resp, err := sendRpcRequestCallHelper[*wconfig.ScheduledTaskType](w, "scheduledtaskget", data, opts)
+	return resp, err
+}
+
+// command "scheduledtaskhistory", wshserver.ScheduledTaskHistoryCommand
+func ScheduledTaskHistoryCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) ([]wconfig.ScheduledTaskRunRecord, error) {
+	resp, err := sendRpcRequestCallHelper[[]wconfig.ScheduledTaskRunRecord](w, "scheduledtaskhistory", data, opts)
+	return resp, err
+}
+
+// command "scheduledtasklist", wshserver.ScheduledTaskListCommand
+func ScheduledTaskListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wconfig.ScheduledTaskType, error) {
+	resp, err := sendRpcRequestCallHelper[[]wconfig.ScheduledTaskType](w, "scheduledtasklist", nil, opts)
+	return resp, err
+}
+
+// command "scheduledtaskrunnow", wshserver.ScheduledTaskRunNowCommand
+func ScheduledTaskRunNowCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "scheduledtaskrunnow", data, opts)
+	return err
+}
+
+// command "scheduledtaskupdate", wshserver.ScheduledTaskUpdateCommand
+func ScheduledTaskUpdateCommand(w *wshutil.WshRpc, data wconfig.ScheduledTaskType, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "scheduledtaskupdate", data, opts)
+	return err
+}
+
 // command "sendtelemetry", wshserver.SendTelemetryCommand
 func SendTelemetryCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "sendtelemetry", nil, opts)

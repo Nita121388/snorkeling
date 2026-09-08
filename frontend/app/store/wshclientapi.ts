@@ -960,6 +960,48 @@ export class RpcApiType {
         return client.wshRpcCall("routeunannounce", null, opts);
     }
 
+    // command "scheduledtaskcreate" [call]
+    ScheduledTaskCreateCommand(client: WshClient, data: ScheduledTaskType, opts?: RpcOpts): Promise<ScheduledTaskType> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskcreate", data, opts);
+        return client.wshRpcCall("scheduledtaskcreate", data, opts);
+    }
+
+    // command "scheduledtaskdelete" [call]
+    ScheduledTaskDeleteCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskdelete", data, opts);
+        return client.wshRpcCall("scheduledtaskdelete", data, opts);
+    }
+
+    // command "scheduledtaskget" [call]
+    ScheduledTaskGetCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<ScheduledTaskType> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskget", data, opts);
+        return client.wshRpcCall("scheduledtaskget", data, opts);
+    }
+
+    // command "scheduledtaskhistory" [call]
+    ScheduledTaskHistoryCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<ScheduledTaskRunRecord[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskhistory", data, opts);
+        return client.wshRpcCall("scheduledtaskhistory", data, opts);
+    }
+
+    // command "scheduledtasklist" [call]
+    ScheduledTaskListCommand(client: WshClient, opts?: RpcOpts): Promise<ScheduledTaskType[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtasklist", null, opts);
+        return client.wshRpcCall("scheduledtasklist", null, opts);
+    }
+
+    // command "scheduledtaskrunnow" [call]
+    ScheduledTaskRunNowCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskrunnow", data, opts);
+        return client.wshRpcCall("scheduledtaskrunnow", data, opts);
+    }
+
+    // command "scheduledtaskupdate" [call]
+    ScheduledTaskUpdateCommand(client: WshClient, data: ScheduledTaskType, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskupdate", data, opts);
+        return client.wshRpcCall("scheduledtaskupdate", data, opts);
+    }
+
     // command "sendtelemetry" [call]
     SendTelemetryCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sendtelemetry", null, opts);
