@@ -87,6 +87,127 @@
         "path"
       ]
     },
+    "ScheduledTaskScheduleType": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "cronExpr": {
+          "type": "string"
+        },
+        "intervalMs": {
+          "type": "integer"
+        },
+        "timeOfDay": {
+          "type": "string"
+        },
+        "dayOfWeek": {
+          "type": "integer"
+        },
+        "runAt": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "type"
+      ]
+    },
+    "ScheduledTaskType": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "agentProfile": {
+          "type": "string"
+        },
+        "agentCmd": {
+          "type": "string"
+        },
+        "agentArgs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "systemPrompt": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "schedule": {
+          "$ref": "#/$defs/ScheduledTaskScheduleType"
+        },
+        "notifyOnComplete": {
+          "type": "boolean"
+        },
+        "notifyOnError": {
+          "type": "boolean"
+        },
+        "notificationMode": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "lastRunAt": {
+          "type": "string"
+        },
+        "lastRunStatus": {
+          "type": "string"
+        },
+        "runCount": {
+          "type": "integer"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "createdBy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "enabled",
+        "prompt",
+        "schedule"
+      ]
+    },
     "SettingsType": {
       "properties": {
         "app:*": {
@@ -515,6 +636,15 @@
         },
         "tsunami:gopath": {
           "type": "string"
+        },
+        "scheduledtasks:*": {
+          "type": "boolean"
+        },
+        "scheduledtasks:items": {
+          "items": {
+            "$ref": "#/$defs/ScheduledTaskType"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,

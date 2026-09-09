@@ -88,5 +88,16 @@
                 "view": "processviewer"
             }
         }
+    },
+    "defwidget@scheduledtasks": {
+        "display:order": 2,
+        "icon": "clock",
+        "label": "scheduled tasks",
+        "description": "Create and run scheduled agent tasks",
+        "blockdef": {
+            "meta": {
+                "view": "scheduledtasks"
+            }
+        }
     }
 }
