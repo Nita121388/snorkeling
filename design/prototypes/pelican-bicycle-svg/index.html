@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>鹈鹕骑自行车 · SVG 2D 动画</title>
+<style>
+  :root {
+    --sky-top: #b3e5fc;
+    --sky-bottom: #e8f7ff;
+    --grass: #a5d6a7;
+    --pelican-body: #ffffff;
+    --pelican-outline: #455a64;
+    --beak: #ffb300;
+    --beak-accent: #ff8f00;
+    --bike-frame: #e53935;
+    --wheel: #263238;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, #eceff1, #cfd8dc);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  .card {
+    max-width: 960px;
+    width: calc(100% - 40px);
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.18);
+    padding: 24px;
+  }
+
+  h1 {
+    text-align: center;
+    margin: 0 0 18px;
+    font-size: 22px;
+    color: #263238;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  h1 .emoji { font-size: 26px; }
+
+  .scene {
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+    display: block;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .controls button {
+    border: none;
+    background: #e53935;
+    color: #fff;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  .controls button:hover { background: #c62828; transform: translateY(-1px); }
+  .controls button:active { transform: translateY(0); }
+  .controls label {
+    font-size: 13px;
+    color: #455a64;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .controls input[type=range] { width: 120px; accent-color: #e53935; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1><span class="emoji">🐦</span> 鹈鹕骑自行车 · SVG 2D 动画</h1>
+
+    <svg class="scene" viewBox="0 0 800 420" role="img" aria-label="一只鹈鹕骑着自行车在草地上前进的动画">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--sky-top)"/>
+          <stop offset="100%" stop-color="var(--sky-bottom)"/>
+        </linearGradient>
+        <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--grass)"/>
+          <stop offset="100%" stop-color="#7cb342"/>
+        </linearGradient>
+      </defs>
+
+      <!-- 天空 -->
+      <rect x="0" y="0" width="800" height="300" fill="url(#sky)"/>
+      <!-- 云朵 -->
+      <g fill="#ffffff" opacity="0.9">
+        <ellipse cx="150" cy="80" rx="55" ry="24"/>
+        <ellipse cx="190" cy="65" rx="38" ry="20"/>
+        <ellipse cx="120" cy="68" rx="32" ry="18"/>
+        <ellipse cx="620" cy="110" rx="60" ry="26"/>
+        <ellipse cx="665" cy="95" rx="40" ry="21"/>
+        <ellipse cx="585" cy="98" rx="34" ry="18"/>
+        <ellipse cx="420" cy="60" rx="45" ry="20"/>
+        <ellipse cx="455" cy="50" rx="30" ry="16"/>
+      </g>
+      <!-- 远山 -->
+      <path d="M0,300 L120,220 L210,300 Z" fill="#9ccc65" opacity="0.6"/>
+      <path d="M180,300 L300,235 L420,300 Z" fill="#aed581" opacity="0.6"/>
+      <path d="M520,300 L640,225 L760,300 Z" fill="#9ccc65" opacity="0.5"/>
+      <!-- 草地 -->
+      <rect x="0" y="300" width="800" height="120" fill="url(#ground)"/>
+      <!-- 草丛 -->
+      <g stroke="#66bb6a" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8">
+        <path d="M60,300 q4,-16 8,-22"/>
+        <path d="M90,300 q-3,-18 -6,-26"/>
+        <path d="M700,300 q4,-16 8,-22"/>
+        <path d="M730,300 q-3,-18 -6,-26"/>
+        <path d="M260,300 q3,-14 6,-20"/>
+        <path d="M560,300 q-3,-15 -6,-22"/>
+      </g>
+
+      <!-- ============ 骑行组：整体沿地平线平移 ============ -->
+      <g>
+        <animateTransform attributeName="transform" type="translate"
+          values="0,0; -400,0; 0,0" keyTimes="0;0.5;1"
+          dur="8s" repeatCount="indefinite" calcMode="spline"
+          keySplines="0.45 0 0.55 1;0.45 0 0.55 1"/>
+
+        <!-- 自行车后轮 -->
+        <g>
+          <circle cx="280" cy="345" r="52" fill="none" stroke="var(--wheel)" stroke-width="8"/>
+          <circle cx="280" cy="345" r="6" fill="var(--wheel)"/>
+          <g stroke="var(--wheel)" stroke-width="4" stroke-linecap="round">
+            <line x1="280" y1="293" x2="280" y2="397"/>
+            <line x1="228" y1="345" x2="332" y2="345"/>
+            <line x1="243" y1="308" x2="317" y2="382"/>
+            <line x1="317" y1="308" x2="243" y2="382"/>
+          </g>
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 280 345" to="360 280 345" dur="0.8s" repeatCount="indefinite"/>
+        </g>
+
+        <!-- 自行车前轮 -->
+        <g>
+          <circle cx="520" cy="345" r="52" fill="none" stroke="var(--wheel)" stroke-width="8"/>
+          <circle cx="520" cy="345" r="6" fill="var(--wheel)"/>
+          <g stroke="var(--wheel)" stroke-width="4" stroke-linecap="round">
+            <line x1="520" y1="293" x2="520" y2="397"/>
+            <line x1="468" y1="345" x2="572" y2="345"/>
+            <line x1="483" y1="308" x2="557" y2="382"/>
+            <line x1="557" y1="308" x2="483" y2="382"/>
+          </g>
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 520 345" to="360 520 345" dur="0.8s" repeatCount="indefinite"/>
+        </g>
+
+        <!-- 车架 -->
+        <g stroke="var(--bike-frame)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <!-- 链条横管 -->
+          <line x1="280" y1="345" x2="400" y2="300"/>
+          <!-- 座管 -->
+          <line x1="400" y1="300" x2="410" y2="240"/>
+          <!-- 下管（中轴到座管） -->
+          <line x1="330" y1="338" x2="410" y2="240"/>
+          <!-- 头管 -->
+          <line x1="410" y1="240" x2="500" y2="330"/>
+          <!-- 后叉下 -->
+          <line x1="280" y1="345" x2="330" y2="338"/>
+        </g>
+
+        <!-- 中轴与曲柄（踏板） -->
+        <g>
+          <circle cx="330" cy="338" r="6" fill="var(--wheel)"/>
+          <line x1="330" y1="338" x2="308" y2="318" stroke="var(--bike-frame)" stroke-width="5" stroke-linecap="round"/>
+          <line x1="330" y1="338" x2="352" y2="358" stroke="var(--bike-frame)" stroke-width="5" stroke-linecap="round"/>
+          <g stroke="#37474f" stroke-width="4" stroke-linecap="round">
+            <line x1="294" y1="318" x2="322" y2="318"/>
+            <line x1="338" y1="358" x2="366" y2="358"/>
+          </g>
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 330 338" to="360 330 338" dur="1.6s" repeatCount="indefinite"/>
+        </g>
+
+        <!-- 车把与竖管 -->
+        <g stroke="var(--bike-frame)" stroke-width="6" stroke-linecap="round" fill="none">
+          <line x1="500" y1="330" x2="512" y2="268"/>
+          <path d="M492,258 Q512,252 532,258"/>
+        </g>
+
+        <!-- 座垫 -->
+        <ellipse cx="410" cy="236" rx="18" ry="7" fill="#37474f"/>
+
+        <!-- ============ 鹈鹕 ============ -->
+        <g>
+          <!-- 身体（后倾整体轻微上下颠簸） -->
+          <g>
+            <animateTransform attributeName="transform" type="translate"
+              values="0,0; 0,-3; 0,0" dur="0.8s" repeatCount="indefinite"/>
+
+            <!-- 尾羽 -->
+            <path d="M360,268 Q330,250 340,230 Q360,245 385,262 Z" fill="#f0f0f0" stroke="var(--pelican-outline)" stroke-width="2.5"/>
+
+            <!-- 身体 -->
+            <ellipse cx="430" cy="265" rx="58" ry="44" fill="var(--pelican-body)" stroke="var(--pelican-outline)" stroke-width="3"/>
+            <!-- 胸腹阴影 -->
+            <ellipse cx="455" cy="285" rx="36" ry="28" fill="#e0e0e0"/>
+
+            <!-- 翅膀（摆动） -->
+            <g>
+              <path d="M438,252 Q500,220 528,238 Q500,250 452,270 Z" fill="#eceff1" stroke="var(--pelican-outline)" stroke-width="2.5">
+                <animateTransform attributeName="transform" type="rotate"
+                  values="-6 440 260; 4 440 260; -6 440 260" dur="0.8s" repeatCount="indefinite"/>
+              </path>
+            </g>
+
+            <!-- 颈（弯曲） -->
+            <path d="M470,245 Q495,205 500,180 Q505,155 490,140"
+              fill="none" stroke="var(--pelican-outline)" stroke-width="16" stroke-linecap="round"/>
+            <path d="M470,245 Q495,205 500,180 Q505,155 490,140"
+              fill="none" stroke="var(--pelican-body)" stroke-width="11" stroke-linecap="round"/>
+
+            <!-- 头 -->
+            <circle cx="488" cy="132" r="24" fill="var(--pelican-body)" stroke="var(--pelican-outline)" stroke-width="3"/>
+
+            <!-- 喙（上下动） -->
+            <g>
+              <!-- 上喙 -->
+              <path d="M470,124 Q430,116 398,124 Q430,140 470,136 Z" fill="var(--beak)" stroke="#ef6c00" stroke-width="2"/>
+              <!-- 下喙袋 -->
+              <path d="M470,140 Q438,166 410,150 Q434,144 470,140 Z" fill="var(--beak-accent)" stroke="#ef6c00" stroke-width="2">
+                <animateTransform attributeName="transform" type="rotate"
+                  values="0 470 140; 6 470 140; 0 470 140" dur="0.8s" repeatCount="indefinite"/>
+              </path>
+              <!-- 袋囊鼓起 -->
+              <ellipse cx="432" cy="152" rx="20" ry="10" fill="#ffca28" opacity="0.85"/>
+            </g>
+
+            <!-- 眼睛 -->
+            <circle cx="494" cy="126" r="4.5" fill="#263238"/>
+            <circle cx="496" cy="124.5" r="1.5" fill="#fff"/>
+
+            <!-- 腿部（骑行蹬踏，围绕踏板转） -->
+            <g stroke="var(--pelican-outline)" stroke-width="5" stroke-linecap="round" fill="none">
+              <animateTransform attributeName="transform" type="rotate"
+                from="0 400 300" to="360 400 300" dur="1.6s" repeatCount="indefinite"/>
+              <line x1="400" y1="300" x2="418" y2="318"/>
+              <line x1="430" y1="300" x2="412" y2="318"/>
+            </g>
+          </g>
+        </g>
+      </g>
+    </svg>
+
+    <div class="controls">
+      <button id="playPause" onclick="toggleAnim()">⏸ 暂停</button>
+      <button onclick="resetAnim()">↺ 复位</button>
+      <label>速度
+        <input id="speed" type="range" min="0.2" max="2" step="0.1" value="1" oninput="setSpeed(this.value)"/>
+      </label>
+    </div>
+  </div>
+
+<script>
+  // 让所有 SVG 动画可统一暂停 / 播放 / 调速
+  const svg = document.querySelector('.scene');
+  const btn = document.getElementById('playPause');
+  let running = true;
+
+  function toggleAnim() {
+    running = !running;
+    svg.pauseAnimations();
+    if (running) svg.unpauseAnimations();
+    btn.textContent = running ? '⏸ 暂停' : '▶ 播放';
+  }
+
+  function resetAnim() {
+    if (running) svg.pauseAnimations();
+    svg.setCurrentTime(0);
+    if (running) svg.unpauseAnimations();
+  }
+
+  function setSpeed(v) {
+    svg.setCurrentTime(0);
+    if (running) svg.pauseAnimations();
+    svg.style.playbackRate = v;
+    if (running) svg.unpauseAnimations();
+  }
+</script>
+</body>
+</html>

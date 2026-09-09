@@ -52,7 +52,7 @@ export function SessionGroup({
                 title={`${group.name} · ${group.sessions.length} sessions`}
                 onClick={onToggleCollapsed}
                 className={cn(
-                    "group/head sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 rounded-md border-t border-border px-2 py-1.5 text-left text-xs transition-colors hover:bg-hoverbg",
+                    "group/head sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 rounded-md border-t border-border bg-block px-2 py-1.5 text-left text-xs transition-colors hover:bg-hoverbg",
                     group.unclassified && "text-secondary"
                 )}
             >

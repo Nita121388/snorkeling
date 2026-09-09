@@ -40,7 +40,7 @@ function makeDefaultDraft(): ScheduledTaskType {
         prompt: "",
         workdir: "",
         connection: "local",
-        schedule: { type: "cron", cronExpr: "0 9 * * 1-5", timezone: "Asia/Shanghai" },
+        schedule: { type: "daily", timeOfDay: "09:00", timezone: "Asia/Shanghai" },
         notifyOnComplete: true,
         notifyOnError: true,
         notificationMode: "os",

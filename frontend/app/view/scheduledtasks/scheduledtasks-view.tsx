@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { describeCron } from "./cron-describe";
 import type { ScheduledTasksViewModel } from "./scheduledtasks-model";
 import * as jotai from "jotai";
 import * as React from "react";
@@ -23,18 +24,27 @@ const PiModels = [
 
 const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"];
 
-function scheduleLabel(s: ScheduledTaskScheduleType): string {
+function describeSchedule(s: ScheduledTaskScheduleType): string {
     switch (s?.type) {
         case "cron":
-            return `cron: ${s.cronExpr ?? ""}`;
-        case "interval":
-            return `every ${s.intervalMs ? s.intervalMs / 1000 : "?"}s`;
+            return describeCron(s.cronExpr);
+        case "interval": {
+            const secs = s.intervalMs ? s.intervalMs / 1000 : null;
+            if (secs == null) return "every ?s";
+            if (secs < 60) return `Every ${secs}s`;
+            if (secs % 3600 === 0) return `Every ${secs / 3600} hour${secs / 3600 > 1 ? "s" : ""}`;
+            return `Every ${secs / 60} minutes`;
+        }
         case "daily":
-            return `daily @ ${s.timeOfDay ?? ""}`;
-        case "weekly":
-            return `weekly ${s.dayOfWeek ?? 0} @ ${s.timeOfDay ?? ""}`;
+            return `Daily at ${s.timeOfDay ?? ""}`;
+        case "weekly": {
+            const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const d = s.dayOfWeek;
+            const wd = d >= 0 && d <= 6 ? names[d] : String(d ?? "?");
+            return `Weekly on ${wd} at ${s.timeOfDay ?? ""}`;
+        }
         case "once":
-            return s.runAt ? `once @ ${s.runAt}` : "once";
+            return s.runAt ? `Once at ${s.runAt}` : "Once";
         default:
             return s?.type ?? "-";
     }
@@ -152,7 +162,12 @@ function TaskRow({
             </td>
             <td className="px-2 py-2 text-muted">{task.agentProfile ?? "-"}</td>
             <td className="px-2 py-2 text-muted">{task.model ?? "-"}</td>
-            <td className="px-2 py-2 text-muted font-mono">{scheduleLabel(task.schedule)}</td>
+            <td className="px-2 py-2">
+                <div className="text-muted">{describeSchedule(task.schedule)}</div>
+                {task.schedule?.type === "cron" && task.schedule.cronExpr && (
+                    <div className="text-muted font-mono text-[10px]">{task.schedule.cronExpr}</div>
+                )}
+            </td>
             <td className="px-2 py-2">
                 <span className={statusColor(task.lastRunStatus)}>{task.lastRunStatus ?? "pending"}</span>
                 {task.lastRunAt && <span className="text-muted block text-[10px]">{new Date(task.lastRunAt).toLocaleString()}</span>}
@@ -327,6 +342,9 @@ function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft
                             onChange={(e) => setSched("cronExpr", e.target.value)}
                             placeholder="0 9 * * 1-5"
                         />
+                        <span className="text-xs text-secondary mt-0.5 min-h-[16px]">
+                            {describeCron(form.schedule?.cronExpr) || "—"}
+                        </span>
                     </Field>
                 )}
                 {(form.schedule?.type ?? "cron") === "interval" && (
@@ -453,7 +471,7 @@ function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft
 }
 
 const inputCls =
-    "w-full bg-background border border-border rounded px-2 py-1 text-sm focus:outline-none focus:border-accent";
+    "w-full bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] border border-border rounded px-2 py-1 text-sm focus:outline-none focus:border-accent";
 
 const btnCls = "px-3 py-1 text-xs rounded border border-border hover:bg-hoverbg cursor-pointer";
 
