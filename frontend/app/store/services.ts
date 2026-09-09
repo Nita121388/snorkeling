@@ -67,6 +67,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "List", Array.from(arguments))
     }
 
+    // query the current model/thinking level of a live GUI chat session without starting one
+    // @returns live session model state (Live=false when no matching live session exists)
+    LiveSessionState(request: AISessionsLiveSessionStateRequest): Promise<AISessionsLiveSessionStateResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "LiveSessionState", Array.from(arguments))
+    }
+
     // mark or unmark a local AI session
     // @returns updated AI session summary
     Mark(id: string, marked: boolean): Promise<SessionSummary> {

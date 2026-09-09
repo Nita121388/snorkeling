@@ -21,6 +21,11 @@ import {
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import {
+    ensureAgentRuntimeMetadata,
+    getAgentRuntimeMetadataSnapshot,
+    subscribeAgentRuntimeMetadata,
+} from "@/app/agent-status/agent-runtime-metadata-store";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useAtomValueSafe } from "@/util/util";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
@@ -260,18 +265,35 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         previewText,
     } = useSessionNote(blockId, blockData);
 
-    // 模型 + 状态信息（来自 block meta 与 AgentStatusStore）
+    // 模型 + 状态信息（来自 block meta、AgentStatusStore 与 AgentRuntimeMetadataStore）
     const agentStatus = useAgentStatusForCard(blockId);
-    const provider =
+    const sessionId = React.useMemo(() => agentSessionIdFromBlockData(blockData), [blockData]);
+    const rawProvider =
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
-            ? formatAgentProvider(agentStatus.provider)
-            : formatAgentProvider(normalizeAgentProvider(blockData?.meta?.["agent:provider"]));
-    const model =
+            ? agentStatus.provider
+            : normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
+    const provider = formatAgentProvider(rawProvider);
+
+    // 异步增强真实模型：立即显示请求模型，live 会话模型到达后增量替换；失败保留原值、不阻塞。
+    const runtimeEntry = React.useSyncExternalStore(
+        React.useCallback((listener) => subscribeAgentRuntimeMetadata(blockId, listener), [blockId]),
+        React.useCallback(() => getAgentRuntimeMetadataSnapshot(blockId), [blockId]),
+        React.useCallback(() => getAgentRuntimeMetadataSnapshot(blockId), [blockId])
+    );
+    React.useEffect(() => {
+        ensureAgentRuntimeMetadata(blockId, sessionId, rawProvider);
+    }, [blockId, sessionId, rawProvider]);
+
+    const requestedModel =
         (blockData?.meta?.["agent:requestedmodel"] as string)?.trim() ||
         (blockData?.meta?.["model"] as string)?.trim() ||
         "";
+    const liveModel = runtimeEntry?.source === "live" ? runtimeEntry.model : undefined;
+    const model = liveModel || requestedModel;
+    const modelLoading = runtimeEntry?.loading ?? false;
     const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
-    const showMetaRow = provider !== "" && provider !== "Agent" || model !== "" || statusPres != null;
+    const showMetaRow =
+        (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
     // mode 保留用于语义区分（gui 与 tui 当前渲染一致），TUI 的消息列表由 TermAgentMessageRail 承载。
     void mode;
@@ -298,7 +320,9 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                     <div className="agent-hover-card-head">
                         <i className="fa-sharp fa-solid fa-microchip agent-hover-card-icon" />
                         <span className="agent-hover-card-title">{provider}</span>
-                        {model !== "" && <span className="agent-hover-card-model">{model}</span>}
+                        <span className="agent-hover-card-model">
+                            {model || (modelLoading ? "获取中…" : "未指定")}
+                        </span>
                     </div>
                     {statusPres != null && (
                         <div className="agent-hover-card-status">

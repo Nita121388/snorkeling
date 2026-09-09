@@ -97,6 +97,21 @@ declare global {
         projectPaths?: ProjectPathSummary[];
     };
 
+    // aisessionsservice.AISessionsLiveSessionStateRequest
+    type AISessionsLiveSessionStateRequest = {
+        source: string;
+        sessionId: string;
+    };
+
+    // aisessionsservice.AISessionsLiveSessionStateResponse
+    type AISessionsLiveSessionStateResponse = {
+        live: boolean;
+        modelProvider?: string;
+        modelId?: string;
+        modelName?: string;
+        thinkingLevel?: string;
+    };
+
     // aisessionsservice.AISessionsNoteAndTagsRequest
     type AISessionsNoteAndTagsRequest = {
         id: string;

@@ -1095,10 +1095,9 @@
             border-bottom-color: transparent;
             background: rgb(from var(--main-text-color) r g b / 0.12);
             color: var(--accent-color);
-            // 先保证活动标签自身内容完整, 有剩余空间时再扩展, 上限为 block 宽度百分比.
-            // grow:1 用满空闲空间; shrink:0 保证不被同一行其他 tab 挤压到内容宽度以下;
-            // 长标题则由 max-width 封顶 (内容在标签内部跑马灯滚动).
-            flex: 1 0 auto;
+            // 短标题只占自身完整内容宽度, 不额外撑开;
+            // shrink:0 防止被同一行其他 tab 挤压, 长标题由 max-width 封顶后跑马灯滚动.
+            flex: 0 0 auto;
             max-width: var(--inline-tab-active-max-width, 45%);
 
             .inline-tab-block-tab-main {
