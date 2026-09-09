@@ -1,7 +1,7 @@
 # Snorkeling 功能模块基线（modules.md）
 
 > 巡检的新范式：**功能模块对齐**，不是文件对齐。
-> 三处：代码（frontend/app/）⇄ 原型（.mockup/）⇄ 方案（Obsidian My Projects\Snorkling\）
+> 三处：代码（frontend/app/）⇄ 原型（design/prototypes/）⇄ 方案（Obsidian My Projects\Snorkling\）
 > 深度巡检先对齐核心模块；基线稳定后，git commit 驱动增量巡检（提交涉及哪个模块就查哪个）。
 
 ## 核心原则
@@ -15,7 +15,7 @@
 
 ### 🔴 核心模块（优先深度巡检）
 
-| 模块 | 代码 | 原型 .mockup | 方案 Obsidian | 同步状态 |
+| 模块 | 代码 | 原型 design/prototypes | 方案 Obsidian | 同步状态 |
 |---|---|---|---|---|
 | **Agent 状态与识别** | `frontend/app/agent-status/`, `session-overview/` | `_to-keep/agent-status-current.html`(旧), `aisessions-*.html` | `方案/Agent状态与识别/` | ✅ 已巡检（2026-08-04，见下） |
 | **AI 面板 / 输入** | `frontend/app/aipanel/`, `suggestion/` | `new-agent-panel/prototype.html` | `方案/Agent数据与标签/` | 🟡 部分 |

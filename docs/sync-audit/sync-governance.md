@@ -32,7 +32,7 @@
 | 事实源 | 功能实现 | `E:\code\snorkeling`（git main） | 唯一真相 |
 | 事实源 | 用户功能清单 | `docs/project/snorkeling-user-facing-features.md` | 功能 → 文档映射的母本 |
 | 镜像 | 文档站（en/zh） | `docs/docs/` + `docs/i18n/zh-Hans/...` | 面向用户的站点，靠同步刷新 |
-| 镜像 | 原型 | `.mockup/` | 设计稿，靠同步刷新 |
+| 镜像 | 原型 | `design/prototypes/` | 设计稿，靠同步刷新 |
 | 摘要 | Obsidian 管理视图 | `My Projects\Snorkling\` | 进度/巡检/方案，靠巡检刷新 |
 
 **规则**：镜像不独立写新内容；新功能先入事实源（代码 + 功能清单），再同步镜像。
@@ -45,7 +45,7 @@
 │ (变更信号)   │                                       │ (node 脚本)     │
 └──────────────┘                                       └────────┬────────┘
                                                                 │ 硬信号(存在性/时间戳/版本)
-┌──────────────┐   .mockup/README 状态标记                     │
+┌──────────────┐   design/prototypes/README 状态标记                     │
 │  原型/文档   │ ──────────────────────────────────────        │
 └──────────────┘                                       ┌────────▼────────┐
 ┌──────────────┐   SKILL 触发（会话收尾/手动）          │ L2 agent 软查  │
@@ -93,7 +93,7 @@
 按 `modules.md` 核心模块（🔴）逐模块执行：
 
 1. 代码里该功能实现（frontend/pkg）
-2. 原型 HTML 展示（.mockup 对应项）
+2. 原型 HTML 展示（design/prototypes 对应项）
 3. Obsidian 方案描述
 4. 三处是否一致 → 不一致登记 TODOS → 审批 → 执行
 
@@ -128,7 +128,7 @@
 ### 4.6 输出
 
 ```
-.mockup 原型对账报告  2026-08-04
+design/prototypes 原型对账报告  2026-08-04
 ==============================================================================
 🟡 shell-settings/README.md
   镜像源  : ✗ pkg/util/shellutil/scanshells.go（已失效）
@@ -333,7 +333,7 @@
 
 系统落成后应满足（可逐项验证）：
 
-1. `node .mockup/audit-sync.mjs` 能输出分级报告，退出码正确。
+1. `node design/prototypes/audit-sync.mjs` 能输出分级报告，退出码正确。
 2. `docs/project/TODOS.md` 有基线 + 空待审批表，格式符合 6.1。
 3. 打开 `docs/project/approval-ui.html` 能加载待审批表、逐条审批、批量绿灯、导出回写。
 4. 首次巡检产生的条目（shell-settings 等）经审批后独立 commit + 快照，重跑检查后消除并关闭。

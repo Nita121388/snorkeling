@@ -183,15 +183,18 @@ type SettingsType struct {
 	// automatically ~1.5s after the last commit. Set false to keep manual ⌘S semantics.
 	NoteAutoSave *bool `json:"note:autosave,omitempty"`
 
-	PreviewShowHiddenFiles         *bool  `json:"preview:showhiddenfiles,omitempty"`
-	PreviewDefaultSort             string `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
-	PreviewDefaultDirectoryDisplay string `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`
-	PreviewDefaultOpenTarget       string `json:"preview:defaultopentarget,omitempty" jsonschema:"enum=off,enum=left,enum=right,enum=up,enum=down"`
+	PreviewShowHiddenFiles         *bool                 `json:"preview:showhiddenfiles,omitempty"`
+	PreviewDefaultSort             string                `json:"preview:defaultsort,omitempty" jsonschema:"enum=name,enum=modtime"`
+	PreviewDefaultDirectoryDisplay string                `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`
+	PreviewDefaultOpenTarget       string                `json:"preview:defaultopentarget,omitempty" jsonschema:"enum=off,enum=left,enum=right,enum=up,enum=down"`
 	PreviewPinnedDirectories       []PinnedDirectoryType `json:"preview:pinned-directories,omitempty"`
 
 	TabPreset       string `json:"tab:preset,omitempty"`
 	TabConfirmClose bool   `json:"tab:confirmclose,omitempty"`
 	TabBackground   string `json:"tab:background,omitempty"`
+
+	// 当前打开的 inline-tab block 标签最大宽度占 block 容器宽度的百分比
+	BlockInlineTabActiveMaxWidthPct *float64 `json:"block:inlinetabactivemaxwidthpct,omitempty"`
 
 	WidgetClear    bool  `json:"widget:*,omitempty"`
 	WidgetShowHelp *bool `json:"widget:showhelp,omitempty"`

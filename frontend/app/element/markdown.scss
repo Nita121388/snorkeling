@@ -512,6 +512,7 @@
                 justify-content: space-between;
                 gap: 0.286em;
                 pointer-events: none; // 容器不吃点击，代码区仍可正常选中
+                z-index: 1;
 
                 > * {
                     pointer-events: auto;
@@ -523,6 +524,8 @@
                 display: flex;
                 align-items: center;
                 gap: 0.286em;
+                opacity: 0;
+                transition: opacity 120ms ease, visibility 120ms ease;
             }
 
             // 命令类语言的执行按钮常驻：本项目是终端，命令块一键执行是核心场景（对齐/强于 Wolai）
@@ -530,14 +533,20 @@
                 visibility: visible;
             }
 
-            &:hover .codeblock-ops {
+            &:hover .codeblock-ops,
+            .codeblock-ops:focus-within {
                 visibility: visible;
+                opacity: 1;
             }
 
             // 折叠：仅 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全
             &.is-collapsed {
                 max-height: 250px;
                 overflow: hidden;
+            }
+
+            .codeblock-ops button {
+                border-radius: 4px;
             }
 
             .codeblock-expand {
@@ -1600,9 +1609,15 @@
         text-transform: uppercase;
         cursor: pointer;
 
-        &:hover {
+        &:hover,
+        &:focus-visible {
             color: var(--accent-color, #58c4ff);
             border-color: var(--accent-color, #58c4ff);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color, #58c4ff);
+            outline-offset: 2px;
         }
 
         &.is-static {

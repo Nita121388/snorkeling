@@ -858,8 +858,10 @@
         // hover 时临时撑开, 让被 max-width 截断的标题全显示;
         // 不再对 .active 用 flex-grow:2 拉宽 — active 也应按内容宽度, 仅靠样式区分.
         // dragging/drop-target 态禁用, 避免拖拽命中检测与 transform 抖动.
+        // .active 不走 hover 撑开: 它的宽度由 --inline-tab-active-max-width (% 上限) 决定,
+        // 超长内容改为标签内部横向滚动.
         transition: max-width 140ms ease;
-        &:hover:not(.dragging):not(.drop-target) {
+        &:hover:not(.active):not(.dragging):not(.drop-target) {
             flex-shrink: 0;
             max-width: 360px;
         }
@@ -1093,6 +1095,11 @@
             border-bottom-color: transparent;
             background: rgb(from var(--main-text-color) r g b / 0.12);
             color: var(--accent-color);
+            // 先保证活动标签自身内容完整, 有剩余空间时再扩展, 上限为 block 宽度百分比.
+            // grow:1 用满空闲空间; shrink:0 保证不被同一行其他 tab 挤压到内容宽度以下;
+            // 长标题则由 max-width 封顶 (内容在标签内部跑马灯滚动).
+            flex: 1 0 auto;
+            max-width: var(--inline-tab-active-max-width, 45%);
 
             .inline-tab-block-tab-main {
                 span {
@@ -1103,11 +1110,43 @@
                 }
             }
 
+            // 当前打开 tab: 内容不再省略号截断, 而是标签内部跑马灯自动水平滚动.
+            .inline-tab-block-tab-main {
+                justify-content: flex-start;
+                width: max-content;
+                will-change: transform;
+
+                button {
+                    flex: 0 0 auto;
+                    min-width: max-content;
+                    overflow: visible;
+                }
+
+                span {
+                    overflow: visible;
+                    text-overflow: clip;
+                }
+            }
+
+            .inline-tab-block-tab-main-wrapper {
+                overflow: hidden;
+                // flex-start 防止跑马灯内容起点被居中剪掉.
+                justify-content: flex-start;
+            }
+
             .inline-tab-block-tab-close {
                 width: 16px;
                 margin-left: 3px;
                 opacity: 0.72;
             }
+        }
+
+        &.active.marquee .inline-tab-block-tab-main {
+            animation: inline-tab-block-marquee 7s ease-in-out infinite alternate;
+        }
+
+        &.active.marquee:hover .inline-tab-block-tab-main {
+            animation-play-state: paused;
         }
 
         &.drop-target {
@@ -1132,6 +1171,15 @@
         flex: 1 1 auto;
         min-height: 0;
         min-width: 0;
+    }
+}
+
+@keyframes inline-tab-block-marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(calc(-1 * var(--marquee-distance, 0px)));
     }
 }
 

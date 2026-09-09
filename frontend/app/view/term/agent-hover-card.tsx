@@ -18,6 +18,11 @@ import {
     sessionTagsEqual,
     sessionTagsLabel,
 } from "@/app/view/aisessions/session-tags";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { useAtomValueSafe } from "@/util/util";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import * as React from "react";
 
@@ -27,6 +32,17 @@ const NoteAutoSaveDelayMs = 3000;
 function agentSessionConnection(blockData: Block | null): string | undefined {
     const connection = blockData?.meta?.connection;
     return typeof connection === "string" && connection.trim() !== "" ? connection.trim() : undefined;
+}
+
+function useAgentStatusForCard(blockId: string): AgentStatus | null {
+    const store = AgentStatusStore.getInstance();
+    const [statusAtom, setStatusAtom] = React.useState<ReturnType<AgentStatusStore["acquire"]> | null>(null);
+    React.useEffect(() => {
+        const atom = store.acquire(blockId);
+        setStatusAtom(atom);
+        return () => store.release(blockId);
+    }, [store, blockId]);
+    return useAtomValueSafe(statusAtom);
 }
 
 function agentSessionIdFromBlockData(blockData: Block | null): string {
@@ -230,7 +246,6 @@ export type AgentHoverCardProps = {
 
 const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardProps) => {
     const {
-        sessionId,
         summary,
         noteDraft,
         setNoteDraft,
@@ -245,10 +260,24 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         previewText,
     } = useSessionNote(blockId, blockData);
 
+    // 模型 + 状态信息（来自 block meta 与 AgentStatusStore）
+    const agentStatus = useAgentStatusForCard(blockId);
+    const provider =
+        agentStatus?.provider != null && agentStatus.provider.trim() !== ""
+            ? formatAgentProvider(agentStatus.provider)
+            : formatAgentProvider(normalizeAgentProvider(blockData?.meta?.["agent:provider"]));
+    const model =
+        (blockData?.meta?.["agent:requestedmodel"] as string)?.trim() ||
+        (blockData?.meta?.["model"] as string)?.trim() ||
+        "";
+    const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
+    const showMetaRow = provider !== "" && provider !== "Agent" || model !== "" || statusPres != null;
+
     // mode 保留用于语义区分（gui 与 tui 当前渲染一致），TUI 的消息列表由 TermAgentMessageRail 承载。
     void mode;
 
-    if (sessionId === "" || summary == null) {
+    // 会话摘要未就绪时也允许渲染（只要 agent 模型/状态信息可用）；Note 段仅在摘要就绪后显示。
+    if (!showMetaRow && summary == null) {
         return null;
     }
 
@@ -263,53 +292,71 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
 
     return (
         <div className="agent-hover-card">
-            {/* Note section */}
-            <div className="agent-hover-card-section">
-                <div className="agent-hover-card-head">
-                    <i className={`fa-sharp fa-solid agent-hover-card-icon ${statusIcon}`} />
-                    <span className="agent-hover-card-title">{title}</span>
+            {/* 模型 + 状态 section */}
+            {showMetaRow && (
+                <div className="agent-hover-card-section">
+                    <div className="agent-hover-card-head">
+                        <i className="fa-sharp fa-solid fa-microchip agent-hover-card-icon" />
+                        <span className="agent-hover-card-title">{provider}</span>
+                        {model !== "" && <span className="agent-hover-card-model">{model}</span>}
+                    </div>
+                    {statusPres != null && (
+                        <div className="agent-hover-card-status">
+                            <i className={`fa-sharp fa-solid ${statusPres.icon}`} />
+                            <span>{statusPres.label}</span>
+                        </div>
+                    )}
                 </div>
-                {isEditing ? (
-                    <textarea
-                        ref={inputRef}
-                        className="agent-hover-card-input"
-                        value={noteDraft}
-                        rows={4}
-                        placeholder="Note"
-                        aria-label="Session note"
-                        spellCheck={false}
-                        onChange={(event) => {
-                            setNoteDraft(event.target.value);
-                        }}
-                        onBlur={finishEditing}
-                        onKeyDown={(event) => {
-                            event.stopPropagation();
-                            if (event.key === "Escape") {
-                                event.currentTarget.blur();
-                            }
-                        }}
-                    />
-                ) : (
-                    <button
-                        type="button"
-                        className="agent-hover-card-preview"
-                        onClick={() => {
-                            setIsEditing(true);
-                            window.setTimeout(() => {
-                                inputRef.current?.focus();
-                                inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
-                            }, 0);
-                        }}
-                    >
-                        {trimmedDraft === "" ? (
-                            <span className="agent-hover-card-empty">Click to add a note...</span>
-                        ) : (
-                            <span className="agent-hover-card-text">{previewText}</span>
-                        )}
-                    </button>
-                )}
-                {noteError ? <div className="agent-hover-card-error">{noteError}</div> : null}
-            </div>
+            )}
+            {/* Note section */}
+            {summary != null && (
+                <div className="agent-hover-card-section">
+                    <div className="agent-hover-card-head">
+                        <i className={`fa-sharp fa-solid agent-hover-card-icon ${statusIcon}`} />
+                        <span className="agent-hover-card-title">{title}</span>
+                    </div>
+                    {isEditing ? (
+                        <textarea
+                            ref={inputRef}
+                            className="agent-hover-card-input"
+                            value={noteDraft}
+                            rows={4}
+                            placeholder="Note"
+                            aria-label="Session note"
+                            spellCheck={false}
+                            onChange={(event) => {
+                                setNoteDraft(event.target.value);
+                            }}
+                            onBlur={finishEditing}
+                            onKeyDown={(event) => {
+                                event.stopPropagation();
+                                if (event.key === "Escape") {
+                                    event.currentTarget.blur();
+                                }
+                            }}
+                        />
+                    ) : (
+                        <button
+                            type="button"
+                            className="agent-hover-card-preview"
+                            onClick={() => {
+                                setIsEditing(true);
+                                window.setTimeout(() => {
+                                    inputRef.current?.focus();
+                                    inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
+                                }, 0);
+                            }}
+                        >
+                            {trimmedDraft === "" ? (
+                                <span className="agent-hover-card-empty">Click to add a note...</span>
+                            ) : (
+                                <span className="agent-hover-card-text">{previewText}</span>
+                            )}
+                        </button>
+                    )}
+                    {noteError ? <div className="agent-hover-card-error">{noteError}</div> : null}
+                </div>
+            )}
         </div>
     );
 });

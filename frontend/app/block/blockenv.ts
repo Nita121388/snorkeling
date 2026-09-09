@@ -16,6 +16,7 @@ export type BlockEnv = WaveEnvSubset<{
         | "term:showsplitbuttons"
         | "window:magnifiedblockblurprimarypx"
         | "window:magnifiedblockopacity"
+        | "block:inlinetabactivemaxwidthpct"
     >;
     showContextMenu: WaveEnv["showContextMenu"];
     atoms: {

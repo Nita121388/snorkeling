@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const root = dirname(fileURLToPath(import.meta.url).replace(/\\/g, "/"));
-const file = `file:///${root}/.mockup/agent-id-card/index.html`;
+const file = `file:///${root}/design/prototypes/agent-id-card/index.html`;
 
 function shot(theme, out) {
     return new Promise((res) => {

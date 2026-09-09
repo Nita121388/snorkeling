@@ -6,7 +6,7 @@ Last updated: 2026-07-19
 
 This document is the single source of truth for Snorkeling's foundational UI. Component code, theme CSS, mockups, and feature surfaces must conform to this document. When implementation and this document disagree, either fix the implementation or update this document in the same reviewed change.
 
-The interactive visual reference is `.mockup/design-system.html`.
+The interactive visual reference is `design/prototypes/design-system.html`.
 
 ## 1. Scope
 
@@ -223,7 +223,7 @@ Candidate DS-005 must be classified into confirmed violation, brand/domain color
 
 | Batch | Scope | Status | Evidence |
 | --- | --- | --- | --- |
-| 1 | Theme variables, semantic Tailwind aliases, and visual reference | Complete | `theme.scss`, `tailwindsetup.css`, `.mockup/design-system.html` |
+| 1 | Theme variables, semantic Tailwind aliases, and visual reference | Complete | `theme.scss`, `tailwindsetup.css`, `design/prototypes/design-system.html` |
 | 2 | Shared buttons, icon buttons, inputs, textareas, and toggles | Complete | `frontend/app/element/*`, foundation state tests |
 | 3 | AI Sessions and Wave Config confirmed state violations | Complete | `frontend/app/view/aisessions/*`, `frontend/app/view/waveconfig/*`, targeted Vitest |
 | 4 | AI Panel surfaces, announcements, messages, tool states, and violation register | Complete | `frontend/app/aipanel/*`, `docs/ui-violations.md`, Playwright visual checks |

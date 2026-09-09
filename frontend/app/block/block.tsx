@@ -47,6 +47,7 @@ import clsx from "clsx";
 import type { Atom } from "jotai";
 import { atom, useAtomValue } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDrag, useDrop } from "react-dnd";
 import { minimizeGroupToFloat } from "./block-minimize";
 import {
@@ -179,8 +180,20 @@ const InlineTabLabel = memo(
         const [draftTitle, setDraftTitle] = useState(customTitle ?? "");
         const inputRef = useRef<HTMLInputElement>(null);
         const tabRef = useRef<HTMLDivElement>(null);
+        // 当前打开 tab 的标题跑马灯容器: 内容超过 max-width 时自动水平滚动展示全名
+        // (广告/跑马灯效果), 宽度上限由 --inline-tab-active-max-width (block 宽度百分比) 决定.
+        const scrollWrapRef = useRef<HTMLDivElement>(null);
+        const [isMarquee, setIsMarquee] = useState(false);
         const [isHovered, setIsHovered] = useState(false);
         const [isCardHovered, setIsCardHovered] = useState(false);
+        // 悬浮卡片坐标（屏幕坐标，Portal 到 body 时用 fixed 定位）
+        const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
+        const refreshCardPos = useCallback(() => {
+            const rect = tabRef.current?.getBoundingClientRect();
+            if (rect) {
+                setCardPos({ top: rect.bottom + 2, left: rect.left });
+            }
+        }, []);
         const hideCardTimerRef = useRef<number | null>(null);
         const cancelPendingHideCard = useCallback(() => {
             if (hideCardTimerRef.current != null) {
@@ -312,6 +325,30 @@ const InlineTabLabel = memo(
             }
         }, [customTitle, isEditing]);
 
+        // 检测活动标签内容是否超出宽度上限: 超出则启动跑马灯自动滚动 (内容像广告一样水平往复),
+        // 并记录滚动距离。容器尺寸变化 (block 宽度 / 内容变化) 时重新测量。
+        useEffect(() => {
+            const wrap = scrollWrapRef.current;
+            const tabEl = tabRef.current;
+            if (!isActive || !wrap || !tabEl) {
+                setIsMarquee(false);
+                return;
+            }
+            const measure = () => {
+                const distance = wrap.scrollWidth - wrap.clientWidth;
+                if (distance > 1) {
+                    tabEl.style.setProperty("--marquee-distance", `${distance}px`);
+                    setIsMarquee(true);
+                } else {
+                    setIsMarquee(false);
+                }
+            };
+            measure();
+            const ro = new ResizeObserver(measure);
+            ro.observe(wrap);
+            return () => ro.disconnect();
+        }, [isActive, displayTitle]);
+
         const commitRename = useCallback(() => {
             setIsEditing(false);
             onRename(draftTitle);
@@ -426,11 +463,13 @@ const InlineTabLabel = memo(
                     className={clsx("inline-tab-block-tab", {
                         active: isActive,
                         dragging: isDragging,
+                        marquee: isMarquee,
                         "drop-target": isOver,
                     })}
                     onMouseEnter={() => {
                         cancelPendingHideCard();
                         setIsHovered(true);
+                        refreshCardPos();
                     }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
@@ -441,7 +480,7 @@ const InlineTabLabel = memo(
                         }, 300);
                     }}
                 >
-                    <div className="inline-tab-block-tab-main-wrapper">
+                    <div className="inline-tab-block-tab-main-wrapper" ref={scrollWrapRef}>
                         <Tooltip
                             content={
                                 <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
@@ -538,51 +577,53 @@ const InlineTabLabel = memo(
                         <i className={makeIconClass("xmark", true)} />
                     </button>
                 </div>
-                {/* Agent hover card for inactive tabs */}
-                {showHoverCard && (
-                    <div
-                        className="agent-hover-card-wrapper"
-                        style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: 0,
-                            zIndex: 100,
-                            marginTop: 2,
-                        }}
-                        onMouseEnter={() => {
-                            cancelPendingHideCard();
-                            setIsCardHovered(true);
-                        }}
-                        onMouseLeave={() => {
-                            cancelPendingHideCard();
-                            hideCardTimerRef.current = window.setTimeout(() => {
-                                hideCardTimerRef.current = null;
-                                setIsCardHovered(false);
-                                setIsHovered(false);
-                            }, 300);
-                        }}
-                    >
-                        {isNoteBlock ? (
-                            <div className="agent-hover-card">
-                                <div className="agent-hover-card-head">
-                                    <i className="fa-sharp fa-solid fa-note-sticky agent-hover-card-icon" />
-                                    <span className="agent-hover-card-title">Note</span>
+                {/* Note/Agent hover card - Portal 到 body 避免被 tabs 容器 overflow 裁剪；激活/非激活标签均显示 */}
+                {showHoverCard && cardPos &&
+                    createPortal(
+                        <div
+                            className="agent-hover-card-wrapper"
+                            style={{
+                                position: "fixed",
+                                top: cardPos.top,
+                                left: cardPos.left,
+                                zIndex: 200,
+                            }}
+                            onMouseEnter={() => {
+                                cancelPendingHideCard();
+                                refreshCardPos();
+                                setIsCardHovered(true);
+                            }}
+                            onMouseLeave={() => {
+                                cancelPendingHideCard();
+                                hideCardTimerRef.current = window.setTimeout(() => {
+                                    hideCardTimerRef.current = null;
+                                    setIsCardHovered(false);
+                                    setIsHovered(false);
+                                }, 300);
+                            }}
+                        >
+                            {isNoteBlock ? (
+                                <div className="agent-hover-card">
+                                    <div className="agent-hover-card-head">
+                                        <i className="fa-sharp fa-solid fa-note-sticky agent-hover-card-icon" />
+                                        <span className="agent-hover-card-title">Note</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="agent-hover-card-preview"
+                                        onClick={onActivate}
+                                    >
+                                        <span className="agent-hover-card-text">
+                                            {(blockData?.meta?.file as string) || blockData?.oid || ""}
+                                        </span>
+                                    </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="agent-hover-card-preview"
-                                    onClick={onActivate}
-                                >
-                                    <span className="agent-hover-card-text">
-                                        {(blockData?.meta?.file as string) || blockData?.oid || ""}
-                                    </span>
-                                </button>
-                            </div>
-                        ) : (
-                            <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
-                        )}
-                    </div>
-                )}
+                            ) : (
+                                <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
+                            )}
+                        </div>,
+                        document.body
+                    )}
             </>
         );
     }
@@ -755,6 +796,11 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const isEphemeral = useAtomValue(nodeModel.isEphemeral);
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
+    // 当前打开 tab 标签的最大宽度 (占 block 容器宽度百分比); 超长内容在标签内部滚动.
+    const inlineTabActiveMaxPct = useAtomValue(
+        waveEnv.getSettingsKeyAtom("block:inlinetabactivemaxwidthpct")
+    );
+    const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 45));
 
     const handleTabStripKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -851,7 +897,10 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     }
 
     return (
-        <div className="inline-tab-block">
+        <div
+            className="inline-tab-block"
+            style={{ ["--inline-tab-active-max-width" as any]: `${inlineTabActiveMaxWidthPct}%` }}
+        >
             {blockIds.map((blockId) => (
                 <InlineTabBlockMissingGuard
                     key={`missing-guard-${blockId}`}

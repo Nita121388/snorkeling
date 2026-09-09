@@ -49,5 +49,6 @@
     "agentstatus:osnotifyblockedminms": 0,
     "preview:defaultsort": "name",
     "preview:defaultdirectorydisplay": "tree",
-    "preview:defaultopentarget": "right"
+    "preview:defaultopentarget": "right",
+    "block:inlinetabactivemaxwidthpct": 45
 }

@@ -8,7 +8,7 @@ for (const sc of ["working-tool", "blocked", "done", "idle"]) {
     p.on("pageerror", (e) => pageErrors.push(String(e)));
     const url =
         "file://" +
-        path.resolve(".mockup/agent-id-card/index.html").split("\\").join("/") +
+        path.resolve("design/prototypes/agent-id-card/index.html").split("\\").join("/") +
         "?scenario=" +
         sc;
     await p.goto(url, { waitUntil: "networkidle" });

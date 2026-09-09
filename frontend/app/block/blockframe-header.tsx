@@ -302,14 +302,14 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
         endIconsElem.push(<IconButton key="split-horizontal" decl={splitHorizontalDecl} className="end-icon-reveal" />);
         endIconsElem.push(<IconButton key="split-vertical" decl={splitVerticalDecl} className="end-icon-reveal" />);
     }
-    const settingsDecl: IconButtonDecl = {
+    const moreDecl: IconButtonDecl = {
         elemtype: "iconbutton",
-        icon: "cog",
-        title: "Settings",
+        icon: "ellipsis",
+        title: "More",
         zone: "reveal",
         click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext),
     };
-    endIconsElem.push(<IconButton key="settings" decl={settingsDecl} className="block-frame-settings end-icon-reveal" />);
+    endIconsElem.push(<IconButton key="more" decl={moreDecl} className="block-frame-settings end-icon-reveal" />);
     if (isNoteBlock && (minimizedPreview || ephemeral)) {
         endIconsElem.push(
             <OptMagnifyButton

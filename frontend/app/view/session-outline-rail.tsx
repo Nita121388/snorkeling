@@ -246,7 +246,14 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                 onJump(seq);
                 return;
             }
-            setPinnedSeq((current) => (current === seq ? null : seq));
+            setPinnedSeq((current) => {
+                const newPinned = current === seq ? null : seq;
+                // 当取消固定时，同时清除 hover 状态，确保 ToolTip 关闭
+                if (newPinned === null) {
+                    hoverIntent.current.leave();
+                }
+                return newPinned;
+            });
         },
         [onJump]
     );

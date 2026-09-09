@@ -667,6 +667,28 @@
     overflow: hidden;
 }
 
+.agent-hover-card-model {
+    margin-left: auto;
+    max-width: 220px;
+    overflow: hidden;
+    color: var(--main-text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-hover-card-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+}
+
+.agent-hover-card-status i {
+    color: var(--accent-color);
+    font-size: 10px;
+}
+
 .agent-hover-card-input {
     width: 100%;
     border: 1px solid var(--accent-color);

@@ -109,6 +109,8 @@ const (
 	ConfigKey_TabConfirmClose                = "tab:confirmclose"
 	ConfigKey_TabBackground                  = "tab:background"
 
+	ConfigKey_BlockInlineTabActiveMaxWidthPct = "block:inlinetabactivemaxwidthpct"
+
 	ConfigKey_WidgetClear                    = "widget:*"
 	ConfigKey_WidgetShowHelp                 = "widget:showhelp"
 

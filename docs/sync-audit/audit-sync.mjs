@@ -2,14 +2,14 @@
 /**
  * docs/sync-audit/audit-sync.mjs — 原型与真实代码同步对账（L1 硬查）
  *
- * 扫描 .mockup 下所有 README.md，解析 PROCESS.md 约定的状态标记：
+ * 扫描 design/prototypes 下所有 README.md，解析 PROCESS.md 约定的状态标记：
  *   > 同步状态：▲|●|▼|◐ ...
  *   > 镜像源：frontend/xxx.tsx, pkg/yyy.go（可多个）
  *   > 最后同步：YYYY-MM-DD
  *
  * 校验每个镜像源在仓库里是否仍存在，输出对账报告。
  *
- * 用法：node docs/sync-audit/audit-sync.mjs [--mockup-dir .mockup] [--json]
+ * 用法：node docs/sync-audit/audit-sync.mjs [--prototypes-dir design/prototypes] [--json]
  * 退出码：0 = 无镜像缺失；1 = 有缺失/未标注（CI 可用）
  */
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
@@ -22,10 +22,10 @@ const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
 // 解析参数
 const args = process.argv.slice(2);
 const jsonOut = args.includes("--json");
-const mockArg = args.find((a) => a.startsWith("--mockup-dir="));
+const mockArg = args.find((a) => a.startsWith("--prototypes-dir="));
 const MOCKUP_DIR = resolve(
   REPO_ROOT,
-  mockArg ? mockArg.split("=")[1] : ".mockup"
+  mockArg ? mockArg.split("=")[1] : "design/prototypes"
 );
 
 // ---------- 工具 ----------
@@ -81,7 +81,7 @@ let missing = 0;
 let unmarked = 0;
 
 for (const readmePath of walk(MOCKUP_DIR).filter((p) => basename(p) === "README.md")) {
-    const rel = join(".mockup", readmePath.slice(MOCKUP_DIR.length + 1));
+    const rel = join("design/prototypes", readmePath.slice(MOCKUP_DIR.length + 1));
     const { status, mirrors, synced } = parse(readmePath);
     const syncedDays = daysSince(synced);
 
@@ -124,7 +124,7 @@ if (jsonOut) {
 }
 
 // ---------- 输出 ----------
-console.log(`\n.mockup 原型对账报告  ${new Date().toISOString().slice(0, 10)}`);
+console.log(`\ndesign/prototypes 原型对账报告  ${new Date().toISOString().slice(0, 10)}`);
 console.log("=".repeat(78));
 for (const r of rows) {
     console.log(`\n${r.status}  ${r.rel}`);

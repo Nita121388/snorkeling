@@ -4,6 +4,15 @@
 
 Read and honor the existing project guidance in `CLAUDE.md` and any referenced skill guides when the task matches them.
 
+## Design Asset Routing
+
+When generating or editing design-related files (designs, prototypes, research docs), follow the routing rules in `design/DESIGN-GOVERNANCE.md`. Quick reference:
+
+- **Brainstorm/research/plan** → Obsidian `My Projects/Snorkling/`
+- **Mature design doc** → `design/plans/`
+- **Interactive prototype (HTML/CSS/JS)** → `design/prototypes/`
+- **Implementation facts** → `docs/project/`
+
 ## Local toolchain self-check
 
 - Do not conclude Go/Task/npm is unavailable from the raw Codex process PATH alone. Run `npm run setup` to install the pinned toolchain under `.tools/`; Task commands should go through `node scripts/run-task.mjs <task>`.

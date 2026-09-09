@@ -1,12 +1,16 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
+import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
+import { getWaveObjectAtom, makeORef } from "@/app/store/wos";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { ObjectService } from "@/store/services";
 import { makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { type Atom, useAtomValue } from "jotai";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
     deleteMinimizedGroup,
     getMinimizedBlockIds,
@@ -259,16 +263,75 @@ function SidebarIconItem({
     onRestore: (id: string) => void;
     onContextMenu: (e: ReactMouseEvent, item: SidebarBlockItem) => void;
 }) {
+    const blockData = useAtomValue(useMemo(() => getWaveObjectAtom<Block>(makeORef("block", item.blockId)), [item.blockId]));
     const iconClass = item.icon ? makeIconClass(item.icon, false) : null;
+    const isAgent = isAgentTerminalMeta(blockData?.meta);
+    const itemRef = useRef<HTMLDivElement>(null);
+    const hideTimerRef = useRef<number | null>(null);
+    const [isHovered, setIsHovered] = useState(false);
+    const [isCardHovered, setIsCardHovered] = useState(false);
+    const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
+    const cancelHide = useCallback(() => {
+        if (hideTimerRef.current != null) {
+            window.clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+        }
+    }, []);
+    const refreshCardPos = useCallback(() => {
+        const rect = itemRef.current?.getBoundingClientRect();
+        if (rect) {
+            setCardPos({ top: rect.top, left: rect.right + 8 });
+        }
+    }, []);
+    useEffect(() => () => cancelHide(), [cancelHide]);
+    const showCard = isAgent && (isHovered || isCardHovered) && cardPos != null;
+
     return (
-        <div
-            className="block-sidebar-item"
-            title={item.title}
-            onClick={() => onRestore(item.blockId)}
-            onContextMenu={(e) => onContextMenu(e, item)}
-        >
-            {iconClass ? <i className={iconClass} /> : <span className="block-sidebar-item-fallback" />}
-        </div>
+        <>
+            <div
+                ref={itemRef}
+                className="block-sidebar-item"
+                title={item.title}
+                onClick={() => onRestore(item.blockId)}
+                onContextMenu={(e) => onContextMenu(e, item)}
+                onMouseEnter={() => {
+                    cancelHide();
+                    setIsHovered(true);
+                    refreshCardPos();
+                }}
+                onMouseLeave={() => {
+                    cancelHide();
+                    hideTimerRef.current = window.setTimeout(() => {
+                        setIsHovered(false);
+                        setIsCardHovered(false);
+                    }, 300);
+                }}
+            >
+                {iconClass ? <i className={iconClass} /> : <span className="block-sidebar-item-fallback" />}
+            </div>
+            {showCard &&
+                createPortal(
+                    <div
+                        className="agent-hover-card-wrapper"
+                        style={{ position: "fixed", top: cardPos.top, left: cardPos.left, zIndex: 200 }}
+                        onMouseEnter={() => {
+                            cancelHide();
+                            refreshCardPos();
+                            setIsCardHovered(true);
+                        }}
+                        onMouseLeave={() => {
+                            cancelHide();
+                            hideTimerRef.current = window.setTimeout(() => {
+                                setIsHovered(false);
+                                setIsCardHovered(false);
+                            }, 300);
+                        }}
+                    >
+                        <AgentHoverCard blockId={item.blockId} blockData={blockData ?? null} mode="gui" />
+                    </div>,
+                    document.body
+                )}
+        </>
     );
 }
 

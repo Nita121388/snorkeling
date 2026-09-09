@@ -399,6 +399,9 @@
         "tab:background": {
           "type": "string"
         },
+        "block:inlinetabactivemaxwidthpct": {
+          "type": "number"
+        },
         "widget:*": {
           "type": "boolean"
         },
