@@ -1,0 +1,448 @@
+/* ============================================================
+   VCS Repo Switcher v2 · style.css
+   镜像 frontend/app/view/vcs/ 真实组件类名与文案，token 对齐
+   light 主题（theme.scss）—— 与 vcs-block-tabs 原型一致
+   ============================================================ */
+
+:root {
+  /* ── token（light） ── */
+  --accent: #a76fca;
+  --accent-600: #7c49a1;
+  --accent-500: #955ab8;
+  --accent-soft: rgba(167, 111, 202, 0.12);
+  --accent-soft-border: rgba(167, 111, 202, 0.3);
+  --text: #4c3924;
+  --text-secondary: #675033;
+  --text-muted: #777167;
+  --panel: rgba(243, 239, 228, 0.72);
+  --surface: #fffdf8;
+  --surface-strong: #f4f0e7;
+  --border: #ded8ca;
+  --hoverbg: rgba(167, 111, 202, 0.1);
+  --error: #d32f2f;
+  --warning: #e65100;
+  --success: #2e7d32;
+  --bg: #ebe5d9;
+  --font-body: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: Hack, "JetBrains Mono", Consolas, ui-monospace, monospace;
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 var(--font-body);
+  -webkit-font-smoothing: auto;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+code, .mono { font-family: var(--font-mono); font-size: 12px; }
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(107,91,68,0.24); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(107,91,68,0.5); }
+
+/* ============================================================
+   §0 页面骨架
+   ============================================================ */
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px 96px;
+}
+.page > h1 { font-size: 20px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+.page > .intro {
+  color: var(--text-muted); font-size: 13px; margin-bottom: 20px; max-width: 74ch;
+}
+
+.control-row {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+}
+.scenario-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+.mode-bar { display: flex; align-items: center; gap: 6px; }
+.mode-label { font-size: 12px; color: var(--text-muted); }
+
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 13px;
+}
+.chip.active { background: var(--accent-600); border-color: var(--accent-600); color: #fff; font-weight: 600; }
+.chip:hover:not(.active) { background: var(--hoverbg); }
+
+/* ============================================================
+   §1 聚合信息条
+   ============================================================ */
+.summary-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  position: relative;
+}
+.sum-left { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.sum-left b { color: var(--accent-600); font-weight: 700; }
+.sum-sep { color: var(--border); }
+.sum-chip {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.sum-chip.warn { color: var(--warning); border-color: rgba(230,81,0,0.3); background: rgba(230,81,0,0.06); }
+.sum-expand {
+  margin-left: auto; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: transparent; color: var(--text-secondary); font-size: 11px; padding: 3px 8px;
+}
+.sum-expand:hover { background: var(--hoverbg); color: var(--text); }
+
+.summary-popover {
+  position: absolute; top: calc(100% + 6px); right: 0; left: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.12); z-index: 40; overflow: hidden;
+}
+.summary-popover.hidden { display: none; }
+.pop-title {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 8px 12px 6px; border-bottom: 1px solid var(--border);
+}
+.summary-list { max-height: 300px; overflow-y: auto; }
+.sum-row {
+  display: grid; grid-template-columns: 16px minmax(0,1fr) auto auto;
+  gap: 8px; align-items: center;
+  padding: 7px 12px; font-size: 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.sum-row:last-child { border-bottom: 0; }
+.sum-row:hover { background: var(--hoverbg); }
+.sum-row .sdot {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.sum-row .sdot.clean { background: var(--success); }
+.sum-row .sdot.dirty { background: var(--warning); }
+.sum-row .sdot.svn { background: var(--accent-600); }
+.sum-row .sname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sum-row .spath { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.sum-row .smeta { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.sum-row .smeta .warn { color: var(--warning); }
+.pop-foot {
+  padding: 6px 12px; border-top: 1px solid var(--border);
+  background: var(--panel); font-size: 11px;
+}
+
+/* ============================================================
+   §2 VCS 视图（镜像 vcs.tsx 结构）
+   ============================================================ */
+.vcs-view {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+}
+
+/* ── §2.1 仓库切换器（新增层） ── */
+.switcher { display: none; border-bottom: 1px solid var(--border); background: var(--panel); padding: 6px 8px; }
+.switcher.visible { display: block; }
+
+.switcher.chips-mode { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.switcher.chips-mode .chips-scroll {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  padding: 2px 0; min-width: 0; flex: 1;
+}
+.switcher.chips-mode .chips-scroll::-webkit-scrollbar { display: none; }
+
+.repo-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-secondary); border-radius: 999px;
+  padding: 4px 10px; font-size: 12px; white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color 100ms ease, background 100ms ease;
+}
+.repo-chip:hover { border-color: var(--accent-soft-border); background: var(--hoverbg); }
+.repo-chip.active {
+  border-color: var(--accent-600); background: var(--accent-600); color: #fff; font-weight: 600;
+}
+.repo-chip .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.repo-chip .chip-dot.dirty { background: var(--warning); }
+.repo-chip.active .chip-dot { background: rgba(255,255,255,0.85); }
+.repo-chip .chip-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.repo-chip .chip-branch { font-family: var(--font-mono); font-size: 10px; opacity: 0.75; }
+
+.chips-more { position: relative; flex-shrink: 0; }
+.chips-more > button {
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-secondary); border-radius: 999px; padding: 4px 10px; font-size: 12px;
+}
+.chips-more > button:hover { background: var(--hoverbg); }
+.more-menu {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.12); min-width: 220px; z-index: 50;
+  padding: 4px; display: none;
+}
+.more-menu.open { display: block; }
+.more-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: var(--r-sm); font-size: 12px; cursor: pointer;
+  white-space: nowrap;
+}
+.more-item:hover { background: var(--hoverbg); }
+.more-item.active { color: var(--accent-600); font-weight: 600; }
+.more-item .mi-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.more-item .mi-dot.dirty { background: var(--warning); }
+.more-item .mi-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.more-item .mi-branch { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+
+/* ── Dropdown 形态 ── */
+.switcher.dropdown-mode { display: flex; align-items: center; gap: 8px; }
+.switcher.dropdown-mode .dd-label { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.switcher.dropdown-mode .dd {
+  position: relative; min-width: 0; flex: 1; max-width: 420px;
+}
+.switcher.dropdown-mode .dd-trigger {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--r-sm); padding: 5px 8px; font-size: 12px;
+}
+.switcher.dropdown-mode .dd-trigger:hover { border-color: var(--accent-soft-border); }
+.switcher.dropdown-mode .dd-trigger .dd-caret { margin-left: auto; color: var(--text-muted); font-size: 10px; }
+.switcher.dropdown-mode .dd-trigger .dd-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.switcher.dropdown-mode .dd-trigger .dd-dot.dirty { background: var(--warning); }
+.switcher.dropdown-mode .dd-trigger .dd-name { font-weight: 600; }
+.switcher.dropdown-mode .dd-trigger .dd-branch { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.switcher.dropdown-mode .dd-panel {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.12); z-index: 50; overflow: hidden;
+  display: none;
+}
+.switcher.dropdown-mode .dd-panel.open { display: block; }
+.dd-search { width: 100%; border: 0; border-bottom: 1px solid var(--border); padding: 7px 10px; font-size: 12px; outline: none; background: var(--surface); }
+.dd-search::placeholder { color: var(--text-muted); }
+.dd-list { max-height: 260px; overflow-y: auto; padding: 4px; }
+.dd-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: var(--r-sm); font-size: 12px; cursor: pointer;
+}
+.dd-item:hover { background: var(--hoverbg); }
+.dd-item.active { background: var(--accent-soft); color: var(--accent-600); font-weight: 600; }
+.dd-item .di-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.dd-item .di-dot.dirty { background: var(--warning); }
+.dd-item .di-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-item .di-branch { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+.dd-item .di-meta { font-variant-numeric: tabular-nums; font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+.dd-empty { padding: 14px; text-align: center; color: var(--text-muted); font-size: 12px; }
+
+/* ── §2.2 RepoHeader（vcs-tabs.tsx VcsRepoHeader） ── */
+.repo-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.repo-header .rh-glyph { color: var(--text-muted); font-size: 14px; flex-shrink: 0; }
+.repo-header .rh-branch { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.repo-header .rh-sync { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.repo-header .rh-sync.warn { color: var(--warning); }
+.repo-header .rh-spacer { flex: 1; min-width: 4px; }
+.repo-header .rh-changed {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  padding: 2px 7px; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-muted); flex-shrink: 0;
+}
+.repo-header .rh-changed.warn { color: var(--warning); border-color: rgba(230,81,0,0.3); background: rgba(230,81,0,0.06); }
+.repo-header .rh-pull {
+  border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+  border-radius: 4px; padding: 3px 8px; font-size: 11px; flex-shrink: 0;
+}
+.repo-header .rh-pull:hover { background: var(--hoverbg); }
+.repo-header .rh-pull:disabled { opacity: 0.45; cursor: default; }
+.repo-header .rh-refresh {
+  border: 0; background: transparent; color: var(--text-muted); font-size: 12px;
+  width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0;
+}
+.repo-header .rh-refresh:hover { background: var(--hoverbg); color: var(--text); }
+
+/* ── §2.3 TabBar（vcs-tabs.tsx VcsTabBar） ── */
+.tab-bar {
+  display: flex; gap: 2px; padding: 0 8px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.tab-btn {
+  position: relative; border: 0; background: transparent; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active { color: var(--accent-600); border-bottom-color: var(--accent-600); font-weight: 600; }
+.tab-btn .t-ico { font-size: 11px; }
+.tab-btn .t-badge {
+  min-width: 16px; height: 14px; border-radius: 999px; background: var(--border);
+  color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 4px;
+}
+.tab-btn.active .t-badge { background: var(--accent-soft); color: var(--accent-600); }
+
+/* ── §2.4 TabContent ── */
+.tab-content { max-height: 460px; overflow-y: auto; padding: 10px; font-size: 12px; }
+
+/* Changes 区（vcs-changes-tab.tsx） */
+.section-head {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 5px 4px;
+}
+.section-head button {
+  border: 0; background: transparent; color: var(--text-secondary); font-weight: 500;
+  font-size: 12px; display: flex; align-items: center; gap: 5px; padding: 0;
+}
+.section-head button:hover { color: var(--text); }
+.section-head .caret { font-size: 10px; color: var(--text-muted); width: 12px; }
+.section-head .count { color: var(--text-muted); font-weight: 400; }
+.section-head .ops { margin-left: auto; display: inline-flex; gap: 10px; font-size: 11px; }
+.section-head .ops a { color: var(--accent-600); text-decoration: none; }
+.section-head .ops a:hover { text-decoration: underline; }
+.section-head .ops a.muted { color: var(--text-secondary); }
+
+.file-list { padding: 2px 4px; }
+.file-row {
+  display: grid; grid-template-columns: 14px 20px minmax(0,1fr) auto auto;
+  gap: 8px; align-items: center; padding: 5px 2px;
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.file-row:last-child { border-bottom: 0; }
+.file-row .code { font-family: var(--font-mono); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.file-row .code.M { color: var(--warning); }
+.file-row .code.A { color: var(--success); }
+.file-row .code.D { color: var(--error); }
+.file-row .code.R { color: var(--accent); }
+.file-row .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.file-row .ops { display: inline-flex; gap: 8px; font-size: 11px; }
+.file-row .ops a { color: var(--accent-600); text-decoration: none; }
+.file-row .ops a:hover { text-decoration: underline; }
+
+.empty-note { color: var(--text-muted); font-size: 12px; padding: 4px 4px 8px; }
+
+/* Remote 区 */
+.remote-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 4px 6px; font-size: 12px; }
+.remote-meta .rm-label { color: var(--text-muted); }
+.remote-meta .rm-upstream { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.remote-meta .rm-badge {
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.remote-meta .rm-badge.behind { color: var(--error); border-color: rgba(211,47,47,0.3); background: rgba(211,47,47,0.06); }
+.remote-meta .rm-badge.ahead  { color: var(--success); border-color: rgba(46,125,50,0.3); background: rgba(46,125,50,0.06); }
+
+/* Branches / Pipelines 占位 */
+.sub-note { color: var(--text-muted); font-size: 12px; padding: 16px 4px; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 8px 16px; font-size: 13px; color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  opacity: 0; pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease; z-index: 1000;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ============================================================
+   §2.5 History Tab（对齐 vcscommits.tsx）
+   ============================================================ */
+.history-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 2px 8px; flex-wrap: wrap;
+}
+.history-toolbar input {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  padding: 5px 8px; font-size: 12px; outline: none;
+}
+.history-toolbar input:focus { border-color: var(--accent); }
+.history-toolbar input::placeholder { color: var(--text-muted); }
+.history-toolbar .h-search { flex: 1; min-width: 160px; }
+.history-toolbar .h-date { width: 92px; font-family: var(--font-mono); font-size: 11px; }
+.history-toolbar .h-apply {
+  border: 0; border-radius: var(--r-sm); background: var(--accent-600); color: #fff;
+  font-weight: 600; font-size: 12px; padding: 5px 12px;
+}
+.history-toolbar .h-apply:hover { background: var(--accent-500); }
+.history-toolbar .h-reset {
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent;
+  color: var(--text-secondary); font-size: 12px; padding: 4px 10px;
+}
+.history-toolbar .h-reset:hover { background: var(--hoverbg); }
+
+.commit-list {
+  border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden;
+}
+.commit-row { border-bottom: 1px solid var(--border); }
+.commit-row:last-child { border-bottom: 0; }
+.commit-row:hover { background: var(--hoverbg); }
+.cr-main {
+  display: grid; grid-template-columns: 14px 9ch minmax(0,1fr) 110px 130px;
+  gap: 8px; align-items: center; padding: 6px 10px; font-size: 12px;
+  cursor: pointer;
+}
+.cr-chevron { font-size: 10px; color: var(--text-muted); text-align: center; }
+.cr-hash { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.cr-subject {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--text);
+}
+.cr-author { color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-date { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.cr-files { display: none; padding: 2px 10px 8px 32px; }
+.cr-files.open { display: block; }
+.cr-file {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 0; font-size: 11px; color: var(--text-secondary);
+  font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cr-code {
+  font-family: var(--font-mono); font-size: 10px; width: 14px; text-align: center;
+  color: var(--warning); flex-shrink: 0;
+}
+.cr-file-ops { display: flex; gap: 10px; padding: 4px 0 2px; }
+.cr-file-ops a { color: var(--accent-600); text-decoration: none; font-size: 11px; }
+.cr-file-ops a:hover { text-decoration: underline; }
+
+.h-load-more {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px 0 2px; font-size: 11px; color: var(--text-muted);
+}
+.h-load-more button {
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--text-secondary); font-size: 12px; padding: 4px 12px;
+}
+.h-load-more button:hover { background: var(--hoverbg); }
+
+/* 设计说明 */
+.design-notes { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 20px; }
+.design-notes h2 { font-size: 15px; margin: 0 0 8px; }
+.design-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+.design-table th {
+  text-align: left; color: var(--text-muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.design-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.design-table td code { background: var(--panel); padding: 1px 4px; border-radius: 3px; }
+
+.hidden { display: none !important; }
+.text-muted { color: var(--text-muted); }

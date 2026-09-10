@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS Repo Switcher v2 — 多仓库版本管理切换器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <h1>VCS Repo Switcher v2 — 多仓库版本管理切换器</h1>
+  <p class="intro">
+    解决「打开父目录只显示首个仓库」问题：在 <b>vcs.tsx</b> 顶部加一层
+    <b>仓库切换器</b>（chips / dropdown 双形态）。后端
+    <code>RemoteVcsRepositoriesCommand</code> 已支持多仓库发现，本原型只演示前端补齐的切换与展示。
+  </p>
+
+  <!-- 场景切换 -->
+  <div class="control-row">
+    <div id="scenario-bar" class="scenario-bar"></div>
+    <div class="mode-bar">
+      <span class="mode-label">形态</span>
+      <button class="chip active" data-mode="chips">Chips</button>
+      <button class="chip" data-mode="dropdown">Dropdown</button>
+    </div>
+  </div>
+
+  <!-- 聚合信息条 -->
+  <div id="summary-bar" class="summary-bar">
+    <span class="sum-left">
+      <b id="sum-count">0</b> repos
+      <span class="sum-sep">·</span>
+      <span id="sum-changed" class="sum-chip">0 changed</span>
+      <span id="sum-behind" class="sum-chip">↓0</span>
+      <span id="sum-ahead" class="sum-chip">↑0</span>
+    </span>
+    <button id="summary-expand" class="sum-expand" title="总览">总览 ▾</button>
+    <!-- 总览浮层 -->
+    <div id="summary-popover" class="summary-popover hidden">
+      <div class="pop-title">Repositories in this path</div>
+      <div id="summary-list" class="summary-list"></div>
+      <div class="pop-foot">
+        <span class="text-muted">scanDepth 3 · includeParent ✓</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- VCS 视图模拟（镜像 vcs.tsx 渲染结构） -->
+  <div id="vcs-view" class="vcs-view">
+    <!-- 仓库切换器（新增层） -->
+    <div id="switcher" class="switcher hidden"></div>
+
+    <!-- RepoHeader（vcs-tabs.tsx） -->
+    <div id="repo-header" class="repo-header"></div>
+
+    <!-- TabBar（vcs-tabs.tsx） -->
+    <div id="tab-bar" class="tab-bar"></div>
+
+    <!-- TabContent（vcs-changes-tab.tsx / vcs-branches-tab / vcs-pipelines-tab） -->
+    <div id="tab-content" class="tab-content"></div>
+  </div>
+
+  <!-- 设计说明 -->
+  <div class="design-notes">
+    <h2>设计说明</h2>
+    <table class="design-table">
+      <thead>
+        <tr><th>维度</th><th>现状</th><th>v2 方案</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>多仓库入口</td><td>仅从单仓库 rootpath 打开</td><td>父目录打开 + 切换器展示全部</td></tr>
+        <tr><td>仓库切换</td><td>无，只显示 repos[0]</td><td>Chips 横排（≤4）+ 溢出 +N；或 Dropdown 紧凑形态</td></tr>
+        <tr><td>单仓库</td><td>正常</td><td>切换器隐藏，布局零干扰</td></tr>
+        <tr><td>聚合信息</td><td>无</td><td>顶部汇总条：N repos · changed · behind/ahead</td></tr>
+        <tr><td>总览</td><td>—</td><td>汇总条展开浮层，逐仓库摘要（可一键跳转）</td></tr>
+        <tr><td>Dropdown 搜索</td><td>—</td><td>按仓库名 / 分支关键字过滤</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>

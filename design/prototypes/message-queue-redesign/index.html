@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snorkeling · Message Queue Redesign</title>
+<style>
+/* ============ Tokens（对齐 theme.scss）============ */
+*{box-sizing:border-box;letter-spacing:0}
+:root,[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#222222; --panel:#1f211f; --overlay:#212121;
+  --surface:rgba(255,255,255,.06); --surface-strong:rgba(255,255,255,.08); --surface-soft:rgba(255,255,255,.04);
+  --border:rgba(255,255,255,.16); --border-soft:rgba(241,246,243,.12);
+  --text:#f7f7f7; --text-2:#c3c8c2; --muted:#8a8f89;
+  --accent:#58c142; --accent-hover:#76df60; --on-accent:#000;
+  --accent-soft:rgba(88,193,66,.13); --accent-soft-border:rgba(88,193,66,.3);
+  --focus:#58c142; --hover:rgba(255,255,255,.09);
+  --error:#e54d2e; --warning:#e0b956; --info:#3b82f6;
+  --shadow:rgba(0,0,0,.5); --backdrop:rgba(21,23,21,.72);
+  --src-claude:#cc685c; --src-codex:#74a7cb; --src-pi:#96a096;
+  --code-bg:rgba(255,255,255,.045);
+  --queue-high:#e0b956; --queue-normal:#3b82f6;
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#ebe5d9; --panel:#f3efe4; --overlay:#f3efe4;
+  --surface:#f0ede6; --surface-strong:#f4f0e7; --surface-soft:#f7f7f4;
+  --border:#ded8ca; --border-soft:#d6cfbe;
+  --text:#4c3924; --text-2:#675033; --muted:#8a8078;
+  --accent:#7c49a1; --accent-hover:#955ab8; --on-accent:#fff;
+  --accent-soft:rgba(167,111,202,.13); --accent-soft-border:rgba(167,111,202,.35);
+  --focus:#a76fca; --hover:rgba(167,111,202,.10);
+  --error:#d32f2f; --warning:#e65100; --info:#2563eb;
+  --shadow:rgba(69,48,30,.18); --backdrop:rgba(69,48,30,.28);
+  --src-claude:#b0552f; --src-codex:#1d4ed8; --src-pi:#6b7280;
+  --code-bg:#efeae0;
+  --queue-high:#e65100; --queue-normal:#2563eb;
+}
+[data-theme="monochrome"]{
+  color-scheme:light;
+  --bg:#fafafa; --panel:#f5f5f5; --overlay:#f5f5f5;
+  --surface:#efefef; --surface-strong:#f0f0f0; --surface-soft:#f7f7f7;
+  --border:rgba(0,0,0,.14); --border-soft:rgba(0,0,0,.12);
+  --text:#0a0a0a; --text-2:#4a4a4a; --muted:#8a8a8a;
+  --accent:#1a1a1a; --hover:rgba(0,0,0,.05);
+  --accent-soft:rgba(0,0,0,.07); --accent-soft-border:rgba(0,0,0,.25);
+  --focus:#1a1a1a;
+  --error:#8a6a6a; --warning:#8a7a4a; --info:#5a6a8a;
+  --shadow:rgba(0,0,0,.16); --backdrop:rgba(0,0,0,.28);
+  --src-claude:#8a6a6a; --src-codex:#5a6a8a; --src-pi:#7a7a7a;
+  --code-bg:#f2f2f2;
+  --queue-high:#8a7a4a; --queue-normal:#5a6a8a;
+}
+
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.5 Inter,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none;padding:0}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:6px}
+.ic{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block}
+.ic.s12{width:12px;height:12px}.ic.s14{width:14px;height:14px}
+
+/* ============ Layout ============ */
+.app{display:flex;flex-direction:column;height:100vh;max-width:900px;margin:0 auto;background:var(--panel);border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.page-head{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.page-title{font-size:13px;font-weight:700;color:var(--text);flex:1}
+.theme-toggle{display:inline-flex;gap:2px}
+.theme-btn{width:22px;height:22px;border-radius:5px;border:1px solid var(--border);display:grid;place-items:center;font-size:9px;font-weight:700}
+.theme-btn.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.chat-area{flex:1;display:flex;flex-direction:column;min-height:0}
+
+/* ============ Messages Area ============ */
+.scrollwrap{flex:1;min-height:0;position:relative;overflow-y:auto}
+.stream{max-width:768px;margin:0 auto;padding:20px 24px 28px;display:flex;flex-direction:column;gap:20px}
+.mgroup{display:flex;flex-direction:column;gap:6px}
+.mg-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.avatar{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:11px;font-weight:700}
+.avatar.ai{background:var(--accent-soft);color:var(--accent)}
+.avatar.user{background:var(--surface-strong);color:var(--text-2);border:1px solid var(--border)}
+.mg-name{font-size:12.5px;font-weight:650}
+.mg-time{font-size:11px;color:var(--muted)}
+.ububble{align-self:flex-end;max-width:78%;background:var(--accent-soft);border:1px solid var(--accent-soft-border);color:var(--text);border-radius:16px;border-bottom-right-radius:6px;padding:9px 14px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.prose{font-size:14px;line-height:1.65;color:var(--text);min-width:0}
+.prose p{margin:0 0 10px}
+.prose p:last-child{margin-bottom:0}
+.caret{display:inline-block;width:7px;height:15px;background:var(--accent);vertical-align:-2px;margin-left:2px;border-radius:2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.spin{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.shimmer{background:linear-gradient(90deg,var(--muted) 25%,var(--text-2) 50%,var(--muted) 75%);background-size:400px 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 1.4s linear infinite}
+@keyframes shim{to{background-position:-400px 0}}
+
+/* ============ Composer Card ============ */
+.composer-zone{flex-shrink:0;padding:0 16px 12px}
+.composer{border-radius:14px;border:1px solid var(--border);background:var(--surface);box-shadow:0 6px 24px var(--shadow);overflow:visible}
+
+/* ---- Git Status Bar (top row of composer) ---- */
+.comp-statusbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-soft);font-size:11px;color:var(--muted)}
+.ctx-pill{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:999px;border:1px solid var(--border-soft);font-size:10.5px;color:var(--text-2)}
+.ctx-pill .bar{width:40px;height:4px;border-radius:2px;background:var(--surface-strong);overflow:hidden}
+.ctx-pill .bar-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s}
+
+/* ============ MessageQueuePill ============ */
+/* 锚点：pill 粘在 GitStatusBar 与 textarea 之间 */
+.queue-pill-anchor{position:relative}
+
+.queue-pill{display:none;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-soft);cursor:pointer;user-select:none;transition:background .12s}
+.queue-pill:hover{background:var(--hover)}
+.queue-pill.open{background:var(--hover)}
+
+/* 折叠态 */
+.qp-summary{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:12px;color:var(--text-2)}
+.qp-icon{color:var(--warning);display:flex;flex-shrink:0}
+.qp-count{font-weight:600;color:var(--text)}
+.qp-detail{font-size:11px;color:var(--muted);white-space:nowrap}
+.qp-chevron{color:var(--muted);transition:transform .18s ease;display:flex;flex-shrink:0}
+.queue-pill.open .qp-chevron{transform:rotate(180deg)}
+.qp-kbd{font-size:10px;color:var(--muted);border:1px solid var(--border-soft);border-radius:3px;padding:0 4px;line-height:16px}
+
+/* ============ MessageQueueList ============ */
+.queue-list{display:none;flex-direction:column;gap:0;max-height:0;overflow:hidden;transition:max-height .22s ease,padding .22s ease}
+.queue-list.open{display:flex;max-height:320px;padding:4px 0;overflow-y:auto}
+.queue-empty{padding:12px 16px;text-align:center;font-size:12px;color:var(--muted)}
+
+/* Queue Item */
+.qi{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-soft);transition:background .12s,opacity .2s}
+.qi:last-child{border-bottom:none}
+.qi:hover{background:var(--hover)}
+.qi.sending{opacity:.6;pointer-events:none}
+.qi.cancelled{opacity:.35;text-decoration:line-through}
+.qi.promoted{border-left:2px solid var(--queue-high);padding-left:10px}
+
+/* Drag handle */
+.qi-drag{display:flex;color:var(--muted);cursor:grab;flex-shrink:0;padding:2px}
+.qi-drag:active{cursor:grabbing;color:var(--text)}
+.qi-drag svg{opacity:.4;transition:opacity .12s}
+.qi:hover .qi-drag svg{opacity:.8}
+
+/* Priority badge */
+.qi-priority{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;font-size:9px;font-weight:700;flex-shrink:0}
+.qi-priority.high{background:rgba(224,185,86,.15);color:var(--queue-high)}
+.qi-priority.normal{background:rgba(59,130,246,.12);color:var(--queue-normal)}
+
+/* Text preview */
+.qi-text{flex:1;min-width:0;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Actions */
+.qi-actions{display:flex;gap:2px;opacity:0;transition:opacity .12s;flex-shrink:0}
+.qi:hover .qi-actions{opacity:1}
+.qi-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;color:var(--muted);transition:color .12s,background .12s}
+.qi-btn:hover{background:var(--hover);color:var(--text)}
+.qi-btn.cancel:hover{color:var(--error)}
+.qi-btn.promote:hover{color:var(--queue-high)}
+.qi-btn.active{color:var(--queue-high);background:rgba(224,185,86,.12)}
+
+/* Index badge (position indicator) */
+.qi-idx{font-size:10px;color:var(--muted);width:16px;text-align:center;flex-shrink:0;font-variant-numeric:tabular-nums}
+
+/* ============ Composer Textarea + Toolbar ============ */
+.comp-body{padding:8px 12px 6px}
+.comp-textarea{width:100%;min-height:36px;max-height:200px;resize:none;border:none;background:transparent;color:var(--text);font-size:14px;line-height:1.55;outline:none}
+.comp-textarea::placeholder{color:var(--muted)}
+.comp-bar{display:flex;align-items:center;gap:4px;padding:0 4px 6px}
+.comp-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;color:var(--muted);transition:background .12s,color .12s}
+.comp-btn:hover{background:var(--hover);color:var(--text)}
+.send-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;transition:all .15s}
+.send-btn.on{background:var(--accent);color:var(--on-accent);cursor:pointer}
+.send-btn.on:hover{background:var(--accent-hover)}
+.send-btn.off{background:var(--surface-strong);color:var(--muted);cursor:default}
+.stop-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--error);color:#fff;cursor:pointer;transition:background .12s}
+.stop-btn:hover{background:#c93a1e}
+.model-pick{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:6px;font-size:11.5px;color:var(--text-2);transition:background .12s}
+.model-pick:hover{background:var(--hover)}
+
+/* ============ Abort Recovery Toast ============ */
+.abort-toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:100;display:none;align-items:center;gap:10px;background:var(--overlay);border:1px solid var(--border);border-radius:12px;padding:10px 16px;box-shadow:0 8px 32px var(--shadow);font-size:13px;color:var(--text);animation:slideUp .25s cubic-bezier(.34,1.56,.64,1)}
+.abort-toast.show{display:flex}
+.abort-toast .undo{height:26px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--on-accent);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:background .12s}
+.abort-toast .undo:hover{background:var(--accent-hover)}
+.abort-toast .dismiss{height:26px;padding:0 8px;border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer;border:none;background:none;transition:color .12s}
+.abort-toast .dismiss:hover{color:var(--text)}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* ============ Demo Controls ============ */
+.demo-bar{display:flex;gap:6px;padding:8px 16px;border-top:1px solid var(--border-soft);background:var(--surface-soft);flex-wrap:wrap;align-items:center}
+.demo-bar .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-right:4px}
+.demo-btn{height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--border);font-size:11.5px;color:var(--text-2);background:var(--surface);transition:all .12s;white-space:nowrap}
+.demo-btn:hover{background:var(--hover);color:var(--text);border-color:var(--accent-soft-border)}
+.demo-btn.accent{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.demo-btn.accent:hover{background:var(--accent-hover)}
+.demo-btn.warn{border-color:rgba(224,185,86,.3);color:var(--queue-high)}
+.demo-btn.danger{border-color:rgba(229,77,46,.3);color:var(--error)}
+.sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+
+/* ============ Old vs New comparison panel ============ */
+.compare-panel{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:var(--backdrop);align-items:center;justify-content:center;padding:24px}
+.compare-panel.show{display:flex}
+.compare-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;max-width:860px;width:100%;max-height:85vh;overflow-y:auto;padding:24px;box-shadow:0 24px 64px var(--shadow)}
+.compare-title{font-size:16px;font-weight:700;margin-bottom:16px}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.compare-col{border:1px solid var(--border-soft);border-radius:12px;padding:16px;background:var(--surface)}
+.compare-col h4{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--text)}
+.compare-col p{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.6}
+.compare-col code{background:var(--code-bg);border-radius:4px;padding:1px 5px;font-size:11.5px}
+.compare-col.new{border-color:var(--accent-soft-border);background:var(--accent-soft)}
+.compare-close{position:fixed;top:16px;right:16px;width:32px;height:32px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-2);display:grid;place-items:center;cursor:pointer;font-size:16px}
+.compare-close:hover{background:var(--hover);color:var(--text)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ===== Page Header ===== -->
+<div class="page-head">
+  <span class="page-title">Message Queue Redesign — Composer 队列交互原型</span>
+  <div class="theme-toggle">
+    <button class="theme-btn on" data-theme="dark" onclick="setTheme('dark')">D</button>
+    <button class="theme-btn" data-theme="light" onclick="setTheme('light')">L</button>
+    <button class="theme-btn" data-theme="monochrome" onclick="setTheme('mono')">M</button>
+  </div>
+</div>
+
+<!-- ===== Chat Area ===== -->
+<div class="chat-area">
+
+<!-- Messages -->
+<div class="scrollwrap">
+  <div class="stream">
+    <div class="mgroup">
+      <div class="mg-head"><span class="avatar user">你</span><span class="mg-name">你</span><span class="mg-time">14:02</span></div>
+      <div class="ububble">帮我看看这个项目的架构，然后跑一下测试</div>
+    </div>
+    <div class="mgroup">
+      <div class="mg-head"><span class="avatar ai"><svg class="ic s12" style="width:12px;height:12px"><circle cx="6" cy="6" r="4"/></svg></span><span class="mg-name">pi</span><span class="mg-time">14:03</span></div>
+      <div class="prose"><p>好的，我来分析项目结构并运行测试。<span class="caret"></span></p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Composer ===== -->
+<div class="composer-zone">
+  <div class="composer" id="composer">
+
+    <!-- Git Status Bar -->
+    <div class="comp-statusbar">
+      <span class="ctx-pill">
+        <span class="bar"><span class="bar-fill" style="width:38%"></span></span>
+        38%
+      </span>
+      <span class="model-pick">claude-sonnet-4 <svg class="ic s12" style="width:10px;height:10px"><path d="M3 5l3 3 3-3"/></svg></span>
+      <span style="flex:1"></span>
+      <span style="font-size:10.5px;color:var(--muted)">pi · localhost</span>
+    </div>
+
+    <!-- MessageQueuePill -->
+    <div class="queue-pill-anchor">
+      <div class="queue-pill" id="queuePill" onclick="toggleQueueList()">
+        <span class="qp-icon">
+          <svg class="ic s14" style="width:14px;height:14px"><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <span class="qp-summary">
+          <span class="qp-count" id="qpCount">0</span> queued
+          <span class="qp-detail" id="qpDetail"></span>
+        </span>
+        <span class="qp-chevron">
+          <svg class="ic s12" style="width:10px;height:10px"><path d="M2 4l5 4 5-4"/></svg>
+        </span>
+        <span class="qp-kbd">⌘⇧Q</span>
+      </div>
+
+      <!-- MessageQueueList -->
+      <div class="queue-list" id="queueList"></div>
+    </div>
+
+    <!-- Textarea -->
+    <div class="comp-body">
+      <textarea class="comp-textarea" id="compInput" rows="1" placeholder="Message the agent…" oninput="autoGrow(this)"></textarea>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="comp-bar">
+      <button class="comp-btn" title="Attach" onclick="flash('Attach clicked')"><svg class="ic s14" style="width:14px;height:14px"><path d="M12 5v14m-7-7l7 7 7-7"/></svg></button>
+      <button class="model-pick">claude-sonnet-4 <svg class="ic s12" style="width:10px;height:10px"><path d="M3 5l3 3 3-3"/></svg></button>
+      <button class="comp-btn" title="Thinking" onclick="flash('Thinking toggled')"><svg class="ic s14" style="width:14px;height:14px"><circle cx="8" cy="8" r="5"/><path d="M13 13l3 3"/></svg></button>
+      <span style="flex:1"></span>
+      <button class="send-btn on" id="sendBtn" title="Send (Enter)" onclick="handleSend()"><svg class="ic s14" style="width:14px;height:14px;stroke-width:2.5"><path d="M12 19V5m0 0l-5 5m5-5l5 5"/></svg></button>
+      <button class="stop-btn" id="stopBtn" style="display:none" title="Stop" onclick="handleStop()"><svg class="ic s14" style="width:12px;height:12px;stroke-width:3;stroke:#fff"><rect x="3" y="3" width="10" height="10" rx="1"/></svg></button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /chat-area -->
+
+<!-- ===== Demo Controls ===== -->
+<div class="demo-bar">
+  <span class="label">Demo:</span>
+  <button class="demo-btn accent" onclick="demoEnqueue('normal')">+ Normal msg</button>
+  <button class="demo-btn warn" onclick="demoEnqueue('high')">+ High priority</button>
+  <button class="demo-btn" onclick="demoFlushNext()">▶ Flush next</button>
+  <button class="demo-btn danger" onclick="demoAbort()">■ Abort + toast</button>
+  <button class="demo-btn" onclick="demoUndoRestore()">↩ Undo restore</button>
+  <span class="sep"></span>
+  <button class="demo-btn" onclick="toggleCompare()">Old vs New</button>
+  <button class="demo-btn" onclick="demoBatchEnqueue()">Batch ×5</button>
+</div>
+
+</div><!-- /app -->
+
+<!-- ===== Abort Recovery Toast ===== -->
+<div class="abort-toast" id="abortToast">
+  <span>Abort — <strong id="abortCount">0</strong> messages retained in queue</span>
+  <button class="undo" onclick="demoUndoRestore()">Restore</button>
+  <button class="dismiss" onclick="hideToast()">Dismiss</button>
+</div>
+
+<!-- ===== Compare Panel ===== -->
+<div class="compare-panel" id="comparePanel" onclick="if(event.target===this)toggleCompare()">
+  <button class="compare-close" onclick="toggleCompare()">×</button>
+  <div class="compare-card">
+    <div class="compare-title">Old vs New — Message Queue</div>
+    <div class="compare-grid">
+      <div class="compare-col">
+        <h4>❌ Old: Text-only count</h4>
+        <p>Only a tiny <code>11px text</code> line: <code>"N messages queued — waiting for the current turn"</code>. Invisible in the UI. No per-item cancel, reorder, or priority.</p>
+        <p style="margin-top:8px"><strong>Queue:</strong> plain <code>useRef&lt;ChatRequestBody[]&gt;</code> with push/shift. No IDs, no metadata, no operations.</p>
+        <p style="margin-top:8px"><strong>Abort:</strong> <code>queuedMessagesRef.current = []</code> — all messages silently discarded, user must re-type.</p>
+      </div>
+      <div class="compare-col new">
+        <h4>✅ New: Interactive QueuePill</h4>
+        <p><strong>Collapsed:</strong> badge shows count + high/normal breakdown. Click to expand list. <code>⌘⇧Q</code> shortcut.</p>
+        <p style="margin-top:8px"><strong>Expanded:</strong> scrollable list with drag-reorder, per-item cancel (×), promote (⚡). Index badge shows execution order.</p>
+        <p style="margin-top:8px"><strong>Priority:</strong> high (⚡ retry / user promote) inserts before normal. Drain scheduler: 300ms delay on turn_end.</p>
+        <p style="margin-top:8px"><strong>Abort:</strong> retains queued messages, shows undo toast with Restore/Dismiss. No silent discard.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= Theme ================= */
+function setTheme(t){
+  if(t==='mono')t='monochrome';
+  document.documentElement.dataset.theme=t;
+  document.querySelectorAll('.theme-btn').forEach(b=>{
+    b.classList.toggle('on',b.dataset.theme===t||(t==='monochrome'&&b.dataset.theme==='mono'));
+  });
+}
+
+/* ================= Auto-grow textarea ================= */
+function autoGrow(el){
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,200)+'px';
+}
+
+/* ================= Queue State ================= */
+let queueIdSeq=0;
+let queueItems=[];  // {id,text,priority,status,createdAt}
+let listOpen=false;
+let isRunning=false;
+
+function enqueueMsg(text,priority='normal'){
+  const item={id:++queueIdSeq,text,priority,status:'queued',createdAt:Date.now()};
+  queueItems.push(item);
+  renderQueue();
+  if(!isRunning){
+    document.getElementById('sendBtn').classList.add('on');
+    document.getElementById('sendBtn').classList.remove('off');
+  }
+}
+
+function cancelMsg(id){
+  const item=queueItems.find(i=>i.id===id);
+  if(item){item.status='cancelled';}
+  // After short delay, remove from list
+  setTimeout(()=>{queueItems=queueItems.filter(i=>i.status!=='cancelled');renderQueue()},300);
+  renderQueue();
+}
+
+function promoteMsg(id){
+  const item=queueItems.find(i=>i.id===id);
+  if(!item)return;
+  if(item.priority==='high'){item.priority='normal';}
+  else{
+    item.priority='high';
+    // Move to front of queue (before other items)
+    const idx=queueItems.indexOf(item);
+    queueItems.splice(idx,1);
+    // Find insertion point: after all high-priority items
+    let insertAt=0;
+    for(let i=0;i<queueItems.length;i++){
+      if(queueItems[i].priority==='high')insertAt=i+1;
+    }
+    queueItems.splice(insertAt,0,item);
+  }
+  renderQueue();
+}
+
+function flushNext(){
+  const next=queueItems.find(i=>i.status==='queued');
+  if(!next)return;
+  next.status='sending';
+  isRunning=true;
+  document.getElementById('sendBtn').style.display='none';
+  document.getElementById('stopBtn').style.display='flex';
+  renderQueue();
+  // Simulate turn completion after 2-4s
+  setTimeout(()=>{
+    next.status='done';
+    queueItems=queueItems.filter(i=>i.status==='queued');
+    isRunning=false;
+    document.getElementById('sendBtn').style.display='flex';
+    document.getElementById('stopBtn').style.display='none';
+    document.getElementById('sendBtn').classList.add('on');
+    document.getElementById('sendBtn').classList.remove('off');
+    renderQueue();
+  },1800+Math.random()*2200);
+}
+
+function handleAbort(){
+  if(queueItems.length===0){
+    // Just stop current turn
+    isRunning=false;
+    document.getElementById('sendBtn').style.display='flex';
+    document.getElementById('stopBtn').style.display='none';
+    return;
+  }
+  // Retain queued messages, show toast
+  document.getElementById('abortCount').textContent=queueItems.length;
+  document.getElementById('abortToast').classList.add('show');
+  // Stop current turn
+  isRunning=false;
+  document.getElementById('sendBtn').style.display='flex';
+  document.getElementById('stopBtn').style.display='none';
+}
+
+function undoRestore(){
+  hideToast();
+  // Items are already retained in queueItems, just re-render
+  renderQueue();
+}
+
+function hideToast(){
+  document.getElementById('abortToast').classList.remove('show');
+}
+
+/* ================= Render ================= */
+function renderQueue(){
+  const active=queueItems.filter(i=>i.status==='queued'||i.status==='sending');
+  const pill=document.getElementById('queuePill');
+  const list=document.getElementById('queueList');
+  const countEl=document.getElementById('qpCount');
+  const detailEl=document.getElementById('qpDetail');
+
+  if(active.length===0){
+    pill.style.display='none';
+    list.classList.remove('open');
+    listOpen=false;
+    return;
+  }
+
+  pill.style.display='flex';
+  countEl.textContent=active.length;
+
+  const highCount=active.filter(i=>i.priority==='high').length;
+  detailEl.textContent=highCount>0?`· ${highCount} high`:'';
+
+  if(listOpen){
+    pill.classList.add('open');
+    list.classList.add('open');
+    renderList(active);
+  }else{
+    pill.classList.remove('open');
+    list.classList.remove('open');
+  }
+}
+
+function renderList(items){
+  const list=document.getElementById('queueList');
+  if(items.length===0){
+    list.innerHTML='<div class="queue-empty">No messages queued</div>';
+    return;
+  }
+  list.innerHTML=items.map((item,i)=>{
+    const sendingClass=item.status==='sending'?' sending':'';
+    const highClass=item.priority==='high'?' promoted':'';
+    const icon=item.priority==='high'
+      ?'<svg class="ic s12" style="width:12px;height:12px"><path d="M12 2L4 14h4l-1 6 8-12h-4l1-6z"/></svg>'
+      :'<svg class="ic s12" style="width:12px;height:12px"><path d="M5 12h14m-7-7v14"/></svg>';
+    const statusIcon=item.status==='sending'
+      ?'<svg class="ic s12 spin" style="width:12px;height:12px;color:var(--info)"><circle cx="6" cy="6" r="5"/></svg>'
+      :'';
+    return `<div class="qi${sendingClass}${highClass}" draggable="true" data-id="${item.id}"
+      ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">
+      <span class="qi-drag" title="Drag to reorder">
+        <svg class="ic s12" style="width:10px;height:10px"><circle cx="5" cy="3" r="1" fill="currentColor" stroke="none"/><circle cx="5" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="5" cy="11" r="1" fill="currentColor" stroke="none"/></svg>
+      </span>
+      <span class="qi-idx">${i+1}</span>
+      <span class="qi-priority ${item.priority}">${icon}</span>
+      <span class="qi-text">${escHtml(item.text)}</span>
+      ${statusIcon}
+      <span class="qi-actions">
+        <button class="qi-btn promote${item.priority==='high'?' active':''}" title="Toggle priority (high ↔ normal)" onclick="event.stopPropagation();promoteMsg(${item.id})">
+          <svg class="ic s12" style="width:12px;height:12px"><path d="M12 2L4 14h4l-1 6 8-12h-4l1-6z"/></svg>
+        </button>
+        <button class="qi-btn cancel" title="Cancel" onclick="event.stopPropagation();cancelMsg(${item.id})">
+          <svg class="ic s12" style="width:12px;height:12px"><path d="M4 4l8 8m0-8l-8 8"/></svg>
+        </button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function toggleQueueList(){
+  listOpen=!listOpen;
+  renderQueue();
+}
+
+/* ================= Drag & Drop ================= */
+let dragId=null;
+function dragStart(e){
+  dragId=parseInt(e.target.closest('[data-id]').dataset.id);
+  e.dataTransfer.effectAllowed='move';
+  e.target.closest('.qi').style.opacity='0.4';
+}
+function dragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move'}
+function drop(e){
+  e.preventDefault();
+  const target=parseInt(e.target.closest('[data-id]')?.dataset.id);
+  if(dragId==null||target==null||dragId===target)return;
+  const items=queueItems.filter(i=>i.status==='queued');
+  const fromIdx=items.findIndex(i=>i.id===dragId);
+  const toIdx=items.findIndex(i=>i.id===target);
+  if(fromIdx<0||toIdx<0)return;
+  const [moved]=items.splice(fromIdx,1);
+  items.splice(toIdx,0,moved);
+  // Rebuild queueItems: high-priority items first (maintain their order), then reordered normal
+  const highItems=queueItems.filter(i=>i.status==='queued'&&i.priority==='high');
+  const normalItems=items.filter(i=>i.priority==='normal');
+  queueItems=[...highItems,...normalItems,...queueItems.filter(i=>i.status==='sending'||i.status==='done')];
+  dragId=null;
+  renderQueue();
+}
+
+/* ================= Send Input ================= */
+function handleSend(){
+  const input=document.getElementById('compInput');
+  const text=input.value.trim();
+  if(!text)return;
+  if(isRunning){
+    // Queue it
+    enqueueMsg(text,'normal');
+  }else{
+    // Send directly (demo: treat as enqueue + flush)
+    enqueueMsg(text,'normal');
+    flushNext();
+  }
+  input.value='';
+  autoGrow(input);
+}
+
+function handleStop(){
+  handleAbort();
+}
+
+document.getElementById('compInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){
+    e.preventDefault();
+    handleSend();
+  }
+});
+
+/* ================= Demo helpers ================= */
+const demoMsgs=[
+  '帮我看看这个项目的架构，然后跑一下测试',
+  '你刚才说的第三个问题，展开讲讲',
+  '把这些改动 commit 一下，commit message 用 conventional 格式',
+  '检查一下 lint 是否通过，修复所有 error',
+  '对比一下 main 分支的差异，生成一个变更摘要',
+  '帮我写一个单元测试覆盖 edge case',
+];
+let demoIdx=0;
+
+function demoEnqueue(priority){
+  const text=demoMsgs[demoIdx%demoMsgs.length];
+  demoIdx++;
+  enqueueMsg(text,priority);
+}
+
+function demoFlushNext(){
+  flushNext();
+}
+
+function demoAbort(){
+  handleAbort();
+}
+
+function demoUndoRestore(){
+  undoRestore();
+}
+
+function demoBatchEnqueue(){
+  for(let i=0;i<5;i++){
+    setTimeout(()=>demoEnqueue(i%3===0?'high':'normal'),i*200);
+  }
+}
+
+function flash(msg){
+  const pill=document.getElementById('queuePill');
+  const orig=pill.querySelector('.qp-detail').textContent;
+  pill.querySelector('.qp-detail').textContent=msg;
+  pill.style.display='flex';
+  setTimeout(()=>{pill.querySelector('.qp-detail').textContent=orig},1500);
+}
+
+function toggleCompare(){
+  document.getElementById('comparePanel').classList.toggle('show');
+}
+
+/* ================= Init ================= */
+// Pre-load 2 queued messages for demo
+enqueueMsg('检查一下 lint 是否通过，修复所有 error','normal');
+enqueueMsg('对比 main 分支的差异，生成变更摘要','high');
+</script>
+</body>
+</html>

@@ -65,6 +65,10 @@
 
 - `aisessions-chat-redesign/` — **▲ 设计活跃**;AI Sessions GUI 对话界面重构（上下布局）+ New Agent GUI/TUI 双模式选择设计。覆盖范围：(1) aisessions 视图改造（左右列表+上下聊天详情）(2) 底部输入框 PromptInput (3) 消息组件 MessageCard/ToolCallCard/StreamingBubble (4) New Agent 多步创建表单（来源选择→提炼设定→绑定Agent→GUI/TUI模式→加入群组）(5) 群聊界面预览。镜像源：`frontend/app/view/aisessions/session-detail.tsx, session-message.tsx, chat-composer.tsx, aisessions.tsx`；参考：beui PromptInput/MessageScroller/SignupForm + Paseo 聊天界面。
 
+## `message-queue-redesign/` — 1 项（自建目录）
+
+- `message-queue-redesign/` — **▲ 设计活跃**;AI Sessions ChatComposer 消息队列交互重构：替换当前仅有 11px text 的「N messages queued」为可交互 MessageQueuePill（折叠态/展开列表/拖拽排序/优先级切换/取消/abort 恢复 toast）。参照 Paseo `GitProcessScheduler` 双优先级队列 + drain 调度模式。镜像 `frontend/app/view/aisessions/session-detail.tsx`（queuedMessagesRef + flushQueuedRef + handleChatQueue）+ `chat-composer.tsx`（queuedCount prop + 11px text 渲染）;真实组件尚未实现。
+
 ## `ssh-config-edit/` — 1 项（自建目录）
 
 - `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。
@@ -72,6 +76,14 @@
 ## `vcs-header-hover-panel/` — 1 项（自建目录）
 
 - `vcs-header-hover-panel/` — **▲ 设计活跃**;Files Block header 版本管理图标 hover 快捷面板:按 Git/SVN 区分内容(分支/ahead-behind vs Update/远端文件数),8 场景可切换(Git/SVN × 文件/目录、多仓库、非 repo、检测中、解析失败);点击图标本体行为不变。镜像 `preview-model.tsx` endIconButtons + `blockframe-header.tsx`,真实组件尚未实现。
+
+## `vcs-repo-switcher/` — 1 项（自建目录）
+
+- `vcs-repo-switcher/` — **▲ 设计活跃**（2026-09-10）;VCS Block（版本管理）头部新增**多仓库切换器**:后端 `RemoteVcsRepositoriesCommand` 已返回全部仓库（`detectRepoRoots` scandepth=3+includeparent），但前端 `vcs.tsx` 只渲染 `activeRepo`（固定 `repoList[0]`）无切换入口→看不到多仓库。本原型在头部加 `.repo-switcher` 自定义下拉（仓库名+GIT/SVN 徽标+rootpath 副标题+分支，选中 ✓ 高亮），切换即更新头部分支/ahead-behind/changed 与 Changes/Branches/Pipelines 三 Tab;单仓库收起为只读。含 `E:/projects` 真实 5 仓库场景（月度报/quartz-site/嵌套 quartz/tab-out/tabshelf）。镜像 `frontend/app/view/vcs/vcs.tsx`, `vcs-tabs.tsx`, `pkg/wshrpc/wshremote/vcs.go`,真实组件尚未实现。
+
+## `vcs-repo-switcher-v2/` — 1 项（自建目录）
+
+- `vcs-repo-switcher-v2/` — **▲ 设计活跃**（2026-09-10）;VCS Block 多仓库切换器 v2:针对 v1 问题（下拉列表无仓库状态一目了然），改为 **chips 横排 + 溢出 +N 下拉** 双形态。6 场景覆盖：Single（切换器隐藏）、Duo（一净一脏）、Quad（monorepo 4 子包）、Overflow 6+（横滑+溢出下拉）、Mixed（Git+SVN）、Nested（父目录 git + 子仓库）。新增聚合信息条（N repos · Σ changed · behind/ahead）与总览浮层（逐仓库摘要+点击切换）。Dropdown 形态支持搜索过滤（按仓库名/分支）。DOM 结构逐字段对齐 `vcs.tsx`（RepoHeader/TabsBar/TabsContent/ChangesTab），状态模型与真实 `repos[]/activeRepoId` 对齐。镜像 `frontend/app/view/vcs/vcs.tsx, vcs-tabs.tsx, vcs-changes-tab.tsx, pkg/wshrpc/wshremote/vcs.go`，真实组件尚未实现。
 
 ## `agent-id-card/` — 1 项（自建目录）
 

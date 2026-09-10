@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VCS Block — Multi-repo Switcher</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="page">
+  <h1>VCS Block — Multi-repo Switcher</h1>
+  <p class="intro">
+    Design prototype mirroring <code>frontend/app/view/vcs/vcs.tsx</code> + <code>vcs-tabs.tsx</code>.
+    The backend already returns all detected repos (<code>RemoteVcsRepositoriesCommand</code>); the frontend only renders
+    <code>activeRepo</code> with no switcher. This prototype adds a <strong>repo selector</strong> in the VCS header row.
+    Switch a repo below and watch the branch / KPIs / tabs follow.
+  </p>
+
+  <div class="scenario-bar" id="scenarioBar"></div>
+
+  <!-- ======= VCS BLOCK ======= -->
+  <div class="vcs-block">
+    <!-- Header row (mirrors VcsRepoHeader + NEW .repo-switcher) -->
+    <div class="vcs-header">
+      <div class="repo-switcher" id="repoSwitcher">
+        <button class="rs-trigger" id="rsTrigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="rs-icon" id="rsIcon"></span>
+          <span class="rs-name" id="rsName"></span>
+          <span class="rs-badge" id="rsBadge"></span>
+          <span class="rs-caret">▾</span>
+        </button>
+        <div class="rs-menu" id="rsMenu" role="listbox" hidden></div>
+      </div>
+
+      <span class="vcs-branch" id="vcsBranch"></span>
+      <span class="vcs-ab" id="vcsAb"></span>
+      <div class="vcs-spacer"></div>
+      <span class="vcs-changed" id="vcsChanged"></span>
+      <span class="vcs-darw" id="vcsBack">↓<b id="behind"></b></span>
+      <span class="vcs-ahead" id="vcsFwd">↑<b id="ahead"></b></span>
+      <button class="vcs-pull" id="vcsPull">Pull</button>
+      <button class="vcs-refresh" id="vcsRefresh" title="Refresh">⟳</button>
+    </div>
+
+    <!-- Tab bar (mirrors VcsTabBar) -->
+    <div class="vcs-tabbar" id="vcsTabbar"></div>
+
+    <!-- Tab content -->
+    <div class="vcs-content">
+      <div id="tabChanges" class="tab-pane active"></div>
+      <div id="tabBranches" class="tab-pane"></div>
+      <div id="tabHistory" class="tab-pane"></div>
+      <div id="tabPipelines" class="tab-pane"></div>
+    </div>
+  </div>
+
+  <div class="review-notes">
+    <h3>Review notes (评审注释，非应用 UI)</h3>
+    <ul>
+      <li>新增点仅 `.repo-switcher` 下拉（头部左侧）。其余为真实 `<code>VcsRepoHeader</code>` / `<code>VcsTabBar</code>` 的结构镜像。</li>
+      <li>选中仓库 → 头部分支 / changed / ahead-behind / 四个 Tab（Changes·Branches·History·Pipelines）全部跟随（复用现有按 <code>rootpath</code> 分 key 的逻辑）。</li>
+      <li>单仓库场景下拉收起为只读，避免无意义菜单。</li>
+      <li>SVN 仓库的 Branches Tab 置灰（与 <code>VcsTabBar</code> 一致）。</li>
+    </ul>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
