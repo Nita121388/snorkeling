@@ -20,6 +20,7 @@ import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvail
 import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
+import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -201,10 +202,13 @@ export function SessionDetailPane({
     const boundEpochRef = useRef(-1);
     const newChatTurnRef = useRef(false);
     const [newChatTurnFinished, setNewChatTurnFinished] = useState(false);
-    // 运行中的新消息进入本地 FIFO，当前 turn 完成并落盘后再逐条发送。
-    const queuedMessagesRef = useRef<ChatRequestBody[]>([]);
+    // Queue store: reactive priority queue for messages submitted while a turn is running.
+    // Replaces the bare useRef<ChatRequestBody[]> with structured QueuedMessage items.
+    const queueStoreRef = useRef(new MessageQueueStore());
+    const queueSnap = useMessageQueueStore(queueStoreRef.current);
+    // Ref so the turn_end handler can pull the next queued message without
+    // stale-closure issues (handleChatSend is defined below this point).
     const flushQueuedRef = useRef<() => void>(() => {});
-    const [queuedCount, setQueuedCount] = useState(0);
     const wasNewChatRef = useRef(false);
     // 搜索工具栏（第二行）默认隐藏，点 🔍 展开
     const [searchExpanded, setSearchExpanded] = useState(false);
@@ -296,6 +300,8 @@ export function SessionDetailPane({
         setActiveSearchSeq(null);
         // 切 session 时重置「自动滚到底已执行」标志，让新 session 重新滚到底
         autoScrolledToBottomRef.current = false;
+        // Clear any pending queue from the previous session.
+        queueStoreRef.current.clearAll();
     }, [effectiveDetail?.summary?.key]);
 
     useEffect(() => {
@@ -671,23 +677,25 @@ export function SessionDetailPane({
     // 由 turn_end 分支调用，避免 handleChatSend 定义在 handleChatEvent 之后带来的
     // 顺序/陈旧闭包问题。
     flushQueuedRef.current = () => {
-        const next = queuedMessagesRef.current.shift();
-        setQueuedCount(queuedMessagesRef.current.length);
-        if (next) {
-            handleChatSend(next);
+        const store = queueStoreRef.current;
+        // Complete the previous active item before pulling the next.
+        store.completeActive();
+        const item = store.takeNext();
+        if (item) {
+            handleChatSend(item.body);
         }
     };
 
     const handleChatQueue = useCallback((body: ChatRequestBody) => {
-        queuedMessagesRef.current.push(body);
-        setQueuedCount(queuedMessagesRef.current.length);
+        queueStoreRef.current.enqueue(body);
     }, []);
 
     const handleChatAbort = useCallback(() => {
-        // Stop means stop the current run and discard messages waiting behind it;
-        // otherwise they would unexpectedly execute after the user pressed Stop.
-        queuedMessagesRef.current = [];
-        setQueuedCount(0);
+        // Stop: abort the active stream, but retain queued messages (Paseo-style).
+        // User sees the pill shrink + toast with count; they can dismiss (keep)
+        // or flush the retained queue manually.
+        const store = queueStoreRef.current;
+        store.clearActive();
         abortChatStream(activeLiveTurnKey);
         handleChatEvent({ type: "turn_end" }, activeLiveTurnKey);
     }, [abortChatStream, activeLiveTurnKey, handleChatEvent]);
@@ -1234,10 +1242,16 @@ export function SessionDetailPane({
                                 canChangeDirectory={canChangeDirectory}
                                 onChangeDirectory={onChangeDirectory}
                                 streamStatus={activeChatStreamStatus}
-                                queuedCount={queuedCount}
+                                queuedCount={queueSnap.queuedCount}
+                                queueHighCount={queueSnap.highCount}
+                                queueActive={queueSnap.active}
+                                queueItems={queueSnap.items}
                                 onSend={handleChatSend}
                                 onQueue={handleChatQueue}
                                 onAbort={handleChatAbort}
+                                onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
+                                onQueuePromote={(id) => queueStoreRef.current.promote(id)}
+                                onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
                                 contextUsagePercent={contextUsagePercent}
                                 usage={chatUsage}
                             />
@@ -1253,10 +1267,16 @@ export function SessionDetailPane({
                                 onChangeDirectory={onChangeDirectory}
                                 onSourceChange={setComposeSource}
                                 streamStatus={activeChatStreamStatus}
-                                queuedCount={queuedCount}
+                                queuedCount={queueSnap.queuedCount}
+                                queueHighCount={queueSnap.highCount}
+                                queueActive={queueSnap.active}
+                                queueItems={queueSnap.items}
                                 onSend={handleChatSend}
                                 onQueue={handleChatQueue}
                                 onAbort={handleChatAbort}
+                                onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
+                                onQueuePromote={(id) => queueStoreRef.current.promote(id)}
+                                onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
                             />
                         ) : null}
                     </div>

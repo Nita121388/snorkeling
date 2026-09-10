@@ -14,6 +14,8 @@ import { filterSlashItems, mergeSlashItems, parseSlashQuery, slashSourceLabel, t
 import { GitStatusBar } from "./git-status-bar";
 import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
 import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
+import { MessageQueuePill } from "./message-queue-pill";
+import type { QueuedMessage } from "./message-queue-store";
 
 type PendingImage = {
     id: string;
@@ -97,9 +99,15 @@ type ChatComposerProps = {
     model?: string;
     streamStatus: ChatStreamStatus;
     queuedCount?: number;
+    queueHighCount?: number;
+    queueActive?: QueuedMessage | null;
+    queueItems?: QueuedMessage[];
     onSend: (body: ChatRequestBody) => void;
     onQueue: (body: ChatRequestBody) => void;
     onAbort: () => void;
+    onQueueCancel?: (id: string) => void;
+    onQueuePromote?: (id: string) => void;
+    onQueueReorder?: (id: string, targetIdx: number) => void;
     onSourceChange?: (source: string) => void;
     contextUsagePercent?: number;
     usage?: { input?: number; output?: number };
@@ -117,9 +125,15 @@ function ChatComposerInner({
     model,
     streamStatus,
     queuedCount = 0,
+    queueHighCount = 0,
+    queueActive = null,
+    queueItems = [],
     onSend,
     onQueue,
     onAbort,
+    onQueueCancel,
+    onQueuePromote,
+    onQueueReorder,
     onSourceChange,
     contextUsagePercent,
     usage,
@@ -591,9 +605,15 @@ function ChatComposerInner({
                     </div>
                 ) : null}
                 {queuedCount > 0 ? (
-                    <div className="pb-1 pt-0.5 text-[11px] text-accent" role="status">
-                        {queuedCount} message{queuedCount === 1 ? "" : "s"} queued — waiting for the current turn
-                    </div>
+                    <MessageQueuePill
+                        items={queueItems}
+                        queuedCount={queuedCount}
+                        highCount={queueHighCount}
+                        active={queueActive}
+                        onCancel={onQueueCancel ?? (() => {})}
+                        onPromote={onQueuePromote ?? (() => {})}
+                        onReorder={onQueueReorder ?? (() => {})}
+                    />
                 ) : null}
                 <div ref={cardRef} className="relative">
                     {panelOpen ? (
@@ -827,7 +847,7 @@ function ChatComposerInner({
                                 !sourceAvailable
                                     ? "Current agent doesn't support GUI chat yet"
                                     : isRunning
-                                      ? "Agent running… press Enter to queue a message"
+                                      ? "Enter to queue · ⌘⇧Q to view queue"
                                       : "Message the agent…"
                             }
                             value={input}
