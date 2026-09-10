@@ -16,6 +16,8 @@ import { VcsChangesTab, type RepoFileFilterState } from "./vcs-changes-tab";
 import { VcsBranchesTab } from "./vcs-branches-tab";
 import { VcsPipelinesTab } from "./vcs-pipelines-tab";
 import { VcsTabBar, VcsRepoHeader, type View } from "./vcs-tabs";
+import { VcsRepoSwitcher } from "./vcs-repo-switcher";
+import { VcsHistoryTab } from "./vcs-history-tab";
 
 const DefaultCommitMessage = "chore: update selected files";
 const VcsRepositoryRpcTimeoutMs = 60000;
@@ -441,6 +443,16 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             )}
             {!loading && !error && repos.length > 0 && activeRepo && (
                 <>
+                    {/* Multi-repo switcher (hidden for single repo) */}
+                    <VcsRepoSwitcher
+                        repos={repos}
+                        activeRepoId={activeRepo.repoid}
+                        onSelect={(repoId) => {
+                            setActiveRepoId(repoId);
+                            clearOperationNotice(repoId);
+                        }}
+                    />
+
                     {/* Repo Header with sync controls */}
                     <VcsRepoHeader
                         repo={activeRepo}
@@ -495,6 +507,9 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                         )}
                         {currentView === "pipelines" && (
                             <VcsPipelinesTab repo={activeRepo} connection={connection} />
+                        )}
+                        {currentView === "history" && (
+                            <VcsHistoryTab repo={activeRepo} connection={connection} />
                         )}
                     </div>
                 </>

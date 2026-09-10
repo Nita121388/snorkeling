@@ -519,6 +519,15 @@ async function openVcsBlock(conn: string, repo: VcsRepositoryInfo, selectedPath:
     await createBlock({ meta } as BlockDef);
 }
 
+async function openMultiVcsBlock(conn: string, basePath: string): Promise<void> {
+    const meta: Record<string, any> = {
+        view: "vcs",
+        connection: conn,
+        "vcs:path": basePath,
+    };
+    await createBlock({ meta } as BlockDef);
+}
+
 async function syncRepo(
     model: PreviewModel,
     conn: string,
@@ -684,6 +693,12 @@ function makeDirectoryVcsMenuItems(
     }
     return resolveResult.repos.map((repo) => {
         const submenu: ContextMenuItem[] = [];
+        if (resolveResult.repos.length > 1) {
+            submenu.push({
+                label: "Open All Repos",
+                click: () => fireAndForget(() => openMultiVcsBlock(conn, targetPath)),
+            });
+        }
         if (scope === "background") {
             submenu.push({
                 label: makeRepoSyncLabel(repo),

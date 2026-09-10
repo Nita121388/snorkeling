@@ -3,12 +3,13 @@
 
 import React from "react";
 
-type View = "changes" | "branches" | "pipelines";
+type View = "changes" | "branches" | "pipelines" | "history";
 
 const VIEWS: { id: View; label: string; icon: string }[] = [
     { id: "changes", label: "Changes", icon: "fa-file-pen" },
     { id: "branches", label: "Branches", icon: "fa-code-branch" },
     { id: "pipelines", label: "Pipelines", icon: "fa-diagram-project" },
+    { id: "history", label: "History", icon: "fa-clock-rotate-left" },
 ];
 
 function shortHash(hash: string): string {
@@ -100,7 +101,7 @@ export function VcsRepoHeader({
     onRefresh: () => void;
     syncRunning: boolean;
 }) {
-    const isGit = repo.repotype === "svn";
+    const isGit = repo.repotype === "git";
     const remote = repo.remote;
     const ahead = remote?.ahead ?? 0;
     const behind = remote?.behind ?? 0;
