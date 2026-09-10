@@ -31,7 +31,7 @@ export type LinkEditRequest = {
 
 /** Characters that would break `[label](url)` syntax once the user types them. */
 export function sanitizeLinkLabel(label: string): string {
-    return label.replace(/[\[\]\r\n]/g, "");
+    return label.replace(/[[\]\r\n]/g, "");
 }
 
 export function sanitizeLinkUrl(url: string): string {

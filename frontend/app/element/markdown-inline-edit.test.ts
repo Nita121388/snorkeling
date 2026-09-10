@@ -502,11 +502,11 @@ describe("moveBlockRange (drag-and-drop reorder)", () => {
     });
 
     it("preserves a code block's internal blank lines during the move", () => {
-        const doc = "# title\n\n\`\`\`\ncode line 1\n\ncode line 2\n\`\`\`\n\nhello";
+        const doc = "# title\n\n```\ncode line 1\n\ncode line 2\n```\n\nhello";
         const { text } = moveBlockRange(doc, 2, 7, 9, "after");
         // The fence block (2 blank lines + ``` + 4 lines + ```) moves after hello,
         // and its internal blank lines survive intact.
-        expect(text).toBe("# title\n\nhello\n\n\`\`\`\ncode line 1\n\ncode line 2\n\`\`\`");
+        expect(text).toBe("# title\n\nhello\n\n```\ncode line 1\n\ncode line 2\n```");
     });
 
     it("collapses excess blank separators but never drops block internals", () => {

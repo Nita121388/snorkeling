@@ -2851,7 +2851,6 @@ const Markdown = ({
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inlineEdit.editSession]);
 
     // Helper: wait for the markdown preview to re-render after a commit, then open a blank
@@ -4017,7 +4016,6 @@ const Markdown = ({
                 refocusCommittedBlock(result.text, result.focusLine, result.caret);
             }
         },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         [inlineEdit, slashState, text, handleInlineEditCommit, refocusCommittedBlock, getSlashFormatInfo]
     );
 

@@ -203,7 +203,7 @@ export function _resetLastObservedForTests(): void {
 // 同时与 window.__JOTAI_DEFAULT_STORE__.get(window.__diagDoneAck.atom) 对比,
 // 验证 atom 内容是否与 localStorage 一致 (不一致就是多进程/HMR 漂移).
 if (typeof window !== "undefined") {
-    // @ts-ignore
+    // @ts-expect-error diagnostic global for debugging
     window.__diagDoneAck = {
         atom: agentStatusDoneAckStore.doneAckedAtAtom,
         get: () => globalStore.get(agentStatusDoneAckStore.doneAckedAtAtom),

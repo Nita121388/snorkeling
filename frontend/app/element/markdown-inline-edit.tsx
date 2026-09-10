@@ -361,7 +361,6 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         setEditSession(null);
         setDraftText("");
         setOverlayRect(null);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [resetKey]);
 
     // Turn the global flag on/off in sync with editSession.

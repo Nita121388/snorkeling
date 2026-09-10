@@ -241,8 +241,8 @@ export class AgentStatusStore {
 
 // [DIAG] 临时挂在 globalThis 供 inspect-electron-ui 拉数据. 排查后删除.
 if (typeof window !== "undefined") {
-    // @ts-ignore
+    // @ts-expect-error diagnostic global store
     window.__diagAgentStatusStore = AgentStatusStore.getInstance();
-    // @ts-ignore
+    // @ts-expect-error diagnostic global getter shim
     window.__diagJotaiGet = (atom: unknown) => atom; // 占位, 实际 getter 由调用方注入
 }

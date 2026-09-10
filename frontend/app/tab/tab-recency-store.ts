@@ -132,7 +132,7 @@ export const tabRecencyStore = TabRecencyStore.getInstance();
 //       window.__diagTabRecency.readLS() 直接读 localStorage,
 //       二者应一致.
 if (typeof window !== "undefined") {
-    // @ts-ignore
+    // @ts-expect-error diagnostic global for debugging
     window.__diagTabRecency = {
         atom: tabRecencyStore.recencyMapAtom,
         get: () => globalStore.get(tabRecencyStore.recencyMapAtom),

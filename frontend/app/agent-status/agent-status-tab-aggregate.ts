@@ -408,6 +408,5 @@ export function useAcquireWorkspaceBlockStatuses(tabIds: string[]): void {
         };
         // 依赖用稳定的 blockKey 字符串而不是 blockIds 数组本身; effect body 里仍按 blockIds 配对.
         // blockIds 在每次 derive 是新引用, blockKey 在内容不变时是同一字符串.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [store, blockKey]);
 }

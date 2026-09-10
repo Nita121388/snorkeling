@@ -64,7 +64,7 @@ describe("applyInlineStyle — link", () => {
     test("full [label](url) selection strips back to label", () => {
         const r = applyInlineStyle("go [docs](https://x) now", 3, 20, "link");
         expect(r?.text).toBe("go docs now");
-        expect(r?.end).toBe(r?.start! + 4);
+        expect(r?.end).toBe(r!.start + 4);
     });
 });
 

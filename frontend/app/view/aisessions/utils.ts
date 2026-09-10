@@ -201,7 +201,7 @@ export const UnclassifiedGroupName = "未归类";
  * across every machine it has been opened on.
  */
 export function basenamePath(path: string): string {
-    const trimmed = (path ?? "").trim().replace(/[\/\\]+$/, "");
+    const trimmed = (path ?? "").trim().replace(/[/\\]+$/, "");
     if (!trimmed) return "";
     const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
     return idx >= 0 && idx < trimmed.length - 1 ? trimmed.slice(idx + 1) : trimmed;

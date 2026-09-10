@@ -45,7 +45,7 @@ describe("setProperty", () => {
 
     it("值含特殊字符时自动加引号", () => {
         const out = setProperty(Base, "title", "a: b")!;
-        expect(out.split("\n")[1]).toMatch(/^title: ["']a: b["']  # 行尾注释$/);
+        expect(out.split("\n")[1]).toMatch(/^title: ["']a: b["'] {2}# 行尾注释$/);
     });
 
     it("数字/布尔按标量写入", () => {

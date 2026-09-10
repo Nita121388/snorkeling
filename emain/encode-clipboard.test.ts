@@ -5,7 +5,13 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { encodeFilePathsBplist, encodeFileUrlsBplist } from "./encode-clipboard";
 
-describe("encodeFilePathsBplist", () => {
+// This module encodes macOS clipboard file lists (NSFilenamesPboardType /
+// public.file-url) and depends on the macOS-only `/usr/bin/plutil` binary,
+// both in the source and in these tests. On other platforms the tests cannot
+// run, so they are skipped entirely.
+const isDarwin = process.platform === "darwin";
+
+describe.skipIf(!isDarwin)("encodeFilePathsBplist", () => {
     it("produces a valid bplist00 header", () => {
         const buf = encodeFilePathsBplist(["/repo/a.txt"]);
         expect(buf.subarray(0, 8).toString()).toBe("bplist00");
@@ -29,7 +35,7 @@ describe("encodeFilePathsBplist", () => {
     });
 });
 
-describe("encodeFileUrlsBplist", () => {
+describe.skipIf(!isDarwin)("encodeFileUrlsBplist", () => {
     it("converts absolute paths to file:// URLs", () => {
         const buf = encodeFileUrlsBplist(["/repo/a.md"]);
         const toXml = spawnSync("/usr/bin/plutil", ["-convert", "xml1", "-o", "-", "-"], { input: buf });

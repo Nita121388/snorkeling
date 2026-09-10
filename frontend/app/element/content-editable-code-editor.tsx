@@ -95,7 +95,6 @@ const ContentEditableCodeEditor = forwardRef<CodeEditorHandle, Props>(function C
         initializedRef.current = true;
         el.textContent = initialText;
         highlight(el, language);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const getCaret = useCallback(() => {

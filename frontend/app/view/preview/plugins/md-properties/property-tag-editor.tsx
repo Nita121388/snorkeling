@@ -58,7 +58,6 @@ export function PropertyTagEditor({
     useEffect(() => {
         requestAnimationFrame(() => inputRef.current?.focus());
         // 仅在挂载时聚焦
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const candidates = useMemo(() => options ?? items, [options, items]);

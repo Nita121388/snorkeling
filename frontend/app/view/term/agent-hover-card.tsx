@@ -106,7 +106,6 @@ function useSessionNote(blockId: string, blockData: Block | null) {
         setSaveStatus("idle");
         setError("");
         // 仅在 sessionId 变化时重置；summary 后续更新不打断正在编辑的草稿。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
 
     React.useEffect(() => {

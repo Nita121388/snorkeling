@@ -93,24 +93,28 @@ export const InlineTabDropdownMenu = memo(
                 const currentIndex = Array.from(menuItems).findIndex((item) => item === document.activeElement);
 
                 switch (e.key) {
-                    case "ArrowDown":
+                    case "ArrowDown": {
                         e.preventDefault();
                         const nextIndex = currentIndex < menuItems.length - 1 ? currentIndex + 1 : 0;
                         (menuItems[nextIndex] as HTMLElement).focus();
                         break;
-                    case "ArrowUp":
+                    }
+                    case "ArrowUp": {
                         e.preventDefault();
                         const prevIndex = currentIndex > 0 ? currentIndex - 1 : menuItems.length - 1;
                         (menuItems[prevIndex] as HTMLElement).focus();
                         break;
-                    case "Home":
+                    }
+                    case "Home": {
                         e.preventDefault();
                         (menuItems[0] as HTMLElement).focus();
                         break;
-                    case "End":
+                    }
+                    case "End": {
                         e.preventDefault();
                         (menuItems[menuItems.length - 1] as HTMLElement).focus();
                         break;
+                    }
                 }
             },
             [menuOpen]
