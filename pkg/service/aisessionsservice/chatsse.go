@@ -75,6 +75,7 @@ type ChatCommand struct {
 type AISessionsChatRequest struct {
 	Source            string       `json:"source"`                      // "pi" (others TBD)
 	SessionID         string       `json:"sessionId,omitempty"`         // existing session uuid to resume; omit for new
+	ClientKey         string       `json:"clientKey,omitempty"`         // stable GUI key while creating a new session
 	ProjectPath       string       `json:"projectPath,omitempty"`       // cwd
 	Provider          string       `json:"provider,omitempty"`          // model provider
 	Model             string       `json:"model,omitempty"`             // model id
@@ -145,6 +146,7 @@ func AISessionsChatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	opts := chat.StartOptions{
 		SessionID:    req.SessionID,
+		ClientKey:    req.ClientKey,
 		ProjectPath:  projectPath,
 		Provider:     req.Provider,
 		Model:        req.Model,

@@ -27,12 +27,13 @@ type Provider interface {
 
 // StartOptions is the per-session launch configuration shared by all adapters.
 type StartOptions struct {
-	SessionID   string // agent's own session id (pi: session uuid)
-	ProjectPath string // cwd the agent runs in
-	FilePath    string // session file path (diagnostics only; never written)
-	Provider    string // model provider (e.g. "openai"); optional
-	Model       string // model id (e.g. "deepseek-v4-pro"); optional
-	SessionDir  string // override the agent session storage dir; optional
-	NoExtensions bool  // suppress extension loading (skips noisy extension UI events)
-	Extra       map[string]any
+	SessionID    string // agent's own session id (pi: session uuid)
+	ClientKey    string // stable GUI identity used while SessionID is not known
+	ProjectPath  string // cwd the agent runs in
+	FilePath     string // session file path (diagnostics only; never written)
+	Provider     string // model provider (e.g. "openai"); optional
+	Model        string // model id (e.g. "deepseek-v4-pro"); optional
+	SessionDir   string // override the agent session storage dir; optional
+	NoExtensions bool   // suppress extension loading (skips noisy extension UI events)
+	Extra        map[string]any
 }

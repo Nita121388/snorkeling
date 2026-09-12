@@ -770,7 +770,9 @@
         justify-content: flex-start;
         gap: 2px;
         padding: 2px 5px 0;
-        overflow-x: auto;
+        // 方案 B: 不横向滚动。空间不足时非激活 Tab 先被压缩/折叠(见 JS 折叠逻辑),
+        // 剩余溢出的内容在右缘被干净裁切, 全部标签仍可通过右侧下拉菜单访问。
+        overflow-x: hidden;
         overflow-y: hidden;
     }
 
@@ -854,7 +856,9 @@
         align-items: center;
         padding: 0 4px 0 4px;
         opacity: 0.65;
-        flex: 0 1 auto;
+        // 非激活 Tab: 高收缩因子(10)。flexbox 收缩时先被压到图标下限,
+        // 为激活 Tab 让出空间(激活 Tab 收缩因子仅 0.1, 最后才缩)。
+        flex: 0 10 auto;
         width: auto;
         // hover 时临时撑开, 让被 max-width 截断的标题全显示;
         // 不再对 .active 用 flex-grow:2 拉宽 — active 也应按内容宽度, 仅靠样式区分.
@@ -919,7 +923,9 @@
             span {
                 min-width: 0;
                 overflow: hidden;
-                text-overflow: ellipsis;
+                // 去掉省略号三个点: 文字在边缘被干净切断(clip), 无「…」;
+                // 连一个字符都放不下时自然什么都不显示, 不强制首字母。
+                text-overflow: clip;
                 white-space: nowrap;
                 font-weight: 400;
             }
@@ -1097,9 +1103,11 @@
             background: rgb(from var(--main-text-color) r g b / 0.12);
             color: var(--accent-color);
             // 短标题只占自身完整内容宽度, 不额外撑开;
-            // shrink:0 防止被同一行其他 tab 挤压, 长标题由 max-width 封顶后跑马灯滚动.
-            flex: 0 0 auto;
-            max-width: var(--inline-tab-active-max-width, 45%);
+            // 激活 Tab 收缩因子 0.1: 几乎不缩, 优先保留自身空间, 非激活 Tab 先被压到图标;
+            // 只有所有非激活都贴住图标下限、空间仍不足时才最后开始缩。
+            // 长标题由 max-width 封顶(默认提高到 60%)后跑马灯滚动.
+            flex: 0 0.1 auto;
+            max-width: var(--inline-tab-active-max-width, 60%);
 
             .inline-tab-block-tab-main {
                 span {

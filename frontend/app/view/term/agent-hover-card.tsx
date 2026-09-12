@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+    InfoCard,
+    InfoCardEmpty,
+    InfoCardError,
+    InfoCardHead,
+    InfoCardIcon,
+    InfoCardInput,
+    InfoCardPreview,
+    InfoCardSection,
+    InfoCardText,
+    InfoCardTitle,
+} from "@/app/element/info-card";
+import {
     ensureSessionNote,
     getSessionNoteSnapshot,
     saveSessionNote,
@@ -27,6 +39,8 @@ import {
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { cn } from "@/util/util";
 import { useAtomValueSafe } from "@/util/util";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import * as React from "react";
@@ -291,6 +305,20 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
     const model = liveModel || requestedModel;
     const modelLoading = runtimeEntry?.loading ?? false;
     const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
+    const statusState = agentStatus?.state ?? "unknown";
+    // 状态色：原型 agent-id-card 的映射，用现成主题 token。
+    const statusAccent =
+        statusState === "working"
+            ? "var(--agent-working-color)"
+            : statusState === "done"
+              ? "var(--agent-done-color)"
+              : statusState === "blocked" || statusState === "rate-limited"
+                ? "var(--warning-color, #f59e0b)"
+                : statusState === "error"
+                  ? "var(--error-color)"
+                  : "var(--secondary-text-color)";
+    const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
+    const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
     const showMetaRow =
         (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
@@ -312,36 +340,56 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                 : "fa-tag";
 
     return (
-        <div className="agent-hover-card">
+        <InfoCard
+            className="agent-card"
+            style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
+        >
             {/* 模型 + 状态 section */}
             {showMetaRow && (
-                <div className="agent-hover-card-section">
-                    <div className="agent-hover-card-head">
-                        <i className="fa-sharp fa-solid fa-microchip agent-hover-card-icon" />
-                        <span className="agent-hover-card-title">{provider}</span>
-                        <span className="agent-hover-card-model">
+                <InfoCardSection>
+                    <div className="agent-card-head">
+                        {agentLogo != null ? (
+                            <span
+                                className="agent-card-logo"
+                                style={
+                                    agentLogo.iconColor != null
+                                        ? { color: agentLogo.iconColor }
+                                        : undefined
+                                }
+                            >
+                                {agentLogo.icon}
+                            </span>
+                        ) : (
+                            <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
+                        )}
+                        <span className="agent-card-provider">{provider}</span>
+                        <span className="agent-card-model">
                             {model || (modelLoading ? "获取中…" : "未指定")}
                         </span>
                     </div>
                     {statusPres != null && (
-                        <div className="agent-hover-card-status">
-                            <i className={`fa-sharp fa-solid ${statusPres.icon}`} />
-                            <span>{statusPres.label}</span>
+                        <div className="agent-card-status-row">
+                            <span
+                                className={cn("agent-card-status-dot", {
+                                    "is-working": statusState === "working",
+                                    "is-thinking": isThinking,
+                                })}
+                            />
+                            <span className="agent-card-status-label">{statusPres.label}</span>
                         </div>
                     )}
-                </div>
+                </InfoCardSection>
             )}
             {/* Note section */}
             {summary != null && (
-                <div className="agent-hover-card-section">
-                    <div className="agent-hover-card-head">
-                        <i className={`fa-sharp fa-solid agent-hover-card-icon ${statusIcon}`} />
-                        <span className="agent-hover-card-title">{title}</span>
-                    </div>
+                <InfoCardSection>
+                    <InfoCardHead>
+                        <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon}`} />
+                        <InfoCardTitle>{title}</InfoCardTitle>
+                    </InfoCardHead>
                     {isEditing ? (
-                        <textarea
+                        <InfoCardInput
                             ref={inputRef}
-                            className="agent-hover-card-input"
                             value={noteDraft}
                             rows={4}
                             placeholder="Note"
@@ -359,9 +407,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             }}
                         />
                     ) : (
-                        <button
-                            type="button"
-                            className="agent-hover-card-preview"
+                        <InfoCardPreview
                             onClick={() => {
                                 setIsEditing(true);
                                 window.setTimeout(() => {
@@ -371,16 +417,48 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             }}
                         >
                             {trimmedDraft === "" ? (
-                                <span className="agent-hover-card-empty">Click to add a note...</span>
+                                <InfoCardEmpty>Click to add a note...</InfoCardEmpty>
                             ) : (
-                                <span className="agent-hover-card-text">{previewText}</span>
+                                <InfoCardText>{previewText}</InfoCardText>
                             )}
-                        </button>
+                        </InfoCardPreview>
                     )}
-                    {noteError ? <div className="agent-hover-card-error">{noteError}</div> : null}
+                    {/* Tags chips（有则显示） */}
+                    {(summary?.tags?.length ?? 0) > 0 && (
+                        <div className="agent-card-tags">
+                            {summary.tags.map((tag, idx) => (
+                                <span key={idx} className="agent-card-tag">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {noteError ? <InfoCardError>{noteError}</InfoCardError> : null}
+                </InfoCardSection>
+            )}
+            {/* Session ID 底行（复制） */}
+            {sessionId !== "" && (
+                <div className="agent-card-session-id">
+                    <span className="agent-card-session-id-text" title={sessionId}>
+                        {sessionId}
+                    </span>
+                    <button
+                        type="button"
+                        className="agent-card-copy-btn"
+                        title="Copy session id"
+                        aria-label="Copy session id"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard?.writeText(sessionId).catch(() => {});
+                        }}
+                    >
+                        <svg viewBox="0 0 24 24">
+                            <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z" />
+                        </svg>
+                    </button>
                 </div>
             )}
-        </div>
+        </InfoCard>
     );
 });
 

@@ -16,6 +16,8 @@ import { useAtomValue } from "jotai";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { makeORef } from "../store/wos";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
+import { useInfoCardHover, InfoCardPortal } from "@/app/element/info-card/info-card-hover";
+import { TabInfoCard } from "./tab-info-card";
 import "./tab.scss";
 import { TabBadges } from "./tabbadges";
 import { buildTabContextMenu } from "./tabcontextmenu";
@@ -59,6 +61,8 @@ interface TabVProps {
     onRename: (newName: string) => void;
     /** Optional ref that TabV populates with a startRename() function for external callers */
     renameRef?: React.RefObject<(() => void) | null>;
+    /** 所属 workspace 的 id（用于 Tab 悬浮卡）。 */
+    workspaceId?: string;
 }
 
 const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
@@ -81,6 +85,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         onContextMenu,
         onRename,
         renameRef,
+        workspaceId,
     } = props;
     const MaxTabNameLength = 14;
     const truncateTabName = (name: string) => [...(name ?? "")].slice(0, MaxTabNameLength).join("");
@@ -91,6 +96,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
     const editableRef = useRef<HTMLDivElement>(null);
     const editableTimeoutRef = useRef<NodeJS.Timeout>(null);
     const tabRef = useRef<HTMLDivElement>(null);
+    const hover = useInfoCardHover({ placement: "bottom", targetRef: tabRef, hideDelayMs: 200 });
 
     useImperativeHandle(ref, () => tabRef.current as HTMLDivElement);
 
@@ -204,6 +210,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
             onMouseDown={onDragStart}
             onClick={onClick}
             onContextMenu={onContextMenu}
+            {...hover.targetProps}
             data-tab-id={tabId}
         >
             {showDivider && <div className="tab-divider" />}
@@ -229,6 +236,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                     <i className="fa fa-solid fa-xmark" />
                 </Button>
             </div>
+            <InfoCardPortal hover={hover}>
+                <TabInfoCard tabId={tabId} workspaceId={workspaceId} />
+            </InfoCardPortal>
         </div>
     );
 });
@@ -243,6 +253,8 @@ interface TabProps {
     tabWidth: number;
     isNew: boolean;
     hidden?: boolean;
+    /** 所属 workspace 的 id（用于 Tab 悬浮卡的 workspace 图标/颜色/名称）。 */
+    workspaceId?: string;
     onSelect: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
@@ -250,7 +262,7 @@ interface TabProps {
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, hidden: isHidden, onLoaded, onSelect, onClose, onDragStart } = props;
+    const { id, active, showDivider, isDragging, tabWidth, isNew, hidden: isHidden, workspaceId, onLoaded, onSelect, onClose, onDragStart } = props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -333,6 +345,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             onContextMenu={handleContextMenu}
             onRename={handleRename}
             renameRef={renameRef}
+            workspaceId={workspaceId}
         />
     );
 });

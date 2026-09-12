@@ -1,0 +1,15 @@
+// 兜底文档标题（无 H1 时用文件名回退显示）
+// 与 markdown 正文容器左对齐（正文 contentClassName pl 为 15px），顶部留一点呼吸。
+.md-props-doc-title {
+    padding: 16px 20px 0 16px;
+    max-width: 100%;
+}
+
+.md-props-doc-title-text {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-foreground, #e0e0e0);
+    line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}

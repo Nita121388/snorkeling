@@ -8,6 +8,7 @@ import {
     OptMagnifyButton,
     renderHeaderElements,
 } from "@/app/block/blockutil";
+import { BlockInfoCard } from "@/app/block/block-info-card";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
 import { getBlockBadgeAtom } from "@/app/store/badge";
@@ -26,7 +27,6 @@ import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
-import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     insertBlockAtFixedLeftOrder,
@@ -647,10 +647,10 @@ const BlockFrame_Header = ({
                 moveContext={moveContext}
                 isHovered={isHovered}
             />
-            {/* Agent hover card - only show for agent blocks in GUI mode (TUI uses TermAgentSessionRail) */}
+            {/* Agent/Note hover card - 经 BlockInfoCard 分派（GUI 模式；TUI 用 TermAgentSessionRail） */}
             {isAgentBlock && (isHovered || isCardHovered) && (
                 <div
-                    className="agent-hover-card-wrapper"
+                    className="info-card-portal"
                     style={{
                         position: "absolute",
                         top: "100%",
@@ -686,11 +686,7 @@ const BlockFrame_Header = ({
                         }, 300);
                     }}
                 >
-                    <AgentHoverCard
-                        blockId={nodeModel.blockId}
-                        blockData={blockData ?? null}
-                        mode="gui"
-                    />
+                    {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
                 </div>
             )}
         </div>

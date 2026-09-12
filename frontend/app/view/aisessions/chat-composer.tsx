@@ -164,11 +164,13 @@ function ChatComposerInner({
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const endpoint = `${getWebServerEndpoint()}/api/aisessions-chat`;
+    const clientKeyRef = useRef(`gui-${crypto.randomUUID()}`);
 
     const baseBody = useMemo(
         () => ({
             source,
             sessionId: sessionId || undefined, // empty => backend spawns a new session
+            clientKey: sessionId ? undefined : clientKeyRef.current,
             projectPath: projectPath ?? undefined,
             provider: provider ?? undefined,
             model: model ?? undefined,
@@ -446,13 +448,14 @@ function ChatComposerInner({
             if (row.kind === "model") {
                 const { item } = row;
                 if (item.provider && item.id) {
-                    void runControl(
-                        "set_model",
-                        { provider: item.provider, modelId: item.id },
-                        `Model switched: ${item.name || item.id}`
-                    );
-                    // 联动：模型变化后刷新思考深度选项（以新模型的可用级别为准）
-                    void refreshThinkingLevels();
+                    void (async () => {
+                        const changed = await runControl(
+                            "set_model",
+                            { provider: item.provider, modelId: item.id },
+                            `Model switched: ${item.name || item.id}`
+                        );
+                        if (changed) await refreshThinkingLevels();
+                    })();
                 } else {
                     flashNotice("✗ Missing provider/id for this model");
                 }

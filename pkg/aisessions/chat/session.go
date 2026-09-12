@@ -257,6 +257,9 @@ func (s *Session) Control(ctx context.Context, method string, args map[string]an
 	if !controlMethods[method] {
 		return nil, fmt.Errorf("control method %q not allowed", method)
 	}
+	if s.State() == StateClosed {
+		return nil, fmt.Errorf("session closed")
+	}
 	s.mu.Lock()
 	rpc := s.rpc
 	s.mu.Unlock()

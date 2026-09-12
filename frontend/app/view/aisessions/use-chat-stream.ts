@@ -85,6 +85,7 @@ export async function runChatCommand(
 export type ChatRequestBody = {
     source: string;
     sessionId?: string;
+    clientKey?: string;
     projectPath?: string;
     provider?: string;
     model?: string;
