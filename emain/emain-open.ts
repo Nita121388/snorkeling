@@ -52,14 +52,26 @@ export function normalizeExternalOpenArg(rawArg: string): string | null {
 }
 
 // Filter the raw process argv to the set of paths the OS asked us to open.
+//
+// argv[0] (and, defensively, anything equal to the running binary itself) is
+// the app's own executable path, never a user-provided file/dir. Treating it
+// as an "open" target makes every launch open a stray folder block pointing at
+// Electron/Snorkeling.app/.../MacOS/<binary> on macOS and Windows alike.
 export function extractOpenPathsFromArgv(argv: string[]): string[] {
     if (argv == null || argv.length === 0) {
         return [];
     }
+    const ownExec = process.execPath;
     const paths: string[] = [];
-    for (const arg of argv) {
-        const normalized = normalizeExternalOpenArg(arg);
+    for (let i = 0; i < argv.length; i++) {
+        if (i === 0) {
+            continue;
+        }
+        const normalized = normalizeExternalOpenArg(argv[i]);
         if (normalized == null) {
+            continue;
+        }
+        if (normalized === ownExec) {
             continue;
         }
         if (!fs.existsSync(normalized)) {
