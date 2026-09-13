@@ -7,6 +7,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
+import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
@@ -96,7 +97,7 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             docsUrl: "https://docs.waveterm.dev/waveai-modes",
             validator: validateWaveAiJson,
             hasJsonView: true,
-            // visualComponent: WaveAIVisualContent,
+            visualComponent: WaveAIVisualContent,
         },
         {
             name: "Tab Backgrounds",
