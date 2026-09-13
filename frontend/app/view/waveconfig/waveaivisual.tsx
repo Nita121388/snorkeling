@@ -28,7 +28,8 @@ const templates: Template[] = [
         apiType: "openai-responses",
         model: "gpt-5-mini",
         secret: "OPENAI_KEY",
-        note: "Newer OpenAI Responses API models",
+        endpoint: "https://api.openai.com/v1/responses",
+        note: "Newer OpenAI Responses API models. Replace the endpoint when using a proxy.",
     },
     {
         id: "openai-chat",
@@ -37,7 +38,8 @@ const templates: Template[] = [
         apiType: "openai-chat",
         model: "gpt-4o",
         secret: "OPENAI_KEY",
-        note: "OpenAI-compatible chat endpoints",
+        endpoint: "https://api.openai.com/v1/chat/completions",
+        note: "OpenAI-compatible chat endpoints. Replace the endpoint when using a proxy.",
     },
     {
         id: "anthropic",
@@ -46,7 +48,8 @@ const templates: Template[] = [
         apiType: "anthropic-messages",
         model: "claude-sonnet-4-5",
         secret: "ANTHROPIC_KEY",
-        note: "Claude models through the Anthropic API",
+        endpoint: "https://api.anthropic.com/v1/messages",
+        note: "Claude models through the Anthropic API. Replace the endpoint when using a compatible gateway.",
     },
     {
         id: "google-gemini",
@@ -55,7 +58,8 @@ const templates: Template[] = [
         apiType: "google-gemini",
         model: "gemini-2.0-flash",
         secret: "GOOGLE_AI_KEY",
-        note: "Gemini models through Google AI",
+        endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent",
+        note: "Gemini models through Google AI. The model name is part of this endpoint.",
     },
     {
         id: "openrouter",
@@ -64,7 +68,8 @@ const templates: Template[] = [
         apiType: "openai-chat",
         model: "anthropic/claude-3.5-sonnet",
         secret: "OPENROUTER_KEY",
-        note: "Many models through one OpenAI-compatible endpoint",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        note: "Many models through one OpenAI-compatible endpoint.",
     },
     {
         id: "groq",
@@ -73,7 +78,8 @@ const templates: Template[] = [
         apiType: "openai-chat",
         model: "llama-3.3-70b-versatile",
         secret: "GROQ_KEY",
-        note: "Fast OpenAI-compatible inference",
+        endpoint: "https://api.groq.com/openai/v1/chat/completions",
+        note: "Fast OpenAI-compatible inference.",
     },
     {
         id: "custom",
@@ -93,9 +99,9 @@ function templateJson(template: Template): string {
         "ai:provider": template.provider,
         "ai:apitype": template.apiType,
         "ai:model": template.model,
+        "ai:endpoint": template.endpoint ?? "",
         "ai:apitokensecretname": template.secret,
     };
-    if (template.endpoint) config["ai:endpoint"] = template.endpoint;
     return JSON.stringify({ [`custom@${template.id}`]: config }, null, 2);
 }
 
@@ -202,7 +208,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                     <div>
                         <h3 className="text-sm font-medium">Custom provider templates</h3>
                         <p className="mt-1 text-xs text-secondary">
-                            Select a supported provider, copy its JSON, then paste it into the JSON tab.
+                            Select a supported provider, copy its JSON, then paste it into the JSON tab. The endpoint is a full request URL, not only a hostname.
                         </p>
                     </div>
                     <select
@@ -218,6 +224,9 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                     </select>
                 </div>
                 <p className="mt-3 text-xs text-secondary">{selected.note}</p>
+                <div className="mt-2 rounded border border-border/70 bg-black/10 p-2 text-xs text-secondary">
+                    Endpoint: <code className="break-all text-primary">{selected.endpoint ?? "(enter your full request URL)"}</code>
+                </div>
                 <pre className="mt-2 max-h-52 overflow-auto rounded border border-border bg-black/10 p-3 text-xs text-primary">
                     {selectedJson}
                 </pre>
