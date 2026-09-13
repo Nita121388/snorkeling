@@ -148,6 +148,8 @@ type WshRpcInterface interface {
 	RemoteVcsStatCommand(ctx context.Context, data CommandRemoteVcsStatData) (*RemoteVcsStatRtnData, error)
 	RemoteVcsBranchListCommand(ctx context.Context, data CommandRemoteVcsBranchListData) (*RemoteVcsBranchListRtnData, error)
 	RemoteVcsSwitchBranchCommand(ctx context.Context, data CommandRemoteVcsSwitchBranchData) (*RemoteVcsSwitchBranchRtnData, error)
+	RemoteVcsCreateBranchCommand(ctx context.Context, data CommandRemoteVcsCreateBranchData) (*RemoteVcsCreateBranchRtnData, error)
+	RemoteVcsDeleteBranchCommand(ctx context.Context, data CommandRemoteVcsDeleteBranchData) (*RemoteVcsDeleteBranchRtnData, error)
 	RemoteVcsPipelineListCommand(ctx context.Context, data CommandRemoteVcsPipelineListData) (*RemoteVcsPipelineListRtnData, error)
 
 	// emain
@@ -1060,6 +1062,37 @@ type CommandRemoteVcsSwitchBranchData struct {
 }
 
 type RemoteVcsSwitchBranchRtnData struct {
+	RepoPath string `json:"repopath"`
+	Branch   string `json:"branch,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// wshrpc.CommandRemoteVcsCreateBranchData
+// CreateBranch creates a new branch at the current HEAD (or an optional start point),
+// then checks it out. For git repositories only.
+type CommandRemoteVcsCreateBranchData struct {
+	RepoType  string `json:"repotype"`
+	RepoPath  string `json:"repopath"`
+	Branch    string `json:"branch"`
+	StartPoint string `json:"startpoint,omitempty"`
+}
+
+type RemoteVcsCreateBranchRtnData struct {
+	RepoPath string `json:"repopath"`
+	Branch   string `json:"branch,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// wshrpc.CommandRemoteVcsDeleteBranchData
+// DeleteBranch removes a local branch that is not currently checked out.
+// For git repositories only.
+type CommandRemoteVcsDeleteBranchData struct {
+	RepoType string `json:"repotype"`
+	RepoPath string `json:"repopath"`
+	Branch   string `json:"branch"`
+}
+
+type RemoteVcsDeleteBranchRtnData struct {
 	RepoPath string `json:"repopath"`
 	Branch   string `json:"branch,omitempty"`
 	Error    string `json:"error,omitempty"`

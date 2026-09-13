@@ -876,6 +876,18 @@ export class RpcApiType {
         return client.wshRpcCall("remotevcscommits", data, opts);
     }
 
+    // command "remotevcscreatebranch" [call]
+    RemoteVcsCreateBranchCommand(client: WshClient, data: CommandRemoteVcsCreateBranchData, opts?: RpcOpts): Promise<RemoteVcsCreateBranchRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcscreatebranch", data, opts);
+        return client.wshRpcCall("remotevcscreatebranch", data, opts);
+    }
+
+    // command "remotevcsdeletebranch" [call]
+    RemoteVcsDeleteBranchCommand(client: WshClient, data: CommandRemoteVcsDeleteBranchData, opts?: RpcOpts): Promise<RemoteVcsDeleteBranchRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsdeletebranch", data, opts);
+        return client.wshRpcCall("remotevcsdeletebranch", data, opts);
+    }
+
     // command "remotevcsfilediff" [call]
     RemoteVcsFileDiffCommand(client: WshClient, data: CommandRemoteVcsFileDiffData, opts?: RpcOpts): Promise<RemoteVcsFileDiffRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotevcsfilediff", data, opts);

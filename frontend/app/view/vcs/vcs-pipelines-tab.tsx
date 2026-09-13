@@ -105,8 +105,8 @@ export function VcsPipelinesTab({
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4 text-center">
                 <div className="max-w-[240px]">
-                    <div className="text-secondary font-medium mb-1">暂无流水线记录</div>
-                    <div>{pipelines?.error || "尚未检测到 CI/CD 构建记录"}</div>
+                    <div className="text-secondary font-medium mb-1">No pipelines available</div>
+                    <div>{pipelines?.error || "Pipeline listing is only supported for git repositories."}</div>
                 </div>
             </div>
         );
@@ -118,8 +118,8 @@ export function VcsPipelinesTab({
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4 text-center">
                 <div className="max-w-[240px]">
-                    <div className="text-secondary font-medium mb-1">暂无流水线记录</div>
-                    <div>尚未在此仓库检测到 CI/CD 构建记录</div>
+                    <div className="text-secondary font-medium mb-1">No pipeline runs</div>
+                    <div>No CI/CD runs were found in this repository.</div>
                 </div>
             </div>
         );
@@ -129,12 +129,12 @@ export function VcsPipelinesTab({
         <div className="flex-1 overflow-auto p-2 space-y-1">
             {/* Header */}
             <div className="flex items-center justify-between px-1 py-1">
-                <span className="text-xs font-medium text-secondary">CI / CD 流水线</span>
+                <span className="text-xs font-medium text-secondary">CI / CD Pipelines</span>
                 <button
                     className="text-[11px] text-accent hover:underline cursor-pointer"
                     onClick={() => loadPipelines()}
                 >
-                    刷新
+                    Refresh
                 </button>
             </div>
 
@@ -155,11 +155,11 @@ export function VcsPipelinesTab({
                                 </div>
                                 <span className="text-[11px] text-muted shrink-0 whitespace-nowrap">{formatTime(run.startedat)}</span>
                             </div>
-                            <div className="text-[11px] text-muted pl-4 mb-1 truncate">{run.commit ? shortHash(run.commit) : "—"}</div>
+                            <div className="text-[11px] text-muted pl-4 mb-1 truncate">{run.commit ? shortHash(run.commit) : "\u2014"}</div>
                             <div className="flex items-center gap-3 text-[11px] text-muted pl-4">
                                 {run.branch && (
                                     <span className="flex items-center gap-1 truncate max-w-[130px]">
-                                        <span>⑂</span>
+                                        <span>{"\u2442"}</span>
                                         <span className="truncate">{run.branch}</span>
                                     </span>
                                 )}
@@ -169,23 +169,23 @@ export function VcsPipelinesTab({
                         {isExpanded && (
                             <div className="px-2.5 pb-2.5 pt-0.5 space-y-1 border-t border-border">
                                 <div className="flex items-center justify-between py-1 text-[11px]">
-                                    <span className="text-muted">状态</span>
+                                    <span className="text-muted">Status</span>
                                     <span className="text-secondary">{run.conclusion || run.status}</span>
                                 </div>
                                 {run.commit && (
                                     <div className="flex items-center justify-between py-1 text-[11px]">
-                                        <span className="text-muted">提交</span>
+                                        <span className="text-muted">Commit</span>
                                         <span className="text-secondary font-mono">{run.commit}</span>
                                     </div>
                                 )}
                                 {run.author && (
                                     <div className="flex items-center justify-between py-1 text-[11px]">
-                                        <span className="text-muted">触发者</span>
+                                        <span className="text-muted">Author</span>
                                         <span className="text-secondary">{run.author}</span>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between py-1 text-[11px]">
-                                    <span className="text-muted">耗时</span>
+                                    <span className="text-muted">Duration</span>
                                     <span className="text-secondary">{formatDuration(run.startedat, run.endedat)}</span>
                                 </div>
                                 {run.url && (
@@ -195,7 +195,7 @@ export function VcsPipelinesTab({
                                         rel="noreferrer"
                                         className="inline-block mt-1 text-[11px] text-accent hover:underline"
                                     >
-                                        在浏览器中查看 →
+                                        View in browser {"\u2192"}
                                     </a>
                                 )}
                             </div>

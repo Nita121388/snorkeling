@@ -503,13 +503,21 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                             />
                         )}
                         {currentView === "branches" && (
-                            <VcsBranchesTab repo={activeRepo} connection={connection} />
+                            <VcsBranchesTab
+                                repo={activeRepo}
+                                connection={connection}
+                                onBranchChanged={() => refreshRepo(activeRepo.repoid)}
+                            />
                         )}
                         {currentView === "pipelines" && (
                             <VcsPipelinesTab repo={activeRepo} connection={connection} />
                         )}
                         {currentView === "history" && (
-                            <VcsHistoryTab repo={activeRepo} connection={connection} />
+                            <VcsHistoryTab
+                                repo={activeRepo}
+                                connection={connection}
+                                onShowFileDiff={(filePath, revision) => openDiffBlock(activeRepo, filePath, revision)}
+                            />
                         )}
                     </div>
                 </>

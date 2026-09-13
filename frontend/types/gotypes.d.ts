@@ -949,6 +949,21 @@ declare global {
         keyword?: string;
     };
 
+    // wshrpc.CommandRemoteVcsCreateBranchData
+    type CommandRemoteVcsCreateBranchData = {
+        repotype: string;
+        repopath: string;
+        branch: string;
+        startpoint?: string;
+    };
+
+    // wshrpc.CommandRemoteVcsDeleteBranchData
+    type CommandRemoteVcsDeleteBranchData = {
+        repotype: string;
+        repopath: string;
+        branch: string;
+    };
+
     // wshrpc.CommandRemoteVcsFileDiffData
     type CommandRemoteVcsFileDiffData = {
         repotype: string;
@@ -1922,6 +1937,20 @@ declare global {
         offset?: number;
         limit?: number;
         hasmore?: boolean;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsCreateBranchRtnData
+    type RemoteVcsCreateBranchRtnData = {
+        repopath: string;
+        branch?: string;
+        error?: string;
+    };
+
+    // wshrpc.RemoteVcsDeleteBranchRtnData
+    type RemoteVcsDeleteBranchRtnData = {
+        repopath: string;
+        branch?: string;
         error?: string;
     };
 

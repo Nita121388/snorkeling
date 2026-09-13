@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -2274,6 +2275,77 @@ func (impl *ServerImpl) RemoteVcsSwitchBranchCommand(ctx context.Context, data w
 		return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Error: switchErr.Error()}, nil
 	}
 	return &wshrpc.RemoteVcsSwitchBranchRtnData{RepoPath: repoPath, Branch: branch}, nil
+}
+
+func (impl *ServerImpl) RemoteVcsCreateBranchCommand(ctx context.Context, data wshrpc.CommandRemoteVcsCreateBranchData) (*wshrpc.RemoteVcsCreateBranchRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{Error: err.Error()}, nil
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+	if repoType != "git" {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Error: "branch creation only supported for git repositories"}, nil
+	}
+	branch := strings.TrimSpace(data.Branch)
+	if branch == "" || strings.ContainsAny(branch, "\r\n\x00 \t") || strings.HasPrefix(branch, "-") {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Error: "invalid branch name"}, nil
+	}
+	if strings.HasPrefix(branch, "refs/heads/") {
+		branch = strings.TrimPrefix(branch, "refs/heads/")
+	}
+	// Reject refs that would escape refs/heads (e.g. "../x" or "heads/../x").
+	cleaned := path.Clean(branch)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") || strings.Contains(cleaned, "/../") {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Error: "invalid branch name"}, nil
+	}
+	// Ensure the branch does not already exist.
+	if _, verifyErr := runVcsCommand(ctx, repoPath, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); verifyErr == nil {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Error: "branch already exists: " + branch}, nil
+	}
+	startPoint := strings.TrimSpace(data.StartPoint)
+	if startPoint == "" {
+		startPoint = "HEAD"
+	}
+	args := []string{"switch", "-c", branch, startPoint}
+	if _, switchErr := runVcsCommandLogged(ctx, repoPath, "git", args...); switchErr != nil {
+		return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Error: switchErr.Error()}, nil
+	}
+	return &wshrpc.RemoteVcsCreateBranchRtnData{RepoPath: repoPath, Branch: branch}, nil
+}
+
+func (impl *ServerImpl) RemoteVcsDeleteBranchCommand(ctx context.Context, data wshrpc.CommandRemoteVcsDeleteBranchData) (*wshrpc.RemoteVcsDeleteBranchRtnData, error) {
+	repoPath, err := normalizeVcsBasePath(data.RepoPath)
+	if err != nil {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{Error: err.Error()}, nil
+	}
+	repoType := strings.ToLower(strings.TrimSpace(data.RepoType))
+	if repoType == "" {
+		repoType = detectRepoType(ctx, repoPath)
+	}
+	if repoType != "git" {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Error: "branch deletion only supported for git repositories"}, nil
+	}
+	branch := strings.TrimSpace(data.Branch)
+	if branch == "" || strings.ContainsAny(branch, "\r\n\x00") {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Error: "branch name is required"}, nil
+	}
+	if strings.HasPrefix(branch, "refs/heads/") {
+		branch = strings.TrimPrefix(branch, "refs/heads/")
+	}
+	currentBranch, currentErr := runVcsCommand(ctx, repoPath, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	if currentErr == nil && strings.TrimSpace(currentBranch) == branch {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Error: "cannot delete the current branch"}, nil
+	}
+	if _, verifyErr := runVcsCommand(ctx, repoPath, "git", "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); verifyErr != nil {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Error: "branch not found: " + branch}, nil
+	}
+	if _, delErr := runVcsCommandLogged(ctx, repoPath, "git", "branch", "-D", branch); delErr != nil {
+		return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Error: delErr.Error()}, nil
+	}
+	return &wshrpc.RemoteVcsDeleteBranchRtnData{RepoPath: repoPath, Branch: branch}, nil
 }
 
 func (impl *ServerImpl) RemoteVcsPipelineListCommand(ctx context.Context, data wshrpc.CommandRemoteVcsPipelineListData) (*wshrpc.RemoteVcsPipelineListRtnData, error) {

@@ -872,6 +872,18 @@ func RemoteVcsCommitsCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsComm
 	return resp, err
 }
 
+// command "remotevcscreatebranch", wshserver.RemoteVcsCreateBranchCommand
+func RemoteVcsCreateBranchCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsCreateBranchData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsCreateBranchRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsCreateBranchRtnData](w, "remotevcscreatebranch", data, opts)
+	return resp, err
+}
+
+// command "remotevcsdeletebranch", wshserver.RemoteVcsDeleteBranchCommand
+func RemoteVcsDeleteBranchCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsDeleteBranchData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsDeleteBranchRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsDeleteBranchRtnData](w, "remotevcsdeletebranch", data, opts)
+	return resp, err
+}
+
 // command "remotevcsfilediff", wshserver.RemoteVcsFileDiffCommand
 func RemoteVcsFileDiffCommand(w *wshutil.WshRpc, data wshrpc.CommandRemoteVcsFileDiffData, opts *wshrpc.RpcOpts) (*wshrpc.RemoteVcsFileDiffRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.RemoteVcsFileDiffRtnData](w, "remotevcsfilediff", data, opts)
